@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
@@ -12,15 +12,29 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 export default function MobileAuth() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { tenant } = useTenantStore();
+  const { tenant, isLoading: tenantLoading } = useTenantStore();
   const [mobile, setMobile] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isReady, setIsReady] = useState(false);
+
+  // Wait for tenant to load
+  useEffect(() => {
+    if (!tenantLoading) {
+      setIsReady(true);
+    }
+  }, [tenantLoading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (!mobile || mobile.length < 10) {
       setError('Please enter a valid 10-digit mobile number');
+      return;
+    }
+
+    if (!isReady) {
+      setError('Application is still loading. Please wait...');
       return;
     }
 
@@ -28,67 +42,106 @@ export default function MobileAuth() {
     setError(null);
 
     try {
-      // Check if farmer exists with this mobile number
-      const { data: farmer, error: fetchError } = await supabase
+      console.log('Checking farmer with mobile:', mobile, 'tenant_id:', tenant?.id);
+      
+      // Build query
+      let query = supabase
         .from('farmers')
-        .select('id, mobile_number, pin_hash, tenant_id')
-        .eq('mobile_number', mobile)
-        .eq('tenant_id', tenant?.id || null)
-        .maybeSingle();
+        .select('id, mobile_number, pin, pin_hash, tenant_id')
+        .eq('mobile_number', mobile);
+      
+      // Only add tenant filter if tenant exists
+      if (tenant?.id) {
+        query = query.eq('tenant_id', tenant.id);
+      }
+      
+      const { data: farmer, error: fetchError } = await query.maybeSingle();
 
       if (fetchError) {
+        console.error('Error fetching farmer:', fetchError);
         throw fetchError;
       }
 
       if (farmer) {
+        console.log('Farmer found:', farmer.id);
         // Farmer exists, navigate to PIN entry
         localStorage.setItem('authMobile', mobile);
         localStorage.setItem('farmerId', farmer.id);
         navigate('/pin-auth');
       } else {
+        console.log('Creating new farmer with tenant_id:', tenant?.id);
         // New farmer, create entry
+        const farmerData: any = {
+          mobile_number: mobile,
+          language_preference: localStorage.getItem('i18nextLng') || 'hi',
+          is_active: true,
+          app_install_date: new Date().toISOString(),
+          total_app_opens: 0,
+          login_attempts: 0,
+          failed_login_attempts: 0
+        };
+        
+        // Only add tenant_id if it exists
+        if (tenant?.id) {
+          farmerData.tenant_id = tenant.id;
+        }
+        
         const { data: newFarmer, error: insertError } = await supabase
           .from('farmers')
-          .insert({
-            mobile_number: mobile,
-            tenant_id: tenant?.id,
-            language_preference: localStorage.getItem('i18nextLng') || 'hi',
-            is_active: true,
-            app_install_date: new Date().toISOString(),
-            total_app_opens: 0,
-            login_attempts: 0,
-            failed_login_attempts: 0
-          })
+          .insert(farmerData)
           .select()
           .single();
 
         if (insertError) {
+          console.error('Error creating farmer:', insertError);
           throw insertError;
         }
 
-        // Also create user profile
+        console.log('New farmer created:', newFarmer.id);
+        
+        // Create user profile
+        const profileData: any = {
+          id: newFarmer.id,
+          farmer_id: newFarmer.id,
+          mobile_number: mobile,
+          preferred_language: localStorage.getItem('i18nextLng') as any || 'hi',
+          is_profile_complete: false
+        };
+        
+        // Only add tenant_id if it exists
+        if (tenant?.id) {
+          profileData.tenant_id = tenant.id;
+        }
+        
         await supabase
           .from('user_profiles')
-          .insert({
-            id: newFarmer.id,
-            farmer_id: newFarmer.id,
-            mobile_number: mobile,
-            tenant_id: tenant?.id,
-            preferred_language: localStorage.getItem('i18nextLng') as any || 'hi',
-            is_profile_complete: false
-          });
+          .insert(profileData);
 
         localStorage.setItem('authMobile', mobile);
         localStorage.setItem('farmerId', newFarmer.id);
         navigate('/set-pin');
       }
     } catch (err: any) {
-      console.error('Error checking farmer:', err);
+      console.error('Error in mobile auth:', err);
       setError(err.message || 'Something went wrong. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Show loading state while tenant is loading
+  if (tenantLoading || !isReady) {
+    return (
+      <div className="min-h-screen bg-gradient-earth flex items-center justify-center">
+        <Card className="p-8">
+          <div className="flex items-center space-x-3">
+            <Loader2 className="w-5 h-5 animate-spin text-primary" />
+            <span className="text-muted-foreground">Loading...</span>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-earth flex flex-col items-center justify-center p-4">
@@ -141,6 +194,7 @@ export default function MobileAuth() {
                 className="pl-12"
                 maxLength={10}
                 required
+                disabled={isLoading}
               />
             </div>
             <p className="text-xs text-muted-foreground mt-1">
