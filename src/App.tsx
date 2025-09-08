@@ -21,6 +21,11 @@ import Advisory from "./pages/Advisory";
 import Schemes from "./pages/Schemes";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
+import SplashScreen from "./pages/SplashScreen";
+import LanguageSelection from "./pages/LanguageSelection";
+import MobileAuth from "./pages/MobileAuth";
+import PinAuth from "./pages/PinAuth";
+import SetPin from "./pages/SetPin";
 
 // Stores
 import { useTenantStore } from "@/stores/tenantStore";
@@ -69,7 +74,12 @@ const App = () => (
           <BrowserRouter>
             <AppInitializer>
               <Routes>
-                {/* Public Routes */}
+                {/* Splash & Auth Routes */}
+                <Route path="/splash" element={<SplashScreen />} />
+                <Route path="/language-selection" element={<LanguageSelection />} />
+                <Route path="/mobile-auth" element={<MobileAuth />} />
+                <Route path="/pin-auth" element={<PinAuth />} />
+                <Route path="/set-pin" element={<SetPin />} />
                 <Route path="/login" element={<Login />} />
                 
                 {/* Protected Routes */}

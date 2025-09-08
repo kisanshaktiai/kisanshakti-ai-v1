@@ -1,9 +1,10 @@
 import { create } from 'zustand';
-import { supabase } from '@/utils/supabase';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Theme {
   primaryColor?: string;
   secondaryColor?: string;
+  primaryGradient?: string;
   logo?: string;
   fonts?: {
     heading?: string;
@@ -20,6 +21,10 @@ interface Tenant {
     languages: string[];
     defaultLanguage: string;
     features: string[];
+    logo?: string;
+    tagline?: string;
+    version?: string;
+    theme?: Theme;
   };
 }
 
@@ -45,47 +50,111 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       // Get current domain
       const domain = window.location.hostname;
       
-      if (!supabase) {
-        // Set default tenant for development
-        set({
-          tenant: {
-            id: 'default',
-            name: 'KisanShakti',
+      // First try to fetch tenant by domain from Supabase
+      const { data: tenantData, error } = await supabase
+        .from('tenants')
+        .select('*')
+        .or(`custom_domain.eq.${domain},subdomain.eq.${domain.split('.')[0]}`)
+        .single();
+
+      if (error || !tenantData) {
+        // If no tenant found or error, use default tenant
+        const { data: defaultTenant } = await supabase
+          .from('tenants')
+          .select('*')
+          .eq('is_default', true)
+          .single();
+
+        if (defaultTenant) {
+          const settingsObj = typeof defaultTenant.settings === 'object' && defaultTenant.settings !== null 
+            ? defaultTenant.settings as any 
+            : {};
+          
+          const tenant: Tenant = {
+            id: defaultTenant.id,
+            name: defaultTenant.name,
             domain: domain,
             theme: {},
             settings: {
-              languages: ['en', 'hi', 'pa', 'mr', 'ta'],
-              defaultLanguage: 'hi',
-              features: ['weather', 'market', 'advisory', 'schemes'],
+              languages: settingsObj.languages || ['en', 'hi', 'pa', 'mr', 'ta'],
+              defaultLanguage: settingsObj.defaultLanguage || 'hi',
+              features: settingsObj.features || ['weather', 'market', 'advisory', 'schemes'],
+              logo: settingsObj.logo,
+              tagline: settingsObj.tagline || 'Empowering Farmers with Technology',
+              version: settingsObj.version || '1.0.0',
+              theme: settingsObj.theme || {}
             },
+          };
+          set({ tenant, isLoading: false });
+        } else {
+          // Fallback to hardcoded default
+          set({
+            tenant: {
+              id: 'default',
+              name: 'KisanShakti',
+              domain: domain,
+              theme: {},
+              settings: {
+                languages: ['en', 'hi', 'pa', 'mr', 'ta'],
+                defaultLanguage: 'hi',
+                features: ['weather', 'market', 'advisory', 'schemes'],
+                tagline: 'Empowering Farmers with Technology',
+                version: '1.0.0',
+                theme: {}
+              },
+            },
+            isLoading: false,
+          });
+        }
+      } else {
+        // Transform database tenant to our Tenant interface
+        const settingsObj = typeof tenantData.settings === 'object' && tenantData.settings !== null 
+          ? tenantData.settings as any 
+          : {};
+          
+        const tenant: Tenant = {
+          id: tenantData.id,
+          name: tenantData.name,
+          domain: domain,
+          theme: settingsObj.theme || {},
+          settings: {
+            languages: settingsObj.languages || ['en', 'hi', 'pa', 'mr', 'ta'],
+            defaultLanguage: settingsObj.defaultLanguage || 'hi',
+            features: settingsObj.features || ['weather', 'market', 'advisory', 'schemes'],
+            logo: settingsObj.logo,
+            tagline: settingsObj.tagline || 'Empowering Farmers with Technology',
+            version: settingsObj.version || '1.0.0',
+            theme: settingsObj.theme || {}
           },
-          isLoading: false,
-        });
-        return;
-      }
+        };
 
-      // Fetch tenant by domain from Supabase
-      const { data, error } = await supabase
-        .from('tenants')
-        .select('*')
-        .eq('domain', domain)
-        .single();
+        set({ tenant, isLoading: false });
 
-      if (error) throw error;
-
-      set({ 
-        tenant: data,
-        isLoading: false,
-      });
-
-      // Apply theme
-      if (data?.theme) {
-        get().setTheme(data.theme);
+        // Apply theme
+        if (tenant.settings.theme) {
+          get().setTheme(tenant.settings.theme);
+        }
       }
     } catch (error: any) {
-      set({ 
-        error: error.message || 'Failed to fetch tenant',
+      console.error('Error fetching tenant:', error);
+      // Use fallback tenant on error
+      set({
+        tenant: {
+          id: 'default',
+          name: 'KisanShakti',
+          domain: window.location.hostname,
+          theme: {},
+          settings: {
+            languages: ['en', 'hi', 'pa', 'mr', 'ta'],
+            defaultLanguage: 'hi',
+            features: ['weather', 'market', 'advisory', 'schemes'],
+            tagline: 'Empowering Farmers with Technology',
+            version: '1.0.0',
+            theme: {}
+          },
+        },
         isLoading: false,
+        error: error.message || 'Failed to fetch tenant',
       });
     }
   },
