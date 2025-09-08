@@ -36,26 +36,35 @@ export default function SplashScreen() {
     initializeApp();
   }, []);
 
+  // Get theme colors and branding from white label config
+  const primaryColor = tenant?.whiteLabel?.brand_identity?.primary_color || 'hsl(var(--primary))';
+  const backgroundColor = tenant?.whiteLabel?.pwa_config?.background_color || primaryColor;
+  const splashScreen = tenant?.whiteLabel?.splash_screens?.mobile;
+  const logoUrl = tenant?.whiteLabel?.brand_identity?.logo_url;
+  const companyName = tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name || 'KisanShakti';
+  const tagline = tenant?.whiteLabel?.brand_identity?.tagline || 'Empowering Farmers with Technology';
+  const appVersion = tenant?.whiteLabel?.pwa_config?.app_name ? '2.0.0' : '1.0.0';
+
   return (
     <div 
       className="min-h-screen flex flex-col items-center justify-center p-6"
       style={{
-        background: tenant?.settings?.theme?.primaryGradient || 
-          'linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary-dark)) 100%)'
+        background: splashScreen ? `url(${splashScreen}) center/cover` :
+          `linear-gradient(135deg, ${primaryColor} 0%, ${backgroundColor} 100%)`
       }}
     >
       <div className="text-center space-y-8">
         {/* App Icon */}
         <div className="w-32 h-32 mx-auto rounded-3xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-          {tenant?.settings?.logo ? (
+          {logoUrl ? (
             <img 
-              src={tenant.settings.logo} 
-              alt={tenant.name}
+              src={logoUrl} 
+              alt={companyName}
               className="w-24 h-24 object-contain"
             />
           ) : (
             <div className="text-white text-6xl font-bold">
-              {tenant?.name?.charAt(0) || 'K'}
+              {companyName.charAt(0)}
             </div>
           )}
         </div>
@@ -63,10 +72,10 @@ export default function SplashScreen() {
         {/* App Name */}
         <div className="space-y-2">
           <h1 className="text-4xl font-bold text-white">
-            {tenant?.name || 'KisanShakti'}
+            {companyName}
           </h1>
           <p className="text-white/80 text-lg px-8">
-            {tenant?.settings?.tagline || 'Empowering Farmers with Technology'}
+            {tagline}
           </p>
         </div>
 
@@ -78,14 +87,16 @@ export default function SplashScreen() {
         ) : (
           <div className="flex items-center justify-center space-x-2 text-white/60">
             <Loader2 className="w-5 h-5 animate-spin" />
-            <span className="text-sm">Loading...</span>
+            <span className="text-sm">
+              {tenant?.whiteLabel?.splash_screens?.loading_text || 'Loading...'}
+            </span>
           </div>
         )}
       </div>
 
       {/* Version */}
       <div className="absolute bottom-8 text-white/50 text-xs">
-        v{tenant?.settings?.version || '1.0.0'}
+        v{appVersion}
       </div>
     </div>
   );
