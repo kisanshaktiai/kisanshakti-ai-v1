@@ -1,0 +1,40 @@
+{
+  "app": {
+    "name": "KisanShakti",
+    "tagline": "Empowering Farmers"
+  },
+  "nav": {
+    "home": "Home",
+    "weather": "Weather",
+    "market": "Market",
+    "advisory": "Advisory",
+    "schemes": "Schemes",
+    "profile": "Profile"
+  },
+  "auth": {
+    "welcome": "Welcome",
+    "enterPhone": "Enter your phone number",
+    "sendOtp": "Send OTP",
+    "enterOtp": "Enter OTP",
+    "verify": "Verify",
+    "logout": "Logout"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Something went wrong",
+    "retry": "Retry",
+    "back": "Back",
+    "next": "Next",
+    "save": "Save",
+    "cancel": "Cancel",
+    "search": "Search",
+    "filter": "Filter"
+  },
+  "home": {
+    "greeting": "Hello, {{name}}",
+    "todayWeather": "Today's Weather",
+    "marketPrices": "Market Prices",
+    "latestAdvisory": "Latest Advisory",
+    "governmentSchemes": "Government Schemes"
+  }
+}

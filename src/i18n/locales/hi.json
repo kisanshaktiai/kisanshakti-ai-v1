@@ -1,0 +1,40 @@
+{
+  "app": {
+    "name": "किसान शक्ति",
+    "tagline": "किसानों को सशक्त बनाना"
+  },
+  "nav": {
+    "home": "होम",
+    "weather": "मौसम",
+    "market": "मंडी",
+    "advisory": "सलाह",
+    "schemes": "योजनाएं",
+    "profile": "प्रोफ़ाइल"
+  },
+  "auth": {
+    "welcome": "स्वागत है",
+    "enterPhone": "अपना फोन नंबर दर्ज करें",
+    "sendOtp": "OTP भेजें",
+    "enterOtp": "OTP दर्ज करें",
+    "verify": "सत्यापित करें",
+    "logout": "लॉग आउट"
+  },
+  "common": {
+    "loading": "लोड हो रहा है...",
+    "error": "कुछ गलत हो गया",
+    "retry": "पुनः प्रयास करें",
+    "back": "वापस",
+    "next": "अगला",
+    "save": "सहेजें",
+    "cancel": "रद्द करें",
+    "search": "खोजें",
+    "filter": "फ़िल्टर"
+  },
+  "home": {
+    "greeting": "नमस्ते, {{name}}",
+    "todayWeather": "आज का मौसम",
+    "marketPrices": "मंडी भाव",
+    "latestAdvisory": "नवीनतम सलाह",
+    "governmentSchemes": "सरकारी योजनाएं"
+  }
+}

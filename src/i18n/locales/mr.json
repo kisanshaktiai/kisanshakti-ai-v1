@@ -1,0 +1,40 @@
+{
+  "app": {
+    "name": "किसान शक्ती",
+    "tagline": "शेतकऱ्यांना सक्षम करणे"
+  },
+  "nav": {
+    "home": "होम",
+    "weather": "हवामान",
+    "market": "बाजार",
+    "advisory": "सल्ला",
+    "schemes": "योजना",
+    "profile": "प्रोफाइल"
+  },
+  "auth": {
+    "welcome": "स्वागत आहे",
+    "enterPhone": "तुमचा फोन नंबर प्रविष्ट करा",
+    "sendOtp": "OTP पाठवा",
+    "enterOtp": "OTP प्रविष्ट करा",
+    "verify": "सत्यापित करा",
+    "logout": "लॉग आउट"
+  },
+  "common": {
+    "loading": "लोड होत आहे...",
+    "error": "काहीतरी चूक झाली",
+    "retry": "पुन्हा प्रयत्न करा",
+    "back": "मागे",
+    "next": "पुढे",
+    "save": "जतन करा",
+    "cancel": "रद्द करा",
+    "search": "शोधा",
+    "filter": "फिल्टर"
+  },
+  "home": {
+    "greeting": "नमस्कार, {{name}}",
+    "todayWeather": "आजचे हवामान",
+    "marketPrices": "बाजार भाव",
+    "latestAdvisory": "नवीनतम सल्ला",
+    "governmentSchemes": "सरकारी योजना"
+  }
+}

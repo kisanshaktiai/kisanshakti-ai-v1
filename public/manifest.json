@@ -1,0 +1,28 @@
+{
+  "name": "KisanShakti - Farmer Empowerment Platform",
+  "short_name": "KisanShakti",
+  "description": "Digital platform empowering Indian farmers with weather, market prices, and advisory services",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#22c55e",
+  "orientation": "portrait",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["productivity", "utilities"],
+  "lang": "hi",
+  "dir": "ltr"
+}

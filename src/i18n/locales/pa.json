@@ -1,0 +1,40 @@
+{
+  "app": {
+    "name": "ਕਿਸਾਨ ਸ਼ਕਤੀ",
+    "tagline": "ਕਿਸਾਨਾਂ ਨੂੰ ਸ਼ਕਤੀਸ਼ਾਲੀ ਬਣਾਉਣਾ"
+  },
+  "nav": {
+    "home": "ਹੋਮ",
+    "weather": "ਮੌਸਮ",
+    "market": "ਮੰਡੀ",
+    "advisory": "ਸਲਾਹ",
+    "schemes": "ਯੋਜਨਾਵਾਂ",
+    "profile": "ਪ੍ਰੋਫਾਈਲ"
+  },
+  "auth": {
+    "welcome": "ਸੁਆਗਤ ਹੈ",
+    "enterPhone": "ਆਪਣਾ ਫੋਨ ਨੰਬਰ ਦਾਖਲ ਕਰੋ",
+    "sendOtp": "OTP ਭੇਜੋ",
+    "enterOtp": "OTP ਦਾਖਲ ਕਰੋ",
+    "verify": "ਤਸਦੀਕ ਕਰੋ",
+    "logout": "ਲੌਗ ਆਊਟ"
+  },
+  "common": {
+    "loading": "ਲੋਡ ਹੋ ਰਿਹਾ ਹੈ...",
+    "error": "ਕੁਝ ਗਲਤ ਹੋ ਗਿਆ",
+    "retry": "ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ",
+    "back": "ਵਾਪਸ",
+    "next": "ਅਗਲਾ",
+    "save": "ਸੰਭਾਲੋ",
+    "cancel": "ਰੱਦ ਕਰੋ",
+    "search": "ਖੋਜੋ",
+    "filter": "ਫਿਲਟਰ"
+  },
+  "home": {
+    "greeting": "ਸਤ ਸ੍ਰੀ ਅਕਾਲ, {{name}}",
+    "todayWeather": "ਅੱਜ ਦਾ ਮੌਸਮ",
+    "marketPrices": "ਮੰਡੀ ਭਾਅ",
+    "latestAdvisory": "ਨਵੀਨਤਮ ਸਲਾਹ",
+    "governmentSchemes": "ਸਰਕਾਰੀ ਯੋਜਨਾਵਾਂ"
+  }
+}
