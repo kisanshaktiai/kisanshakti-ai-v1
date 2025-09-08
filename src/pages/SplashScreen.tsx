@@ -6,7 +6,7 @@ import { Loader2 } from 'lucide-react';
 
 export default function SplashScreen() {
   const navigate = useNavigate();
-  const { tenant, fetchTenant, isLoading } = useTenantStore();
+  const { tenant, fetchTenant, isLoading, error } = useTenantStore();
   const { checkAuth, isAuthenticated } = useAuthStore();
 
   useEffect(() => {
@@ -70,11 +70,17 @@ export default function SplashScreen() {
           </p>
         </div>
 
-        {/* Loading Indicator */}
-        <div className="flex items-center justify-center space-x-2 text-white/60">
-          <Loader2 className="w-5 h-5 animate-spin" />
-          <span className="text-sm">Loading...</span>
-        </div>
+        {/* Loading Indicator or Error */}
+        {error ? (
+          <div className="text-yellow-200 text-sm px-8">
+            {error}
+          </div>
+        ) : (
+          <div className="flex items-center justify-center space-x-2 text-white/60">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span className="text-sm">Loading...</span>
+          </div>
+        )}
       </div>
 
       {/* Version */}

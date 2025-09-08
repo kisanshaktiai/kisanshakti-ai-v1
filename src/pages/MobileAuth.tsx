@@ -33,7 +33,7 @@ export default function MobileAuth() {
         .from('farmers')
         .select('id, mobile_number, pin_hash, tenant_id')
         .eq('mobile_number', mobile)
-        .eq('tenant_id', tenant?.id || '')
+        .eq('tenant_id', tenant?.id || null)
         .maybeSingle();
 
       if (fetchError) {
@@ -51,7 +51,7 @@ export default function MobileAuth() {
           .from('farmers')
           .insert({
             mobile_number: mobile,
-            tenant_id: tenant?.id || 'default',
+            tenant_id: tenant?.id,
             language_preference: localStorage.getItem('i18nextLng') || 'hi',
             is_active: true,
             app_install_date: new Date().toISOString(),
@@ -73,7 +73,7 @@ export default function MobileAuth() {
             id: newFarmer.id,
             farmer_id: newFarmer.id,
             mobile_number: mobile,
-            tenant_id: tenant?.id || 'default',
+            tenant_id: tenant?.id,
             preferred_language: localStorage.getItem('i18nextLng') as any || 'hi',
             is_profile_complete: false
           });

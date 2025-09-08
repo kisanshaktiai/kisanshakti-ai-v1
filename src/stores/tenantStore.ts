@@ -87,23 +87,11 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           };
           set({ tenant, isLoading: false });
         } else {
-          // Fallback to hardcoded default
+          // No tenant found - show error
           set({
-            tenant: {
-              id: 'default',
-              name: 'KisanShakti',
-              domain: domain,
-              theme: {},
-              settings: {
-                languages: ['en', 'hi', 'pa', 'mr', 'ta'],
-                defaultLanguage: 'hi',
-                features: ['weather', 'market', 'advisory', 'schemes'],
-                tagline: 'Empowering Farmers with Technology',
-                version: '1.0.0',
-                theme: {}
-              },
-            },
+            tenant: null,
             isLoading: false,
+            error: 'No tenant configuration found. Please contact administrator.'
           });
         }
       } else {
@@ -137,24 +125,11 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       }
     } catch (error: any) {
       console.error('Error fetching tenant:', error);
-      // Use fallback tenant on error
+      // Error fetching tenant
       set({
-        tenant: {
-          id: 'default',
-          name: 'KisanShakti',
-          domain: window.location.hostname,
-          theme: {},
-          settings: {
-            languages: ['en', 'hi', 'pa', 'mr', 'ta'],
-            defaultLanguage: 'hi',
-            features: ['weather', 'market', 'advisory', 'schemes'],
-            tagline: 'Empowering Farmers with Technology',
-            version: '1.0.0',
-            theme: {}
-          },
-        },
+        tenant: null,
         isLoading: false,
-        error: error.message || 'Failed to fetch tenant',
+        error: error.message || 'Failed to fetch tenant configuration',
       });
     }
   },
