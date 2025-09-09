@@ -53,7 +53,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
     
     // Check authentication status
     checkAuth();
-  }, []);
+  }, [fetchTenant, checkAuth]);
 
   useEffect(() => {
     // Apply language
@@ -63,81 +63,84 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-// Create router with future flag to resolve the warning
-const router = createBrowserRouter([
+// Create router with future flags to resolve React Router v7 warnings
+const router = createBrowserRouter(
+  [
+    {
+      path: "/",
+      element: <AppInitializer><SplashScreen /></AppInitializer>,
+    },
+    {
+      path: "/splash",
+      element: <AppInitializer><SplashScreen /></AppInitializer>,
+    },
+    {
+      path: "/language-selection",
+      element: <AppInitializer><LanguageSelection /></AppInitializer>,
+    },
+    {
+      path: "/auth",
+      element: <AppInitializer><AuthScreen /></AppInitializer>,
+    },
+    {
+      path: "/pin",
+      element: <AppInitializer><PinAuth /></AppInitializer>,
+    },
+    {
+      path: "/set-pin",
+      element: <AppInitializer><SetPin /></AppInitializer>,
+    },
+    {
+      path: "/app",
+      element: (
+        <AppInitializer>
+          <ProtectedRoute>
+            <AppLayout />
+          </ProtectedRoute>
+        </AppInitializer>
+      ),
+      children: [
+        {
+          index: true,
+          element: <Home />,
+        },
+        {
+          path: "weather",
+          element: <Weather />,
+        },
+        {
+          path: "market",
+          element: <Market />,
+        },
+        {
+          path: "advisory",
+          element: <Advisory />,
+        },
+        {
+          path: "schemes",
+          element: <Schemes />,
+        },
+        {
+          path: "profile",
+          element: <Profile />,
+        },
+      ],
+    },
+    {
+      path: "*",
+      element: <AppInitializer><NotFound /></AppInitializer>,
+    },
+  ],
   {
-    path: "/",
-    element: <AppInitializer><SplashScreen /></AppInitializer>,
-  },
-  {
-    path: "/splash",
-    element: <AppInitializer><SplashScreen /></AppInitializer>,
-  },
-  {
-    path: "/language-selection",
-    element: <AppInitializer><LanguageSelection /></AppInitializer>,
-  },
-  {
-    path: "/auth",
-    element: <AppInitializer><AuthScreen /></AppInitializer>,
-  },
-  {
-    path: "/pin",
-    element: <AppInitializer><PinAuth /></AppInitializer>,
-  },
-  {
-    path: "/set-pin",
-    element: <AppInitializer><SetPin /></AppInitializer>,
-  },
-  {
-    path: "/app",
-    element: (
-      <AppInitializer>
-        <ProtectedRoute>
-          <AppLayout />
-        </ProtectedRoute>
-      </AppInitializer>
-    ),
-    children: [
-      {
-        index: true,
-        element: <Home />,
-      },
-      {
-        path: "weather",
-        element: <Weather />,
-      },
-      {
-        path: "market",
-        element: <Market />,
-      },
-      {
-        path: "advisory",
-        element: <Advisory />,
-      },
-      {
-        path: "schemes",
-        element: <Schemes />,
-      },
-      {
-        path: "profile",
-        element: <Profile />,
-      },
-    ],
-  },
-  {
-    path: "*",
-    element: <AppInitializer><NotFound /></AppInitializer>,
-  },
-], {
-  future: {
-    v7_relativeSplatPath: true,
-    v7_fetcherPersist: true,
-    v7_normalizeFormMethod: true,
-    v7_partialHydration: true,
-    v7_skipActionErrorRevalidation: true,
-  },
-});
+    future: {
+      v7_relativeSplatPath: true,
+      v7_fetcherPersist: true,
+      v7_normalizeFormMethod: true,
+      v7_partialHydration: true,
+      v7_skipActionErrorRevalidation: true,
+    },
+  }
+);
 
 const App = () => (
   <ErrorBoundary>
