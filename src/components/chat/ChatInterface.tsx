@@ -31,7 +31,8 @@ import {
   MapPin,
   Clock,
   X,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Smile
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -79,9 +80,6 @@ export function ChatInterface() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [pendingMessages, setPendingMessages] = useState<Message[]>([]);
 
   // Speech recognition hook
@@ -410,47 +408,6 @@ export function ChatInterface() {
     }
   };
 
-  const openCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } 
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setIsCameraOpen(true);
-      }
-    } catch (error) {
-      console.error('Error accessing camera:', error);
-      toast({
-        title: 'Camera Error',
-        description: 'Unable to access camera. Please check permissions.',
-        variant: 'destructive'
-      });
-    }
-  };
-
-  const capturePhoto = () => {
-    if (videoRef.current && canvasRef.current) {
-      const context = canvasRef.current.getContext('2d');
-      if (context) {
-        canvasRef.current.width = videoRef.current.videoWidth;
-        canvasRef.current.height = videoRef.current.videoHeight;
-        context.drawImage(videoRef.current, 0, 0);
-        const imageData = canvasRef.current.toDataURL('image/jpeg');
-        setUploadedImage(imageData);
-        closeCamera();
-      }
-    }
-  };
-
-  const closeCamera = () => {
-    if (videoRef.current?.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
-      videoRef.current.srcObject = null;
-    }
-    setIsCameraOpen(false);
-  };
 
   const toggleFavorite = async (sessionId: string) => {
     const session = sessions.find(s => s.id === sessionId);
@@ -727,49 +684,29 @@ export function ChatInterface() {
         )}
 
         {/* WhatsApp-style Input Area */}
-        <div className="border-t border-border bg-background/95 backdrop-blur-sm">
-          <div className="px-3 py-3">
-            <div className="flex items-end gap-2">
-              {/* Attachment Options */}
-              <div className="flex gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isLoading}
-                  className="h-10 w-10 rounded-full shrink-0"
-                  title="Attach file"
-                >
-                  <Paperclip className="h-5 w-5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => imageInputRef.current?.click()}
-                  disabled={isLoading}
-                  className="h-10 w-10 rounded-full shrink-0"
-                  title="Upload image"
-                >
-                  <ImageIcon className="h-5 w-5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={openCamera}
-                  disabled={isLoading}
-                  className="h-10 w-10 rounded-full shrink-0"
-                  title="Open camera"
-                >
-                  <Camera className="h-5 w-5" />
-                </Button>
-              </div>
+        <div className="border-t border-border bg-card/95 backdrop-blur-sm">
+          <div className="p-2">
+            <div className="flex items-end gap-1">
+              {/* Emoji Button */}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                disabled={isLoading}
+                className="h-10 w-10 rounded-full shrink-0 text-muted-foreground hover:text-foreground"
+                title="Emoji"
+              >
+                <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+                  <line x1="9" y1="9" x2="9.01" y2="9" />
+                  <line x1="15" y1="9" x2="15.01" y2="9" />
+                </svg>
+              </Button>
               
-              {/* Text Input Area */}
+              {/* Message Input */}
               <div className="flex-1 min-w-0">
-                <Textarea
+                <Input
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
                   onKeyDown={(e) => {
@@ -778,15 +715,63 @@ export function ChatInterface() {
                       sendMessage();
                     }
                   }}
-                  placeholder={t('chat.typeMessage')}
+                  placeholder="Message"
                   disabled={isLoading}
-                  className="min-h-[44px] max-h-[120px] py-3 px-4 resize-none rounded-3xl bg-muted/50 border-0"
-                  rows={1}
-                  style={{
-                    fieldSizing: 'content'
-                  } as React.CSSProperties}
+                  className="h-10 rounded-full bg-muted/50 border-0 px-4 placeholder:text-muted-foreground/70"
                 />
               </div>
+              
+              {/* Attachment Button */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={handleFileUpload}
+                accept="*/*"
+                capture="environment"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  // For mobile devices, trigger file input with camera/file options
+                  if (fileInputRef.current) {
+                    fileInputRef.current.click();
+                  }
+                }}
+                disabled={isLoading}
+                className="h-10 w-10 rounded-full shrink-0 text-muted-foreground hover:text-foreground"
+                title="Attach"
+              >
+                <Paperclip className="h-5 w-5" />
+              </Button>
+              
+              {/* Camera Button */}
+              <input
+                ref={imageInputRef}
+                type="file"
+                className="hidden"
+                onChange={handleImageUpload}
+                accept="image/*"
+                capture="environment"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  // On mobile, this will open camera directly
+                  if (imageInputRef.current) {
+                    imageInputRef.current.click();
+                  }
+                }}
+                disabled={isLoading}
+                className="h-10 w-10 rounded-full shrink-0 text-muted-foreground hover:text-foreground"
+                title="Camera"
+              >
+                <Camera className="h-5 w-5" />
+              </Button>
               
               {/* Voice/Send Button */}
               {inputMessage.trim() || uploadedImage || uploadedFile ? (
@@ -795,32 +780,30 @@ export function ChatInterface() {
                   size="icon"
                   onClick={sendMessage}
                   disabled={isLoading}
-                  className="h-10 w-10 rounded-full shrink-0"
+                  className="h-10 w-10 rounded-full shrink-0 bg-primary hover:bg-primary/90"
                 >
                   {isLoading ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <Loader2 className="h-5 w-5 animate-spin text-primary-foreground" />
                   ) : (
-                    <Send className="h-5 w-5" />
+                    <Send className="h-5 w-5 text-primary-foreground" />
                   )}
                 </Button>
               ) : (
-                isSpeechSupported && (
-                  <Button
-                    type="button"
-                    variant={isListening ? "destructive" : "secondary"}
-                    size="icon"
-                    onClick={toggleListening}
-                    disabled={isLoading}
-                    className="h-10 w-10 rounded-full shrink-0"
-                    title={isListening ? 'Stop recording' : 'Start recording'}
-                  >
-                    {isListening ? (
-                      <MicOff className="h-5 w-5 animate-pulse" />
-                    ) : (
-                      <Mic className="h-5 w-5" />
-                    )}
-                  </Button>
-                )
+                <Button
+                  type="button"
+                  variant={isListening ? "destructive" : "default"}
+                  size="icon"
+                  onClick={isSpeechSupported ? toggleListening : undefined}
+                  disabled={isLoading || !isSpeechSupported}
+                  className="h-10 w-10 rounded-full shrink-0 bg-green-500 hover:bg-green-600 text-white"
+                  title={isListening ? 'Stop recording' : 'Start recording'}
+                >
+                  {isListening ? (
+                    <MicOff className="h-5 w-5 animate-pulse" />
+                  ) : (
+                    <Mic className="h-5 w-5" />
+                  )}
+                </Button>
               )}
             </div>
           </div>
@@ -843,30 +826,6 @@ export function ChatInterface() {
         />
       </div>
 
-      {/* Camera Modal */}
-      {isCameraOpen && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center">
-          <div className="bg-background rounded-lg p-4 max-w-2xl w-full">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">{t('chat.capturePhoto')}</h3>
-              <Button size="icon" variant="ghost" onClick={closeCamera}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            <video ref={videoRef} autoPlay className="w-full rounded mb-4" />
-            <canvas ref={canvasRef} className="hidden" />
-            <div className="flex gap-2 justify-center">
-              <Button onClick={capturePhoto}>
-                <Camera className="h-4 w-4 mr-2" />
-                {t('chat.capture')}
-              </Button>
-              <Button variant="outline" onClick={closeCamera}>
-                {t('common.cancel')}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
