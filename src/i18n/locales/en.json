@@ -5,11 +5,13 @@
   },
   "nav": {
     "home": "Home",
+    "land": "Lands",
     "weather": "Weather",
     "market": "Market",
     "advisory": "Advisory",
     "schemes": "Schemes",
-    "profile": "Profile"
+    "profile": "Profile",
+    "chat": "AI Chat"
   },
   "auth": {
     "welcome": "Welcome",
@@ -36,5 +38,16 @@
     "marketPrices": "Market Prices",
     "latestAdvisory": "Latest Advisory",
     "governmentSchemes": "Government Schemes"
+  },
+  "chat": {
+    "history": "Chat History",
+    "searchChats": "Search chats...",
+    "selectLand": "Select Land",
+    "generalChat": "General Chat",
+    "newChat": "New Chat",
+    "typeMessage": "Type your message...",
+    "selectOrCreate": "Select a chat or create a new one",
+    "capturePhoto": "Capture Photo",
+    "capture": "Capture"
   }
 }

@@ -35,9 +35,6 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 
-declare module 'html2pdf.js';
-const html2pdf = (window as any).html2pdf;
-
 interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -496,31 +493,51 @@ export function ChatInterface() {
     saveToLocalStorage();
   };
 
-  const exportChatAsPDF = () => {
+  const exportChatAsPDF = async () => {
     if (!currentSession) return;
 
-    const element = document.createElement('div');
-    element.innerHTML = `
-      <h1 style="text-align: center; margin-bottom: 20px;">${currentSession.title}</h1>
-      <p style="text-align: center; margin-bottom: 30px;">Date: ${format(currentSession.createdAt, 'PPP')}</p>
-      ${currentSession.messages.map(msg => `
-        <div style="margin-bottom: 15px; padding: 10px; background: ${msg.role === 'user' ? '#f0f0f0' : '#e8f5e9'}; border-radius: 8px;">
-          <strong>${msg.role === 'user' ? 'You' : 'AI Assistant'}:</strong>
-          <p style="margin-top: 5px;">${msg.content}</p>
-          <small style="color: #666;">${format(msg.timestamp, 'PPp')}</small>
-        </div>
-      `).join('')}
+    // Create a printable HTML content
+    const printContent = `
+      <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { text-align: center; margin-bottom: 20px; }
+            .date { text-align: center; margin-bottom: 30px; color: #666; }
+            .message { margin-bottom: 15px; padding: 10px; border-radius: 8px; }
+            .user-message { background: #f0f0f0; }
+            .assistant-message { background: #e8f5e9; }
+            .role { font-weight: bold; margin-bottom: 5px; }
+            .timestamp { color: #666; font-size: 0.85em; margin-top: 5px; }
+          </style>
+        </head>
+        <body>
+          <h1>${currentSession.title}</h1>
+          <p class="date">Date: ${format(currentSession.createdAt, 'PPP')}</p>
+          ${currentSession.messages.map(msg => `
+            <div class="message ${msg.role === 'user' ? 'user-message' : 'assistant-message'}">
+              <div class="role">${msg.role === 'user' ? 'You' : 'AI Assistant'}:</div>
+              <div>${msg.content}</div>
+              <div class="timestamp">${format(msg.timestamp, 'PPp')}</div>
+            </div>
+          `).join('')}
+        </body>
+      </html>
     `;
 
-    const opt = {
-      margin: 10,
-      filename: `chat-${currentSession.id}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-
-    html2pdf().set(opt).from(element).save();
+    // Open print dialog
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.print();
+    } else {
+      toast({
+        title: 'Export Failed',
+        description: 'Please allow pop-ups to export the chat',
+        variant: 'destructive'
+      });
+    }
   };
 
   const filteredSessions = sessions.filter(session =>

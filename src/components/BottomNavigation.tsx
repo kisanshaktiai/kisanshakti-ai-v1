@@ -1,14 +1,14 @@
 import { NavLink } from 'react-router-dom';
-import { Home, Cloud, TrendingUp, MessageSquare, FileText, User } from 'lucide-react';
+import { Home, Cloud, TrendingUp, MessageSquare, FileText, User, Bot, MapPin } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 const navItems = [
   { path: '/app', icon: Home, labelKey: 'nav.home' },
+  { path: '/app/land', icon: MapPin, labelKey: 'nav.land' },
   { path: '/app/weather', icon: Cloud, labelKey: 'nav.weather' },
+  { path: '/app/chat', icon: Bot, labelKey: 'nav.chat' },
   { path: '/app/market', icon: TrendingUp, labelKey: 'nav.market' },
-  { path: '/app/advisory', icon: MessageSquare, labelKey: 'nav.advisory' },
-  { path: '/app/schemes', icon: FileText, labelKey: 'nav.schemes' },
   { path: '/app/profile', icon: User, labelKey: 'nav.profile' },
 ];
 

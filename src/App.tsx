@@ -26,6 +26,10 @@ import LanguageSelection from "./pages/LanguageSelection";
 import AuthScreen from "./pages/AuthScreen";
 import PinAuth from "./pages/PinAuth";
 import SetPin from "./pages/SetPin";
+import LandManagement from "./pages/LandManagement";
+import AddLand from "./pages/AddLand";
+import LandDetails from "./pages/LandDetails";
+import AIChat from "./pages/AIChat";
 
 // Stores
 import { useTenantStore } from "@/stores/tenantStore";
@@ -133,6 +137,30 @@ const router = createBrowserRouter(
         {
           path: "profile/edit",
           element: <ProfileEdit />,
+        },
+        {
+          path: "land",
+          element: <LandManagement />,
+        },
+        {
+          path: "land/add",
+          element: <AddLand />,
+        },
+        {
+          path: "land/:id",
+          element: <LandDetails />,
+        },
+        {
+          path: "land/:id/gallery",
+          element: <div>Gallery Page - Coming Soon</div>,
+        },
+        {
+          path: "land/:id/activities",
+          element: <div>Activities Page - Coming Soon</div>,
+        },
+        {
+          path: "chat",
+          element: <AIChat />,
         },
       ],
     },
