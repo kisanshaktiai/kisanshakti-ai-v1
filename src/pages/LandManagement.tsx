@@ -16,6 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { Progress } from '@/components/ui/progress';
+import { LandCard } from '@/components/land/LandCard';
 
 interface Land {
   id: string;
