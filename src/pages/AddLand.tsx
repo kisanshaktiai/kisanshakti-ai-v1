@@ -110,7 +110,7 @@ export default function AddLand() {
   // Loading state
   if (isLoading || !isLoaded) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-background">
+      <div className="fixed inset-0 flex items-center justify-center bg-background z-50">
         <Card className="p-6 space-y-4 text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
           <p className="text-muted-foreground">Loading Google Maps...</p>
@@ -122,7 +122,7 @@ export default function AddLand() {
   // Error state
   if (loadError) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-background p-4">
+      <div className="fixed inset-0 flex items-center justify-center bg-background p-4 z-50">
         <Card className="p-6 max-w-md w-full space-y-4">
           <h2 className="text-xl font-semibold text-destructive">Failed to Load Maps</h2>
           <p className="text-muted-foreground">
@@ -139,9 +139,10 @@ export default function AddLand() {
     );
   }
 
+  // Main map view - fullscreen without header and bottom navigation
   return (
-    <div className="fixed inset-0 bg-background">
-      <div className="absolute inset-0 top-14">
+    <>
+      <div className="fixed inset-0 z-40 bg-background">
         <GoogleMapBoundaryDrawer
           onSave={handleMapSave}
           onCancel={handleCancel}
@@ -154,6 +155,6 @@ export default function AddLand() {
         onSubmit={handleFormSubmit}
         area={area}
       />
-    </div>
+    </>
   );
 }

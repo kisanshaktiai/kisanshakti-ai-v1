@@ -21,17 +21,6 @@ const mapContainerStyle = {
   height: '100%',
 };
 
-const mapOptions: google.maps.MapOptions = {
-  mapTypeId: 'hybrid', // Shows satellite with village/place names
-  disableDefaultUI: true,
-  zoomControl: true,
-  zoomControlOptions: {
-    position: 7, // RIGHT_CENTER
-  },
-  gestureHandling: 'greedy',
-  tilt: 0,
-};
-
 export function GoogleMapBoundaryDrawer({ 
   onSave, 
   onCancel,
@@ -49,6 +38,18 @@ export function GoogleMapBoundaryDrawer({
   const [gpsAccuracy, setGpsAccuracy] = useState<number>(0);
   const [area, setArea] = useState({ sqft: 0, guntha: 0, acres: 0 });
   const watchIdRef = useRef<number | null>(null);
+
+  // Map options - moved outside to avoid recreation
+  const mapOptions: google.maps.MapOptions = {
+    mapTypeId: 'hybrid', // Shows satellite with village/place names
+    disableDefaultUI: true,
+    zoomControl: true,
+    zoomControlOptions: {
+      position: typeof google !== 'undefined' ? google.maps.ControlPosition.RIGHT_CENTER : 7,
+    },
+    gestureHandling: 'greedy',
+    tilt: 0,
+  };
 
   // Get user's current location on mount
   useEffect(() => {
@@ -101,8 +102,8 @@ export function GoogleMapBoundaryDrawer({
         
         setArea({
           sqft: Math.round(areaInSqft),
-          guntha: areaInGuntha,
-          acres: areaInAcres,
+          guntha: Math.round(areaInGuntha * 100) / 100,
+          acres: Math.round(areaInAcres * 100) / 100,
         });
       } catch (error) {
         console.error('Error calculating area:', error);
@@ -112,14 +113,25 @@ export function GoogleMapBoundaryDrawer({
     }
   }, [boundary]);
 
-  const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
-    if (mode === 'draw' && e.latLng) {
-      const newPoint = {
-        lat: e.latLng.lat(),
-        lng: e.latLng.lng(),
-      };
-      setBoundary(prev => [...prev, newPoint]);
+  const onLoad = useCallback((mapInstance: google.maps.Map) => {
+    setMap(mapInstance);
+    
+    // Pan to current position if available
+    if (currentPosition) {
+      mapInstance.panTo(currentPosition);
+      mapInstance.setZoom(18);
     }
+  }, [currentPosition]);
+
+  const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
+    if (mode !== 'draw' || !e.latLng) return;
+    
+    const newPoint: LatLng = {
+      lat: e.latLng.lat(),
+      lng: e.latLng.lng(),
+    };
+    
+    setBoundary(prev => [...prev, newPoint]);
   }, [mode]);
 
   const handleUndo = useCallback(() => {
@@ -138,48 +150,29 @@ export function GoogleMapBoundaryDrawer({
 
     setIsTracking(true);
     
-    watchIdRef.current = navigator.geolocation.watchPosition(
+    const id = navigator.geolocation.watchPosition(
       (position) => {
-        const newPoint = {
+        const newPoint: LatLng = {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         };
         
         setCurrentPosition(newPoint);
         setGpsAccuracy(position.coords.accuracy);
+        setBoundary(prev => [...prev, newPoint]);
         
-        // Add point to boundary
-        setBoundary(prev => {
-          // Avoid adding duplicate points too close together
-          if (prev.length > 0) {
-            const lastPoint = prev[prev.length - 1];
-            const distance = turf.distance(
-              [lastPoint.lng, lastPoint.lat],
-              [newPoint.lng, newPoint.lat],
-              { units: 'meters' }
-            );
-            
-            // Only add if moved more than 5 meters
-            if (distance < 5) {
-              return prev;
-            }
-          }
-          return [...prev, newPoint];
-        });
-        
-        // Pan map to new position
         if (map) {
           map.panTo(newPoint);
         }
       },
       (error) => {
-        console.error('GPS tracking error:', error);
+        console.error('GPS error:', error);
         toast({
           title: "GPS Error",
-          description: "Could not track your position. Please try again.",
+          description: "Failed to get GPS location. Please check your settings.",
           variant: "destructive",
         });
-        stopTracking();
+        setIsTracking(false);
       },
       {
         enableHighAccuracy: true,
@@ -187,6 +180,8 @@ export function GoogleMapBoundaryDrawer({
         maximumAge: 0,
       }
     );
+    
+    watchIdRef.current = id;
   }, [map, toast]);
 
   const stopTracking = useCallback(() => {
@@ -195,6 +190,14 @@ export function GoogleMapBoundaryDrawer({
       watchIdRef.current = null;
     }
     setIsTracking(false);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
   }, []);
 
   const handleToggleTracking = useCallback(() => {
@@ -218,22 +221,10 @@ export function GoogleMapBoundaryDrawer({
     onSave(boundary, area);
   }, [boundary, area, onSave, toast]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      stopTracking();
-    };
-  }, [stopTracking]);
-
-  const onLoad = useCallback((map: google.maps.Map) => {
-    setMap(map);
-    map.setZoom(18);
-  }, []);
-
   const polygonOptions = {
-    fillColor: 'hsl(var(--primary))',
-    fillOpacity: 0.3,
-    strokeColor: 'hsl(var(--primary))',
+    fillColor: '#10b981',
+    fillOpacity: 0.35,
+    strokeColor: '#10b981',
     strokeOpacity: 1,
     strokeWeight: 2,
     clickable: false,
@@ -244,7 +235,7 @@ export function GoogleMapBoundaryDrawer({
   };
 
   const polylineOptions = {
-    strokeColor: 'hsl(var(--primary))',
+    strokeColor: '#10b981',
     strokeOpacity: 1,
     strokeWeight: 2,
     clickable: false,
@@ -252,6 +243,35 @@ export function GoogleMapBoundaryDrawer({
     editable: false,
     geodesic: false,
     zIndex: 1,
+  };
+
+  // Create marker icon conditionally only when google is available
+  const getCurrentPositionIcon = () => {
+    if (typeof google !== 'undefined' && google.maps) {
+      return {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 8,
+        fillColor: '#4285F4',
+        fillOpacity: 1,
+        strokeColor: '#ffffff',
+        strokeWeight: 2,
+      };
+    }
+    return undefined;
+  };
+
+  const getMarkerIcon = () => {
+    if (typeof google !== 'undefined' && google.maps) {
+      return {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 6,
+        fillColor: '#ef4444',
+        fillOpacity: 1,
+        strokeColor: '#ffffff',
+        strokeWeight: 2,
+      };
+    }
+    return undefined;
   };
 
   return (
@@ -264,23 +284,16 @@ export function GoogleMapBoundaryDrawer({
         onClick={handleMapClick}
         onLoad={onLoad}
       >
-        {/* Current position marker */}
-        {currentPosition && (
+        {/* Current position marker - only render if google is loaded */}
+        {currentPosition && typeof google !== 'undefined' && (
           <Marker
             position={currentPosition}
-            icon={{
-              path: google.maps.SymbolPath.CIRCLE,
-              scale: 8,
-              fillColor: '#4285F4',
-              fillOpacity: 1,
-              strokeColor: '#ffffff',
-              strokeWeight: 2,
-            }}
+            icon={getCurrentPositionIcon()}
           />
         )}
 
-        {/* Boundary markers */}
-        {boundary.map((point, index) => (
+        {/* Boundary markers - only render if google is loaded */}
+        {typeof google !== 'undefined' && boundary.map((point, index) => (
           <Marker
             key={index}
             position={point}
@@ -290,16 +303,17 @@ export function GoogleMapBoundaryDrawer({
               fontSize: '12px',
               fontWeight: 'bold',
             }}
+            icon={getMarkerIcon()}
           />
         ))}
 
-        {/* Draw polygon if 3+ points, otherwise polyline */}
-        {boundary.length >= 3 ? (
+        {/* Polygon or Polyline - only render if google is loaded */}
+        {typeof google !== 'undefined' && boundary.length >= 3 ? (
           <Polygon
             paths={boundary}
             options={polygonOptions}
           />
-        ) : boundary.length >= 2 ? (
+        ) : boundary.length >= 2 && typeof google !== 'undefined' ? (
           <Polyline
             path={boundary}
             options={polylineOptions}
