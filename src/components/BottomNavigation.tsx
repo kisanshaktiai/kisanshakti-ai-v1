@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 
 const navItems = [
   { path: '/app', icon: Home, labelKey: 'nav.home' },
-  { path: '/app/land', icon: MapPin, labelKey: 'nav.land' },
+  { path: '/app/lands', icon: MapPin, labelKey: 'nav.land' },
   { path: '/app/weather', icon: Cloud, labelKey: 'nav.weather' },
   { path: '/app/chat', icon: Bot, labelKey: 'nav.chat' },
   { path: '/app/market', icon: TrendingUp, labelKey: 'nav.market' },

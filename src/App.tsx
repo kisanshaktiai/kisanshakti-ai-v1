@@ -139,23 +139,23 @@ const router = createBrowserRouter(
           element: <ProfileEdit />,
         },
         {
-          path: "land",
+          path: "lands",
           element: <LandManagement />,
         },
         {
-          path: "land/add",
+          path: "lands/add",
           element: <AddLand />,
         },
         {
-          path: "land/:id",
+          path: "lands/:id",
           element: <LandDetails />,
         },
         {
-          path: "land/:id/gallery",
+          path: "lands/:id/gallery",
           element: <div>Gallery Page - Coming Soon</div>,
         },
         {
-          path: "land/:id/activities",
+          path: "lands/:id/activities",
           element: <div>Activities Page - Coming Soon</div>,
         },
         {
