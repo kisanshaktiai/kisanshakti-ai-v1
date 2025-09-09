@@ -19,6 +19,7 @@ import Market from "./pages/Market";
 import Advisory from "./pages/Advisory";
 import Schemes from "./pages/Schemes";
 import Profile from "./pages/Profile";
+import ProfileEdit from "./pages/ProfileEdit";
 import NotFound from "./pages/NotFound";
 import SplashScreen from "./pages/SplashScreen";
 import LanguageSelection from "./pages/LanguageSelection";
@@ -128,6 +129,10 @@ const router = createBrowserRouter(
         {
           path: "profile",
           element: <Profile />,
+        },
+        {
+          path: "profile/edit",
+          element: <ProfileEdit />,
         },
       ],
     },

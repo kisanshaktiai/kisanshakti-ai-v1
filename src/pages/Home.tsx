@@ -41,7 +41,7 @@ export default function Home() {
       <Card className="bg-gradient-earth text-card-foreground">
         <CardContent className="pt-6">
           <h2 className="text-2xl font-bold">
-            {t('home.greeting', { name: user?.name || 'Farmer' })}
+            {t('home.greeting', { name: user?.fullName || user?.name || 'Farmer' })}
           </h2>
           <p className="text-muted-foreground mt-2">
             {new Date().toLocaleDateString('en-IN', {
