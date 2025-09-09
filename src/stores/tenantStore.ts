@@ -160,7 +160,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
         localStorage.setItem('tenantId', tenantData.id);
         
         const { data: whiteLabel } = await supabase
-          .from('white_label_config')
+          .from('white_label_configs')
           .select('*')
           .eq('tenant_id', tenantData.id)
           .maybeSingle();
@@ -181,7 +181,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           
           // Try to get white label config for default tenant
           const { data: whiteLabel } = await supabase
-            .from('white_label_config')
+            .from('white_label_configs')
             .select('*')
             .eq('tenant_id', defaultTenant.id)
             .maybeSingle();
@@ -197,11 +197,11 @@ export const useTenantStore = create<TenantState>((set, get) => ({
             whiteLabel: whiteLabel ? {
               brand_identity: {
                 ...(typeof whiteLabel.brand_identity === 'object' && whiteLabel.brand_identity !== null ? whiteLabel.brand_identity : {}),
-                logo_url: whiteLabel.logo_url || (typeof whiteLabel.brand_identity === 'object' && whiteLabel.brand_identity !== null ? (whiteLabel.brand_identity as any).logo_url : undefined),
-                favicon_url: whiteLabel.favicon_url || (typeof whiteLabel.brand_identity === 'object' && whiteLabel.brand_identity !== null ? (whiteLabel.brand_identity as any).favicon_url : undefined),
+                logo_url: (typeof whiteLabel.brand_identity === 'object' && whiteLabel.brand_identity !== null ? (whiteLabel.brand_identity as any).logo_url : undefined),
+                favicon_url: (typeof whiteLabel.brand_identity === 'object' && whiteLabel.brand_identity !== null ? (whiteLabel.brand_identity as any).favicon_url : undefined),
               },
               app_customization: typeof whiteLabel.app_customization === 'object' && whiteLabel.app_customization !== null ? whiteLabel.app_customization as AppCustomization : {},
-              pwa_config: typeof whiteLabel.brand_identity === 'object' && whiteLabel.brand_identity !== null ? (whiteLabel.brand_identity as any).pwa_config : undefined,
+              pwa_config: typeof whiteLabel.pwa_config === 'object' && whiteLabel.pwa_config !== null ? whiteLabel.pwa_config as any : undefined,
             } : {
               brand_identity: {
                 company_name: defaultTenant.name,
@@ -276,11 +276,11 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           whiteLabel: whiteLabelData ? {
             brand_identity: {
               ...(typeof whiteLabelData.brand_identity === 'object' && whiteLabelData.brand_identity !== null ? whiteLabelData.brand_identity : {}),
-              logo_url: whiteLabelData.logo_url || (typeof whiteLabelData.brand_identity === 'object' && whiteLabelData.brand_identity !== null ? (whiteLabelData.brand_identity as any).logo_url : undefined),
-              favicon_url: whiteLabelData.favicon_url || (typeof whiteLabelData.brand_identity === 'object' && whiteLabelData.brand_identity !== null ? (whiteLabelData.brand_identity as any).favicon_url : undefined),
+              logo_url: (typeof whiteLabelData.brand_identity === 'object' && whiteLabelData.brand_identity !== null ? (whiteLabelData.brand_identity as any).logo_url : undefined),
+              favicon_url: (typeof whiteLabelData.brand_identity === 'object' && whiteLabelData.brand_identity !== null ? (whiteLabelData.brand_identity as any).favicon_url : undefined),
             },
             app_customization: typeof whiteLabelData.app_customization === 'object' && whiteLabelData.app_customization !== null ? whiteLabelData.app_customization as AppCustomization : {},
-            pwa_config: typeof whiteLabelData.brand_identity === 'object' && whiteLabelData.brand_identity !== null ? (whiteLabelData.brand_identity as any).pwa_config : undefined,
+            pwa_config: typeof whiteLabelData.pwa_config === 'object' && whiteLabelData.pwa_config !== null ? whiteLabelData.pwa_config as any : undefined,
           } : {
             brand_identity: {
               company_name: tenantData.name,
