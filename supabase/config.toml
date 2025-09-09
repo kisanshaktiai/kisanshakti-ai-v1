@@ -1,1 +1,7 @@
 project_id = "qfklkkzxemsbeniyugiz"
+
+[functions.weather]
+verify_jwt = true
+
+[functions.ai-agriculture-chat]
+verify_jwt = true
