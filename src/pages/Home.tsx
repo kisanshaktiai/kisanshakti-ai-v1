@@ -12,25 +12,25 @@ export default function Home() {
     {
       title: t('home.todayWeather'),
       icon: Cloud,
-      path: '/weather',
+      path: '/app/weather',
       color: 'bg-accent/10 text-accent',
     },
     {
       title: t('home.marketPrices'),
       icon: TrendingUp,
-      path: '/market',
+      path: '/app/market',
       color: 'bg-success/10 text-success',
     },
     {
       title: t('home.latestAdvisory'),
       icon: MessageSquare,
-      path: '/advisory',
+      path: '/app/advisory',
       color: 'bg-secondary/10 text-secondary',
     },
     {
       title: t('home.governmentSchemes'),
       icon: FileText,
-      path: '/schemes',
+      path: '/app/schemes',
       color: 'bg-primary/10 text-primary',
     },
   ];

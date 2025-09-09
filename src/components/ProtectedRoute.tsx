@@ -15,8 +15,20 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   // Validate session on mount and when session changes
   useEffect(() => {
+    console.log('ProtectedRoute: Validating session', { session, isAuthenticated, isPinRequired });
     validateSession();
   }, [validateSession, session]);
+
+  // Debug logs
+  useEffect(() => {
+    console.log('ProtectedRoute state:', { 
+      isAuthenticated, 
+      isPinRequired, 
+      hasSelectedLanguage, 
+      session,
+      location: location.pathname 
+    });
+  }, [isAuthenticated, isPinRequired, hasSelectedLanguage, session, location]);
 
   if (isLoading) {
     return (
@@ -28,16 +40,19 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   // If PIN is required, redirect to PIN entry
   if (isPinRequired && session) {
+    console.log('ProtectedRoute: Redirecting to PIN entry');
     return <Navigate to="/pin" state={{ from: location }} replace />;
   }
 
   // If not authenticated, check language selection
   if (!isAuthenticated) {
+    console.log('ProtectedRoute: Not authenticated, checking language');
     if (!hasSelectedLanguage) {
       return <Navigate to="/language-selection" state={{ from: location }} replace />;
     }
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
+  console.log('ProtectedRoute: User authenticated, showing protected content');
   return <>{children}</>;
 }
