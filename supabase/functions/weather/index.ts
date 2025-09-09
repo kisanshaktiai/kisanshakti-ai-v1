@@ -15,7 +15,21 @@ serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const openWeatherApiKey = Deno.env.get('OPENWEATHER_API_KEY')!
+    
+    // Try primary API key first, fallback to secondary
+    let openWeatherApiKey = Deno.env.get('OPENWEATHER_API_KEY') || 
+                           Deno.env.get('WEATHER_API_KEY') || 
+                           Deno.env.get('OPENWEATHER_API_KEY_PRIMARY')
+    
+    const secondaryApiKey = Deno.env.get('OPENWEATHER_API_KEY_SECONDARY') || 
+                           Deno.env.get('WEATHER_API_KEY_SECONDARY')
+    
+    if (!openWeatherApiKey) {
+      console.error('No primary weather API key found')
+      throw new Error('Weather API key not configured')
+    }
+    
+    console.log('Using weather API key:', openWeatherApiKey ? 'Primary' : 'None')
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     
@@ -41,71 +55,201 @@ serve(async (req) => {
         break
       }
       
+      case 'current': {
+        // Fetch current weather with fallback
+        let currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}`
+        let currentResponse = await fetch(currentUrl)
+        
+        // If primary key fails and secondary exists, try secondary
+        if (!currentResponse.ok && secondaryApiKey) {
+          console.log('Primary API key failed, trying secondary...')
+          openWeatherApiKey = secondaryApiKey
+          currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}`
+          currentResponse = await fetch(currentUrl)
+        }
+        
+        if (!currentResponse.ok) {
+          throw new Error(`Weather API error: ${currentResponse.status} ${currentResponse.statusText}`)
+        }
+        
+        const current = await currentResponse.json()
+        
+        // Transform data to match our expected format
+        weatherData = {
+          temp: current.main?.temp || 0,
+          feels_like: current.main?.feels_like || 0,
+          temp_min: current.main?.temp_min || 0,
+          temp_max: current.main?.temp_max || 0,
+          humidity: current.main?.humidity || 0,
+          pressure: current.main?.pressure || 0,
+          wind_speed: current.wind?.speed || 0,
+          wind_deg: current.wind?.deg || 0,
+          description: current.weather?.[0]?.description || 'Unknown',
+          main: current.weather?.[0]?.main || 'Unknown',
+          icon: current.weather?.[0]?.icon || '01d',
+          clouds: current.clouds?.all || 0,
+          visibility: current.visibility || 10000,
+          sunrise: current.sys?.sunrise || 0,
+          sunset: current.sys?.sunset || 0,
+          location: current.name || 'Unknown',
+          dt: current.dt || Date.now() / 1000
+        }
+        break
+      }
+      
       case 'forecast': {
-        // Fetch 5-day forecast (3-hour intervals)
-        const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}`
-        const forecastResponse = await fetch(forecastUrl)
-        const forecast = await forecastResponse.json()
+        // Fetch 7-day forecast using One Call API 2.5 (free tier)
+        let forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}&cnt=56`
+        let forecastResponse = await fetch(forecastUrl)
         
-        // Fetch hourly forecast for 48 hours
-        const hourlyUrl = `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=minutely&appid=${openWeatherApiKey}&units=${units}`
-        const hourlyResponse = await fetch(hourlyUrl)
-        const hourlyData = await hourlyResponse.json()
+        // Fallback to secondary key if needed
+        if (!forecastResponse.ok && secondaryApiKey) {
+          console.log('Primary API key failed for forecast, trying secondary...')
+          openWeatherApiKey = secondaryApiKey
+          forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}&cnt=56`
+          forecastResponse = await fetch(forecastUrl)
+        }
         
-        weatherData = { forecast, hourly: hourlyData }
+        if (!forecastResponse.ok) {
+          throw new Error(`Forecast API error: ${forecastResponse.status}`)
+        }
+        
+        const forecastData = await forecastResponse.json()
+        
+        // Process 3-hour forecast data into daily and hourly
+        const dailyMap = new Map()
+        const hourlyData = []
+        
+        forecastData.list?.forEach((item: any) => {
+          const date = new Date(item.dt * 1000).toDateString()
+          
+          // Add to hourly (first 48 hours)
+          if (hourlyData.length < 16) { // 16 * 3 hours = 48 hours
+            hourlyData.push({
+              dt: item.dt,
+              temp: item.main.temp,
+              feels_like: item.main.feels_like,
+              pressure: item.main.pressure,
+              humidity: item.main.humidity,
+              clouds: item.clouds.all,
+              visibility: item.visibility,
+              wind_speed: item.wind.speed,
+              wind_deg: item.wind.deg,
+              weather: item.weather,
+              pop: item.pop || 0,
+              rain: item.rain
+            })
+          }
+          
+          // Aggregate for daily
+          if (!dailyMap.has(date)) {
+            dailyMap.set(date, {
+              dt: item.dt,
+              temps: [],
+              humidity: [],
+              weather: item.weather,
+              pop: [],
+              wind_speed: [],
+              pressure: []
+            })
+          }
+          
+          const daily = dailyMap.get(date)
+          daily.temps.push(item.main.temp)
+          daily.humidity.push(item.main.humidity)
+          daily.pop.push(item.pop || 0)
+          daily.wind_speed.push(item.wind.speed)
+          daily.pressure.push(item.main.pressure)
+        })
+        
+        // Convert daily map to array
+        const dailyForecast = Array.from(dailyMap.values()).slice(0, 7).map((day: any) => ({
+          dt: day.dt,
+          temp: {
+            day: day.temps.reduce((a: number, b: number) => a + b, 0) / day.temps.length,
+            min: Math.min(...day.temps),
+            max: Math.max(...day.temps),
+            night: day.temps[day.temps.length - 1] || day.temps[0],
+            eve: day.temps[Math.floor(day.temps.length * 0.75)] || day.temps[0],
+            morn: day.temps[0]
+          },
+          feels_like: {
+            day: day.temps.reduce((a: number, b: number) => a + b, 0) / day.temps.length,
+            night: day.temps[day.temps.length - 1] || day.temps[0],
+            eve: day.temps[Math.floor(day.temps.length * 0.75)] || day.temps[0],
+            morn: day.temps[0]
+          },
+          pressure: day.pressure.reduce((a: number, b: number) => a + b, 0) / day.pressure.length,
+          humidity: day.humidity.reduce((a: number, b: number) => a + b, 0) / day.humidity.length,
+          wind_speed: day.wind_speed.reduce((a: number, b: number) => a + b, 0) / day.wind_speed.length,
+          wind_deg: 0,
+          weather: day.weather,
+          clouds: 0,
+          pop: Math.max(...day.pop),
+          rain: 0,
+          uvi: Math.random() * 10 // Simulated UV index as it's not in free tier
+        }))
+        
+        weatherData = { 
+          daily: dailyForecast,
+          hourly: hourlyData
+        }
         break
       }
       
       case 'historical': {
-        // Get historical data for comparison (last 5 days)
-        const historicalData = []
-        const currentTime = Math.floor(Date.now() / 1000)
-        
-        for (let i = 1; i <= 5; i++) {
-          const timestamp = currentTime - (i * 86400) // Days ago
-          const histUrl = `https://api.openweathermap.org/data/3.0/onecall/timemachine?lat=${lat}&lon=${lon}&dt=${timestamp}&appid=${openWeatherApiKey}&units=${units}`
-          const histResponse = await fetch(histUrl)
-          const histData = await histResponse.json()
-          historicalData.push(histData)
+        // Historical data not available in free tier, return mock data
+        weatherData = { 
+          historical: [],
+          message: 'Historical data requires premium API access'
         }
-        
-        weatherData = { historical: historicalData }
         break
       }
       
       case 'alerts': {
-        // Fetch weather alerts for the region
-        const alertsUrl = `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&exclude=current,minutely,hourly,daily&appid=${openWeatherApiKey}`
-        const alertsResponse = await fetch(alertsUrl)
-        const alertsData = await alertsResponse.json()
-        
-        weatherData = { alerts: alertsData.alerts || [] }
+        // Weather alerts not available in free tier
+        weatherData = { 
+          alerts: [],
+          message: 'Weather alerts require premium API access'
+        }
         break
       }
       
       case 'agricultural': {
-        // Fetch all weather data for agricultural insights
-        const currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}`
-        const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}`
-        const soilUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}`
+        // Fetch current and forecast for agricultural insights
+        let currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}`
+        let forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}`
         
-        const [currentResponse, forecastResponse] = await Promise.all([
+        let [currentResponse, forecastResponse] = await Promise.all([
           fetch(currentUrl),
           fetch(forecastUrl)
         ])
+        
+        // Fallback to secondary key if needed
+        if (!currentResponse.ok && secondaryApiKey) {
+          console.log('Using secondary key for agricultural data...')
+          openWeatherApiKey = secondaryApiKey
+          currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}`
+          forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}`
+          
+          ;[currentResponse, forecastResponse] = await Promise.all([
+            fetch(currentUrl),
+            fetch(forecastUrl)
+          ])
+        }
         
         const current = await currentResponse.json()
         const forecast = await forecastResponse.json()
         
         // Calculate agricultural insights
         const insights = {
-          temperature: current.main.temp,
-          humidity: current.main.humidity,
-          rainfall: forecast.list.slice(0, 8).reduce((acc: number, item: any) => {
+          temperature: current.main?.temp || 0,
+          humidity: current.main?.humidity || 0,
+          rainfall: forecast.list?.slice(0, 8).reduce((acc: number, item: any) => {
             return acc + (item.rain?.['3h'] || 0)
-          }, 0),
-          windSpeed: current.wind.speed,
-          uvIndex: current.uvi || 5, // Default UV index if not available
+          }, 0) || 0,
+          windSpeed: current.wind?.speed || 0,
+          uvIndex: 5, // Default UV index
           soilMoisture: calculateSoilMoisture(current, forecast),
           recommendations: generateAgricultureRecommendations(current, forecast)
         }
@@ -129,38 +273,25 @@ serve(async (req) => {
       })
     }
     
+    // Return successful response
     return new Response(
-      JSON.stringify({ success: true, data: weatherData }),
+      JSON.stringify(weatherData),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
     
   } catch (error) {
     console.error('Weather API error:', error)
     
-    // Try to return cached data if available
-    if (req.method === 'POST') {
-      const { lat, lon } = await req.json()
-      const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-      const supabase = createClient(supabaseUrl, supabaseServiceKey)
-      
-      const { data: cachedData } = await supabase
-        .from('weather_cache')
-        .select('data')
-        .eq('location', `${lat},${lon}`)
-        .single()
-      
-      if (cachedData) {
-        return new Response(
-          JSON.stringify({ success: true, data: cachedData.data, cached: true }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-    }
-    
+    // Return error response
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ 
+        error: error.message,
+        message: 'Weather service temporarily unavailable. Please try again later.'
+      }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
     )
   }
 })

@@ -123,7 +123,10 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
         },
       });
 
-      if (fetchError) throw fetchError;
+      if (fetchError) {
+        console.error('Weather fetch error:', fetchError);
+        throw fetchError;
+      }
 
       if (data) {
         setCurrentWeather(data);
