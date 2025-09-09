@@ -40,11 +40,11 @@ export default function Home() {
     <div className="p-4 space-y-6">
       {/* Greeting Card */}
       <Card className="bg-gradient-earth text-card-foreground">
-        <CardContent className="pt-6">
-          <h2 className="text-2xl font-bold">
+        <CardContent className="py-3 px-4">
+          <h2 className="text-lg font-bold">
             {t('home.greeting', { name: user?.fullName || user?.name || 'Farmer' })}
           </h2>
-          <p className="text-muted-foreground mt-2">
+          <p className="text-xs text-muted-foreground mt-1">
             {new Date().toLocaleDateString('en-IN', {
               weekday: 'long',
               year: 'numeric',
