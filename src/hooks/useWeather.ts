@@ -87,13 +87,48 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
   const [hourlyForecast, setHourlyForecast] = useState<HourlyData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
   const { toast } = useToast();
 
   // Default location (India - New Delhi)
   const defaultLocation = { lat: 28.6139, lon: 77.2090 };
-  const weatherLocation = location || defaultLocation;
+
+  // Get user's current location
+  const getUserLocation = () => {
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const newLocation = {
+            lat: position.coords.latitude,
+            lon: position.coords.longitude
+          };
+          setUserLocation(newLocation);
+          console.log('User location obtained:', newLocation);
+        },
+        (error) => {
+          console.error('Geolocation error:', error);
+          toast({
+            title: "Location Access",
+            description: "Using default location. Enable location access for accurate weather.",
+            variant: "default",
+          });
+          setUserLocation(defaultLocation);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 5000,
+          maximumAge: 0
+        }
+      );
+    } else {
+      console.log('Geolocation not supported');
+      setUserLocation(defaultLocation);
+    }
+  };
 
   const fetchWeatherData = async () => {
+    const weatherLocation = location || userLocation || defaultLocation;
+    
     try {
       setLoading(true);
       setError(null);
@@ -133,6 +168,14 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
       }
 
       if (data) {
+        // Add location name if available
+        if (data.location) {
+          data.locationName = data.location;
+        } else {
+          // Try to get location name from reverse geocoding
+          data.locationName = `${weatherLocation.lat.toFixed(2)}°, ${weatherLocation.lon.toFixed(2)}°`;
+        }
+        
         setCurrentWeather(data);
         
         // Cache the data
@@ -202,11 +245,19 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
   };
 
   useEffect(() => {
-    fetchWeatherData();
-    // Refresh every 30 minutes
-    const interval = setInterval(fetchWeatherData, 1800000);
-    return () => clearInterval(interval);
-  }, [weatherLocation.lat, weatherLocation.lon]);
+    // Get user location first
+    getUserLocation();
+  }, []);
+
+  useEffect(() => {
+    // Fetch weather data when location is available
+    if (location || userLocation) {
+      fetchWeatherData();
+      // Refresh every 30 minutes
+      const interval = setInterval(fetchWeatherData, 1800000);
+      return () => clearInterval(interval);
+    }
+  }, [location?.lat, location?.lon, userLocation?.lat, userLocation?.lon]);
 
   return {
     currentWeather,
@@ -215,5 +266,6 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
     loading,
     error,
     refetch: fetchWeatherData,
+    location: location || userLocation || defaultLocation,
   };
 };
