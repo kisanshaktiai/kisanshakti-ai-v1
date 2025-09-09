@@ -99,13 +99,20 @@ export function ChatInterface() {
     pitch: 1.0
   });
 
-  // Load user's lands
+  // Load user's lands and initialize chat
   useEffect(() => {
     if (user?.id) {
       loadLands();
       loadChatSessions();
     }
   }, [user]);
+
+  // Auto-create general session on first load
+  useEffect(() => {
+    if (!currentSession && lands !== null) {
+      createNewSession();
+    }
+  }, [lands]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -546,307 +553,253 @@ export function ChatInterface() {
   );
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] gap-4 p-4">
-      {/* Sidebar - Chat History */}
-      <Card className="w-80 flex flex-col">
-        <div className="p-4 border-b">
-          <h2 className="text-lg font-semibold mb-3">{t('chat.history')}</h2>
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={t('chat.searchChats')}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
+    <div className="flex flex-col h-[calc(100vh-8rem)] p-4">
+      {/* Land Selection Quick Buttons */}
+      <div className="mb-4 flex gap-2 flex-wrap">
+        <Button
+          variant={selectedLand === 'general' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => {
+            setSelectedLand('general');
+            createNewSession();
+          }}
+          className="flex items-center gap-2"
+        >
+          <MessageSquare className="w-4 h-4" />
+          {t('chat.generalChat')}
+        </Button>
+        {lands.map(land => (
+          <Button
+            key={land.id}
+            variant={selectedLand === land.id ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => {
+              setSelectedLand(land.id);
+              createNewSession();
+            }}
+            className="flex items-center gap-2"
+          >
+            <MapPin className="w-4 h-4" />
+            {land.name}
+          </Button>
+        ))}
+      </div>
+
+      {/* Main Chat Interface */}
+      <div className="flex-1 flex flex-col bg-background rounded-lg border shadow-sm overflow-hidden">
+        {/* Chat Header */}
+        <div className="p-4 border-b flex items-center justify-between bg-card">
+          <div>
+            <h2 className="text-lg font-semibold">
+              {currentSession?.title || t('chat.title')}
+            </h2>
+            {currentSession?.landName && (
+              <Badge variant="outline" className="mt-1">
+                <MapPin className="w-3 h-3 mr-1" />
+                {currentSession.landName}
+              </Badge>
+            )}
           </div>
-          <Select value={selectedLand} onValueChange={setSelectedLand}>
-            <SelectTrigger>
-              <SelectValue placeholder={t('chat.selectLand')} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="general">
-                <MessageSquare className="inline-block w-4 h-4 mr-2" />
-                {t('chat.generalChat')}
-              </SelectItem>
-              {lands.map(land => (
-                <SelectItem key={land.id} value={land.id}>
-                  <MapPin className="inline-block w-4 h-4 mr-2" />
-                  {land.name} - {land.village}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        
-        <ScrollArea className="flex-1 px-4">
-          {filteredSessions.map(session => (
-            <div
-              key={session.id}
-              className={`p-3 mb-2 rounded-lg cursor-pointer transition-colors ${
-                currentSession?.id === session.id ? 'bg-accent' : 'hover:bg-accent/50'
-              }`}
-              onClick={() => setCurrentSession(session)}
+          <div className="flex gap-2">
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => setVoiceEnabled(!voiceEnabled)}
+              title={voiceEnabled ? 'Disable voice' : 'Enable voice'}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="font-medium text-sm">{session.title}</h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {session.messages.length} messages
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    <Clock className="inline-block w-3 h-3 mr-1" />
-                    {format(session.updatedAt, 'MMM d, h:mm a')}
-                  </p>
+              {voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            </Button>
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={exportChatAsPDF}
+              title="Export chat"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Messages Area */}
+        <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+          {currentSession?.messages.map((message) => (
+            <div
+              key={message.id}
+              className={`mb-4 flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div className={`flex gap-3 max-w-[70%] ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-accent'
+                }`}>
+                  {message.role === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
                 </div>
-                <div className="flex gap-1">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleFavorite(session.id);
-                    }}
-                  >
-                    <Star className={`h-4 w-4 ${session.isFavorite ? 'fill-yellow-500 text-yellow-500' : ''}`} />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteSession(session.id);
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                <div className={`rounded-lg p-3 ${
+                  message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-accent'
+                }`}>
+                  <p className="whitespace-pre-wrap">{message.content}</p>
+                  {message.attachments?.map((attachment, idx) => (
+                    <div key={idx} className="mt-2">
+                      {attachment.type === 'image' ? (
+                        <img src={attachment.url} alt={attachment.name} className="max-w-full rounded" />
+                      ) : (
+                        <div className="flex items-center gap-2 p-2 bg-background/10 rounded">
+                          <Paperclip className="w-4 h-4" />
+                          <span className="text-sm">{attachment.name}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <p className="text-xs opacity-70 mt-2">
+                    {format(message.timestamp, 'h:mm a')}
+                  </p>
                 </div>
               </div>
             </div>
           ))}
+          
+          {isTyping && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Bot className="w-4 h-4" />
+              <span className="text-sm">AI is typing...</span>
+              <Loader2 className="w-4 h-4 animate-spin" />
+            </div>
+          )}
+
+          {/* Welcome message when no messages */}
+          {(!currentSession || currentSession.messages.length === 0) && !isTyping && (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground">
+              <div className="text-center">
+                <Bot className="w-12 h-12 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">{t('chat.welcome')}</h3>
+                <p className="text-sm">{t('chat.askAnything')}</p>
+              </div>
+            </div>
+          )}
         </ScrollArea>
 
-        <div className="p-4 border-t">
-          <Button 
-            onClick={createNewSession} 
-            className="w-full"
-            variant="outline"
-          >
-            <MessageSquare className="w-4 h-4 mr-2" />
-            {t('chat.newChat')}
-          </Button>
-        </div>
-      </Card>
-
-      {/* Main Chat Area */}
-      <Card className="flex-1 flex flex-col">
-        {currentSession ? (
-          <>
-            {/* Chat Header */}
-            <div className="p-4 border-b flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">{currentSession.title}</h2>
-                {currentSession.landName && (
-                  <Badge variant="outline" className="mt-1">
-                    <MapPin className="w-3 h-3 mr-1" />
-                    {currentSession.landName}
-                  </Badge>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => setVoiceEnabled(!voiceEnabled)}
-                >
-                  {voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-                </Button>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={exportChatAsPDF}
-                >
-                  <Download className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            {/* Messages Area */}
-            <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
-              {currentSession.messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`mb-4 flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  <div className={`flex gap-3 max-w-[70%] ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                      message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-accent'
-                    }`}>
-                      {message.role === 'user' ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-                    </div>
-                    <div className={`rounded-lg p-3 ${
-                      message.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-accent'
-                    }`}>
-                      <p className="whitespace-pre-wrap">{message.content}</p>
-                      {message.attachments?.map((attachment, idx) => (
-                        <div key={idx} className="mt-2">
-                          {attachment.type === 'image' ? (
-                            <img src={attachment.url} alt={attachment.name} className="max-w-full rounded" />
-                          ) : (
-                            <div className="flex items-center gap-2 p-2 bg-background/10 rounded">
-                              <Paperclip className="w-4 h-4" />
-                              <span className="text-sm">{attachment.name}</span>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      <p className="text-xs opacity-70 mt-2">
-                        {format(message.timestamp, 'h:mm a')}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              
-              {isTyping && (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Bot className="w-4 h-4" />
-                  <span className="text-sm">AI is typing...</span>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                </div>
-              )}
-            </ScrollArea>
-
-            {/* Quick Replies */}
-            {quickReplies.length > 0 && (
-              <div className="px-4 pb-2 flex gap-2 flex-wrap">
-                {quickReplies.map((reply, idx) => (
-                  <Button
-                    key={idx}
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setInputMessage(reply)}
-                  >
-                    {reply}
-                  </Button>
-                ))}
-              </div>
-            )}
-
-            {/* Attachments Preview */}
-            {(uploadedImage || uploadedFile) && (
-              <div className="px-4 pb-2 flex gap-2">
-                {uploadedImage && (
-                  <div className="relative">
-                    <img src={uploadedImage} alt="Upload" className="h-20 w-20 object-cover rounded" />
-                    <Button
-                      size="icon"
-                      variant="destructive"
-                      className="absolute -top-2 -right-2 h-6 w-6"
-                      onClick={() => setUploadedImage(null)}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                )}
-                {uploadedFile && (
-                  <div className="relative p-2 bg-accent rounded flex items-center gap-2">
-                    <Paperclip className="w-4 h-4" />
-                    <span className="text-sm">{uploadedFile.name}</span>
-                    <Button
-                      size="icon"
-                      variant="destructive"
-                      className="h-6 w-6"
-                      onClick={() => setUploadedFile(null)}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Input Area */}
-            <div className="p-4 border-t">
-              <div className="flex gap-2">
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => imageInputRef.current?.click()}
-                >
-                  <ImageIcon className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={openCamera}
-                >
-                  <Camera className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Paperclip className="h-4 w-4" />
-                </Button>
-                {isSpeechSupported && (
-                  <Button
-                    size="icon"
-                    variant={isListening ? 'destructive' : 'outline'}
-                    onClick={toggleListening}
-                  >
-                    {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                  </Button>
-                )}
-                <Textarea
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      sendMessage();
-                    }
-                  }}
-                  placeholder={t('chat.typeMessage')}
-                  className="flex-1 min-h-[40px] max-h-[120px]"
-                />
-                <Button
-                  onClick={sendMessage}
-                  disabled={isLoading || (!inputMessage.trim() && !uploadedImage && !uploadedFile)}
-                >
-                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                </Button>
-              </div>
-            </div>
-
-            {/* Hidden File Inputs */}
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              onChange={handleFileUpload}
-              accept=".pdf,.doc,.docx,.txt"
-            />
-            <input
-              ref={imageInputRef}
-              type="file"
-              className="hidden"
-              onChange={handleImageUpload}
-              accept="image/*"
-            />
-          </>
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-muted-foreground">
-            <div className="text-center">
-              <Bot className="w-12 h-12 mx-auto mb-4" />
-              <p>{t('chat.selectOrCreate')}</p>
-            </div>
+        {/* Quick Replies */}
+        {quickReplies.length > 0 && (
+          <div className="px-4 pb-2 flex gap-2 flex-wrap">
+            {quickReplies.map((reply, idx) => (
+              <Button
+                key={idx}
+                variant="outline"
+                size="sm"
+                onClick={() => setInputMessage(reply)}
+              >
+                {reply}
+              </Button>
+            ))}
           </div>
         )}
-      </Card>
+
+        {/* Attachments Preview */}
+        {(uploadedImage || uploadedFile) && (
+          <div className="px-4 pb-2 flex gap-2">
+            {uploadedImage && (
+              <div className="relative">
+                <img src={uploadedImage} alt="Upload" className="h-20 w-20 object-cover rounded" />
+                <Button
+                  size="icon"
+                  variant="destructive"
+                  className="absolute -top-2 -right-2 h-6 w-6"
+                  onClick={() => setUploadedImage(null)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
+            {uploadedFile && (
+              <div className="relative p-2 bg-accent rounded flex items-center gap-2">
+                <Paperclip className="w-4 h-4" />
+                <span className="text-sm">{uploadedFile.name}</span>
+                <Button
+                  size="icon"
+                  variant="destructive"
+                  className="h-6 w-6"
+                  onClick={() => setUploadedFile(null)}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Input Area */}
+        <div className="p-4 border-t bg-card">
+          <div className="flex gap-2">
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => imageInputRef.current?.click()}
+              title="Upload image"
+            >
+              <ImageIcon className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={openCamera}
+              title="Open camera"
+            >
+              <Camera className="h-4 w-4" />
+            </Button>
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach file"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+            {isSpeechSupported && (
+              <Button
+                size="icon"
+                variant={isListening ? 'destructive' : 'outline'}
+                onClick={toggleListening}
+                title={isListening ? 'Stop recording' : 'Start recording'}
+              >
+                {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+              </Button>
+            )}
+            <Textarea
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+              placeholder={t('chat.typeMessage')}
+              className="flex-1 min-h-[40px] max-h-[120px]"
+            />
+            <Button
+              onClick={sendMessage}
+              disabled={isLoading || (!inputMessage.trim() && !uploadedImage && !uploadedFile)}
+            >
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+
+        {/* Hidden File Inputs */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          onChange={handleFileUpload}
+          accept=".pdf,.doc,.docx,.txt"
+        />
+        <input
+          ref={imageInputRef}
+          type="file"
+          className="hidden"
+          onChange={handleImageUpload}
+          accept="image/*"
+        />
+      </div>
 
       {/* Camera Modal */}
       {isCameraOpen && (

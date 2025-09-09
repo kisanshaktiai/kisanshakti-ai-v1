@@ -48,6 +48,9 @@
     "typeMessage": "Type your message...",
     "selectOrCreate": "Select a chat or create a new one",
     "capturePhoto": "Capture Photo",
-    "capture": "Capture"
+    "capture": "Capture",
+    "title": "AI Agriculture Assistant",
+    "welcome": "Welcome to AI Agriculture Assistant",
+    "askAnything": "Ask me anything about farming, crops, weather, or upload images for analysis"
   }
 }
