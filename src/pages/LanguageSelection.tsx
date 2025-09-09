@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useLanguageStore } from '@/stores/languageStore';
 import { useTenantStore } from '@/stores/tenantStore';
-import { MapPin, Check } from 'lucide-react';
+import { useAuthFlowStore } from '@/stores/authFlowStore';
+import { MapPin, Check, ArrowLeft } from 'lucide-react';
 
 // State-wise language preferences
 const stateLanguages: Record<string, string[]> = {
@@ -100,12 +101,16 @@ export default function LanguageSelection() {
     setSelectedLanguage(langCode);
   };
 
+  const { markLanguageSelected, setStep } = useAuthFlowStore();
+  
   const handleContinue = () => {
     if (selectedLanguage) {
       setLanguage(selectedLanguage);
       i18n.changeLanguage(selectedLanguage);
       localStorage.setItem('hasSelectedLanguage', 'true');
-      navigate('/mobile-auth');
+      markLanguageSelected();
+      setStep('mobile');
+      navigate('/auth');
     }
   };
 

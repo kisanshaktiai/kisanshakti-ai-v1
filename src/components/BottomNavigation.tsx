@@ -4,12 +4,12 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 
 const navItems = [
-  { path: '/', icon: Home, labelKey: 'nav.home' },
-  { path: '/weather', icon: Cloud, labelKey: 'nav.weather' },
-  { path: '/market', icon: TrendingUp, labelKey: 'nav.market' },
-  { path: '/advisory', icon: MessageSquare, labelKey: 'nav.advisory' },
-  { path: '/schemes', icon: FileText, labelKey: 'nav.schemes' },
-  { path: '/profile', icon: User, labelKey: 'nav.profile' },
+  { path: '/app', icon: Home, labelKey: 'nav.home' },
+  { path: '/app/weather', icon: Cloud, labelKey: 'nav.weather' },
+  { path: '/app/market', icon: TrendingUp, labelKey: 'nav.market' },
+  { path: '/app/advisory', icon: MessageSquare, labelKey: 'nav.advisory' },
+  { path: '/app/schemes', icon: FileText, labelKey: 'nav.schemes' },
+  { path: '/app/profile', icon: User, labelKey: 'nav.profile' },
 ];
 
 export function BottomNavigation() {

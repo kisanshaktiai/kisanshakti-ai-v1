@@ -84,15 +84,39 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       // Get current domain
       const domain = window.location.hostname;
       
-      // First try to fetch tenant with white_label_configs by domain
-      const { data: tenantData, error } = await supabase
-        .from('tenants')
-        .select(`
-          *,
-          white_label_configs (*)
-        `)
-        .or(`custom_domain.eq.${domain},subdomain.eq.${domain.split('.')[0]}`)
-        .single();
+      // Check if running in development (Lovable sandbox)
+      const isDevelopment = domain.includes('sandbox.lovable.dev');
+      
+      let tenantData = null;
+      let error = null;
+      
+      if (isDevelopment) {
+        // In development, use default tenant
+        const { data, error: defaultError } = await supabase
+          .from('tenants')
+          .select(`
+            *,
+            white_label_configs (*)
+          `)
+          .eq('is_default', true)
+          .single();
+        
+        tenantData = data;
+        error = defaultError;
+      } else {
+        // In production, use domain matching
+        const { data, error: domainError } = await supabase
+          .from('tenants')
+          .select(`
+            *,
+            white_label_configs (*)
+          `)
+          .or(`custom_domain.eq.${domain},subdomain.eq.${domain.split('.')[0]}`)
+          .single();
+        
+        tenantData = data;
+        error = domainError;
+      }
 
       if (error || !tenantData) {
         // If no tenant found or error, use default tenant

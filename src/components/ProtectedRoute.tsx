@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
+import { useAuthFlowStore } from '@/stores/authFlowStore';
 import { Loader2 } from 'lucide-react';
 
 interface ProtectedRouteProps {
@@ -8,6 +9,7 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isAuthenticated, isLoading } = useAuthStore();
+  const { hasSelectedLanguage } = useAuthFlowStore();
   const location = useLocation();
 
   if (isLoading) {
@@ -19,7 +21,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   }
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    if (!hasSelectedLanguage) {
+      return <Navigate to="/language-selection" state={{ from: location }} replace />;
+    }
+    return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 
   return <>{children}</>;

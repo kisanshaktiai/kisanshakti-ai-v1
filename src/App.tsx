@@ -14,7 +14,6 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 // Pages
 import Home from "./pages/Home";
-import Login from "./pages/Login";
 import Weather from "./pages/Weather";
 import Market from "./pages/Market";
 import Advisory from "./pages/Advisory";
@@ -23,7 +22,7 @@ import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import SplashScreen from "./pages/SplashScreen";
 import LanguageSelection from "./pages/LanguageSelection";
-import MobileAuth from "./pages/MobileAuth";
+import AuthScreen from "./pages/AuthScreen";
 import PinAuth from "./pages/PinAuth";
 import SetPin from "./pages/SetPin";
 
@@ -74,22 +73,24 @@ const App = () => (
           <BrowserRouter>
             <AppInitializer>
               <Routes>
-                {/* Splash & Auth Routes */}
+                {/* Initial Route - Redirect to splash */}
+                <Route path="/" element={<Navigate to="/splash" replace />} />
+                
+                {/* Auth Flow Routes */}
                 <Route path="/splash" element={<SplashScreen />} />
                 <Route path="/language-selection" element={<LanguageSelection />} />
-                <Route path="/mobile-auth" element={<MobileAuth />} />
-                <Route path="/pin-auth" element={<PinAuth />} />
+                <Route path="/auth" element={<AuthScreen />} />
+                <Route path="/pin" element={<PinAuth />} />
                 <Route path="/set-pin" element={<SetPin />} />
-                <Route path="/login" element={<Login />} />
                 
                 {/* Protected Routes */}
-                <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+                <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
                   <Route index element={<Home />} />
-                  <Route path="/weather" element={<Weather />} />
-                  <Route path="/market" element={<Market />} />
-                  <Route path="/advisory" element={<Advisory />} />
-                  <Route path="/schemes" element={<Schemes />} />
-                  <Route path="/profile" element={<Profile />} />
+                  <Route path="weather" element={<Weather />} />
+                  <Route path="market" element={<Market />} />
+                  <Route path="advisory" element={<Advisory />} />
+                  <Route path="schemes" element={<Schemes />} />
+                  <Route path="profile" element={<Profile />} />
                 </Route>
 
                 {/* Fallback Routes */}
