@@ -68,6 +68,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       setSession: (session) => {
+        console.log('Setting session in authStore:', session);
         set({ 
           session,
           isAuthenticated: session !== null && session.isPinVerified,
@@ -96,7 +97,9 @@ export const useAuthStore = create<AuthState>()(
       },
 
       validateSession: () => {
-        const { session } = get();
+        const { session, user } = get();
+        
+        console.log('Validating session:', { session, user });
         
         if (!session) {
           set({ 
@@ -111,6 +114,7 @@ export const useAuthStore = create<AuthState>()(
         const expiresAt = new Date(session.expiresAt);
         
         if (now > expiresAt) {
+          console.log('Session expired');
           // Session expired
           set({ 
             session: null,
@@ -123,6 +127,7 @@ export const useAuthStore = create<AuthState>()(
 
         // Session is valid but needs PIN verification
         if (!session.isPinVerified) {
+          console.log('Session needs PIN verification');
           set({ 
             isAuthenticated: false,
             isPinRequired: true 
@@ -130,12 +135,17 @@ export const useAuthStore = create<AuthState>()(
           return false;
         }
 
-        // Session is valid and PIN verified
-        set({ 
-          isAuthenticated: true,
-          isPinRequired: false 
-        });
-        return true;
+        // Session is valid and PIN verified - ensure we have user data
+        if (session.isPinVerified && user) {
+          console.log('Session is valid and PIN verified');
+          set({ 
+            isAuthenticated: true,
+            isPinRequired: false 
+          });
+          return true;
+        }
+        
+        return false;
       },
 
       requirePin: () => {

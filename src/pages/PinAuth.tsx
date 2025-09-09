@@ -103,6 +103,7 @@ export default function PinAuth() {
         };
 
         // Set session and user in store
+        console.log('PIN verified successfully, setting session:', updatedSession);
         setSession(updatedSession);
         setUser({
           id: farmer.id,
@@ -120,9 +121,14 @@ export default function PinAuth() {
         localStorage.removeItem('authMobile');
         localStorage.removeItem('farmerId');
         
+        // Set step and force navigation
         setStep('dashboard');
-        // Navigate to app dashboard
-        navigate('/app', { replace: true });
+        console.log('Navigating to dashboard...');
+        
+        // Use setTimeout to ensure state updates are processed
+        setTimeout(() => {
+          navigate('/app', { replace: true });
+        }, 100);
       } else {
         // Update failed attempts
         const newAttempts = attempts + 1;
