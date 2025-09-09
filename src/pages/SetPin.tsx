@@ -67,6 +67,7 @@ export default function SetPin() {
         }
 
         // Set user in store
+        // Set user in store with authentication flag
         setUser({
           id: farmer.id,
           phone: farmer.mobile_number,
@@ -75,12 +76,12 @@ export default function SetPin() {
           language: farmer.language_preference || 'hi',
           tenantId: farmer.tenant_id
         });
-
+        
         // Clear temp storage
         localStorage.removeItem('authMobile');
         localStorage.removeItem('farmerId');
         
-        navigate('/');
+        navigate('/app');
       } catch (err: any) {
         console.error('Error setting PIN:', err);
         setError(err.message || 'Something went wrong. Please try again.');

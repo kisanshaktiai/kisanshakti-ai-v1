@@ -103,7 +103,7 @@ export default function PinAuth() {
         localStorage.removeItem('farmerId');
         
         setStep('dashboard');
-        navigate('/');
+        navigate('/app');
       } else {
         // Update failed attempts
         const newAttempts = attempts + 1;

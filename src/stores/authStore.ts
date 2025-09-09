@@ -108,7 +108,10 @@ export const useAuthStore = create<AuthState>()(
         }
       },
 
-      setUser: (user) => set({ user }),
+      setUser: (user) => set({ 
+        user, 
+        isAuthenticated: user !== null 
+      }),
       clearError: () => set({ error: null }),
     }),
     {
