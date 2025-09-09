@@ -53,9 +53,30 @@ export default function PinAuth() {
         throw fetchError;
       }
 
-      // In production, use proper PIN hashing and verification
-      // For demo, we'll do a simple check
-      if (farmer.pin === value || farmer.pin_hash === value) {
+      // Call the validate_farmer_pin function to verify PIN
+      const { data: isValid, error: validationError } = await supabase
+        .rpc('validate_farmer_pin', {
+          p_farmer_id: farmerId,
+          p_pin: value,
+          p_tenant_id: tenantId
+        });
+
+      if (validationError) {
+        console.error('PIN validation error:', validationError);
+        // Fallback to direct comparison if function doesn't exist
+        const isPinValid = farmer.pin === value;
+        console.log('Fallback PIN check:', { entered: value, stored: farmer.pin, isValid: isPinValid });
+        
+        if (isPinValid) {
+          // PIN is correct
+        } else {
+          throw new Error('Incorrect PIN');
+        }
+      }
+
+      console.log('PIN validation result:', isValid);
+
+      if (isValid || farmer.pin === value) {
         // Update login stats
         await supabase
           .from('farmers')
