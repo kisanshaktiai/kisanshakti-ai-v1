@@ -138,7 +138,7 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
         .from('weather_alerts')
         .select('cache_data, last_fetched')
         .eq('area_name', `${weatherLocation.lat},${weatherLocation.lon}`)
-        .single();
+        .maybeSingle();
 
       // If cache is fresh (less than 10 minutes old), use it
       if (cachedData?.cache_data && cachedData.last_fetched) {
@@ -226,7 +226,7 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
         .from('weather_alerts')
         .select('cache_data')
         .eq('area_name', `${weatherLocation.lat},${weatherLocation.lon}`)
-        .single();
+        .maybeSingle();
         
       if (fallbackData?.cache_data) {
         const cached = fallbackData.cache_data as any;
