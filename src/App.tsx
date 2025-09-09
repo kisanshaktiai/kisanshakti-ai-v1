@@ -44,16 +44,21 @@ const queryClient = new QueryClient({
 
 function AppInitializer({ children }: { children: React.ReactNode }) {
   const { fetchTenant } = useTenantStore();
-  const { checkAuth } = useAuthStore();
+  const { checkAuth, requirePin, session } = useAuthStore();
   const { currentLanguage } = useLanguageStore();
 
   useEffect(() => {
     // Initialize tenant
     fetchTenant();
     
-    // Check authentication status
+    // Check authentication status and require PIN on app open
     checkAuth();
-  }, [fetchTenant, checkAuth]);
+    
+    // If there's an existing session, require PIN verification
+    if (session && session.isPinVerified) {
+      requirePin();
+    }
+  }, [fetchTenant, checkAuth, requirePin]);
 
   useEffect(() => {
     // Apply language

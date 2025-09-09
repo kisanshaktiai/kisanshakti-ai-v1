@@ -12,7 +12,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp
 export default function SetPin() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { setUser } = useAuthStore();
+  const { setUser, setSession, createSession } = useAuthStore();
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [step, setStep] = useState<'set' | 'confirm'>('set');
@@ -66,7 +66,15 @@ export default function SetPin() {
           throw updateError;
         }
 
-        // Set user in store
+        // Create authenticated session
+        const session = createSession(farmer.id, farmer.tenant_id, farmer.mobile_number);
+        
+        // Mark session as PIN verified
+        setSession({
+          ...session,
+          isPinVerified: true
+        });
+        
         // Set user in store with authentication flag
         setUser({
           id: farmer.id,
@@ -74,7 +82,10 @@ export default function SetPin() {
           name: farmer.farmer_code || 'Farmer',
           role: 'farmer',
           language: farmer.language_preference || 'hi',
-          tenantId: farmer.tenant_id
+          tenantId: farmer.tenant_id,
+          farmerCode: farmer.farmer_code,
+          sessionToken: session.token,
+          lastLoginAt: new Date().toISOString()
         });
         
         // Clear temp storage

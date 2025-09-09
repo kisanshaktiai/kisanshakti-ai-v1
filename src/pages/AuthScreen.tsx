@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenantStore } from '@/stores/tenantStore';
 import { useAuthFlowStore } from '@/stores/authFlowStore';
+import { useAuthStore } from '@/stores/authStore';
 import { Loader2, Phone, ArrowLeft, ChevronRight } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -15,6 +16,7 @@ export default function AuthScreen() {
   const navigate = useNavigate();
   const { tenant, isLoading: tenantLoading } = useTenantStore();
   const { setStep } = useAuthFlowStore();
+  const { createSession } = useAuthStore();
   const [mobile, setMobile] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +79,8 @@ export default function AuthScreen() {
       }
 
       if (farmer) {
-        // Farmer exists, navigate to PIN entry
+        // Farmer exists, create session and navigate to PIN entry
+        createSession(farmer.id, tenant.id, cleanMobile);
         localStorage.setItem('authMobile', cleanMobile); // Store cleaned mobile
         localStorage.setItem('farmerId', farmer.id);
         localStorage.setItem('tenantId', tenant.id);

@@ -14,7 +14,7 @@ import { useTenantStore } from '@/stores/tenantStore';
 export default function PinAuth() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { setUser } = useAuthStore();
+  const { setUser, setSession, session } = useAuthStore();
   const { setStep } = useAuthFlowStore();
   const { tenant } = useTenantStore();
   const [pin, setPin] = useState('');
@@ -88,17 +88,35 @@ export default function PinAuth() {
           })
           .eq('id', farmerId);
 
-        // Set user in store
+        // Update existing session or create new one
+        const updatedSession = session ? {
+          ...session,
+          isPinVerified: true
+        } : {
+          farmerId: farmer.id,
+          tenantId: farmer.tenant_id,
+          mobile: farmer.mobile_number,
+          token: `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`,
+          createdAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          isPinVerified: true
+        };
+
+        // Set session and user in store
+        setSession(updatedSession);
         setUser({
           id: farmer.id,
           phone: farmer.mobile_number,
           name: farmer.farmer_code || 'Farmer',
           role: 'farmer',
           language: farmer.language_preference || 'hi',
-          tenantId: farmer.tenant_id
+          tenantId: farmer.tenant_id,
+          farmerCode: farmer.farmer_code,
+          sessionToken: updatedSession.token,
+          lastLoginAt: new Date().toISOString()
         });
 
-        // Clear temp storage
+        // Clear temp storage but keep session data
         localStorage.removeItem('authMobile');
         localStorage.removeItem('farmerId');
         
