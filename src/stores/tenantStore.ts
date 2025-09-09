@@ -85,7 +85,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       const domain = window.location.hostname;
       
       // Check if running in development (Lovable sandbox)
-      const isDevelopment = domain.includes('sandbox.lovable.dev');
+      const isDevelopment = domain.includes('sandbox.lovable.dev') || domain === 'localhost';
       
       let tenantData = null;
       let error = null;
@@ -98,12 +98,9 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           // Try to load the stored tenant
           const { data: storedTenant, error: storedError } = await supabase
             .from('tenants')
-            .select(`
-              *,
-              white_label_configs (*)
-            `)
+            .select('*')
             .eq('id', storedTenantId)
-            .single();
+            .maybeSingle();
           
           if (storedTenant && !storedError) {
             tenantData = storedTenant;
@@ -112,31 +109,49 @@ export const useTenantStore = create<TenantState>((set, get) => ({
         
         // If no stored tenant or loading failed, use default
         if (!tenantData) {
+          // Try to find the KisanShakti tenant specifically
           const { data, error: defaultError } = await supabase
             .from('tenants')
-            .select(`
-              *,
-              white_label_configs (*)
-            `)
-            .eq('is_default', true)
-            .single();
+            .select('*')
+            .eq('slug', 'kisanshakti-ai')
+            .maybeSingle();
           
-          tenantData = data;
-          error = defaultError;
+          if (data) {
+            tenantData = data;
+          } else {
+            // Fallback to any tenant marked as default
+            const { data: defaultData, error: fallbackError } = await supabase
+              .from('tenants')
+              .select('*')
+              .eq('is_default', true)
+              .maybeSingle();
+            
+            tenantData = defaultData;
+            error = fallbackError;
+          }
         }
       } else {
-        // In production, use domain matching
-        const { data, error: domainError } = await supabase
+        // In production, try exact domain match first
+        const { data: exactMatch, error: exactError } = await supabase
           .from('tenants')
-          .select(`
-            *,
-            white_label_configs (*)
-          `)
-          .or(`custom_domain.eq.${domain},subdomain.eq.${domain.split('.')[0]}`)
-          .single();
+          .select('*')
+          .eq('custom_domain', domain)
+          .maybeSingle();
         
-        tenantData = data;
-        error = domainError;
+        if (exactMatch) {
+          tenantData = exactMatch;
+        } else {
+          // Try subdomain match
+          const subdomain = domain.split('.')[0];
+          const { data: subdomainMatch, error: subdomainError } = await supabase
+            .from('tenants')
+            .select('*')
+            .eq('subdomain', subdomain)
+            .maybeSingle();
+          
+          tenantData = subdomainMatch;
+          error = subdomainError;
+        }
       }
 
       // Store tenant ID for persistence across sessions
@@ -145,15 +160,12 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       }
       
       if (error || !tenantData) {
-        // If no tenant found or error, use default tenant
+        // If no tenant found or error, try to get default tenant
         const { data: defaultTenant } = await supabase
           .from('tenants')
-          .select(`
-            *,
-            white_label_configs (*)
-          `)
+          .select('*')
           .eq('is_default', true)
-          .single();
+          .maybeSingle();
 
         if (defaultTenant) {
           localStorage.setItem('tenantId', defaultTenant.id);
@@ -161,73 +173,100 @@ export const useTenantStore = create<TenantState>((set, get) => ({
             ? defaultTenant.settings as any 
             : {};
           
-          // Get white label config if exists
-          const whiteLabelData = Array.isArray(defaultTenant.white_label_configs) 
-            ? defaultTenant.white_label_configs[0] 
-            : defaultTenant.white_label_configs;
-          
           const tenant: Tenant = {
             id: defaultTenant.id,
-            name: whiteLabelData?.brand_identity?.company_name || defaultTenant.name,
+            name: defaultTenant.name,
             domain: domain,
-            whiteLabel: whiteLabelData || {},
+            whiteLabel: {
+              brand_identity: {
+                company_name: defaultTenant.name,
+                tagline: 'Digital Agriculture Platform',
+                primary_color: '#10b981',
+                secondary_color: '#059669',
+                accent_color: '#14b8a6'
+              },
+              app_customization: {
+                theme_mode: 'system',
+                language_settings: {
+                  default: 'hi',
+                  supported: ['en', 'hi', 'pa', 'mr', 'ta']
+                }
+              }
+            },
             settings: {
-              languages: whiteLabelData?.app_customization?.language_settings?.supported || 
-                        settingsObj.languages || 
-                        ['en', 'hi', 'pa', 'mr', 'ta'],
-              defaultLanguage: whiteLabelData?.app_customization?.language_settings?.default || 
-                              settingsObj.defaultLanguage || 
-                              'hi',
+              languages: settingsObj.languages || ['en', 'hi', 'pa', 'mr', 'ta'],
+              defaultLanguage: settingsObj.defaultLanguage || 'hi',
               features: settingsObj.features || ['weather', 'market', 'advisory', 'schemes'],
             },
           };
           set({ tenant, isLoading: false });
-          
-          // Apply white label theme
-          if (whiteLabelData) {
-            get().applyWhiteLabelTheme(whiteLabelData);
-          }
         } else {
-          // No tenant found - show error
-          set({
-            tenant: null,
-            isLoading: false,
-            error: 'No tenant configuration found. Please contact administrator.'
-          });
+          // Create a fallback tenant configuration
+          const fallbackTenant: Tenant = {
+            id: 'a2a59533-b5d2-450c-bd70-7180aa40d82d', // KisanShakti default ID
+            name: 'KisanShakti Ai',
+            domain: domain,
+            whiteLabel: {
+              brand_identity: {
+                company_name: 'KisanShakti Ai',
+                tagline: 'Empowering Farmers Digitally',
+                primary_color: '#10b981',
+                secondary_color: '#059669',
+                accent_color: '#14b8a6'
+              },
+              app_customization: {
+                theme_mode: 'system',
+                language_settings: {
+                  default: 'hi',
+                  supported: ['en', 'hi', 'pa', 'mr', 'ta']
+                }
+              }
+            },
+            settings: {
+              languages: ['en', 'hi', 'pa', 'mr', 'ta'],
+              defaultLanguage: 'hi',
+              features: ['weather', 'market', 'advisory', 'schemes'],
+            },
+          };
+          
+          // Store the fallback tenant ID
+          localStorage.setItem('tenantId', fallbackTenant.id);
+          set({ tenant: fallbackTenant, isLoading: false });
         }
       } else {
         // Transform database tenant to our Tenant interface
         const settingsObj = typeof tenantData.settings === 'object' && tenantData.settings !== null 
           ? tenantData.settings as any 
           : {};
-        
-        // Get white label config if exists
-        const whiteLabelData = Array.isArray(tenantData.white_label_configs) 
-          ? tenantData.white_label_configs[0] 
-          : tenantData.white_label_configs;
           
         const tenant: Tenant = {
           id: tenantData.id,
-          name: whiteLabelData?.brand_identity?.company_name || tenantData.name,
+          name: tenantData.name,
           domain: domain,
-          whiteLabel: whiteLabelData || {},
+          whiteLabel: {
+            brand_identity: {
+              company_name: tenantData.name,
+              tagline: 'Digital Agriculture Platform',
+              primary_color: '#10b981',
+              secondary_color: '#059669',
+              accent_color: '#14b8a6'
+            },
+            app_customization: {
+              theme_mode: 'system',
+              language_settings: {
+                default: settingsObj.defaultLanguage || 'hi',
+                supported: settingsObj.languages || ['en', 'hi', 'pa', 'mr', 'ta']
+              }
+            }
+          },
           settings: {
-            languages: whiteLabelData?.app_customization?.language_settings?.supported || 
-                      settingsObj.languages || 
-                      ['en', 'hi', 'pa', 'mr', 'ta'],
-            defaultLanguage: whiteLabelData?.app_customization?.language_settings?.default || 
-                            settingsObj.defaultLanguage || 
-                            'hi',
+            languages: settingsObj.languages || ['en', 'hi', 'pa', 'mr', 'ta'],
+            defaultLanguage: settingsObj.defaultLanguage || 'hi',
             features: settingsObj.features || ['weather', 'market', 'advisory', 'schemes'],
           },
         };
 
         set({ tenant, isLoading: false });
-
-        // Apply white label theme
-        if (whiteLabelData) {
-          get().applyWhiteLabelTheme(whiteLabelData);
-        }
       }
     } catch (error: any) {
       console.error('Error fetching tenant:', error);
