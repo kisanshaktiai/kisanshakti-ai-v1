@@ -88,6 +88,13 @@ export default function PinAuth() {
           })
           .eq('id', farmerId);
 
+        // Fetch user profile data
+        const { data: profileData } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('farmer_id', farmer.id)
+          .maybeSingle();
+
         // Update existing session or create new one
         const updatedSession = session ? {
           ...session,
@@ -102,19 +109,40 @@ export default function PinAuth() {
           isPinVerified: true
         };
 
-        // Set session and user in store
+        // Set session and user in store with complete profile data
         console.log('PIN verified successfully, setting session:', updatedSession);
         setSession(updatedSession);
         setUser({
           id: farmer.id,
           phone: farmer.mobile_number,
-          name: farmer.farmer_code || 'Farmer',
+          name: profileData?.full_name || farmer.farmer_code || 'Farmer',
           role: 'farmer',
           language: farmer.language_preference || 'hi',
           tenantId: farmer.tenant_id,
           farmerCode: farmer.farmer_code,
           sessionToken: updatedSession.token,
-          lastLoginAt: new Date().toISOString()
+          lastLoginAt: new Date().toISOString(),
+          // Profile fields
+          fullName: profileData?.full_name || '',
+          displayName: profileData?.display_name || '',
+          dateOfBirth: profileData?.date_of_birth || '',
+          gender: profileData?.gender || '',
+          village: profileData?.village || '',
+          taluka: profileData?.taluka || '',
+          district: profileData?.district || '',
+          state: profileData?.state || '',
+          pincode: profileData?.pincode || '',
+          preferredLanguage: profileData?.preferred_language || farmer.language_preference || 'hi',
+          // Farm details
+          totalLandAcres: farmer.total_land_acres || profileData?.total_land_acres || 0,
+          primaryCrops: farmer.primary_crops || profileData?.primary_crops || [],
+          farmingExperienceYears: farmer.farming_experience_years || profileData?.farming_experience_years || 0,
+          farmType: farmer.farm_type || '',
+          hasTractor: farmer.has_tractor || profileData?.has_tractor || false,
+          hasIrrigation: farmer.has_irrigation || profileData?.has_irrigation || false,
+          irrigationType: farmer.irrigation_type || '',
+          hasStorage: farmer.has_storage || profileData?.has_storage || false,
+          annualIncomeRange: farmer.annual_income_range || profileData?.annual_income_range || ''
         });
 
         // Clear temp storage but keep session data

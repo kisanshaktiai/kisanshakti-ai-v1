@@ -11,6 +11,27 @@ interface User {
   farmerCode?: string;
   sessionToken?: string;
   lastLoginAt?: string;
+  // Profile fields from user_profiles
+  fullName?: string;
+  displayName?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  village?: string;
+  taluka?: string;
+  district?: string;
+  state?: string;
+  pincode?: string;
+  preferredLanguage?: string;
+  // Farm details from farmers
+  totalLandAcres?: number;
+  primaryCrops?: string[];
+  farmingExperienceYears?: number;
+  farmType?: string;
+  hasTractor?: boolean;
+  hasIrrigation?: boolean;
+  irrigationType?: string;
+  hasStorage?: boolean;
+  annualIncomeRange?: string;
 }
 
 interface Session {
