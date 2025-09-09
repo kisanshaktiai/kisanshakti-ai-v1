@@ -55,6 +55,9 @@ export default function Home() {
         </CardContent>
       </Card>
 
+      {/* Weather Widget */}
+      <WeatherWidget />
+
       {/* Quick Links Grid */}
       <div className="grid grid-cols-2 gap-4">
         {quickLinks.map((link) => {
@@ -75,9 +78,6 @@ export default function Home() {
           );
         })}
       </div>
-
-      {/* Weather Widget */}
-      <WeatherWidget />
       
       {/* Info Cards */}
       <Card>
