@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { useEffect } from "react";
 import { I18nextProvider } from "react-i18next";
 import i18n from "@/i18n/config";
@@ -63,6 +63,82 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Create router with future flag to resolve the warning
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <AppInitializer><SplashScreen /></AppInitializer>,
+  },
+  {
+    path: "/splash",
+    element: <AppInitializer><SplashScreen /></AppInitializer>,
+  },
+  {
+    path: "/language-selection",
+    element: <AppInitializer><LanguageSelection /></AppInitializer>,
+  },
+  {
+    path: "/auth",
+    element: <AppInitializer><AuthScreen /></AppInitializer>,
+  },
+  {
+    path: "/pin",
+    element: <AppInitializer><PinAuth /></AppInitializer>,
+  },
+  {
+    path: "/set-pin",
+    element: <AppInitializer><SetPin /></AppInitializer>,
+  },
+  {
+    path: "/app",
+    element: (
+      <AppInitializer>
+        <ProtectedRoute>
+          <AppLayout />
+        </ProtectedRoute>
+      </AppInitializer>
+    ),
+    children: [
+      {
+        index: true,
+        element: <Home />,
+      },
+      {
+        path: "weather",
+        element: <Weather />,
+      },
+      {
+        path: "market",
+        element: <Market />,
+      },
+      {
+        path: "advisory",
+        element: <Advisory />,
+      },
+      {
+        path: "schemes",
+        element: <Schemes />,
+      },
+      {
+        path: "profile",
+        element: <Profile />,
+      },
+    ],
+  },
+  {
+    path: "*",
+    element: <AppInitializer><NotFound /></AppInitializer>,
+  },
+], {
+  future: {
+    v7_relativeSplatPath: true,
+    v7_fetcherPersist: true,
+    v7_normalizeFormMethod: true,
+    v7_partialHydration: true,
+    v7_skipActionErrorRevalidation: true,
+  },
+});
+
 const App = () => (
   <ErrorBoundary>
     <I18nextProvider i18n={i18n}>
@@ -70,34 +146,7 @@ const App = () => (
         <TooltipProvider>
           <Toaster />
           <Sonner />
-          <BrowserRouter>
-            <AppInitializer>
-              <Routes>
-                {/* Initial Route - Redirect to splash */}
-                <Route path="/" element={<Navigate to="/splash" replace />} />
-                
-                {/* Auth Flow Routes */}
-                <Route path="/splash" element={<SplashScreen />} />
-                <Route path="/language-selection" element={<LanguageSelection />} />
-                <Route path="/auth" element={<AuthScreen />} />
-                <Route path="/pin" element={<PinAuth />} />
-                <Route path="/set-pin" element={<SetPin />} />
-                
-                {/* Protected Routes */}
-                <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-                  <Route index element={<Home />} />
-                  <Route path="weather" element={<Weather />} />
-                  <Route path="market" element={<Market />} />
-                  <Route path="advisory" element={<Advisory />} />
-                  <Route path="schemes" element={<Schemes />} />
-                  <Route path="profile" element={<Profile />} />
-                </Route>
-
-                {/* Fallback Routes */}
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </AppInitializer>
-          </BrowserRouter>
+          <RouterProvider router={router} />
         </TooltipProvider>
       </QueryClientProvider>
     </I18nextProvider>
