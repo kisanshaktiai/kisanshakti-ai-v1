@@ -14,22 +14,8 @@ export function useGoogleMapsApi() {
       try {
         console.log('Fetching Google Maps API key...');
         
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session) {
-          console.error('No session found');
-          setError('User not authenticated');
-          setIsLoading(false);
-          return;
-        }
-
-        console.log('Session found, invoking google-maps-config function...');
-        
-        const response = await supabase.functions.invoke('google-maps-config', {
-          headers: {
-            authorization: `Bearer ${session.access_token}`,
-          },
-        });
+        // No authentication needed - function is public
+        const response = await supabase.functions.invoke('google-maps-config');
 
         console.log('Edge function response:', response);
 
