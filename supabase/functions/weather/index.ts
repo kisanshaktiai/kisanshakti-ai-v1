@@ -277,13 +277,14 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
     
-  } catch (error: any) {
+  } catch (error) {
     console.error('Weather API error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
     
     // Return error response
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: errorMessage,
         message: 'Weather service temporarily unavailable. Please try again later.'
       }),
       { 
