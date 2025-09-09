@@ -71,12 +71,14 @@ interface LandActivity {
 interface CropHistory {
   id: string;
   crop_name: string;
+  variety?: string;
   planting_date: string;
   harvest_date?: string;
   yield_kg_per_acre?: number;
   growth_stage?: string;
   season?: string;
   status?: string;
+  notes?: string;
 }
 
 export default function LandDetails() {
@@ -152,7 +154,7 @@ export default function LandDetails() {
         .from('crop_history')
         .select('*')
         .eq('land_id', id)
-        .order('sowing_date', { ascending: false });
+        .order('planting_date', { ascending: false });
 
       if (error) throw error;
       setCropHistory(data || []);
@@ -245,8 +247,8 @@ export default function LandDetails() {
 
   const yieldData = cropHistory.map(crop => ({
     crop: crop.crop_name,
-    yield: crop.yield_quantity || 0,
-    revenue: crop.revenue || 0,
+    yield: crop.yield_kg_per_acre || 0,
+    revenue: 0, // Revenue data not available in current schema
   }));
 
   if (loading) {
@@ -655,20 +657,20 @@ export default function LandDetails() {
                         <div>
                           <p className="font-medium text-lg">{crop.crop_name}</p>
                           <p className="text-sm text-muted-foreground">
-                            Sown: {new Date(crop.sowing_date).toLocaleDateString()}
+                            Sown: {new Date(crop.planting_date).toLocaleDateString()}
                             {crop.harvest_date && ` • Harvested: ${new Date(crop.harvest_date).toLocaleDateString()}`}
                           </p>
                         </div>
                         <div className="text-right">
-                          {crop.yield_quantity && (
+                          {crop.yield_kg_per_acre && (
                             <p className="font-medium">
-                              {crop.yield_quantity} {crop.yield_unit || 'kg'}
+                              {crop.yield_kg_per_acre} kg/acre
                             </p>
                           )}
-                          {crop.revenue && crop.expenses && (
-                            <p className={`text-sm ${crop.revenue - crop.expenses > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              Profit: ₹{(crop.revenue - crop.expenses).toLocaleString()}
-                            </p>
+                          {crop.growth_stage && (
+                            <Badge variant="outline" className="mt-1">
+                              {crop.growth_stage}
+                            </Badge>
                           )}
                         </div>
                       </div>
