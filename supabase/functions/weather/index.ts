@@ -33,28 +33,13 @@ serve(async (req) => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     
-    const { action, lat, lon, city, units = 'metric' } = await req.json()
+    const { action, lat, lon, units = 'metric' } = await req.json()
     
-    console.log('Weather API request:', { action, lat, lon, city })
+    console.log('Weather API request:', { action, lat, lon })
     
-    let weatherData = {}
+    let weatherData: any = {}
     
     switch (action) {
-      case 'current': {
-        // Fetch current weather
-        const currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}`
-        const currentResponse = await fetch(currentUrl)
-        const current = await currentResponse.json()
-        
-        // Fetch air quality data
-        const airUrl = `https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}`
-        const airResponse = await fetch(airUrl)
-        const airQuality = await airResponse.json()
-        
-        weatherData = { current, airQuality }
-        break
-      }
-      
       case 'current': {
         // Fetch current weather with fallback
         let currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}`
@@ -98,7 +83,7 @@ serve(async (req) => {
       }
       
       case 'forecast': {
-        // Fetch 7-day forecast using One Call API 2.5 (free tier)
+        // Fetch 7-day forecast using free tier API
         let forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}&cnt=56`
         let forecastResponse = await fetch(forecastUrl)
         
@@ -118,7 +103,7 @@ serve(async (req) => {
         
         // Process 3-hour forecast data into daily and hourly
         const dailyMap = new Map()
-        const hourlyData = []
+        const hourlyData: any[] = []
         
         forecastData.list?.forEach((item: any) => {
           const date = new Date(item.dt * 1000).toDateString()
@@ -145,12 +130,12 @@ serve(async (req) => {
           if (!dailyMap.has(date)) {
             dailyMap.set(date, {
               dt: item.dt,
-              temps: [],
-              humidity: [],
+              temps: [] as number[],
+              humidity: [] as number[],
               weather: item.weather,
-              pop: [],
-              wind_speed: [],
-              pressure: []
+              pop: [] as number[],
+              wind_speed: [] as number[],
+              pressure: [] as number[]
             })
           }
           
@@ -232,10 +217,12 @@ serve(async (req) => {
           currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}`
           forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${openWeatherApiKey}&units=${units}`
           
-          ;[currentResponse, forecastResponse] = await Promise.all([
+          const responses = await Promise.all([
             fetch(currentUrl),
             fetch(forecastUrl)
           ])
+          currentResponse = responses[0]
+          forecastResponse = responses[1]
         }
         
         const current = await currentResponse.json()
@@ -262,15 +249,26 @@ serve(async (req) => {
         throw new Error('Invalid action specified')
     }
     
-    // Cache weather data in database for offline access
+    // Cache weather data in weather_alerts table (using existing table)
     if (lat && lon) {
-      await supabase.from('weather_cache').upsert({
-        location: `${lat},${lon}`,
-        data: weatherData,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'location'
-      })
+      try {
+        await supabase.from('weather_alerts').upsert({
+          alert_id: 'weather-cache',
+          area_name: `${lat},${lon}`,
+          event_type: 'cache',
+          severity: 'info',
+          urgency: 'future',
+          certainty: 'observed',
+          title: 'Weather Cache',
+          data_source: 'openweathermap',
+          start_time: new Date().toISOString(),
+          cache_data: weatherData,
+          last_fetched: new Date().toISOString()
+        })
+      } catch (cacheError) {
+        console.error('Cache error:', cacheError)
+        // Continue even if caching fails
+      }
     }
     
     // Return successful response
@@ -279,7 +277,7 @@ serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
     
-  } catch (error) {
+  } catch (error: any) {
     console.error('Weather API error:', error)
     
     // Return error response
@@ -298,21 +296,21 @@ serve(async (req) => {
 
 function calculateSoilMoisture(current: any, forecast: any): number {
   // Simple soil moisture calculation based on recent rainfall and temperature
-  const recentRainfall = forecast.list.slice(0, 3).reduce((acc: number, item: any) => {
+  const recentRainfall = forecast.list?.slice(0, 3).reduce((acc: number, item: any) => {
     return acc + (item.rain?.['3h'] || 0)
-  }, 0)
+  }, 0) || 0
   
-  const evaporation = current.main.temp > 25 ? 0.2 : 0.1
+  const evaporation = current.main?.temp > 25 ? 0.2 : 0.1
   const baseMoisture = 0.5
   
   return Math.min(1, Math.max(0, baseMoisture + (recentRainfall * 0.05) - evaporation))
 }
 
 function generateAgricultureRecommendations(current: any, forecast: any): string[] {
-  const recommendations = []
-  const temp = current.main.temp
-  const humidity = current.main.humidity
-  const windSpeed = current.wind.speed
+  const recommendations: string[] = []
+  const temp = current.main?.temp || 0
+  const humidity = current.main?.humidity || 0
+  const windSpeed = current.wind?.speed || 0
   
   // Temperature-based recommendations
   if (temp > 35) {
@@ -334,7 +332,7 @@ function generateAgricultureRecommendations(current: any, forecast: any): string
   }
   
   // Rain forecast recommendations
-  const upcomingRain = forecast.list.slice(0, 8).some((item: any) => item.rain)
+  const upcomingRain = forecast.list?.slice(0, 8).some((item: any) => item.rain)
   if (upcomingRain) {
     recommendations.push('Rain expected: Delay fertilizer application')
   } else {
