@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,14 @@ export default function SetPin() {
   
   const mobile = localStorage.getItem('authMobile');
   const farmerId = localStorage.getItem('farmerId');
+  const tenantId = localStorage.getItem('tenantId');
+  
+  // Ensure we have all required data
+  useEffect(() => {
+    if (!mobile || !farmerId || !tenantId) {
+      navigate('/auth');
+    }
+  }, [mobile, farmerId, tenantId, navigate]);
 
   const handlePinComplete = async () => {
     if (step === 'set') {
@@ -39,7 +47,7 @@ export default function SetPin() {
       setError(null);
 
       try {
-        // Update farmer with PIN
+        // MULTI-TENANT UPDATE: Ensure we update the correct farmer in the correct tenant
         const { data: farmer, error: updateError } = await supabase
           .from('farmers')
           .update({
@@ -50,6 +58,7 @@ export default function SetPin() {
             total_app_opens: 1
           })
           .eq('id', farmerId)
+          .eq('tenant_id', tenantId) // CRITICAL: Ensure tenant isolation
           .select()
           .single();
 

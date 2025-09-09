@@ -22,7 +22,12 @@ export default function AuthScreen() {
 
   useEffect(() => {
     setStep('mobile');
-  }, [setStep]);
+    
+    // If no tenant loaded, redirect to splash to ensure proper flow
+    if (!tenantLoading && !tenant) {
+      navigate('/splash');
+    }
+  }, [setStep, tenant, tenantLoading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,22 +37,25 @@ export default function AuthScreen() {
       return;
     }
 
+    // CRITICAL: Ensure tenant is loaded before proceeding
+    if (!tenant?.id) {
+      setError(t('auth.tenantNotLoaded') || 'System is initializing. Please wait...');
+      setTimeout(() => navigate('/splash'), 1500);
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
 
     try {
-      // Build query
-      let query = supabase
+      // MULTI-TENANT QUERY: Always filter by tenant_id + mobile_number
+      // This ensures mobile numbers are unique per tenant, not globally
+      const { data: farmer, error: fetchError } = await supabase
         .from('farmers')
-        .select('id, mobile_number, pin, pin_hash, tenant_id')
-        .eq('mobile_number', mobile);
-      
-      // Only add tenant filter if tenant exists
-      if (tenant?.id) {
-        query = query.eq('tenant_id', tenant.id);
-      }
-      
-      const { data: farmer, error: fetchError } = await query.maybeSingle();
+        .select('id, mobile_number, pin, pin_hash, tenant_id, farmer_code')
+        .eq('mobile_number', mobile)
+        .eq('tenant_id', tenant.id)
+        .maybeSingle();
 
       if (fetchError) {
         console.error('Error fetching farmer:', fetchError);
@@ -58,12 +66,20 @@ export default function AuthScreen() {
         // Farmer exists, navigate to PIN entry
         localStorage.setItem('authMobile', mobile);
         localStorage.setItem('farmerId', farmer.id);
+        localStorage.setItem('tenantId', tenant.id);
         setStep('pin');
         navigate('/pin');
       } else if (mode === 'register') {
-        // Create new farmer
-        const farmerData: any = {
+        // Generate farmer code with tenant prefix
+        const tenantPrefix = tenant.name?.substring(0, 3).toUpperCase() || 'KIS';
+        const timestamp = Date.now().toString().slice(-6);
+        const farmerCode = `${tenantPrefix}${timestamp}`;
+        
+        // Create new farmer with tenant_id (REQUIRED for multi-tenancy)
+        const farmerData = {
           mobile_number: mobile,
+          tenant_id: tenant.id, // REQUIRED: Ensures farmer belongs to correct tenant
+          farmer_code: farmerCode,
           language_preference: localStorage.getItem('i18nextLng') || 'hi',
           is_active: true,
           app_install_date: new Date().toISOString(),
@@ -72,11 +88,6 @@ export default function AuthScreen() {
           failed_login_attempts: 0
         };
         
-        // Only add tenant_id if it exists
-        if (tenant?.id) {
-          farmerData.tenant_id = tenant.id;
-        }
-        
         const { data: newFarmer, error: insertError } = await supabase
           .from('farmers')
           .insert(farmerData)
@@ -84,23 +95,25 @@ export default function AuthScreen() {
           .single();
 
         if (insertError) {
+          // Handle unique constraint violation for mobile+tenant
+          if (insertError.code === '23505') {
+            setError(t('auth.mobileAlreadyExists') || 'This mobile number is already registered.');
+            setMode('check');
+            return;
+          }
           console.error('Error creating farmer:', insertError);
           throw insertError;
         }
         
-        // Create user profile
-        const profileData: any = {
+        // Create user profile with tenant_id (REQUIRED)
+        const profileData = {
           id: newFarmer.id,
           farmer_id: newFarmer.id,
+          tenant_id: tenant.id, // REQUIRED: Link profile to tenant
           mobile_number: mobile,
           preferred_language: localStorage.getItem('i18nextLng') as any || 'hi',
           is_profile_complete: false
         };
-        
-        // Only add tenant_id if it exists
-        if (tenant?.id) {
-          profileData.tenant_id = tenant.id;
-        }
         
         await supabase
           .from('user_profiles')
@@ -108,6 +121,7 @@ export default function AuthScreen() {
 
         localStorage.setItem('authMobile', mobile);
         localStorage.setItem('farmerId', newFarmer.id);
+        localStorage.setItem('tenantId', tenant.id);
         setStep('setpin');
         navigate('/set-pin');
       } else {

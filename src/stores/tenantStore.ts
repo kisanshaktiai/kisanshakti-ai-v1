@@ -91,18 +91,39 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       let error = null;
       
       if (isDevelopment) {
-        // In development, use default tenant
-        const { data, error: defaultError } = await supabase
-          .from('tenants')
-          .select(`
-            *,
-            white_label_configs (*)
-          `)
-          .eq('is_default', true)
-          .single();
+        // In development, first try to get tenant from localStorage (for persistence)
+        const storedTenantId = localStorage.getItem('tenantId');
         
-        tenantData = data;
-        error = defaultError;
+        if (storedTenantId) {
+          // Try to load the stored tenant
+          const { data: storedTenant, error: storedError } = await supabase
+            .from('tenants')
+            .select(`
+              *,
+              white_label_configs (*)
+            `)
+            .eq('id', storedTenantId)
+            .single();
+          
+          if (storedTenant && !storedError) {
+            tenantData = storedTenant;
+          }
+        }
+        
+        // If no stored tenant or loading failed, use default
+        if (!tenantData) {
+          const { data, error: defaultError } = await supabase
+            .from('tenants')
+            .select(`
+              *,
+              white_label_configs (*)
+            `)
+            .eq('is_default', true)
+            .single();
+          
+          tenantData = data;
+          error = defaultError;
+        }
       } else {
         // In production, use domain matching
         const { data, error: domainError } = await supabase
@@ -118,6 +139,11 @@ export const useTenantStore = create<TenantState>((set, get) => ({
         error = domainError;
       }
 
+      // Store tenant ID for persistence across sessions
+      if (tenantData?.id) {
+        localStorage.setItem('tenantId', tenantData.id);
+      }
+      
       if (error || !tenantData) {
         // If no tenant found or error, use default tenant
         const { data: defaultTenant } = await supabase
@@ -130,6 +156,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           .single();
 
         if (defaultTenant) {
+          localStorage.setItem('tenantId', defaultTenant.id);
           const settingsObj = typeof defaultTenant.settings === 'object' && defaultTenant.settings !== null 
             ? defaultTenant.settings as any 
             : {};

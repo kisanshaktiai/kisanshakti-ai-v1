@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,15 @@ export default function PinAuth() {
   
   const mobile = localStorage.getItem('authMobile');
   const farmerId = localStorage.getItem('farmerId');
+  const tenantId = localStorage.getItem('tenantId');
   const maskedMobile = mobile ? `${mobile.slice(0, 2)}****${mobile.slice(-2)}` : '';
+  
+  // Ensure we have all required data
+  useEffect(() => {
+    if (!mobile || !farmerId || !tenantId) {
+      navigate('/auth');
+    }
+  }, [mobile, farmerId, tenantId, navigate]);
 
   const handlePinComplete = async (value: string) => {
     if (value.length !== 4) return;
@@ -33,11 +41,12 @@ export default function PinAuth() {
     setError(null);
 
     try {
-      // Verify PIN
+      // MULTI-TENANT VERIFICATION: Verify farmer belongs to correct tenant
       const { data: farmer, error: fetchError } = await supabase
         .from('farmers')
         .select('*')
         .eq('id', farmerId)
+        .eq('tenant_id', tenantId)
         .single();
 
       if (fetchError) {
