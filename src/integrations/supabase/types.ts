@@ -9743,50 +9743,6 @@ export type Database = {
         }
         Relationships: []
       }
-      white_label_config: {
-        Row: {
-          app_customization: Json | null
-          brand_identity: Json | null
-          color_scheme: Json | null
-          created_at: string | null
-          favicon_url: string | null
-          id: string
-          logo_url: string | null
-          tenant_id: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          app_customization?: Json | null
-          brand_identity?: Json | null
-          color_scheme?: Json | null
-          created_at?: string | null
-          favicon_url?: string | null
-          id?: string
-          logo_url?: string | null
-          tenant_id?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          app_customization?: Json | null
-          brand_identity?: Json | null
-          color_scheme?: Json | null
-          created_at?: string | null
-          favicon_url?: string | null
-          id?: string
-          logo_url?: string | null
-          tenant_id?: string | null
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "white_label_config_tenant_id_fkey"
-            columns: ["tenant_id"]
-            isOneToOne: true
-            referencedRelation: "tenants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       white_label_configs: {
         Row: {
           app_customization: Json | null
