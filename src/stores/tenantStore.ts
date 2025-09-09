@@ -88,6 +88,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       const isDevelopment = domain.includes('sandbox.lovable.dev') || domain === 'localhost';
       
       let tenantData = null;
+      let whiteLabelData = null;
       let error = null;
       
       if (isDevelopment) {
@@ -154,9 +155,17 @@ export const useTenantStore = create<TenantState>((set, get) => ({
         }
       }
 
-      // Store tenant ID for persistence across sessions
+      // Fetch white label config if tenant found
       if (tenantData?.id) {
         localStorage.setItem('tenantId', tenantData.id);
+        
+        const { data: whiteLabel } = await supabase
+          .from('white_label_config')
+          .select('*')
+          .eq('tenant_id', tenantData.id)
+          .maybeSingle();
+        
+        whiteLabelData = whiteLabel;
       }
       
       if (error || !tenantData) {
@@ -169,6 +178,14 @@ export const useTenantStore = create<TenantState>((set, get) => ({
 
         if (defaultTenant) {
           localStorage.setItem('tenantId', defaultTenant.id);
+          
+          // Try to get white label config for default tenant
+          const { data: whiteLabel } = await supabase
+            .from('white_label_config')
+            .select('*')
+            .eq('tenant_id', defaultTenant.id)
+            .maybeSingle();
+          
           const settingsObj = typeof defaultTenant.settings === 'object' && defaultTenant.settings !== null 
             ? defaultTenant.settings as any 
             : {};
@@ -177,7 +194,15 @@ export const useTenantStore = create<TenantState>((set, get) => ({
             id: defaultTenant.id,
             name: defaultTenant.name,
             domain: domain,
-            whiteLabel: {
+            whiteLabel: whiteLabel ? {
+              brand_identity: {
+                ...(typeof whiteLabel.brand_identity === 'object' && whiteLabel.brand_identity !== null ? whiteLabel.brand_identity : {}),
+                logo_url: whiteLabel.logo_url || (typeof whiteLabel.brand_identity === 'object' && whiteLabel.brand_identity !== null ? (whiteLabel.brand_identity as any).logo_url : undefined),
+                favicon_url: whiteLabel.favicon_url || (typeof whiteLabel.brand_identity === 'object' && whiteLabel.brand_identity !== null ? (whiteLabel.brand_identity as any).favicon_url : undefined),
+              },
+              app_customization: typeof whiteLabel.app_customization === 'object' && whiteLabel.app_customization !== null ? whiteLabel.app_customization as AppCustomization : {},
+              pwa_config: typeof whiteLabel.brand_identity === 'object' && whiteLabel.brand_identity !== null ? (whiteLabel.brand_identity as any).pwa_config : undefined,
+            } : {
               brand_identity: {
                 company_name: defaultTenant.name,
                 tagline: 'Digital Agriculture Platform',
@@ -200,6 +225,11 @@ export const useTenantStore = create<TenantState>((set, get) => ({
             },
           };
           set({ tenant, isLoading: false });
+          
+          // Apply white label theme if available
+          if (whiteLabel) {
+            get().applyWhiteLabelTheme(tenant.whiteLabel!);
+          }
         } else {
           // Create a fallback tenant configuration
           const fallbackTenant: Tenant = {
@@ -243,7 +273,15 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           id: tenantData.id,
           name: tenantData.name,
           domain: domain,
-          whiteLabel: {
+          whiteLabel: whiteLabelData ? {
+            brand_identity: {
+              ...(typeof whiteLabelData.brand_identity === 'object' && whiteLabelData.brand_identity !== null ? whiteLabelData.brand_identity : {}),
+              logo_url: whiteLabelData.logo_url || (typeof whiteLabelData.brand_identity === 'object' && whiteLabelData.brand_identity !== null ? (whiteLabelData.brand_identity as any).logo_url : undefined),
+              favicon_url: whiteLabelData.favicon_url || (typeof whiteLabelData.brand_identity === 'object' && whiteLabelData.brand_identity !== null ? (whiteLabelData.brand_identity as any).favicon_url : undefined),
+            },
+            app_customization: typeof whiteLabelData.app_customization === 'object' && whiteLabelData.app_customization !== null ? whiteLabelData.app_customization as AppCustomization : {},
+            pwa_config: typeof whiteLabelData.brand_identity === 'object' && whiteLabelData.brand_identity !== null ? (whiteLabelData.brand_identity as any).pwa_config : undefined,
+          } : {
             brand_identity: {
               company_name: tenantData.name,
               tagline: 'Digital Agriculture Platform',
@@ -267,6 +305,11 @@ export const useTenantStore = create<TenantState>((set, get) => ({
         };
 
         set({ tenant, isLoading: false });
+        
+        // Apply white label theme if available
+        if (whiteLabelData) {
+          get().applyWhiteLabelTheme(tenant.whiteLabel!);
+        }
       }
     } catch (error: any) {
       console.error('Error fetching tenant:', error);

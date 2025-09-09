@@ -45,8 +45,8 @@ const stateLanguages: Record<string, string[]> = {
 export default function LanguageSelection() {
   const navigate = useNavigate();
   const { i18n } = useTranslation();
-  const { availableLanguages, setLanguage } = useLanguageStore();
-  const { tenant } = useTenantStore();
+  const { availableLanguages, setLanguage, fetchLanguages } = useLanguageStore();
+  const { tenant, fetchTenant } = useTenantStore();
   const [selectedLanguage, setSelectedLanguage] = useState<string>('');
   const [userState, setUserState] = useState<string>('');
   const [detectingLocation, setDetectingLocation] = useState(false);
@@ -55,6 +55,12 @@ export default function LanguageSelection() {
   const locationStored = useRef<GeolocationCoordinates | null>(null);
 
   useEffect(() => {
+    // Fetch tenant and languages when component mounts
+    const loadData = async () => {
+      await fetchTenant();
+      await fetchLanguages();
+    };
+    loadData();
     detectUserLocation();
   }, []);
 
@@ -196,30 +202,32 @@ export default function LanguageSelection() {
   return (
     <div className="min-h-screen bg-gradient-earth flex flex-col">
       {/* Fixed Header with Logo */}
-      <div className="flex-shrink-0 p-4 bg-card/50 backdrop-blur-sm border-b border-border">
-        <div className="flex flex-col items-center space-y-2">
+      <header className="sticky top-0 z-50 bg-card/90 backdrop-blur-sm border-b border-border">
+        <div className="flex flex-col items-center py-4 px-4 space-y-3">
           {/* App Logo */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center justify-center">
             {tenant?.whiteLabel?.brand_identity?.logo_url ? (
               <img 
                 src={tenant.whiteLabel.brand_identity.logo_url} 
-                alt={tenant.whiteLabel.brand_identity.company_name || tenant.name}
-                className="h-10 w-auto object-contain"
+                alt={tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name || 'App Logo'}
+                className="h-12 w-auto object-contain"
               />
             ) : (
               <div className="flex items-center space-x-2">
-                <Leaf className="h-10 w-10 text-primary" />
-                <span className="text-xl font-bold text-primary">KisanShakti</span>
+                <Leaf className="h-12 w-12 text-primary" />
+                <span className="text-2xl font-bold text-primary">
+                  {tenant?.name || 'KisanShakti'}
+                </span>
               </div>
             )}
           </div>
           
           {/* Title */}
           <div className="text-center">
-            <h1 className="text-lg font-semibold text-foreground">
+            <h1 className="text-xl font-semibold text-foreground">
               Select Your Language
             </h1>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               अपनी भाषा चुनें | Choose your language
             </p>
           </div>
@@ -227,28 +235,28 @@ export default function LanguageSelection() {
           {/* Location Status */}
           {detectingLocation && (
             <div className="flex items-center space-x-2 text-muted-foreground">
-              <MapPin className="w-3 h-3 animate-pulse" />
-              <span className="text-xs">Detecting location...</span>
+              <MapPin className="w-4 h-4 animate-pulse" />
+              <span className="text-sm">Detecting location...</span>
             </div>
           )}
           
           {userState && userState !== 'default' && !detectingLocation && (
-            <div className="flex items-center space-x-1 text-xs text-muted-foreground">
-              <MapPin className="w-3 h-3" />
+            <div className="flex items-center space-x-1 text-sm text-muted-foreground">
+              <MapPin className="w-4 h-4" />
               <span>{userState}</span>
             </div>
           )}
         </div>
-      </div>
+      </header>
 
       {/* Scrollable Language List */}
-      <div className="flex-1 overflow-y-auto px-4 py-4">
-        <div className="max-w-md mx-auto space-y-2">
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-md mx-auto px-4 py-6 space-y-3">
           {sortedLanguages.map((lang, index) => (
             <Button
               key={lang.code}
               variant={selectedLanguage === lang.code ? "default" : "outline"}
-              className="w-full h-16 flex items-center justify-between px-4 relative transition-all"
+              className="w-full h-16 flex items-center justify-between px-4 relative transition-all hover:scale-[1.02]"
               onClick={() => handleLanguageSelect(lang.code)}
             >
               <div className="flex items-center space-x-3">
@@ -257,7 +265,7 @@ export default function LanguageSelection() {
               </div>
               
               {selectedLanguage === lang.code && (
-                <div className="absolute right-4 bg-primary text-primary-foreground rounded-full p-1">
+                <div className="bg-primary text-primary-foreground rounded-full p-1">
                   <Check className="w-4 h-4" />
                 </div>
               )}
@@ -271,11 +279,11 @@ export default function LanguageSelection() {
             </Button>
           ))}
         </div>
-      </div>
+      </main>
 
       {/* Fixed Continue Button */}
-      <div className="flex-shrink-0 p-4 bg-card/50 backdrop-blur-sm border-t border-border">
-        <div className="max-w-md mx-auto">
+      <footer className="sticky bottom-0 bg-card/90 backdrop-blur-sm border-t border-border">
+        <div className="max-w-md mx-auto p-4">
           <Button
             onClick={handleContinue}
             disabled={!selectedLanguage}
@@ -290,7 +298,7 @@ export default function LanguageSelection() {
             )}
           </Button>
         </div>
-      </div>
+      </footer>
     </div>
   );
 }

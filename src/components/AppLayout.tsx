@@ -4,6 +4,7 @@ import { LanguageSelector } from './LanguageSelector';
 import { useTenantStore } from '@/stores/tenantStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useTranslation } from 'react-i18next';
+import { Leaf } from 'lucide-react';
 
 export function AppLayout() {
   const { tenant } = useTenantStore();
@@ -15,12 +16,14 @@ export function AppLayout() {
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 h-14 bg-card border-b border-border z-40 flex items-center justify-between px-4">
         <div className="flex items-center gap-3">
-          {tenant?.whiteLabel?.brand_identity?.logo_url && (
+          {tenant?.whiteLabel?.brand_identity?.logo_url ? (
             <img 
               src={tenant.whiteLabel.brand_identity.logo_url} 
-              alt={tenant.whiteLabel.brand_identity.company_name || tenant.name}
+              alt={tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name || 'App Logo'}
               className="h-8 w-auto object-contain"
             />
+          ) : (
+            <Leaf className="h-8 w-8 text-primary" />
           )}
           <div>
             <h1 className="text-lg font-bold text-primary">

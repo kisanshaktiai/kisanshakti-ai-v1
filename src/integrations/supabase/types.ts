@@ -2523,6 +2523,30 @@ export type Database = {
           },
         ]
       }
+      edge_invocation_logs: {
+        Row: {
+          function_name: string
+          id: number
+          invoked_at: string | null
+          payload: Json | null
+          user_id: string | null
+        }
+        Insert: {
+          function_name: string
+          id?: never
+          invoked_at?: string | null
+          payload?: Json | null
+          user_id?: string | null
+        }
+        Update: {
+          function_name?: string
+          id?: never
+          invoked_at?: string | null
+          payload?: Json | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       email_events: {
         Row: {
           created_at: string | null
@@ -5137,6 +5161,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      master_languages: {
+        Row: {
+          code: string
+          created_at: string | null
+          display_order: number | null
+          id: string
+          is_active: boolean | null
+          name: string
+          native_name: string
+          updated_at: string | null
+        }
+        Insert: {
+          code: string
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          native_name: string
+          updated_at?: string | null
+        }
+        Update: {
+          code?: string
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          native_name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       master_product_categories: {
         Row: {
@@ -9685,6 +9742,50 @@ export type Database = {
           url?: string
         }
         Relationships: []
+      }
+      white_label_config: {
+        Row: {
+          app_customization: Json | null
+          brand_identity: Json | null
+          color_scheme: Json | null
+          created_at: string | null
+          favicon_url: string | null
+          id: string
+          logo_url: string | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          app_customization?: Json | null
+          brand_identity?: Json | null
+          color_scheme?: Json | null
+          created_at?: string | null
+          favicon_url?: string | null
+          id?: string
+          logo_url?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          app_customization?: Json | null
+          brand_identity?: Json | null
+          color_scheme?: Json | null
+          created_at?: string | null
+          favicon_url?: string | null
+          id?: string
+          logo_url?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "white_label_config_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       white_label_configs: {
         Row: {
