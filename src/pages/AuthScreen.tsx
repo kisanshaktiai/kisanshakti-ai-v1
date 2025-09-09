@@ -48,14 +48,28 @@ export default function AuthScreen() {
     setError(null);
 
     try {
+      // Ensure mobile is clean and properly formatted
+      const cleanMobile = mobile.trim().replace(/\D/g, '');
+      
+      // Debug logging
+      console.log('Searching for farmer with:', {
+        mobile_number: cleanMobile,
+        mobile_type: typeof cleanMobile,
+        mobile_length: cleanMobile.length,
+        tenant_id: tenant.id,
+        tenant_name: tenant.name
+      });
+
       // MULTI-TENANT QUERY: Always filter by tenant_id + mobile_number
-      // This ensures mobile numbers are unique per tenant, not globally
+      // Mobile numbers are stored as strings without country code
       const { data: farmer, error: fetchError } = await supabase
         .from('farmers')
         .select('id, mobile_number, pin, pin_hash, tenant_id, farmer_code')
-        .eq('mobile_number', mobile)
+        .eq('mobile_number', cleanMobile)
         .eq('tenant_id', tenant.id)
         .maybeSingle();
+
+      console.log('Farmer search result:', { farmer, error: fetchError });
 
       if (fetchError) {
         console.error('Error fetching farmer:', fetchError);
@@ -64,7 +78,7 @@ export default function AuthScreen() {
 
       if (farmer) {
         // Farmer exists, navigate to PIN entry
-        localStorage.setItem('authMobile', mobile);
+        localStorage.setItem('authMobile', cleanMobile); // Store cleaned mobile
         localStorage.setItem('farmerId', farmer.id);
         localStorage.setItem('tenantId', tenant.id);
         setStep('pin');
@@ -77,7 +91,7 @@ export default function AuthScreen() {
         
         // Create new farmer with tenant_id (REQUIRED for multi-tenancy)
         const farmerData = {
-          mobile_number: mobile,
+          mobile_number: cleanMobile, // Use the cleaned mobile number
           tenant_id: tenant.id, // REQUIRED: Ensures farmer belongs to correct tenant
           farmer_code: farmerCode,
           language_preference: localStorage.getItem('i18nextLng') || 'hi',
@@ -110,7 +124,7 @@ export default function AuthScreen() {
           id: newFarmer.id,
           farmer_id: newFarmer.id,
           tenant_id: tenant.id, // REQUIRED: Link profile to tenant
-          mobile_number: mobile,
+          mobile_number: cleanMobile, // Use cleaned mobile
           preferred_language: localStorage.getItem('i18nextLng') as any || 'hi',
           is_profile_complete: false
         };
@@ -119,7 +133,7 @@ export default function AuthScreen() {
           .from('user_profiles')
           .insert(profileData);
 
-        localStorage.setItem('authMobile', mobile);
+        localStorage.setItem('authMobile', cleanMobile); // Store cleaned mobile
         localStorage.setItem('farmerId', newFarmer.id);
         localStorage.setItem('tenantId', tenant.id);
         setStep('setpin');
