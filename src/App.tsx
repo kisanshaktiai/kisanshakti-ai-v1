@@ -15,7 +15,6 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 // Pages
 import Home from "./pages/Home";
 import Weather from "./pages/Weather";
-import WeatherReport from "./pages/WeatherReport";
 import Market from "./pages/Market";
 import Advisory from "./pages/Advisory";
 import Schemes from "./pages/Schemes";
@@ -118,10 +117,6 @@ const router = createBrowserRouter(
         {
           path: "weather",
           element: <Weather />,
-        },
-        {
-          path: "weather-report",
-          element: <WeatherReport />,
         },
         {
           path: "market",

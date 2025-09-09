@@ -32,7 +32,7 @@ export const WeatherWidget: React.FC = () => {
   return (
     <Card 
       className="overflow-hidden cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-[1.02]"
-      onClick={() => navigate('/app/weather-report')}
+      onClick={() => navigate('/app/weather')}
     >
       <AnimatedWeatherBackground condition={currentWeather?.main || 'Clear'} className="h-full">
         <div className="p-4">
