@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Cloud, TrendingUp, MessageSquare, FileText } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { Link } from 'react-router-dom';
+import { WeatherWidget } from '@/components/weather/WeatherWidget';
 
 export default function Home() {
   const { t } = useTranslation();
@@ -75,6 +76,9 @@ export default function Home() {
         })}
       </div>
 
+      {/* Weather Widget */}
+      <WeatherWidget />
+      
       {/* Info Cards */}
       <Card>
         <CardHeader>
@@ -82,16 +86,16 @@ export default function Home() {
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex justify-between items-center">
-            <span className="text-sm text-muted-foreground">Temperature</span>
-            <span className="font-semibold">28°C</span>
-          </div>
-          <div className="flex justify-between items-center">
             <span className="text-sm text-muted-foreground">Wheat Price</span>
             <span className="font-semibold text-success">₹2,125/quintal</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-sm text-muted-foreground">Rainfall</span>
             <span className="font-semibold">12mm expected</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-muted-foreground">Active Alerts</span>
+            <span className="font-semibold">3 alerts</span>
           </div>
         </CardContent>
       </Card>

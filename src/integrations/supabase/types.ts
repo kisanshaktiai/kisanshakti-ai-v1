@@ -9100,6 +9100,7 @@ export type Database = {
           affected_activities: string[] | null
           alert_id: string
           area_name: string
+          cache_data: Json | null
           certainty: string
           created_at: string
           crop_impact_level: string | null
@@ -9110,18 +9111,24 @@ export type Database = {
           id: string
           instruction: string | null
           is_active: boolean
+          last_fetched: string | null
           latitude: number | null
           longitude: number | null
           recommendations: string[] | null
           severity: string
           start_time: string
+          tenant_id: string | null
           title: string
+          updated_at: string | null
           urgency: string
+          user_location: Json | null
+          user_preferences: Json | null
         }
         Insert: {
           affected_activities?: string[] | null
           alert_id: string
           area_name: string
+          cache_data?: Json | null
           certainty: string
           created_at?: string
           crop_impact_level?: string | null
@@ -9132,18 +9139,24 @@ export type Database = {
           id?: string
           instruction?: string | null
           is_active?: boolean
+          last_fetched?: string | null
           latitude?: number | null
           longitude?: number | null
           recommendations?: string[] | null
           severity: string
           start_time: string
+          tenant_id?: string | null
           title: string
+          updated_at?: string | null
           urgency: string
+          user_location?: Json | null
+          user_preferences?: Json | null
         }
         Update: {
           affected_activities?: string[] | null
           alert_id?: string
           area_name?: string
+          cache_data?: Json | null
           certainty?: string
           created_at?: string
           crop_impact_level?: string | null
@@ -9154,13 +9167,18 @@ export type Database = {
           id?: string
           instruction?: string | null
           is_active?: boolean
+          last_fetched?: string | null
           latitude?: number | null
           longitude?: number | null
           recommendations?: string[] | null
           severity?: string
           start_time?: string
+          tenant_id?: string | null
           title?: string
+          updated_at?: string | null
           urgency?: string
+          user_location?: Json | null
+          user_preferences?: Json | null
         }
         Relationships: []
       }
