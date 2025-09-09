@@ -726,61 +726,103 @@ export function ChatInterface() {
           </div>
         )}
 
-        {/* Input Area */}
-        <div className="p-4 border-t bg-card">
-          <div className="flex gap-2">
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => imageInputRef.current?.click()}
-              title="Upload image"
-            >
-              <ImageIcon className="h-4 w-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={openCamera}
-              title="Open camera"
-            >
-              <Camera className="h-4 w-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant="outline"
-              onClick={() => fileInputRef.current?.click()}
-              title="Attach file"
-            >
-              <Paperclip className="h-4 w-4" />
-            </Button>
-            {isSpeechSupported && (
-              <Button
-                size="icon"
-                variant={isListening ? 'destructive' : 'outline'}
-                onClick={toggleListening}
-                title={isListening ? 'Stop recording' : 'Start recording'}
-              >
-                {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-              </Button>
-            )}
-            <Textarea
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage();
-                }
-              }}
-              placeholder={t('chat.typeMessage')}
-              className="flex-1 min-h-[40px] max-h-[120px]"
-            />
-            <Button
-              onClick={sendMessage}
-              disabled={isLoading || (!inputMessage.trim() && !uploadedImage && !uploadedFile)}
-            >
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </Button>
+        {/* WhatsApp-style Input Area */}
+        <div className="border-t border-border bg-background/95 backdrop-blur-sm">
+          <div className="px-3 py-3">
+            <div className="flex items-end gap-2">
+              {/* Attachment Options */}
+              <div className="flex gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isLoading}
+                  className="h-10 w-10 rounded-full shrink-0"
+                  title="Attach file"
+                >
+                  <Paperclip className="h-5 w-5" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={isLoading}
+                  className="h-10 w-10 rounded-full shrink-0"
+                  title="Upload image"
+                >
+                  <ImageIcon className="h-5 w-5" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={openCamera}
+                  disabled={isLoading}
+                  className="h-10 w-10 rounded-full shrink-0"
+                  title="Open camera"
+                >
+                  <Camera className="h-5 w-5" />
+                </Button>
+              </div>
+              
+              {/* Text Input Area */}
+              <div className="flex-1 min-w-0">
+                <Textarea
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      sendMessage();
+                    }
+                  }}
+                  placeholder={t('chat.typeMessage')}
+                  disabled={isLoading}
+                  className="min-h-[44px] max-h-[120px] py-3 px-4 resize-none rounded-3xl bg-muted/50 border-0"
+                  rows={1}
+                  style={{
+                    fieldSizing: 'content'
+                  } as React.CSSProperties}
+                />
+              </div>
+              
+              {/* Voice/Send Button */}
+              {inputMessage.trim() || uploadedImage || uploadedFile ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  onClick={sendMessage}
+                  disabled={isLoading}
+                  className="h-10 w-10 rounded-full shrink-0"
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Send className="h-5 w-5" />
+                  )}
+                </Button>
+              ) : (
+                isSpeechSupported && (
+                  <Button
+                    type="button"
+                    variant={isListening ? "destructive" : "secondary"}
+                    size="icon"
+                    onClick={toggleListening}
+                    disabled={isLoading}
+                    className="h-10 w-10 rounded-full shrink-0"
+                    title={isListening ? 'Stop recording' : 'Start recording'}
+                  >
+                    {isListening ? (
+                      <MicOff className="h-5 w-5 animate-pulse" />
+                    ) : (
+                      <Mic className="h-5 w-5" />
+                    )}
+                  </Button>
+                )
+              )}
+            </div>
           </div>
         </div>
 
