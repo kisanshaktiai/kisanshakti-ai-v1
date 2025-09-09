@@ -5,3 +5,6 @@ verify_jwt = true
 
 [functions.ai-agriculture-chat]
 verify_jwt = true
+
+[functions.google-maps-config]
+verify_jwt = true

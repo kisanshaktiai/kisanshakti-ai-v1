@@ -21,7 +21,7 @@ export default function AddLand() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuthStore();
-  const { isLoaded, loadError } = useGoogleMapsApi();
+  const { isLoaded, loadError, isLoading } = useGoogleMapsApi();
   
   const [showForm, setShowForm] = useState(false);
   const [boundary, setBoundary] = useState<LatLng[]>([]);
@@ -108,7 +108,7 @@ export default function AddLand() {
   };
 
   // Loading state
-  if (!isLoaded) {
+  if (isLoading || !isLoaded) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background">
         <Card className="p-6 space-y-4 text-center">
