@@ -140,11 +140,13 @@ export default function AddLand() {
   }
 
   return (
-    <div className="fixed inset-0 top-14 bg-background">
-      <GoogleMapBoundaryDrawer
-        onSave={handleMapSave}
-        onCancel={handleCancel}
-      />
+    <div className="fixed inset-0 bg-background">
+      <div className="absolute inset-0 top-14">
+        <GoogleMapBoundaryDrawer
+          onSave={handleMapSave}
+          onCancel={handleCancel}
+        />
+      </div>
       
       <LandFormDialog
         open={showForm}

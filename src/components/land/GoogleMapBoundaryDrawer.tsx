@@ -18,7 +18,7 @@ interface GoogleMapBoundaryDrawerProps {
 
 const mapContainerStyle = {
   width: '100%',
-  height: '100vh',
+  height: '100%',
 };
 
 const mapOptions: google.maps.MapOptions = {
@@ -255,7 +255,7 @@ export function GoogleMapBoundaryDrawer({
   };
 
   return (
-    <div className="relative w-full h-screen">
+    <div className="relative w-full h-full">
       <GoogleMap
         mapContainerStyle={mapContainerStyle}
         center={center}
