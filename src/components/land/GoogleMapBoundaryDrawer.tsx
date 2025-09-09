@@ -22,7 +22,7 @@ const mapContainerStyle = {
 };
 
 const mapOptions: google.maps.MapOptions = {
-  mapTypeId: 'satellite',
+  mapTypeId: 'hybrid', // Shows satellite with village/place names
   disableDefaultUI: true,
   zoomControl: true,
   zoomControlOptions: {
