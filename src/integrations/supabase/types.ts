@@ -12255,7 +12255,6 @@ export type Database = {
       validate_farmer_pin: {
         Args:
           | { p_farmer_id: string; p_pin: string; p_tenant_id: string }
-          | { p_farmer_id: string; p_pin: string; p_tenant_id: string }
           | { p_mobile_number: string; p_pin_hash: string }
         Returns: boolean
       }
