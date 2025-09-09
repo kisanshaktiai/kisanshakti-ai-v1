@@ -37,7 +37,7 @@ export default function SplashScreen() {
     markSplashCompleted();
     
     if (isAuthenticated) {
-      navigate('/');
+      navigate('/app');
     } else if (hasSelectedLanguage) {
       navigate('/auth');
     } else {
