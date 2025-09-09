@@ -20,6 +20,9 @@ interface WeatherData {
   sunset: number;
   location: string;
   dt: number;
+  provider?: string;
+  uv_index?: number;
+  dew_point?: number;
 }
 
 interface ForecastData {
@@ -52,6 +55,7 @@ interface ForecastData {
   pop: number;
   rain?: number;
   uvi: number;
+  moon_phase?: number;
 }
 
 interface HourlyData {
