@@ -245,7 +245,7 @@ export const AnimatedWeatherBackground: React.FC<AnimatedWeatherBackgroundProps>
           right: 20px;
           width: 60px;
           height: 60px;
-          background: radial-gradient(circle, rgba(255, 223, 0, 0.8), rgba(255, 193, 7, 0.6));
+          background: radial-gradient(circle, hsl(var(--weather-sunny) / 0.8), hsl(var(--weather-sunny) / 0.6));
           border-radius: 50%;
           animation: sun-pulse 4s ease-in-out infinite;
         }
@@ -256,18 +256,18 @@ export const AnimatedWeatherBackground: React.FC<AnimatedWeatherBackgroundProps>
           right: 20px;
           width: 60px;
           height: 60px;
-          background: conic-gradient(from 0deg, transparent, rgba(255, 223, 0, 0.2), transparent);
+          background: conic-gradient(from 0deg, transparent, hsl(var(--weather-sunny) / 0.2), transparent);
           animation: sun-rotate 20s linear infinite;
         }
 
         @keyframes sun-pulse {
           0%, 100% {
             transform: scale(1);
-            box-shadow: 0 0 20px rgba(255, 223, 0, 0.5);
+            box-shadow: 0 0 20px hsl(var(--weather-sunny) / 0.5);
           }
           50% {
             transform: scale(1.1);
-            box-shadow: 0 0 30px rgba(255, 223, 0, 0.7);
+            box-shadow: 0 0 30px hsl(var(--weather-sunny) / 0.7);
           }
         }
 

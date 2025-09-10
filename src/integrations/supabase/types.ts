@@ -1788,6 +1788,7 @@ export type Database = {
           description: string | null
           display_order: number
           duration_days: number | null
+          icon: string
           id: string
           is_active: boolean | null
           label: string
@@ -1802,6 +1803,7 @@ export type Database = {
           description?: string | null
           display_order?: number
           duration_days?: number | null
+          icon: string
           id?: string
           is_active?: boolean | null
           label: string
@@ -1816,6 +1818,7 @@ export type Database = {
           description?: string | null
           display_order?: number
           duration_days?: number | null
+          icon?: string
           id?: string
           is_active?: boolean | null
           label?: string
@@ -9980,6 +9983,7 @@ export type Database = {
           pwa_config: Json | null
           splash_screens: Json | null
           tenant_id: string | null
+          theme_colors: Json | null
           updated_at: string | null
         }
         Insert: {
@@ -9997,6 +10001,7 @@ export type Database = {
           pwa_config?: Json | null
           splash_screens?: Json | null
           tenant_id?: string | null
+          theme_colors?: Json | null
           updated_at?: string | null
         }
         Update: {
@@ -10014,6 +10019,7 @@ export type Database = {
           pwa_config?: Json | null
           splash_screens?: Json | null
           tenant_id?: string | null
+          theme_colors?: Json | null
           updated_at?: string | null
         }
         Relationships: [

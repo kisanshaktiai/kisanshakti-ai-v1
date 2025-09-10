@@ -467,6 +467,78 @@ export const useTenantStore = create<TenantState>((set, get) => ({
   applyWhiteLabelTheme: (whiteLabel) => {
     // Apply custom theme to CSS variables
     const root = document.documentElement;
+    
+    // Apply theme colors if available (from new theme_colors column)
+    const themeColors = (whiteLabel as any).theme_colors;
+    if (themeColors) {
+      // Apply core colors
+      if (themeColors.core) {
+        Object.entries(themeColors.core).forEach(([key, value]) => {
+          if (value) {
+            root.style.setProperty(`--${key.replace(/_/g, '-')}`, String(value));
+          }
+        });
+      }
+      
+      // Apply navigation colors
+      if (themeColors.navigation) {
+        Object.entries(themeColors.navigation).forEach(([key, value]) => {
+          if (value) {
+            root.style.setProperty(`--${key.replace(/_/g, '-')}`, String(value));
+          }
+        });
+      }
+      
+      // Apply chart colors
+      if (themeColors.charts) {
+        Object.entries(themeColors.charts).forEach(([key, value]) => {
+          if (value) {
+            root.style.setProperty(`--${key.replace(/_/g, '-')}`, String(value));
+          }
+        });
+      }
+      
+      // Apply map colors
+      if (themeColors.maps) {
+        Object.entries(themeColors.maps).forEach(([key, value]) => {
+          if (value) {
+            root.style.setProperty(`--${key.replace(/_/g, '-')}`, String(value));
+          }
+        });
+      }
+      
+      // Apply weather colors
+      if (themeColors.weather) {
+        Object.entries(themeColors.weather).forEach(([key, value]) => {
+          if (value) {
+            root.style.setProperty(`--${key.replace(/_/g, '-')}`, String(value));
+          }
+        });
+      }
+      
+      // Apply gradients
+      if (themeColors.gradients) {
+        Object.entries(themeColors.gradients).forEach(([key, value]) => {
+          if (value) {
+            root.style.setProperty(`--gradient-${key}`, String(value));
+          }
+        });
+      }
+      
+      // Apply dark mode colors if enabled
+      if (themeColors.dark_mode?.enabled && themeColors.dark_mode?.colors) {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (prefersDark) {
+          Object.entries(themeColors.dark_mode.colors).forEach(([key, value]) => {
+            if (value) {
+              root.style.setProperty(`--${key.replace(/_/g, '-')}`, String(value));
+            }
+          });
+        }
+      }
+    }
+    
+    // Fallback to brand identity colors if theme_colors not available
     const brandIdentity = whiteLabel.brand_identity;
     
     // Primary colors
