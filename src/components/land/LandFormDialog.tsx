@@ -130,11 +130,11 @@ export function LandFormDialog({
             water_source: data.water_source || '',
             current_crop: data.current_crop || '',
             irrigation_type: data.irrigation_type || '',
-            cultivation_date: data.planting_date ? new Date(data.planting_date) : undefined,
+            cultivation_date: undefined, // Will be set from planting_date if exists
             expected_harvest_date: data.expected_harvest_date ? new Date(data.expected_harvest_date) : undefined,
             last_crop: data.last_crop || '',
             last_harvest_date: data.last_harvest_date ? new Date(data.last_harvest_date) : undefined,
-            notes: data.description || '',
+            notes: '', // Notes field doesn't exist in lands table yet
           });
         }
       };
