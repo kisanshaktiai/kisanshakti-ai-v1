@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
 import { GoogleMapBoundaryDrawer } from '@/components/land/GoogleMapBoundaryDrawer';
 import { LandFormDialog } from '@/components/land/LandFormDialog';
+import { LandInstructionDialog } from '@/components/land/LandInstructionDialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 
@@ -26,10 +27,23 @@ export default function AddLand() {
   const [showForm, setShowForm] = useState(false);
   const [boundary, setBoundary] = useState<LatLng[]>([]);
   const [area, setArea] = useState({ sqft: 0, guntha: 0, acres: 0 });
+  const [showInstructions, setShowInstructions] = useState(true);
+  const [centerCoordinates, setCenterCoordinates] = useState({ lat: 0, lng: 0 });
 
   const handleMapSave = (boundaryPoints: LatLng[], calculatedArea: typeof area) => {
     setBoundary(boundaryPoints);
     setArea(calculatedArea);
+    
+    // Calculate center coordinates for the boundary
+    if (boundaryPoints.length > 0) {
+      const sumLat = boundaryPoints.reduce((sum, point) => sum + point.lat, 0);
+      const sumLng = boundaryPoints.reduce((sum, point) => sum + point.lng, 0);
+      setCenterCoordinates({
+        lat: sumLat / boundaryPoints.length,
+        lng: sumLng / boundaryPoints.length
+      });
+    }
+    
     setShowForm(true);
   };
 
@@ -139,6 +153,25 @@ export default function AddLand() {
     );
   }
 
+  // Show instruction dialog first, then fullscreen map
+  if (showInstructions) {
+    return (
+      <>
+        <div className="min-h-screen bg-background p-4 flex items-center justify-center">
+          <Card className="max-w-md p-6 text-center">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+            <p className="text-muted-foreground">Preparing map...</p>
+          </Card>
+        </div>
+        <LandInstructionDialog
+          open={showInstructions}
+          onClose={() => navigate('/app/lands')}
+          onStart={() => setShowInstructions(false)}
+        />
+      </>
+    );
+  }
+
   // Main map view - fullscreen without header and bottom navigation
   return (
     <>
@@ -154,6 +187,7 @@ export default function AddLand() {
         onClose={() => setShowForm(false)}
         onSubmit={handleFormSubmit}
         area={area}
+        centerCoordinates={centerCoordinates}
       />
     </>
   );

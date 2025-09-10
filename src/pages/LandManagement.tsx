@@ -306,57 +306,36 @@ export default function LandManagement() {
 
   return (
     <div className="space-y-6">
-      {/* Header Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Lands</p>
-                <p className="text-2xl font-bold">{lands.length}</p>
-              </div>
-              <MapPin className="h-8 w-8 text-primary opacity-20" />
+      {/* Unified Summary Card */}
+      <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+        <CardContent className="p-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="text-center p-2">
+              <MapPin className="h-5 w-5 text-primary mx-auto mb-1" />
+              <p className="text-xs text-muted-foreground">Total Lands</p>
+              <p className="text-xl font-bold">{lands.length}</p>
             </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Area</p>
-                <p className="text-2xl font-bold">{totalArea.toFixed(2)} acres</p>
-              </div>
-              <Grid3x3 className="h-8 w-8 text-primary opacity-20" />
+            
+            <div className="text-center p-2 border-l border-primary/20">
+              <Grid3x3 className="h-5 w-5 text-primary mx-auto mb-1" />
+              <p className="text-xs text-muted-foreground">Total Area</p>
+              <p className="text-xl font-bold">{totalArea.toFixed(2)}</p>
+              <p className="text-xs text-muted-foreground">acres</p>
             </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Under Cultivation</p>
-                <p className="text-2xl font-bold">{cultivatedLands}</p>
-              </div>
-              <Sprout className="h-8 w-8 text-primary opacity-20" />
+            
+            <div className="text-center p-2 border-l border-primary/20">
+              <Sprout className="h-5 w-5 text-primary mx-auto mb-1" />
+              <p className="text-xs text-muted-foreground">Under Cultivation</p>
+              <p className="text-xl font-bold">{cultivatedLands}</p>
             </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Utilization</p>
-                <div className="flex items-center gap-2">
-                  <Progress value={(cultivatedLands / lands.length) * 100} className="w-20" />
-                  <span className="text-sm font-medium">
-                    {lands.length ? Math.round((cultivatedLands / lands.length) * 100) : 0}%
-                  </span>
-                </div>
+            
+            <div className="text-center p-2 border-l border-primary/20">
+              <Activity className="h-5 w-5 text-primary mx-auto mb-1" />
+              <p className="text-xs text-muted-foreground">Utilization</p>
+              <div className="mt-1">
+                <p className="text-xl font-bold">{lands.length ? Math.round((cultivatedLands / lands.length) * 100) : 0}%</p>
+                <Progress value={(cultivatedLands / lands.length) * 100} className="h-1.5 mt-1" />
               </div>
-              <Activity className="h-8 w-8 text-primary opacity-20" />
             </div>
           </CardContent>
         </Card>
