@@ -60,27 +60,31 @@ export default function AddLand() {
     }
 
     try {
+      // Get boundary points from formData (passed from the form)
+      const boundaryPoints = formData.boundary || boundary;
+      
       // Prepare the boundary polygon in GeoJSON format
-      const coordinates = boundary.map(point => [point.lng, point.lat]);
+      const coordinates = boundaryPoints.map((point: any) => [point.lng, point.lat]);
       // Close the polygon by adding the first point at the end
       if (coordinates.length > 0) {
         coordinates.push(coordinates[0]);
       }
 
       // Calculate center point
-      const centerLat = boundary.reduce((sum, p) => sum + p.lat, 0) / boundary.length;
-      const centerLng = boundary.reduce((sum, p) => sum + p.lng, 0) / boundary.length;
+      const centerLat = boundaryPoints.reduce((sum: number, p: any) => sum + p.lat, 0) / boundaryPoints.length;
+      const centerLng = boundaryPoints.reduce((sum: number, p: any) => sum + p.lng, 0) / boundaryPoints.length;
 
       const { error } = await supabase.from('lands').insert({
         farmer_id: user.id,
         tenant_id: user.tenantId,
-        name: formData.local_name,
-        survey_number: formData.gat_number || null,
+        name: formData.name,
+        survey_number: formData.survey_number || null,
         ownership_type: formData.ownership_type,
         area_acres: area.acres,
         area_guntas: area.guntha,
         soil_type: formData.soil_type || null,
         water_source: formData.water_source || null,
+        current_crop: formData.current_crop || null,
         village: user?.village || '',
         taluka: user?.taluka || '',
         district: user?.district || '',
@@ -191,6 +195,7 @@ export default function AddLand() {
           onSubmit={handleFormSubmit}
           area={area}
           centerCoordinates={centerCoordinates}
+          boundary={boundary}
         />
       )}
     </>
