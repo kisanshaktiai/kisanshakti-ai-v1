@@ -238,15 +238,19 @@ export default function LanguageSelection() {
                 src={tenant.whiteLabel.brand_identity.logo_url} 
                 alt={tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name || 'App Logo'}
                 className="h-12 w-auto object-contain"
+                onError={(e) => {
+                  // Fallback if image fails to load
+                  e.currentTarget.style.display = 'none';
+                  e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                }}
               />
-            ) : (
-              <div className="flex items-center space-x-2">
-                <Leaf className="h-12 w-12 text-primary" />
-                <span className="text-2xl font-bold text-primary">
-                  {tenant?.name || 'KisanShakti'}
-                </span>
-              </div>
-            )}
+            ) : null}
+            <div className={`flex items-center space-x-2 ${tenant?.whiteLabel?.brand_identity?.logo_url ? 'hidden' : ''}`}>
+              <Leaf className="h-12 w-12 text-primary" />
+              <span className="text-2xl font-bold text-primary">
+                {tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name || 'KisanShakti'}
+              </span>
+            </div>
           </div>
           
           {/* Title */}

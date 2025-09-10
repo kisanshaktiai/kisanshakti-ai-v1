@@ -48,7 +48,7 @@ const queryClient = new QueryClient({
 });
 
 function AppInitializer({ children }: { children: React.ReactNode }) {
-  const { fetchTenant } = useTenantStore();
+  const { fetchTenant, tenant, applyWhiteLabelTheme } = useTenantStore();
   const { checkAuth, requirePin, session } = useAuthStore();
   const { currentLanguage } = useLanguageStore();
 
@@ -64,6 +64,13 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       requirePin();
     }
   }, [fetchTenant, checkAuth, requirePin]);
+
+  // Apply theme whenever tenant changes
+  useEffect(() => {
+    if (tenant?.whiteLabel) {
+      applyWhiteLabelTheme(tenant.whiteLabel);
+    }
+  }, [tenant, applyWhiteLabelTheme]);
 
   useEffect(() => {
     // Apply language

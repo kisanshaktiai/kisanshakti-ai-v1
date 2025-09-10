@@ -61,20 +61,27 @@ export default function SplashScreen() {
   };
 
   // Get theme colors and branding from white label config
-  const primaryColor = tenant?.whiteLabel?.brand_identity?.primary_color || 'hsl(var(--primary))';
-  const backgroundColor = tenant?.whiteLabel?.pwa_config?.background_color || primaryColor;
-  const splashScreen = tenant?.whiteLabel?.splash_screens?.mobile;
+  const primaryColor = tenant?.whiteLabel?.brand_identity?.primary_color || '#10b981';
+  const secondaryColor = tenant?.whiteLabel?.brand_identity?.secondary_color || '#059669';
+  const backgroundColor = tenant?.whiteLabel?.pwa_config?.background_color || '#ffffff';
+  const splashScreen = tenant?.whiteLabel?.splash_screens?.mobile || tenant?.whiteLabel?.splash_screens?.mobile_splash;
+  const androidSplash = tenant?.whiteLabel?.splash_screens?.android;
   const logoUrl = tenant?.whiteLabel?.brand_identity?.logo_url;
   const companyName = tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name || 'KisanShakti';
   const tagline = tenant?.whiteLabel?.brand_identity?.tagline || 'Empowering Farmers with Technology';
-  const appVersion = tenant?.whiteLabel?.pwa_config?.app_name ? '2.0.0' : '1.0.0';
+  const appVersion = tenant?.whiteLabel?.pwa_config?.short_name ? '2.0' : '1.0';
+  
+  // Use Android splash if available and on Android device
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  const splashUrl = isAndroid && androidSplash?.url ? androidSplash.url : splashScreen;
+  const splashBgColor = isAndroid && androidSplash?.backgroundColor ? androidSplash.backgroundColor : backgroundColor;
 
   return (
     <div 
       className="min-h-screen flex flex-col items-center justify-between p-6 relative overflow-hidden"
       style={{
-        background: splashScreen ? `url(${splashScreen}) center/cover` :
-          `linear-gradient(135deg, ${primaryColor} 0%, ${backgroundColor} 100%)`
+        background: splashUrl ? `url(${splashUrl}) center/cover` :
+          `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`
       }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
