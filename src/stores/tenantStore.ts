@@ -211,17 +211,59 @@ export const useTenantStore = create<TenantState>((set, get) => ({
         }
       }
 
-      // Fetch white label config if tenant found
+      // Fetch white label config or tenant branding if tenant found
       if (tenantData?.id) {
         localStorage.setItem('tenantId', tenantData.id);
         
+        // First try white_label_configs
         const { data: whiteLabel } = await supabase
           .from('white_label_configs')
           .select('*')
           .eq('tenant_id', tenantData.id)
           .maybeSingle();
         
-        whiteLabelData = whiteLabel;
+        if (whiteLabel) {
+          whiteLabelData = whiteLabel;
+        } else {
+          // Fallback to tenant_branding table
+          const { data: branding } = await supabase
+            .from('tenant_branding')
+            .select('*')
+            .eq('tenant_id', tenantData.id)
+            .order('version', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          
+          if (branding) {
+            // Convert tenant_branding to white_label_config format
+            whiteLabelData = {
+              brand_identity: {
+                company_name: branding.app_name || tenantData.name,
+                tagline: branding.app_tagline || 'Empowering Farmers with Technology',
+                logo_url: branding.logo_url,
+                favicon_url: branding.favicon_url,
+                primary_color: branding.primary_color || '#16a34a',
+                secondary_color: branding.secondary_color || '#65a30d',
+                accent_color: branding.accent_color || '#84cc16',
+                background_color: branding.background_color || '#f0fdf4',
+                text_color: branding.text_color || '#166534',
+                font_family: branding.font_family || 'Inter',
+                description: branding.company_description
+              },
+                app_customization: {
+                  theme_mode: (branding.settings as any)?.enable_dark_mode === false ? 'light' : 'system',
+                  custom_css: branding.custom_css
+                },
+              splash_screens: branding.splash_screen_url ? {
+                mobile: branding.splash_screen_url,
+                mobile_splash: branding.splash_screen_url
+              } : undefined,
+              pwa_config: branding.app_icon_url ? {
+                icons: [{ src: branding.app_icon_url }]
+              } : undefined
+            };
+          }
+        }
       }
       
       if (error || !tenantData) {
@@ -236,11 +278,55 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           localStorage.setItem('tenantId', defaultTenant.id);
           
           // Try to get white label config for default tenant
-          const { data: whiteLabel } = await supabase
+          let whiteLabel: any = null;
+          const { data: whiteLabelConfig } = await supabase
             .from('white_label_configs')
             .select('*')
             .eq('tenant_id', defaultTenant.id)
             .maybeSingle();
+          
+          if (whiteLabelConfig) {
+            whiteLabel = whiteLabelConfig;
+          } else {
+            // Fallback to tenant_branding table
+            const { data: branding } = await supabase
+              .from('tenant_branding')
+              .select('*')
+              .eq('tenant_id', defaultTenant.id)
+              .order('version', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            
+            if (branding) {
+              // Convert tenant_branding to white_label_config format
+              whiteLabel = {
+                brand_identity: {
+                  company_name: branding.app_name || defaultTenant.name,
+                  tagline: branding.app_tagline || 'Empowering Farmers with Technology',
+                  logo_url: branding.logo_url,
+                  favicon_url: branding.favicon_url,
+                  primary_color: branding.primary_color || '#16a34a',
+                  secondary_color: branding.secondary_color || '#65a30d',
+                  accent_color: branding.accent_color || '#84cc16',
+                  background_color: branding.background_color || '#f0fdf4',
+                  text_color: branding.text_color || '#166534',
+                  font_family: branding.font_family || 'Inter',
+                  description: branding.company_description
+                },
+                app_customization: {
+                  theme_mode: (branding.settings as any)?.enable_dark_mode === false ? 'light' : 'system',
+                  custom_css: branding.custom_css
+                },
+                splash_screens: branding.splash_screen_url ? {
+                  mobile: branding.splash_screen_url,
+                  mobile_splash: branding.splash_screen_url
+                } : undefined,
+                pwa_config: branding.app_icon_url ? {
+                  icons: [{ src: branding.app_icon_url }]
+                } : undefined
+              };
+            }
+          }
           
           const settingsObj = typeof defaultTenant.settings === 'object' && defaultTenant.settings !== null 
             ? defaultTenant.settings as any 
