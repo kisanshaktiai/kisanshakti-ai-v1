@@ -134,43 +134,38 @@ export function LandFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[800px] max-h-[90vh] z-[100] p-0 overflow-hidden">
-        {/* Modern header with gradient */}
-        <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 p-6 border-b">
+      <DialogContent className="sm:max-w-[600px] max-h-[85vh] z-[100] p-0 overflow-hidden">
+        {/* Compact header */}
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 p-4 border-b">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold">Complete Land Details</DialogTitle>
+            <DialogTitle className="text-lg font-semibold">Complete Land Details</DialogTitle>
           </DialogHeader>
           
-          {/* Area and location cards */}
-          <div className="flex gap-3 mt-4">
-            <Card className="flex-1 p-3 bg-white/80 dark:bg-gray-900/80 backdrop-blur">
-              <div className="flex items-center justify-between">
+          {/* Compact area display */}
+          <div className="flex gap-2 mt-3">
+            <Card className="flex-1 p-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur">
+              <div className="flex items-center gap-2">
+                <Mountain className="h-5 w-5 text-green-600/50 dark:text-green-400/50" />
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Total Area</p>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-bold text-green-600 dark:text-green-400">
-                      {area.acres.toFixed(3)}
-                    </span>
-                    <span className="text-sm text-muted-foreground">acres</span>
-                  </div>
-                  <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
-                    <span>{area.guntha.toFixed(2)} guntha</span>
-                    <span>•</span>
-                    <span>{area.sqft.toLocaleString()} sq ft</span>
-                  </div>
+                  <p className="text-xs text-muted-foreground">Area</p>
+                  <p className="text-sm font-semibold text-green-600 dark:text-green-400">
+                    {area.acres.toFixed(3)} acres
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {area.guntha.toFixed(2)} guntha • {area.sqft.toLocaleString()} sqft
+                  </p>
                 </div>
-                <Mountain className="h-8 w-8 text-green-600/20 dark:text-green-400/20" />
               </div>
             </Card>
             
             {centerCoordinates && (
-              <Card className="p-3 bg-white/80 dark:bg-gray-900/80 backdrop-blur">
+              <Card className="p-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur">
                 <div className="flex items-center gap-2">
                   <MapPin className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   <div>
                     <p className="text-xs text-muted-foreground">Location</p>
-                    <p className="text-xs font-mono">
-                      {centerCoordinates.lat.toFixed(6)}, {centerCoordinates.lng.toFixed(6)}
+                    <p className="text-[10px] font-mono">
+                      {centerCoordinates.lat.toFixed(4)}, {centerCoordinates.lng.toFixed(4)}
                     </p>
                   </div>
                 </div>
@@ -178,29 +173,24 @@ export function LandFormDialog({
             )}
             
             {boundary && boundary.length > 0 && (
-              <Card className="p-3 bg-white/80 dark:bg-gray-900/80 backdrop-blur">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Boundary Points</p>
-                    <p className="text-xs font-semibold">{boundary.length} points mapped</p>
-                  </div>
-                </div>
-              </Card>
+              <Badge variant="outline" className="px-2 py-1">
+                <CheckCircle2 className="h-3 w-3 mr-1" />
+                <span className="text-xs">{boundary.length} points</span>
+              </Badge>
             )}
           </div>
         </div>
 
-        <ScrollArea className="flex-1 max-h-[calc(90vh-200px)]">
+        <ScrollArea className="flex-1 max-h-[calc(85vh-150px)]">
           <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSubmit)} className="p-6 space-y-6">
+            <form onSubmit={form.handleSubmit(handleSubmit)} className="p-4 space-y-4">
               {/* Basic Information Section */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              <div className="space-y-3">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Basic Information
                 </h3>
                 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-3">
                   <FormField
                     control={form.control}
                     name="name"
@@ -211,8 +201,8 @@ export function LandFormDialog({
                         </FormLabel>
                         <FormControl>
                           <Input 
-                            placeholder="e.g., North Field, Home Garden" 
-                            className="h-11"
+                            placeholder="e.g., North Field" 
+                            className="h-9"
                             {...field} 
                           />
                         </FormControl>
@@ -232,7 +222,7 @@ export function LandFormDialog({
                         <FormControl>
                           <Input 
                             placeholder="e.g., 123/A" 
-                            className="h-11"
+                            className="h-9"
                             {...field} 
                           />
                         </FormControl>
@@ -251,7 +241,7 @@ export function LandFormDialog({
                       <FormLabel className="text-sm font-medium">
                         Ownership Type <span className="text-red-500">*</span>
                       </FormLabel>
-                      <div className="grid grid-cols-3 gap-3 mt-2">
+                      <div className="grid grid-cols-3 gap-2 mt-2">
                         {ownershipTypes.map((type) => {
                           const Icon = type.icon;
                           const isSelected = selectedOwnership === type.value;
@@ -259,17 +249,17 @@ export function LandFormDialog({
                             <Card
                               key={type.value}
                               className={cn(
-                                "p-4 cursor-pointer transition-all duration-200 border-2",
+                                "p-3 cursor-pointer transition-all duration-200 border",
                                 isSelected 
-                                  ? "border-green-500 bg-green-50 dark:bg-green-900/20 shadow-md" 
+                                  ? "border-green-500 bg-green-50 dark:bg-green-900/20" 
                                   : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
                               )}
                               onClick={() => handleOwnershipSelect(type.value)}
                             >
-                              <div className="flex flex-col items-center space-y-2">
-                                <Icon className={cn("h-6 w-6", type.color)} />
+                              <div className="flex flex-col items-center space-y-1">
+                                <Icon className={cn("h-5 w-5", type.color)} />
                                 <span className={cn(
-                                  "text-sm font-medium",
+                                  "text-xs font-medium",
                                   isSelected ? "text-green-700 dark:text-green-300" : "text-gray-700 dark:text-gray-300"
                                 )}>
                                   {type.label}
@@ -288,8 +278,8 @@ export function LandFormDialog({
               <Separator />
 
               {/* Land Properties Section */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              <div className="space-y-3">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Land Properties
                 </h3>
 
@@ -306,7 +296,7 @@ export function LandFormDialog({
                             key={soil.value}
                             variant={selectedSoilType === soil.value ? "default" : "outline"}
                             className={cn(
-                              "px-3 py-1.5 cursor-pointer transition-all",
+                              "px-2 py-1 cursor-pointer transition-all text-xs",
                               selectedSoilType === soil.value 
                                 ? "bg-amber-500 hover:bg-amber-600 text-white border-amber-500" 
                                 : "hover:bg-amber-50 dark:hover:bg-amber-900/20"
@@ -329,25 +319,25 @@ export function LandFormDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm font-medium">Water Source</FormLabel>
-                      <div className="grid grid-cols-4 gap-2 mt-2">
+                      <div className="grid grid-cols-4 gap-1.5 mt-2">
                         {waterSources.map((source) => (
                           <Card
                             key={source.value}
                             className={cn(
-                              "p-3 cursor-pointer transition-all text-center",
+                              "p-2 cursor-pointer transition-all text-center",
                               selectedWaterSource === source.value 
-                                ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 border-2" 
+                                ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 border" 
                                 : "border hover:border-gray-300 dark:hover:border-gray-600"
                             )}
                             onClick={() => handleWaterSourceSelect(source.value)}
                           >
                             <Droplets className={cn(
-                              "h-5 w-5 mx-auto mb-1",
+                              "h-4 w-4 mx-auto mb-0.5",
                               selectedWaterSource === source.value 
                                 ? "text-blue-600 dark:text-blue-400" 
                                 : "text-gray-400"
                             )} />
-                            <span className="text-xs">{source.label}</span>
+                            <span className="text-[10px]">{source.label}</span>
                           </Card>
                         ))}
                       </div>
@@ -360,8 +350,8 @@ export function LandFormDialog({
               <Separator />
 
               {/* Current Crop Section */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
+              <div className="space-y-3">
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Current Crop
                 </h3>
 
@@ -371,14 +361,14 @@ export function LandFormDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm font-medium">Select Current Crop</FormLabel>
-                      <ScrollArea className="h-32 w-full border rounded-lg p-2">
-                        <div className="flex flex-wrap gap-2">
+                      <ScrollArea className="h-24 w-full border rounded-lg p-2">
+                        <div className="flex flex-wrap gap-1.5">
                           {allCrops.map((crop) => (
                             <Badge
                               key={crop.value}
                               variant={selectedCrop === crop.value ? "default" : "outline"}
                               className={cn(
-                                "cursor-pointer transition-all",
+                                "cursor-pointer transition-all text-xs px-2 py-0.5",
                                 selectedCrop === crop.value 
                                   ? "bg-green-500 hover:bg-green-600 text-white" 
                                   : "hover:bg-green-50 dark:hover:bg-green-900/20"
@@ -407,8 +397,8 @@ export function LandFormDialog({
                     <FormLabel className="text-sm font-medium">Additional Notes</FormLabel>
                     <FormControl>
                       <Textarea 
-                        placeholder="Any additional information about this land..."
-                        className="min-h-[80px] resize-none"
+                        placeholder="Any additional information..."
+                        className="min-h-[60px] resize-none"
                         {...field} 
                       />
                     </FormControl>
@@ -418,7 +408,7 @@ export function LandFormDialog({
               />
 
               {/* Action Buttons */}
-              <div className="flex justify-end gap-3 pt-4">
+              <div className="flex justify-end gap-2 pt-2">
                 <Button
                   type="button"
                   variant="outline"
