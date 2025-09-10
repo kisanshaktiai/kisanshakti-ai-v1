@@ -213,6 +213,7 @@ export function GoogleMapBoundaryDrawer({
   }, [isTracking, startTracking, stopTracking]);
 
   const handleSave = useCallback(() => {
+    console.log('handleSave called', { boundary, area });
     if (boundary.length < 3) {
       toast({
         title: "Invalid Boundary",
@@ -222,6 +223,7 @@ export function GoogleMapBoundaryDrawer({
       return;
     }
     
+    console.log('Calling onSave with:', boundary, area);
     onSave(boundary, area);
   }, [boundary, area, onSave, toast]);
 

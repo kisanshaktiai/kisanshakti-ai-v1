@@ -31,6 +31,7 @@ export default function AddLand() {
   const [centerCoordinates, setCenterCoordinates] = useState({ lat: 0, lng: 0 });
 
   const handleMapSave = (boundaryPoints: LatLng[], calculatedArea: typeof area) => {
+    console.log('handleMapSave called', { boundaryPoints, calculatedArea });
     setBoundary(boundaryPoints);
     setArea(calculatedArea);
     
@@ -44,6 +45,7 @@ export default function AddLand() {
       });
     }
     
+    console.log('Setting showForm to true');
     setShowForm(true);
   };
 
