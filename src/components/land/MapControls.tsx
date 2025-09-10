@@ -8,7 +8,9 @@ import {
   X,
   Navigation2,
   MapIcon,
-  LocateFixed
+  LocateFixed,
+  Trash2,
+  ArrowLeft
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -25,6 +27,7 @@ interface MapControlsProps {
   onUndo: () => void;
   onSave: () => void;
   onCancel: () => void;
+  onDeleteAll?: () => void;
   canUndo: boolean;
   canSave: boolean;
   isTracking?: boolean;
@@ -38,46 +41,25 @@ export function MapControls({
   onUndo,
   onSave,
   onCancel,
+  onDeleteAll,
   canUndo,
   canSave,
   isTracking = false,
   onToggleTracking,
   gpsAccuracy
 }: MapControlsProps) {
-  const [showHelp, setShowHelp] = useState(true);
-
   return (
     <TooltipProvider>
       <>
-        {/* Help Card */}
-        {showHelp && (
-          <Card className="absolute top-4 left-4 right-4 sm:left-4 sm:right-auto sm:w-72 p-2.5 bg-background/95 backdrop-blur-sm z-10 shadow-sm">
-            <div className="flex justify-between items-start gap-2">
-              <div className="space-y-0.5">
-                <p className="font-medium flex items-center gap-1.5 text-sm">
-                  <MapIcon className="h-3.5 w-3.5 text-primary" />
-                  Mark your land boundary
-                </p>
-                <p className="text-muted-foreground text-xs leading-tight">
-                  {mode === 'draw' 
-                    ? 'Tap on the map to add points'
-                    : 'Walk around your land perimeter'}
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  Min 3 points required
-                </p>
-              </div>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-5 w-5 hover:bg-muted/50"
-                onClick={() => setShowHelp(false)}
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
-          </Card>
-        )}
+        {/* Back Button - Top Left */}
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={onCancel}
+          className="absolute top-4 left-4 h-10 w-10 bg-background/95 backdrop-blur-sm shadow-sm z-10"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </Button>
 
         {/* GPS Accuracy Indicator */}
         {gpsAccuracy !== undefined && (
@@ -133,15 +115,6 @@ export function MapControls({
 
             {/* Action Buttons */}
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onCancel}
-                className="h-9"
-              >
-                Cancel
-              </Button>
-              
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -158,15 +131,34 @@ export function MapControls({
                   <p>Undo last point</p>
                 </TooltipContent>
               </Tooltip>
+
+              {onDeleteAll && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={onDeleteAll}
+                      disabled={!canUndo}
+                      className="h-9 w-9"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Clear all points</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
               
               <Button
                 onClick={onSave}
                 disabled={!canSave}
                 size="sm"
-                className="flex-1 h-9"
+                className="flex-1 h-9 bg-primary text-primary-foreground shadow-lg"
               >
                 <Save className="h-3.5 w-3.5 mr-1.5" />
-                Save Land
+                Save Boundary
               </Button>
             </div>
           </div>

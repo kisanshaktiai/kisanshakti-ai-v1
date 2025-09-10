@@ -175,7 +175,7 @@ export default function AddLand() {
   // Main map view - fullscreen without header and bottom navigation
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-background">
+      <div className="fixed inset-0 z-[60] bg-background">
         <GoogleMapBoundaryDrawer
           onSave={handleMapSave}
           onCancel={handleCancel}

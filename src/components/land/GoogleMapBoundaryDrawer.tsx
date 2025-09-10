@@ -138,6 +138,10 @@ export function GoogleMapBoundaryDrawer({
     setBoundary(prev => prev.slice(0, -1));
   }, []);
 
+  const handleDeleteAll = useCallback(() => {
+    setBoundary([]);
+  }, []);
+
   const startTracking = useCallback(() => {
     if (!navigator.geolocation) {
       toast({
@@ -327,6 +331,7 @@ export function GoogleMapBoundaryDrawer({
         mode={mode}
         onModeChange={setMode}
         onUndo={handleUndo}
+        onDeleteAll={handleDeleteAll}
         onSave={handleSave}
         onCancel={onCancel}
         canUndo={boundary.length > 0}

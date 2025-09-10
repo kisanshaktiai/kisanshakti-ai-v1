@@ -12,7 +12,7 @@ interface AreaDisplayProps {
 
 export function AreaDisplay({ area, pointsCount }: AreaDisplayProps) {
   return (
-    <Card className="absolute top-20 left-4 right-4 sm:left-auto sm:right-4 sm:w-80 p-4 bg-background/95 backdrop-blur-sm shadow-lg z-10">
+    <Card className="absolute top-4 left-4 right-4 sm:left-auto sm:right-4 sm:w-80 p-3 bg-background/95 backdrop-blur-sm shadow-lg z-10">
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Map className="h-4 w-4" />
