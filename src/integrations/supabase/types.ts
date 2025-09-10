@@ -4212,6 +4212,7 @@ export type Database = {
           center_point_old: Json | null
           created_at: string
           crop_stage: string | null
+          cultivation_date: string | null
           current_crop: string | null
           district: string | null
           elevation_meters: number | null
@@ -4232,6 +4233,7 @@ export type Database = {
           location_context: Json | null
           name: string
           nitrogen_kg_per_ha: number | null
+          notes: string | null
           organic_carbon_percent: number | null
           ownership_type: string | null
           phosphorus_kg_per_ha: number | null
@@ -4256,6 +4258,7 @@ export type Database = {
           center_point_old?: Json | null
           created_at?: string
           crop_stage?: string | null
+          cultivation_date?: string | null
           current_crop?: string | null
           district?: string | null
           elevation_meters?: number | null
@@ -4276,6 +4279,7 @@ export type Database = {
           location_context?: Json | null
           name: string
           nitrogen_kg_per_ha?: number | null
+          notes?: string | null
           organic_carbon_percent?: number | null
           ownership_type?: string | null
           phosphorus_kg_per_ha?: number | null
@@ -4300,6 +4304,7 @@ export type Database = {
           center_point_old?: Json | null
           created_at?: string
           crop_stage?: string | null
+          cultivation_date?: string | null
           current_crop?: string | null
           district?: string | null
           elevation_meters?: number | null
@@ -4320,6 +4325,7 @@ export type Database = {
           location_context?: Json | null
           name?: string
           nitrogen_kg_per_ha?: number | null
+          notes?: string | null
           organic_carbon_percent?: number | null
           ownership_type?: string | null
           phosphorus_kg_per_ha?: number | null
