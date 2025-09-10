@@ -337,9 +337,9 @@ export default function LandManagement() {
                 <Progress value={(cultivatedLands / lands.length) * 100} className="h-1.5 mt-1" />
               </div>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Offline Indicator */}
       {!isOnline && (

@@ -29,7 +29,7 @@ interface LandInstructionDialogProps {
 
 export function LandInstructionDialog({ open, onClose, onStart }: LandInstructionDialogProps) {
   const { t } = useTranslation();
-  const { selectedLanguage } = useLanguageStore();
+  const { currentLanguage } = useLanguageStore();
   const [currentStep, setCurrentStep] = useState(0);
   const [isReading, setIsReading] = useState(false);
 
@@ -41,7 +41,7 @@ export function LandInstructionDialog({ open, onClose, onStart }: LandInstructio
       'pa': 'pa-IN',
       'ta': 'ta-IN'
     };
-    return langMap[selectedLanguage] || 'en-US';
+    return langMap[currentLanguage] || 'en-US';
   };
 
   const { speak, stop, isSpeaking } = useTextToSpeech({
