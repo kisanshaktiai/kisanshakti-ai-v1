@@ -143,10 +143,10 @@ export function LandFormDialog({
           
           {/* Compact area display */}
           <div className="flex gap-2 mt-3">
-            <Card className="flex-1 p-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur">
+            <Card className="flex-1 p-3 bg-white/80 dark:bg-gray-900/80 backdrop-blur">
               <div className="flex items-center gap-2">
                 <Mountain className="h-5 w-5 text-green-600/50 dark:text-green-400/50" />
-                <div>
+                <div className="flex-1">
                   <p className="text-xs text-muted-foreground">Area</p>
                   <p className="text-sm font-semibold text-green-600 dark:text-green-400">
                     {area.acres.toFixed(3)} acres
@@ -159,24 +159,23 @@ export function LandFormDialog({
             </Card>
             
             {centerCoordinates && (
-              <Card className="p-2 bg-white/80 dark:bg-gray-900/80 backdrop-blur">
+              <Card className="flex-1 p-3 bg-white/80 dark:bg-gray-900/80 backdrop-blur">
                 <div className="flex items-center gap-2">
                   <MapPin className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  <div>
+                  <div className="flex-1">
                     <p className="text-xs text-muted-foreground">Location</p>
                     <p className="text-[10px] font-mono">
                       {centerCoordinates.lat.toFixed(4)}, {centerCoordinates.lng.toFixed(4)}
                     </p>
+                    {boundary && boundary.length > 0 && (
+                      <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5">
+                        <CheckCircle2 className="h-3 w-3" />
+                        {boundary.length} boundary points
+                      </p>
+                    )}
                   </div>
                 </div>
               </Card>
-            )}
-            
-            {boundary && boundary.length > 0 && (
-              <Badge variant="outline" className="px-2 py-1">
-                <CheckCircle2 className="h-3 w-3 mr-1" />
-                <span className="text-xs">{boundary.length} points</span>
-              </Badge>
             )}
           </div>
         </div>
