@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { format } from 'date-fns';
 import {
   Dialog,
   DialogContent,
@@ -19,17 +20,18 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, MapPin, Home, Droplets, Mountain, Leaf, Trees, CheckCircle2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
-import {
-  allCrops,
-  soilTypes,
-  waterSources
-} from './cropData';
+import { Loader2, MapPin, Home, Droplets, Mountain, Leaf, Trees, CheckCircle2, CalendarIcon, Sprout, Info } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { CropSelector } from '@/components/crops/CropSelector';
+import { useLandFormData } from '@/hooks/useLandFormData';
+import { supabase } from '@/integrations/supabase/client';
 
 // Modern ownership type options
 const ownershipTypes = [
@@ -40,15 +42,22 @@ const ownershipTypes = [
 
 // Enhanced form schema matching database fields
 const formSchema = z.object({
-  // Required fields
+  // Tab 1: Basic Information
   name: z.string().min(2, 'Land name must be at least 2 characters'),
+  survey_no: z.string().optional(),
   ownership_type: z.enum(['owned', 'leased', 'shared']),
-  
-  // Optional fields
-  survey_number: z.string().optional(),
   soil_type: z.string().optional(),
   water_source: z.string().optional(),
+  
+  // Tab 2: Crop Details
   current_crop: z.string().optional(),
+  irrigation_type: z.string().optional(),
+  cultivation_date: z.date().optional(),
+  expected_harvest_date: z.date().optional(),
+  last_crop: z.string().optional(),
+  last_harvest_date: z.date().optional(),
+  
+  // Additional
   notes: z.string().optional(),
 });
 
@@ -68,6 +77,7 @@ interface LandFormDialogProps {
     lng: number;
   };
   boundary: Array<{lat: number; lng: number}>;
+  existingLandId?: string; // For editing existing land
 }
 
 export function LandFormDialog({ 
@@ -76,72 +86,100 @@ export function LandFormDialog({
   onSubmit, 
   area, 
   centerCoordinates,
-  boundary 
+  boundary,
+  existingLandId
 }: LandFormDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedOwnership, setSelectedOwnership] = useState<string>('owned');
-  const [selectedSoilType, setSelectedSoilType] = useState<string>('');
-  const [selectedWaterSource, setSelectedWaterSource] = useState<string>('');
-  const [selectedCrop, setSelectedCrop] = useState<string>('');
+  const [activeTab, setActiveTab] = useState('basic');
+  const { soilTypes, waterSources, irrigationTypes, loading: dataLoading, error: dataError } = useLandFormData();
   
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: '',
-      survey_number: '',
+      survey_no: '',
       ownership_type: 'owned',
       soil_type: '',
       water_source: '',
       current_crop: '',
+      irrigation_type: '',
+      cultivation_date: undefined,
+      expected_harvest_date: undefined,
+      last_crop: '',
+      last_harvest_date: undefined,
       notes: '',
     },
   });
 
+  // Load existing land data if editing
+  useEffect(() => {
+    if (existingLandId && open) {
+      const loadLandData = async () => {
+        const { data, error } = await supabase
+          .from('lands')
+          .select('*')
+          .eq('id', existingLandId)
+          .single();
+        
+        if (data && !error) {
+          form.reset({
+            name: data.name || '',
+            survey_no: data.survey_number || '',
+            ownership_type: (data.ownership_type as 'owned' | 'leased' | 'shared') || 'owned',
+            soil_type: data.soil_type || '',
+            water_source: data.water_source || '',
+            current_crop: data.current_crop || '',
+            irrigation_type: data.irrigation_type || '',
+            cultivation_date: data.planting_date ? new Date(data.planting_date) : undefined,
+            expected_harvest_date: data.expected_harvest_date ? new Date(data.expected_harvest_date) : undefined,
+            last_crop: data.last_crop || '',
+            last_harvest_date: data.last_harvest_date ? new Date(data.last_harvest_date) : undefined,
+            notes: data.description || '',
+          });
+        }
+      };
+      loadLandData();
+    }
+  }, [existingLandId, open, form]);
+
   const handleSubmit = async (data: FormData) => {
     setIsSubmitting(true);
     try {
-      // Include boundary points with form data
       await onSubmit({
         ...data,
         boundary: boundary
       });
       form.reset();
+      setActiveTab('basic');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Update form values when selections change
-  const handleOwnershipSelect = (value: string) => {
-    setSelectedOwnership(value);
-    form.setValue('ownership_type', value as any);
-  };
-
-  const handleSoilTypeSelect = (value: string) => {
-    setSelectedSoilType(value);
-    form.setValue('soil_type', value);
-  };
-
-  const handleWaterSourceSelect = (value: string) => {
-    setSelectedWaterSource(value);
-    form.setValue('water_source', value);
-  };
-
-  const handleCropSelect = (value: string) => {
-    setSelectedCrop(value);
-    form.setValue('current_crop', value);
-  };
+  if (dataLoading) {
+    return (
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-[600px]">
+          <div className="flex items-center justify-center p-8">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px] max-h-[85vh] z-[100] p-0 overflow-hidden">
-        {/* Compact header */}
+      <DialogContent className="sm:max-w-[700px] max-h-[90vh] z-[100] p-0 overflow-hidden">
+        {/* Header with area display */}
         <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 p-4 border-b">
           <DialogHeader>
-            <DialogTitle className="text-lg font-semibold">Complete Land Details</DialogTitle>
+            <DialogTitle className="text-lg font-semibold">
+              {existingLandId ? 'Edit Land Details' : 'Complete Land Details'}
+            </DialogTitle>
           </DialogHeader>
           
-          {/* Compact area display */}
+          {/* Compact area and location display */}
           <div className="flex gap-2 mt-3">
             <Card className="flex-1 p-3 bg-white/80 dark:bg-gray-900/80 backdrop-blur">
               <div className="flex items-center gap-2">
@@ -180,260 +218,432 @@ export function LandFormDialog({
           </div>
         </div>
 
-        <ScrollArea className="flex-1 max-h-[calc(85vh-150px)]">
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSubmit)} className="p-4 space-y-4">
-              {/* Basic Information Section */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col h-full">
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+              <TabsList className="grid w-full grid-cols-2 mx-4 mt-4" style={{ width: 'calc(100% - 2rem)' }}>
+                <TabsTrigger value="basic" className="text-xs">
+                  <Info className="h-3 w-3 mr-1" />
                   Basic Information
-                </h3>
-                
-                <div className="grid grid-cols-2 gap-3">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-sm font-medium">
-                          Land Name <span className="text-red-500">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <Input 
-                            placeholder="e.g., North Field" 
-                            className="h-9"
-                            {...field} 
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                </TabsTrigger>
+                <TabsTrigger value="crop" className="text-xs">
+                  <Sprout className="h-3 w-3 mr-1" />
+                  Crop Details
+                </TabsTrigger>
+              </TabsList>
 
-                  <FormField
-                    control={form.control}
-                    name="survey_number"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-sm font-medium">
-                          Survey/Gat Number
-                        </FormLabel>
-                        <FormControl>
-                          <Input 
-                            placeholder="e.g., 123/A" 
-                            className="h-9"
-                            {...field} 
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+              <ScrollArea className="flex-1 max-h-[calc(90vh-280px)]">
+                <div className="p-4">
+                  {/* Tab 1: Basic Information */}
+                  <TabsContent value="basic" className="space-y-4 mt-0">
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <FormField
+                          control={form.control}
+                          name="name"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-sm font-medium">
+                                Land Name <span className="text-red-500">*</span>
+                              </FormLabel>
+                              <FormControl>
+                                <Input 
+                                  placeholder="e.g., North Field" 
+                                  className="h-9"
+                                  {...field} 
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
 
-                {/* Ownership Type - Modern Card Selection */}
-                <FormField
-                  control={form.control}
-                  name="ownership_type"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium">
-                        Ownership Type <span className="text-red-500">*</span>
-                      </FormLabel>
-                      <div className="grid grid-cols-3 gap-2 mt-2">
-                        {ownershipTypes.map((type) => {
-                          const Icon = type.icon;
-                          const isSelected = selectedOwnership === type.value;
-                          return (
-                            <Card
-                              key={type.value}
-                              className={cn(
-                                "p-3 cursor-pointer transition-all duration-200 border",
-                                isSelected 
-                                  ? "border-green-500 bg-green-50 dark:bg-green-900/20" 
-                                  : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
-                              )}
-                              onClick={() => handleOwnershipSelect(type.value)}
-                            >
-                              <div className="flex flex-col items-center space-y-1">
-                                <Icon className={cn("h-5 w-5", type.color)} />
-                                <span className={cn(
-                                  "text-xs font-medium",
-                                  isSelected ? "text-green-700 dark:text-green-300" : "text-gray-700 dark:text-gray-300"
-                                )}>
-                                  {type.label}
-                                </span>
-                              </div>
-                            </Card>
-                          );
-                        })}
+                        <FormField
+                          control={form.control}
+                          name="survey_no"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-sm font-medium">
+                                Survey/Gat Number
+                              </FormLabel>
+                              <FormControl>
+                                <Input 
+                                  placeholder="e.g., 123/A" 
+                                  className="h-9"
+                                  {...field} 
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
                       </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
 
-              <Separator />
-
-              {/* Land Properties Section */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Land Properties
-                </h3>
-
-                {/* Soil Type - Badge Selection */}
-                <FormField
-                  control={form.control}
-                  name="soil_type"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium">Soil Type</FormLabel>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {soilTypes.map((soil) => (
-                          <Badge
-                            key={soil.value}
-                            variant={selectedSoilType === soil.value ? "default" : "outline"}
-                            className={cn(
-                              "px-2 py-1 cursor-pointer transition-all text-xs",
-                              selectedSoilType === soil.value 
-                                ? "bg-amber-500 hover:bg-amber-600 text-white border-amber-500" 
-                                : "hover:bg-amber-50 dark:hover:bg-amber-900/20"
-                            )}
-                            onClick={() => handleSoilTypeSelect(soil.value)}
-                          >
-                            {soil.label}
-                          </Badge>
-                        ))}
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Water Source - Icon Cards */}
-                <FormField
-                  control={form.control}
-                  name="water_source"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium">Water Source</FormLabel>
-                      <div className="grid grid-cols-4 gap-1.5 mt-2">
-                        {waterSources.map((source) => (
-                          <Card
-                            key={source.value}
-                            className={cn(
-                              "p-2 cursor-pointer transition-all text-center",
-                              selectedWaterSource === source.value 
-                                ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 border" 
-                                : "border hover:border-gray-300 dark:hover:border-gray-600"
-                            )}
-                            onClick={() => handleWaterSourceSelect(source.value)}
-                          >
-                            <Droplets className={cn(
-                              "h-4 w-4 mx-auto mb-0.5",
-                              selectedWaterSource === source.value 
-                                ? "text-blue-600 dark:text-blue-400" 
-                                : "text-gray-400"
-                            )} />
-                            <span className="text-[10px]">{source.label}</span>
-                          </Card>
-                        ))}
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <Separator />
-
-              {/* Current Crop Section */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Current Crop
-                </h3>
-
-                <FormField
-                  control={form.control}
-                  name="current_crop"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm font-medium">Select Current Crop</FormLabel>
-                      <ScrollArea className="h-24 w-full border rounded-lg p-2">
-                        <div className="flex flex-wrap gap-1.5">
-                          {allCrops.map((crop) => (
-                            <Badge
-                              key={crop.value}
-                              variant={selectedCrop === crop.value ? "default" : "outline"}
-                              className={cn(
-                                "cursor-pointer transition-all text-xs px-2 py-0.5",
-                                selectedCrop === crop.value 
-                                  ? "bg-green-500 hover:bg-green-600 text-white" 
-                                  : "hover:bg-green-50 dark:hover:bg-green-900/20"
-                              )}
-                              onClick={() => handleCropSelect(crop.value)}
-                            >
-                              {crop.label}
-                            </Badge>
-                          ))}
-                        </div>
-                      </ScrollArea>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <Separator />
-
-              {/* Notes Section */}
-              <FormField
-                control={form.control}
-                name="notes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm font-medium">Additional Notes</FormLabel>
-                    <FormControl>
-                      <Textarea 
-                        placeholder="Any additional information..."
-                        className="min-h-[60px] resize-none"
-                        {...field} 
+                      {/* Ownership Type */}
+                      <FormField
+                        control={form.control}
+                        name="ownership_type"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-sm font-medium">
+                              Ownership Type <span className="text-red-500">*</span>
+                            </FormLabel>
+                            <div className="grid grid-cols-3 gap-2 mt-2">
+                              {ownershipTypes.map((type) => {
+                                const Icon = type.icon;
+                                const isSelected = field.value === type.value;
+                                return (
+                                  <Card
+                                    key={type.value}
+                                    className={cn(
+                                      "p-3 cursor-pointer transition-all duration-200 border",
+                                      isSelected 
+                                        ? "border-green-500 bg-green-50 dark:bg-green-900/20" 
+                                        : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                                    )}
+                                    onClick={() => field.onChange(type.value)}
+                                  >
+                                    <div className="flex flex-col items-center space-y-1">
+                                      <Icon className={cn("h-5 w-5", type.color)} />
+                                      <span className={cn(
+                                        "text-xs font-medium",
+                                        isSelected ? "text-green-700 dark:text-green-300" : "text-gray-700 dark:text-gray-300"
+                                      )}>
+                                        {type.label}
+                                      </span>
+                                    </div>
+                                  </Card>
+                                );
+                              })}
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
                       />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
 
-              {/* Action Buttons */}
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={onClose}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Saving Land...
-                    </>
-                  ) : (
-                    'Save Land Details'
+                      {/* Soil Type from Database */}
+                      <FormField
+                        control={form.control}
+                        name="soil_type"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-sm font-medium">Soil Type</FormLabel>
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {soilTypes.map((soil) => (
+                                <Badge
+                                  key={soil.id}
+                                  variant={field.value === soil.value ? "default" : "outline"}
+                                  className={cn(
+                                    "px-2 py-1 cursor-pointer transition-all text-xs",
+                                    field.value === soil.value 
+                                      ? "bg-amber-500 hover:bg-amber-600 text-white border-amber-500" 
+                                      : "hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                                  )}
+                                  onClick={() => field.onChange(soil.value)}
+                                >
+                                  {soil.label}
+                                </Badge>
+                              ))}
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Water Source from Database */}
+                      <FormField
+                        control={form.control}
+                        name="water_source"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-sm font-medium">Water Source</FormLabel>
+                            <div className="grid grid-cols-4 gap-1.5 mt-2">
+                              {waterSources.map((source) => (
+                                <Card
+                                  key={source.id}
+                                  className={cn(
+                                    "p-2 cursor-pointer transition-all text-center",
+                                    field.value === source.value 
+                                      ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 border" 
+                                      : "border hover:border-gray-300 dark:hover:border-gray-600"
+                                  )}
+                                  onClick={() => field.onChange(source.value)}
+                                >
+                                  <Droplets className={cn(
+                                    "h-4 w-4 mx-auto mb-0.5",
+                                    field.value === source.value 
+                                      ? "text-blue-600 dark:text-blue-400" 
+                                      : "text-gray-400"
+                                  )} />
+                                  <span className="text-[10px]">{source.label}</span>
+                                </Card>
+                              ))}
+                            </div>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </TabsContent>
+
+                  {/* Tab 2: Crop Details */}
+                  <TabsContent value="crop" className="space-y-4 mt-0">
+                    {/* Current Crop Selection */}
+                    <FormField
+                      control={form.control}
+                      name="current_crop"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm font-medium">Current Crop</FormLabel>
+                          <CropSelector
+                            value={field.value}
+                            onChange={(cropId, cropName) => field.onChange(cropName)}
+                            label="Select current crop from groups"
+                          />
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <Separator />
+
+                    {/* Irrigation Type from Database */}
+                    <FormField
+                      control={form.control}
+                      name="irrigation_type"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm font-medium">Irrigation Type</FormLabel>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {irrigationTypes.map((type) => (
+                              <Badge
+                                key={type.id}
+                                variant={field.value === type.value ? "default" : "outline"}
+                                className={cn(
+                                  "px-2 py-1 cursor-pointer transition-all text-xs",
+                                  field.value === type.value 
+                                    ? "bg-blue-500 hover:bg-blue-600 text-white border-blue-500" 
+                                    : "hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                )}
+                                onClick={() => field.onChange(type.value)}
+                              >
+                                {type.label}
+                              </Badge>
+                            ))}
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {/* Cultivation Date */}
+                      <FormField
+                        control={form.control}
+                        name="cultivation_date"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-col">
+                            <FormLabel className="text-sm font-medium">Cultivation Date</FormLabel>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <FormControl>
+                                  <Button
+                                    variant="outline"
+                                    className={cn(
+                                      "w-full pl-3 text-left font-normal h-9",
+                                      !field.value && "text-muted-foreground"
+                                    )}
+                                  >
+                                    {field.value ? (
+                                      format(field.value, "PPP")
+                                    ) : (
+                                      <span>Pick a date</span>
+                                    )}
+                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                  </Button>
+                                </FormControl>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar
+                                  mode="single"
+                                  selected={field.value}
+                                  onSelect={field.onChange}
+                                  disabled={(date) =>
+                                    date > new Date() || date < new Date("1900-01-01")
+                                  }
+                                  initialFocus
+                                  className="pointer-events-auto"
+                                />
+                              </PopoverContent>
+                            </Popover>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {/* Expected Harvest Date */}
+                      <FormField
+                        control={form.control}
+                        name="expected_harvest_date"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-col">
+                            <FormLabel className="text-sm font-medium">Expected Harvest</FormLabel>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <FormControl>
+                                  <Button
+                                    variant="outline"
+                                    className={cn(
+                                      "w-full pl-3 text-left font-normal h-9",
+                                      !field.value && "text-muted-foreground"
+                                    )}
+                                  >
+                                    {field.value ? (
+                                      format(field.value, "PPP")
+                                    ) : (
+                                      <span>Pick a date</span>
+                                    )}
+                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                  </Button>
+                                </FormControl>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar
+                                  mode="single"
+                                  selected={field.value}
+                                  onSelect={field.onChange}
+                                  disabled={(date) =>
+                                    date < new Date()
+                                  }
+                                  initialFocus
+                                  className="pointer-events-auto"
+                                />
+                              </PopoverContent>
+                            </Popover>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <Separator />
+
+                    {/* Last Crop Selection */}
+                    <FormField
+                      control={form.control}
+                      name="last_crop"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm font-medium">Previous Crop</FormLabel>
+                          <CropSelector
+                            value={field.value}
+                            onChange={(cropId, cropName) => field.onChange(cropName)}
+                            label="Select previous crop"
+                          />
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {/* Last Harvest Date */}
+                    <FormField
+                      control={form.control}
+                      name="last_harvest_date"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                          <FormLabel className="text-sm font-medium">Last Harvest Date</FormLabel>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <Button
+                                  variant="outline"
+                                  className={cn(
+                                    "w-full pl-3 text-left font-normal h-9",
+                                    !field.value && "text-muted-foreground"
+                                  )}
+                                >
+                                  {field.value ? (
+                                    format(field.value, "PPP")
+                                  ) : (
+                                    <span>Pick a date</span>
+                                  )}
+                                  <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                </Button>
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={field.value}
+                                onSelect={field.onChange}
+                                disabled={(date) =>
+                                  date > new Date() || date < new Date("1900-01-01")
+                                }
+                                initialFocus
+                                className="pointer-events-auto"
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </TabsContent>
+
+                  {/* Notes Section (appears in both tabs) */}
+                  {activeTab === 'basic' && (
+                    <div className="mt-4">
+                      <Separator className="mb-4" />
+                      <FormField
+                        control={form.control}
+                        name="notes"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-sm font-medium">Additional Notes</FormLabel>
+                            <FormControl>
+                              <Textarea 
+                                placeholder="Any additional information..."
+                                className="min-h-[60px] resize-none"
+                                {...field} 
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
                   )}
-                </Button>
-              </div>
-            </form>
-          </Form>
-        </ScrollArea>
+                </div>
+              </ScrollArea>
+            </Tabs>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 dark:bg-gray-900/50">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving Land...
+                  </>
+                ) : (
+                  existingLandId ? 'Update Land Details' : 'Save Land Details'
+                )}
+              </Button>
+            </div>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );

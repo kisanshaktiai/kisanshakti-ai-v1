@@ -1603,31 +1603,37 @@ export type Database = {
       }
       crop_groups: {
         Row: {
-          created_at: string | null
+          created_at: string
           description: string | null
-          display_order: number | null
+          display_order: number
+          group_icon: string
+          group_key: string
+          group_name: string
           id: string
-          is_active: boolean | null
-          label: string
-          value: string
+          is_active: boolean
+          updated_at: string
         }
         Insert: {
-          created_at?: string | null
+          created_at?: string
           description?: string | null
-          display_order?: number | null
+          display_order?: number
+          group_icon?: string
+          group_key: string
+          group_name: string
           id?: string
-          is_active?: boolean | null
-          label: string
-          value: string
+          is_active?: boolean
+          updated_at?: string
         }
         Update: {
-          created_at?: string | null
+          created_at?: string
           description?: string | null
-          display_order?: number | null
+          display_order?: number
+          group_icon?: string
+          group_key?: string
+          group_name?: string
           id?: string
-          is_active?: boolean | null
-          label?: string
-          value?: string
+          is_active?: boolean
+          updated_at?: string
         }
         Relationships: []
       }
@@ -1780,36 +1786,42 @@ export type Database = {
           created_at: string | null
           crop_group_id: string | null
           description: string | null
+          display_order: number
           duration_days: number | null
           id: string
           is_active: boolean | null
           label: string
           label_local: string | null
           season: string | null
+          updated_at: string
           value: string
         }
         Insert: {
           created_at?: string | null
           crop_group_id?: string | null
           description?: string | null
+          display_order?: number
           duration_days?: number | null
           id?: string
           is_active?: boolean | null
           label: string
           label_local?: string | null
           season?: string | null
+          updated_at?: string
           value: string
         }
         Update: {
           created_at?: string | null
           crop_group_id?: string | null
           description?: string | null
+          display_order?: number
           duration_days?: number | null
           id?: string
           is_active?: boolean | null
           label?: string
           label_local?: string | null
           season?: string | null
+          updated_at?: string
           value?: string
         }
         Relationships: [
@@ -3615,6 +3627,42 @@ export type Database = {
           },
         ]
       }
+      farming_stages: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          sample_questions: Json
+          stage_description: string | null
+          stage_icon: string | null
+          stage_key: string
+          stage_name: string
+          stage_order: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          sample_questions?: Json
+          stage_description?: string | null
+          stage_icon?: string | null
+          stage_key: string
+          stage_name: string
+          stage_order: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          sample_questions?: Json
+          stage_description?: string | null
+          stage_icon?: string | null
+          stage_key?: string
+          stage_name?: string
+          stage_order?: number
+        }
+        Relationships: []
+      }
       feature_configs: {
         Row: {
           config_data: Json | null
@@ -4173,9 +4221,12 @@ export type Database = {
           gps_recorded_at: string | null
           id: string
           irrigation_source: string | null
+          irrigation_type: string | null
           is_active: boolean | null
           land_documents: Json | null
           land_type: string | null
+          last_crop: string | null
+          last_harvest_date: string | null
           last_soil_test_date: string | null
           last_sowing_date: string | null
           location_context: Json | null
@@ -4214,9 +4265,12 @@ export type Database = {
           gps_recorded_at?: string | null
           id?: string
           irrigation_source?: string | null
+          irrigation_type?: string | null
           is_active?: boolean | null
           land_documents?: Json | null
           land_type?: string | null
+          last_crop?: string | null
+          last_harvest_date?: string | null
           last_soil_test_date?: string | null
           last_sowing_date?: string | null
           location_context?: Json | null
@@ -4255,9 +4309,12 @@ export type Database = {
           gps_recorded_at?: string | null
           id?: string
           irrigation_source?: string | null
+          irrigation_type?: string | null
           is_active?: boolean | null
           land_documents?: Json | null
           land_type?: string | null
+          last_crop?: string | null
+          last_harvest_date?: string | null
           last_soil_test_date?: string | null
           last_sowing_date?: string | null
           location_context?: Json | null
