@@ -1601,6 +1601,36 @@ export type Database = {
         }
         Relationships: []
       }
+      crop_groups: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          display_order: number | null
+          id: string
+          is_active: boolean | null
+          label: string
+          value: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          label: string
+          value: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          label?: string
+          value?: string
+        }
+        Relationships: []
+      }
       crop_health_assessments: {
         Row: {
           alert_level: string | null
@@ -1741,6 +1771,53 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crops: {
+        Row: {
+          created_at: string | null
+          crop_group_id: string | null
+          description: string | null
+          duration_days: number | null
+          id: string
+          is_active: boolean | null
+          label: string
+          label_local: string | null
+          season: string | null
+          value: string
+        }
+        Insert: {
+          created_at?: string | null
+          crop_group_id?: string | null
+          description?: string | null
+          duration_days?: number | null
+          id?: string
+          is_active?: boolean | null
+          label: string
+          label_local?: string | null
+          season?: string | null
+          value: string
+        }
+        Update: {
+          created_at?: string | null
+          crop_group_id?: string | null
+          description?: string | null
+          duration_days?: number | null
+          id?: string
+          is_active?: boolean | null
+          label?: string
+          label_local?: string | null
+          season?: string | null
+          value?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crops_crop_group_id_fkey"
+            columns: ["crop_group_id"]
+            isOneToOne: false
+            referencedRelation: "crop_groups"
             referencedColumns: ["id"]
           },
         ]
@@ -3992,6 +4069,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      irrigation_types: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          label: string
+          value: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          label: string
+          value: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          label?: string
+          value?: string
+        }
+        Relationships: []
       }
       land_activities: {
         Row: {
@@ -7318,6 +7422,33 @@ export type Database = {
           },
         ]
       }
+      soil_types: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          label: string
+          value: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          label: string
+          value: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          label?: string
+          value?: string
+        }
+        Relationships: []
+      }
       spatial_ref_sys: {
         Row: {
           auth_name: string | null
@@ -9073,6 +9204,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      water_sources: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          label: string
+          value: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          label: string
+          value: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          label?: string
+          value?: string
+        }
+        Relationships: []
       }
       weather_activity_recommendations: {
         Row: {
