@@ -6,7 +6,8 @@ import { Card } from '@/components/ui/card';
 import { useLanguageStore } from '@/stores/languageStore';
 import { useTenantStore } from '@/stores/tenantStore';
 import { useAuthFlowStore } from '@/stores/authFlowStore';
-import { MapPin, Check, Leaf } from 'lucide-react';
+import { useReverseGeocoding } from '@/hooks/useReverseGeocoding';
+import { MapPin, Check, Leaf, Loader2 } from 'lucide-react';
 
 // State-wise language preferences with more comprehensive mapping
 const stateLanguages: Record<string, string[]> = {
@@ -47,12 +48,15 @@ export default function LanguageSelection() {
   const { i18n } = useTranslation();
   const { availableLanguages, setLanguage, fetchLanguages } = useLanguageStore();
   const { tenant, fetchTenant } = useTenantStore();
+  const { reverseGeocode, isLoading: isGeocodingLoading } = useReverseGeocoding();
   const [selectedLanguage, setSelectedLanguage] = useState<string>('');
   const [userState, setUserState] = useState<string>('');
+  const [userDistrict, setUserDistrict] = useState<string>('');
   const [detectingLocation, setDetectingLocation] = useState(false);
   const [sortedLanguages, setSortedLanguages] = useState(availableLanguages);
   const [locationDenied, setLocationDenied] = useState(false);
-  const locationStored = useRef<GeolocationCoordinates | null>(null);
+  const [hasDetectedLocation, setHasDetectedLocation] = useState(false);
+  const locationStored = useRef<{ latitude: number; longitude: number; state?: string; district?: string } | null>(null);
 
   useEffect(() => {
     // Fetch tenant and languages when component mounts
@@ -61,40 +65,81 @@ export default function LanguageSelection() {
       await fetchLanguages();
     };
     loadData();
-    detectUserLocation();
+    
+    // Check if we have cached location
+    const cachedLocation = localStorage.getItem('userLocation');
+    if (cachedLocation) {
+      try {
+        const parsed = JSON.parse(cachedLocation);
+        const cacheTime = parsed.timestamp || 0;
+        const now = Date.now();
+        
+        // Use cache if less than 1 hour old
+        if (now - cacheTime < 3600000) {
+          setUserState(parsed.state || '');
+          setUserDistrict(parsed.district || '');
+          sortLanguagesByState(parsed.state || 'default');
+          setHasDetectedLocation(true);
+          locationStored.current = parsed;
+        } else {
+          detectUserLocation();
+        }
+      } catch {
+        detectUserLocation();
+      }
+    } else {
+      detectUserLocation();
+    }
   }, []);
 
   const detectUserLocation = async () => {
     setDetectingLocation(true);
     try {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          async (position) => {
-            const { latitude, longitude } = position.coords;
-            // Store location in memory
-            locationStored.current = position.coords;
-            
-            // Get state from coordinates (simplified for demo)
-            const detectedState = getStateFromCoordinates(latitude, longitude);
-            setUserState(detectedState);
-            sortLanguagesByState(detectedState);
-            setDetectingLocation(false);
-          },
-          (error) => {
-            console.error('Location error:', error);
-            setDetectingLocation(false);
-            setLocationDenied(true);
-            sortLanguagesByState('default');
-          },
-          {
-            timeout: 5000,
-            maximumAge: 300000 // Cache location for 5 minutes
-          }
-        );
-      } else {
+      if (!navigator.geolocation) {
         setDetectingLocation(false);
         sortLanguagesByState('default');
+        return;
       }
+
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          const { latitude, longitude } = position.coords;
+          
+          // Use reverse geocoding to get accurate state
+          const result = await reverseGeocode(latitude, longitude);
+          
+          // Store location with timestamp
+          const locationData = {
+            latitude,
+            longitude,
+            state: result.state,
+            district: result.district,
+            timestamp: Date.now()
+          };
+          
+          locationStored.current = locationData;
+          localStorage.setItem('userLocation', JSON.stringify(locationData));
+          
+          setUserState(result.state);
+          setUserDistrict(result.district || '');
+          setHasDetectedLocation(true);
+          sortLanguagesByState(result.state);
+          setDetectingLocation(false);
+        },
+        (error) => {
+          console.warn('Location permission denied or error:', error);
+          setDetectingLocation(false);
+          setLocationDenied(true);
+          
+          // Try to get approximate location from IP
+          tryIPBasedLocation();
+        },
+        {
+          enableHighAccuracy: false, // Use low accuracy for faster detection
+          timeout: 10000,
+          maximumAge: 600000 // Cache for 10 minutes
+        }
+      );
     } catch (error) {
       console.error('Location detection error:', error);
       setDetectingLocation(false);
@@ -102,48 +147,30 @@ export default function LanguageSelection() {
     }
   };
 
-  const getStateFromCoordinates = (lat: number, lng: number): string => {
-    // Simplified state detection based on major city coordinates
-    // In production, use proper reverse geocoding API
-    
-    // Delhi NCR
-    if (lat >= 28.4 && lat <= 28.9 && lng >= 76.8 && lng <= 77.4) {
-      return 'Delhi';
+  const tryIPBasedLocation = async () => {
+    try {
+      // Use ip-api.com for free IP-based geolocation
+      const response = await fetch('http://ip-api.com/json/?fields=status,country,regionName,lat,lon');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === 'success' && data.country === 'India') {
+          // Map region names to our state names
+          const stateMapping: Record<string, string> = {
+            'National Capital Territory of Delhi': 'Delhi',
+            'Orissa': 'Odisha',
+            'Pondicherry': 'Puducherry',
+            // Add more mappings as needed
+          };
+          
+          const mappedState = stateMapping[data.regionName] || data.regionName;
+          setUserState(mappedState);
+          sortLanguagesByState(mappedState);
+        }
+      }
+    } catch (error) {
+      console.warn('IP-based location failed:', error);
+      sortLanguagesByState('default');
     }
-    // Mumbai/Maharashtra
-    else if (lat >= 18.8 && lat <= 19.3 && lng >= 72.7 && lng <= 73.1) {
-      return 'Maharashtra';
-    }
-    // Bangalore/Karnataka
-    else if (lat >= 12.8 && lat <= 13.2 && lng >= 77.4 && lng <= 77.8) {
-      return 'Karnataka';
-    }
-    // Chennai/Tamil Nadu
-    else if (lat >= 12.9 && lat <= 13.3 && lng >= 80.1 && lng <= 80.4) {
-      return 'Tamil Nadu';
-    }
-    // Kolkata/West Bengal
-    else if (lat >= 22.4 && lat <= 22.7 && lng >= 88.2 && lng <= 88.5) {
-      return 'West Bengal';
-    }
-    // Hyderabad/Telangana
-    else if (lat >= 17.2 && lat <= 17.6 && lng >= 78.3 && lng <= 78.7) {
-      return 'Telangana';
-    }
-    // Ahmedabad/Gujarat
-    else if (lat >= 22.9 && lat <= 23.2 && lng >= 72.4 && lng <= 72.7) {
-      return 'Gujarat';
-    }
-    // Pune/Maharashtra
-    else if (lat >= 18.4 && lat <= 18.7 && lng >= 73.7 && lng <= 74.0) {
-      return 'Maharashtra';
-    }
-    // Chandigarh/Punjab
-    else if (lat >= 30.6 && lat <= 30.8 && lng >= 76.6 && lng <= 76.9) {
-      return 'Punjab';
-    }
-    
-    return 'default';
   };
 
   const sortLanguagesByState = (state: string) => {
@@ -232,20 +259,32 @@ export default function LanguageSelection() {
             </p>
           </div>
 
-          {/* Location Status */}
-          {detectingLocation && (
-            <div className="flex items-center space-x-2 text-muted-foreground">
-              <MapPin className="w-4 h-4 animate-pulse" />
-              <span className="text-sm">Detecting location...</span>
-            </div>
+      {/* Location Status */}
+      {detectingLocation && (
+        <div className="flex items-center space-x-2 text-muted-foreground animate-pulse">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span className="text-sm">Detecting your location...</span>
+        </div>
+      )}
+      
+      {!detectingLocation && locationDenied && (
+        <div className="flex items-center space-x-1 text-sm text-amber-600 dark:text-amber-400">
+          <MapPin className="w-4 h-4" />
+          <span>Location access denied, showing default</span>
+        </div>
+      )}
+      
+      {userState && userState !== 'default' && !detectingLocation && !locationDenied && (
+        <div className="flex flex-col items-center space-y-1">
+          <div className="flex items-center space-x-1 text-sm text-muted-foreground">
+            <MapPin className="w-4 h-4 text-primary" />
+            <span className="font-medium">{userState}</span>
+          </div>
+          {userDistrict && (
+            <span className="text-xs text-muted-foreground">{userDistrict}</span>
           )}
-          
-          {userState && userState !== 'default' && !detectingLocation && (
-            <div className="flex items-center space-x-1 text-sm text-muted-foreground">
-              <MapPin className="w-4 h-4" />
-              <span>{userState}</span>
-            </div>
-          )}
+        </div>
+      )}
         </div>
       </header>
 
@@ -270,12 +309,12 @@ export default function LanguageSelection() {
                 </div>
               )}
               
-              {/* Show badge for recommended language */}
-              {index === 0 && userState && userState !== 'default' && (
-                <span className="absolute -top-2 left-4 text-[10px] bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
-                  Recommended
-                </span>
-              )}
+        {/* Show badge for recommended language */}
+        {index === 0 && hasDetectedLocation && userState && userState !== 'default' && (
+          <span className="absolute -top-2 left-4 text-[10px] bg-primary text-primary-foreground px-2 py-0.5 rounded-full animate-pulse">
+            Recommended for {userState}
+          </span>
+        )}
             </Button>
           ))}
         </div>
