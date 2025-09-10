@@ -123,7 +123,7 @@ export function LandFormDialog({ open, onClose, onSubmit, area, centerCoordinate
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[650px] max-h-[90vh]">
+      <DialogContent className="sm:max-w-[650px] max-h-[90vh] z-[100]">
         <DialogHeader>
           <DialogTitle>Complete Land Details</DialogTitle>
           <DialogDescription>

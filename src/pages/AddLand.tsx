@@ -184,13 +184,15 @@ export default function AddLand() {
         />
       </div>
       
-      <LandFormDialog
-        open={showForm}
-        onClose={() => setShowForm(false)}
-        onSubmit={handleFormSubmit}
-        area={area}
-        centerCoordinates={centerCoordinates}
-      />
+      {showForm && (
+        <LandFormDialog
+          open={showForm}
+          onClose={() => setShowForm(false)}
+          onSubmit={handleFormSubmit}
+          area={area}
+          centerCoordinates={centerCoordinates}
+        />
+      )}
     </>
   );
 }
