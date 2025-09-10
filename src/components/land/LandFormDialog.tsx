@@ -221,7 +221,7 @@ export function LandFormDialog({
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col h-full">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-              <TabsList className="grid w-full grid-cols-2 mx-4 mt-4" style={{ width: 'calc(100% - 2rem)' }}>
+              <TabsList className="grid w-full grid-cols-2 mx-4 mt-1" style={{ width: 'calc(100% - 2rem)' }}>
                 <TabsTrigger value="basic" className="text-xs">
                   <Info className="h-3 w-3 mr-1" />
                   Basic Information
@@ -232,10 +232,10 @@ export function LandFormDialog({
                 </TabsTrigger>
               </TabsList>
 
-              <ScrollArea className="flex-1 max-h-[calc(90vh-280px)]">
-                <div className="p-4">
+              <ScrollArea className="flex-1 max-h-[calc(90vh-260px)]">
+                <div className="p-3 pt-2">
                   {/* Tab 1: Basic Information */}
-                  <TabsContent value="basic" className="space-y-4 mt-0">
+                  <TabsContent value="basic" className="space-y-3 mt-0">
                     <div className="space-y-3">
                       <div className="grid grid-cols-2 gap-3">
                         <FormField
