@@ -12,8 +12,8 @@ interface AreaDisplayProps {
 
 export function AreaDisplay({ area, pointsCount }: AreaDisplayProps) {
   return (
-    <Card className="absolute top-4 left-16 right-16 sm:left-auto sm:right-4 sm:w-52 p-2.5 bg-background/95 backdrop-blur-sm shadow-lg z-10 h-[100px]">
-      <div className="space-y-1.5 h-full flex flex-col justify-between">
+    <Card className="absolute top-4 left-16 right-16 sm:left-auto sm:right-4 sm:w-52 p-2.5 bg-background/95 backdrop-blur-sm shadow-lg z-10">
+      <div className="space-y-1.5">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Map className="h-3.5 w-3.5" />
           <span className="truncate">{pointsCount} points marked</span>

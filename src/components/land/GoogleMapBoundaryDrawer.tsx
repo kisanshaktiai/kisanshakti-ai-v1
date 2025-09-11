@@ -419,49 +419,32 @@ export function GoogleMapBoundaryDrawer({
 
   return (
     <div className="relative w-full h-full">
-      {/* Location Accuracy Card - consistent height with other cards */}
-      <Card className="absolute top-4 right-4 p-2.5 bg-background/95 backdrop-blur-sm shadow-lg z-10 h-[100px] w-[120px] flex flex-col justify-center">
+      {/* Location Accuracy Card - dynamic height */}
+      <Card className="absolute top-4 right-4 p-2.5 bg-background/95 backdrop-blur-sm shadow-lg z-10">
         <button
           onClick={handleCenterOnLocation}
-          className="w-full h-full flex flex-col items-center justify-center gap-2 hover:bg-accent/10 rounded transition-colors"
+          className="flex flex-col items-center justify-center gap-1 p-1 hover:bg-accent/10 rounded transition-colors"
           disabled={isCentering}
         >
           {isCentering ? (
-            <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
+            <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
           ) : (
             <>
-              <div className="relative">
-                <svg className="h-6 w-6 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10" />
-                  <circle cx="12" cy="12" r="3" fill="currentColor" />
-                </svg>
-              </div>
+              <svg className="h-5 w-5 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <circle cx="12" cy="12" r="3" fill="currentColor" />
+              </svg>
               <div className="text-xs text-center">
                 {locationSource === 'gps' ? (
-                  <>
-                    <div className="font-medium">GPS</div>
-                    <div className="text-muted-foreground">±{Math.round(locationAccuracy)}m</div>
-                  </>
+                  <div className="text-muted-foreground">±{Math.round(locationAccuracy)}m</div>
                 ) : locationSource === 'village' ? (
-                  <>
-                    <div className="font-medium">Village</div>
-                    <div className="text-muted-foreground text-2xs">Approximate</div>
-                  </>
+                  <div className="text-muted-foreground text-2xs">Village</div>
                 ) : locationSource === 'taluka' ? (
-                  <>
-                    <div className="font-medium">Taluka</div>
-                    <div className="text-muted-foreground text-2xs">Approximate</div>
-                  </>
+                  <div className="text-muted-foreground text-2xs">Taluka</div>
                 ) : locationSource === 'district' ? (
-                  <>
-                    <div className="font-medium">District</div>
-                    <div className="text-muted-foreground text-2xs">Approximate</div>
-                  </>
+                  <div className="text-muted-foreground text-2xs">District</div>
                 ) : (
-                  <>
-                    <div className="font-medium">Location</div>
-                    <div className="text-muted-foreground text-2xs">Default</div>
-                  </>
+                  <div className="text-muted-foreground text-2xs">Location</div>
                 )}
               </div>
             </>
