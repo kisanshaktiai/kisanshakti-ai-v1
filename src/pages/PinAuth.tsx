@@ -190,7 +190,7 @@ export default function PinAuth() {
   const brandName = tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-primary/10 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-primary flex flex-col items-center justify-center p-4">
       <Card className="w-full max-w-md p-6 space-y-6 shadow-xl">
         {/* Header */}
         <div className="space-y-4">

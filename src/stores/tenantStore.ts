@@ -469,6 +469,39 @@ export const useTenantStore = create<TenantState>((set, get) => ({
     // Apply custom theme to CSS variables
     const root = document.documentElement;
     
+    // Helper function to ensure HSL format
+    const ensureHSL = (color: string): string => {
+      if (!color) return '';
+      
+      // If already in HSL format (contains % sign), return as is
+      if (color.includes('%')) return color;
+      
+      // If it's a hex color, convert to HSL
+      if (color.startsWith('#')) {
+        return hexToHSL(color);
+      }
+      
+      // If it's an RGB color, convert to HSL
+      if (color.startsWith('rgb')) {
+        // Extract numbers from rgb/rgba string
+        const matches = color.match(/\d+/g);
+        if (matches && matches.length >= 3) {
+          const [r, g, b] = matches.map(Number);
+          return rgbToHSL(r, g, b);
+        }
+      }
+      
+      // If it's just numbers (like "142 76 36"), assume it's HSL without % signs
+      const numbers = color.match(/\d+/g);
+      if (numbers && numbers.length === 3) {
+        const [h, s, l] = numbers;
+        return `${h} ${s}% ${l}%`;
+      }
+      
+      // Default return the color as is
+      return color;
+    };
+    
     // Apply theme colors if available (from new theme_colors column)
     const themeColors = (whiteLabel as any).theme_colors;
     if (themeColors) {
@@ -476,7 +509,10 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       if (themeColors.core) {
         Object.entries(themeColors.core).forEach(([key, value]) => {
           if (value) {
-            root.style.setProperty(`--${key.replace(/_/g, '-')}`, String(value));
+            const hslValue = ensureHSL(String(value));
+            if (hslValue) {
+              root.style.setProperty(`--${key.replace(/_/g, '-')}`, hslValue);
+            }
           }
         });
       }
@@ -485,7 +521,10 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       if (themeColors.navigation) {
         Object.entries(themeColors.navigation).forEach(([key, value]) => {
           if (value) {
-            root.style.setProperty(`--${key.replace(/_/g, '-')}`, String(value));
+            const hslValue = ensureHSL(String(value));
+            if (hslValue) {
+              root.style.setProperty(`--${key.replace(/_/g, '-')}`, hslValue);
+            }
           }
         });
       }
@@ -494,7 +533,10 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       if (themeColors.charts) {
         Object.entries(themeColors.charts).forEach(([key, value]) => {
           if (value) {
-            root.style.setProperty(`--${key.replace(/_/g, '-')}`, String(value));
+            const hslValue = ensureHSL(String(value));
+            if (hslValue) {
+              root.style.setProperty(`--${key.replace(/_/g, '-')}`, hslValue);
+            }
           }
         });
       }
@@ -503,7 +545,10 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       if (themeColors.maps) {
         Object.entries(themeColors.maps).forEach(([key, value]) => {
           if (value) {
-            root.style.setProperty(`--${key.replace(/_/g, '-')}`, String(value));
+            const hslValue = ensureHSL(String(value));
+            if (hslValue) {
+              root.style.setProperty(`--${key.replace(/_/g, '-')}`, hslValue);
+            }
           }
         });
       }
@@ -512,15 +557,19 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       if (themeColors.weather) {
         Object.entries(themeColors.weather).forEach(([key, value]) => {
           if (value) {
-            root.style.setProperty(`--${key.replace(/_/g, '-')}`, String(value));
+            const hslValue = ensureHSL(String(value));
+            if (hslValue) {
+              root.style.setProperty(`--${key.replace(/_/g, '-')}`, hslValue);
+            }
           }
         });
       }
       
-      // Apply gradients
+      // Apply gradients - these may contain multiple colors
       if (themeColors.gradients) {
         Object.entries(themeColors.gradients).forEach(([key, value]) => {
           if (value) {
+            // Gradients are complex, don't convert them
             root.style.setProperty(`--gradient-${key}`, String(value));
           }
         });
@@ -532,7 +581,10 @@ export const useTenantStore = create<TenantState>((set, get) => ({
         if (prefersDark) {
           Object.entries(themeColors.dark_mode.colors).forEach(([key, value]) => {
             if (value) {
-              root.style.setProperty(`--${key.replace(/_/g, '-')}`, String(value));
+              const hslValue = ensureHSL(String(value));
+              if (hslValue) {
+                root.style.setProperty(`--${key.replace(/_/g, '-')}`, hslValue);
+              }
             }
           });
         }
@@ -750,7 +802,33 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       const ogDescription = document.querySelector('meta[property="og:description"]');
       if (ogDescription) {
         ogDescription.setAttribute('content', whiteLabel.brand_identity.tagline);
-      }
+}
+
+// Helper function to convert RGB to HSL
+function rgbToHSL(r: number, g: number, b: number): string {
+  // Normalize RGB values to 0-1 range
+  r = r / 255;
+  g = g / 255;
+  b = b / 255;
+  
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0, s = 0, l = (max + min) / 2;
+  
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  
+  // Return in Tailwind CSS format (space-separated, with % for s and l)
+  return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+}
       
       const twitterDescription = document.querySelector('meta[name="twitter:description"]');
       if (twitterDescription) {
@@ -767,6 +845,32 @@ export const useTenantStore = create<TenantState>((set, get) => ({
 
   clearError: () => set({ error: null }),
 }));
+
+// Helper function to convert RGB to HSL
+function rgbToHSL(r: number, g: number, b: number): string {
+  // Normalize RGB values to 0-1 range
+  r = r / 255;
+  g = g / 255;
+  b = b / 255;
+  
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let h = 0, s = 0, l = (max + min) / 2;
+  
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    
+    switch (max) {
+      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+      case g: h = ((b - r) / d + 2) / 6; break;
+      case b: h = ((r - g) / d + 4) / 6; break;
+    }
+  }
+  
+  // Return in Tailwind CSS format (space-separated, with % for s and l)
+  return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
+}
 
 // Helper function to convert hex to HSL (Tailwind CSS format)
 function hexToHSL(hex: string): string {

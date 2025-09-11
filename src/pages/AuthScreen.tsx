@@ -157,7 +157,7 @@ export default function AuthScreen() {
   // Show loading state while tenant is loading
   if (tenantLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-primary/5 to-primary/10 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-primary flex items-center justify-center">
         <Card className="p-8">
           <div className="flex items-center space-x-3">
             <Loader2 className="w-5 h-5 animate-spin text-primary" />
@@ -173,7 +173,7 @@ export default function AuthScreen() {
   const primaryColor = tenant?.whiteLabel?.brand_identity?.primary_color;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-primary/10 flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-primary flex flex-col items-center justify-center p-4">
       <Card className="w-full max-w-md p-6 space-y-6 shadow-xl">
         {/* Header */}
         <div className="space-y-4">
