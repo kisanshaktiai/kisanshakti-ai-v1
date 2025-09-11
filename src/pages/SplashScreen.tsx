@@ -90,7 +90,7 @@ export default function SplashScreen() {
       <div className="flex-1 flex flex-col items-center justify-center">
         <div className="text-center space-y-8 animate-fade-in">
           {/* App Icon */}
-          <div className="w-32 h-32 mx-auto rounded-3xl bg-white/20 backdrop-blur-sm flex items-center justify-center animate-scale-in">
+          <div className="w-32 h-32 mx-auto rounded-3xl bg-overlay-light/20 backdrop-blur-sm flex items-center justify-center animate-scale-in">
             {logoUrl ? (
               <img 
                 src={logoUrl} 
@@ -98,7 +98,7 @@ export default function SplashScreen() {
                 className="w-24 h-24 object-contain"
               />
             ) : (
-              <div className="text-white text-6xl font-bold">
+              <div className="text-overlay-light text-6xl font-bold">
                 {companyName.charAt(0)}
               </div>
             )}
@@ -106,21 +106,21 @@ export default function SplashScreen() {
 
           {/* App Name */}
           <div className="space-y-2">
-            <h1 className="text-4xl font-bold text-white animate-fade-in">
+            <h1 className="text-4xl font-bold text-overlay-light animate-fade-in">
               {companyName}
             </h1>
-            <p className="text-white/80 text-lg px-8 animate-fade-in" style={{ animationDelay: '0.2s' }}>
+            <p className="text-overlay-light/80 text-lg px-8 animate-fade-in" style={{ animationDelay: '0.2s' }}>
               {tagline}
             </p>
           </div>
 
           {/* Loading or Ready State */}
           {error ? (
-            <div className="text-yellow-200 text-sm px-8 animate-fade-in">
+            <div className="text-warning-foreground text-sm px-8 animate-fade-in">
               {error}
             </div>
           ) : !isReady ? (
-            <div className="flex items-center justify-center space-x-2 text-white/60">
+            <div className="flex items-center justify-center space-x-2 text-overlay-light/60">
               <Loader2 className="w-5 h-5 animate-spin" />
               <span className="text-sm">
                 {tenant?.whiteLabel?.splash_screens?.loading_text || t('common.loading') || 'Loading...'}
@@ -130,13 +130,13 @@ export default function SplashScreen() {
             <div className="space-y-4 animate-fade-in">
               <Button
                 onClick={handleContinue}
-                className="bg-white/20 hover:bg-white/30 text-white border border-white/30 backdrop-blur-sm px-8 py-6 text-lg group"
+                className="bg-overlay-light/20 hover:bg-overlay-light/30 text-overlay-light border border-overlay-light/30 backdrop-blur-sm px-8 py-6 text-lg group"
               >
                 {t('common.getStarted') || 'Get Started'}
                 <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
               </Button>
               
-              <p className="text-white/60 text-sm">
+              <p className="text-overlay-light/60 text-sm">
                 {t('common.swipeLeft') || 'Swipe left to continue'}
               </p>
             </div>
@@ -148,14 +148,14 @@ export default function SplashScreen() {
       <div className="space-y-4">
         {/* Progress Dots */}
         <div className="flex justify-center space-x-2">
-          <div className="w-2 h-2 rounded-full bg-white"></div>
-          <div className="w-2 h-2 rounded-full bg-white/40"></div>
-          <div className="w-2 h-2 rounded-full bg-white/40"></div>
-          <div className="w-2 h-2 rounded-full bg-white/40"></div>
+          <div className="w-2 h-2 rounded-full bg-overlay-light"></div>
+          <div className="w-2 h-2 rounded-full bg-overlay-light/40"></div>
+          <div className="w-2 h-2 rounded-full bg-overlay-light/40"></div>
+          <div className="w-2 h-2 rounded-full bg-overlay-light/40"></div>
         </div>
         
         {/* Version */}
-        <div className="text-center text-white/50 text-xs">
+        <div className="text-center text-overlay-light/50 text-xs">
           v{appVersion}
         </div>
       </div>

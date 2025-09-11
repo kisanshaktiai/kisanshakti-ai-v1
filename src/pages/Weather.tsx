@@ -246,14 +246,14 @@ const Weather: React.FC = () => {
           <div className="flex items-start justify-between mb-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-full bg-white/10 backdrop-blur-md">
-                  <MapPin className="h-4 w-4 text-white" />
+                <div className="p-1.5 rounded-full bg-overlay-light/10 backdrop-blur-md">
+                  <MapPin className="h-4 w-4 text-overlay-light" />
                 </div>
                 <div>
-                  <h2 className="text-white font-semibold text-lg leading-tight">
+                  <h2 className="text-overlay-light font-semibold text-lg leading-tight">
                     {getLocationDisplay()}
                   </h2>
-                  <p className="text-white/70 text-xs">
+                  <p className="text-overlay-light/70 text-xs">
                     {format(new Date(), 'EEEE, MMMM d, yyyy')}
                   </p>
                 </div>
@@ -339,15 +339,15 @@ const Weather: React.FC = () => {
                 <div key={idx} className="flex gap-3 p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors">
                   <div className={cn(
                     "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
-                    insight.type === 'warning' && "bg-yellow-500/20",
-                    insight.type === 'danger' && "bg-red-500/20",
-                    insight.type === 'info' && "bg-blue-500/20"
+                    insight.type === 'warning' && "bg-warning/20",
+                    insight.type === 'danger' && "bg-destructive/20",
+                    insight.type === 'info' && "bg-info/20"
                   )}>
                     <insight.icon className={cn(
                       "h-5 w-5",
-                      insight.type === 'warning' && "text-yellow-500",
-                      insight.type === 'danger' && "text-red-500",
-                      insight.type === 'info' && "text-blue-500"
+                      insight.type === 'warning' && "text-warning",
+                      insight.type === 'danger' && "text-destructive",
+                      insight.type === 'info' && "text-info"
                     )} />
                   </div>
                   <div className="flex-1 space-y-1">
@@ -520,21 +520,21 @@ const Weather: React.FC = () => {
                     </div>
                     <div className="text-center space-y-2">
                       <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto">
-                        <Wind className="h-5 w-5 text-gray-500" />
+                        <Wind className="h-5 w-5 text-muted-foreground" />
                       </div>
                       <p className="text-sm font-medium">{Math.round(forecast[1].wind_speed)}km/h</p>
                       <p className="text-[10px] text-muted-foreground">Wind</p>
                     </div>
                     <div className="text-center space-y-2">
-                      <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center mx-auto">
-                        <Droplets className="h-5 w-5 text-blue-500" />
+                      <div className="w-12 h-12 rounded-full bg-info/10 flex items-center justify-center mx-auto">
+                        <Droplets className="h-5 w-5 text-info" />
                       </div>
                       <p className="text-sm font-medium">{Math.round(forecast[1].humidity)}%</p>
                       <p className="text-[10px] text-muted-foreground">Humidity</p>
                     </div>
                     <div className="text-center space-y-2">
-                      <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center mx-auto">
-                        <Sun className="h-5 w-5 text-purple-500" />
+                      <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mx-auto">
+                        <Sun className="h-5 w-5 text-accent" />
                       </div>
                       <p className="text-sm font-medium">{forecast[1].uvi || 0}</p>
                       <p className="text-[10px] text-muted-foreground">UV Index</p>

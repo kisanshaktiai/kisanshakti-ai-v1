@@ -67,8 +67,8 @@ export function MapControls({
             <div className="flex items-center gap-1.5 text-xs">
               <LocateFixed className={cn(
                 "h-3.5 w-3.5",
-                gpsAccuracy < 10 ? "text-green-500" : 
-                gpsAccuracy < 20 ? "text-yellow-500" : "text-red-500"
+                gpsAccuracy < 10 ? "text-success" : 
+                gpsAccuracy < 20 ? "text-warning" : "text-destructive"
               )} />
               <span className="font-medium">±{gpsAccuracy.toFixed(0)}m</span>
             </div>

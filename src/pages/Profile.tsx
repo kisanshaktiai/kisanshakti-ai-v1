@@ -127,7 +127,7 @@ export default function Profile() {
                   <div className="w-20 h-20 bg-gradient-to-br from-primary to-primary/80 rounded-2xl flex items-center justify-center shadow-lg">
                     <User className="w-10 h-10 text-primary-foreground" />
                   </div>
-                  <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 rounded-full border-2 border-card" />
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-success rounded-full border-2 border-card" />
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold text-foreground">
@@ -193,7 +193,7 @@ export default function Profile() {
                 <Activity className="w-4 h-4 text-primary" />
                 Farm Performance
               </CardTitle>
-              <Badge variant="secondary" className="bg-green-500/10 text-green-600">
+              <Badge variant="secondary" className="bg-success/10 text-success">
                 Good
               </Badge>
             </div>

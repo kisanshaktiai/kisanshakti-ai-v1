@@ -28,21 +28,21 @@ export const AgriculturalInsights: React.FC<AgriculturalInsightsProps> = ({ weat
         level: 'High',
         message: 'Increase irrigation frequency due to high temperature and low humidity',
         icon: AlertTriangle,
-        color: 'text-red-600',
+        color: 'text-destructive',
       };
     } else if (temp > 30 && humidity < 50) {
       return {
         level: 'Moderate',
         message: 'Regular irrigation recommended',
         icon: Info,
-        color: 'text-yellow-600',
+        color: 'text-warning',
       };
     } else {
       return {
         level: 'Low',
         message: 'Normal irrigation schedule sufficient',
         icon: CheckCircle,
-        color: 'text-green-600',
+        color: 'text-success',
       };
     }
   };
@@ -233,13 +233,13 @@ export const AgriculturalInsights: React.FC<AgriculturalInsightsProps> = ({ weat
                   className={cn(
                     "p-4 rounded-lg border-2 transition-all",
                     activity.suitable
-                      ? "bg-green-50 dark:bg-green-900/20 border-green-300 dark:border-green-700"
-                      : "bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700"
+                      ? "bg-success/10 border-success/30"
+                      : "bg-destructive/10 border-destructive/30"
                   )}
                 >
                   <Icon className={cn(
                     "w-8 h-8 mb-2",
-                    activity.suitable ? "text-green-600" : "text-red-600"
+                    activity.suitable ? "text-success" : "text-destructive"
                   )} />
                   <p className="font-medium text-sm">{activity.name}</p>
                   <Badge
@@ -296,7 +296,7 @@ export const AgriculturalInsights: React.FC<AgriculturalInsightsProps> = ({ weat
                           </Badge>
                         )}
                         {tempSuitable && (
-                          <Badge variant="outline" className="text-xs text-green-600">
+                          <Badge variant="outline" className="text-xs text-success">
                             Good for farming
                           </Badge>
                         )}

@@ -68,19 +68,19 @@ export const WeatherMap: React.FC = () => {
         {/* Legend */}
         <div className="mt-6 flex items-center justify-center gap-8">
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-blue-200 rounded"></div>
+            <div className="w-4 h-4 bg-info/30 rounded"></div>
             <span className="text-sm">Light</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-blue-400 rounded"></div>
+            <div className="w-4 h-4 bg-info/50 rounded"></div>
             <span className="text-sm">Moderate</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-blue-600 rounded"></div>
+            <div className="w-4 h-4 bg-info rounded"></div>
             <span className="text-sm">Heavy</span>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-4 h-4 bg-purple-600 rounded"></div>
+            <div className="w-4 h-4 bg-accent rounded"></div>
             <span className="text-sm">Extreme</span>
           </div>
         </div>

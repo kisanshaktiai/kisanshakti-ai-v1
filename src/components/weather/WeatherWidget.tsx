@@ -11,12 +11,12 @@ export const WeatherWidget: React.FC = () => {
 
   const getWeatherIcon = (condition: string) => {
     const iconMap: Record<string, React.ReactNode> = {
-      Clear: <Sun className="w-8 h-8 text-yellow-500" />,
-      Clouds: <Cloud className="w-8 h-8 text-gray-400" />,
-      Rain: <CloudRain className="w-8 h-8 text-blue-500" />,
-      Snow: <CloudSnow className="w-8 h-8 text-blue-300" />,
+      Clear: <Sun className="w-8 h-8 text-weather-sunny" />,
+      Clouds: <Cloud className="w-8 h-8 text-weather-cloudy" />,
+      Rain: <CloudRain className="w-8 h-8 text-weather-rainy" />,
+      Snow: <CloudSnow className="w-8 h-8 text-info" />,
     };
-    return iconMap[condition] || <Cloud className="w-8 h-8 text-gray-400" />;
+    return iconMap[condition] || <Cloud className="w-8 h-8 text-weather-cloudy" />;
   };
 
   if (loading) {

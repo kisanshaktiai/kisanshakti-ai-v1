@@ -35,9 +35,9 @@ import { supabase } from '@/integrations/supabase/client';
 
 // Modern ownership type options
 const ownershipTypes = [
-  { value: 'owned', label: 'Owned', icon: Home, color: 'text-green-600 dark:text-green-400' },
-  { value: 'leased', label: 'Leased', icon: Trees, color: 'text-blue-600 dark:text-blue-400' },
-  { value: 'shared', label: 'Shared', icon: Leaf, color: 'text-purple-600 dark:text-purple-400' },
+  { value: 'owned', label: 'Owned', icon: Home, color: 'text-success' },
+  { value: 'leased', label: 'Leased', icon: Trees, color: 'text-info' },
+  { value: 'shared', label: 'Shared', icon: Leaf, color: 'text-accent' },
 ];
 
 // Enhanced form schema matching database fields
@@ -244,7 +244,7 @@ export function LandFormDialog({
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel className="text-sm font-medium">
-                                Land Name <span className="text-red-500">*</span>
+                                Land Name <span className="text-destructive">*</span>
                               </FormLabel>
                               <FormControl>
                                 <Input 
@@ -286,7 +286,7 @@ export function LandFormDialog({
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel className="text-sm font-medium">
-                              Ownership Type <span className="text-red-500">*</span>
+                              Ownership Type <span className="text-destructive">*</span>
                             </FormLabel>
                             <div className="grid grid-cols-3 gap-2 mt-2">
                               {ownershipTypes.map((type) => {
@@ -336,8 +336,8 @@ export function LandFormDialog({
                                   className={cn(
                                     "px-2 py-1 cursor-pointer transition-all text-xs",
                                     field.value === soil.value 
-                                      ? "bg-amber-500 hover:bg-amber-600 text-white border-amber-500" 
-                                      : "hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                                      ? "bg-warning hover:bg-warning/90 text-warning-foreground border-warning" 
+                                      : "hover:bg-warning/10"
                                   )}
                                   onClick={() => field.onChange(soil.value)}
                                 >
@@ -364,7 +364,7 @@ export function LandFormDialog({
                                   className={cn(
                                     "p-2 cursor-pointer transition-all text-center",
                                     field.value === source.value 
-                                      ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20 border" 
+                                      ? "border-info bg-info/10 border" 
                                       : "border hover:border-gray-300 dark:hover:border-gray-600"
                                   )}
                                   onClick={() => field.onChange(source.value)}
@@ -372,8 +372,8 @@ export function LandFormDialog({
                                   <Droplets className={cn(
                                     "h-4 w-4 mx-auto mb-0.5",
                                     field.value === source.value 
-                                      ? "text-blue-600 dark:text-blue-400" 
-                                      : "text-gray-400"
+                                      ? "text-info" 
+                                      : "text-muted-foreground"
                                   )} />
                                   <span className="text-[10px]">{source.label}</span>
                                 </Card>
@@ -425,8 +425,8 @@ export function LandFormDialog({
                                 className={cn(
                                   "px-2 py-1 cursor-pointer transition-all text-xs",
                                   field.value === type.value 
-                                    ? "bg-blue-500 hover:bg-blue-600 text-white border-blue-500" 
-                                    : "hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                                    ? "bg-info hover:bg-info/90 text-info-foreground border-info" 
+                                    : "hover:bg-info/10"
                                 )}
                                 onClick={() => field.onChange(type.value)}
                               >
@@ -624,7 +624,7 @@ export function LandFormDialog({
             </Tabs>
 
             {/* Action Buttons */}
-            <div className="flex justify-end gap-2 p-4 border-t bg-gray-50 dark:bg-gray-900/50">
+            <div className="flex justify-end gap-2 p-4 border-t bg-muted/50">
               <Button
                 type="button"
                 variant="outline"
@@ -636,7 +636,7 @@ export function LandFormDialog({
               <Button
                 type="submit"
                 disabled={isSubmitting}
-                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white"
+                className="bg-gradient-primary hover:opacity-90 text-primary-foreground"
               >
                 {isSubmitting ? (
                   <>

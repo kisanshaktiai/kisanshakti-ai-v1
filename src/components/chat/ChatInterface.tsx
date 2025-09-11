@@ -610,7 +610,7 @@ export function ChatInterface() {
               {/* Voice/Send Button */}
               {inputMessage.trim() || uploadedImage || uploadedFile ? <Button type="button" size="icon" onClick={sendMessage} disabled={isLoading} className="h-10 w-10 rounded-full shrink-0 bg-primary hover:bg-primary/90">
                   {isLoading ? <Loader2 className="h-5 w-5 animate-spin text-primary-foreground" /> : <Send className="h-5 w-5 text-primary-foreground" />}
-                </Button> : <Button type="button" variant={isListening ? "destructive" : "default"} size="icon" onClick={isSpeechSupported ? toggleListening : undefined} disabled={isLoading || !isSpeechSupported} className="h-10 w-10 rounded-full shrink-0 bg-green-500 hover:bg-green-600 text-white" title={isListening ? 'Stop recording' : 'Start recording'}>
+                </Button> : <Button type="button" variant={isListening ? "destructive" : "default"} size="icon" onClick={isSpeechSupported ? toggleListening : undefined} disabled={isLoading || !isSpeechSupported} className="h-10 w-10 rounded-full shrink-0 bg-success hover:bg-success/90 text-success-foreground" title={isListening ? 'Stop recording' : 'Start recording'}>
                   {isListening ? <MicOff className="h-5 w-5 animate-pulse" /> : <Mic className="h-5 w-5" />}
                 </Button>}
             </div>
