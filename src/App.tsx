@@ -31,6 +31,7 @@ import LandManagement from "./pages/LandManagement";
 import AddLand from "./pages/AddLand";
 import LandDetails from "./pages/LandDetails";
 import AIChat from "./pages/AIChat";
+import Social from "./pages/Social";
 
 // Stores and Services
 import { useTenantStore } from "@/stores/tenantStore";
@@ -275,6 +276,10 @@ const router = createBrowserRouter(
         {
           path: "chat",
           element: <AIChat />,
+        },
+        {
+          path: "social",
+          element: <Social />,
         },
       ],
     },
