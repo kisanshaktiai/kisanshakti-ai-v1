@@ -1,25 +1,34 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuthStore } from '@/stores/authStore';
-import { Card } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Users, MapPin, Sprout, BookOpen, TrendingUp, AlertCircle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
+import { MapPin, Wheat, Languages, Users, Search } from 'lucide-react';
+import { useAuthStore } from '@/stores/authStore';
+import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
-export function Communities() {
+interface CommunitiesProps {
+  onCommunitySelect?: (id: string) => void;
+}
+
+export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
   const { user } = useAuthStore();
   const { toast } = useToast();
   const [communities, setCommunities] = useState<any[]>([]);
   const [joinedCommunities, setJoinedCommunities] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState('all');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchCommunities();
-    fetchJoinedCommunities();
-  }, []);
+    if (user?.id) {
+      fetchJoinedCommunities();
+    }
+  }, [user]);
 
   const fetchCommunities = async () => {
     try {
@@ -42,12 +51,13 @@ export function Communities() {
     if (!user?.id) return;
 
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('community_members')
         .select('community_id')
         .eq('farmer_id', user.id)
         .eq('is_active', true);
 
+      if (error) throw error;
       setJoinedCommunities(data?.map(m => m.community_id) || []);
     } catch (error) {
       console.error('Error fetching joined communities:', error);
@@ -55,33 +65,31 @@ export function Communities() {
   };
 
   const handleJoinCommunity = async (communityId: string) => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      toast({
+        title: "Authentication required",
+        description: "Please login to join communities",
+        variant: "destructive"
+      });
+      return;
+    }
 
     try {
       const { error } = await supabase
         .from('community_members')
         .insert({
           community_id: communityId,
-          farmer_id: user.id
+          farmer_id: user.id,
+          role: 'member'
         });
 
       if (error) throw error;
 
       setJoinedCommunities([...joinedCommunities, communityId]);
-      
       toast({
-        title: "Joined community!",
-        description: "You are now part of this community."
+        title: "Success!",
+        description: "You've joined the community"
       });
-
-      // Update member count
-      const community = communities.find(c => c.id === communityId);
-      if (community) {
-        await supabase
-          .from('communities')
-          .update({ member_count: (community.member_count || 0) + 1 })
-          .eq('id', communityId);
-      }
     } catch (error) {
       console.error('Error joining community:', error);
       toast({
@@ -105,99 +113,70 @@ export function Communities() {
       if (error) throw error;
 
       setJoinedCommunities(joinedCommunities.filter(id => id !== communityId));
-      
       toast({
         title: "Left community",
-        description: "You have left this community."
+        description: "You've left the community"
       });
-
-      // Update member count
-      const community = communities.find(c => c.id === communityId);
-      if (community) {
-        await supabase
-          .from('communities')
-          .update({ member_count: Math.max(0, (community.member_count || 0) - 1) })
-          .eq('id', communityId);
-      }
     } catch (error) {
       console.error('Error leaving community:', error);
+      toast({
+        title: "Error",
+        description: "Failed to leave community",
+        variant: "destructive"
+      });
     }
   };
 
-  const getIcon = (type: string) => {
-    switch (type) {
-      case 'state': return <MapPin className="w-4 h-4" />;
-      case 'crop': return <Sprout className="w-4 h-4" />;
-      case 'practice': return <BookOpen className="w-4 h-4" />;
-      case 'market': return <TrendingUp className="w-4 h-4" />;
-      case 'problem_solving': return <AlertCircle className="w-4 h-4" />;
-      default: return <Users className="w-4 h-4" />;
-    }
-  };
-
-  const filterByType = (type?: string) => {
-    if (!type) return communities;
+  const filterByType = (type: string) => {
     return communities.filter(c => c.community_type === type);
   };
 
+  const filteredCommunities = searchQuery
+    ? communities.filter(c => 
+        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        c.description?.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : communities;
+
+  const getIcon = (type: string) => {
+    switch(type) {
+      case 'state': return <MapPin className="w-4 h-4 text-primary" />;
+      case 'crop': return <Wheat className="w-4 h-4 text-success" />;
+      case 'language': return <Languages className="w-4 h-4 text-accent" />;
+      default: return <Users className="w-4 h-4 text-primary" />;
+    }
+  };
+
   return (
-    <div className="p-4">
-      <Tabs defaultValue="all">
-        <TabsList className="w-full">
-          <TabsTrigger value="all" className="flex-1">All</TabsTrigger>
-          <TabsTrigger value="state" className="flex-1">State</TabsTrigger>
-          <TabsTrigger value="crop" className="flex-1">Crop</TabsTrigger>
-          <TabsTrigger value="practice" className="flex-1">Practice</TabsTrigger>
+    <div className="space-y-4">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search communities..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10"
+        />
+      </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid grid-cols-4 w-full">
+          <TabsTrigger value="all">All</TabsTrigger>
+          <TabsTrigger value="state">State</TabsTrigger>
+          <TabsTrigger value="crop">Crop</TabsTrigger>
+          <TabsTrigger value="practice">Practice</TabsTrigger>
         </TabsList>
 
-        <ScrollArea className="h-[calc(100vh-16rem)] mt-4">
+        <ScrollArea className="h-[500px] mt-4">
           <TabsContent value="all" className="space-y-3 mt-0">
-            {filterByType().map((community) => (
+            {filteredCommunities.map((community) => (
               <CommunityCard
                 key={community.id}
                 community={community}
                 isJoined={joinedCommunities.includes(community.id)}
                 onJoin={() => handleJoinCommunity(community.id)}
                 onLeave={() => handleLeaveCommunity(community.id)}
-                icon={getIcon(community.community_type)}
-              />
-            ))}
-          </TabsContent>
-
-          <TabsContent value="state" className="space-y-3 mt-0">
-            {filterByType('state').map((community) => (
-              <CommunityCard
-                key={community.id}
-                community={community}
-                isJoined={joinedCommunities.includes(community.id)}
-                onJoin={() => handleJoinCommunity(community.id)}
-                onLeave={() => handleLeaveCommunity(community.id)}
-                icon={getIcon(community.community_type)}
-              />
-            ))}
-          </TabsContent>
-
-          <TabsContent value="crop" className="space-y-3 mt-0">
-            {filterByType('crop').map((community) => (
-              <CommunityCard
-                key={community.id}
-                community={community}
-                isJoined={joinedCommunities.includes(community.id)}
-                onJoin={() => handleJoinCommunity(community.id)}
-                onLeave={() => handleLeaveCommunity(community.id)}
-                icon={getIcon(community.community_type)}
-              />
-            ))}
-          </TabsContent>
-
-          <TabsContent value="practice" className="space-y-3 mt-0">
-            {filterByType('practice').map((community) => (
-              <CommunityCard
-                key={community.id}
-                community={community}
-                isJoined={joinedCommunities.includes(community.id)}
-                onJoin={() => handleJoinCommunity(community.id)}
-                onLeave={() => handleLeaveCommunity(community.id)}
+                onClick={() => onCommunitySelect?.(community.id)}
                 icon={getIcon(community.community_type)}
               />
             ))}
@@ -208,9 +187,9 @@ export function Communities() {
   );
 }
 
-function CommunityCard({ community, isJoined, onJoin, onLeave, icon }: any) {
+function CommunityCard({ community, isJoined, onJoin, onLeave, icon, onClick }: any) {
   return (
-    <Card className="p-4">
+    <Card className="p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={onClick}>
       <div className="flex items-start justify-between">
         <div className="flex gap-3">
           <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -232,7 +211,10 @@ function CommunityCard({ community, isJoined, onJoin, onLeave, icon }: any) {
         <Button
           size="sm"
           variant={isJoined ? "outline" : "default"}
-          onClick={isJoined ? onLeave : onJoin}
+          onClick={(e) => {
+            e.stopPropagation();
+            isJoined ? onLeave() : onJoin();
+          }}
         >
           {isJoined ? "Leave" : "Join"}
         </Button>

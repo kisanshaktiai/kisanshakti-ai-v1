@@ -5,7 +5,12 @@ import { PostCard } from './PostCard';
 import { Loader2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
-export function SocialFeed() {
+interface SocialFeedProps {
+  searchQuery?: string;
+  selectedCommunity?: string | null;
+}
+
+export function SocialFeed({ searchQuery = '', selectedCommunity = null }: SocialFeedProps) {
   const { user } = useAuthStore();
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

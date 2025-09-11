@@ -1,151 +1,282 @@
 import { useState, useEffect } from 'react';
-import { useAuthStore } from '@/stores/authStore';
-import { supabase } from '@/integrations/supabase/client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { 
+  Home, 
+  Users, 
+  MessageSquare, 
+  Trophy, 
+  TrendingUp,
+  Search,
+  Plus,
+  Bell,
+  Filter,
+  Hash
+} from 'lucide-react';
 import { SocialFeed } from '@/components/social/SocialFeed';
 import { Communities } from '@/components/social/Communities';
 import { Messages } from '@/components/social/Messages';
 import { Leaderboard } from '@/components/social/Leaderboard';
-import { UserProfile } from '@/components/social/UserProfile';
-import { CreatePost } from '@/components/social/CreatePost';
 import { TrendingTopics } from '@/components/social/TrendingTopics';
-import { Button } from '@/components/ui/button';
-import { Plus, Users, MessageSquare, Trophy, TrendingUp } from 'lucide-react';
+import { CreatePost } from '@/components/social/CreatePost';
+import { NotificationCenter } from '@/components/social/NotificationCenter';
+import { useAuthStore } from '@/stores/authStore';
+import { useTenantStore } from '@/stores/tenantStore';
+import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
 
 export default function Social() {
-  const { user } = useAuthStore();
+  const { t } = useTranslation();
   const { toast } = useToast();
+  const { user } = useAuthStore();
+  const { tenant } = useTenantStore();
   const [activeTab, setActiveTab] = useState('feed');
   const [showCreatePost, setShowCreatePost] = useState(false);
-  const [userProfile, setUserProfile] = useState<any>(null);
-  const [gamificationStats, setGamificationStats] = useState<any>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCommunity, setSelectedCommunity] = useState<string | null>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Fetch user's badges and points
+  const { data: userStats } = useQuery({
+    queryKey: ['userStats', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      
+      const [pointsRes, badgesRes] = await Promise.all([
+        supabase
+          .from('user_points')
+          .select('points')
+          .eq('farmer_id', user.id),
+        supabase
+          .from('user_badges')
+          .select('*')
+          .eq('farmer_id', user.id)
+      ]);
+
+      const totalPoints = pointsRes.data?.reduce((sum, p) => sum + p.points, 0) || 0;
+      
+      return {
+        points: totalPoints,
+        badges: badgesRes.data || [],
+        level: Math.floor(totalPoints / 100) + 1
+      };
+    },
+    enabled: !!user?.id
+  });
+
+  // Fetch unread messages count
+  const { data: unreadMessages } = useQuery({
+    queryKey: ['unreadMessages', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return 0;
+      
+      const { count } = await supabase
+        .from('messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('receiver_id', user.id)
+        .eq('is_read', false);
+      
+      return count || 0;
+    },
+    enabled: !!user?.id,
+    refetchInterval: 30000 // Refresh every 30 seconds
+  });
 
   useEffect(() => {
-    if (user?.id) {
-      fetchUserProfile();
-      fetchGamificationStats();
+    if (unreadMessages) {
+      setUnreadCount(unreadMessages);
     }
-  }, [user]);
+  }, [unreadMessages]);
 
-  const fetchUserProfile = async () => {
-    try {
-      const { data: farmer } = await supabase
-        .from('farmers')
-        .select('*')
-        .eq('id', user?.id)
-        .single();
-      
-      setUserProfile(farmer);
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-    }
-  };
+  // Subscribe to real-time updates
+  useEffect(() => {
+    if (!user?.id) return;
 
-  const fetchGamificationStats = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('farmer_gamification')
-        .select('*')
-        .eq('farmer_id', user?.id)
-        .maybeSingle();
+    const channel = supabase
+      .channel('social-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `receiver_id=eq.${user.id}`
+        },
+        () => {
+          setUnreadCount(prev => prev + 1);
+          toast({
+            title: 'New Message',
+            description: 'You have received a new message',
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'post_likes'
+        },
+        (payload) => {
+          // Check if the like is for user's post
+          toast({
+            title: 'Post Liked',
+            description: 'Someone liked your post',
+          });
+        }
+      )
+      .subscribe();
 
-      if (!error && data) {
-        setGamificationStats(data);
-      } else if (!data) {
-        // Create initial gamification entry
-        const { data: newStats } = await supabase
-          .from('farmer_gamification')
-          .insert({
-            farmer_id: user?.id,
-            total_points: 0,
-            current_level: 1
-          })
-          .select()
-          .single();
-        setGamificationStats(newStats);
-      }
-    } catch (error) {
-      console.error('Error fetching gamification stats:', error);
-    }
-  };
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, toast]);
+
+  const tabConfig = [
+    { id: 'feed', label: 'Feed', icon: Home },
+    { id: 'communities', label: 'Communities', icon: Users },
+    { id: 'messages', label: 'Messages', icon: MessageSquare, badge: unreadCount },
+    { id: 'leaderboard', label: 'Rankings', icon: Trophy },
+    { id: 'trending', label: 'Trending', icon: TrendingUp },
+  ];
 
   return (
     <div className="min-h-screen bg-background pb-nav">
-      {/* Header with User Stats */}
-      <div className="sticky top-0 z-40 bg-background/95 backdrop-blur border-b">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                <Users className="w-5 h-5 text-primary" />
+      {/* Header */}
+      <div className="sticky top-14 z-30 bg-card border-b">
+        <div className="flex items-center justify-between p-4">
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-bold text-primary">
+              Farmer Community
+            </h1>
+            {userStats && (
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="bg-primary/10">
+                  Level {userStats.level}
+                </Badge>
+                <Badge variant="outline">
+                  {userStats.points} pts
+                </Badge>
               </div>
-              <div>
-                <h1 className="text-lg font-semibold">Farmer Community</h1>
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span>Level {gamificationStats?.current_level || 1}</span>
-                  <span>{gamificationStats?.total_points || 0} Points</span>
-                </div>
-              </div>
-            </div>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => setShowNotifications(!showNotifications)}
+              className="relative"
+            >
+              <Bell className="h-5 w-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-destructive text-destructive-foreground text-xs flex items-center justify-center">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </Button>
+            
             <Button
               size="sm"
               onClick={() => setShowCreatePost(true)}
               className="gap-2"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="h-4 w-4" />
               Post
             </Button>
           </div>
         </div>
+
+        {/* Search Bar */}
+        <div className="px-4 pb-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search posts, communities, or farmers..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 pr-10"
+            />
+            <Button
+              size="icon"
+              variant="ghost"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+            >
+              <Filter className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="w-full justify-start px-4 h-12 bg-transparent rounded-none">
+            {tabConfig.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <TabsTrigger
+                  key={tab.id}
+                  value={tab.id}
+                  className="relative data-[state=active]:bg-primary/10 flex-1 sm:flex-initial"
+                >
+                  <Icon className="h-4 w-4 mr-2" />
+                  <span className="hidden sm:inline">{tab.label}</span>
+                  {tab.badge && tab.badge > 0 && (
+                    <Badge
+                      variant="destructive"
+                      className="ml-2 h-5 px-1 min-w-[20px]"
+                    >
+                      {tab.badge}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+        </Tabs>
       </div>
 
-      {/* Trending Topics */}
-      <div className="px-4 py-2 border-b">
-        <TrendingTopics />
+      {/* Main Content */}
+      <div className="max-w-6xl mx-auto">
+        <Tabs value={activeTab} className="w-full">
+          <TabsContent value="feed" className="mt-0">
+            <SocialFeed 
+              searchQuery={searchQuery}
+              selectedCommunity={selectedCommunity}
+            />
+          </TabsContent>
+
+          <TabsContent value="communities" className="mt-0">
+            <Communities 
+              onCommunitySelect={(id) => {
+                setSelectedCommunity(id);
+                setActiveTab('feed');
+              }}
+            />
+          </TabsContent>
+
+          <TabsContent value="messages" className="mt-0">
+            <Messages />
+          </TabsContent>
+
+          <TabsContent value="leaderboard" className="mt-0">
+            <Leaderboard />
+          </TabsContent>
+
+          <TabsContent value="trending" className="mt-0">
+            <TrendingTopics />
+          </TabsContent>
+        </Tabs>
       </div>
 
-      {/* Main Content Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
-        <TabsList className="w-full rounded-none border-b bg-background">
-          <TabsTrigger value="feed" className="flex-1 gap-2">
-            <TrendingUp className="w-4 h-4" />
-            Feed
-          </TabsTrigger>
-          <TabsTrigger value="communities" className="flex-1 gap-2">
-            <Users className="w-4 h-4" />
-            Communities
-          </TabsTrigger>
-          <TabsTrigger value="messages" className="flex-1 gap-2">
-            <MessageSquare className="w-4 h-4" />
-            Messages
-          </TabsTrigger>
-          <TabsTrigger value="leaderboard" className="flex-1 gap-2">
-            <Trophy className="w-4 h-4" />
-            Rankings
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="feed" className="mt-0">
-          <SocialFeed />
-        </TabsContent>
-
-        <TabsContent value="communities" className="mt-0">
-          <Communities />
-        </TabsContent>
-
-        <TabsContent value="messages" className="mt-0">
-          <Messages />
-        </TabsContent>
-
-        <TabsContent value="leaderboard" className="mt-0">
-          <Leaderboard />
-        </TabsContent>
-      </Tabs>
-
-      {/* Create Post Dialog */}
+      {/* Create Post Modal */}
       {showCreatePost && (
-        <CreatePost 
+        <CreatePost
           onClose={() => setShowCreatePost(false)}
           onPostCreated={() => {
             setShowCreatePost(false);
@@ -154,6 +285,13 @@ export default function Social() {
               description: "Your post has been shared with the community."
             });
           }}
+        />
+      )}
+
+      {/* Notifications Panel */}
+      {showNotifications && (
+        <NotificationCenter
+          onClose={() => setShowNotifications(false)}
         />
       )}
     </div>
