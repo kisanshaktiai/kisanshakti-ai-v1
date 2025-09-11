@@ -29,7 +29,7 @@ export function SocialFeed({ searchQuery = '', selectedCommunity = null }: Socia
           farmer:farmers!social_posts_farmer_id_fkey(
             id,
             farmer_name,
-            phone
+            mobile_number
           ),
           community:communities(
             id,
