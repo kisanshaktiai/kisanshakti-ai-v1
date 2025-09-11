@@ -102,12 +102,12 @@ const Weather: React.FC = () => {
   };
 
   const getUVIndexInfo = (uv?: number) => {
-    if (!uv) return { level: 'Low', color: 'bg-gradient-to-r from-green-400 to-green-500', advice: 'Enjoy time outside', percentage: 10 };
-    if (uv <= 2) return { level: 'Low', color: 'bg-gradient-to-r from-green-400 to-green-500', advice: 'Enjoy time outside', percentage: 20 };
-    if (uv <= 5) return { level: 'Moderate', color: 'bg-gradient-to-r from-yellow-400 to-yellow-500', advice: 'Wear sunscreen SPF 30+', percentage: 50 };
-    if (uv <= 7) return { level: 'High', color: 'bg-gradient-to-r from-orange-400 to-orange-500', advice: 'Seek shade, SPF 50+', percentage: 70 };
-    if (uv <= 10) return { level: 'Very High', color: 'bg-gradient-to-r from-red-400 to-red-500', advice: 'Avoid sun 10am-4pm', percentage: 90 };
-    return { level: 'Extreme', color: 'bg-gradient-to-r from-purple-500 to-red-500', advice: 'Stay indoors', percentage: 100 };
+    if (!uv) return { level: 'Low', color: 'bg-gradient-to-r from-uv-low to-uv-low', advice: 'Enjoy time outside', percentage: 10 };
+    if (uv <= 2) return { level: 'Low', color: 'bg-gradient-to-r from-uv-low to-uv-low', advice: 'Enjoy time outside', percentage: 20 };
+    if (uv <= 5) return { level: 'Moderate', color: 'bg-gradient-to-r from-uv-moderate to-uv-moderate', advice: 'Wear sunscreen SPF 30+', percentage: 50 };
+    if (uv <= 7) return { level: 'High', color: 'bg-gradient-to-r from-uv-high to-uv-high', advice: 'Seek shade, SPF 50+', percentage: 70 };
+    if (uv <= 10) return { level: 'Very High', color: 'bg-gradient-to-r from-uv-very-high to-uv-very-high', advice: 'Avoid sun 10am-4pm', percentage: 90 };
+    return { level: 'Extreme', color: 'bg-gradient-to-r from-uv-extreme to-uv-very-high', advice: 'Stay indoors', percentage: 100 };
   };
 
   const getAgriculturalInsights = () => {
@@ -263,7 +263,7 @@ const Weather: React.FC = () => {
               size="icon"
               variant="ghost"
               className={cn(
-                "rounded-full bg-white/10 backdrop-blur-md hover:bg-white/20 text-white",
+                "rounded-full bg-overlay-light/10 backdrop-blur-md hover:bg-overlay-light/20 text-overlay-light",
                 isRefreshing && "animate-spin"
               )}
               onClick={handleRefresh}
@@ -277,24 +277,24 @@ const Weather: React.FC = () => {
             <div className="text-center space-y-4">
               {/* Animated Weather Icon */}
               <div className="relative inline-block">
-                <div className="absolute inset-0 bg-white/10 rounded-full blur-3xl scale-150 animate-pulse" />
+                <div className="absolute inset-0 bg-overlay-light/10 rounded-full blur-3xl scale-150 animate-pulse" />
                 {getWeatherIcon(currentWeather.main, "h-20 w-20 md:h-24 md:w-24 relative drop-shadow-2xl")}
               </div>
               
               {/* Temperature Display */}
               <div className="space-y-2">
                 <div className="flex items-start justify-center">
-                  <h1 className="text-7xl md:text-8xl font-bold text-white tracking-tighter">
+                  <h1 className="text-7xl md:text-8xl font-bold text-overlay-light tracking-tighter">
                     {Math.round(currentWeather.temp)}
                   </h1>
-                  <span className="text-3xl text-white/80 font-light mt-2">°C</span>
+                  <span className="text-3xl text-overlay-light/80 font-light mt-2">°C</span>
                 </div>
-                <p className="text-xl md:text-2xl capitalize text-white/90 font-medium">
+                <p className="text-xl md:text-2xl capitalize text-overlay-light/90 font-medium">
                   {currentWeather.description}
                 </p>
-                <div className="flex items-center justify-center gap-4 text-white/70">
+                <div className="flex items-center justify-center gap-4 text-overlay-light/70">
                   <span className="text-sm">Feels like {Math.round(currentWeather.feels_like)}°</span>
-                  <span className="text-white/40">•</span>
+                  <span className="text-overlay-light/40">•</span>
                   <span className="text-sm">H: {Math.round(currentWeather.temp_max)}° L: {Math.round(currentWeather.temp_min)}°</span>
                 </div>
               </div>
@@ -309,13 +309,13 @@ const Weather: React.FC = () => {
               { icon: Eye, value: `${(currentWeather.visibility / 1000).toFixed(1)}`, unit: 'km', label: 'Visibility' },
               { icon: Gauge, value: `${currentWeather.pressure}`, unit: 'hPa', label: 'Pressure' },
             ].map((stat, idx) => (
-              <div key={idx} className="backdrop-blur-md bg-white/10 rounded-2xl p-3 text-center border border-white/10">
-                <stat.icon className="h-4 w-4 mx-auto mb-1.5 text-white/80" />
-                <p className="text-lg font-bold text-white">
+              <div key={idx} className="backdrop-blur-md bg-overlay-light/10 rounded-2xl p-3 text-center border border-overlay-light/10">
+                <stat.icon className="h-4 w-4 mx-auto mb-1.5 text-overlay-light/80" />
+                <p className="text-lg font-bold text-overlay-light">
                   {stat.value}
-                  <span className="text-xs font-normal text-white/60">{stat.unit}</span>
+                  <span className="text-xs font-normal text-overlay-light/60">{stat.unit}</span>
                 </p>
-                <p className="text-[10px] text-white/60 mt-0.5">{stat.label}</p>
+                <p className="text-[10px] text-overlay-light/60 mt-0.5">{stat.label}</p>
               </div>
             ))}
           </div>
@@ -373,7 +373,7 @@ const Weather: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <Sunrise className="h-5 w-5 text-orange-400" />
+                    <Sunrise className="h-5 w-5 text-warning" />
                     <span className="text-xs text-muted-foreground">Sunrise</span>
                   </div>
                   <p className="text-xl font-bold">
@@ -382,7 +382,7 @@ const Weather: React.FC = () => {
                 </div>
                 <div className="space-y-1">
                   <div className="flex items-center gap-2">
-                    <Sunset className="h-5 w-5 text-orange-600" />
+                    <Sunset className="h-5 w-5 text-warning-foreground" />
                     <span className="text-xs text-muted-foreground">Sunset</span>
                   </div>
                   <p className="text-xl font-bold">
@@ -398,7 +398,7 @@ const Weather: React.FC = () => {
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-sm font-medium text-muted-foreground">UV Index</h4>
-                <Activity className="h-4 w-4 text-purple-400" />
+                <Activity className="h-4 w-4 text-uv-extreme" />
               </div>
               <div className="space-y-2">
                 <p className="text-2xl font-bold">{currentWeather.uv_index || 0}</p>
@@ -415,7 +415,7 @@ const Weather: React.FC = () => {
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
                 <h4 className="text-sm font-medium text-muted-foreground">Wind</h4>
-                <Wind className="h-4 w-4 text-gray-400" />
+                <Wind className="h-4 w-4 text-muted-foreground" />
               </div>
               <div className="space-y-2">
                 <div className="flex items-baseline gap-1">

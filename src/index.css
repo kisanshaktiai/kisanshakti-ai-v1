@@ -33,17 +33,22 @@
     --accent: 199 89% 48%;
     --accent-foreground: 0 0% 100%;
     
-    /* Success - Harvest gold */
+    /* Status Colors */
     --success: 45 93% 47%;
     --success-foreground: 45 5% 15%;
+    
+    --warning: 38 92% 50%;
+    --warning-foreground: 38 5% 15%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    
+    --info: 199 89% 48%;
+    --info-foreground: 0 0% 100%;
     
     /* Muted */
     --muted: 60 5% 96%;
     --muted-foreground: 140 5% 40%;
-    
-    /* Destructive */
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 98%;
     
     /* Borders & Inputs */
     --border: 142 20% 90%;
@@ -53,10 +58,39 @@
     /* Radius */
     --radius: 0.75rem;
     
+    /* Semantic Colors for Agriculture */
+    --crop-stage-germination: 199 89% 48%;
+    --crop-stage-vegetative: 142 76% 36%;
+    --crop-stage-flowering: 45 93% 47%;
+    --crop-stage-fruiting: 30 85% 50%;
+    --crop-stage-harvesting: 0 84% 50%;
+    
+    /* Land Health Score Colors */
+    --land-health-excellent: 142 76% 36%;
+    --land-health-good: 45 93% 47%;
+    --land-health-poor: 0 84% 50%;
+    
+    /* Weather Semantic Colors */
+    --weather-sunny: 45 93% 47%;
+    --weather-cloudy: 214 14% 72%;
+    --weather-rainy: 199 89% 48%;
+    --weather-stormy: 240 5% 34%;
+    --weather-night: 222 47% 11%;
+    
+    /* UV Index Colors */
+    --uv-low: 142 76% 36%;
+    --uv-moderate: 45 93% 47%;
+    --uv-high: 30 85% 50%;
+    --uv-very-high: 0 84% 50%;
+    --uv-extreme: 280 85% 50%;
+    
     /* Gradients */
     --gradient-primary: linear-gradient(135deg, hsl(142 76% 36%), hsl(142 76% 44%));
     --gradient-earth: linear-gradient(180deg, hsl(199 89% 48%), hsl(93 30% 98%));
     --gradient-sunrise: linear-gradient(135deg, hsl(45 93% 47%), hsl(30 41% 48%));
+    --gradient-success: linear-gradient(135deg, hsl(142 76% 36%), hsl(45 93% 47%));
+    --gradient-warning: linear-gradient(135deg, hsl(38 92% 50%), hsl(45 93% 47%));
+    --gradient-danger: linear-gradient(135deg, hsl(0 84% 50%), hsl(30 85% 50%));
     
     /* Shadows */
     --shadow-sm: 0 1px 2px 0 hsl(142 76% 36% / 0.05);
@@ -87,12 +121,9 @@
     --tracking-fill: 199 89% 48%;
     --tracking-stroke: 199 89% 38%;
     
-    /* Weather Colors */
-    --weather-sunny: 45 93% 47%;
-    --weather-cloudy: 214 14% 72%;
-    --weather-rainy: 199 89% 48%;
-    --weather-stormy: 240 5% 34%;
-    --weather-night: 222 47% 11%;
+    /* Overlay Colors */
+    --overlay-light: 0 0% 100%;
+    --overlay-dark: 140 25% 10%;
   }
 
   .dark {
@@ -118,24 +149,38 @@
     --success: 45 93% 57%;
     --success-foreground: 45 5% 15%;
     
-    --muted: 140 20% 20%;
-    --muted-foreground: 140 5% 65%;
+    --warning: 38 92% 60%;
+    --warning-foreground: 38 5% 15%;
     
     --destructive: 0 84% 50%;
     --destructive-foreground: 0 0% 98%;
+    
+    --info: 199 89% 58%;
+    --info-foreground: 0 0% 100%;
+    
+    --muted: 140 20% 20%;
+    --muted-foreground: 140 5% 65%;
     
     --border: 140 20% 25%;
     --input: 140 20% 25%;
     --ring: 142 76% 42%;
     
+    /* Dark mode gradients */
     --gradient-primary: linear-gradient(135deg, hsl(142 76% 42%), hsl(142 76% 50%));
     --gradient-earth: linear-gradient(180deg, hsl(199 89% 38%), hsl(140 25% 10%));
     --gradient-sunrise: linear-gradient(135deg, hsl(45 93% 57%), hsl(30 41% 58%));
+    --gradient-success: linear-gradient(135deg, hsl(142 76% 42%), hsl(45 93% 57%));
+    --gradient-warning: linear-gradient(135deg, hsl(38 92% 60%), hsl(45 93% 57%));
+    --gradient-danger: linear-gradient(135deg, hsl(0 84% 50%), hsl(30 85% 60%));
     
     --nav-background: 140 25% 12%;
     --nav-border: 140 20% 25%;
     --nav-active: 142 76% 42%;
     --nav-inactive: 140 5% 50%;
+    
+    /* Overlay Colors Dark */
+    --overlay-light: 0 0% 100%;
+    --overlay-dark: 140 25% 10%;
   }
 }
 

@@ -272,7 +272,7 @@ export default function LanguageSelection() {
       )}
       
       {!detectingLocation && locationDenied && (
-        <div className="flex items-center space-x-1 text-xs text-amber-600 dark:text-amber-400">
+        <div className="flex items-center space-x-1 text-xs text-warning dark:text-warning">
           <MapPin className="w-3 h-3" />
           <span>Location access denied, showing default</span>
         </div>

@@ -39,9 +39,17 @@ export default {
           DEFAULT: "hsl(var(--success))",
           foreground: "hsl(var(--success-foreground))",
         },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          foreground: "hsl(var(--info-foreground))",
         },
         muted: {
           DEFAULT: "hsl(var(--muted))",
@@ -61,6 +69,37 @@ export default {
           active: "hsl(var(--nav-active))",
           inactive: "hsl(var(--nav-inactive))",
         },
+        // Semantic colors for agriculture
+        'crop-stage': {
+          germination: "hsl(var(--crop-stage-germination))",
+          vegetative: "hsl(var(--crop-stage-vegetative))",
+          flowering: "hsl(var(--crop-stage-flowering))",
+          fruiting: "hsl(var(--crop-stage-fruiting))",
+          harvesting: "hsl(var(--crop-stage-harvesting))",
+        },
+        'land-health': {
+          excellent: "hsl(var(--land-health-excellent))",
+          good: "hsl(var(--land-health-good))",
+          poor: "hsl(var(--land-health-poor))",
+        },
+        'weather': {
+          sunny: "hsl(var(--weather-sunny))",
+          cloudy: "hsl(var(--weather-cloudy))",
+          rainy: "hsl(var(--weather-rainy))",
+          stormy: "hsl(var(--weather-stormy))",
+          night: "hsl(var(--weather-night))",
+        },
+        'uv': {
+          low: "hsl(var(--uv-low))",
+          moderate: "hsl(var(--uv-moderate))",
+          high: "hsl(var(--uv-high))",
+          'very-high': "hsl(var(--uv-very-high))",
+          extreme: "hsl(var(--uv-extreme))",
+        },
+        'overlay': {
+          light: "hsl(var(--overlay-light))",
+          dark: "hsl(var(--overlay-dark))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -75,6 +114,9 @@ export default {
         "gradient-primary": "var(--gradient-primary)",
         "gradient-earth": "var(--gradient-earth)",
         "gradient-sunrise": "var(--gradient-sunrise)",
+        "gradient-success": "var(--gradient-success)",
+        "gradient-warning": "var(--gradient-warning)",
+        "gradient-danger": "var(--gradient-danger)",
       },
       boxShadow: {
         sm: "var(--shadow-sm)",

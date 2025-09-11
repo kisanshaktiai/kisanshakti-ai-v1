@@ -105,18 +105,18 @@ export default function LandManagement() {
     const organicScore = organic ? (organic >= 0.75 ? 3 : organic >= 0.5 ? 2 : 1) : 0;
     const totalScore = (phScore + organicScore) / 2;
     
-    if (totalScore >= 2.5) return 'bg-emerald-500';
-    if (totalScore >= 1.5) return 'bg-amber-500';
+    if (totalScore >= 2.5) return 'bg-land-health-excellent';
+    if (totalScore >= 1.5) return 'bg-land-health-good';
     return 'bg-destructive';
   };
 
   const getCropStageColor = (stage?: string) => {
     switch (stage) {
-      case 'germination': return 'bg-blue-500';
-      case 'vegetative': return 'bg-green-500';
-      case 'flowering': return 'bg-yellow-500';
-      case 'fruiting': return 'bg-orange-500';
-      case 'harvesting': return 'bg-red-500';
+      case 'germination': return 'bg-crop-stage-germination';
+      case 'vegetative': return 'bg-crop-stage-vegetative';
+      case 'flowering': return 'bg-crop-stage-flowering';
+      case 'fruiting': return 'bg-crop-stage-fruiting';
+      case 'harvesting': return 'bg-crop-stage-harvesting';
       default: return 'bg-muted';
     }
   };
@@ -184,7 +184,7 @@ export default function LandManagement() {
             <Sprout className="h-4 w-4 text-primary" />
             <span className="text-sm font-medium">{land.current_crop}</span>
             {land.crop_stage && (
-              <Badge className={`${getCropStageColor(land.crop_stage)} text-white text-xs`}>
+              <Badge className={`${getCropStageColor(land.crop_stage)} text-primary-foreground text-xs`}>
                 {land.crop_stage}
               </Badge>
             )}
@@ -276,7 +276,7 @@ export default function LandManagement() {
               <div className="text-right">
                 <p className="text-sm font-medium">{land.current_crop}</p>
                 {land.crop_stage && (
-                  <Badge className={`${getCropStageColor(land.crop_stage)} text-white text-xs`}>
+                  <Badge className={`${getCropStageColor(land.crop_stage)} text-primary-foreground text-xs`}>
                     {land.crop_stage}
                   </Badge>
                 )}
@@ -343,11 +343,11 @@ export default function LandManagement() {
 
       {/* Offline Indicator */}
       {!isOnline && (
-        <Card className="border-amber-500 bg-amber-50">
+        <Card className="border-warning bg-warning/10">
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-amber-600" />
-              <p className="text-sm text-amber-800">
+              <AlertCircle className="h-5 w-5 text-warning" />
+              <p className="text-sm text-warning-foreground">
                 You're offline. Changes will sync when connection is restored.
               </p>
             </div>
