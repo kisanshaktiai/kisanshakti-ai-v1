@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
+import { WhiteLabelService } from '@/services/WhiteLabelService';
 
 interface BrandIdentity {
   logo_url?: string;

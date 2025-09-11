@@ -38,6 +38,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useLanguageStore } from "@/stores/languageStore";
 import LocationService from "@/services/LocationService";
 import { useLocationPermission } from "@/hooks/useLocationPermission";
+import { WhiteLabelService } from "@/services/WhiteLabelService";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -59,16 +60,43 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   const [hasRequestedPermission, setHasRequestedPermission] = useState(false);
 
   useEffect(() => {
-    // Initialize tenant
-    fetchTenant();
+    // Initialize app with performance optimization
+    const initializeApp = async () => {
+      // Start fetching tenant data
+      const tenantPromise = fetchTenant();
+      
+      // Check authentication status in parallel
+      const authPromise = checkAuth();
+      
+      // Wait for critical tasks
+      await Promise.all([tenantPromise, authPromise]);
+      
+      // If there's an existing session, require PIN verification
+      if (session && session.isPinVerified) {
+        requirePin();
+      }
+    };
     
-    // Check authentication status and require PIN on app open
-    checkAuth();
+    initializeApp();
     
-    // If there's an existing session, require PIN verification
-    if (session && session.isPinVerified) {
-      requirePin();
-    }
+    // Listen for online/offline events
+    const handleOnline = () => {
+      console.log('App is online - refreshing white-label config');
+      const whiteLabelService = WhiteLabelService.getInstance();
+      whiteLabelService.forceRefresh();
+    };
+    
+    const handleOffline = () => {
+      console.log('App is offline - using cached data');
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, [fetchTenant, checkAuth, requirePin]);
 
   // Apply theme whenever tenant changes
