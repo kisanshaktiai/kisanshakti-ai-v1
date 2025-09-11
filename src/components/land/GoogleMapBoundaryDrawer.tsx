@@ -88,7 +88,7 @@ export function GoogleMapBoundaryDrawer({
   useEffect(() => {
     const fetchLocation = async () => {
       try {
-        const location = await LocationService.getInstance().getCurrentLocation();
+        const location = await LocationService.getCurrentLocation();
         
         if (location) {
           const newCenter = {
@@ -374,40 +374,46 @@ export function GoogleMapBoundaryDrawer({
   };
 
   // GPS center button handler
-  const handleCenterOnLocation = useCallback(() => {
-    if (navigator.geolocation && map) {
+  const handleCenterOnLocation = useCallback(async () => {
+    if (map) {
       setIsCentering(true);
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
+      try {
+        const location = await LocationService.getCurrentLocation(true);
+        
+        if (location) {
           const pos = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
+            lat: location.lat,
+            lng: location.lon,
           };
           setCurrentPosition(pos);
-          setGpsAccuracy(position.coords.accuracy);
+          setLocationAccuracy(location.accuracy);
+          setLocationSource(location.source || 'gps');
           map.setCenter(pos);
-          map.setZoom(18);
-          setIsCentering(false);
+          
+          // Adjust zoom based on location source
+          const zoom = location.source === 'gps' ? 18 : 
+                      location.source === 'village' ? 16 :
+                      location.source === 'taluka' ? 14 :
+                      location.source === 'district' ? 12 : 10;
+          map.setZoom(zoom);
           
           toast({
             title: "Location Updated",
-            description: `GPS Accuracy: ${Math.round(position.coords.accuracy)}m`,
+            description: location.source === 'gps' ? 
+              `GPS Accuracy: ${Math.round(location.accuracy)}m` :
+              `Using ${location.approximateArea || location.source} location`,
           });
-        },
-        (error) => {
-          setIsCentering(false);
-          toast({
-            title: "Location Error",
-            description: "Could not get current location",
-            variant: "destructive",
-          });
-        },
-        { 
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
         }
-      );
+      } catch (error) {
+        console.error('Error getting location:', error);
+        toast({
+          title: "Location Error",
+          description: "Could not get current location",
+          variant: "destructive",
+        });
+      } finally {
+        setIsCentering(false);
+      }
     }
   }, [map, toast]);
 
