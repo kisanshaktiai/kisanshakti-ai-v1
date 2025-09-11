@@ -227,9 +227,9 @@ export default function LanguageSelection() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-earth flex flex-col">
+    <div className="min-h-screen bg-gradient-primary flex flex-col">
       {/* Fixed Header with Logo */}
-      <header className="sticky top-0 z-50 bg-card/90 backdrop-blur-sm border-b border-border">
+      <header className="sticky top-0 z-50 bg-background/90 backdrop-blur-sm border-b border-border">
         <div className="flex flex-col items-center py-2 px-4 space-y-2">
           {/* App Logo */}
           <div className="flex items-center justify-center">
@@ -272,7 +272,7 @@ export default function LanguageSelection() {
       )}
       
       {!detectingLocation && locationDenied && (
-        <div className="flex items-center space-x-1 text-xs text-warning dark:text-warning">
+        <div className="flex items-center space-x-1 text-xs text-status-warning">
           <MapPin className="w-3 h-3" />
           <span>Location access denied, showing default</span>
         </div>
@@ -326,7 +326,7 @@ export default function LanguageSelection() {
       </main>
 
       {/* Fixed Continue Button */}
-      <footer className="sticky bottom-0 bg-card/90 backdrop-blur-sm border-t border-border">
+      <footer className="sticky bottom-0 bg-background/90 backdrop-blur-sm border-t border-border">
         <div className="max-w-md mx-auto p-4">
           <Button
             onClick={handleContinue}

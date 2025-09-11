@@ -31,19 +31,54 @@ interface CachedConfig {
 
 const CACHE_KEY = 'white_label_config';
 const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+const CHECK_INTERVAL = 24 * 60 * 60 * 1000; // Check every 24 hours
 const BACKGROUND_REFRESH_THRESHOLD = 60 * 60 * 1000; // 1 hour
 
 export class WhiteLabelService {
   private static instance: WhiteLabelService;
   private currentRequest: Promise<WhiteLabelConfig | null> | null = null;
+  private autoRefreshTimer: NodeJS.Timeout | null = null;
 
-  private constructor() {}
+  private constructor() {
+    this.setupAutoRefresh();
+  }
 
   static getInstance(): WhiteLabelService {
     if (!WhiteLabelService.instance) {
       WhiteLabelService.instance = new WhiteLabelService();
     }
     return WhiteLabelService.instance;
+  }
+
+  private setupAutoRefresh(): void {
+    // Clear any existing timer
+    if (this.autoRefreshTimer) {
+      clearInterval(this.autoRefreshTimer);
+    }
+
+    // Set up automatic refresh every 24 hours
+    this.autoRefreshTimer = setInterval(() => {
+      console.log('[WhiteLabelService] Auto-refreshing theme after 24 hours');
+      this.forceRefresh();
+    }, CHECK_INTERVAL);
+
+    // Also check on page visibility change
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          const cached = this.getCachedConfig();
+          if (cached) {
+            const age = Date.now() - (cached.expiresAt - CACHE_DURATION);
+            
+            // If cache is older than 24 hours, refresh
+            if (age > CHECK_INTERVAL) {
+              console.log('[WhiteLabelService] Cache expired, refreshing on visibility change');
+              this.forceRefresh();
+            }
+          }
+        }
+      });
+    }
   }
 
   /**
@@ -131,6 +166,9 @@ export class WhiteLabelService {
           // Cache the successful response
           this.cacheConfig(responseData);
           console.log('White-label config fetched and cached successfully');
+          
+          // Notify about theme update
+          this.notifyThemeUpdate(responseData);
           return responseData;
         }
 
@@ -138,6 +176,9 @@ export class WhiteLabelService {
           // Cache the successful response
           this.cacheConfig(data);
           console.log('White-label config fetched and cached successfully');
+          
+          // Notify about theme update
+          this.notifyThemeUpdate(data);
           return data;
         }
       } catch (error) {
@@ -170,6 +211,15 @@ export class WhiteLabelService {
     this.fetchConfig(tenantId, domain).catch(error => {
       console.error('Background refresh failed:', error);
     });
+  }
+
+  /**
+   * Notify about theme update
+   */
+  private notifyThemeUpdate(config: WhiteLabelConfig): void {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('themeUpdated', { detail: config }));
+    }
   }
 
   /**
@@ -215,7 +265,25 @@ export class WhiteLabelService {
    * Force refresh config
    */
   async forceRefresh(tenantId?: string, domain?: string): Promise<WhiteLabelConfig | null> {
+    console.log('[WhiteLabelService] Force refreshing configuration');
     this.clearCache();
-    return this.fetchConfig(tenantId, domain);
+    const config = await this.fetchConfig(tenantId, domain);
+    
+    // If we got a new config, notify about the update
+    if (config) {
+      this.notifyThemeUpdate(config);
+    }
+    
+    return config;
+  }
+
+  /**
+   * Clean up resources
+   */
+  destroy(): void {
+    if (this.autoRefreshTimer) {
+      clearInterval(this.autoRefreshTimer);
+      this.autoRefreshTimer = null;
+    }
   }
 }

@@ -52,7 +52,7 @@ const queryClient = new QueryClient({
 });
 
 function AppInitializer({ children }: { children: React.ReactNode }) {
-  const { fetchTenant, tenant, applyWhiteLabelTheme } = useTenantStore();
+  const { fetchTenant, tenant, applyWhiteLabelTheme, listenForTenantChanges } = useTenantStore();
   const { checkAuth, requirePin, session } = useAuthStore();
   const { currentLanguage } = useLanguageStore();
   const { permissionStatus, requestPermission } = useLocationPermission();
@@ -75,6 +75,9 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       if (session && session.isPinVerified) {
         requirePin();
       }
+      
+      // Start listening for tenant and theme changes
+      listenForTenantChanges();
     };
     
     initializeApp();

@@ -128,6 +128,7 @@ interface TenantState {
   fetchTenant: () => Promise<void>;
   applyWhiteLabelTheme: (whiteLabel: WhiteLabelConfig) => void;
   clearError: () => void;
+  listenForTenantChanges: () => void;
 }
 
 export const useTenantStore = create<TenantState>((set, get) => ({
@@ -844,6 +845,40 @@ function rgbToHSL(r: number, g: number, b: number): string {
   },
 
   clearError: () => set({ error: null }),
+
+  listenForTenantChanges: () => {
+    const whiteLabelService = WhiteLabelService.getInstance();
+    
+    // Listen for tenant changes from Supabase
+    supabase
+      .channel('tenant-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'tenants'
+        },
+        async (payload) => {
+          console.log('Tenant changed, refreshing configuration');
+          await whiteLabelService.forceRefresh();
+          get().fetchTenant();
+        }
+      )
+      .subscribe();
+
+    // Listen for theme updates from auto-refresh
+    if (typeof window !== 'undefined') {
+      window.addEventListener('themeUpdated', async (event: Event) => {
+        console.log('Theme auto-refreshed, applying new configuration');
+        const customEvent = event as CustomEvent;
+        const config = customEvent.detail;
+        if (config && config.whiteLabelConfig) {
+          get().applyWhiteLabelTheme(config.whiteLabelConfig);
+        }
+      });
+    }
+  },
 }));
 
 // Helper function to convert RGB to HSL
