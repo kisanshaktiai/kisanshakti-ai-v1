@@ -4005,6 +4005,7 @@ export type Database = {
           last_failed_login: string | null
           last_login_at: string | null
           loan_amount: number | null
+          location: string | null
           login_attempts: number | null
           metadata: Json | null
           mobile_number: string | null
@@ -4055,6 +4056,7 @@ export type Database = {
           last_failed_login?: string | null
           last_login_at?: string | null
           loan_amount?: number | null
+          location?: string | null
           login_attempts?: number | null
           metadata?: Json | null
           mobile_number?: string | null
@@ -4105,6 +4107,7 @@ export type Database = {
           last_failed_login?: string | null
           last_login_at?: string | null
           loan_amount?: number | null
+          location?: string | null
           login_attempts?: number | null
           metadata?: Json | null
           mobile_number?: string | null
@@ -7870,6 +7873,63 @@ export type Database = {
             columns: ["shared_to_community_id"]
             isOneToOne: false
             referencedRelation: "communities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      posts: {
+        Row: {
+          comments_count: number | null
+          community_id: string | null
+          content: string
+          created_at: string | null
+          farmer_id: string
+          id: string
+          is_pinned: boolean | null
+          likes_count: number | null
+          post_type: string | null
+          shares_count: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          comments_count?: number | null
+          community_id?: string | null
+          content: string
+          created_at?: string | null
+          farmer_id: string
+          id?: string
+          is_pinned?: boolean | null
+          likes_count?: number | null
+          post_type?: string | null
+          shares_count?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          comments_count?: number | null
+          community_id?: string | null
+          content?: string
+          created_at?: string | null
+          farmer_id?: string
+          id?: string
+          is_pinned?: boolean | null
+          likes_count?: number | null
+          post_type?: string | null
+          shares_count?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "posts_community_id_fkey"
+            columns: ["community_id"]
+            isOneToOne: false
+            referencedRelation: "communities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "posts_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
             referencedColumns: ["id"]
           },
         ]
