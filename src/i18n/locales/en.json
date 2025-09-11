@@ -37,7 +37,11 @@
     "todayWeather": "Today's Weather",
     "marketPrices": "Market Prices",
     "latestAdvisory": "Latest Advisory",
-    "governmentSchemes": "Government Schemes"
+    "governmentSchemes": "Government Schemes",
+    "myLand": "My Land",
+    "aiChat": "AI Chat",
+    "market": "Market",
+    "weather": "Weather"
   },
   "chat": {
     "history": "Chat History",
