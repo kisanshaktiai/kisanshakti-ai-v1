@@ -321,9 +321,9 @@ export function GoogleMapBoundaryDrawer({
   };
 
   const polygonOptions = {
-    fillColor: getThemeColor('--polygon-fill', '#10b981'),
+    fillColor: getThemeColor('--primary', 'hsl(var(--primary))'),
     fillOpacity: 0.35,
-    strokeColor: getThemeColor('--polygon-stroke', '#10b981'),
+    strokeColor: getThemeColor('--primary', 'hsl(var(--primary))'),
     strokeOpacity: 1,
     strokeWeight: 2,
     clickable: false,
@@ -334,7 +334,7 @@ export function GoogleMapBoundaryDrawer({
   };
 
   const polylineOptions = {
-    strokeColor: getThemeColor('--tracking-stroke', '#10b981'),
+    strokeColor: getThemeColor('--primary', 'hsl(var(--primary))'),
     strokeOpacity: 1,
     strokeWeight: 2,
     clickable: false,
@@ -350,9 +350,9 @@ export function GoogleMapBoundaryDrawer({
       return {
         path: google.maps.SymbolPath.CIRCLE,
         scale: 8,
-        fillColor: getThemeColor('--tracking-fill', '#4285F4'),
+        fillColor: getThemeColor('--accent', 'hsl(var(--accent))'),
         fillOpacity: 1,
-        strokeColor: '#ffffff',
+        strokeColor: getThemeColor('--background', 'hsl(var(--background))'),
         strokeWeight: 2,
       };
     }
@@ -364,9 +364,9 @@ export function GoogleMapBoundaryDrawer({
       return {
         path: google.maps.SymbolPath.CIRCLE,
         scale: 6,
-        fillColor: getThemeColor('--marker-color', '#ef4444'),
+        fillColor: getThemeColor('--destructive', 'hsl(var(--destructive))'),
         fillOpacity: 1,
-        strokeColor: '#ffffff',
+        strokeColor: getThemeColor('--background', 'hsl(var(--background))'),
         strokeWeight: 2,
       };
     }

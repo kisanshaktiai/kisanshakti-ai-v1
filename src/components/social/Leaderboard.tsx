@@ -44,7 +44,7 @@ export function Leaderboard() {
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
                       {index === 0 ? <Trophy className="w-4 h-4 text-yellow-500" /> :
-                       index === 1 ? <Medal className="w-4 h-4 text-gray-400" /> :
+                       index === 1 ? <Medal className="w-4 h-4 text-muted-foreground" /> :
                        index === 2 ? <Award className="w-4 h-4 text-amber-600" /> :
                        <span className="text-sm font-bold">{index + 1}</span>}
                     </div>

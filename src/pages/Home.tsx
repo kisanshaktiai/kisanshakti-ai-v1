@@ -160,11 +160,7 @@ export default function Home() {
         <div className="relative z-10">
           <div className="flex items-start justify-between mb-6">
             <div>
-              <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
-                {t('home.greeting', { name: user?.fullName || user?.name || 'Farmer' })}
-                <Sparkles className="w-6 h-6 text-accent animate-pulse" />
-              </h1>
-              <p className="text-muted-foreground mt-1 flex items-center gap-2">
+              <p className="text-muted-foreground flex items-center gap-2">
                 <Leaf className="w-4 h-4" />
                 {currentTime.toLocaleDateString('en-IN', {
                   weekday: 'long',
@@ -210,7 +206,7 @@ export default function Home() {
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between mb-3">
                       <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shadow-soft", feature.color)}>
-                        <Icon className="w-6 h-6 text-white" />
+                        <Icon className="w-6 h-6 text-primary-foreground" />
                       </div>
                       {feature.badge && (
                         <Badge variant="secondary" className="text-xs">

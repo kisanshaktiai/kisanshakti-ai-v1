@@ -181,12 +181,12 @@ export function LandFormDialog({
           
           {/* Compact area and location display */}
           <div className="flex gap-2 mt-3">
-            <Card className="flex-1 p-3 bg-white/80 dark:bg-gray-900/80 backdrop-blur">
+            <Card className="flex-1 p-3 bg-card/80 backdrop-blur">
               <div className="flex items-center gap-2">
-                <Mountain className="h-5 w-5 text-green-600/50 dark:text-green-400/50" />
+                <Mountain className="h-5 w-5 text-primary/50" />
                 <div className="flex-1">
                   <p className="text-xs text-muted-foreground">Area</p>
-                  <p className="text-sm font-semibold text-green-600 dark:text-green-400">
+                  <p className="text-sm font-semibold text-primary">
                     {area.acres.toFixed(3)} acres
                   </p>
                   <p className="text-[10px] text-muted-foreground">
@@ -197,9 +197,9 @@ export function LandFormDialog({
             </Card>
             
             {centerCoordinates && (
-              <Card className="flex-1 p-3 bg-white/80 dark:bg-gray-900/80 backdrop-blur">
+              <Card className="flex-1 p-3 bg-card/80 backdrop-blur">
                 <div className="flex items-center gap-2">
-                  <MapPin className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <MapPin className="h-4 w-4 text-accent" />
                   <div className="flex-1">
                     <p className="text-xs text-muted-foreground">Location</p>
                     <p className="text-[10px] font-mono">
@@ -298,7 +298,7 @@ export function LandFormDialog({
                                     className={cn(
                                       "p-3 cursor-pointer transition-all duration-200 border",
                                       isSelected 
-                                        ? "border-green-500 bg-green-50 dark:bg-green-900/20" 
+                                        ? "border-primary bg-primary/10" 
                                         : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
                                     )}
                                     onClick={() => field.onChange(type.value)}
@@ -307,7 +307,7 @@ export function LandFormDialog({
                                       <Icon className={cn("h-5 w-5", type.color)} />
                                       <span className={cn(
                                         "text-xs font-medium",
-                                        isSelected ? "text-green-700 dark:text-green-300" : "text-gray-700 dark:text-gray-300"
+                                        isSelected ? "text-primary" : "text-muted-foreground"
                                       )}>
                                         {type.label}
                                       </span>

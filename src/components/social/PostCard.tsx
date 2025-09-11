@@ -49,7 +49,7 @@ export function PostCard({ post, onLike, onShare, onSave, isLiked, isSaved }: Po
             </div>
           </div>
           {post.is_success_story && (
-            <Badge variant="secondary" className="bg-green-500/10 text-green-600">
+            <Badge variant="secondary" className="bg-success/10 text-success">
               Success Story
             </Badge>
           )}
@@ -108,7 +108,7 @@ export function PostCard({ post, onLike, onShare, onSave, isLiked, isSaved }: Po
               variant="ghost"
               size="sm"
               onClick={onLike}
-              className={isLiked ? 'text-red-500' : ''}
+              className={isLiked ? 'text-destructive' : ''}
             >
               <Heart className={`w-4 h-4 mr-1 ${isLiked ? 'fill-current' : ''}`} />
               {post.likes_count || 0}
