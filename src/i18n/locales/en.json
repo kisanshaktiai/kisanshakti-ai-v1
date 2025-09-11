@@ -11,7 +11,8 @@
     "advisory": "Advisory",
     "schemes": "Schemes",
     "profile": "Profile",
-    "chat": "AI Chat"
+    "chat": "AI Chat",
+    "social": "Community"
   },
   "auth": {
     "welcome": "Welcome",

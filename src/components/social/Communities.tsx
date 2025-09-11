@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
-import { MapPin, Wheat, Languages, Users, Search } from 'lucide-react';
+import { MapPin, Wheat, Languages, Users, Search, Activity } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -17,11 +18,13 @@ interface CommunitiesProps {
 export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
   const { user } = useAuthStore();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [communities, setCommunities] = useState<any[]>([]);
   const [joinedCommunities, setJoinedCommunities] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState('all');
   const [loading, setLoading] = useState(true);
+  const [onlineMembers, setOnlineMembers] = useState<{ [key: string]: number }>({});
 
   useEffect(() => {
     fetchCommunities();
@@ -176,7 +179,13 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
                 isJoined={joinedCommunities.includes(community.id)}
                 onJoin={() => handleJoinCommunity(community.id)}
                 onLeave={() => handleLeaveCommunity(community.id)}
-                onClick={() => onCommunitySelect?.(community.id)}
+                onClick={() => {
+                  if (onCommunitySelect) {
+                    onCommunitySelect(community.id);
+                  } else {
+                    navigate(`/app/community/${community.id}`);
+                  }
+                }}
                 icon={getIcon(community.community_type)}
               />
             ))}

@@ -32,6 +32,7 @@ import AddLand from "./pages/AddLand";
 import LandDetails from "./pages/LandDetails";
 import AIChat from "./pages/AIChat";
 import Social from "./pages/Social";
+import { CommunityPage } from "./components/social/CommunityPage";
 
 // Stores and Services
 import { useTenantStore } from "@/stores/tenantStore";
@@ -280,6 +281,10 @@ const router = createBrowserRouter(
         {
           path: "social",
           element: <Social />,
+        },
+        {
+          path: "community/:id",
+          element: <CommunityPage />,
         },
       ],
     },
