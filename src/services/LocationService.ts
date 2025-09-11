@@ -10,6 +10,8 @@ export interface LocationData {
   state?: string;
   country?: string;
   district?: string;
+  source?: 'gps' | 'village' | 'taluka' | 'district' | 'state' | 'default';
+  approximateArea?: string;
 }
 
 class LocationService {
@@ -125,39 +127,15 @@ class LocationService {
 
     if (!('geolocation' in navigator)) {
       console.error('Geolocation not supported');
-      // Return default location for development/testing
-      const defaultLocation: LocationData = {
-        lat: 18.5204,
-        lon: 73.8567,
-        accuracy: 100,
-        timestamp: Date.now(),
-        city: 'Pune',
-        state: 'Maharashtra',
-        country: 'India',
-        district: 'Pune'
-      };
-      this.currentLocation = defaultLocation;
-      this.saveLocationToCache(defaultLocation);
-      return defaultLocation;
+      // Try to get location from user profile
+      return await this.getLocationFromUserProfile();
     }
 
     // Check permission first
     if (this.permissionStatus === 'denied') {
-      console.error('Location permission denied');
-      // Return default location if permission denied
-      const defaultLocation: LocationData = {
-        lat: 18.5204,
-        lon: 73.8567,
-        accuracy: 100,
-        timestamp: Date.now(),
-        city: 'Pune',
-        state: 'Maharashtra',
-        country: 'India',
-        district: 'Pune'
-      };
-      this.currentLocation = defaultLocation;
-      this.saveLocationToCache(defaultLocation);
-      return defaultLocation;
+      console.error('Location permission denied, trying user profile');
+      // Try to get location from user profile
+      return await this.getLocationFromUserProfile();
     }
 
     return new Promise((resolve) => {
@@ -173,7 +151,8 @@ class LocationService {
             lat: position.coords.latitude,
             lon: position.coords.longitude,
             accuracy: position.coords.accuracy,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            source: 'gps'
           };
 
           // Reverse geocode to get address
@@ -183,29 +162,187 @@ class LocationService {
           this.saveLocationToCache(locationData);
           this.notifyLocationUpdate(locationData);
           
-          console.log('Got new location:', locationData);
+          console.log('Got GPS location:', locationData);
           resolve(locationData);
         },
-        (error) => {
-          console.warn('Location error:', error.message);
-          // Return default location if geolocation fails
-          const defaultLocation: LocationData = {
-            lat: 18.5204,
-            lon: 73.8567,
-            accuracy: 100,
-            timestamp: Date.now(),
-            city: 'Pune',
-            state: 'Maharashtra',
-            country: 'India',
-            district: 'Pune'
-          };
-          this.currentLocation = defaultLocation;
-          this.saveLocationToCache(defaultLocation);
-          resolve(defaultLocation);
+        async (error) => {
+          console.warn('GPS location error:', error.message);
+          // Try to get location from user profile
+          const profileLocation = await this.getLocationFromUserProfile();
+          if (profileLocation) {
+            resolve(profileLocation);
+          } else {
+            // Return default location if all methods fail
+            const defaultLocation: LocationData = {
+              lat: 18.5204,
+              lon: 73.8567,
+              accuracy: 100,
+              timestamp: Date.now(),
+              city: 'Pune',
+              state: 'Maharashtra',
+              country: 'India',
+              district: 'Pune',
+              source: 'default'
+            };
+            this.currentLocation = defaultLocation;
+            this.saveLocationToCache(defaultLocation);
+            resolve(defaultLocation);
+          }
         },
         options
       );
     });
+  }
+
+  // Geocode address to get coordinates
+  async geocodeAddress(addressParts: {
+    village?: string;
+    taluka?: string;
+    district?: string;
+    state?: string;
+    pincode?: string;
+    country?: string;
+  }): Promise<LocationData | null> {
+    // Check cache first
+    const cacheKey = `geocoded_${addressParts.village}_${addressParts.taluka}_${addressParts.district}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        const cachedData = JSON.parse(cached);
+        const age = Date.now() - cachedData.timestamp;
+        if (age < 7 * 24 * 60 * 60 * 1000) { // 7 days
+          console.log('Using cached geocoded location');
+          return cachedData;
+        }
+      } catch (error) {
+        console.error('Error parsing cached geocode:', error);
+      }
+    }
+
+    // Build search queries with fallback hierarchy
+    const queries = [];
+    const { village, taluka, district, state, pincode, country = 'India' } = addressParts;
+
+    // Try full address first
+    if (village && taluka && district && state) {
+      queries.push({
+        query: `${village}, ${taluka}, ${district}, ${state}, ${pincode ? pincode + ', ' : ''}${country}`,
+        source: 'village' as const,
+        approximateArea: village
+      });
+    }
+
+    // Try without village
+    if (taluka && district && state) {
+      queries.push({
+        query: `${taluka}, ${district}, ${state}, ${pincode ? pincode + ', ' : ''}${country}`,
+        source: 'taluka' as const,
+        approximateArea: taluka
+      });
+    }
+
+    // Try district level
+    if (district && state) {
+      queries.push({
+        query: `${district}, ${state}, ${country}`,
+        source: 'district' as const,
+        approximateArea: district
+      });
+    }
+
+    // Try state level
+    if (state) {
+      queries.push({
+        query: `${state}, ${country}`,
+        source: 'state' as const,
+        approximateArea: state
+      });
+    }
+
+    // Try each query in order
+    for (const { query, source, approximateArea } of queries) {
+      try {
+        console.log(`Geocoding: ${query}`);
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&countrycodes=in`
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.length > 0) {
+            const result = data[0];
+            const locationData: LocationData = {
+              lat: parseFloat(result.lat),
+              lon: parseFloat(result.lon),
+              accuracy: source === 'village' ? 500 : source === 'taluka' ? 1000 : source === 'district' ? 5000 : 10000,
+              timestamp: Date.now(),
+              address: result.display_name,
+              city: taluka || district,
+              state: state,
+              country: country,
+              district: district,
+              source: source,
+              approximateArea: approximateArea
+            };
+
+            // Cache the result
+            localStorage.setItem(cacheKey, JSON.stringify(locationData));
+            console.log(`Geocoded to ${source} level:`, locationData);
+            return locationData;
+          }
+        }
+      } catch (error) {
+        console.error(`Geocoding error for ${query}:`, error);
+      }
+    }
+
+    return null;
+  }
+
+  // Get location from user profile
+  async getLocationFromUserProfile(): Promise<LocationData | null> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log('No authenticated user');
+        return null;
+      }
+
+      const { data: profile, error } = await supabase
+        .from('user_profiles')
+        .select('village, taluka, district, state, pincode')
+        .eq('id', user.id)
+        .single();
+
+      if (error || !profile) {
+        console.error('Error fetching user profile:', error);
+        return null;
+      }
+
+      console.log('User profile location data:', profile);
+
+      // Try to geocode the address
+      const geocoded = await this.geocodeAddress({
+        village: profile.village,
+        taluka: profile.taluka,
+        district: profile.district,
+        state: profile.state,
+        pincode: profile.pincode,
+        country: 'India'
+      });
+
+      if (geocoded) {
+        this.currentLocation = geocoded;
+        this.saveLocationToCache(geocoded);
+        this.notifyLocationUpdate(geocoded);
+        return geocoded;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error getting location from profile:', error);
+      return null;
+    }
   }
 
   // Start watching location in background
@@ -343,14 +480,57 @@ class LocationService {
   getFormattedLocation(): string {
     if (!this.currentLocation) return 'Location not available';
     
-    if (this.currentLocation.city && this.currentLocation.state) {
-      return `${this.currentLocation.city}, ${this.currentLocation.state}`;
+    let formatted = '';
+    
+    if (this.currentLocation.approximateArea) {
+      formatted = this.currentLocation.approximateArea;
+      if (this.currentLocation.district && this.currentLocation.district !== this.currentLocation.approximateArea) {
+        formatted += `, ${this.currentLocation.district}`;
+      }
+    } else if (this.currentLocation.city && this.currentLocation.state) {
+      formatted = `${this.currentLocation.city}, ${this.currentLocation.state}`;
     } else if (this.currentLocation.city) {
-      return this.currentLocation.city;
+      formatted = this.currentLocation.city;
     } else if (this.currentLocation.state) {
-      return this.currentLocation.state;
+      formatted = this.currentLocation.state;
     } else {
-      return `${this.currentLocation.lat.toFixed(2)}°N, ${this.currentLocation.lon.toFixed(2)}°E`;
+      formatted = `${this.currentLocation.lat.toFixed(2)}°N, ${this.currentLocation.lon.toFixed(2)}°E`;
+    }
+
+    // Add source indicator
+    if (this.currentLocation.source && this.currentLocation.source !== 'gps') {
+      const sourceLabel = {
+        'village': 'Village',
+        'taluka': 'Taluka',
+        'district': 'District',
+        'state': 'State',
+        'default': 'Default'
+      }[this.currentLocation.source];
+      formatted += ` (${sourceLabel} Location)`;
+    }
+
+    return formatted;
+  }
+
+  // Get location accuracy text
+  getLocationAccuracyText(): string {
+    if (!this.currentLocation) return 'Unknown';
+    
+    switch (this.currentLocation.source) {
+      case 'gps':
+        return `GPS (±${Math.round(this.currentLocation.accuracy)}m)`;
+      case 'village':
+        return 'Village Area';
+      case 'taluka':
+        return 'Taluka Area';
+      case 'district':
+        return 'District Area';
+      case 'state':
+        return 'State Area';
+      case 'default':
+        return 'Default Location';
+      default:
+        return `±${Math.round(this.currentLocation.accuracy)}m`;
     }
   }
 

@@ -4,6 +4,9 @@ import * as turf from '@turf/turf';
 import { MapControls } from './MapControls';
 import { AreaDisplay } from './AreaDisplay';
 import { useToast } from '@/components/ui/use-toast';
+import LocationService from '@/services/LocationService';
+import { Card } from '@/components/ui/card';
+import { Satellite, Navigation, MapPin } from 'lucide-react';
 
 interface LatLng {
   lat: number;
@@ -38,6 +41,9 @@ export function GoogleMapBoundaryDrawer({
   const [gpsAccuracy, setGpsAccuracy] = useState<number>(0);
   const [area, setArea] = useState({ sqft: 0, guntha: 0, acres: 0 });
   const [isCentering, setIsCentering] = useState(false);
+  const [isAccuracyInfoVisible, setIsAccuracyInfoVisible] = useState(false);
+  const [locationSource, setLocationSource] = useState<string>('gps');
+  const [locationAccuracy, setLocationAccuracy] = useState<number>(0);
   const watchIdRef = useRef<number | null>(null);
 
   // Map options - enable rotation and tilt
@@ -133,10 +139,15 @@ export function GoogleMapBoundaryDrawer({
     setMap(mapInstance);
     
     // Pan to current position if available
-    if (currentPosition) {
-      mapInstance.panTo(currentPosition);
-      mapInstance.setZoom(18);
-    }
+            if (currentPosition) {
+              mapInstance.panTo(currentPosition);
+              // Adjust zoom based on location accuracy
+              const zoom = locationSource === 'gps' ? 18 : 
+                          locationSource === 'village' ? 16 :
+                          locationSource === 'taluka' ? 14 :
+                          locationSource === 'district' ? 12 : 10;
+              mapInstance.setZoom(zoom);
+            }
   }, [currentPosition]);
 
   const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
