@@ -194,7 +194,7 @@ class LocationService {
     });
   }
 
-  // Geocode address to get coordinates
+  // Geocode address to get coordinates with improved pincode and village handling
   async geocodeAddress(addressParts: {
     village?: string;
     taluka?: string;
@@ -204,7 +204,7 @@ class LocationService {
     country?: string;
   }): Promise<LocationData | null> {
     // Check cache first
-    const cacheKey = `geocoded_${addressParts.village}_${addressParts.taluka}_${addressParts.district}`;
+    const cacheKey = `geocoded_${addressParts.pincode || addressParts.village}_${addressParts.taluka}_${addressParts.district}`;
     const cached = localStorage.getItem(cacheKey);
     if (cached) {
       try {
@@ -223,37 +223,57 @@ class LocationService {
     const queries = [];
     const { village, taluka, district, state, pincode, country = 'India' } = addressParts;
 
-    // Try full address first
-    if (village && taluka && district && state) {
+    // Priority 1: Try pincode first (most accurate for India)
+    if (pincode && pincode.match(/^\d{6}$/)) {
       queries.push({
-        query: `${village}, ${taluka}, ${district}, ${state}, ${pincode ? pincode + ', ' : ''}${country}`,
+        query: `${pincode}, India`,
+        source: 'village' as const,
+        approximateArea: village || taluka || district
+      });
+    }
+
+    // Priority 2: Village with district (skip taluka for better results)
+    if (village && district && state) {
+      const cleanVillage = village.replace(/\s*(village|gram|gaon|pur|pura|wadi|nagar)\s*$/i, '').trim();
+      queries.push({
+        query: `${cleanVillage}, ${district} District, ${state}, India`,
         source: 'village' as const,
         approximateArea: village
       });
     }
 
-    // Try without village
-    if (taluka && district && state) {
+    // Priority 3: Full address with all components
+    if (village && taluka && district && state) {
       queries.push({
-        query: `${taluka}, ${district}, ${state}, ${pincode ? pincode + ', ' : ''}${country}`,
+        query: `${village}, ${taluka} Taluka, ${district} District, ${state}, India`,
+        source: 'village' as const,
+        approximateArea: village
+      });
+    }
+
+    // Priority 4: Taluka with district
+    if (taluka && district && state) {
+      const cleanTaluka = taluka.replace(/\s*(taluka|tehsil|block)\s*$/i, '').trim();
+      queries.push({
+        query: `${cleanTaluka} Taluka, ${district} District, ${state}, India`,
         source: 'taluka' as const,
         approximateArea: taluka
       });
     }
 
-    // Try district level
+    // Priority 5: District headquarters
     if (district && state) {
       queries.push({
-        query: `${district}, ${state}, ${country}`,
+        query: `${district} District Headquarters, ${state}, India`,
         source: 'district' as const,
         approximateArea: district
       });
     }
 
-    // Try state level
+    // Priority 6: State capital
     if (state) {
       queries.push({
-        query: `${state}, ${country}`,
+        query: `${state} Capital, India`,
         source: 'state' as const,
         approximateArea: state
       });
@@ -264,19 +284,31 @@ class LocationService {
       try {
         console.log(`Geocoding: ${query}`);
         const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1&countrycodes=in`
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=3&countrycodes=in&addressdetails=1`
         );
 
         if (response.ok) {
           const data = await response.json();
           if (data && data.length > 0) {
-            const result = data[0];
+            // Try to find the best match
+            let bestResult = data[0];
+            
+            // If searching by pincode, try to find exact match
+            if (pincode && query.includes(pincode)) {
+              for (const result of data) {
+                if (result.display_name && result.display_name.includes(pincode)) {
+                  bestResult = result;
+                  break;
+                }
+              }
+            }
+            
             const locationData: LocationData = {
-              lat: parseFloat(result.lat),
-              lon: parseFloat(result.lon),
+              lat: parseFloat(bestResult.lat),
+              lon: parseFloat(bestResult.lon),
               accuracy: source === 'village' ? 500 : source === 'taluka' ? 1000 : source === 'district' ? 5000 : 10000,
               timestamp: Date.now(),
-              address: result.display_name,
+              address: bestResult.display_name,
               city: taluka || district,
               state: state,
               country: country,

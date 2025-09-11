@@ -46,9 +46,9 @@ export function GoogleMapBoundaryDrawer({
   const [locationAccuracy, setLocationAccuracy] = useState<number>(0);
   const watchIdRef = useRef<number | null>(null);
 
-  // Map options - enable rotation and tilt
+  // Map options - enable rotation and tilt with street labels
   const mapOptions: google.maps.MapOptions = {
-    mapTypeId: 'hybrid', // Shows satellite with village/place names
+    mapTypeId: 'hybrid', // Shows satellite with labels
     disableDefaultUI: false,
     zoomControl: true,
     zoomControlOptions: {
@@ -58,54 +58,77 @@ export function GoogleMapBoundaryDrawer({
     tilt: 45,
     rotateControl: true,
     mapTypeControl: true,
+    mapTypeControlOptions: {
+      mapTypeIds: ['hybrid', 'roadmap', 'satellite', 'terrain'],
+      position: typeof google !== 'undefined' ? google.maps.ControlPosition.TOP_LEFT : 1,
+    },
     streetViewControl: false,
-    fullscreenControl: true,
+    fullscreenControl: false, // Hide fullscreen control
     scaleControl: true,
+    styles: [
+      {
+        featureType: 'all',
+        elementType: 'labels',
+        stylers: [{ visibility: 'on' }]
+      },
+      {
+        featureType: 'road',
+        elementType: 'labels',
+        stylers: [{ visibility: 'on' }]
+      },
+      {
+        featureType: 'poi',
+        elementType: 'labels',
+        stylers: [{ visibility: 'on' }]
+      }
+    ],
   };
 
-  // Get user's current location on mount with better error handling
+  // Get user's current location on mount using LocationService
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
+    const fetchLocation = async () => {
+      try {
+        const location = await LocationService.getInstance().getCurrentLocation();
+        
+        if (location) {
           const newCenter = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
+            lat: location.lat,
+            lng: location.lon,
           };
           setCenter(newCenter);
           setCurrentPosition(newCenter);
-          setGpsAccuracy(position.coords.accuracy);
+          setLocationAccuracy(location.accuracy);
+          setLocationSource(location.source || 'gps');
           
           if (map) {
             map.panTo(newCenter);
-            map.setZoom(18);
-          }
-        },
-        (error) => {
-          console.warn('Location access denied or unavailable:', error.message);
-          // Set default location if geolocation fails
-          const defaultCenter = { lat: 18.5204, lng: 73.8567 }; // Pune, Maharashtra
-          setCenter(defaultCenter);
-          setCurrentPosition(defaultCenter);
-          
-          if (map) {
-            map.panTo(defaultCenter);
-            map.setZoom(18);
+            // Adjust zoom based on location source
+            const zoom = location.source === 'gps' ? 18 : 
+                        location.source === 'village' ? 16 :
+                        location.source === 'taluka' ? 14 :
+                        location.source === 'district' ? 12 : 10;
+            map.setZoom(zoom);
           }
           
-          toast({
-            title: "Location Access",
-            description: "Using default location. Enable GPS for accurate positioning.",
-            variant: "default",
-          });
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
+          // Show location source to user
+          if (location.source && location.source !== 'gps') {
+            toast({
+              title: "Location Set",
+              description: `Using ${location.approximateArea || location.source} location`,
+            });
+          }
         }
-      );
-    }
+      } catch (error) {
+        console.error('Error fetching location:', error);
+        toast({
+          title: "Location Error",
+          description: "Could not determine your location",
+          variant: "destructive",
+        });
+      }
+    };
+    
+    fetchLocation();
   }, [map, toast]);
 
   // Calculate area whenever boundary changes
@@ -390,28 +413,55 @@ export function GoogleMapBoundaryDrawer({
 
   return (
     <div className="relative w-full h-full">
-      {/* GPS Accuracy Button */}
-      <button
-        onClick={handleCenterOnLocation}
-        className="absolute top-20 right-4 z-10 p-3 bg-background rounded-full shadow-lg hover:shadow-xl transition-shadow"
-        disabled={isCentering}
-      >
-        {isCentering ? (
-          <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
-        ) : (
-          <div className="relative">
-            <svg className="h-5 w-5 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <circle cx="12" cy="12" r="3" fill="currentColor" />
-            </svg>
-            {gpsAccuracy > 0 && (
-              <div className="absolute -bottom-6 left-1/2 transform -translate-x-1/2 text-xs bg-background px-1 rounded whitespace-nowrap">
-                {Math.round(gpsAccuracy)}m
+      {/* Location Accuracy Card - consistent height with other cards */}
+      <Card className="absolute top-4 right-4 p-2.5 bg-background/95 backdrop-blur-sm shadow-lg z-10 h-[100px] w-[120px] flex flex-col justify-center">
+        <button
+          onClick={handleCenterOnLocation}
+          className="w-full h-full flex flex-col items-center justify-center gap-2 hover:bg-accent/10 rounded transition-colors"
+          disabled={isCentering}
+        >
+          {isCentering ? (
+            <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
+          ) : (
+            <>
+              <div className="relative">
+                <svg className="h-6 w-6 text-primary" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <circle cx="12" cy="12" r="3" fill="currentColor" />
+                </svg>
               </div>
-            )}
-          </div>
-        )}
-      </button>
+              <div className="text-xs text-center">
+                {locationSource === 'gps' ? (
+                  <>
+                    <div className="font-medium">GPS</div>
+                    <div className="text-muted-foreground">±{Math.round(locationAccuracy)}m</div>
+                  </>
+                ) : locationSource === 'village' ? (
+                  <>
+                    <div className="font-medium">Village</div>
+                    <div className="text-muted-foreground text-2xs">Approximate</div>
+                  </>
+                ) : locationSource === 'taluka' ? (
+                  <>
+                    <div className="font-medium">Taluka</div>
+                    <div className="text-muted-foreground text-2xs">Approximate</div>
+                  </>
+                ) : locationSource === 'district' ? (
+                  <>
+                    <div className="font-medium">District</div>
+                    <div className="text-muted-foreground text-2xs">Approximate</div>
+                  </>
+                ) : (
+                  <>
+                    <div className="font-medium">Location</div>
+                    <div className="text-muted-foreground text-2xs">Default</div>
+                  </>
+                )}
+              </div>
+            </>
+          )}
+        </button>
+      </Card>
 
       <GoogleMap
         mapContainerStyle={mapContainerStyle}

@@ -56,7 +56,7 @@ export function MapControls({
           variant="outline"
           size="icon"
           onClick={onCancel}
-          className="absolute top-4 left-4 h-10 w-10 bg-background/95 backdrop-blur-sm shadow-sm z-10"
+          className="absolute top-4 left-4 h-[100px] w-10 bg-background/95 backdrop-blur-sm shadow-sm z-10"
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
