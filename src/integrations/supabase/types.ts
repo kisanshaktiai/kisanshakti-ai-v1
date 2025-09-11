@@ -3940,6 +3940,7 @@ export type Database = {
           failed_login_attempts: number | null
           farm_type: string | null
           farmer_code: string | null
+          farmer_name: string | null
           farming_experience_years: number | null
           has_irrigation: boolean | null
           has_loan: boolean | null
@@ -3989,6 +3990,7 @@ export type Database = {
           failed_login_attempts?: number | null
           farm_type?: string | null
           farmer_code?: string | null
+          farmer_name?: string | null
           farming_experience_years?: number | null
           has_irrigation?: boolean | null
           has_loan?: boolean | null
@@ -4038,6 +4040,7 @@ export type Database = {
           failed_login_attempts?: number | null
           farm_type?: string | null
           farmer_code?: string | null
+          farmer_name?: string | null
           farming_experience_years?: number | null
           has_irrigation?: boolean | null
           has_loan?: boolean | null

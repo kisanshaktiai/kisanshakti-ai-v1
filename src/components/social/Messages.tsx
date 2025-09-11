@@ -40,8 +40,8 @@ export function Messages() {
         .from('direct_messages')
         .select(`
           *,
-          sender:farmers!direct_messages_sender_id_fkey(id, farmer_name),
-          receiver:farmers!direct_messages_receiver_id_fkey(id, farmer_name)
+          sender:farmers!direct_messages_sender_id_fkey(*),
+          receiver:farmers!direct_messages_receiver_id_fkey(*)
         `)
         .or(`sender_id.eq.${user?.id},receiver_id.eq.${user?.id}`)
         .order('created_at', { ascending: false });
@@ -50,13 +50,13 @@ export function Messages() {
       const conversationMap = new Map();
       directMessages?.forEach(msg => {
         const otherUser = msg.sender_id === user?.id ? msg.receiver : msg.sender;
-        const key = otherUser.id;
+        const key = otherUser?.id;
         
-        if (!conversationMap.has(key)) {
+        if (key && !conversationMap.has(key)) {
           conversationMap.set(key, {
             id: key,
             type: 'direct',
-            name: otherUser.farmer_name,
+            name: otherUser?.farmer_name || 'Unknown Farmer',
             lastMessage: msg.content,
             lastMessageTime: msg.created_at,
             unread: !msg.is_read && msg.receiver_id === user?.id,
@@ -102,7 +102,7 @@ export function Messages() {
           .from('direct_messages')
           .select(`
             *,
-            sender:farmers!direct_messages_sender_id_fkey(id, farmer_name)
+            sender:farmers!direct_messages_sender_id_fkey(*)
           `)
           .or(`
             and(sender_id.eq.${user?.id},receiver_id.eq.${selectedConversation.id}),
@@ -123,7 +123,7 @@ export function Messages() {
           .from('group_messages')
           .select(`
             *,
-            sender:farmers!group_messages_sender_id_fkey(id, farmer_name)
+            sender:farmers!group_messages_sender_id_fkey(*)
           `)
           .eq('group_id', selectedConversation.id)
           .order('created_at', { ascending: true });
