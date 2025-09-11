@@ -9969,6 +9969,7 @@ export type Database = {
       }
       white_label_configs: {
         Row: {
+          api_version: string | null
           app_customization: Json | null
           app_store_config: Json | null
           brand_identity: Json | null
@@ -9980,13 +9981,18 @@ export type Database = {
           domain_health: Json | null
           email_templates: Json | null
           id: string
+          is_validated: boolean | null
+          last_synced_at: string | null
+          mobile_theme: Json | null
           pwa_config: Json | null
           splash_screens: Json | null
           tenant_id: string | null
           theme_colors: Json | null
           updated_at: string | null
+          validation_errors: Json | null
         }
         Insert: {
+          api_version?: string | null
           app_customization?: Json | null
           app_store_config?: Json | null
           brand_identity?: Json | null
@@ -9998,13 +10004,18 @@ export type Database = {
           domain_health?: Json | null
           email_templates?: Json | null
           id?: string
+          is_validated?: boolean | null
+          last_synced_at?: string | null
+          mobile_theme?: Json | null
           pwa_config?: Json | null
           splash_screens?: Json | null
           tenant_id?: string | null
           theme_colors?: Json | null
           updated_at?: string | null
+          validation_errors?: Json | null
         }
         Update: {
+          api_version?: string | null
           app_customization?: Json | null
           app_store_config?: Json | null
           brand_identity?: Json | null
@@ -10016,11 +10027,15 @@ export type Database = {
           domain_health?: Json | null
           email_templates?: Json | null
           id?: string
+          is_validated?: boolean | null
+          last_synced_at?: string | null
+          mobile_theme?: Json | null
           pwa_config?: Json | null
           splash_screens?: Json | null
           tenant_id?: string | null
           theme_colors?: Json | null
           updated_at?: string | null
+          validation_errors?: Json | null
         }
         Relationships: [
           {
@@ -11041,6 +11056,10 @@ export type Database = {
       }
       get_location_context: {
         Args: { lat: number; lng: number }
+        Returns: Json
+      }
+      get_mobile_white_label_config: {
+        Args: { p_tenant_id: string }
         Returns: Json
       }
       get_onboarding_template: {
@@ -12674,6 +12693,10 @@ export type Database = {
           tenant_name: string
           tenant_slug: string
         }[]
+      }
+      validate_white_label_config: {
+        Args: { config_data: Json }
+        Returns: Json
       }
       verify_admin_user_setup: {
         Args: Record<PropertyKey, never>
