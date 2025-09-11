@@ -190,6 +190,48 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
               />
             ))}
           </TabsContent>
+          
+          <TabsContent value="state" className="space-y-3 mt-0">
+            {filterByType('state').map((community) => (
+              <CommunityCard
+                key={community.id}
+                community={community}
+                isJoined={joinedCommunities.includes(community.id)}
+                onJoin={() => handleJoinCommunity(community.id)}
+                onLeave={() => handleLeaveCommunity(community.id)}
+                onClick={() => navigate(`/app/community/${community.id}`)}
+                icon={getIcon('state')}
+              />
+            ))}
+          </TabsContent>
+          
+          <TabsContent value="crop" className="space-y-3 mt-0">
+            {filterByType('crop').map((community) => (
+              <CommunityCard
+                key={community.id}
+                community={community}
+                isJoined={joinedCommunities.includes(community.id)}
+                onJoin={() => handleJoinCommunity(community.id)}
+                onLeave={() => handleLeaveCommunity(community.id)}
+                onClick={() => navigate(`/app/community/${community.id}`)}
+                icon={getIcon('crop')}
+              />
+            ))}
+          </TabsContent>
+          
+          <TabsContent value="practice" className="space-y-3 mt-0">
+            {filterByType('practice').map((community) => (
+              <CommunityCard
+                key={community.id}
+                community={community}
+                isJoined={joinedCommunities.includes(community.id)}
+                onJoin={() => handleJoinCommunity(community.id)}
+                onLeave={() => handleLeaveCommunity(community.id)}
+                onClick={() => navigate(`/app/community/${community.id}`)}
+                icon={getIcon('practice')}
+              />
+            ))}
+          </TabsContent>
         </ScrollArea>
       </Tabs>
     </div>

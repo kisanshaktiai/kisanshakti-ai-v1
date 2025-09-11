@@ -10,12 +10,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { 
   Users, MessageSquare, Calendar, MapPin, Settings, 
   Share2, ArrowLeft, Bell, UserPlus, Shield, Edit,
-  Hash, TrendingUp, Activity, Star, Award
+  Hash, TrendingUp, Activity, Star, Award, Info
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useToast } from '@/hooks/use-toast';
 import { PostCard } from './PostCard';
+import { CommunityChatRoom } from './CommunityChatRoom';
 import { format } from 'date-fns';
 
 interface Member {
@@ -25,7 +26,6 @@ interface Member {
   joined_at: string;
   farmer: {
     name: string;
-    avatar_url?: string;
     location?: string;
   };
   is_online?: boolean;
@@ -37,7 +37,6 @@ interface CommunityPost {
   created_at: string;
   farmer: {
     name: string;
-    avatar_url?: string;
   };
   likes_count: number;
   comments_count: number;
@@ -53,91 +52,19 @@ export function CommunityPage() {
   const [community, setCommunity] = useState<any>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [posts, setPosts] = useState<CommunityPost[]>([]);
-  const [isMember, setIsMember] = useState(false);
-  const [memberRole, setMemberRole] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('feed');
-  const [newPost, setNewPost] = useState('');
+  const [isJoined, setIsJoined] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [newPost, setNewPost] = useState('');
+  const [activeTab, setActiveTab] = useState('chat');
   const [onlineCount, setOnlineCount] = useState(0);
 
   useEffect(() => {
     if (id) {
       fetchCommunityDetails();
-      fetchMembers();
-      fetchPosts();
       checkMembership();
       subscribeToRealtime();
     }
   }, [id, user]);
-
-  const subscribeToRealtime = () => {
-    // Subscribe to community posts
-    const postsChannel = supabase
-      .channel(`community-posts-${id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'social_posts',
-          filter: `community_id=eq.${id}`
-        },
-        (payload) => {
-          fetchPosts();
-          toast({
-            title: "New post",
-            description: "Someone posted in the community"
-          });
-        }
-      )
-      .subscribe();
-
-    // Subscribe to member changes
-    const membersChannel = supabase
-      .channel(`community-members-${id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'community_members',
-          filter: `community_id=eq.${id}`
-        },
-        () => {
-          fetchMembers();
-          fetchCommunityDetails();
-        }
-      )
-      .subscribe();
-
-    // Track online presence
-    const presenceChannel = supabase
-      .channel(`community-presence-${id}`)
-      .on('presence', { event: 'sync' }, () => {
-        const state = presenceChannel.presenceState();
-        setOnlineCount(Object.keys(state).length);
-      })
-      .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-        console.log('User joined:', key);
-      })
-      .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-        console.log('User left:', key);
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED' && user?.id) {
-          await presenceChannel.track({
-            user_id: user.id,
-            online_at: new Date().toISOString(),
-          });
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(postsChannel);
-      supabase.removeChannel(membersChannel);
-      supabase.removeChannel(presenceChannel);
-    };
-  };
 
   const fetchCommunityDetails = async () => {
     try {
@@ -149,6 +76,58 @@ export function CommunityPage() {
 
       if (error) throw error;
       setCommunity(data);
+
+      // Fetch members
+      const { data: membersData } = await supabase
+        .from('community_members')
+        .select(`
+          *,
+          farmer:farmers!community_members_farmer_id_fkey (
+            farmer_name,
+            location
+          )
+        `)
+        .eq('community_id', id)
+        .eq('is_active', true);
+
+      if (membersData) {
+        const formattedMembers = membersData.map(m => ({
+          ...m,
+          farmer: {
+            name: m.farmer?.farmer_name || 'Unknown',
+            location: m.farmer?.location
+          }
+        }));
+        setMembers(formattedMembers);
+        
+        // Calculate online members (simulated)
+        setOnlineCount(Math.floor(formattedMembers.length * 0.3));
+      }
+
+      // Fetch posts
+      const { data: postsData } = await supabase
+        .from('posts')
+        .select(`
+          *,
+          farmer:farmers!posts_farmer_id_fkey (
+            farmer_name
+          )
+        `)
+        .eq('community_id', id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (postsData) {
+        const formattedPosts = postsData.map(p => ({
+          ...p,
+          farmer: {
+            name: p.farmer?.farmer_name || 'Unknown'
+          },
+          likes_count: p.likes_count || 0,
+          comments_count: p.comments_count || 0
+        }));
+        setPosts(formattedPosts);
+      }
     } catch (error) {
       console.error('Error fetching community:', error);
       toast({
@@ -156,96 +135,26 @@ export function CommunityPage() {
         description: "Failed to load community details",
         variant: "destructive"
       });
-    }
-  };
-
-  const fetchMembers = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('community_members')
-        .select(`
-          *,
-          farmer:farmers(farmer_name, mobile_number, metadata)
-        `)
-        .eq('community_id', id)
-        .eq('is_active', true)
-        .order('joined_at', { ascending: false });
-
-      if (error) throw error;
-      
-      // Transform data to match Member interface
-      const transformedMembers = data?.map(member => ({
-        ...member,
-        farmer: {
-          name: member.farmer?.farmer_name || 'Unknown Farmer',
-          avatar_url: undefined,
-          location: typeof member.farmer?.metadata === 'object' && member.farmer?.metadata !== null 
-            ? (member.farmer.metadata as any).location || 'Location not specified'
-            : 'Location not specified'
-        }
-      })) || [];
-      
-      setMembers(transformedMembers);
-    } catch (error) {
-      console.error('Error fetching members:', error);
-    }
-  };
-
-  const fetchPosts = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('social_posts')
-        .select(`
-          *,
-          farmer:farmers(farmer_name, metadata),
-          post_likes(id, farmer_id),
-          post_comments(id)
-        `)
-        .eq('community_id', id)
-        .order('created_at', { ascending: false })
-        .limit(20);
-
-      if (error) throw error;
-
-      const postsWithCounts = data?.map(post => ({
-        id: post.id,
-        content: post.content || '',
-        created_at: post.created_at || new Date().toISOString(),
-        farmer: {
-          name: post.farmer?.farmer_name || 'Unknown Farmer',
-          avatar_url: undefined
-        },
-        likes_count: post.post_likes?.length || 0,
-        comments_count: post.post_comments?.length || 0,
-        is_liked: post.post_likes?.some((like: any) => like.farmer_id === user?.id) || false
-      })) || [];
-
-      setPosts(postsWithCounts);
-    } catch (error) {
-      console.error('Error fetching posts:', error);
     } finally {
       setLoading(false);
     }
   };
 
   const checkMembership = async () => {
-    if (!user?.id) return;
+    if (!user?.id || !id) return;
 
     try {
       const { data, error } = await supabase
         .from('community_members')
-        .select('role')
+        .select('id')
         .eq('community_id', id)
         .eq('farmer_id', user.id)
         .eq('is_active', true)
         .single();
 
-      if (data) {
-        setIsMember(true);
-        setMemberRole(data.role);
-      }
+      setIsJoined(!!data);
     } catch (error) {
-      console.error('Error checking membership:', error);
+      setIsJoined(false);
     }
   };
 
@@ -270,15 +179,14 @@ export function CommunityPage() {
 
       if (error) throw error;
 
-      setIsMember(true);
-      setMemberRole('member');
-      fetchMembers();
-      fetchCommunityDetails();
-      
+      setIsJoined(true);
       toast({
         title: "Welcome!",
-        description: `You've joined ${community?.name}`
+        description: "You've joined the community"
       });
+      
+      // Refresh members list
+      fetchCommunityDetails();
     } catch (error) {
       console.error('Error joining community:', error);
       toast({
@@ -301,15 +209,14 @@ export function CommunityPage() {
 
       if (error) throw error;
 
-      setIsMember(false);
-      setMemberRole(null);
-      fetchMembers();
-      fetchCommunityDetails();
-      
+      setIsJoined(false);
       toast({
         title: "Left community",
-        description: `You've left ${community?.name}`
+        description: "You've left the community"
       });
+      
+      // Refresh members list
+      fetchCommunityDetails();
     } catch (error) {
       console.error('Error leaving community:', error);
       toast({
@@ -325,23 +232,24 @@ export function CommunityPage() {
 
     try {
       const { error } = await supabase
-        .from('social_posts')
+        .from('posts')
         .insert({
           content: newPost,
           farmer_id: user.id,
           community_id: id,
-          post_type: 'text'
+          post_type: 'community'
         });
 
       if (error) throw error;
 
       setNewPost('');
-      fetchPosts();
-      
       toast({
         title: "Posted!",
-        description: "Your post has been shared with the community"
+        description: "Your post has been shared"
       });
+      
+      // Refresh posts
+      fetchCommunityDetails();
     } catch (error) {
       console.error('Error creating post:', error);
       toast({
@@ -352,324 +260,299 @@ export function CommunityPage() {
     }
   };
 
-  const handleInviteMember = () => {
-    // TODO: Implement invite functionality
-    toast({
-      title: "Coming soon",
-      description: "Invite functionality will be available soon"
-    });
+  const subscribeToRealtime = () => {
+    const channel = supabase
+      .channel(`community-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'community_members',
+          filter: `community_id=eq.${id}`
+        },
+        () => {
+          fetchCommunityDetails();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'posts',
+          filter: `community_id=eq.${id}`
+        },
+        () => {
+          fetchCommunityDetails();
+        }
+      )
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const onlineMembers = Object.keys(state).length;
+        setOnlineCount(onlineMembers);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="flex items-center justify-center h-full">
+        <p className="text-muted-foreground">Loading community...</p>
       </div>
     );
   }
 
   if (!community) {
     return (
-      <div className="text-center py-12">
-        <h2 className="text-2xl font-semibold mb-2">Community not found</h2>
-        <Button onClick={() => navigate('/app/social')}>
-          Back to Communities
-        </Button>
+      <div className="flex flex-col items-center justify-center h-full gap-4">
+        <p className="text-muted-foreground">Community not found</p>
+        <Button onClick={() => navigate('/app/social')}>Back to Social</Button>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-4 space-y-6">
+    <div className="container max-w-7xl mx-auto p-4 space-y-4">
       {/* Header */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="flex items-start justify-between mb-4">
+      <Card className="p-6">
+        <div className="flex items-start justify-between">
+          <div className="flex items-start gap-4">
             <Button
               variant="ghost"
-              size="sm"
+              size="icon"
               onClick={() => navigate('/app/social')}
-              className="mb-4"
             >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
+              <ArrowLeft className="h-5 w-5" />
             </Button>
             
-            <div className="flex gap-2">
-              {isMember ? (
-                <>
-                  {memberRole === 'admin' && (
-                    <Button variant="outline" size="sm">
-                      <Settings className="h-4 w-4 mr-2" />
-                      Settings
-                    </Button>
-                  )}
-                  <Button variant="outline" size="sm" onClick={handleInviteMember}>
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Invite
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={handleLeaveCommunity}>
-                    Leave
-                  </Button>
-                </>
-              ) : (
-                <Button onClick={handleJoinCommunity}>
-                  Join Community
-                </Button>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-start gap-6">
-            <div className="w-20 h-20 rounded-xl bg-primary/10 flex items-center justify-center">
-              <Users className="h-10 w-10 text-primary" />
-            </div>
-            
             <div className="flex-1">
-              <div className="flex items-center gap-3 mb-2">
-                <h1 className="text-3xl font-bold">{community.name}</h1>
-                {community.is_verified && (
-                  <Badge variant="default" className="gap-1">
-                    <Shield className="h-3 w-3" />
-                    Verified
-                  </Badge>
-                )}
-              </div>
+              <h1 className="text-2xl font-bold text-foreground">{community.name}</h1>
+              <p className="text-muted-foreground mt-1">{community.description}</p>
               
-              <p className="text-muted-foreground mb-4">{community.description}</p>
-              
-              <div className="flex flex-wrap gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium">{community.member_count || 0}</span>
-                  <span className="text-muted-foreground">members</span>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-success" />
-                  <span className="font-medium text-success">{onlineCount}</span>
-                  <span className="text-muted-foreground">online now</span>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium">{community.post_count || 0}</span>
-                  <span className="text-muted-foreground">posts</span>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-muted-foreground">
-                    Created {format(new Date(community.created_at), 'MMM yyyy')}
-                  </span>
-                </div>
-                
-                {community.location && (
-                  <div className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">{community.location}</span>
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex gap-2 mt-4">
-                {community.tags?.map((tag: string) => (
-                  <Badge key={tag} variant="secondary">
-                    <Hash className="h-3 w-3 mr-1" />
-                    {tag}
-                  </Badge>
-                ))}
+              <div className="flex items-center gap-4 mt-4">
+                <Badge variant="secondary">
+                  <Users className="w-3 h-3 mr-1" />
+                  {members.length} members
+                </Badge>
+                <Badge variant="outline" className="text-success">
+                  <Activity className="w-3 h-3 mr-1" />
+                  {onlineCount} online
+                </Badge>
+                <Badge variant="outline">
+                  <MessageSquare className="w-3 h-3 mr-1" />
+                  {posts.length} posts
+                </Badge>
               </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Content Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-4 w-full">
-          <TabsTrigger value="feed">Feed</TabsTrigger>
-          <TabsTrigger value="members">Members ({members.length})</TabsTrigger>
-          <TabsTrigger value="events">Events</TabsTrigger>
-          <TabsTrigger value="about">About</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="feed" className="space-y-4">
-          {isMember && (
-            <Card>
-              <CardContent className="p-4">
-                <Textarea
-                  placeholder="Share something with the community..."
-                  value={newPost}
-                  onChange={(e) => setNewPost(e.target.value)}
-                  className="mb-3"
-                  rows={3}
-                />
-                <div className="flex justify-end">
-                  <Button 
-                    onClick={handleCreatePost}
-                    disabled={!newPost.trim()}
-                  >
-                    Post to Community
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          <div className="space-y-4">
-            {posts.length > 0 ? (
-              posts.map((post) => (
-                <PostCard
-                  key={post.id}
-                  post={post}
-                  onLike={() => {}}
-                  onShare={() => {}}
-                  onSave={() => {}}
-                  isLiked={post.is_liked || false}
-                  isSaved={false}
-                />
-              ))
+          
+          <div className="flex items-center gap-2">
+            {!isJoined ? (
+              <Button onClick={handleJoinCommunity}>
+                <UserPlus className="w-4 h-4 mr-2" />
+                Join Community
+              </Button>
             ) : (
-              <Card>
-                <CardContent className="text-center py-12">
-                  <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground">No posts yet. Be the first to share!</p>
-                </CardContent>
-              </Card>
+              <>
+                <Button variant="outline" onClick={handleLeaveCommunity}>
+                  Leave
+                </Button>
+                <Button variant="ghost" size="icon">
+                  <Bell className="w-5 h-5" />
+                </Button>
+                <Button variant="ghost" size="icon">
+                  <Share2 className="w-5 h-5" />
+                </Button>
+              </>
             )}
           </div>
-        </TabsContent>
+        </div>
+      </Card>
 
-        <TabsContent value="members">
-          <Card>
-            <CardHeader>
-              <CardTitle>Community Members</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[500px]">
-                <div className="space-y-4">
+      {/* Main Content */}
+      {!isJoined ? (
+        <Card className="p-12">
+          <div className="text-center space-y-4">
+            <Shield className="w-16 h-16 mx-auto text-muted-foreground" />
+            <h2 className="text-xl font-semibold">Join to participate</h2>
+            <p className="text-muted-foreground max-w-md mx-auto">
+              Join this community to view posts, chat with members, and participate in discussions.
+            </p>
+            <Button onClick={handleJoinCommunity} size="lg">
+              <UserPlus className="w-4 h-4 mr-2" />
+              Join Community
+            </Button>
+          </div>
+        </Card>
+      ) : (
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="grid grid-cols-4 w-full">
+            <TabsTrigger value="chat">
+              <MessageSquare className="w-4 h-4 mr-2" />
+              Chat
+            </TabsTrigger>
+            <TabsTrigger value="feed">
+              <Hash className="w-4 h-4 mr-2" />
+              Feed
+            </TabsTrigger>
+            <TabsTrigger value="members">
+              <Users className="w-4 h-4 mr-2" />
+              Members
+            </TabsTrigger>
+            <TabsTrigger value="about">
+              <Info className="w-4 h-4 mr-2" />
+              About
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Chat Tab */}
+          <TabsContent value="chat">
+            <Card>
+              <CommunityChatRoom
+                communityId={id!}
+                communityName={community.name}
+                memberCount={members.length}
+                onlineCount={onlineCount}
+              />
+            </Card>
+          </TabsContent>
+
+          {/* Feed Tab */}
+          <TabsContent value="feed" className="space-y-4">
+            <Card className="p-4">
+              <Textarea
+                placeholder="Share something with the community..."
+                value={newPost}
+                onChange={(e) => setNewPost(e.target.value)}
+                className="min-h-[100px]"
+              />
+              <div className="flex justify-end mt-2">
+                <Button 
+                  onClick={handleCreatePost}
+                  disabled={!newPost.trim()}
+                >
+                  Post
+                </Button>
+              </div>
+            </Card>
+
+            <ScrollArea className="h-[600px]">
+              <div className="space-y-4">
+                {posts.map((post) => (
+                  <PostCard
+                    key={post.id}
+                    post={{
+                      id: post.id,
+                      content: post.content,
+                      created_at: post.created_at,
+                      farmer_id: '',
+                      farmer: post.farmer,
+                      likes_count: post.likes_count,
+                      comments_count: post.comments_count,
+                      shares_count: 0,
+                      is_liked: post.is_liked,
+                      media_urls: [],
+                      post_type: 'community'
+                    }}
+                  />
+                ))}
+              </div>
+            </ScrollArea>
+          </TabsContent>
+
+          {/* Members Tab */}
+          <TabsContent value="members">
+            <Card>
+              <ScrollArea className="h-[600px]">
+                <div className="p-4 space-y-3">
                   {members.map((member) => (
-                    <div key={member.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50">
+                    <div key={member.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-muted">
                       <div className="flex items-center gap-3">
                         <Avatar>
-                          <AvatarImage src={member.farmer?.avatar_url} />
-                          <AvatarFallback>
-                            {member.farmer?.name?.charAt(0).toUpperCase()}
+                          <AvatarFallback className="bg-primary/10 text-primary">
+                            {member.farmer.name?.charAt(0)}
                           </AvatarFallback>
                         </Avatar>
+                        
                         <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{member.farmer?.name}</p>
-                            {member.role === 'admin' && (
-                              <Badge variant="default" className="text-xs">
-                                Admin
-                              </Badge>
+                          <p className="font-medium text-foreground">{member.farmer.name}</p>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            {member.farmer.location && (
+                              <>
+                                <MapPin className="w-3 h-3" />
+                                <span>{member.farmer.location}</span>
+                              </>
                             )}
-                            {member.role === 'moderator' && (
-                              <Badge variant="secondary" className="text-xs">
-                                Moderator
-                              </Badge>
+                            {member.role === 'admin' && (
+                              <Badge variant="secondary" className="text-xs">Admin</Badge>
                             )}
                           </div>
-                          <p className="text-sm text-muted-foreground">
-                            {member.farmer?.location || 'Location not specified'}
-                          </p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-xs text-muted-foreground">
-                          Joined {format(new Date(member.joined_at), 'MMM d, yyyy')}
-                        </p>
+                      
+                      <div className="flex items-center gap-2">
+                        {member.is_online && (
+                          <div className="w-2 h-2 bg-success rounded-full" />
+                        )}
+                        <span className="text-xs text-muted-foreground">
+                          Joined {format(new Date(member.joined_at), 'MMM yyyy')}
+                        </span>
                       </div>
                     </div>
                   ))}
                 </div>
               </ScrollArea>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </Card>
+          </TabsContent>
 
-        <TabsContent value="events">
-          <Card>
-            <CardContent className="text-center py-12">
-              <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No upcoming events</h3>
-              <p className="text-muted-foreground">Community events will appear here</p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="about">
-          <Card>
-            <CardHeader>
-              <CardTitle>About This Community</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div>
-                <h4 className="font-semibold mb-2">Description</h4>
-                <p className="text-muted-foreground">{community.description}</p>
-              </div>
-              
-              {community.rules && (
+          {/* About Tab */}
+          <TabsContent value="about">
+            <Card className="p-6">
+              <div className="space-y-6">
                 <div>
-                  <h4 className="font-semibold mb-2">Community Rules</h4>
-                  <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                    {community.rules.map((rule: string, index: number) => (
-                      <li key={index}>{rule}</li>
-                    ))}
-                  </ul>
+                  <h3 className="font-semibold mb-2 text-foreground">Description</h3>
+                  <p className="text-muted-foreground">{community.description}</p>
                 </div>
-              )}
-              
-              <div>
-                <h4 className="font-semibold mb-2">Statistics</h4>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-2 mb-1">
-                      <TrendingUp className="h-4 w-4 text-primary" />
-                      <span className="text-sm text-muted-foreground">Growth Rate</span>
+                
+                <div>
+                  <h3 className="font-semibold mb-2 text-foreground">Community Type</h3>
+                  <Badge variant="outline">{community.community_type}</Badge>
+                </div>
+                
+                <div>
+                  <h3 className="font-semibold mb-2 text-foreground">Created</h3>
+                  <p className="text-muted-foreground">
+                    {format(new Date(community.created_at), 'MMMM d, yyyy')}
+                  </p>
+                </div>
+                
+                <div>
+                  <h3 className="font-semibold mb-2 text-foreground">Statistics</h3>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="text-center p-4 bg-muted rounded-lg">
+                      <p className="text-2xl font-bold text-primary">{members.length}</p>
+                      <p className="text-sm text-muted-foreground">Members</p>
                     </div>
-                    <p className="text-2xl font-bold">+12%</p>
-                    <p className="text-xs text-muted-foreground">This month</p>
-                  </div>
-                  
-                  <div className="p-4 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Star className="h-4 w-4 text-yellow-500" />
-                      <span className="text-sm text-muted-foreground">Activity Score</span>
+                    <div className="text-center p-4 bg-muted rounded-lg">
+                      <p className="text-2xl font-bold text-primary">{posts.length}</p>
+                      <p className="text-sm text-muted-foreground">Posts</p>
                     </div>
-                    <p className="text-2xl font-bold">8.5/10</p>
-                    <p className="text-xs text-muted-foreground">Very active</p>
+                    <div className="text-center p-4 bg-muted rounded-lg">
+                      <p className="text-2xl font-bold text-primary">{onlineCount}</p>
+                      <p className="text-sm text-muted-foreground">Online</p>
+                    </div>
                   </div>
                 </div>
               </div>
-              
-              <div>
-                <h4 className="font-semibold mb-2">Top Contributors</h4>
-                <div className="space-y-2">
-                  {members.slice(0, 3).map((member, index) => (
-                    <div key={member.id} className="flex items-center gap-3">
-                      <Award className={`h-5 w-5 ${
-                        index === 0 ? 'text-yellow-500' : 
-                        index === 1 ? 'text-gray-400' : 
-                        'text-orange-500'
-                      }`} />
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={member.farmer?.avatar_url} />
-                        <AvatarFallback>
-                          {member.farmer?.name?.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm font-medium">{member.farmer?.name}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      )}
     </div>
   );
 }
