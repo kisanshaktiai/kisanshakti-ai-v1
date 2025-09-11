@@ -230,14 +230,14 @@ export default function LanguageSelection() {
     <div className="min-h-screen bg-gradient-earth flex flex-col">
       {/* Fixed Header with Logo */}
       <header className="sticky top-0 z-50 bg-card/90 backdrop-blur-sm border-b border-border">
-        <div className="flex flex-col items-center py-4 px-4 space-y-3">
+        <div className="flex flex-col items-center py-2 px-4 space-y-2">
           {/* App Logo */}
           <div className="flex items-center justify-center">
             {tenant?.whiteLabel?.brand_identity?.logo_url ? (
               <img 
                 src={tenant.whiteLabel.brand_identity.logo_url} 
                 alt={tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name || 'App Logo'}
-                className="h-12 w-auto object-contain"
+                className="h-10 w-auto object-contain"
                 onError={(e) => {
                   // Fallback if image fails to load
                   e.currentTarget.style.display = 'none';
@@ -246,8 +246,8 @@ export default function LanguageSelection() {
               />
             ) : null}
             <div className={`flex items-center space-x-2 ${tenant?.whiteLabel?.brand_identity?.logo_url ? 'hidden' : ''}`}>
-              <Leaf className="h-12 w-12 text-primary" />
-              <span className="text-2xl font-bold text-primary">
+              <Leaf className="h-10 w-10 text-primary" />
+              <span className="text-xl font-bold text-primary">
                 {tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name || 'KisanShakti'}
               </span>
             </div>
@@ -255,37 +255,38 @@ export default function LanguageSelection() {
           
           {/* Title */}
           <div className="text-center">
-            <h1 className="text-xl font-semibold text-foreground">
+            <h1 className="text-lg font-semibold text-foreground">
               Select Your Language
             </h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               अपनी भाषा चुनें | Choose your language
             </p>
           </div>
 
-      {/* Location Status */}
+      {/* Location Status - Single Line */}
       {detectingLocation && (
         <div className="flex items-center space-x-2 text-muted-foreground animate-pulse">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span className="text-sm">Detecting your location...</span>
+          <Loader2 className="w-3 h-3 animate-spin" />
+          <span className="text-xs">Detecting your location...</span>
         </div>
       )}
       
       {!detectingLocation && locationDenied && (
-        <div className="flex items-center space-x-1 text-sm text-amber-600 dark:text-amber-400">
-          <MapPin className="w-4 h-4" />
+        <div className="flex items-center space-x-1 text-xs text-amber-600 dark:text-amber-400">
+          <MapPin className="w-3 h-3" />
           <span>Location access denied, showing default</span>
         </div>
       )}
       
       {userState && userState !== 'default' && !detectingLocation && !locationDenied && (
-        <div className="flex flex-col items-center space-y-1">
-          <div className="flex items-center space-x-1 text-sm text-muted-foreground">
-            <MapPin className="w-4 h-4 text-primary" />
-            <span className="font-medium">{userState}</span>
-          </div>
+        <div className="flex items-center space-x-1 text-xs text-muted-foreground">
+          <MapPin className="w-3 h-3 text-primary" />
+          <span className="font-medium">{userState}</span>
           {userDistrict && (
-            <span className="text-xs text-muted-foreground">{userDistrict}</span>
+            <>
+              <span>•</span>
+              <span>{userDistrict}</span>
+            </>
           )}
         </div>
       )}
