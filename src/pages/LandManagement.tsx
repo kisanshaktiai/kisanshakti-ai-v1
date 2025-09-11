@@ -306,40 +306,53 @@ export default function LandManagement() {
 
   return (
     <div className="space-y-6">
-      {/* Unified Summary Card */}
-      <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
-        <CardContent className="p-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="text-center p-2">
-              <MapPin className="h-5 w-5 text-primary mx-auto mb-1" />
-              <p className="text-xs text-muted-foreground">Total Lands</p>
-              <p className="text-xl font-bold">{lands.length}</p>
+      {/* Compact Summary Stats */}
+      <div className="bg-gradient-to-r from-primary/5 to-primary/10 rounded-lg border border-primary/10 p-2">
+        <div className="grid grid-cols-4 gap-2">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-background rounded-md">
+              <MapPin className="h-4 w-4 text-primary" />
             </div>
-            
-            <div className="text-center p-2 border-l border-primary/20">
-              <Grid3x3 className="h-5 w-5 text-primary mx-auto mb-1" />
-              <p className="text-xs text-muted-foreground">Total Area</p>
-              <p className="text-xl font-bold">{totalArea.toFixed(2)}</p>
-              <p className="text-xs text-muted-foreground">acres</p>
-            </div>
-            
-            <div className="text-center p-2 border-l border-primary/20">
-              <Sprout className="h-5 w-5 text-primary mx-auto mb-1" />
-              <p className="text-xs text-muted-foreground">Under Cultivation</p>
-              <p className="text-xl font-bold">{cultivatedLands}</p>
-            </div>
-            
-            <div className="text-center p-2 border-l border-primary/20">
-              <Activity className="h-5 w-5 text-primary mx-auto mb-1" />
-              <p className="text-xs text-muted-foreground">Utilization</p>
-              <div className="mt-1">
-                <p className="text-xl font-bold">{lands.length ? Math.round((cultivatedLands / lands.length) * 100) : 0}%</p>
-                <Progress value={(cultivatedLands / lands.length) * 100} className="h-1.5 mt-1" />
-              </div>
+            <div>
+              <p className="text-2xs text-muted-foreground">Lands</p>
+              <p className="text-sm font-semibold">{lands.length}</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
+          
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-background rounded-md">
+              <Grid3x3 className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-2xs text-muted-foreground">Area</p>
+              <p className="text-sm font-semibold">{totalArea.toFixed(1)} ac</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-background rounded-md">
+              <Sprout className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <p className="text-2xs text-muted-foreground">Active</p>
+              <p className="text-sm font-semibold">{cultivatedLands}</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-background rounded-md">
+              <Activity className="h-4 w-4 text-primary" />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="flex-1">
+                <p className="text-2xs text-muted-foreground">Usage</p>
+                <p className="text-sm font-semibold">{lands.length ? Math.round((cultivatedLands / lands.length) * 100) : 0}%</p>
+              </div>
+              <Progress value={(cultivatedLands / lands.length) * 100} className="h-1 w-8" />
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Offline Indicator */}
       {!isOnline && (
