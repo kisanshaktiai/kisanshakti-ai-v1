@@ -68,8 +68,15 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       // Check authentication status in parallel
       const authPromise = checkAuth();
       
+      // Fetch initial GPS location when app starts
+      const locationPromise = LocationService.getCurrentLocation(true).then(location => {
+        if (location) {
+          console.log('Initial location fetched:', location);
+        }
+      });
+      
       // Wait for critical tasks
-      await Promise.all([tenantPromise, authPromise]);
+      await Promise.all([tenantPromise, authPromise, locationPromise]);
       
       // If there's an existing session, require PIN verification
       if (session && session.isPinVerified) {
