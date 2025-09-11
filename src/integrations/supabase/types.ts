@@ -1459,6 +1459,38 @@ export type Database = {
         }
         Relationships: []
       }
+      cart_items: {
+        Row: {
+          added_at: string | null
+          id: string
+          product_id: string | null
+          quantity: number
+          user_id: string
+        }
+        Insert: {
+          added_at?: string | null
+          id?: string
+          product_id?: string | null
+          quantity?: number
+          user_id: string
+        }
+        Update: {
+          added_at?: string | null
+          id?: string
+          product_id?: string | null
+          quantity?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cart_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       chat_messages: {
         Row: {
           attachments: Json | null
@@ -3524,11 +3556,17 @@ export type Database = {
           preferred_contact_method: string | null
           preferred_dealer_id: string | null
           primary_crops: string[] | null
+          seller_profile: Json | null
+          seller_rating: number | null
+          seller_verified: boolean | null
           shc_id: string | null
+          store_description: string | null
+          store_name: string | null
           tenant_id: string | null
           total_app_opens: number | null
           total_land_acres: number | null
           total_queries: number | null
+          total_sales: number | null
           updated_at: string | null
           verification_documents: Json | null
           verified_at: string | null
@@ -3567,11 +3605,17 @@ export type Database = {
           preferred_contact_method?: string | null
           preferred_dealer_id?: string | null
           primary_crops?: string[] | null
+          seller_profile?: Json | null
+          seller_rating?: number | null
+          seller_verified?: boolean | null
           shc_id?: string | null
+          store_description?: string | null
+          store_name?: string | null
           tenant_id?: string | null
           total_app_opens?: number | null
           total_land_acres?: number | null
           total_queries?: number | null
+          total_sales?: number | null
           updated_at?: string | null
           verification_documents?: Json | null
           verified_at?: string | null
@@ -3610,11 +3654,17 @@ export type Database = {
           preferred_contact_method?: string | null
           preferred_dealer_id?: string | null
           primary_crops?: string[] | null
+          seller_profile?: Json | null
+          seller_rating?: number | null
+          seller_verified?: boolean | null
           shc_id?: string | null
+          store_description?: string | null
+          store_name?: string | null
           tenant_id?: string | null
           total_app_opens?: number | null
           total_land_acres?: number | null
           total_queries?: number | null
+          total_sales?: number | null
           updated_at?: string | null
           verification_documents?: Json | null
           verified_at?: string | null
@@ -4234,6 +4284,7 @@ export type Database = {
           last_soil_test_date: string | null
           last_sowing_date: string | null
           location_context: Json | null
+          marketplace_enabled: boolean | null
           name: string
           nitrogen_kg_per_ha: number | null
           notes: string | null
@@ -4280,6 +4331,7 @@ export type Database = {
           last_soil_test_date?: string | null
           last_sowing_date?: string | null
           location_context?: Json | null
+          marketplace_enabled?: boolean | null
           name: string
           nitrogen_kg_per_ha?: number | null
           notes?: string | null
@@ -4326,6 +4378,7 @@ export type Database = {
           last_soil_test_date?: string | null
           last_sowing_date?: string | null
           location_context?: Json | null
+          marketplace_enabled?: boolean | null
           name?: string
           nitrogen_kg_per_ha?: number | null
           notes?: string | null
@@ -5078,6 +5131,236 @@ export type Database = {
             columns: ["parent_id"]
             isOneToOne: false
             referencedRelation: "marketplace_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketplace_chat_messages: {
+        Row: {
+          attachments: Json | null
+          chat_id: string | null
+          created_at: string | null
+          id: string
+          is_read: boolean | null
+          message: string
+          sender_id: string
+        }
+        Insert: {
+          attachments?: Json | null
+          chat_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message: string
+          sender_id: string
+        }
+        Update: {
+          attachments?: Json | null
+          chat_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message?: string
+          sender_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_chat_messages_chat_id_fkey"
+            columns: ["chat_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_chats"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketplace_chats: {
+        Row: {
+          buyer_id: string
+          buyer_unread: number | null
+          created_at: string | null
+          id: string
+          last_message: string | null
+          last_message_at: string | null
+          product_id: string | null
+          seller_id: string | null
+          seller_unread: number | null
+        }
+        Insert: {
+          buyer_id: string
+          buyer_unread?: number | null
+          created_at?: string | null
+          id?: string
+          last_message?: string | null
+          last_message_at?: string | null
+          product_id?: string | null
+          seller_id?: string | null
+          seller_unread?: number | null
+        }
+        Update: {
+          buyer_id?: string
+          buyer_unread?: number | null
+          created_at?: string | null
+          id?: string
+          last_message?: string | null
+          last_message_at?: string | null
+          product_id?: string | null
+          seller_id?: string | null
+          seller_unread?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_chats_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_chats_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketplace_orders: {
+        Row: {
+          buyer_id: string
+          created_at: string | null
+          id: string
+          notes: string | null
+          order_number: string
+          order_status: string | null
+          payment_method: string | null
+          payment_status: string | null
+          seller_id: string | null
+          shipping_address: Json
+          total_amount: number
+          tracking_number: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          buyer_id: string
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          order_number?: string
+          order_status?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
+          seller_id?: string | null
+          shipping_address: Json
+          total_amount: number
+          tracking_number?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          buyer_id?: string
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          order_number?: string
+          order_status?: string | null
+          payment_method?: string | null
+          payment_status?: string | null
+          seller_id?: string | null
+          shipping_address?: Json
+          total_amount?: number
+          tracking_number?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_orders_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      marketplace_products: {
+        Row: {
+          category_id: string | null
+          created_at: string | null
+          description: string | null
+          discount_price: number | null
+          featured: boolean | null
+          id: string
+          images: Json | null
+          land_id: string | null
+          name: string
+          price: number
+          quantity_available: number
+          seller_id: string | null
+          specifications: Json | null
+          status: string | null
+          tags: string[] | null
+          unit: string
+          updated_at: string | null
+          views: number | null
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          discount_price?: number | null
+          featured?: boolean | null
+          id?: string
+          images?: Json | null
+          land_id?: string | null
+          name: string
+          price: number
+          quantity_available?: number
+          seller_id?: string | null
+          specifications?: Json | null
+          status?: string | null
+          tags?: string[] | null
+          unit: string
+          updated_at?: string | null
+          views?: number | null
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          discount_price?: number | null
+          featured?: boolean | null
+          id?: string
+          images?: Json | null
+          land_id?: string | null
+          name?: string
+          price?: number
+          quantity_available?: number
+          seller_id?: string | null
+          specifications?: Json | null
+          status?: string | null
+          tags?: string[] | null
+          unit?: string
+          updated_at?: string | null
+          views?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketplace_products_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_products_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_products_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
             referencedColumns: ["id"]
           },
         ]
@@ -5910,6 +6193,51 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_items: {
+        Row: {
+          created_at: string | null
+          id: string
+          order_id: string | null
+          product_id: string | null
+          quantity: number
+          total_price: number
+          unit_price: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          order_id?: string | null
+          product_id?: string | null
+          quantity: number
+          total_price: number
+          unit_price: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          order_id?: string | null
+          product_id?: string | null
+          quantity?: number
+          total_price?: number
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_products"
             referencedColumns: ["id"]
           },
         ]
@@ -6765,6 +7093,95 @@ export type Database = {
           },
         ]
       }
+      product_reviews: {
+        Row: {
+          buyer_id: string
+          comment: string | null
+          created_at: string | null
+          helpful_count: number | null
+          id: string
+          images: Json | null
+          order_id: string | null
+          product_id: string | null
+          rating: number
+          updated_at: string | null
+          verified_purchase: boolean | null
+        }
+        Insert: {
+          buyer_id: string
+          comment?: string | null
+          created_at?: string | null
+          helpful_count?: number | null
+          id?: string
+          images?: Json | null
+          order_id?: string | null
+          product_id?: string | null
+          rating: number
+          updated_at?: string | null
+          verified_purchase?: boolean | null
+        }
+        Update: {
+          buyer_id?: string
+          comment?: string | null
+          created_at?: string | null
+          helpful_count?: number | null
+          id?: string
+          images?: Json | null
+          order_id?: string | null
+          product_id?: string | null
+          rating?: number
+          updated_at?: string | null
+          verified_purchase?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_reviews_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_reviews_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_views: {
+        Row: {
+          id: string
+          ip_address: unknown | null
+          product_id: string | null
+          user_id: string | null
+          viewed_at: string | null
+        }
+        Insert: {
+          id?: string
+          ip_address?: unknown | null
+          product_id?: string | null
+          user_id?: string | null
+          viewed_at?: string | null
+        }
+        Update: {
+          id?: string
+          ip_address?: unknown | null
+          product_id?: string | null
+          user_id?: string | null
+          viewed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_views_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           active_ingredients: Json | null
@@ -7326,6 +7743,30 @@ export type Database = {
           report_name?: string
           schedule_cron?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      search_history: {
+        Row: {
+          created_at: string | null
+          id: string
+          results_count: number | null
+          search_term: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          results_count?: number | null
+          search_term: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          results_count?: number | null
+          search_term?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -10087,6 +10528,35 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: true
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wishlist_items: {
+        Row: {
+          added_at: string | null
+          id: string
+          product_id: string | null
+          user_id: string
+        }
+        Insert: {
+          added_at?: string | null
+          id?: string
+          product_id?: string | null
+          user_id: string
+        }
+        Update: {
+          added_at?: string | null
+          id?: string
+          product_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wishlist_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "marketplace_products"
             referencedColumns: ["id"]
           },
         ]
