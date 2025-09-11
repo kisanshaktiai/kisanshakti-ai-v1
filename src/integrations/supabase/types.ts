@@ -1850,6 +1850,56 @@ export type Database = {
           },
         ]
       }
+      content_reports: {
+        Row: {
+          content_id: string
+          content_type: string
+          created_at: string | null
+          id: string
+          moderator_id: string | null
+          moderator_notes: string | null
+          report_details: string | null
+          report_reason: string
+          reported_by: string
+          resolved_at: string | null
+          status: string | null
+        }
+        Insert: {
+          content_id: string
+          content_type: string
+          created_at?: string | null
+          id?: string
+          moderator_id?: string | null
+          moderator_notes?: string | null
+          report_details?: string | null
+          report_reason: string
+          reported_by: string
+          resolved_at?: string | null
+          status?: string | null
+        }
+        Update: {
+          content_id?: string
+          content_type?: string
+          created_at?: string | null
+          id?: string
+          moderator_id?: string | null
+          moderator_notes?: string | null
+          report_details?: string | null
+          report_reason?: string
+          reported_by?: string
+          resolved_at?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_reports_reported_by_fkey"
+            columns: ["reported_by"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crop_groups: {
         Row: {
           created_at: string
@@ -4376,6 +4426,42 @@ export type Database = {
         }
         Relationships: []
       }
+      followers: {
+        Row: {
+          followed_at: string | null
+          follower_id: string
+          following_id: string
+          id: string
+        }
+        Insert: {
+          followed_at?: string | null
+          follower_id: string
+          following_id: string
+          id?: string
+        }
+        Update: {
+          followed_at?: string | null
+          follower_id?: string
+          following_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "followers_follower_id_fkey"
+            columns: ["follower_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "followers_following_id_fkey"
+            columns: ["following_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       group_chat_members: {
         Row: {
           farmer_id: string
@@ -6532,6 +6618,98 @@ export type Database = {
         }
         Relationships: []
       }
+      message_translations: {
+        Row: {
+          created_at: string | null
+          id: string
+          language_code: string
+          message_id: string
+          translated_content: string
+          translation_provider: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          language_code: string
+          message_id: string
+          translated_content: string
+          translation_provider?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          language_code?: string
+          message_id?: string
+          translated_content?: string
+          translation_provider?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_translations_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          created_at: string | null
+          id: string
+          is_read: boolean | null
+          media_urls: Json | null
+          original_language: string | null
+          read_at: string | null
+          receiver_id: string
+          sender_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          content: string
+          conversation_id: string
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          media_urls?: Json | null
+          original_language?: string | null
+          read_at?: string | null
+          receiver_id: string
+          sender_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          media_urls?: Json | null
+          original_language?: string | null
+          read_at?: string | null
+          receiver_id?: string
+          sender_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_receiver_id_fkey"
+            columns: ["receiver_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ndvi_data: {
         Row: {
           cloud_cover: number | null
@@ -6667,8 +6845,7 @@ export type Database = {
           farmer_id: string
           id: string
           payload: Json
-          retry_count: number | null
-          sync_status: string | null
+          synced: boolean | null
           synced_at: string | null
         }
         Insert: {
@@ -6677,8 +6854,7 @@ export type Database = {
           farmer_id: string
           id?: string
           payload: Json
-          retry_count?: number | null
-          sync_status?: string | null
+          synced?: boolean | null
           synced_at?: string | null
         }
         Update: {
@@ -6687,8 +6863,7 @@ export type Database = {
           farmer_id?: string
           id?: string
           payload?: Json
-          retry_count?: number | null
-          sync_status?: string | null
+          synced?: boolean | null
           synced_at?: string | null
         }
         Relationships: [
@@ -7391,25 +7566,25 @@ export type Database = {
       }
       poll_votes: {
         Row: {
-          created_at: string | null
           farmer_id: string
           id: string
-          option_index: number
-          post_id: string
+          option_ids: Json
+          poll_id: string
+          voted_at: string | null
         }
         Insert: {
-          created_at?: string | null
           farmer_id: string
           id?: string
-          option_index: number
-          post_id: string
+          option_ids: Json
+          poll_id: string
+          voted_at?: string | null
         }
         Update: {
-          created_at?: string | null
           farmer_id?: string
           id?: string
-          option_index?: number
-          post_id?: string
+          option_ids?: Json
+          poll_id?: string
+          voted_at?: string | null
         }
         Relationships: [
           {
@@ -7420,10 +7595,10 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "poll_votes_post_id_fkey"
-            columns: ["post_id"]
+            foreignKeyName: "poll_votes_poll_id_fkey"
+            columns: ["poll_id"]
             isOneToOne: false
-            referencedRelation: "social_posts"
+            referencedRelation: "post_polls"
             referencedColumns: ["id"]
           },
         ]
@@ -7527,6 +7702,174 @@ export type Database = {
             columns: ["post_id"]
             isOneToOne: false
             referencedRelation: "social_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      post_likes: {
+        Row: {
+          created_at: string | null
+          farmer_id: string
+          id: string
+          post_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          farmer_id: string
+          id?: string
+          post_id: string
+        }
+        Update: {
+          created_at?: string | null
+          farmer_id?: string
+          id?: string
+          post_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_likes_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_likes_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "social_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      post_polls: {
+        Row: {
+          allow_multiple: boolean | null
+          created_at: string | null
+          end_date: string | null
+          id: string
+          is_anonymous: boolean | null
+          options: Json
+          post_id: string
+          question: string
+        }
+        Insert: {
+          allow_multiple?: boolean | null
+          created_at?: string | null
+          end_date?: string | null
+          id?: string
+          is_anonymous?: boolean | null
+          options: Json
+          post_id: string
+          question: string
+        }
+        Update: {
+          allow_multiple?: boolean | null
+          created_at?: string | null
+          end_date?: string | null
+          id?: string
+          is_anonymous?: boolean | null
+          options?: Json
+          post_id?: string
+          question?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_polls_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "social_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      post_saves: {
+        Row: {
+          farmer_id: string
+          folder: string | null
+          id: string
+          post_id: string
+          saved_at: string | null
+        }
+        Insert: {
+          farmer_id: string
+          folder?: string | null
+          id?: string
+          post_id: string
+          saved_at?: string | null
+        }
+        Update: {
+          farmer_id?: string
+          folder?: string | null
+          id?: string
+          post_id?: string
+          saved_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_saves_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_saves_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "social_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      post_shares: {
+        Row: {
+          farmer_id: string
+          id: string
+          post_id: string
+          share_message: string | null
+          share_type: string | null
+          shared_at: string | null
+          shared_to_community_id: string | null
+        }
+        Insert: {
+          farmer_id: string
+          id?: string
+          post_id: string
+          share_message?: string | null
+          share_type?: string | null
+          shared_at?: string | null
+          shared_to_community_id?: string | null
+        }
+        Update: {
+          farmer_id?: string
+          id?: string
+          post_id?: string
+          share_message?: string | null
+          share_type?: string | null
+          shared_at?: string | null
+          shared_to_community_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_shares_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_shares_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "social_posts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "post_shares_shared_to_community_id_fkey"
+            columns: ["shared_to_community_id"]
+            isOneToOne: false
+            referencedRelation: "communities"
             referencedColumns: ["id"]
           },
         ]
@@ -8692,6 +9035,7 @@ export type Database = {
           community_id: string | null
           content: string | null
           created_at: string | null
+          engagement_score: number | null
           farmer_id: string
           hashtags: string[] | null
           id: string
@@ -8701,13 +9045,16 @@ export type Database = {
           is_success_story: boolean | null
           language_code: string | null
           likes_count: number | null
+          location_data: Json | null
           media_urls: Json | null
           metadata: Json | null
+          moderation_status: string | null
           parent_post_id: string | null
           poll_options: Json | null
           post_type: Database["public"]["Enums"]["post_type"]
           saves_count: number | null
           shares_count: number | null
+          status: Database["public"]["Enums"]["post_status"] | null
           tenant_id: string | null
           translations: Json | null
           updated_at: string | null
@@ -8718,6 +9065,7 @@ export type Database = {
           community_id?: string | null
           content?: string | null
           created_at?: string | null
+          engagement_score?: number | null
           farmer_id: string
           hashtags?: string[] | null
           id?: string
@@ -8727,13 +9075,16 @@ export type Database = {
           is_success_story?: boolean | null
           language_code?: string | null
           likes_count?: number | null
+          location_data?: Json | null
           media_urls?: Json | null
           metadata?: Json | null
+          moderation_status?: string | null
           parent_post_id?: string | null
           poll_options?: Json | null
           post_type?: Database["public"]["Enums"]["post_type"]
           saves_count?: number | null
           shares_count?: number | null
+          status?: Database["public"]["Enums"]["post_status"] | null
           tenant_id?: string | null
           translations?: Json | null
           updated_at?: string | null
@@ -8744,6 +9095,7 @@ export type Database = {
           community_id?: string | null
           content?: string | null
           created_at?: string | null
+          engagement_score?: number | null
           farmer_id?: string
           hashtags?: string[] | null
           id?: string
@@ -8753,13 +9105,16 @@ export type Database = {
           is_success_story?: boolean | null
           language_code?: string | null
           likes_count?: number | null
+          location_data?: Json | null
           media_urls?: Json | null
           metadata?: Json | null
+          moderation_status?: string | null
           parent_post_id?: string | null
           poll_options?: Json | null
           post_type?: Database["public"]["Enums"]["post_type"]
           saves_count?: number | null
           shares_count?: number | null
+          status?: Database["public"]["Enums"]["post_status"] | null
           tenant_id?: string | null
           translations?: Json | null
           updated_at?: string | null
@@ -10204,42 +10559,46 @@ export type Database = {
       }
       trending_topics: {
         Row: {
-          created_at: string | null
+          crop_id: string | null
+          engagement_score: number | null
           hashtag: string
           id: string
-          language_code: string | null
-          last_used_at: string | null
-          state_code: string | null
+          last_updated: string | null
+          post_count: number | null
+          region: string | null
           tenant_id: string | null
-          trending_score: number | null
-          updated_at: string | null
-          usage_count: number | null
+          trending_since: string | null
         }
         Insert: {
-          created_at?: string | null
+          crop_id?: string | null
+          engagement_score?: number | null
           hashtag: string
           id?: string
-          language_code?: string | null
-          last_used_at?: string | null
-          state_code?: string | null
+          last_updated?: string | null
+          post_count?: number | null
+          region?: string | null
           tenant_id?: string | null
-          trending_score?: number | null
-          updated_at?: string | null
-          usage_count?: number | null
+          trending_since?: string | null
         }
         Update: {
-          created_at?: string | null
+          crop_id?: string | null
+          engagement_score?: number | null
           hashtag?: string
           id?: string
-          language_code?: string | null
-          last_used_at?: string | null
-          state_code?: string | null
+          last_updated?: string | null
+          post_count?: number | null
+          region?: string | null
           tenant_id?: string | null
-          trending_score?: number | null
-          updated_at?: string | null
-          usage_count?: number | null
+          trending_since?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "trending_topics_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "crops"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "trending_topics_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -10298,6 +10657,44 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_badges: {
+        Row: {
+          badge_category: string
+          badge_icon_url: string | null
+          badge_name: string
+          badge_type: string
+          earned_at: string | null
+          farmer_id: string
+          id: string
+        }
+        Insert: {
+          badge_category: string
+          badge_icon_url?: string | null
+          badge_name: string
+          badge_type: string
+          earned_at?: string | null
+          farmer_id: string
+          id?: string
+        }
+        Update: {
+          badge_category?: string
+          badge_icon_url?: string | null
+          badge_name?: string
+          badge_type?: string
+          earned_at?: string | null
+          farmer_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_badges_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
             referencedColumns: ["id"]
           },
         ]
@@ -10392,6 +10789,44 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_points: {
+        Row: {
+          description: string | null
+          earned_at: string | null
+          farmer_id: string
+          id: string
+          points: number
+          points_type: string
+          reference_id: string | null
+        }
+        Insert: {
+          description?: string | null
+          earned_at?: string | null
+          farmer_id: string
+          id?: string
+          points: number
+          points_type: string
+          reference_id?: string | null
+        }
+        Update: {
+          description?: string | null
+          earned_at?: string | null
+          farmer_id?: string
+          id?: string
+          points?: number
+          points_type?: string
+          reference_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_points_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
             referencedColumns: ["id"]
           },
         ]
@@ -11779,6 +12214,16 @@ export type Database = {
         }
         Returns: Json
       }
+      award_points: {
+        Args: {
+          description: string
+          farmer_id: string
+          points: number
+          points_type: string
+          reference_id?: string
+        }
+        Returns: undefined
+      }
       box: {
         Args: { "": unknown } | { "": unknown }
         Returns: unknown
@@ -11823,6 +12268,10 @@ export type Database = {
         Args: { "": unknown } | { "": unknown }
         Returns: string
       }
+      calculate_engagement_score: {
+        Args: { post_id: string }
+        Returns: number
+      }
       calculate_evapotranspiration: {
         Args: {
           humidity_percent: number
@@ -11863,6 +12312,10 @@ export type Database = {
       check_admin_permission: {
         Args: { required_role?: string }
         Returns: boolean
+      }
+      check_badge_eligibility: {
+        Args: { farmer_id: string }
+        Returns: undefined
       }
       check_bootstrap_status: {
         Args: Record<PropertyKey, never>
@@ -14219,6 +14672,7 @@ export type Database = {
         | "failed"
         | "refunded"
         | "chargeback"
+      post_status: "draft" | "published" | "moderated" | "deleted"
       post_type: "text" | "image" | "video" | "poll"
       subscription_plan:
         | "Kisan_Basic"
@@ -14458,6 +14912,7 @@ export const Constants = {
         "refunded",
         "chargeback",
       ],
+      post_status: ["draft", "published", "moderated", "deleted"],
       post_type: ["text", "image", "video", "poll"],
       subscription_plan: [
         "Kisan_Basic",
