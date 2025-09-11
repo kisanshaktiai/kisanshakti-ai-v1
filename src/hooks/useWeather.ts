@@ -93,17 +93,38 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
   // Default location (India - New Delhi)
   const defaultLocation = { lat: 28.6139, lon: 77.2090 };
 
-  // Get user's current location
-  const getUserLocation = () => {
+  // Get user's current location with reverse geocoding
+  const getUserLocation = async () => {
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
-        (position) => {
+        async (position) => {
           const newLocation = {
             lat: position.coords.latitude,
             lon: position.coords.longitude
           };
           setUserLocation(newLocation);
           console.log('User location obtained:', newLocation);
+          
+          // Try to get location name via reverse geocoding
+          try {
+            const response = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${newLocation.lat}&lon=${newLocation.lon}&zoom=10&addressdetails=1`
+            );
+            if (response.ok) {
+              const data = await response.json();
+              const city = data.address?.city || data.address?.town || data.address?.village || data.address?.county;
+              const state = data.address?.state;
+              const country = data.address?.country;
+              
+              if (city) {
+                const locationName = state ? `${city}, ${state}` : `${city}, ${country}`;
+                // Store location name for later use
+                localStorage.setItem('weatherLocationName', locationName);
+              }
+            }
+          } catch (error) {
+            console.error('Reverse geocoding error:', error);
+          }
         },
         (error) => {
           console.error('Geolocation error:', error);
@@ -113,16 +134,18 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
             variant: "default",
           });
           setUserLocation(defaultLocation);
+          localStorage.setItem('weatherLocationName', 'New Delhi, India');
         },
         {
           enableHighAccuracy: true,
-          timeout: 5000,
+          timeout: 10000,
           maximumAge: 0
         }
       );
     } else {
       console.log('Geolocation not supported');
       setUserLocation(defaultLocation);
+      localStorage.setItem('weatherLocationName', 'New Delhi, India');
     }
   };
 
@@ -168,12 +191,14 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
       }
 
       if (data) {
-        // Add location name if available
-        if (data.location) {
-          data.locationName = data.location;
+        // Add location name from localStorage or use coordinates
+        const storedLocationName = localStorage.getItem('weatherLocationName');
+        if (storedLocationName) {
+          data.location = storedLocationName;
+        } else if (data.location) {
+          data.location = data.location;
         } else {
-          // Try to get location name from reverse geocoding
-          data.locationName = `${weatherLocation.lat.toFixed(2)}°, ${weatherLocation.lon.toFixed(2)}°`;
+          data.location = `${weatherLocation.lat.toFixed(2)}°N, ${weatherLocation.lon.toFixed(2)}°E`;
         }
         
         setCurrentWeather(data);
