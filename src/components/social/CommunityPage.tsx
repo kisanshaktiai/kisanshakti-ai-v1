@@ -147,6 +147,18 @@ export function CommunityPage() {
     }
 
     try {
+      // Get the current user session to ensure we have the right auth context
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        toast({
+          title: "Session expired",
+          description: "Please login again",
+          variant: "destructive"
+        });
+        return;
+      }
+
       const { error } = await supabase
         .from('community_members')
         .insert({
