@@ -3,7 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { I18nextProvider } from "react-i18next";
 import i18n from "@/i18n/config";
 
@@ -11,6 +11,7 @@ import i18n from "@/i18n/config";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { LocationPermissionDialog } from "@/components/LocationPermissionDialog";
 
 // Pages
 import Home from "./pages/Home";
@@ -31,10 +32,12 @@ import AddLand from "./pages/AddLand";
 import LandDetails from "./pages/LandDetails";
 import AIChat from "./pages/AIChat";
 
-// Stores
+// Stores and Services
 import { useTenantStore } from "@/stores/tenantStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useLanguageStore } from "@/stores/languageStore";
+import LocationService from "@/services/LocationService";
+import { useLocationPermission } from "@/hooks/useLocationPermission";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -51,6 +54,9 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   const { fetchTenant, tenant, applyWhiteLabelTheme } = useTenantStore();
   const { checkAuth, requirePin, session } = useAuthStore();
   const { currentLanguage } = useLanguageStore();
+  const { permissionStatus, requestPermission } = useLocationPermission();
+  const [showLocationDialog, setShowLocationDialog] = useState(false);
+  const [hasRequestedPermission, setHasRequestedPermission] = useState(false);
 
   useEffect(() => {
     // Initialize tenant
@@ -77,7 +83,70 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
     i18n.changeLanguage(currentLanguage);
   }, [currentLanguage]);
 
-  return <>{children}</>;
+  // Handle location permission on app initialization
+  useEffect(() => {
+    const initializeLocation = async () => {
+      // Check if we've already requested permission in this session
+      const hasRequested = sessionStorage.getItem('location_permission_requested');
+      if (hasRequested) {
+        setHasRequestedPermission(true);
+        return;
+      }
+
+      // Check if user is authenticated
+      if (!session) return;
+
+      // Check current permission status
+      const isGranted = await LocationService.isLocationPermissionGranted();
+      
+      if (!isGranted && permissionStatus === 'prompt') {
+        // Show custom dialog for first-time users
+        setShowLocationDialog(true);
+      } else if (isGranted) {
+        // Start location tracking if permission is already granted
+        LocationService.startLocationTracking();
+      }
+    };
+
+    // Wait a bit after app loads to show location dialog
+    const timer = setTimeout(() => {
+      initializeLocation();
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [session, permissionStatus]);
+
+  const handleLocationAllow = async () => {
+    setShowLocationDialog(false);
+    sessionStorage.setItem('location_permission_requested', 'true');
+    setHasRequestedPermission(true);
+    
+    const status = await requestPermission();
+    if (status === 'granted') {
+      // Start location tracking
+      LocationService.startLocationTracking();
+      // Get initial location
+      await LocationService.getCurrentLocation(true);
+    }
+  };
+
+  const handleLocationDeny = () => {
+    setShowLocationDialog(false);
+    sessionStorage.setItem('location_permission_requested', 'true');
+    setHasRequestedPermission(true);
+  };
+
+  return (
+    <>
+      {children}
+      <LocationPermissionDialog
+        open={showLocationDialog}
+        onOpenChange={setShowLocationDialog}
+        onAllow={handleLocationAllow}
+        onDeny={handleLocationDeny}
+      />
+    </>
+  );
 }
 
 // Create router with future flags to resolve React Router v7 warnings

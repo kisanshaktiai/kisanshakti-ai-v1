@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import LocationService from '@/services/LocationService';
+import { useLocation } from '@/hooks/useLocation';
 
 interface WeatherData {
   temp: number;
@@ -87,70 +89,17 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
   const [hourlyForecast, setHourlyForecast] = useState<HourlyData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
   const { toast } = useToast();
-
+  
+  // Use the centralized location service
+  const { location: deviceLocation } = useLocation();
+  
   // Default location (India - New Delhi)
   const defaultLocation = { lat: 28.6139, lon: 77.2090 };
 
-  // Get user's current location with reverse geocoding
-  const getUserLocation = async () => {
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const newLocation = {
-            lat: position.coords.latitude,
-            lon: position.coords.longitude
-          };
-          setUserLocation(newLocation);
-          console.log('User location obtained:', newLocation);
-          
-          // Try to get location name via reverse geocoding
-          try {
-            const response = await fetch(
-              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${newLocation.lat}&lon=${newLocation.lon}&zoom=10&addressdetails=1`
-            );
-            if (response.ok) {
-              const data = await response.json();
-              const city = data.address?.city || data.address?.town || data.address?.village || data.address?.county;
-              const state = data.address?.state;
-              const country = data.address?.country;
-              
-              if (city) {
-                const locationName = state ? `${city}, ${state}` : `${city}, ${country}`;
-                // Store location name for later use
-                localStorage.setItem('weatherLocationName', locationName);
-              }
-            }
-          } catch (error) {
-            console.error('Reverse geocoding error:', error);
-          }
-        },
-        (error) => {
-          console.error('Geolocation error:', error);
-          toast({
-            title: "Location Access",
-            description: "Using default location. Enable location access for accurate weather.",
-            variant: "default",
-          });
-          setUserLocation(defaultLocation);
-          localStorage.setItem('weatherLocationName', 'New Delhi, India');
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0
-        }
-      );
-    } else {
-      console.log('Geolocation not supported');
-      setUserLocation(defaultLocation);
-      localStorage.setItem('weatherLocationName', 'New Delhi, India');
-    }
-  };
 
   const fetchWeatherData = async () => {
-    const weatherLocation = location || userLocation || defaultLocation;
+    const weatherLocation = location || (deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : defaultLocation);
     
     try {
       setLoading(true);
@@ -270,19 +219,24 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
   };
 
   useEffect(() => {
-    // Get user location first
-    getUserLocation();
-  }, []);
-
-  useEffect(() => {
     // Fetch weather data when location is available
-    if (location || userLocation) {
+    if (location || deviceLocation) {
       fetchWeatherData();
       // Refresh every 30 minutes
       const interval = setInterval(fetchWeatherData, 1800000);
       return () => clearInterval(interval);
     }
-  }, [location?.lat, location?.lon, userLocation?.lat, userLocation?.lon]);
+  }, [location?.lat, location?.lon, deviceLocation?.lat, deviceLocation?.lon]);
+
+  // Update location name when device location changes
+  useEffect(() => {
+    if (deviceLocation?.city && deviceLocation?.state) {
+      const locationName = `${deviceLocation.city}, ${deviceLocation.state}`;
+      localStorage.setItem('weatherLocationName', locationName);
+    } else if (deviceLocation?.city) {
+      localStorage.setItem('weatherLocationName', deviceLocation.city);
+    }
+  }, [deviceLocation]);
 
   return {
     currentWeather,
@@ -291,6 +245,6 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
     loading,
     error,
     refetch: fetchWeatherData,
-    location: location || userLocation || defaultLocation,
+    location: location || (deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : defaultLocation),
   };
 };
