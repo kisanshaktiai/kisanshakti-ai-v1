@@ -13511,6 +13511,10 @@ export type Database = {
         Args: { target_tenant_id: string }
         Returns: boolean
       }
+      join_community: {
+        Args: { p_community_id: string; p_farmer_id: string }
+        Returns: Json
+      }
       json: {
         Args: { "": unknown }
         Returns: Json

@@ -86,10 +86,10 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
     try {
       // Use the database function for safer join operation
       const { data, error } = await supabase
-        .rpc('join_community', {
+        .rpc('join_community' as any, {
           p_community_id: communityId,
           p_farmer_id: farmerId
-        });
+        }) as { data: any; error: any };
 
       if (error) throw error;
 
