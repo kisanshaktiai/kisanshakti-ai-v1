@@ -54,29 +54,35 @@ export function CropSelectionDialog({
   const [cropGroups, setCropGroups] = useState<CropGroup[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
-  const [selectedCrop, setSelectedCrop] = useState<string | null>(null);
+  const [selectedCrop, setSelectedCrop] = useState<string | null>(selectedCropId || null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<'groups' | 'crops'>('groups');
 
   // Reset selected crop when prop changes
   useEffect(() => {
-    setSelectedCrop(selectedCropId || null);
+    if (selectedCropId !== undefined) {
+      setSelectedCrop(selectedCropId);
+    }
   }, [selectedCropId]);
 
   // Fetch crop groups when dialog opens
   useEffect(() => {
     if (!open) {
       // Reset state when dialog closes
-      setSelectedGroup(null);
-      setStep('groups');
-      setCrops([]);
-      setError(null);
+      setTimeout(() => {
+        setSelectedGroup(null);
+        setStep('groups');
+        setCrops([]);
+        setError(null);
+        setSelectedCrop(selectedCropId || null);
+      }, 200); // Small delay to allow animation to complete
       return;
     }
 
     // Fetch crop groups when dialog opens
     const fetchCropGroups = async () => {
+      console.log('Fetching crop groups...');
       setLoading(true);
       setError(null);
       
@@ -103,7 +109,7 @@ export function CropSelectionDialog({
     };
 
     fetchCropGroups();
-  }, [open]);
+  }, [open, selectedCropId]);
 
   // Fetch crops when a group is selected
   useEffect(() => {
@@ -112,8 +118,10 @@ export function CropSelectionDialog({
     }
 
     const fetchCrops = async () => {
+      console.log('Fetching crops for group:', selectedGroup);
       setLoading(true);
       setError(null);
+      setCrops([]); // Clear previous crops
       
       try {
         const { data, error } = await supabase
@@ -129,11 +137,18 @@ export function CropSelectionDialog({
         }
         
         console.log('Fetched crops for group:', selectedGroup, data);
-        setCrops(data || []);
-        setStep('crops');
+        if (data && data.length > 0) {
+          setCrops(data);
+          setStep('crops');
+        } else {
+          setError('No crops available in this group');
+          setCrops([]);
+          setStep('crops');
+        }
       } catch (err) {
         console.error('Error fetching crops:', err);
         setError('Failed to load crops. Please try again.');
+        setCrops([]);
       } finally {
         setLoading(false);
       }
@@ -155,12 +170,9 @@ export function CropSelectionDialog({
     if (selectedCrop) {
       const crop = crops.find(c => c.id === selectedCrop);
       if (crop) {
+        console.log('Confirming crop selection:', crop);
         onSelect(crop.id, crop.label);
-        onClose();
-        // Reset state
-        setSelectedGroup(null);
-        setSelectedCrop(null);
-        setStep('groups');
+        handleClose();
       }
     }
   };
@@ -178,17 +190,18 @@ export function CropSelectionDialog({
   };
 
   const handleClose = () => {
+    // Reset state when closing
+    setSelectedCrop(null);
+    setSelectedGroup(null);
+    setStep('groups');
+    setCrops([]);
+    setError(null);
     onClose();
   };
 
-  // Don't render anything if dialog is not open
-  if (!open) {
-    return null;
-  }
-
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg" onClick={(e) => e.stopPropagation()}>
+      <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {step === 'crops' && (

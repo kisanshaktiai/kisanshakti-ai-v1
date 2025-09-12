@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import { Sprout, X } from 'lucide-react';
 import { CropSelectionDialog } from './CropSelectionDialog';
-import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 
 interface CropSelectionButtonProps {
-  value?: string;
-  cropName?: string;
+  value?: string; // Crop ID
+  cropName?: string; // Crop name (for backward compatibility)
   onChange: (cropId: string, cropName: string) => void;
   onClear?: () => void;
   label?: string;
@@ -17,65 +16,111 @@ interface CropSelectionButtonProps {
   required?: boolean;
 }
 
-export function CropSelectionButton({ 
-  value, 
+export function CropSelectionButton({
+  value,
   cropName,
-  onChange, 
+  onChange,
   onClear,
   label,
-  placeholder = "Select Crop",
+  placeholder = "Select a crop",
   className,
-  required
+  required = false
 }: CropSelectionButtonProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [displayName, setDisplayName] = useState<string | null>(cropName || null);
-  const [cropIcon, setCropIcon] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string>("");
+  const [cropIcon, setCropIcon] = useState<string>("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Fetch crop details if we have a crop name but no icon
+  // Fetch crop details when value or cropName changes
   useEffect(() => {
-    if (cropName) {
-      fetchCropDetails(cropName);
-    } else {
-      setDisplayName(null);
-      setCropIcon(null);
-    }
-  }, [cropName]);
-
-  const fetchCropDetails = async (name: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('crops')
-        .select('icon, label')
-        .eq('label', name)
-        .single();
-
-      if (data && !error) {
-        setCropIcon(data.icon);
-        setDisplayName(data.label);
+    const fetchCropDetails = async () => {
+      if (!value && !cropName) {
+        setDisplayName("");
+        setCropIcon("");
+        return;
       }
-    } catch (err) {
-      console.error('Error fetching crop details:', err);
-      setDisplayName(name);
-    }
-  };
 
-  const handleSelect = (cropId: string, selectedCropName: string) => {
-    onChange(cropId, selectedCropName);
-    setDisplayName(selectedCropName);
-    // Fetch the icon for the newly selected crop
-    fetchCropDetails(selectedCropName);
+      setIsLoading(true);
+      try {
+        let data = null;
+        let error = null;
+
+        // Try to fetch by ID first (if value is provided)
+        if (value) {
+          const result = await supabase
+            .from('crops')
+            .select('label, icon')
+            .eq('id', value)
+            .maybeSingle();
+          
+          data = result.data;
+          error = result.error;
+        }
+
+        // If no data found by ID, try by label (cropName)
+        if (!data && cropName) {
+          const result = await supabase
+            .from('crops')
+            .select('label, icon')
+            .eq('label', cropName)
+            .maybeSingle();
+
+          data = result.data;
+          error = result.error;
+
+          // If still not found, try by value field
+          if (!data) {
+            const valueResult = await supabase
+              .from('crops')
+              .select('label, icon')
+              .eq('value', cropName)
+              .maybeSingle();
+            
+            data = valueResult.data;
+          }
+        }
+
+        if (data) {
+          setDisplayName(data.label);
+          setCropIcon(data.icon || "");
+        } else {
+          // Fallback to displaying the raw cropName
+          setDisplayName(cropName || "");
+          setCropIcon("");
+        }
+      } catch (error) {
+        console.error('Error fetching crop details:', error);
+        setDisplayName(cropName || "");
+        setCropIcon("");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCropDetails();
+  }, [value, cropName]);
+
+  const handleSelect = (cropId: string, cropLabel: string) => {
+    console.log('Crop selected:', { cropId, cropLabel });
+    onChange(cropId, cropLabel);
     setDialogOpen(false);
   };
 
   const handleClear = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setDisplayName(null);
-    setCropIcon(null);
+    setDisplayName("");
+    setCropIcon("");
+    onChange("", "");
     if (onClear) {
       onClear();
-    } else {
-      onChange('', '');
     }
+  };
+
+  const handleButtonClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log('Opening crop selection dialog...');
+    setDialogOpen(true);
   };
 
   return (
@@ -93,9 +138,11 @@ export function CropSelectionButton({
           variant="outline"
           className={cn(
             "w-full justify-start text-left font-normal pr-10",
-            !displayName && "text-muted-foreground"
+            !displayName && "text-muted-foreground",
+            isLoading && "opacity-50"
           )}
-          onClick={() => setDialogOpen(true)}
+          onClick={handleButtonClick}
+          disabled={isLoading}
         >
           <div className="flex items-center gap-2 w-full">
             {displayName ? (
@@ -116,7 +163,7 @@ export function CropSelectionButton({
           </div>
         </Button>
 
-        {displayName && (
+        {displayName && !isLoading && (
           <Button
             type="button"
             variant="ghost"
@@ -131,7 +178,10 @@ export function CropSelectionButton({
 
       <CropSelectionDialog
         open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
+        onClose={() => {
+          console.log('Closing crop selection dialog');
+          setDialogOpen(false);
+        }}
         onSelect={handleSelect}
         selectedCropId={value}
         title={label || "Select Crop"}
