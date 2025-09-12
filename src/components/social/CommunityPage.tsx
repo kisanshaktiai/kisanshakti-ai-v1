@@ -16,7 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useToast } from '@/hooks/use-toast';
 import { PostCard } from './PostCard';
-import { CommunityChatRoom } from './CommunityChatRoom';
+import { EnhancedCommunityChat } from '../community/EnhancedCommunityChat';
 import { format } from 'date-fns';
 
 interface Member {

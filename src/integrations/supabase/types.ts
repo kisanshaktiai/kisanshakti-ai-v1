@@ -1671,6 +1671,7 @@ export type Database = {
       }
       communities: {
         Row: {
+          banner_url: string | null
           community_type: Database["public"]["Enums"]["community_type"]
           cover_image_url: string | null
           created_at: string | null
@@ -1680,17 +1681,25 @@ export type Database = {
           icon_url: string | null
           id: string
           is_active: boolean | null
+          is_verified: boolean | null
+          language: string | null
           language_code: string | null
           member_count: number | null
           metadata: Json | null
+          moderator_ids: string[] | null
           name: string
+          pinned_posts: string[] | null
           post_count: number | null
+          rules: string | null
           slug: string
           state_code: string | null
+          tags: string[] | null
           tenant_id: string | null
+          trending_score: number | null
           updated_at: string | null
         }
         Insert: {
+          banner_url?: string | null
           community_type: Database["public"]["Enums"]["community_type"]
           cover_image_url?: string | null
           created_at?: string | null
@@ -1700,17 +1709,25 @@ export type Database = {
           icon_url?: string | null
           id?: string
           is_active?: boolean | null
+          is_verified?: boolean | null
+          language?: string | null
           language_code?: string | null
           member_count?: number | null
           metadata?: Json | null
+          moderator_ids?: string[] | null
           name: string
+          pinned_posts?: string[] | null
           post_count?: number | null
+          rules?: string | null
           slug: string
           state_code?: string | null
+          tags?: string[] | null
           tenant_id?: string | null
+          trending_score?: number | null
           updated_at?: string | null
         }
         Update: {
+          banner_url?: string | null
           community_type?: Database["public"]["Enums"]["community_type"]
           cover_image_url?: string | null
           created_at?: string | null
@@ -1720,14 +1737,21 @@ export type Database = {
           icon_url?: string | null
           id?: string
           is_active?: boolean | null
+          is_verified?: boolean | null
+          language?: string | null
           language_code?: string | null
           member_count?: number | null
           metadata?: Json | null
+          moderator_ids?: string[] | null
           name?: string
+          pinned_posts?: string[] | null
           post_count?: number | null
+          rules?: string | null
           slug?: string
           state_code?: string | null
+          tags?: string[] | null
           tenant_id?: string | null
+          trending_score?: number | null
           updated_at?: string | null
         }
         Relationships: [
@@ -1750,6 +1774,129 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      community_events: {
+        Row: {
+          attendees: string[] | null
+          community_id: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          end_time: string | null
+          event_type: string | null
+          id: string
+          is_online: boolean | null
+          location: string | null
+          meeting_link: string | null
+          start_time: string | null
+          title: string
+        }
+        Insert: {
+          attendees?: string[] | null
+          community_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          end_time?: string | null
+          event_type?: string | null
+          id?: string
+          is_online?: boolean | null
+          location?: string | null
+          meeting_link?: string | null
+          start_time?: string | null
+          title: string
+        }
+        Update: {
+          attendees?: string[] | null
+          community_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          end_time?: string | null
+          event_type?: string | null
+          id?: string
+          is_online?: boolean | null
+          location?: string | null
+          meeting_link?: string | null
+          start_time?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "community_events_community_id_fkey"
+            columns: ["community_id"]
+            isOneToOne: false
+            referencedRelation: "communities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "community_events_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      community_member_activity: {
+        Row: {
+          activity_type: string
+          badges: Json | null
+          community_id: string | null
+          created_at: string | null
+          farmer_id: string | null
+          helpful_answers: number | null
+          id: string
+          last_active: string | null
+          level: number | null
+          points: number | null
+          streak_days: number | null
+          total_messages: number | null
+        }
+        Insert: {
+          activity_type: string
+          badges?: Json | null
+          community_id?: string | null
+          created_at?: string | null
+          farmer_id?: string | null
+          helpful_answers?: number | null
+          id?: string
+          last_active?: string | null
+          level?: number | null
+          points?: number | null
+          streak_days?: number | null
+          total_messages?: number | null
+        }
+        Update: {
+          activity_type?: string
+          badges?: Json | null
+          community_id?: string | null
+          created_at?: string | null
+          farmer_id?: string | null
+          helpful_answers?: number | null
+          id?: string
+          last_active?: string | null
+          level?: number | null
+          points?: number | null
+          streak_days?: number | null
+          total_messages?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "community_member_activity_community_id_fkey"
+            columns: ["community_id"]
+            isOneToOne: false
+            referencedRelation: "communities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "community_member_activity_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
             referencedColumns: ["id"]
           },
         ]
@@ -1795,6 +1942,211 @@ export type Database = {
             columns: ["farmer_id"]
             isOneToOne: false
             referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      community_messages: {
+        Row: {
+          attachments: Json | null
+          community_id: string | null
+          content: string
+          created_at: string | null
+          edited_at: string | null
+          farmer_id: string | null
+          id: string
+          is_edited: boolean | null
+          is_pinned: boolean | null
+          is_verified: boolean | null
+          message_type: string | null
+          metadata: Json | null
+          parent_message_id: string | null
+          reactions: Json | null
+          translation_data: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          attachments?: Json | null
+          community_id?: string | null
+          content: string
+          created_at?: string | null
+          edited_at?: string | null
+          farmer_id?: string | null
+          id?: string
+          is_edited?: boolean | null
+          is_pinned?: boolean | null
+          is_verified?: boolean | null
+          message_type?: string | null
+          metadata?: Json | null
+          parent_message_id?: string | null
+          reactions?: Json | null
+          translation_data?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          attachments?: Json | null
+          community_id?: string | null
+          content?: string
+          created_at?: string | null
+          edited_at?: string | null
+          farmer_id?: string | null
+          id?: string
+          is_edited?: boolean | null
+          is_pinned?: boolean | null
+          is_verified?: boolean | null
+          message_type?: string | null
+          metadata?: Json | null
+          parent_message_id?: string | null
+          reactions?: Json | null
+          translation_data?: Json | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "community_messages_community_id_fkey"
+            columns: ["community_id"]
+            isOneToOne: false
+            referencedRelation: "communities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "community_messages_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "community_messages_parent_message_id_fkey"
+            columns: ["parent_message_id"]
+            isOneToOne: false
+            referencedRelation: "community_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      community_moderation: {
+        Row: {
+          action_type: string
+          community_id: string | null
+          created_at: string | null
+          id: string
+          moderator_id: string | null
+          reason: string | null
+          target_message_id: string | null
+          target_user_id: string | null
+        }
+        Insert: {
+          action_type: string
+          community_id?: string | null
+          created_at?: string | null
+          id?: string
+          moderator_id?: string | null
+          reason?: string | null
+          target_message_id?: string | null
+          target_user_id?: string | null
+        }
+        Update: {
+          action_type?: string
+          community_id?: string | null
+          created_at?: string | null
+          id?: string
+          moderator_id?: string | null
+          reason?: string | null
+          target_message_id?: string | null
+          target_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "community_moderation_community_id_fkey"
+            columns: ["community_id"]
+            isOneToOne: false
+            referencedRelation: "communities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "community_moderation_moderator_id_fkey"
+            columns: ["moderator_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "community_moderation_target_message_id_fkey"
+            columns: ["target_message_id"]
+            isOneToOne: false
+            referencedRelation: "community_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "community_moderation_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      community_polls: {
+        Row: {
+          allow_multiple: boolean | null
+          community_id: string | null
+          created_at: string | null
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          is_anonymous: boolean | null
+          message_id: string | null
+          options: Json
+          question: string
+          votes: Json | null
+        }
+        Insert: {
+          allow_multiple?: boolean | null
+          community_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          is_anonymous?: boolean | null
+          message_id?: string | null
+          options: Json
+          question: string
+          votes?: Json | null
+        }
+        Update: {
+          allow_multiple?: boolean | null
+          community_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          is_anonymous?: boolean | null
+          message_id?: string | null
+          options?: Json
+          question?: string
+          votes?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "community_polls_community_id_fkey"
+            columns: ["community_id"]
+            isOneToOne: false
+            referencedRelation: "communities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "community_polls_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "community_polls_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "community_messages"
             referencedColumns: ["id"]
           },
         ]
@@ -12274,6 +12626,15 @@ export type Database = {
         }
         Returns: Json
       }
+      award_activity_points: {
+        Args: {
+          p_activity_type: string
+          p_community_id: string
+          p_farmer_id: string
+          p_points: number
+        }
+        Returns: undefined
+      }
       award_points: {
         Args: {
           description: string
@@ -14588,6 +14949,10 @@ export type Database = {
       unlockrows: {
         Args: { "": string }
         Returns: number
+      }
+      update_community_trending_score: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
       update_user_presence: {
         Args: {
