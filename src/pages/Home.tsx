@@ -200,7 +200,7 @@ export default function Home() {
           {mainFeatures.map((feature) => {
             const Icon = feature.icon;
             return (
-              <Link key={feature.path} to={feature.path}>
+              <Link key={`main-${feature.title}`} to={feature.path}>
                 <Card className="group hover:shadow-elegant transition-all duration-300 hover:-translate-y-1 overflow-hidden h-full">
                   <div className={cn("h-1", feature.color)} />
                   <CardHeader className="pb-3">
@@ -257,7 +257,7 @@ export default function Home() {
             {secondaryFeatures.map((feature) => {
               const Icon = feature.icon;
               return (
-                <Link key={feature.path} to={feature.path}>
+                <Link key={`secondary-${feature.title}`} to={feature.path}>
                   <Card className="group hover:shadow-soft transition-all duration-300 hover:border-primary/50">
                     <CardContent className="p-4">
                       <div className="flex items-center justify-between mb-3">
