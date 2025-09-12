@@ -55,34 +55,42 @@ export function CropSelectionDialog({
   const [crops, setCrops] = useState<Crop[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [selectedCrop, setSelectedCrop] = useState<string | null>(selectedCropId || null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<'groups' | 'crops'>('groups');
 
-  // Fetch crop groups from database
+  // Fetch crop groups when dialog opens
   useEffect(() => {
-    const fetchCropGroups = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('crop_groups')
-          .select('*')
-          .eq('is_active', true)
-          .order('display_order');
-
-        if (error) throw error;
-        setCropGroups(data || []);
-      } catch (err) {
-        console.error('Error fetching crop groups:', err);
-        setError('Failed to load crop groups');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     if (open) {
+      // Reset states when dialog opens
+      setLoading(true);
+      setError(null);
+      setSelectedGroup(null);
+      setSelectedCrop(selectedCropId || null);
+      setStep('groups');
+      setCrops([]);
+      
+      const fetchCropGroups = async () => {
+        try {
+          const { data, error } = await supabase
+            .from('crop_groups')
+            .select('*')
+            .eq('is_active', true)
+            .order('display_order');
+
+          if (error) throw error;
+          setCropGroups(data || []);
+        } catch (err) {
+          console.error('Error fetching crop groups:', err);
+          setError('Failed to load crop groups');
+        } finally {
+          setLoading(false);
+        }
+      };
+
       fetchCropGroups();
     }
-  }, [open]);
+  }, [open, selectedCropId]);
 
   // Fetch crops when a group is selected
   useEffect(() => {
@@ -92,6 +100,9 @@ export function CropSelectionDialog({
     }
 
     const fetchCrops = async () => {
+      setLoading(true);
+      setError(null);
+      
       try {
         const { data, error } = await supabase
           .from('crops')
@@ -106,6 +117,8 @@ export function CropSelectionDialog({
       } catch (err) {
         console.error('Error fetching crops:', err);
         setError('Failed to load crops');
+      } finally {
+        setLoading(false);
       }
     };
 
