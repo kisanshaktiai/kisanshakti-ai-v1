@@ -54,48 +54,60 @@ export function CropSelectionDialog({
   const [cropGroups, setCropGroups] = useState<CropGroup[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
-  const [selectedCrop, setSelectedCrop] = useState<string | null>(selectedCropId || null);
+  const [selectedCrop, setSelectedCrop] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<'groups' | 'crops'>('groups');
 
+  // Reset selected crop when prop changes
+  useEffect(() => {
+    setSelectedCrop(selectedCropId || null);
+  }, [selectedCropId]);
+
   // Fetch crop groups when dialog opens
   useEffect(() => {
-    if (open) {
-      // Reset states when dialog opens
-      setLoading(true);
-      setError(null);
+    if (!open) {
+      // Reset state when dialog closes
       setSelectedGroup(null);
-      setSelectedCrop(selectedCropId || null);
       setStep('groups');
       setCrops([]);
-      
-      const fetchCropGroups = async () => {
-        try {
-          const { data, error } = await supabase
-            .from('crop_groups')
-            .select('*')
-            .eq('is_active', true)
-            .order('display_order');
-
-          if (error) throw error;
-          setCropGroups(data || []);
-        } catch (err) {
-          console.error('Error fetching crop groups:', err);
-          setError('Failed to load crop groups');
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      fetchCropGroups();
+      setError(null);
+      return;
     }
-  }, [open, selectedCropId]);
+
+    // Fetch crop groups when dialog opens
+    const fetchCropGroups = async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const { data, error } = await supabase
+          .from('crop_groups')
+          .select('*')
+          .eq('is_active', true)
+          .order('display_order');
+
+        if (error) {
+          console.error('Supabase error fetching crop groups:', error);
+          throw error;
+        }
+        
+        console.log('Fetched crop groups:', data);
+        setCropGroups(data || []);
+      } catch (err) {
+        console.error('Error fetching crop groups:', err);
+        setError('Failed to load crop groups. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCropGroups();
+  }, [open]);
 
   // Fetch crops when a group is selected
   useEffect(() => {
-    if (!selectedGroup) {
-      setCrops([]);
+    if (!selectedGroup || !open) {
       return;
     }
 
@@ -111,19 +123,24 @@ export function CropSelectionDialog({
           .eq('is_active', true)
           .order('display_order');
 
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase error fetching crops:', error);
+          throw error;
+        }
+        
+        console.log('Fetched crops for group:', selectedGroup, data);
         setCrops(data || []);
         setStep('crops');
       } catch (err) {
         console.error('Error fetching crops:', err);
-        setError('Failed to load crops');
+        setError('Failed to load crops. Please try again.');
       } finally {
         setLoading(false);
       }
     };
 
     fetchCrops();
-  }, [selectedGroup]);
+  }, [selectedGroup, open]);
 
   const handleGroupSelect = (groupId: string) => {
     setSelectedGroup(groupId);
@@ -161,49 +178,17 @@ export function CropSelectionDialog({
   };
 
   const handleClose = () => {
-    // Reset state when closing
-    setSelectedGroup(null);
-    setSelectedCrop(null);
-    setStep('groups');
-    setCrops([]);
     onClose();
   };
 
-  if (loading) {
-    return (
-      <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Loading Crops</DialogTitle>
-            <DialogDescription>Please wait while we load the available crops...</DialogDescription>
-          </DialogHeader>
-          <div className="flex items-center justify-center p-8">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        </DialogContent>
-      </Dialog>
-    );
-  }
-
-  if (error) {
-    return (
-      <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Error</DialogTitle>
-            <DialogDescription>There was an issue loading the crops</DialogDescription>
-          </DialogHeader>
-          <div className="text-center p-8 text-destructive">
-            <p className="text-sm">{error}</p>
-          </div>
-        </DialogContent>
-      </Dialog>
-    );
+  // Don't render anything if dialog is not open
+  if (!open) {
+    return null;
   }
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg" onClick={(e) => e.stopPropagation()}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {step === 'crops' && (
@@ -229,53 +214,74 @@ export function CropSelectionDialog({
         </DialogHeader>
 
         <div className="py-4">
-          {step === 'groups' && (
-            <div className="grid grid-cols-2 gap-3">
-              {cropGroups.map((group) => {
-                const Icon = getGroupIcon(group.group_icon);
-                const isSelected = selectedGroup === group.id;
-                
-                return (
-                  <Card
-                    key={group.id}
-                    className={cn(
-                      "p-4 cursor-pointer transition-all hover:shadow-md",
-                      "border-2 group",
-                      isSelected
-                        ? "border-primary bg-primary/5"
-                        : "border-border hover:border-primary/50"
-                    )}
-                    onClick={() => handleGroupSelect(group.id)}
-                  >
-                    <div className="flex flex-col items-center space-y-2">
-                      <div className={cn(
-                        "p-3 rounded-full transition-colors",
-                        isSelected 
-                          ? "bg-primary/10" 
-                          : "bg-muted group-hover:bg-primary/5"
-                      )}>
-                        <Icon className={cn(
-                          "h-6 w-6",
-                          isSelected ? "text-primary" : "text-muted-foreground"
-                        )} />
-                      </div>
-                      <p className={cn(
-                        "text-sm font-medium text-center",
-                        isSelected ? "text-primary" : "text-foreground"
-                      )}>
-                        {group.group_name}
-                      </p>
-                      {group.description && (
-                        <p className="text-xs text-muted-foreground text-center line-clamp-2">
-                          {group.description}
-                        </p>
-                      )}
-                    </div>
-                  </Card>
-                );
-              })}
+          {loading ? (
+            <div className="flex items-center justify-center p-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          )}
+          ) : error ? (
+            <div className="text-center p-8">
+              <p className="text-sm text-destructive">{error}</p>
+              <Button 
+                variant="outline" 
+                onClick={() => window.location.reload()} 
+                className="mt-4"
+              >
+                Retry
+              </Button>
+            </div>
+          ) : step === 'groups' ? (
+            <div className="grid grid-cols-2 gap-3">
+              {cropGroups.length > 0 ? (
+                cropGroups.map((group) => {
+                  const Icon = getGroupIcon(group.group_icon);
+                  const isSelected = selectedGroup === group.id;
+                  
+                  return (
+                    <Card
+                      key={group.id}
+                      className={cn(
+                        "p-4 cursor-pointer transition-all hover:shadow-md",
+                        "border-2 group",
+                        isSelected
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/50"
+                      )}
+                      onClick={() => handleGroupSelect(group.id)}
+                    >
+                      <div className="flex flex-col items-center space-y-2">
+                        <div className={cn(
+                          "p-3 rounded-full transition-colors",
+                          isSelected 
+                            ? "bg-primary/10" 
+                            : "bg-muted group-hover:bg-primary/5"
+                        )}>
+                          <Icon className={cn(
+                            "h-6 w-6",
+                            isSelected ? "text-primary" : "text-muted-foreground"
+                          )} />
+                        </div>
+                        <p className={cn(
+                          "text-sm font-medium text-center",
+                          isSelected ? "text-primary" : "text-foreground"
+                        )}>
+                          {group.group_name}
+                        </p>
+                        {group.description && (
+                          <p className="text-xs text-muted-foreground text-center line-clamp-2">
+                            {group.description}
+                          </p>
+                        )}
+                      </div>
+                    </Card>
+                  );
+                })
+              ) : (
+                <p className="text-sm text-muted-foreground text-center col-span-2">
+                  No crop groups available
+                </p>
+              )}
+            </div>
+          ) : null}
 
           {step === 'crops' && crops.length > 0 && (
             <ScrollArea className="h-[300px] w-full pr-4">
