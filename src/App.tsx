@@ -219,6 +219,10 @@ const router = createBrowserRouter(
       element: <AppInitializer><SetPin /></AppInitializer>,
     },
     {
+      path: "/crop-test",
+      element: <AppInitializer><CropSelectionTest /></AppInitializer>,
+    },
+    {
       path: "/app",
       element: (
         <AppInitializer>
@@ -275,10 +279,6 @@ const router = createBrowserRouter(
         {
           path: "lands/:id/activities",
           element: <div>Activities Page - Coming Soon</div>,
-        },
-        {
-          path: "crop-test",
-          element: <CropSelectionTest />,
         },
         {
           path: "chat",
