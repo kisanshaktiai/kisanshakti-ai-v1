@@ -29,7 +29,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, MapPin, Home, Droplets, Mountain, Leaf, Trees, CheckCircle2, CalendarIcon, Sprout, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { CropSelectionCard } from './CropSelectionCard';
+import { CropSelectionButton } from '@/components/crops/CropSelectionButton';
 import { useLandFormData } from '@/hooks/useLandFormData';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -394,13 +394,14 @@ export function LandFormDialog({
                       name="current_crop"
                       render={({ field }) => (
                         <FormItem>
-                          <CropSelectionCard
+                          <FormLabel className="text-sm font-medium">Current Crop</FormLabel>
+                          <CropSelectionButton
                             value={field.value}
                             cropName={field.value}
                             onChange={(cropId, cropName) => {
                               field.onChange(cropName);
                             }}
-                            label="Current Crop"
+                            placeholder="Select current crop"
                           />
                           <FormMessage />
                         </FormItem>
@@ -536,13 +537,14 @@ export function LandFormDialog({
                       name="last_crop"
                       render={({ field }) => (
                         <FormItem>
-                          <CropSelectionCard
+                          <FormLabel className="text-sm font-medium">Previous Crop</FormLabel>
+                          <CropSelectionButton
                             value={field.value}
                             cropName={field.value}
                             onChange={(cropId, cropName) => {
                               field.onChange(cropName);
                             }}
-                            label="Previous Crop"
+                            placeholder="Select previous crop"
                           />
                           <FormMessage />
                         </FormItem>
