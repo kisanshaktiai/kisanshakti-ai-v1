@@ -7,7 +7,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { MapPin, Wheat, Languages, Users, Search, Activity } from 'lucide-react';
-import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -16,7 +15,6 @@ interface CommunitiesProps {
 }
 
 export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
-  const { user } = useAuthStore();
   const { toast } = useToast();
   const navigate = useNavigate();
   const [communities, setCommunities] = useState<any[]>([]);
@@ -25,13 +23,18 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
   const [activeTab, setActiveTab] = useState('all');
   const [loading, setLoading] = useState(true);
   const [onlineMembers, setOnlineMembers] = useState<{ [key: string]: number }>({});
+  const [farmerId, setFarmerId] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchCommunities();
-    if (user?.id) {
-      fetchJoinedCommunities();
+    // Get farmer ID from session
+    const session = localStorage.getItem('farmSession');
+    if (session) {
+      const sessionData = JSON.parse(session);
+      setFarmerId(sessionData.farmerId);
+      fetchJoinedCommunities(sessionData.farmerId);
     }
-  }, [user]);
+    fetchCommunities();
+  }, []);
 
   const fetchCommunities = async () => {
     try {
@@ -50,14 +53,12 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
     }
   };
 
-  const fetchJoinedCommunities = async () => {
-    if (!user?.id) return;
-
+  const fetchJoinedCommunities = async (farmerId: string) => {
     try {
       const { data, error } = await supabase
         .from('community_members')
         .select('community_id')
-        .eq('farmer_id', user.id)
+        .eq('farmer_id', farmerId)
         .eq('is_active', true);
 
       if (error) throw error;
@@ -68,7 +69,7 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
   };
 
   const handleJoinCommunity = async (communityId: string) => {
-    if (!user?.id) {
+    if (!farmerId) {
       toast({
         title: "Authentication required",
         description: "Please login to join communities",
@@ -82,7 +83,7 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
         .from('community_members')
         .insert({
           community_id: communityId,
-          farmer_id: user.id,
+          farmer_id: farmerId,
           role: 'member'
         });
 
@@ -104,14 +105,14 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
   };
 
   const handleLeaveCommunity = async (communityId: string) => {
-    if (!user?.id) return;
+    if (!farmerId) return;
 
     try {
       const { error } = await supabase
         .from('community_members')
         .delete()
         .eq('community_id', communityId)
-        .eq('farmer_id', user.id);
+        .eq('farmer_id', farmerId);
 
       if (error) throw error;
 

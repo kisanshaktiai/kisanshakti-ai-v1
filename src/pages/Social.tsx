@@ -252,12 +252,7 @@ export default function Social() {
           </TabsContent>
 
           <TabsContent value="communities" className="mt-0">
-            <Communities 
-              onCommunitySelect={(id) => {
-                setSelectedCommunity(id);
-                setActiveTab('feed');
-              }}
-            />
+            <Communities />
           </TabsContent>
 
           <TabsContent value="messages" className="mt-0">
