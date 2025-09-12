@@ -418,11 +418,14 @@ export function CommunityPage() {
           {/* Chat Tab */}
           <TabsContent value="chat">
             <Card>
-              <CommunityChatRoom
+              <EnhancedCommunityChat
                 communityId={id!}
                 communityName={community.name}
+                communityType={community.community_type}
                 memberCount={members.length}
-                onlineCount={onlineCount}
+                language={community.language || 'en'}
+                tags={community.tags || []}
+                isModerator={community.moderator_ids?.includes(user?.id) || false}
               />
             </Card>
           </TabsContent>
