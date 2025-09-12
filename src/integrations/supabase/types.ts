@@ -2448,8 +2448,11 @@ export type Database = {
           icon: string
           id: string
           is_active: boolean | null
+          is_popular: boolean | null
           label: string
           label_local: string | null
+          local_name: string | null
+          metadata: Json | null
           season: string | null
           updated_at: string
           value: string
@@ -2463,8 +2466,11 @@ export type Database = {
           icon: string
           id?: string
           is_active?: boolean | null
+          is_popular?: boolean | null
           label: string
           label_local?: string | null
+          local_name?: string | null
+          metadata?: Json | null
           season?: string | null
           updated_at?: string
           value: string
@@ -2478,8 +2484,11 @@ export type Database = {
           icon?: string
           id?: string
           is_active?: boolean | null
+          is_popular?: boolean | null
           label?: string
           label_local?: string | null
+          local_name?: string | null
+          metadata?: Json | null
           season?: string | null
           updated_at?: string
           value?: string

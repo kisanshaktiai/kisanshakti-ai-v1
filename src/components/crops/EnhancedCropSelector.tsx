@@ -15,8 +15,8 @@ interface Crop {
   label: string;
   local_name?: string;
   season?: string;
-  duration?: string;
-  group_id?: string;
+  duration_days?: number;
+  crop_group_id?: string;
   is_popular?: boolean;
 }
 
@@ -118,7 +118,8 @@ export function EnhancedCropSelector({ selectedCropId, onSelect, onBack }: Enhan
     if (selectedTab === 'popular') {
       filtered = filtered.filter(crop => crop.is_popular);
     } else if (selectedTab !== 'all') {
-      filtered = filtered.filter(crop => crop.group_id === selectedTab);
+      // Filter by crop group
+      filtered = filtered.filter(crop => crop.crop_group_id === selectedTab);
     }
     
     return filtered;
