@@ -97,11 +97,14 @@ export function WhatsAppChatRoom() {
   const [userId, setUserId] = useState<string | null>(null);
   
   useEffect(() => {
-    // Get farmer ID from localStorage session
-    const session = localStorage.getItem('farmSession');
-    if (session) {
-      const sessionData = JSON.parse(session);
-      setUserId(sessionData.farmerId);
+    // Get farmer ID from auth storage
+    const authStorage = localStorage.getItem('auth-storage');
+    if (authStorage) {
+      const authData = JSON.parse(authStorage);
+      const sessionData = authData?.state?.session;
+      if (sessionData?.farmerId) {
+        setUserId(sessionData.farmerId);
+      }
     }
   }, []);
   

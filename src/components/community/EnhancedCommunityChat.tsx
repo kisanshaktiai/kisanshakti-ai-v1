@@ -124,25 +124,28 @@ export function EnhancedCommunityChat({
   const [user, setUser] = useState<any>(null);
   
   useEffect(() => {
-    // Get farmer data from localStorage session
-    const session = localStorage.getItem('farmSession');
-    if (session) {
-      const sessionData = JSON.parse(session);
-      // Fetch farmer details
-      supabase
-        .from('farmers')
-        .select('*')
-        .eq('id', sessionData.farmerId)
-        .single()
-        .then(({ data }) => {
-          if (data) {
-            setUser({
-              id: data.id,
-              farmer_name: data.farmer_name,
-              name: data.farmer_name
-            });
-          }
-        });
+    // Get farmer data from auth storage
+    const authStorage = localStorage.getItem('auth-storage');
+    if (authStorage) {
+      const authData = JSON.parse(authStorage);
+      const sessionData = authData?.state?.session;
+      if (sessionData?.farmerId) {
+        // Fetch farmer details
+        supabase
+          .from('farmers')
+          .select('*')
+          .eq('id', sessionData.farmerId)
+          .single()
+          .then(({ data }) => {
+            if (data) {
+              setUser({
+                id: data.id,
+                farmer_name: data.farmer_name,
+                name: data.farmer_name
+              });
+            }
+          });
+      }
     }
   }, []);
   const [messages, setMessages] = useState<Message[]>([]);

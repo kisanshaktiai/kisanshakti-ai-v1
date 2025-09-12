@@ -31,12 +31,15 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
   const [farmerId, setFarmerId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Get farmer ID from session
-    const session = localStorage.getItem('farmSession');
-    if (session) {
-      const sessionData = JSON.parse(session);
-      setFarmerId(sessionData.farmerId);
-      fetchJoinedCommunities(sessionData.farmerId);
+    // Get farmer ID from auth storage
+    const authStorage = localStorage.getItem('auth-storage');
+    if (authStorage) {
+      const authData = JSON.parse(authStorage);
+      const sessionData = authData?.state?.session;
+      if (sessionData?.farmerId) {
+        setFarmerId(sessionData.farmerId);
+        fetchJoinedCommunities(sessionData.farmerId);
+      }
     }
     fetchCommunities();
   }, []);
