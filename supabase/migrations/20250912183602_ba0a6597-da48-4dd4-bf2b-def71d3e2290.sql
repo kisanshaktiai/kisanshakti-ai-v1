@@ -1,0 +1,6 @@
+-- Add missing columns to lands table
+ALTER TABLE public.lands 
+ADD COLUMN IF NOT EXISTS previous_crop TEXT,
+ADD COLUMN IF NOT EXISTS harvest_date TIMESTAMP WITH TIME ZONE,
+ADD COLUMN IF NOT EXISTS planting_date TIMESTAMP WITH TIME ZONE,
+ADD COLUMN IF NOT EXISTS expected_harvest_date TIMESTAMP WITH TIME ZONE;

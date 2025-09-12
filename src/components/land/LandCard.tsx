@@ -1,187 +1,251 @@
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { 
   MapPin, 
-  Droplets, 
   Mountain, 
-  Maximize2,
-  Edit,
-  Trash2 
+  Droplets, 
+  Calendar, 
+  MoreVertical, 
+  Eye, 
+  Edit, 
+  Trash2,
+  Sprout,
+  Plus,
+  Clock,
+  Wheat
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { cn } from '@/lib/utils';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { CropManagementDialog } from './CropManagementDialog';
+import { format } from 'date-fns';
 
 interface LandCardProps {
   land: {
     id: string;
     name: string;
-    area_acres?: number;
-    area_guntas?: number;
+    area: number;
+    village?: string;
+    district?: string;
+    state?: string;
     survey_number?: string;
     ownership_type?: string;
-    village?: string;
-    taluka?: string;
-    district?: string;
     soil_type?: string;
     water_source?: string;
     current_crop?: string;
-    boundary_polygon_old?: any;
-    center_point_old?: any;
+    planting_date?: string;
+    expected_harvest_date?: string;
+    previous_crop?: string;
+    harvest_date?: string;
+    boundary?: Array<{lat: number; lng: number}>;
+    center_point?: {lat: number; lng: number};
   };
-  onEdit?: (id: string) => void;
-  onDelete?: (id: string) => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }
 
 export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
   const navigate = useNavigate();
+  const [cropDialogOpen, setCropDialogOpen] = useState(false);
   
-  // Generate static map URL if boundary exists
+  // Generate static map URL with boundary polygon
   const getStaticMapUrl = () => {
-    if (!land.center_point_old?.coordinates) return null;
+    if (!land.boundary || land.boundary.length === 0) return null;
     
-    const [lng, lat] = land.center_point_old.coordinates;
-    const baseUrl = 'https://maps.googleapis.com/maps/api/staticmap';
+    const API_KEY = 'AIzaSyA7T__VHsi2H8km-jRytv4Mdjzae7Uokjg'; // Google Maps API key from edge function
     
-    // Build path from boundary polygon
-    let pathParam = '';
-    if (land.boundary_polygon_old?.coordinates?.[0]) {
-      const coords = land.boundary_polygon_old.coordinates[0]
-        .map((coord: number[]) => `${coord[1]},${coord[0]}`)
-        .join('|');
-      pathParam = `&path=color:0x22c55e|weight:3|fillcolor:0x22c55e33|${coords}`;
-    }
+    // Create path from boundary points
+    const path = land.boundary
+      .map(point => `${point.lat},${point.lng}`)
+      .join('|');
     
-    // Note: In production, you'd need to add the API key from the edge function
-    return `${baseUrl}?center=${lat},${lng}&zoom=17&size=400x200&maptype=satellite${pathParam}`;
+    // Center point for map
+    const center = land.center_point 
+      ? `${land.center_point.lat},${land.center_point.lng}`
+      : land.boundary[0] ? `${land.boundary[0].lat},${land.boundary[0].lng}` : '';
+    
+    // Generate map URL with green filled polygon
+    return `https://maps.googleapis.com/maps/api/staticmap?` +
+      `center=${center}` +
+      `&zoom=15` +
+      `&size=400x200` +
+      `&maptype=satellite` +
+      `&path=color:0x00ff00|weight:3|fillcolor:0x00ff0033|${path}` +
+      `&key=${API_KEY}`;
   };
 
   const mapUrl = getStaticMapUrl();
 
-  return (
-    <Card className="overflow-hidden hover:shadow-lg transition-shadow">
-      {/* Map Preview */}
-      {mapUrl && (
-        <div className="relative h-32 bg-muted">
-          <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent z-10" />
-          <img 
-            src={mapUrl} 
-            alt={`Map of ${land.name}`}
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              // Hide image if it fails to load
-              (e.target as HTMLElement).style.display = 'none';
-            }}
-          />
-          <Button
-            size="icon"
-            variant="ghost"
-            className="absolute top-2 right-2 z-20 h-8 w-8 bg-background/80 hover:bg-background"
-            onClick={() => navigate(`/app/lands/${land.id}`)}
-          >
-            <Maximize2 className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
-      
-      <CardHeader className="pb-3">
-        <div className="flex justify-between items-start">
-          <div>
-            <h3 className="font-semibold text-lg">{land.name}</h3>
-            {land.survey_number && (
-              <p className="text-sm text-muted-foreground">
-                Survey #{land.survey_number}
-              </p>
-            )}
-          </div>
-          <Badge variant={land.ownership_type === 'owned' ? 'default' : 'secondary'}>
-            {land.ownership_type || 'Owned'}
-          </Badge>
-        </div>
-      </CardHeader>
-      
-      <CardContent className="space-y-3">
-        {/* Area */}
-        <div className="flex items-center justify-between p-2 bg-primary/10 rounded-lg">
-          <span className="text-sm font-medium">Area</span>
-          <div className="text-right">
-            {land.area_acres && (
-              <div className="font-semibold">{land.area_acres.toFixed(2)} acres</div>
-            )}
-            {land.area_guntas && (
-              <div className="text-xs text-muted-foreground">{land.area_guntas} guntas</div>
-            )}
-          </div>
-        </div>
+  const handleCropSuccess = () => {
+    // Refresh the land data if needed
+    window.location.reload();
+  };
 
-        {/* Location */}
-        {land.village && (
-          <div className="flex items-start gap-2 text-sm">
-            <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
-            <div className="flex-1">
-              <p>{land.village}</p>
-              {land.taluka && land.district && (
+  return (
+    <>
+      <Card className="group hover:shadow-lg transition-all duration-300 overflow-hidden">
+        {/* Map Preview with Mask */}
+        {mapUrl && (
+          <div className="relative h-40 bg-muted overflow-hidden">
+            <img 
+              src={mapUrl} 
+              alt={`Map of ${land.name}`}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
+            <Badge className="absolute top-2 left-2 bg-background/90 backdrop-blur">
+              <Mountain className="h-3 w-3 mr-1" />
+              {land.area.toFixed(2)} acres
+            </Badge>
+          </div>
+        )}
+        
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1">
+              <h3 className="font-semibold text-lg">{land.name}</h3>
+              {land.survey_number && (
                 <p className="text-xs text-muted-foreground">
-                  {land.taluka}, {land.district}
+                  Survey No: {land.survey_number}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              {land.ownership_type && (
+                <Badge variant="secondary" className="text-xs">
+                  {land.ownership_type}
+                </Badge>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => navigate(`/app/lands/${land.id}`)}>
+                    <Eye className="h-4 w-4 mr-2" />
+                    View Details
+                  </DropdownMenuItem>
+                  {onEdit && (
+                    <DropdownMenuItem onClick={onEdit}>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Edit
+                    </DropdownMenuItem>
+                  )}
+                  {onDelete && (
+                    <DropdownMenuItem onClick={onDelete} className="text-destructive">
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </CardHeader>
+        
+        <CardContent className="space-y-4">
+          {/* Location Info */}
+          <div className="flex items-start gap-2">
+            <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+            <div className="text-sm">
+              <p className="font-medium">{land.village || 'Location'}</p>
+              {(land.district || land.state) && (
+                <p className="text-muted-foreground">
+                  {[land.district, land.state].filter(Boolean).join(', ')}
                 </p>
               )}
             </div>
           </div>
-        )}
-
-        {/* Soil & Water */}
-        <div className="flex gap-4 text-sm">
-          {land.soil_type && (
-            <div className="flex items-center gap-1">
-              <Mountain className="h-4 w-4 text-muted-foreground" />
-              <span>{land.soil_type}</span>
-            </div>
-          )}
-          {land.water_source && (
-            <div className="flex items-center gap-1">
-              <Droplets className="h-4 w-4 text-muted-foreground" />
-              <span>{land.water_source}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Current Crop */}
-        {land.current_crop && (
-          <Badge variant="outline" className="w-full justify-center">
-            Current: {land.current_crop}
-          </Badge>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-2 pt-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="flex-1"
-            onClick={() => navigate(`/app/lands/${land.id}`)}
-          >
-            View Details
-          </Button>
-          {onEdit && (
+          
+          {/* Land Details */}
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            {land.soil_type && (
+              <div className="flex items-center gap-1.5">
+                <div className="h-2 w-2 bg-warning rounded-full" />
+                <span className="text-muted-foreground">Soil:</span>
+                <span className="font-medium capitalize">{land.soil_type.replace('_', ' ')}</span>
+              </div>
+            )}
+            {land.water_source && (
+              <div className="flex items-center gap-1.5">
+                <Droplets className="h-3 w-3 text-info" />
+                <span className="text-muted-foreground">Water:</span>
+                <span className="font-medium capitalize">{land.water_source.replace('_', ' ')}</span>
+              </div>
+            )}
+          </div>
+          
+          {/* Crop Information Section */}
+          <div className="border-t pt-3 space-y-3">
+            {land.current_crop ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Wheat className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-medium">Current Crop</span>
+                  </div>
+                  <Badge variant="default" className="text-xs">
+                    {land.current_crop}
+                  </Badge>
+                </div>
+                {land.planting_date && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Calendar className="h-3 w-3" />
+                    Planted: {format(new Date(land.planting_date), 'dd MMM yyyy')}
+                  </div>
+                )}
+                {land.expected_harvest_date && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Clock className="h-3 w-3" />
+                    Expected Harvest: {format(new Date(land.expected_harvest_date), 'dd MMM yyyy')}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center py-2 border-2 border-dashed rounded-lg">
+                <p className="text-sm text-muted-foreground">No crop planted</p>
+              </div>
+            )}
+            
+            {/* Add/Manage Crop Button */}
             <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => onEdit(land.id)}
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => setCropDialogOpen(true)}
             >
-              <Edit className="h-4 w-4" />
+              {land.current_crop ? (
+                <>
+                  <Edit className="h-4 w-4 mr-2" />
+                  Manage Crops
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Crop
+                </>
+              )}
             </Button>
-          )}
-          {onDelete && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => onDelete(land.id)}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Crop Management Dialog */}
+      <CropManagementDialog
+        open={cropDialogOpen}
+        onClose={() => setCropDialogOpen(false)}
+        landId={land.id}
+        landName={land.name}
+        onSuccess={handleCropSuccess}
+      />
+    </>
   );
 }

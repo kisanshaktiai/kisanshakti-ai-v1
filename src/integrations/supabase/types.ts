@@ -5285,6 +5285,7 @@ export type Database = {
           farmer_id: string
           gps_accuracy_meters: number | null
           gps_recorded_at: string | null
+          harvest_date: string | null
           id: string
           irrigation_source: string | null
           irrigation_type: string | null
@@ -5305,6 +5306,7 @@ export type Database = {
           phosphorus_kg_per_ha: number | null
           planting_date: string | null
           potassium_kg_per_ha: number | null
+          previous_crop: string | null
           previous_crop_id: string | null
           slope_percentage: number | null
           soil_ph: number | null
@@ -5335,6 +5337,7 @@ export type Database = {
           farmer_id: string
           gps_accuracy_meters?: number | null
           gps_recorded_at?: string | null
+          harvest_date?: string | null
           id?: string
           irrigation_source?: string | null
           irrigation_type?: string | null
@@ -5355,6 +5358,7 @@ export type Database = {
           phosphorus_kg_per_ha?: number | null
           planting_date?: string | null
           potassium_kg_per_ha?: number | null
+          previous_crop?: string | null
           previous_crop_id?: string | null
           slope_percentage?: number | null
           soil_ph?: number | null
@@ -5385,6 +5389,7 @@ export type Database = {
           farmer_id?: string
           gps_accuracy_meters?: number | null
           gps_recorded_at?: string | null
+          harvest_date?: string | null
           id?: string
           irrigation_source?: string | null
           irrigation_type?: string | null
@@ -5405,6 +5410,7 @@ export type Database = {
           phosphorus_kg_per_ha?: number | null
           planting_date?: string | null
           potassium_kg_per_ha?: number | null
+          previous_crop?: string | null
           previous_crop_id?: string | null
           slope_percentage?: number | null
           soil_ph?: number | null
