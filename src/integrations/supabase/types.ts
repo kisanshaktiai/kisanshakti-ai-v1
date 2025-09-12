@@ -5269,6 +5269,7 @@ export type Database = {
           crop_stage: string | null
           cultivation_date: string | null
           current_crop: string | null
+          current_crop_id: string | null
           district: string | null
           elevation_meters: number | null
           expected_harvest_date: string | null
@@ -5293,7 +5294,9 @@ export type Database = {
           organic_carbon_percent: number | null
           ownership_type: string | null
           phosphorus_kg_per_ha: number | null
+          planting_date: string | null
           potassium_kg_per_ha: number | null
+          previous_crop_id: string | null
           slope_percentage: number | null
           soil_ph: number | null
           soil_type: string | null
@@ -5316,6 +5319,7 @@ export type Database = {
           crop_stage?: string | null
           cultivation_date?: string | null
           current_crop?: string | null
+          current_crop_id?: string | null
           district?: string | null
           elevation_meters?: number | null
           expected_harvest_date?: string | null
@@ -5340,7 +5344,9 @@ export type Database = {
           organic_carbon_percent?: number | null
           ownership_type?: string | null
           phosphorus_kg_per_ha?: number | null
+          planting_date?: string | null
           potassium_kg_per_ha?: number | null
+          previous_crop_id?: string | null
           slope_percentage?: number | null
           soil_ph?: number | null
           soil_type?: string | null
@@ -5363,6 +5369,7 @@ export type Database = {
           crop_stage?: string | null
           cultivation_date?: string | null
           current_crop?: string | null
+          current_crop_id?: string | null
           district?: string | null
           elevation_meters?: number | null
           expected_harvest_date?: string | null
@@ -5387,7 +5394,9 @@ export type Database = {
           organic_carbon_percent?: number | null
           ownership_type?: string | null
           phosphorus_kg_per_ha?: number | null
+          planting_date?: string | null
           potassium_kg_per_ha?: number | null
+          previous_crop_id?: string | null
           slope_percentage?: number | null
           soil_ph?: number | null
           soil_type?: string | null
@@ -5399,7 +5408,22 @@ export type Database = {
           village?: string | null
           water_source?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "lands_current_crop_id_fkey"
+            columns: ["current_crop_id"]
+            isOneToOne: false
+            referencedRelation: "crops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lands_previous_crop_id_fkey"
+            columns: ["previous_crop_id"]
+            isOneToOne: false
+            referencedRelation: "crops"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       lead_activities: {
         Row: {
