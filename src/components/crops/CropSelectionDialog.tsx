@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -160,6 +160,10 @@ export function CropSelectionDialog({
     return (
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Loading Crops</DialogTitle>
+            <DialogDescription>Please wait while we load the available crops...</DialogDescription>
+          </DialogHeader>
           <div className="flex items-center justify-center p-8">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
@@ -172,6 +176,10 @@ export function CropSelectionDialog({
     return (
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Error</DialogTitle>
+            <DialogDescription>There was an issue loading the crops</DialogDescription>
+          </DialogHeader>
           <div className="text-center p-8 text-destructive">
             <p className="text-sm">{error}</p>
           </div>
@@ -202,6 +210,9 @@ export function CropSelectionDialog({
               </Badge>
             )}
           </DialogTitle>
+          <DialogDescription>
+            {step === 'groups' ? 'Choose a crop category to get started' : 'Select a specific crop from the list'}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="py-4">
