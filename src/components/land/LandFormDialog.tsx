@@ -30,7 +30,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, MapPin, Home, Droplets, Mountain, Leaf, Trees, CheckCircle2, CalendarIcon, Sprout, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { CropSelectionButton } from '@/components/crops/CropSelectionButton';
+import { CropInput } from '@/components/crops/CropInput';
 import { useLandFormData } from '@/hooks/useLandFormData';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -403,15 +403,13 @@ export function LandFormDialog({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-sm font-medium">Current Crop</FormLabel>
-                          <CropSelectionButton
+                          <CropInput
                             value={field.value}
-                            cropName={field.value}
                             onChange={(cropId, cropName) => {
                               console.log('Crop selected in form:', { cropId, cropName });
                               // Store the crop name in the form field
                               field.onChange(cropName);
                             }}
-                            onClear={() => field.onChange("")}
                             placeholder="Select current crop"
                           />
                           <FormMessage />
@@ -549,14 +547,12 @@ export function LandFormDialog({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-sm font-medium">Previous Crop</FormLabel>
-                          <CropSelectionButton
+                          <CropInput
                             value={field.value}
-                            cropName={field.value}
                             onChange={(cropId, cropName) => {
                               console.log('Previous crop selected in form:', { cropId, cropName });
                               field.onChange(cropName);
                             }}
-                            onClear={() => field.onChange("")}
                             placeholder="Select previous crop"
                           />
                           <FormMessage />

@@ -34,6 +34,7 @@ import AIChat from "./pages/AIChat";
 import Social from "./pages/Social";
 import { CommunityPage } from "./components/social/CommunityPage";
 import { WhatsAppChatRoom } from "./components/community/WhatsAppChatRoom";
+import CropSelectionTest from "./pages/CropSelectionTest";
 
 // Stores and Services
 import { useTenantStore } from "@/stores/tenantStore";
@@ -274,6 +275,10 @@ const router = createBrowserRouter(
         {
           path: "lands/:id/activities",
           element: <div>Activities Page - Coming Soon</div>,
+        },
+        {
+          path: "crop-test",
+          element: <CropSelectionTest />,
         },
         {
           path: "chat",
