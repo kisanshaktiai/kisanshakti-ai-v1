@@ -16,7 +16,6 @@ import {
   TrendingUp, Clock, MapPin, Globe, Sparkles
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuthStore } from '@/stores/authStore';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -119,8 +118,33 @@ export function EnhancedCommunityChat({
   tags,
   isModerator = false
 }: EnhancedCommunityChatProps) {
-  const { user } = useAuthStore();
   const { toast } = useToast();
+  
+  // Get farmer ID from custom auth session
+  const [user, setUser] = useState<any>(null);
+  
+  useEffect(() => {
+    // Get farmer data from localStorage session
+    const session = localStorage.getItem('farmSession');
+    if (session) {
+      const sessionData = JSON.parse(session);
+      // Fetch farmer details
+      supabase
+        .from('farmers')
+        .select('*')
+        .eq('id', sessionData.farmerId)
+        .single()
+        .then(({ data }) => {
+          if (data) {
+            setUser({
+              id: data.id,
+              farmer_name: data.farmer_name,
+              name: data.farmer_name
+            });
+          }
+        });
+    }
+  }, []);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);

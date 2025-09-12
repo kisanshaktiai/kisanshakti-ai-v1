@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuthStore } from '@/stores/authStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -92,9 +91,19 @@ interface OnlineUser {
 export function WhatsAppChatRoom() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { session } = useAuthStore();
   const queryClient = useQueryClient();
-  const userId = session?.farmerId;
+  
+  // Get farmer ID from custom auth session
+  const [userId, setUserId] = useState<string | null>(null);
+  
+  useEffect(() => {
+    // Get farmer ID from localStorage session
+    const session = localStorage.getItem('farmSession');
+    if (session) {
+      const sessionData = JSON.parse(session);
+      setUserId(sessionData.farmerId);
+    }
+  }, []);
   
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');

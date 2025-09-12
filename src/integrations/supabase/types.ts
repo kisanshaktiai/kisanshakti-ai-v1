@@ -13523,6 +13523,10 @@ export type Database = {
         Args: { "": unknown }
         Returns: Json
       }
+      leave_community: {
+        Args: { p_community_id: string; p_farmer_id: string }
+        Returns: Json
+      }
       log_admin_action: {
         Args: {
           p_action: string

@@ -128,31 +128,36 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
     if (!farmerId) return;
 
     try {
-      // Soft delete by setting is_active to false
-      const { error } = await supabase
-        .from('community_members')
-        .update({ 
-          is_active: false,
-          updated_at: new Date().toISOString()
-        })
-        .eq('community_id', communityId)
-        .eq('farmer_id', farmerId);
+      // Use the leave_community function
+      const { data, error } = await supabase
+        .rpc('leave_community' as any, {
+          p_community_id: communityId,
+          p_farmer_id: farmerId
+        }) as { data: any; error: any };
 
       if (error) throw error;
 
-      setJoinedCommunities(joinedCommunities.filter(id => id !== communityId));
-      
-      // Update local community member count
-      setCommunities(prev => prev.map(c => 
-        c.id === communityId 
-          ? { ...c, member_count: Math.max(0, (c.member_count || 0) - 1) }
-          : c
-      ));
-      
-      toast({
-        title: "Left community",
-        description: "You've successfully left the community"
-      });
+      if (data?.success) {
+        setJoinedCommunities(joinedCommunities.filter(id => id !== communityId));
+        
+        // Update local community member count
+        setCommunities(prev => prev.map(c => 
+          c.id === communityId 
+            ? { ...c, member_count: Math.max(0, (c.member_count || 0) - 1) }
+            : c
+        ));
+        
+        toast({
+          title: "Left community",
+          description: "You've successfully left the community"
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: data?.error || "Failed to leave community",
+          variant: "destructive"
+        });
+      }
     } catch (error: any) {
       console.error('Error leaving community:', error);
       toast({
