@@ -30,7 +30,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, MapPin, Home, Droplets, Mountain, Leaf, Trees, CheckCircle2, CalendarIcon, Sprout, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { CropInput } from '@/components/crops/CropInput';
+import { SmartCropInput } from '@/components/crops/SmartCropInput';
 import { useLandFormData } from '@/hooks/useLandFormData';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -403,7 +403,7 @@ export function LandFormDialog({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-sm font-medium">Current Crop</FormLabel>
-                          <CropInput
+                          <SmartCropInput
                             value={field.value}
                             onChange={(cropId, cropName) => {
                               console.log('Crop selected in form:', { cropId, cropName });
@@ -547,7 +547,7 @@ export function LandFormDialog({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-sm font-medium">Previous Crop</FormLabel>
-                          <CropInput
+                          <SmartCropInput
                             value={field.value}
                             onChange={(cropId, cropName) => {
                               console.log('Previous crop selected in form:', { cropId, cropName });
