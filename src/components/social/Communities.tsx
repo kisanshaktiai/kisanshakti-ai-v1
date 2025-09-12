@@ -183,7 +183,7 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
                   if (onCommunitySelect) {
                     onCommunitySelect(community.id);
                   } else {
-                    navigate(`/app/community/${community.id}`);
+                    navigate(`/app/community-chat/${community.id}`);
                   }
                 }}
                 icon={getIcon(community.community_type)}
@@ -199,7 +199,7 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
                 isJoined={joinedCommunities.includes(community.id)}
                 onJoin={() => handleJoinCommunity(community.id)}
                 onLeave={() => handleLeaveCommunity(community.id)}
-                onClick={() => navigate(`/app/community/${community.id}`)}
+                onClick={() => navigate(`/app/community-chat/${community.id}`)}
                 icon={getIcon('state')}
               />
             ))}
@@ -213,7 +213,7 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
                 isJoined={joinedCommunities.includes(community.id)}
                 onJoin={() => handleJoinCommunity(community.id)}
                 onLeave={() => handleLeaveCommunity(community.id)}
-                onClick={() => navigate(`/app/community/${community.id}`)}
+                onClick={() => navigate(`/app/community-chat/${community.id}`)}
                 icon={getIcon('crop')}
               />
             ))}
@@ -227,7 +227,7 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
                 isJoined={joinedCommunities.includes(community.id)}
                 onJoin={() => handleJoinCommunity(community.id)}
                 onLeave={() => handleLeaveCommunity(community.id)}
-                onClick={() => navigate(`/app/community/${community.id}`)}
+                onClick={() => navigate(`/app/community-chat/${community.id}`)}
                 icon={getIcon('practice')}
               />
             ))}

@@ -33,6 +33,7 @@ import LandDetails from "./pages/LandDetails";
 import AIChat from "./pages/AIChat";
 import Social from "./pages/Social";
 import { CommunityPage } from "./components/social/CommunityPage";
+import { WhatsAppChatRoom } from "./components/community/WhatsAppChatRoom";
 
 // Stores and Services
 import { useTenantStore } from "@/stores/tenantStore";
@@ -285,6 +286,10 @@ const router = createBrowserRouter(
         {
           path: "community/:id",
           element: <CommunityPage />,
+        },
+        {
+          path: "community-chat/:id",
+          element: <WhatsAppChatRoom />,
         },
       ],
     },

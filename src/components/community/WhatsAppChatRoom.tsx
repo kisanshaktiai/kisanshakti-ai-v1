@@ -135,11 +135,22 @@ export function WhatsAppChatRoom() {
 
       if (!error && data) {
         setMessages(data.map(msg => ({
-          ...msg,
+          id: msg.id,
+          content: msg.content,
           farmer_id: msg.farmer_id || '',
+          created_at: msg.created_at || new Date().toISOString(),
           attachments: Array.isArray(msg.attachments) ? msg.attachments : [],
           reactions: typeof msg.reactions === 'object' && msg.reactions !== null ? msg.reactions as { [key: string]: string[] } : {},
           status: 'read' as const,
+          farmer: (() => {
+            const f = msg.farmer;
+            if (!f || typeof f !== 'object') return undefined;
+            return {
+              id: (f as any).id as string,
+              name: ((f as any).name as string) || 'Unknown',
+              avatar_url: ((f as any).avatar_url as string) || undefined
+            };
+          })()
         })));
       }
     };
@@ -197,7 +208,7 @@ export function WhatsAppChatRoom() {
         if (status === 'SUBSCRIBED') {
           await channel.track({
             user_id: userId,
-            name: session?.user?.user_metadata?.name || 'User',
+            name: 'User',
             last_seen: new Date().toISOString(),
           });
         }
@@ -237,8 +248,8 @@ export function WhatsAppChatRoom() {
       status: 'sending',
       farmer: {
         id: userId,
-        name: session?.user?.user_metadata?.name || 'You',
-        avatar_url: session?.user?.user_metadata?.avatar_url,
+        name: 'You',
+        avatar_url: undefined,
       },
     };
 
