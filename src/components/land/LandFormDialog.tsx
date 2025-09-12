@@ -29,7 +29,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Loader2, MapPin, Home, Droplets, Mountain, Leaf, Trees, CheckCircle2, CalendarIcon, Sprout, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { CropSelectionButton } from '@/components/crops/CropSelectionButton';
+import { CropSelectionCard } from './CropSelectionCard';
 import { useLandFormData } from '@/hooks/useLandFormData';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -394,14 +394,13 @@ export function LandFormDialog({
                       name="current_crop"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-sm font-medium">Current Crop</FormLabel>
-                          <CropSelectionButton
+                          <CropSelectionCard
                             value={field.value}
                             cropName={field.value}
                             onChange={(cropId, cropName) => {
                               field.onChange(cropName);
                             }}
-                            placeholder="Select current crop"
+                            label="Current Crop"
                           />
                           <FormMessage />
                         </FormItem>
@@ -537,14 +536,13 @@ export function LandFormDialog({
                       name="last_crop"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-sm font-medium">Previous Crop</FormLabel>
-                          <CropSelectionButton
+                          <CropSelectionCard
                             value={field.value}
                             cropName={field.value}
                             onChange={(cropId, cropName) => {
                               field.onChange(cropName);
                             }}
-                            placeholder="Select previous crop"
+                            label="Previous Crop"
                           />
                           <FormMessage />
                         </FormItem>
@@ -577,7 +575,7 @@ export function LandFormDialog({
                                 </Button>
                               </FormControl>
                             </PopoverTrigger>
-                            <PopoverContent className="w-auto p-0" align="start">
+                            <PopoverContent className="w-auto p-0 z-[200]" align="start">
                               <Calendar
                                 mode="single"
                                 selected={field.value}

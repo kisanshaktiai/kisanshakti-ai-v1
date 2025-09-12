@@ -86,7 +86,7 @@ export default function AddLand() {
         water_source: formData.water_source || null,
         current_crop: formData.current_crop || null,
         irrigation_type: formData.irrigation_type || null,
-        cultivation_date: formData.cultivation_date ? formData.cultivation_date.toISOString().split('T')[0] : null,
+        planting_date: formData.cultivation_date ? formData.cultivation_date.toISOString().split('T')[0] : null,
         expected_harvest_date: formData.expected_harvest_date ? formData.expected_harvest_date.toISOString().split('T')[0] : null,
         last_crop: formData.last_crop || null,
         last_harvest_date: formData.last_harvest_date ? formData.last_harvest_date.toISOString().split('T')[0] : null,
