@@ -210,7 +210,7 @@ export function LandFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[700px] h-[85vh] p-0 overflow-hidden">
+      <DialogContent className="sm:max-w-[700px] h-[85vh] p-0 overflow-hidden z-[100]" aria-describedby="land-form-description">
         {/* Compact Header */}
         <div className="bg-gradient-to-r from-primary/5 to-primary/10 px-6 py-3 border-b">
           <DialogHeader>
@@ -222,6 +222,9 @@ export function LandFormDialog({
                 </Badge>
               )}
             </DialogTitle>
+            <p id="land-form-description" className="text-xs text-muted-foreground mt-1">
+              Fill in the details below to save your land information
+            </p>
           </DialogHeader>
         </div>
 

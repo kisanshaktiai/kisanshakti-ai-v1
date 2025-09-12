@@ -30,8 +30,22 @@ export default function AddLand() {
   const [showInstructions, setShowInstructions] = useState(true);
   const [centerCoordinates, setCenterCoordinates] = useState({ lat: 0, lng: 0 });
 
+  // Debug log for state changes
+  console.log('AddLand render - showForm:', showForm, 'boundary:', boundary.length, 'area:', area);
+
   const handleMapSave = (boundaryPoints: LatLng[], calculatedArea: typeof area) => {
     console.log('handleMapSave called', { boundaryPoints, calculatedArea });
+    
+    // Validate boundary points
+    if (!boundaryPoints || boundaryPoints.length < 3) {
+      toast({
+        title: 'Invalid Boundary',
+        description: 'Please draw at least 3 points to create a valid boundary',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
     setBoundary(boundaryPoints);
     setArea(calculatedArea);
     
@@ -46,7 +60,10 @@ export default function AddLand() {
     }
     
     console.log('Setting showForm to true');
-    setShowForm(true);
+    // Use setTimeout to ensure state update happens after render
+    setTimeout(() => {
+      setShowForm(true);
+    }, 100);
   };
 
   const handleFormSubmit = async (formData: any) => {
@@ -193,16 +210,21 @@ export default function AddLand() {
         />
       </div>
       
-      {showForm && (
-        <LandFormDialog
-          open={showForm}
-          onClose={() => setShowForm(false)}
-          onSubmit={handleFormSubmit}
-          area={area}
-          centerCoordinates={centerCoordinates}
-          boundary={boundary}
-        />
-      )}
+      <LandFormDialog
+        open={showForm}
+        onClose={() => {
+          console.log('Closing form dialog');
+          setShowForm(false);
+        }}
+        onSubmit={async (formData) => {
+          console.log('Form submitted with data:', formData);
+          await handleFormSubmit(formData);
+          setShowForm(false);
+        }}
+        area={area}
+        centerCoordinates={centerCoordinates}
+        boundary={boundary}
+      />
     </>
   );
 }
