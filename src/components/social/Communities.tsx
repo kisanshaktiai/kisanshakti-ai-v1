@@ -6,9 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
-import { MapPin, Wheat, Languages, Users, Search, Activity } from 'lucide-react';
+import { 
+  MapPin, Wheat, Languages, Users, Search, Activity,
+  MessageSquare, Check, TrendingUp, Globe, Sparkles, 
+  BookOpen, Zap
+} from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 interface CommunitiesProps {
   onCommunitySelect?: (id: string) => void;
@@ -79,26 +84,41 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
     }
 
     try {
-      const { error } = await supabase
-        .from('community_members')
-        .insert({
-          community_id: communityId,
-          farmer_id: farmerId,
-          role: 'member'
+      // Use the database function for safer join operation
+      const { data, error } = await supabase
+        .rpc('join_community', {
+          p_community_id: communityId,
+          p_farmer_id: farmerId
         });
 
       if (error) throw error;
 
-      setJoinedCommunities([...joinedCommunities, communityId]);
-      toast({
-        title: "Success!",
-        description: "You've joined the community"
-      });
-    } catch (error) {
+      if (data?.success) {
+        setJoinedCommunities([...joinedCommunities, communityId]);
+        
+        // Update local community member count
+        setCommunities(prev => prev.map(c => 
+          c.id === communityId 
+            ? { ...c, member_count: (c.member_count || 0) + 1 }
+            : c
+        ));
+        
+        toast({
+          title: "Welcome!",
+          description: "You've successfully joined the community"
+        });
+      } else {
+        toast({
+          title: "Already a member",
+          description: data?.error || "You're already part of this community",
+          variant: "default"
+        });
+      }
+    } catch (error: any) {
       console.error('Error joining community:', error);
       toast({
-        title: "Error",
-        description: "Failed to join community. Please try again.",
+        title: "Failed to join",
+        description: error?.message || "Unable to join community. Please try again.",
         variant: "destructive"
       });
     }
@@ -108,24 +128,36 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
     if (!farmerId) return;
 
     try {
+      // Soft delete by setting is_active to false
       const { error } = await supabase
         .from('community_members')
-        .delete()
+        .update({ 
+          is_active: false,
+          updated_at: new Date().toISOString()
+        })
         .eq('community_id', communityId)
         .eq('farmer_id', farmerId);
 
       if (error) throw error;
 
       setJoinedCommunities(joinedCommunities.filter(id => id !== communityId));
+      
+      // Update local community member count
+      setCommunities(prev => prev.map(c => 
+        c.id === communityId 
+          ? { ...c, member_count: Math.max(0, (c.member_count || 0) - 1) }
+          : c
+      ));
+      
       toast({
         title: "Left community",
-        description: "You've left the community"
+        description: "You've successfully left the community"
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error leaving community:', error);
       toast({
         title: "Error",
-        description: "Failed to leave community",
+        description: error?.message || "Failed to leave community",
         variant: "destructive"
       });
     }
@@ -240,35 +272,88 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
 }
 
 function CommunityCard({ community, isJoined, onJoin, onLeave, icon, onClick }: any) {
+  const [isJoining, setIsJoining] = useState(false);
+  
+  const handleAction = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsJoining(true);
+    try {
+      if (isJoined) {
+        await onLeave();
+      } else {
+        await onJoin();
+      }
+    } finally {
+      setIsJoining(false);
+    }
+  };
+  
   return (
-    <Card className="p-4 cursor-pointer hover:shadow-md transition-shadow" onClick={onClick}>
-      <div className="flex items-start justify-between">
-        <div className="flex gap-3">
-          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            {icon}
+    <Card 
+      className="group relative overflow-hidden p-4 cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-[1.02] border-border/50"
+      onClick={onClick}
+    >
+      <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+      
+      <div className="relative flex items-start justify-between">
+        <div className="flex gap-3 flex-1">
+          <div className="relative">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+              {icon}
+            </div>
+            {isJoined && (
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-background animate-pulse" />
+            )}
           </div>
-          <div className="flex-1">
-            <h3 className="font-medium">{community.name}</h3>
-            <p className="text-sm text-muted-foreground mt-1">{community.description}</p>
-            <div className="flex items-center gap-3 mt-2">
-              <Badge variant="secondary" className="text-xs">
+          
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+              {community.name}
+            </h3>
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+              {community.description || 'Join this community to connect with others'}
+            </p>
+            
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              <Badge variant="secondary" className="text-xs bg-secondary/50">
+                <Users className="w-3 h-3 mr-1" />
                 {community.member_count || 0} members
               </Badge>
               <Badge variant="outline" className="text-xs">
+                <MessageSquare className="w-3 h-3 mr-1" />
                 {community.post_count || 0} posts
               </Badge>
+              {community.is_verified && (
+                <Badge variant="default" className="text-xs bg-primary/10 text-primary">
+                  <Check className="w-3 h-3 mr-1" />
+                  Verified
+                </Badge>
+              )}
+              {community.trending_score > 50 && (
+                <Badge variant="destructive" className="text-xs bg-orange-500/10 text-orange-600">
+                  <TrendingUp className="w-3 h-3 mr-1" />
+                  Trending
+                </Badge>
+              )}
             </div>
           </div>
         </div>
+        
         <Button
           size="sm"
           variant={isJoined ? "outline" : "default"}
-          onClick={(e) => {
-            e.stopPropagation();
-            isJoined ? onLeave() : onJoin();
-          }}
+          onClick={handleAction}
+          disabled={isJoining}
+          className={cn(
+            "min-w-[80px] transition-all",
+            isJoined ? "hover:bg-destructive hover:text-destructive-foreground hover:border-destructive" : ""
+          )}
         >
-          {isJoined ? "Leave" : "Join"}
+          {isJoining ? (
+            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          ) : (
+            isJoined ? "Leave" : "Join"
+          )}
         </Button>
       </div>
     </Card>
