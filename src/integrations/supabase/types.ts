@@ -1955,6 +1955,7 @@ export type Database = {
           edited_at: string | null
           farmer_id: string | null
           id: string
+          is_ai_filtered: boolean | null
           is_edited: boolean | null
           is_pinned: boolean | null
           is_verified: boolean | null
@@ -1962,6 +1963,7 @@ export type Database = {
           metadata: Json | null
           parent_message_id: string | null
           reactions: Json | null
+          read_by: Json | null
           translation_data: Json | null
           updated_at: string | null
         }
@@ -1973,6 +1975,7 @@ export type Database = {
           edited_at?: string | null
           farmer_id?: string | null
           id?: string
+          is_ai_filtered?: boolean | null
           is_edited?: boolean | null
           is_pinned?: boolean | null
           is_verified?: boolean | null
@@ -1980,6 +1983,7 @@ export type Database = {
           metadata?: Json | null
           parent_message_id?: string | null
           reactions?: Json | null
+          read_by?: Json | null
           translation_data?: Json | null
           updated_at?: string | null
         }
@@ -1991,6 +1995,7 @@ export type Database = {
           edited_at?: string | null
           farmer_id?: string | null
           id?: string
+          is_ai_filtered?: boolean | null
           is_edited?: boolean | null
           is_pinned?: boolean | null
           is_verified?: boolean | null
@@ -1998,6 +2003,7 @@ export type Database = {
           metadata?: Json | null
           parent_message_id?: string | null
           reactions?: Json | null
+          read_by?: Json | null
           translation_data?: Json | null
           updated_at?: string | null
         }
