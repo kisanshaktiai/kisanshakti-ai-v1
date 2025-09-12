@@ -407,6 +407,7 @@ export function LandFormDialog({
                             value={field.value}
                             cropName={field.value}
                             onChange={(cropId, cropName) => {
+                              // Store the crop name in the form field
                               field.onChange(cropName);
                             }}
                             placeholder="Select current crop"
