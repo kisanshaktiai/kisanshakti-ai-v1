@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.get-white-label-config]
 verify_jwt = false
+
+[functions.filter-community-image]
+verify_jwt = true
