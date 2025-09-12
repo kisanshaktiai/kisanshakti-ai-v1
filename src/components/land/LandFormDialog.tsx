@@ -8,6 +8,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import {
   Form,
@@ -160,6 +161,10 @@ export function LandFormDialog({
     return (
       <Dialog open={open} onOpenChange={onClose}>
         <DialogContent className="sm:max-w-[600px]">
+          <DialogHeader>
+            <DialogTitle>Loading Land Form</DialogTitle>
+            <DialogDescription>Please wait while we load the form data...</DialogDescription>
+          </DialogHeader>
           <div className="flex items-center justify-center p-8">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
@@ -177,6 +182,9 @@ export function LandFormDialog({
             <DialogTitle className="text-lg font-semibold">
               {existingLandId ? 'Edit Land Details' : 'Complete Land Details'}
             </DialogTitle>
+            <DialogDescription>
+              Fill in the details below to save your land information
+            </DialogDescription>
           </DialogHeader>
           
           {/* Compact area and location display */}
