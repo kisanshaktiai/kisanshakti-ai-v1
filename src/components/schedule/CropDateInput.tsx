@@ -5,12 +5,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { CalendarIcon, MapPin, ChevronLeft, Sparkles, Wheat, Droplets, Sun } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { CentralizedCropSelector } from '@/components/crops/CentralizedCropSelector';
 
 interface CropDateInputProps {
   land: {
@@ -28,21 +28,6 @@ interface CropDateInputProps {
   loading?: boolean;
 }
 
-const popularCrops = [
-  { value: 'rice', label: 'Rice (धान)', season: 'Kharif', icon: '🌾' },
-  { value: 'wheat', label: 'Wheat (गेहूं)', season: 'Rabi', icon: '🌾' },
-  { value: 'cotton', label: 'Cotton (कपास)', season: 'Kharif', icon: '☁️' },
-  { value: 'sugarcane', label: 'Sugarcane (गन्ना)', season: 'All', icon: '🎋' },
-  { value: 'maize', label: 'Maize (मक्का)', season: 'Kharif', icon: '🌽' },
-  { value: 'soybean', label: 'Soybean (सोयाबीन)', season: 'Kharif', icon: '🫘' },
-  { value: 'groundnut', label: 'Groundnut (मूंगफली)', season: 'Kharif', icon: '🥜' },
-  { value: 'pulses', label: 'Pulses (दाल)', season: 'Both', icon: '🫘' },
-  { value: 'potato', label: 'Potato (आलू)', season: 'Rabi', icon: '🥔' },
-  { value: 'onion', label: 'Onion (प्याज)', season: 'Both', icon: '🧅' },
-  { value: 'tomato', label: 'Tomato (टमाटर)', season: 'All', icon: '🍅' },
-  { value: 'chilli', label: 'Chilli (मिर्च)', season: 'Both', icon: '🌶️' },
-];
-
 const CropDateInput: React.FC<CropDateInputProps> = ({
   land,
   onSubmit,
@@ -50,16 +35,16 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   loading = false
 }) => {
   const { toast } = useToast();
+  const [cropId, setCropId] = useState('');
   const [cropName, setCropName] = useState('');
   const [cropVariety, setCropVariety] = useState('');
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
-  const [cropTab, setCropTab] = useState<'popular' | 'custom'>('popular');
 
   const handleSubmit = () => {
     if (!cropName) {
       toast({
         title: 'Select Crop',
-        description: 'Please select or enter a crop name',
+        description: 'Please select a crop',
         variant: 'destructive',
       });
       return;
@@ -77,25 +62,27 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     onSubmit(cropName, cropVariety, sowingDate);
   };
 
-  const selectCrop = (crop: string) => {
-    setCropName(crop);
+  const handleCropSelect = (id: string, name: string) => {
+    setCropId(id);
+    setCropName(name);
+    
     // Auto-suggest variety based on crop
-    if (crop === 'rice') setCropVariety('IR-64');
-    if (crop === 'wheat') setCropVariety('HD-2967');
-    if (crop === 'cotton') setCropVariety('BT Cotton');
+    if (name.toLowerCase().includes('rice')) setCropVariety('IR-64');
+    if (name.toLowerCase().includes('wheat')) setCropVariety('HD-2967');
+    if (name.toLowerCase().includes('cotton')) setCropVariety('BT Cotton');
   };
 
   return (
     <div className="space-y-4">
       {/* Land Info Bar */}
       <Card className="bg-gradient-to-r from-primary/5 to-primary/10">
-        <CardContent className="p-4">
+        <CardContent className="p-3">
           <div className="flex items-center justify-between">
             <Button
               variant="ghost"
               size="sm"
               onClick={onBack}
-              className="p-1"
+              className="p-1 h-8"
             >
               <ChevronLeft className="h-4 w-4 mr-1" />
               Back
@@ -127,8 +114,8 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
 
       {/* Crop Selection */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-lg">
             <Wheat className="h-5 w-5 text-primary" />
             Select Crop
           </CardTitle>
@@ -136,73 +123,34 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
             Choose the crop you plan to cultivate
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <Tabs value={cropTab} onValueChange={(v) => setCropTab(v as 'popular' | 'custom')}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="popular">Popular Crops</TabsTrigger>
-              <TabsTrigger value="custom">Custom Crop</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="popular" className="space-y-3">
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                {popularCrops.map((crop) => (
-                  <Button
-                    key={crop.value}
-                    variant={cropName === crop.value ? 'default' : 'outline'}
-                    className="justify-start h-auto py-3 px-3"
-                    onClick={() => selectCrop(crop.value)}
-                  >
-                    <span className="text-lg mr-2">{crop.icon}</span>
-                    <div className="text-left">
-                      <div className="text-sm font-medium">{crop.label.split(' ')[0]}</div>
-                      <div className="text-xs text-muted-foreground">{crop.season}</div>
-                    </div>
-                  </Button>
-                ))}
-              </div>
-              
-              {cropName && (
-                <div className="space-y-2 pt-2">
-                  <Label htmlFor="variety">Variety (Optional)</Label>
-                  <Input
-                    id="variety"
-                    placeholder="e.g., IR-64, HD-2967, BT Cotton"
-                    value={cropVariety}
-                    onChange={(e) => setCropVariety(e.target.value)}
-                  />
-                </div>
-              )}
-            </TabsContent>
-            
-            <TabsContent value="custom" className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="custom-crop">Crop Name</Label>
-                <Input
-                  id="custom-crop"
-                  placeholder="Enter crop name"
-                  value={cropName}
-                  onChange={(e) => setCropName(e.target.value)}
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="custom-variety">Variety (Optional)</Label>
-                <Input
-                  id="custom-variety"
-                  placeholder="Enter variety name"
-                  value={cropVariety}
-                  onChange={(e) => setCropVariety(e.target.value)}
-                />
-              </div>
-            </TabsContent>
-          </Tabs>
+        <CardContent className="p-0">
+          <CentralizedCropSelector
+            selectedCropId={cropId}
+            onSelect={handleCropSelect}
+            className="border-0 shadow-none"
+            showHeader={false}
+            variant="compact"
+          />
+          
+          {cropName && (
+            <div className="p-4 pt-0 space-y-2">
+              <Label htmlFor="variety">Variety (Optional)</Label>
+              <Input
+                id="variety"
+                placeholder="e.g., IR-64, HD-2967, BT Cotton"
+                value={cropVariety}
+                onChange={(e) => setCropVariety(e.target.value)}
+                className="h-9"
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
       {/* Sowing Date Selection */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-lg">
             <CalendarIcon className="h-5 w-5 text-primary" />
             Expected Sowing Date
           </CardTitle>
@@ -216,7 +164,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
               <Button
                 variant="outline"
                 className={cn(
-                  "w-full justify-start text-left font-normal",
+                  "w-full justify-start text-left font-normal h-10",
                   !sowingDate && "text-muted-foreground"
                 )}
               >
@@ -252,7 +200,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
       <Button
         onClick={handleSubmit}
         disabled={!cropName || !sowingDate || loading}
-        className="w-full h-12"
+        className="w-full h-11"
         size="lg"
       >
         {loading ? (

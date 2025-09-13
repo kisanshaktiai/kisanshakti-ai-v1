@@ -122,37 +122,35 @@ export default function LandSelector({ lands, onSelectLand }: LandSelectorProps)
                 <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 
                 {/* Content */}
-                <div className="relative p-6 space-y-5">
+                <div className="relative p-4 space-y-3">
                   {/* Header */}
-                  <div className="space-y-2">
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <h3 className="text-xl font-bold text-foreground group-hover:text-primary transition-colors">
-                          {land.name}
-                        </h3>
-                        {land.survey_number && (
-                          <p className="text-sm text-muted-foreground flex items-center gap-1">
-                            <Grid3x3 className="h-3 w-3" />
-                            Survey #{land.survey_number}
-                          </p>
-                        )}
-                      </div>
-                      <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors group-hover:translate-x-1 duration-300" />
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-0.5">
+                      <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-colors">
+                        {land.name}
+                      </h3>
+                      {land.survey_number && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Grid3x3 className="h-3 w-3" />
+                          Survey #{land.survey_number}
+                        </p>
+                      )}
                     </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors group-hover:translate-x-1 duration-300" />
                   </div>
 
                   {/* Area Display */}
-                  <div className="bg-gradient-to-r from-primary/10 to-accent/10 rounded-xl p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-background/80 rounded-lg">
-                        <Trees className="h-5 w-5 text-primary" />
+                  <div className="bg-gradient-to-r from-primary/10 to-accent/10 rounded-lg p-3">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-background/80 rounded-md">
+                        <Trees className="h-4 w-4 text-primary" />
                       </div>
                       <div>
-                        <p className="text-2xl font-bold text-foreground">
-                          {land.area_acres} <span className="text-base font-medium text-muted-foreground">acres</span>
+                        <p className="text-xl font-bold text-foreground">
+                          {land.area_acres} <span className="text-sm font-medium text-muted-foreground">acres</span>
                         </p>
                         {land.area_guntas && land.area_guntas > 0 && (
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-xs text-muted-foreground">
                             {land.area_guntas} guntas
                           </p>
                         )}
@@ -233,25 +231,37 @@ export default function LandSelector({ lands, onSelectLand }: LandSelectorProps)
           stiffness: 200,
           damping: 10
         }}
-        className="fixed bottom-6 right-6 z-50"
+        className="fixed bottom-20 right-6 z-50"
       >
-        <Button
-          size="lg"
-          onClick={() => navigate('/app/lands/add')}
-          className={cn(
-            "h-14 w-14 rounded-full",
-            "bg-gradient-to-r from-primary to-primary-hover",
-            "hover:from-primary-hover hover:to-primary",
-            "shadow-xl hover:shadow-2xl",
-            "transition-all duration-300",
-            "group"
-          )}
-        >
-          <Plus className="h-6 w-6 transition-transform duration-300 group-hover:rotate-90" />
-        </Button>
+        <div className="relative">
+          {/* Glowing effect behind button */}
+          <div className="absolute inset-0 rounded-full bg-primary blur-2xl opacity-40 animate-pulse" />
+          
+          <Button
+            size="lg"
+            onClick={() => navigate('/app/lands/add')}
+            className={cn(
+              "relative h-14 w-14 rounded-full",
+              "bg-gradient-to-br from-primary via-primary to-primary-hover",
+              "hover:from-primary-hover hover:to-primary",
+              "shadow-2xl hover:shadow-3xl",
+              "transition-all duration-300",
+              "group",
+              "border-2 border-white/20"
+            )}
+          >
+            <Plus className="h-6 w-6 text-white transition-transform duration-300 group-hover:rotate-90" />
+          </Button>
+        </div>
         
-        {/* Glowing effect */}
-        <div className="absolute inset-0 rounded-full bg-primary/30 blur-xl animate-pulse" />
+        {/* Label on hover */}
+        <motion.div
+          initial={{ opacity: 0, x: 10 }}
+          whileHover={{ opacity: 1, x: 0 }}
+          className="absolute right-16 top-1/2 -translate-y-1/2 bg-foreground text-background px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap pointer-events-none"
+        >
+          Add New Land
+        </motion.div>
       </motion.div>
     </div>
   );

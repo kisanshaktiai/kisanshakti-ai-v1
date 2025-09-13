@@ -205,19 +205,20 @@ export default function Schedule() {
     <div className="space-y-6">
       {/* Header Card */}
       <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-        <CardContent className="p-4 space-y-3">
+        <CardContent className="p-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => flowStep === 'land-selection' ? navigate('/app') : handleBack()}
+                className="h-8 w-8"
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
               <div>
-                <h1 className="text-lg font-semibold">AI Crop Schedule</h1>
-                <p className="text-sm text-muted-foreground">
+                <h1 className="text-base font-semibold">AI Crop Schedule</h1>
+                <p className="text-xs text-muted-foreground">
                   {flowStep === 'land-selection' && 'Select your land'}
                   {flowStep === 'crop-input' && 'Choose crop and date'}
                   {flowStep === 'schedule-view' && 'Your crop schedule'}
@@ -225,17 +226,6 @@ export default function Schedule() {
               </div>
             </div>
           </div>
-          
-          {/* Generate/Save Button */}
-          {flowStep === 'land-selection' && (
-            <Button 
-              className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary transition-all"
-              disabled={lands.length === 0}
-            >
-              <Calendar className="h-4 w-4 mr-2" />
-              Generate Schedule
-            </Button>
-          )}
         </CardContent>
       </Card>
 
