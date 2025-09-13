@@ -68,9 +68,9 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
       setGenerating(true);
 
       // Prepare weather data
-      const weatherData = weather ? {
-        current: weather.current,
-        forecast: weather.forecast?.slice(0, 2), // Next 48 hours
+      const weatherData = currentWeather ? {
+        current: currentWeather,
+        forecast: forecast?.slice(0, 2), // Next 48 hours
       } : null;
 
       // Call edge function to generate schedule
@@ -201,14 +201,14 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
             </div>
 
             {/* Weather Info */}
-            {weather && (
+            {currentWeather && (
               <div className="p-4 bg-blue-50 rounded-lg">
                 <p className="text-sm font-medium text-blue-900 mb-2">Current Weather</p>
                 <div className="grid grid-cols-2 gap-2 text-sm text-blue-700">
-                  <div>Temperature: {weather.current.temp}°C</div>
-                  <div>Humidity: {weather.current.humidity}%</div>
-                  <div>Rainfall: {weather.current.rain || 0}mm</div>
-                  <div>Wind: {weather.current.windSpeed} km/h</div>
+                  <div>Temperature: {currentWeather.temp}°C</div>
+                  <div>Humidity: {currentWeather.humidity}%</div>
+                  <div>Clouds: {currentWeather.clouds}%</div>
+                  <div>Wind: {currentWeather.wind_speed} km/h</div>
                 </div>
                 <p className="text-xs text-blue-600 mt-2">
                   Schedule will be optimized based on weather forecast
