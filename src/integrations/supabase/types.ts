@@ -2465,6 +2465,128 @@ export type Database = {
           },
         ]
       }
+      crop_schedules: {
+        Row: {
+          ai_model: string | null
+          completed_at: string | null
+          created_at: string | null
+          crop_name: string
+          crop_variety: string | null
+          expected_harvest_date: string | null
+          farmer_id: string
+          generated_at: string | null
+          generation_params: Json | null
+          id: string
+          is_active: boolean | null
+          land_id: string
+          last_weather_update: string | null
+          schedule_version: number | null
+          sowing_date: string
+          tenant_id: string
+          updated_at: string | null
+          weather_data: Json | null
+        }
+        Insert: {
+          ai_model?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          crop_name: string
+          crop_variety?: string | null
+          expected_harvest_date?: string | null
+          farmer_id: string
+          generated_at?: string | null
+          generation_params?: Json | null
+          id?: string
+          is_active?: boolean | null
+          land_id: string
+          last_weather_update?: string | null
+          schedule_version?: number | null
+          sowing_date: string
+          tenant_id: string
+          updated_at?: string | null
+          weather_data?: Json | null
+        }
+        Update: {
+          ai_model?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          crop_name?: string
+          crop_variety?: string | null
+          expected_harvest_date?: string | null
+          farmer_id?: string
+          generated_at?: string | null
+          generation_params?: Json | null
+          id?: string
+          is_active?: boolean | null
+          land_id?: string
+          last_weather_update?: string | null
+          schedule_version?: number | null
+          sowing_date?: string
+          tenant_id?: string
+          updated_at?: string | null
+          weather_data?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_schedules_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crop_templates: {
+        Row: {
+          best_practices: Json | null
+          common_issues: Json | null
+          created_at: string | null
+          crop_name: string
+          crop_variety: string | null
+          id: string
+          is_active: boolean | null
+          lifecycle_days: number | null
+          reference_url: string | null
+          region: string | null
+          schedule_template: Json
+          season: string | null
+          source: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          best_practices?: Json | null
+          common_issues?: Json | null
+          created_at?: string | null
+          crop_name: string
+          crop_variety?: string | null
+          id?: string
+          is_active?: boolean | null
+          lifecycle_days?: number | null
+          reference_url?: string | null
+          region?: string | null
+          schedule_template: Json
+          season?: string | null
+          source?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          best_practices?: Json | null
+          common_issues?: Json | null
+          created_at?: string | null
+          crop_name?: string
+          crop_variety?: string | null
+          id?: string
+          is_active?: boolean | null
+          lifecycle_days?: number | null
+          reference_url?: string | null
+          region?: string | null
+          schedule_template?: Json
+          season?: string | null
+          source?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       crops: {
         Row: {
           created_at: string | null
@@ -9401,6 +9523,95 @@ export type Database = {
           },
         ]
       }
+      schedule_tasks: {
+        Row: {
+          auto_rescheduled: boolean | null
+          completed_at: string | null
+          completed_by: string | null
+          completion_notes: string | null
+          created_at: string | null
+          duration_hours: number | null
+          estimated_cost: number | null
+          id: string
+          ideal_weather: Json | null
+          instructions: string[] | null
+          original_date: string | null
+          precautions: string[] | null
+          priority: string | null
+          reschedule_reason: string | null
+          resources: Json | null
+          schedule_id: string
+          status: string | null
+          task_date: string
+          task_description: string | null
+          task_name: string
+          task_type: string
+          updated_at: string | null
+          weather_dependent: boolean | null
+          weather_risk_level: string | null
+        }
+        Insert: {
+          auto_rescheduled?: boolean | null
+          completed_at?: string | null
+          completed_by?: string | null
+          completion_notes?: string | null
+          created_at?: string | null
+          duration_hours?: number | null
+          estimated_cost?: number | null
+          id?: string
+          ideal_weather?: Json | null
+          instructions?: string[] | null
+          original_date?: string | null
+          precautions?: string[] | null
+          priority?: string | null
+          reschedule_reason?: string | null
+          resources?: Json | null
+          schedule_id: string
+          status?: string | null
+          task_date: string
+          task_description?: string | null
+          task_name: string
+          task_type: string
+          updated_at?: string | null
+          weather_dependent?: boolean | null
+          weather_risk_level?: string | null
+        }
+        Update: {
+          auto_rescheduled?: boolean | null
+          completed_at?: string | null
+          completed_by?: string | null
+          completion_notes?: string | null
+          created_at?: string | null
+          duration_hours?: number | null
+          estimated_cost?: number | null
+          id?: string
+          ideal_weather?: Json | null
+          instructions?: string[] | null
+          original_date?: string | null
+          precautions?: string[] | null
+          priority?: string | null
+          reschedule_reason?: string | null
+          resources?: Json | null
+          schedule_id?: string
+          status?: string | null
+          task_date?: string
+          task_description?: string | null
+          task_name?: string
+          task_type?: string
+          updated_at?: string | null
+          weather_dependent?: boolean | null
+          weather_risk_level?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_tasks_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "crop_schedules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scheduled_reports: {
         Row: {
           created_at: string | null
@@ -10342,6 +10553,62 @@ export type Database = {
             columns: ["district_id"]
             isOneToOne: false
             referencedRelation: "districts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_completions: {
+        Row: {
+          action: string
+          action_date: string | null
+          actual_cost: number | null
+          actual_resources: Json | null
+          created_at: string | null
+          difficulty_rating: number | null
+          effectiveness_rating: number | null
+          farmer_id: string
+          id: string
+          notes: string | null
+          photos: string[] | null
+          task_id: string
+          weather_conditions: Json | null
+        }
+        Insert: {
+          action: string
+          action_date?: string | null
+          actual_cost?: number | null
+          actual_resources?: Json | null
+          created_at?: string | null
+          difficulty_rating?: number | null
+          effectiveness_rating?: number | null
+          farmer_id: string
+          id?: string
+          notes?: string | null
+          photos?: string[] | null
+          task_id: string
+          weather_conditions?: Json | null
+        }
+        Update: {
+          action?: string
+          action_date?: string | null
+          actual_cost?: number | null
+          actual_resources?: Json | null
+          created_at?: string | null
+          difficulty_rating?: number | null
+          effectiveness_rating?: number | null
+          farmer_id?: string
+          id?: string
+          notes?: string | null
+          photos?: string[] | null
+          task_id?: string
+          weather_conditions?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_completions_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_tasks"
             referencedColumns: ["id"]
           },
         ]
