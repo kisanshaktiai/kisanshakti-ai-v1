@@ -117,8 +117,8 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         </div>
 
         {/* Crop Selection Section */}
-        <div className="p-4">
-          <div className="flex items-center gap-2 mb-3">
+        <div className="max-h-[50vh] overflow-y-auto">
+          <div className="flex items-center gap-2 mb-3 px-4">
             <Wheat className="h-4 w-4 text-primary" />
             <span className="text-sm font-medium">Select Crop</span>
           </div>
@@ -126,19 +126,18 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
           <CentralizedCropSelector
             selectedCropId={cropId}
             onSelect={handleCropSelect}
-            className="border-0 shadow-none bg-transparent -m-4"
+            className="border-0 shadow-none bg-transparent"
             showHeader={false}
             variant="compact"
             showSearch={true}
           />
-          
           {/* Variety Input - Shows only when crop is selected */}
           {cropName && (
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
-              className="mt-4 space-y-2"
+              className="p-4 pt-0 space-y-2"
             >
               <Label htmlFor="variety" className="text-xs font-medium text-muted-foreground">
                 Variety (Optional)

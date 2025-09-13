@@ -162,7 +162,7 @@ export function CentralizedCropSelector({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -20 }}
-        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 p-4"
+        className="grid grid-cols-3 gap-3 p-4 max-h-[60vh] overflow-y-auto"
       >
         {groups.map((group, index) => (
           <motion.div
@@ -182,46 +182,46 @@ export function CentralizedCropSelector({
                 "relative w-full aspect-square",
                 "bg-gradient-to-br from-white/90 to-white/70 dark:from-black/40 dark:to-black/20",
                 "backdrop-blur-2xl border border-white/50 dark:border-white/20",
-                "rounded-2xl shadow-xl hover:shadow-2xl",
+                "rounded-xl shadow-lg hover:shadow-xl",
                 "transition-all duration-300 ease-out",
-                "hover:-translate-y-1 active:translate-y-0",
+                "hover:-translate-y-0.5 active:translate-y-0",
                 "group overflow-hidden"
               )}
               onClick={() => handleGroupSelect(group)}
             >
               {/* Animated gradient background */}
               <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-accent/10 to-transparent animate-gradient-shift" />
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-accent/10 to-transparent" />
               </div>
               
               {/* Glow effect */}
-              <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-accent/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-60 transition-opacity duration-500" />
+              <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-accent/20 rounded-xl blur-xl opacity-0 group-hover:opacity-60 transition-opacity duration-500" />
               
               {/* Content */}
-              <div className="relative h-full flex flex-col items-center justify-center p-4 space-y-2">
+              <div className="relative h-full flex flex-col items-center justify-center p-3 space-y-1">
                 {/* Icon container with animation */}
                 <motion.div
                   className="relative"
                   whileHover={{ rotate: [0, -5, 5, 0], scale: 1.1 }}
                   transition={{ duration: 0.5 }}
                 >
-                  <span className="text-4xl sm:text-5xl filter drop-shadow-xl">
+                  <span className="text-2xl sm:text-3xl filter drop-shadow-lg">
                     {group.group_icon}
                   </span>
                 </motion.div>
                 
                 {/* Label with better typography */}
-                <span className="text-xs sm:text-sm font-semibold text-foreground/80 group-hover:text-foreground transition-colors text-center leading-tight">
+                <span className="text-[10px] sm:text-xs font-semibold text-foreground/80 group-hover:text-foreground transition-colors text-center leading-tight">
                   {group.group_name}
                 </span>
                 
                 {/* Subtle arrow indicator */}
                 <motion.div
-                  className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-all duration-300"
+                  className="absolute bottom-1 right-1 opacity-0 group-hover:opacity-100 transition-all duration-300"
                   initial={{ x: -10 }}
                   whileHover={{ x: 0 }}
                 >
-                  <ChevronRight className="h-4 w-4 text-primary/60" />
+                  <ChevronRight className="h-3 w-3 text-primary/60" />
                 </motion.div>
               </div>
             </button>
@@ -266,10 +266,10 @@ export function CentralizedCropSelector({
         </div>
       )}
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 max-h-[60vh]">
         <AnimatePresence mode="wait">
           <motion.div 
-            className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4"
+            className="grid grid-cols-3 gap-2 p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -292,14 +292,14 @@ export function CentralizedCropSelector({
                 >
                   <button
                     className={cn(
-                      "relative w-full p-4 text-left",
+                      "relative w-full p-3 text-left",
                       "bg-gradient-to-br from-white/80 to-white/60 dark:from-black/30 dark:to-black/10",
                       "backdrop-blur-xl border",
                       isSelected 
-                        ? "border-primary/50 shadow-xl shadow-primary/20" 
-                        : "border-white/40 dark:border-white/20 shadow-lg",
-                      "rounded-xl transition-all duration-300",
-                      "hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0",
+                        ? "border-primary/50 shadow-lg shadow-primary/20" 
+                        : "border-white/40 dark:border-white/20 shadow-md",
+                      "rounded-lg transition-all duration-300",
+                      "hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0",
                       "group overflow-hidden"
                     )}
                     onClick={() => handleCropSelect(crop)}
@@ -317,8 +317,8 @@ export function CentralizedCropSelector({
                     {/* Hover effect */}
                     <div className="absolute inset-0 bg-gradient-to-br from-primary/0 to-accent/0 group-hover:from-primary/10 group-hover:to-accent/5 transition-all duration-500" />
                     
-                    {/* Content */}
-                    <div className="relative flex flex-col items-center text-center space-y-3">
+                    {/* Content - Compact for grid */}
+                    <div className="relative flex flex-col items-center text-center space-y-2">
                       {/* Icon with modern effect */}
                       <motion.div 
                         className="relative"
@@ -327,56 +327,58 @@ export function CentralizedCropSelector({
                       >
                         {/* Icon shadow/glow */}
                         <div className={cn(
-                          "absolute inset-0 rounded-full blur-xl transition-all duration-300",
+                          "absolute inset-0 rounded-full blur-lg transition-all duration-300",
                           isSelected 
                             ? "bg-gradient-to-br from-primary/40 to-accent/40" 
                             : "bg-gradient-to-br from-primary/20 to-accent/20 group-hover:from-primary/30 group-hover:to-accent/30"
                         )} />
-                        <span className="relative text-3xl sm:text-4xl filter drop-shadow-lg">
+                        <span className="relative text-2xl filter drop-shadow-lg">
                           {crop.icon || "🌱"}
                         </span>
                       </motion.div>
                       
-                      {/* Labels */}
-                      <div className="space-y-1 w-full">
+                      {/* Labels - Compact */}
+                      <div className="space-y-0.5 w-full">
                         <p className={cn(
-                          "font-semibold text-sm leading-tight transition-colors",
+                          "font-semibold text-xs leading-tight transition-colors",
                           isSelected ? "text-primary" : "text-foreground/80 group-hover:text-foreground"
                         )}>
                           {crop.label}
                         </p>
                         {crop.label_local && (
-                          <p className="text-xs text-muted-foreground/70 leading-tight">
+                          <p className="text-[10px] text-muted-foreground/70 leading-tight line-clamp-1">
                             {crop.label_local}
                           </p>
                         )}
                       </div>
                       
-                      {/* Badges - Minimal and modern */}
-                      <div className="flex flex-wrap gap-1 justify-center">
-                        {crop.is_popular && (
-                          <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/30">
-                            <Sparkles className="h-2.5 w-2.5 text-yellow-600 dark:text-yellow-400" />
-                            <span className="text-[10px] font-medium text-yellow-700 dark:text-yellow-300">Popular</span>
-                          </span>
-                        )}
-                        {crop.season && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted/50 text-muted-foreground font-medium">
-                            {crop.season}
-                          </span>
-                        )}
-                      </div>
+                      {/* Badges - Ultra compact */}
+                      {(crop.is_popular || crop.season) && (
+                        <div className="flex flex-wrap gap-1 justify-center">
+                          {crop.is_popular && (
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/30">
+                              <Sparkles className="h-2 w-2 text-yellow-600 dark:text-yellow-400" />
+                              <span className="text-[9px] font-medium text-yellow-700 dark:text-yellow-300">Hot</span>
+                            </span>
+                          )}
+                          {crop.season && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-muted/50 text-muted-foreground font-medium line-clamp-1">
+                              {crop.season}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       
-                      {/* Selection indicator - Modern checkbox */}
+                      {/* Selection indicator - Compact */}
                       {isSelected && (
                         <motion.div
-                          className="absolute top-2 right-2"
+                          className="absolute top-1 right-1"
                           initial={{ scale: 0, rotate: -180 }}
                           animate={{ scale: 1, rotate: 0 }}
                           transition={{ type: "spring", stiffness: 500, damping: 25 }}
                         >
-                          <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/30 flex items-center justify-center">
-                            <Check className="h-3 w-3 text-white" />
+                          <div className="w-4 h-4 rounded-full bg-gradient-to-br from-primary to-primary/80 shadow-md shadow-primary/30 flex items-center justify-center">
+                            <Check className="h-2.5 w-2.5 text-white" />
                           </div>
                         </motion.div>
                       )}
@@ -411,9 +413,10 @@ export function CentralizedCropSelector({
   }
 
   const containerClass = cn(
-    "bg-background rounded-lg",
-    variant === 'compact' && "max-h-[400px]",
-    variant === 'modal' && "min-h-[500px]",
+    "bg-background rounded-lg overflow-hidden",
+    variant === 'compact' && "max-h-[50vh]",
+    variant === 'modal' && "min-h-[400px] max-h-[70vh]",
+    variant === 'default' && "h-auto",
     className
   );
 
