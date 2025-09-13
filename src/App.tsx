@@ -36,6 +36,7 @@ import Social from "./pages/Social";
 import { CommunityPage } from "./components/social/CommunityPage";
 import { WhatsAppChatRoom } from "./components/community/WhatsAppChatRoom";
 import CropSelectionTest from "./pages/CropSelectionTest";
+import Schedule from "./pages/Schedule";
 
 // Stores and Services
 import { useTenantStore } from "@/stores/tenantStore";
@@ -268,6 +269,10 @@ const router = createBrowserRouter(
         {
           path: "lands",
           element: <LandManagement />,
+        },
+        {
+          path: "schedule",
+          element: <Schedule />,
         },
         {
           path: "lands/add",

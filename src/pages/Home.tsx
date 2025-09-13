@@ -66,7 +66,7 @@ export default function Home() {
     {
       title: 'AI Crop Schedule',
       icon: Calendar,
-      path: '/app/lands',
+      path: '/app/schedule',
       description: 'Smart planting calendar',
       stats: 'Next: Wheat',
       color: 'bg-gradient-secondary',
