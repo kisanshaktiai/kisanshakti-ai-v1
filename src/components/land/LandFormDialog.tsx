@@ -395,7 +395,7 @@ export function LandFormDialog({
                             <Select 
                               onValueChange={field.onChange} 
                               value={field.value}
-                              disabled={locationLoading}
+                              disabled={locationLoading.states}
                             >
                               <FormControl>
                                 <SelectTrigger className="h-9 text-sm">
