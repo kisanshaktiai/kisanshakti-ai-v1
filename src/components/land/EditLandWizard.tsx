@@ -104,7 +104,7 @@ export function EditLandWizard({
 
   const loadStates = async () => {
     const { data } = await supabase
-      .from('geo_states')
+      .from('states')
       .select('*')
       .order('name');
     if (data) setStates(data);
@@ -112,7 +112,7 @@ export function EditLandWizard({
 
   const loadDistricts = async (stateId: string) => {
     const { data } = await supabase
-      .from('geo_districts')
+      .from('districts')
       .select('*')
       .eq('state_id', stateId)
       .order('name');
@@ -121,7 +121,7 @@ export function EditLandWizard({
 
   const loadTalukas = async (districtId: string) => {
     const { data } = await supabase
-      .from('geo_talukas')
+      .from('talukas')
       .select('*')
       .eq('district_id', districtId)
       .order('name');
@@ -130,7 +130,7 @@ export function EditLandWizard({
 
   const loadVillages = async (talukaId: string) => {
     const { data } = await supabase
-      .from('geo_villages')
+      .from('villages')
       .select('*')
       .eq('taluka_id', talukaId)
       .order('name');

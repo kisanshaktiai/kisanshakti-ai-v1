@@ -6,7 +6,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
 import { GoogleMapBoundaryDrawer } from '@/components/land/GoogleMapBoundaryDrawer';
-import { ModernLandWizard } from '@/components/land/ModernLandWizard';
+import { EditLandWizard } from '@/components/land/EditLandWizard';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { landsApi } from '@/services/landsApi';
