@@ -1,205 +1,103 @@
 import React, { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { Progress } from '@/components/ui/progress';
-import { useWeather } from '@/hooks/useWeather';
-import { AnimatedWeatherBackground } from '@/components/weather/AnimatedWeatherBackground';
+import { useNavigate } from 'react-router-dom';
 import { 
-  MapPin,
-  Thermometer,
-  Droplets,
-  Wind,
-  Eye,
-  Gauge,
-  Sun,
-  Sunrise,
-  Sunset,
-  CloudRain,
-  CloudSnow,
-  Cloud,
-  CloudLightning,
-  Waves,
-  Navigation,
-  Activity,
-  TrendingUp,
-  TrendingDown,
-  Calendar,
-  Clock,
-  ChevronUp,
-  ChevronDown,
-  AlertCircle,
-  Loader2,
-  Umbrella,
-  Shirt,
-  Home as HomeIcon,
-  RefreshCw,
-  CloudDrizzle,
-  Cloudy,
-  CloudFog,
-  Moon,
-  CloudHail,
-  Info,
-  Heart,
-  Compass,
-  Timer,
-  Zap,
-  Users,
-  Flower2,
-  TreePine,
-  Wheat,
-  MapPinned,
-  Navigation2
+  Cloud, CloudRain, Sun, Wind, Droplets, Eye, Gauge, 
+  Thermometer, CloudSnow, CloudDrizzle, CloudLightning,
+  Sunrise, Sunset, Navigation, AlertTriangle, Info,
+  TrendingUp, TrendingDown, Calendar, MapPin
 } from 'lucide-react';
-import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { AnimatedWeatherBackground } from '@/components/weather/AnimatedWeatherBackground';
+import { WeatherCard } from '@/components/weather/WeatherCard';
+import { RainfallChart } from '@/components/weather/RainfallChart';
+import { WeatherAnimation } from '@/components/weather/WeatherAnimation';
+import { SyncIndicator } from '@/components/weather/SyncIndicator';
+import { AgriculturalInsights } from '@/components/weather/AgriculturalInsights';
+import { useWeather } from '@/hooks/useWeather';
+import { useWeatherSync } from '@/hooks/useWeatherSync';
+import { cn } from '@/lib/utils';
+import { format } from 'date-fns';
 
-const Weather: React.FC = () => {
-  const { t } = useTranslation();
-  const { currentWeather, forecast, hourlyForecast, loading, error, location, refetch } = useWeather();
+export default function Weather() {
+  const navigate = useNavigate();
+  const { currentWeather, forecast, hourlyForecast, loading, error, refetch } = useWeather();
+  const { 
+    lastSyncTime, 
+    isSyncing, 
+    syncStatus, 
+    todayRainfall, 
+    weeklyRainfall,
+    saveWeatherObservation,
+    triggerManualSync 
+  } = useWeatherSync();
+
   const [activeTab, setActiveTab] = useState('today');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Save weather data on load and updates
+  useEffect(() => {
+    if (currentWeather) {
+      // Extract rainfall from forecast if available
+      const rainfallMm = forecast?.[0]?.rain || 0;
+      saveWeatherObservation(currentWeather, rainfallMm);
+    }
+  }, [currentWeather]);
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await refetch();
+    await Promise.all([refetch(), triggerManualSync()]);
     setTimeout(() => setIsRefreshing(false), 1000);
   };
 
-  const getWeatherIcon = (condition: string, size: string = "h-6 w-6") => {
-    const weather = condition.toLowerCase();
-    const iconProps = cn(size);
+  const getWeatherCondition = (): 'sun' | 'rain' | 'clouds' | 'storm' | 'snow' | 'fog' | 'night' => {
+    if (!currentWeather) return 'clouds';
+    const main = currentWeather.main?.toLowerCase();
+    const hour = new Date().getHours();
     
-    if (weather.includes('thunder') || weather.includes('storm')) 
-      return <CloudLightning className={cn(iconProps, "text-weather-stormy")} />;
-    if (weather.includes('drizzle')) 
-      return <CloudDrizzle className={cn(iconProps, "text-weather-rainy/70")} />;
-    if (weather.includes('rain')) 
-      return <CloudRain className={cn(iconProps, "text-weather-rainy")} />;
-    if (weather.includes('snow')) 
-      return <CloudSnow className={cn(iconProps, "text-weather-cloudy")} />;
-    if (weather.includes('hail')) 
-      return <CloudHail className={cn(iconProps, "text-weather-cloudy")} />;
-    if (weather.includes('fog') || weather.includes('mist') || weather.includes('haze')) 
-      return <CloudFog className={cn(iconProps, "text-weather-cloudy/60")} />;
-    if (weather.includes('cloud')) 
-      return <Cloud className={cn(iconProps, "text-weather-cloudy")} />;
-    if (weather.includes('clear') && new Date().getHours() > 18) 
-      return <Moon className={cn(iconProps, "text-weather-night")} />;
-    if (weather.includes('clear')) 
-      return <Sun className={cn(iconProps, "text-weather-sunny")} />;
-    
-    return <Sun className={cn(iconProps, "text-weather-sunny")} />;
+    if (main?.includes('thunder')) return 'storm';
+    if (main?.includes('snow')) return 'snow';
+    if (main?.includes('rain') || main?.includes('drizzle')) return 'rain';
+    if (main?.includes('fog') || main?.includes('mist')) return 'fog';
+    if (main?.includes('clear') && (hour >= 6 && hour < 18)) return 'sun';
+    if (main?.includes('clear') && (hour < 6 || hour >= 18)) return 'night';
+    return 'clouds';
+  };
+
+  const getWeatherIcon = (condition: string) => {
+    const iconMap: { [key: string]: React.ReactNode } = {
+      'Clear': <Sun className="h-8 w-8" />,
+      'Clouds': <Cloud className="h-8 w-8" />,
+      'Rain': <CloudRain className="h-8 w-8" />,
+      'Drizzle': <CloudDrizzle className="h-8 w-8" />,
+      'Thunderstorm': <CloudLightning className="h-8 w-8" />,
+      'Snow': <CloudSnow className="h-8 w-8" />,
+      'Mist': <Cloud className="h-8 w-8" />,
+      'Fog': <Cloud className="h-8 w-8" />,
+    };
+    return iconMap[condition] || <Cloud className="h-8 w-8" />;
   };
 
   const getWindDirection = (deg: number) => {
     const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-    return directions[Math.round(deg / 45) % 8];
-  };
-
-  const getUVIndexInfo = (uv?: number) => {
-    if (!uv) return { level: 'Low', color: 'bg-gradient-to-r from-uv-low to-uv-low', advice: 'Enjoy time outside', percentage: 10 };
-    if (uv <= 2) return { level: 'Low', color: 'bg-gradient-to-r from-uv-low to-uv-low', advice: 'Enjoy time outside', percentage: 20 };
-    if (uv <= 5) return { level: 'Moderate', color: 'bg-gradient-to-r from-uv-moderate to-uv-moderate', advice: 'Wear sunscreen SPF 30+', percentage: 50 };
-    if (uv <= 7) return { level: 'High', color: 'bg-gradient-to-r from-uv-high to-uv-high', advice: 'Seek shade, SPF 50+', percentage: 70 };
-    if (uv <= 10) return { level: 'Very High', color: 'bg-gradient-to-r from-uv-very-high to-uv-very-high', advice: 'Avoid sun 10am-4pm', percentage: 90 };
-    return { level: 'Extreme', color: 'bg-gradient-to-r from-uv-extreme to-uv-very-high', advice: 'Stay indoors', percentage: 100 };
-  };
-
-  const getAgriculturalInsights = () => {
-    if (!currentWeather) return [];
-    const insights = [];
-    
-    // Temperature-based advice
-    if (currentWeather.temp > 35) {
-      insights.push({ 
-        icon: Thermometer, 
-        title: 'Heat Stress Alert',
-        text: 'Increase irrigation frequency. Consider shade nets for sensitive crops.',
-        type: 'warning',
-        action: 'Water crops early morning or late evening'
-      });
-    } else if (currentWeather.temp < 10) {
-      insights.push({ 
-        icon: CloudSnow, 
-        title: 'Frost Risk',
-        text: 'Protect tender plants. Cover sensitive crops at night.',
-        type: 'info',
-        action: 'Use frost blankets or mulch'
-      });
-    }
-    
-    // Humidity-based advice
-    if (currentWeather.humidity > 80) {
-      insights.push({ 
-        icon: Droplets, 
-        title: 'Disease Alert',
-        text: 'High humidity increases fungal disease risk.',
-        type: 'warning',
-        action: 'Apply preventive fungicides'
-      });
-    } else if (currentWeather.humidity < 30) {
-      insights.push({ 
-        icon: Droplets, 
-        title: 'Low Humidity',
-        text: 'Increased water stress on plants.',
-        type: 'info',
-        action: 'Increase irrigation and mulching'
-      });
-    }
-    
-    // Wind-based advice
-    if (currentWeather.wind_speed > 20) {
-      insights.push({ 
-        icon: Wind, 
-        title: 'Strong Winds',
-        text: 'Postpone pesticide spraying. Support tall plants.',
-        type: 'danger',
-        action: 'Secure greenhouse covers'
-      });
-    }
-    
-    // Rain forecast advice
-    if (forecast[0]?.pop > 0.6) {
-      insights.push({ 
-        icon: CloudRain, 
-        title: 'Rain Expected',
-        text: 'Delay fertilizer application. Harvest ripe crops.',
-        type: 'info',
-        action: 'Prepare drainage channels'
-      });
-    }
-    
-    return insights;
-  };
-
-  // Get location name with better formatting
-  const getLocationDisplay = () => {
-    if (currentWeather?.location) {
-      return currentWeather.location;
-    }
-    if (location) {
-      return `${location.lat.toFixed(2)}°N, ${location.lon.toFixed(2)}°E`;
-    }
-    return 'Fetching location...';
+    const index = Math.round(deg / 45) % 8;
+    return directions[index];
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-weather-sunny/10 via-background to-weather-rainy/10 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <div className="text-center space-y-4">
           <div className="relative">
-            <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-primary/20 to-secondary/20 animate-pulse mx-auto" />
-            <Loader2 className="h-10 w-10 animate-spin text-primary absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+            <div className="h-20 w-20 mx-auto rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
+            <Cloud className="h-10 w-10 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-primary" />
           </div>
-          <div className="space-y-2">
-            <p className="text-sm font-medium text-foreground">Loading weather data...</p>
-            <p className="text-xs text-muted-foreground animate-pulse">Detecting your location</p>
-          </div>
+          <p className="text-muted-foreground animate-pulse">Loading weather data...</p>
         </div>
       </div>
     );
@@ -207,19 +105,20 @@ const Weather: React.FC = () => {
 
   if (error || !currentWeather) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-destructive/5 to-background flex items-center justify-center p-4">
-        <Card className="max-w-md w-full shadow-xl border-destructive/20">
-          <CardContent className="pt-8 pb-6 text-center space-y-4">
-            <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto">
-              <AlertCircle className="h-8 w-8 text-destructive" />
-            </div>
-            <div className="space-y-2">
-              <h3 className="font-semibold text-lg">Weather Unavailable</h3>
-              <p className="text-sm text-muted-foreground">{error || 'Unable to fetch weather data'}</p>
-            </div>
-            <Button onClick={refetch} variant="outline" className="gap-2">
-              <RefreshCw className="h-4 w-4" />
-              Try Again
+      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background via-background to-destructive/5">
+        <Card className="max-w-md w-full bg-background/60 backdrop-blur-xl border-border/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Weather Data Unavailable
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-muted-foreground">
+              {error || 'Unable to load weather information. Please check your connection and try again.'}
+            </p>
+            <Button onClick={handleRefresh} className="w-full">
+              Retry
             </Button>
           </CardContent>
         </Card>
@@ -227,379 +126,293 @@ const Weather: React.FC = () => {
     );
   }
 
-  const uvInfo = getUVIndexInfo(currentWeather.uv_index);
-  const agriculturalInsights = getAgriculturalInsights();
+  // Prepare rainfall chart data
+  const rainfallData = forecast.slice(0, 7).map((day, index) => ({
+    date: new Date(day.dt * 1000).toISOString().split('T')[0],
+    rainfall: day.rain || 0,
+    cumulative: forecast.slice(0, index + 1).reduce((sum, d) => sum + (d.rain || 0), 0)
+  }));
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 pb-20">
-      {/* Modern Hero Section with Glass Morphism */}
-      <AnimatedWeatherBackground 
-        condition={currentWeather.main} 
-        className="relative h-[55vh] md:h-[60vh] overflow-hidden"
-      >
-        {/* Gradient Overlays for depth and contrast */}
-        <div className="absolute inset-0 bg-gradient-to-b from-background/20 via-background/10 to-background/60" />
-        <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 via-transparent to-secondary/10" />
-        
-        <div className="relative z-10 h-full flex flex-col p-4 md:p-6">
-          {/* Header with Location and Actions */}
-          <div className="flex items-start justify-between mb-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-full bg-background/90 backdrop-blur-md border border-border/50">
-                  <MapPin className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <h2 className="text-foreground font-semibold text-lg leading-tight drop-shadow-sm">
-                    {getLocationDisplay()}
-                  </h2>
-                  <p className="text-muted-foreground text-xs">
-                    {format(new Date(), 'EEEE, MMMM d, yyyy')}
-                  </p>
-                </div>
-              </div>
-            </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              className={cn(
-                "rounded-full bg-background/90 backdrop-blur-md hover:bg-background/95 text-foreground border border-border/50",
-                isRefreshing && "animate-spin"
-              )}
-              onClick={handleRefresh}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Main Weather Display - Centered */}
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center space-y-4">
-              {/* Animated Weather Icon */}
-              <div className="relative inline-block">
-                <div className="absolute inset-0 bg-primary/20 rounded-full blur-3xl scale-150 animate-pulse" />
-                {getWeatherIcon(currentWeather.main, "h-20 w-20 md:h-24 md:w-24 relative drop-shadow-2xl")}
-              </div>
-              
-              {/* Temperature Display */}
-              <div className="space-y-2">
-                <div className="flex items-start justify-center">
-                  <h1 className="text-7xl md:text-8xl font-bold text-foreground tracking-tighter drop-shadow-sm">
-                    {Math.round(currentWeather.temp)}
-                  </h1>
-                  <span className="text-3xl text-muted-foreground font-light mt-2">°C</span>
-                </div>
-                <p className="text-xl md:text-2xl capitalize text-foreground font-medium">
-                  {currentWeather.description}
-                </p>
-                <div className="flex items-center justify-center gap-4 text-muted-foreground">
-                  <span className="text-sm">Feels like {Math.round(currentWeather.feels_like)}°</span>
-                  <span className="text-muted-foreground/60">•</span>
-                  <span className="text-sm">H: {Math.round(currentWeather.temp_max)}° L: {Math.round(currentWeather.temp_min)}°</span>
-                </div>
-              </div>
+    <div className="min-h-screen relative bg-gradient-to-br from-background via-background to-primary/5">
+      <AnimatedWeatherBackground weather={currentWeather.main} />
+      <WeatherAnimation condition={getWeatherCondition()} />
+      
+      <div className="relative z-10 container mx-auto px-4 py-6 space-y-6 pb-20">
+        {/* Header with location and sync */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div className="flex items-center gap-3">
+            <MapPin className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">
+                {currentWeather.location || 'Weather Dashboard'}
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                {format(new Date(), 'EEEE, MMMM d, yyyy')}
+              </p>
             </div>
           </div>
-
-          {/* Quick Stats Grid - Glass Cards */}
-          <div className="grid grid-cols-4 gap-2 mt-auto">
-            {[
-              { icon: Wind, value: `${Math.round(currentWeather.wind_speed)}`, unit: 'km/h', label: 'Wind' },
-              { icon: Droplets, value: `${currentWeather.humidity}`, unit: '%', label: 'Humidity' },
-              { icon: Eye, value: `${(currentWeather.visibility / 1000).toFixed(1)}`, unit: 'km', label: 'Visibility' },
-              { icon: Gauge, value: `${currentWeather.pressure}`, unit: 'hPa', label: 'Pressure' },
-            ].map((stat, idx) => (
-              <div key={idx} className="backdrop-blur-md bg-background/90 rounded-2xl p-3 text-center border border-border/50">
-                <stat.icon className="h-4 w-4 mx-auto mb-1.5 text-primary" />
-                <p className="text-lg font-bold text-foreground">
-                  {stat.value}
-                  <span className="text-xs font-normal text-muted-foreground">{stat.unit}</span>
-                </p>
-                <p className="text-[10px] text-muted-foreground mt-0.5">{stat.label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </AnimatedWeatherBackground>
-
-      {/* Main Content - Modern Cards Design */}
-      <div className="px-4 md:px-6 -mt-6 relative z-20 space-y-4">
-        
-        {/* Agricultural Insights - Premium Card Design */}
-        {agriculturalInsights.length > 0 && (
-          <Card className="backdrop-blur-lg bg-card/95 border-muted/50 shadow-xl overflow-hidden">
-            <div className="bg-gradient-to-r from-primary/10 to-secondary/10 px-4 py-3 border-b">
-              <h3 className="font-semibold flex items-center gap-2">
-                <Wheat className="h-5 w-5 text-primary" />
-                Agricultural Insights
-              </h3>
-            </div>
-            <CardContent className="p-4 space-y-3">
-              {agriculturalInsights.map((insight, idx) => (
-                <div key={idx} className="flex gap-3 p-3 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors">
-                  <div className={cn(
-                    "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
-                    insight.type === 'warning' && "bg-warning/20",
-                    insight.type === 'danger' && "bg-destructive/20",
-                    insight.type === 'info' && "bg-info/20"
-                  )}>
-                    <insight.icon className={cn(
-                      "h-5 w-5",
-                      insight.type === 'warning' && "text-warning",
-                      insight.type === 'danger' && "text-destructive",
-                      insight.type === 'info' && "text-info"
-                    )} />
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <h4 className="font-medium text-sm">{insight.title}</h4>
-                    <p className="text-xs text-muted-foreground">{insight.text}</p>
-                    <p className="text-xs font-medium text-primary">{insight.action}</p>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Today's Details - Bento Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {/* Sunrise/Sunset */}
-          <Card className="col-span-2 backdrop-blur-lg bg-card/95 border-muted/50 shadow-lg overflow-hidden">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="text-sm font-medium text-muted-foreground">Sun Cycle</h4>
-                <Sun className="h-4 w-4 text-weather-sunny" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Sunrise className="h-5 w-5 text-warning" />
-                    <span className="text-xs text-muted-foreground">Sunrise</span>
-                  </div>
-                  <p className="text-xl font-bold">
-                    {format(new Date(currentWeather.sunrise * 1000), 'HH:mm')}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Sunset className="h-5 w-5 text-warning-foreground" />
-                    <span className="text-xs text-muted-foreground">Sunset</span>
-                  </div>
-                  <p className="text-xl font-bold">
-                    {format(new Date(currentWeather.sunset * 1000), 'HH:mm')}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* UV Index */}
-          <Card className="backdrop-blur-lg bg-card/95 border-muted/50 shadow-lg overflow-hidden">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-sm font-medium text-muted-foreground">UV Index</h4>
-                <Activity className="h-4 w-4 text-uv-extreme" />
-              </div>
-              <div className="space-y-2">
-                <p className="text-2xl font-bold">{currentWeather.uv_index || 0}</p>
-                <div className="space-y-1">
-                  <Progress value={uvInfo.percentage} className="h-2" />
-                  <p className="text-[10px] font-medium text-muted-foreground">{uvInfo.level}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Wind */}
-          <Card className="backdrop-blur-lg bg-card/95 border-muted/50 shadow-lg overflow-hidden">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="text-sm font-medium text-muted-foreground">Wind</h4>
-                <Wind className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-baseline gap-1">
-                  <p className="text-2xl font-bold">{Math.round(currentWeather.wind_speed)}</p>
-                  <span className="text-xs text-muted-foreground">km/h</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Navigation2 
-                    className="h-4 w-4 text-muted-foreground" 
-                    style={{ transform: `rotate(${currentWeather.wind_deg}deg)` }}
-                  />
-                  <span className="text-xs font-medium">{getWindDirection(currentWeather.wind_deg)}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          
+          <SyncIndicator
+            lastSyncTime={lastSyncTime}
+            syncStatus={syncStatus}
+            isSyncing={isSyncing || isRefreshing}
+            onSync={handleRefresh}
+          />
         </div>
 
-        {/* Forecast Tabs - Modern Design */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1">
-            <TabsTrigger value="today" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
-              Hourly
-            </TabsTrigger>
-            <TabsTrigger value="tomorrow" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
-              Tomorrow
-            </TabsTrigger>
-            <TabsTrigger value="week" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
-              7 Days
-            </TabsTrigger>
-          </TabsList>
+        {/* Current Weather Hero Card */}
+        <Card className="bg-background/60 backdrop-blur-xl border-border/50 overflow-hidden">
+          <div className="relative p-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Main Weather Display */}
+              <div className="lg:col-span-2 space-y-4">
+                <div className="flex items-center gap-6">
+                  <div className="p-4 rounded-2xl bg-primary/10">
+                    {getWeatherIcon(currentWeather.main)}
+                  </div>
+                  <div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-6xl font-bold text-foreground">
+                        {Math.round(currentWeather.temp)}
+                      </span>
+                      <span className="text-3xl text-muted-foreground">°C</span>
+                    </div>
+                    <p className="text-xl text-muted-foreground capitalize">
+                      {currentWeather.description}
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Feels like {Math.round(currentWeather.feels_like)}°C
+                    </p>
+                  </div>
+                </div>
 
-          {/* Hourly Forecast */}
-          <TabsContent value="today" className="mt-4">
-            <ScrollArea className="w-full">
-              <div className="flex gap-3 pb-2">
-                {hourlyForecast.slice(0, 24).map((hour, index) => (
-                  <Card key={index} className="min-w-[100px] backdrop-blur-lg bg-card/95 border-muted/50 shadow-lg">
-                    <CardContent className="p-4 text-center space-y-2">
-                      <p className="text-xs font-medium text-muted-foreground">
-                        {index === 0 ? 'Now' : format(new Date(hour.dt * 1000), 'HH:mm')}
+                {/* Quick Stats Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div className="flex items-center gap-2">
+                    <Wind className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Wind</p>
+                      <p className="text-sm font-medium">
+                        {Math.round(currentWeather.wind_speed * 3.6)} km/h
                       </p>
-                      <div className="py-2">
-                        {getWeatherIcon(hour.weather[0]?.main || '', "h-8 w-8")}
-                      </div>
-                      <p className="text-xl font-bold">{Math.round(hour.temp)}°</p>
-                      {hour.pop > 0 && (
-                        <div className="flex items-center justify-center gap-1 text-weather-rainy">
-                          <Droplets className="h-3 w-3" />
-                          <span className="text-xs font-medium">{Math.round(hour.pop * 100)}%</span>
-                        </div>
-                      )}
-                      <div className="flex items-center justify-center gap-1 text-muted-foreground">
-                        <Wind className="h-3 w-3" />
-                        <span className="text-[10px]">{Math.round(hour.wind_speed)}km/h</span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <Droplets className="h-4 w-4 text-blue-500" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Humidity</p>
+                      <p className="text-sm font-medium">{currentWeather.humidity}%</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <Eye className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Visibility</p>
+                      <p className="text-sm font-medium">
+                        {(currentWeather.visibility / 1000).toFixed(1)} km
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <Gauge className="h-4 w-4 text-muted-foreground" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Pressure</p>
+                      <p className="text-sm font-medium">{currentWeather.pressure} hPa</p>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <ScrollBar orientation="horizontal" className="mt-2" />
-            </ScrollArea>
-          </TabsContent>
 
-          {/* Tomorrow Forecast */}
-          <TabsContent value="tomorrow" className="mt-4">
-            {forecast[1] && (
-              <Card className="backdrop-blur-lg bg-card/95 border-muted/50 shadow-xl">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-6">
-                    <div className="flex items-center gap-4">
-                      <div className="relative">
-                        <div className="absolute inset-0 bg-primary/10 rounded-full blur-xl scale-150" />
-                        {getWeatherIcon(forecast[1].weather[0]?.main || '', "h-14 w-14 relative")}
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-lg capitalize">{forecast[1].weather[0]?.description}</h3>
-                        <p className="text-sm text-muted-foreground">
-                          {format(new Date(forecast[1].dt * 1000), 'EEEE, MMMM d')}
-                        </p>
-                      </div>
+              {/* Rainfall Summary */}
+              <div className="space-y-4">
+                <Card className="bg-primary/5 border-primary/20">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Droplets className="h-4 w-4 text-blue-500" />
+                      Rainfall Summary
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Today</p>
+                      <p className="text-2xl font-bold text-blue-600">
+                        {todayRainfall.toFixed(1)} mm
+                      </p>
                     </div>
-                    <div className="text-right">
-                      <div className="flex items-center gap-3">
-                        <div className="flex flex-col items-end">
-                          <span className="text-3xl font-bold">{Math.round(forecast[1].temp.max)}°</span>
-                          <span className="text-lg text-muted-foreground">{Math.round(forecast[1].temp.min)}°</span>
-                        </div>
-                      </div>
+                    <Separator />
+                    <div>
+                      <p className="text-xs text-muted-foreground">This Week</p>
+                      <p className="text-xl font-semibold text-blue-500">
+                        {weeklyRainfall.toFixed(1)} mm
+                      </p>
                     </div>
-                  </div>
-                  
-                  <Separator className="my-4" />
-                  
-                  <div className="grid grid-cols-4 gap-4">
-                    <div className="text-center space-y-2">
-                      <div className="w-12 h-12 rounded-full bg-weather-rainy/10 flex items-center justify-center mx-auto">
-                        <Droplets className="h-5 w-5 text-weather-rainy" />
-                      </div>
-                      <p className="text-sm font-medium">{Math.round(forecast[1].pop * 100)}%</p>
-                      <p className="text-[10px] text-muted-foreground">Rain</p>
-                    </div>
-                    <div className="text-center space-y-2">
-                      <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mx-auto">
-                        <Wind className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                      <p className="text-sm font-medium">{Math.round(forecast[1].wind_speed)}km/h</p>
-                      <p className="text-[10px] text-muted-foreground">Wind</p>
-                    </div>
-                    <div className="text-center space-y-2">
-                      <div className="w-12 h-12 rounded-full bg-info/10 flex items-center justify-center mx-auto">
-                        <Droplets className="h-5 w-5 text-info" />
-                      </div>
-                      <p className="text-sm font-medium">{Math.round(forecast[1].humidity)}%</p>
-                      <p className="text-[10px] text-muted-foreground">Humidity</p>
-                    </div>
-                    <div className="text-center space-y-2">
-                      <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center mx-auto">
-                        <Sun className="h-5 w-5 text-accent" />
-                      </div>
-                      <p className="text-sm font-medium">{forecast[1].uvi || 0}</p>
-                      <p className="text-[10px] text-muted-foreground">UV Index</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </div>
+        </Card>
 
-          {/* Week View */}
-          <TabsContent value="week" className="mt-4 space-y-2">
-            {forecast.slice(0, 7).map((day, index) => (
-              <Card key={index} className="backdrop-blur-lg bg-card/95 border-muted/50 shadow-lg hover:shadow-xl transition-all">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4 flex-1">
-                      <div className="w-16 text-left">
-                        <p className="font-medium text-sm">
-                          {index === 0 ? 'Today' : format(new Date(day.dt * 1000), 'EEE')}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground">
-                          {format(new Date(day.dt * 1000), 'MMM d')}
-                        </p>
-                      </div>
-                      
+        {/* Weather Details Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <WeatherCard
+            title="Sunrise / Sunset"
+            value={format(new Date(currentWeather.sunrise * 1000), 'h:mm a')}
+            description={`Sunset: ${format(new Date(currentWeather.sunset * 1000), 'h:mm a')}`}
+            icon={<Sunrise className="h-5 w-5" />}
+          />
+          
+          <WeatherCard
+            title="UV Index"
+            value={currentWeather.uv_index || 'N/A'}
+            description={
+              currentWeather.uv_index 
+                ? currentWeather.uv_index <= 2 ? 'Low'
+                  : currentWeather.uv_index <= 5 ? 'Moderate'
+                  : currentWeather.uv_index <= 7 ? 'High'
+                  : currentWeather.uv_index <= 10 ? 'Very High'
+                  : 'Extreme'
+                : 'No data'
+            }
+            icon={<Sun className="h-5 w-5" />}
+          />
+          
+          <WeatherCard
+            title="Wind Details"
+            value={`${Math.round(currentWeather.wind_speed * 3.6)}`}
+            unit="km/h"
+            description={`Direction: ${getWindDirection(currentWeather.wind_deg)} (${currentWeather.wind_deg}°)`}
+            icon={<Navigation className="h-5 w-5" />}
+          />
+        </div>
+
+        {/* Rainfall Chart */}
+        <RainfallChart data={rainfallData} />
+
+        {/* Forecast Tabs */}
+        <Card className="bg-background/60 backdrop-blur-xl border-border/50">
+          <CardHeader>
+            <CardTitle>Weather Forecast</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Tabs value={activeTab} onValueChange={setActiveTab}>
+              <TabsList className="grid grid-cols-3 w-full max-w-md">
+                <TabsTrigger value="today">Today</TabsTrigger>
+                <TabsTrigger value="tomorrow">Tomorrow</TabsTrigger>
+                <TabsTrigger value="week">7 Days</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="today" className="mt-4">
+                <ScrollArea className="h-[200px]">
+                  <div className="flex gap-4 pb-4">
+                    {hourlyForecast.slice(0, 12).map((hour, index) => (
+                      <Card key={index} className="min-w-[120px] bg-background/40">
+                        <CardContent className="p-4 text-center">
+                          <p className="text-xs text-muted-foreground">
+                            {format(new Date(hour.dt * 1000), 'h:mm a')}
+                          </p>
+                          <div className="my-2">
+                            {getWeatherIcon(hour.weather[0].main)}
+                          </div>
+                          <p className="text-lg font-semibold">
+                            {Math.round(hour.temp)}°
+                          </p>
+                          {hour.pop > 0 && (
+                            <div className="flex items-center justify-center gap-1 mt-1">
+                              <Droplets className="h-3 w-3 text-blue-500" />
+                              <span className="text-xs">{Math.round(hour.pop * 100)}%</span>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+
+              <TabsContent value="tomorrow" className="mt-4">
+                {forecast[1] && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        {getWeatherIcon(day.weather[0]?.main || '', "h-8 w-8")}
-                        <div className="hidden sm:block">
-                          <p className="text-sm capitalize">{day.weather[0]?.description}</p>
+                        {getWeatherIcon(forecast[1].weather[0].main)}
+                        <div>
+                          <p className="font-medium capitalize">
+                            {forecast[1].weather[0].description}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            {format(new Date(forecast[1].dt * 1000), 'EEEE, MMM d')}
+                          </p>
                         </div>
                       </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-6">
-                      {day.pop > 0 && (
-                        <div className="flex items-center gap-1 text-weather-rainy">
-                          <Droplets className="h-4 w-4" />
-                          <span className="text-sm font-medium">{Math.round(day.pop * 100)}%</span>
-                        </div>
-                      )}
-                      
-                      <div className="flex items-center gap-2 text-right">
-                        <span className="text-xl font-bold">{Math.round(day.temp.max)}°</span>
-                        <span className="text-base text-muted-foreground">{Math.round(day.temp.min)}°</span>
+                      <div className="text-right">
+                        <p className="text-2xl font-bold">
+                          {Math.round(forecast[1].temp.max)}°/{Math.round(forecast[1].temp.min)}°
+                        </p>
+                        {forecast[1].pop > 0 && (
+                          <div className="flex items-center gap-1 justify-end mt-1">
+                            <Droplets className="h-4 w-4 text-blue-500" />
+                            <span className="text-sm">{Math.round(forecast[1].pop * 100)}%</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </TabsContent>
-        </Tabs>
+                )}
+              </TabsContent>
+
+              <TabsContent value="week" className="mt-4">
+                <div className="space-y-3">
+                  {forecast.slice(0, 7).map((day, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors">
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-8">
+                          {getWeatherIcon(day.weather[0].main)}
+                        </div>
+                        <div>
+                          <p className="font-medium">
+                            {format(new Date(day.dt * 1000), 'EEE')}
+                          </p>
+                          <p className="text-xs text-muted-foreground capitalize">
+                            {day.weather[0].description}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        {day.pop > 0 && (
+                          <div className="flex items-center gap-1">
+                            <Droplets className="h-3 w-3 text-blue-500" />
+                            <span className="text-sm">{Math.round(day.pop * 100)}%</span>
+                          </div>
+                        )}
+                        <div className="text-right">
+                          <span className="font-semibold">{Math.round(day.temp.max)}°</span>
+                          <span className="text-muted-foreground ml-1">
+                            {Math.round(day.temp.min)}°
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
+
+        {/* Agricultural Insights */}
+        <AgriculturalInsights weather={currentWeather} forecast={forecast} />
 
         {/* Data Provider Attribution */}
-        {currentWeather.provider && (
-          <div className="text-center py-4">
-            <p className="text-xs text-muted-foreground">
-              Weather data by {currentWeather.provider}
-            </p>
-          </div>
-        )}
+        <div className="text-center text-xs text-muted-foreground">
+          Weather data provided by {currentWeather.provider || 'OpenWeather'} • 
+          Last updated: {format(new Date(currentWeather.dt * 1000), 'h:mm a')}
+        </div>
       </div>
     </div>
   );
-};
-
-export default Weather;
+}

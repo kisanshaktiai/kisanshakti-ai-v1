@@ -12185,6 +12185,99 @@ export type Database = {
           },
         ]
       }
+      weather_aggregates: {
+        Row: {
+          aggregate_date: string
+          agricultural_alerts: Json | null
+          created_at: string
+          disease_risk_level: string | null
+          farmer_id: string | null
+          frost_risk: boolean | null
+          heat_stress_risk: boolean | null
+          humidity_avg_percent: number | null
+          id: string
+          land_id: string | null
+          rain_mm_afternoon: number | null
+          rain_mm_evening: number | null
+          rain_mm_morning: number | null
+          rain_mm_night: number | null
+          rain_mm_total: number
+          sunshine_hours: number | null
+          temp_avg_celsius: number | null
+          temp_max_celsius: number | null
+          temp_min_celsius: number | null
+          tenant_id: string
+          updated_at: string
+          wind_speed_avg_kmh: number | null
+          wind_speed_max_kmh: number | null
+        }
+        Insert: {
+          aggregate_date: string
+          agricultural_alerts?: Json | null
+          created_at?: string
+          disease_risk_level?: string | null
+          farmer_id?: string | null
+          frost_risk?: boolean | null
+          heat_stress_risk?: boolean | null
+          humidity_avg_percent?: number | null
+          id?: string
+          land_id?: string | null
+          rain_mm_afternoon?: number | null
+          rain_mm_evening?: number | null
+          rain_mm_morning?: number | null
+          rain_mm_night?: number | null
+          rain_mm_total?: number
+          sunshine_hours?: number | null
+          temp_avg_celsius?: number | null
+          temp_max_celsius?: number | null
+          temp_min_celsius?: number | null
+          tenant_id: string
+          updated_at?: string
+          wind_speed_avg_kmh?: number | null
+          wind_speed_max_kmh?: number | null
+        }
+        Update: {
+          aggregate_date?: string
+          agricultural_alerts?: Json | null
+          created_at?: string
+          disease_risk_level?: string | null
+          farmer_id?: string | null
+          frost_risk?: boolean | null
+          heat_stress_risk?: boolean | null
+          humidity_avg_percent?: number | null
+          id?: string
+          land_id?: string | null
+          rain_mm_afternoon?: number | null
+          rain_mm_evening?: number | null
+          rain_mm_morning?: number | null
+          rain_mm_night?: number | null
+          rain_mm_total?: number
+          sunshine_hours?: number | null
+          temp_avg_celsius?: number | null
+          temp_max_celsius?: number | null
+          temp_min_celsius?: number | null
+          tenant_id?: string
+          updated_at?: string
+          wind_speed_avg_kmh?: number | null
+          wind_speed_max_kmh?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weather_aggregates_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_aggregates_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       weather_alerts: {
         Row: {
           affected_activities: string[] | null
@@ -12530,6 +12623,93 @@ export type Database = {
           wind_speed_avg_kmh?: number | null
         }
         Relationships: []
+      }
+      weather_observations: {
+        Row: {
+          cloud_coverage_percent: number | null
+          created_at: string
+          dew_point_celsius: number | null
+          farmer_id: string | null
+          feels_like_celsius: number | null
+          humidity_percent: number | null
+          id: string
+          land_id: string | null
+          metadata: Json | null
+          observation_date: string
+          observation_time: string
+          pressure_hpa: number | null
+          rainfall_mm: number
+          temperature_celsius: number | null
+          tenant_id: string
+          updated_at: string
+          uv_index: number | null
+          visibility_km: number | null
+          weather_condition: string | null
+          wind_direction: string | null
+          wind_speed_kmh: number | null
+        }
+        Insert: {
+          cloud_coverage_percent?: number | null
+          created_at?: string
+          dew_point_celsius?: number | null
+          farmer_id?: string | null
+          feels_like_celsius?: number | null
+          humidity_percent?: number | null
+          id?: string
+          land_id?: string | null
+          metadata?: Json | null
+          observation_date: string
+          observation_time?: string
+          pressure_hpa?: number | null
+          rainfall_mm?: number
+          temperature_celsius?: number | null
+          tenant_id: string
+          updated_at?: string
+          uv_index?: number | null
+          visibility_km?: number | null
+          weather_condition?: string | null
+          wind_direction?: string | null
+          wind_speed_kmh?: number | null
+        }
+        Update: {
+          cloud_coverage_percent?: number | null
+          created_at?: string
+          dew_point_celsius?: number | null
+          farmer_id?: string | null
+          feels_like_celsius?: number | null
+          humidity_percent?: number | null
+          id?: string
+          land_id?: string | null
+          metadata?: Json | null
+          observation_date?: string
+          observation_time?: string
+          pressure_hpa?: number | null
+          rainfall_mm?: number
+          temperature_celsius?: number | null
+          tenant_id?: string
+          updated_at?: string
+          uv_index?: number | null
+          visibility_km?: number | null
+          weather_condition?: string | null
+          wind_direction?: string | null
+          wind_speed_kmh?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weather_observations_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       weather_preferences: {
         Row: {
