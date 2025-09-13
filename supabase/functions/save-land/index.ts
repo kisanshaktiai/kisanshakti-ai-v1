@@ -98,7 +98,7 @@ serve(async (req) => {
       // Boundary information
       boundary_polygon_old: boundaryPolygon,
       center_point_old: centerPoint,
-      boundary_method: 'google_maps',
+      boundary_method: 'gps_points', // Changed from 'google_maps' to valid value
       gps_accuracy_meters: 10,
       gps_recorded_at: new Date().toISOString(),
       
