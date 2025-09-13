@@ -203,26 +203,41 @@ export default function Schedule() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => flowStep === 'land-selection' ? navigate('/app') : handleBack()}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold">AI Crop Schedule</h1>
-            <p className="text-muted-foreground">
-              {flowStep === 'land-selection' && 'Select your land'}
-              {flowStep === 'crop-input' && 'Choose crop and date'}
-              {flowStep === 'schedule-view' && 'Your crop schedule'}
-            </p>
+      {/* Header Card */}
+      <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => flowStep === 'land-selection' ? navigate('/app') : handleBack()}
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <div>
+                <h1 className="text-lg font-semibold">AI Crop Schedule</h1>
+                <p className="text-sm text-muted-foreground">
+                  {flowStep === 'land-selection' && 'Select your land'}
+                  {flowStep === 'crop-input' && 'Choose crop and date'}
+                  {flowStep === 'schedule-view' && 'Your crop schedule'}
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+          
+          {/* Generate/Save Button */}
+          {flowStep === 'land-selection' && (
+            <Button 
+              className="w-full bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary transition-all"
+              disabled={lands.length === 0}
+            >
+              <Calendar className="h-4 w-4 mr-2" />
+              Generate Schedule
+            </Button>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Flow Steps */}
       {flowStep === 'land-selection' && (
