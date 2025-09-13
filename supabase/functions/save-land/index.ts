@@ -3,7 +3,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-session-token, x-tenant-id, x-farmer-id',
 };
 
 serve(async (req) => {
@@ -18,16 +18,43 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get request body
+    // Extract authentication and tenant context from headers
+    const sessionToken = req.headers.get('x-session-token');
+    const tenantId = req.headers.get('x-tenant-id');
+    const farmerId = req.headers.get('x-farmer-id');
+    
+    console.log('Session context:', { sessionToken, tenantId, farmerId });
+
+    // Validate session and context
+    if (!sessionToken || !tenantId || !farmerId) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing authentication context',
+          details: 'Session token, tenant ID, and farmer ID are required in headers'
+        }),
+        { 
+          status: 401, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // TODO: In production, validate the session token against active_sessions table
+    // For now, we trust the headers from the authenticated app
+    
+    // Get request body (only land data, no IDs)
     const body = await req.json();
     console.log('Received land data:', body);
 
-    // Validate required fields
-    const requiredFields = ['name', 'farmer_id', 'tenant_id', 'ownership_type', 'area_acres'];
+    // Validate only truly required land fields
+    const requiredFields = ['name', 'ownership_type', 'area_acres'];
     for (const field of requiredFields) {
-      if (!body[field]) {
+      if (body[field] === undefined || body[field] === null || body[field] === '') {
         return new Response(
-          JSON.stringify({ error: `${field} is required` }),
+          JSON.stringify({ 
+            error: `${field} is required`,
+            details: `The field "${field}" must be provided and cannot be empty`
+          }),
           { 
             status: 400, 
             headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -62,15 +89,21 @@ serve(async (req) => {
       };
     }
 
-    // Prepare land data for insertion
+    // Prepare land data for insertion with server-side IDs
     const landData = {
-      farmer_id: body.farmer_id,
-      tenant_id: body.tenant_id,
-      name: body.name,
-      survey_number: body.survey_number || null,
-      ownership_type: body.ownership_type,
+      // IDs from authenticated context (NOT from request body)
+      farmer_id: farmerId,
+      tenant_id: tenantId,
       
-      // Location fields
+      // Required land fields from request
+      name: body.name,
+      ownership_type: body.ownership_type,
+      area_acres: body.area_acres,
+      
+      // Optional survey details
+      survey_number: body.survey_number || null,
+      
+      // Optional location fields
       state_id: body.state_id || null,
       state: body.state || null,
       district_id: body.district_id || null,
@@ -80,29 +113,28 @@ serve(async (req) => {
       village_id: body.village_id || null,
       village: body.village || null,
       
-      // Land characteristics
+      // Optional land characteristics
       soil_type: body.soil_type || null,
       water_source: body.water_source || null,
       irrigation_type: body.irrigation_type || null,
       
-      // Crop information
+      // Optional crop information
       current_crop: body.current_crop || null,
       previous_crop: body.previous_crop || null,
       cultivation_date: body.cultivation_date || null,
       last_harvest_date: body.last_harvest_date || null,
       
       // Area information
-      area_acres: body.area_acres,
       area_guntas: body.area_guntas || null,
       
-      // Boundary information
+      // Boundary information (polygon saved in boundary_polygon_old)
       boundary_polygon_old: boundaryPolygon,
       center_point_old: centerPoint,
-      boundary_method: 'gps_points', // Changed from 'google_maps' to valid value
-      gps_accuracy_meters: 10,
-      gps_recorded_at: new Date().toISOString(),
+      boundary_method: boundaryPolygon ? 'gps_points' : null,
+      gps_accuracy_meters: boundaryPolygon ? 10 : null,
+      gps_recorded_at: boundaryPolygon ? new Date().toISOString() : null,
       
-      // Status
+      // Status and timestamps
       is_active: true,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -120,7 +152,11 @@ serve(async (req) => {
     if (error) {
       console.error('Error inserting land:', error);
       return new Response(
-        JSON.stringify({ error: error.message }),
+        JSON.stringify({ 
+          error: error.message,
+          details: error.details || 'Failed to save land record to database',
+          code: error.code || 'DATABASE_ERROR'
+        }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -146,7 +182,11 @@ serve(async (req) => {
   } catch (error) {
     console.error('Unexpected error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        details: 'An unexpected error occurred while processing the request',
+        code: 'INTERNAL_ERROR'
+      }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
