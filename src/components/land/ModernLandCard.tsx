@@ -155,7 +155,7 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
   const mapUrl = getStaticMapUrl();
   
   const handleEdit = () => {
-    navigate(`/app/lands/edit/${land.id}`);
+    navigate(`/app/lands/${land.id}/edit`);
   };
   
   const handleDelete = async () => {
@@ -246,7 +246,7 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
           
           <CardContent 
             className="p-4 space-y-4"
-            onClick={() => navigate(`/app/lands/edit/${land.id}`)}
+            onClick={() => navigate(`/app/lands/${land.id}`)}
           >
             {/* Land Name and Survey Number */}
             <div className="space-y-1">
