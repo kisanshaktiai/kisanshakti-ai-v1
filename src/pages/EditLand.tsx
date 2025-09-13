@@ -41,7 +41,17 @@ export default function EditLand() {
         // Use the API service to fetch land data
         const data = await landsApi.fetchLandById(id);
 
-        if (!data) throw new Error('Land not found');
+        // Handle case when land is not found
+        if (!data) {
+          console.log('Land not found with ID:', id);
+          toast({
+            title: 'Warning',
+            description: 'Land not found. It may have been deleted or you may not have permission to view it.',
+            variant: 'destructive',
+          });
+          navigate('/app/lands');
+          return;
+        }
         
         setLandData(data);
         
@@ -94,7 +104,7 @@ export default function EditLand() {
         console.error('Error loading land:', error);
         toast({
           title: 'Error',
-          description: 'Failed to load land details',
+          description: 'Failed to load land details. Please try again.',
           variant: 'destructive',
         });
         navigate('/app/lands');

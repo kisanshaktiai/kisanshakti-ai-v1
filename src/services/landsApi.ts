@@ -139,6 +139,16 @@ class LandsApiService {
       throw new Error('No authentication context available');
     }
 
+    // Log query parameters for debugging
+    console.log('Fetching land with parameters:', {
+      landId: id,
+      farmerId: user.id,
+      filters: {
+        is_active: true,
+        deleted_at: null
+      }
+    });
+
     const { data, error } = await supabase
       .from('lands')
       .select('*')
@@ -146,10 +156,15 @@ class LandsApiService {
       .eq('farmer_id', user.id)
       .eq('is_active', true)
       .is('deleted_at', null)
-      .single();
+      .maybeSingle();  // Changed from .single() to .maybeSingle()
 
     if (error) {
       console.error('Error fetching land by ID:', error);
+      return null;
+    }
+
+    if (!data) {
+      console.log('No land found with ID:', id);
       return null;
     }
 
