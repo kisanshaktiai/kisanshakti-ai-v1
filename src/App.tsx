@@ -43,6 +43,7 @@ import { useLanguageStore } from "@/stores/languageStore";
 import LocationService from "@/services/LocationService";
 import { useLocationPermission } from "@/hooks/useLocationPermission";
 import { WhiteLabelService } from "@/services/WhiteLabelService";
+import { useLocationPreloader } from "@/hooks/useLocationPreloader";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -62,6 +63,9 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   const { permissionStatus, requestPermission } = useLocationPermission();
   const [showLocationDialog, setShowLocationDialog] = useState(false);
   const [hasRequestedPermission, setHasRequestedPermission] = useState(false);
+  
+  // Preload location data for faster form loading
+  useLocationPreloader();
 
   useEffect(() => {
     // Initialize app with performance optimization

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { useLocationCache } from './useLocationCache';
 
 interface State {
   id: string;
@@ -41,13 +42,14 @@ interface ErrorStates {
 }
 
 export function useLocationData() {
+  const cache = useLocationCache();
   const [states, setStates] = useState<State[]>([]);
   const [districts, setDistricts] = useState<District[]>([]);
   const [talukas, setTalukas] = useState<Taluka[]>([]);
   const [villages, setVillages] = useState<Village[]>([]);
   
   const [loading, setLoading] = useState<LoadingStates>({
-    states: true,
+    states: false,
     districts: false,
     talukas: false,
     villages: false
@@ -60,11 +62,16 @@ export function useLocationData() {
     villages: null
   });
 
-  const [retryCount, setRetryCount] = useState(0);
-
-  // Load states on mount with retry logic
+  // Load states on mount
   useEffect(() => {
     const loadStates = async () => {
+      // Check cache first
+      if (cache.isCacheValid('states') && cache.states.length > 0) {
+        setStates(cache.states);
+        console.log('Loaded states from cache');
+        return;
+      }
+
       setLoading(prev => ({ ...prev, states: true }));
       setErrors(prev => ({ ...prev, states: null }));
       
@@ -77,24 +84,29 @@ export function useLocationData() {
         
         if (error) throw error;
         
-        if (data) {
+        if (data && data.length > 0) {
           setStates(data);
-          console.log(`Loaded ${data.length} states`);
+          cache.setStates(data);
+          console.log(`Loaded ${data.length} states from database`);
+        } else {
+          // If no data, try to use stale cache
+          if (cache.states.length > 0) {
+            setStates(cache.states);
+            console.log('Using stale cache for states');
+          }
         }
       } catch (error) {
-        const errorMessage = 'Failed to load states. Please refresh the page.';
         console.error('Error loading states:', error);
-        setErrors(prev => ({ ...prev, states: errorMessage }));
         
-        // Retry logic
-        if (retryCount < 3) {
-          setTimeout(() => {
-            setRetryCount(prev => prev + 1);
-          }, 2000 * (retryCount + 1));
+        // Try to use stale cache on error
+        if (cache.states.length > 0) {
+          setStates(cache.states);
+          console.log('Using stale cache after error');
         } else {
+          setErrors(prev => ({ ...prev, states: 'Failed to load states' }));
           toast({
-            title: "Error",
-            description: errorMessage,
+            title: "Connection Error",
+            description: "Unable to load location data. Please check your connection.",
             variant: "destructive"
           });
         }
@@ -104,13 +116,21 @@ export function useLocationData() {
     };
     
     loadStates();
-  }, [retryCount]);
+  }, []);
 
   const loadDistricts = useCallback(async (stateId: string) => {
     if (!stateId) {
       setDistricts([]);
       setTalukas([]);
       setVillages([]);
+      return;
+    }
+
+    // Check cache first
+    const cachedDistricts = cache.getDistricts(stateId);
+    if (cache.isCacheValid('districts', stateId) && cachedDistricts && cachedDistricts.length > 0) {
+      setDistricts(cachedDistricts);
+      console.log('Loaded districts from cache');
       return;
     }
 
@@ -131,30 +151,44 @@ export function useLocationData() {
       
       if (error) throw error;
       
-      if (data) {
+      if (data && data.length > 0) {
         setDistricts(data);
-        console.log(`Loaded ${data.length} districts for state ${stateId}`);
+        cache.setDistricts(stateId, data);
+        console.log(`Loaded ${data.length} districts from database`);
+      } else if (cachedDistricts && cachedDistricts.length > 0) {
+        // Use stale cache if available
+        setDistricts(cachedDistricts);
+        console.log('Using stale cache for districts');
       } else {
         setDistricts([]);
       }
     } catch (error) {
-      const errorMessage = 'Failed to load districts. Please try again.';
       console.error('Error loading districts:', error);
-      setErrors(prev => ({ ...prev, districts: errorMessage }));
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive"
-      });
+      
+      // Try stale cache on error
+      if (cachedDistricts && cachedDistricts.length > 0) {
+        setDistricts(cachedDistricts);
+        console.log('Using stale cache after error');
+      } else {
+        setErrors(prev => ({ ...prev, districts: 'Failed to load districts' }));
+      }
     } finally {
       setLoading(prev => ({ ...prev, districts: false }));
     }
-  }, []);
+  }, [cache]);
 
   const loadTalukas = useCallback(async (districtId: string) => {
     if (!districtId) {
       setTalukas([]);
       setVillages([]);
+      return;
+    }
+
+    // Check cache first
+    const cachedTalukas = cache.getTalukas(districtId);
+    if (cache.isCacheValid('talukas', districtId) && cachedTalukas && cachedTalukas.length > 0) {
+      setTalukas(cachedTalukas);
+      console.log('Loaded talukas from cache');
       return;
     }
 
@@ -174,29 +208,41 @@ export function useLocationData() {
       
       if (error) throw error;
       
-      if (data) {
+      if (data && data.length > 0) {
         setTalukas(data);
-        console.log(`Loaded ${data.length} talukas for district ${districtId}`);
+        cache.setTalukas(districtId, data);
+        console.log(`Loaded ${data.length} talukas from database`);
+      } else if (cachedTalukas && cachedTalukas.length > 0) {
+        setTalukas(cachedTalukas);
+        console.log('Using stale cache for talukas');
       } else {
         setTalukas([]);
       }
     } catch (error) {
-      const errorMessage = 'Failed to load talukas. Please try again.';
       console.error('Error loading talukas:', error);
-      setErrors(prev => ({ ...prev, talukas: errorMessage }));
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive"
-      });
+      
+      if (cachedTalukas && cachedTalukas.length > 0) {
+        setTalukas(cachedTalukas);
+        console.log('Using stale cache after error');
+      } else {
+        setErrors(prev => ({ ...prev, talukas: 'Failed to load talukas' }));
+      }
     } finally {
       setLoading(prev => ({ ...prev, talukas: false }));
     }
-  }, []);
+  }, [cache]);
 
   const loadVillages = useCallback(async (talukaId: string) => {
     if (!talukaId) {
       setVillages([]);
+      return;
+    }
+
+    // Check cache first
+    const cachedVillages = cache.getVillages(talukaId);
+    if (cache.isCacheValid('villages', talukaId) && cachedVillages && cachedVillages.length > 0) {
+      setVillages(cachedVillages);
+      console.log('Loaded villages from cache');
       return;
     }
 
@@ -213,25 +259,29 @@ export function useLocationData() {
       
       if (error) throw error;
       
-      if (data) {
+      if (data && data.length > 0) {
         setVillages(data);
-        console.log(`Loaded ${data.length} villages for taluka ${talukaId}`);
+        cache.setVillages(talukaId, data);
+        console.log(`Loaded ${data.length} villages from database`);
+      } else if (cachedVillages && cachedVillages.length > 0) {
+        setVillages(cachedVillages);
+        console.log('Using stale cache for villages');
       } else {
         setVillages([]);
       }
     } catch (error) {
-      const errorMessage = 'Failed to load villages. Please try again.';
       console.error('Error loading villages:', error);
-      setErrors(prev => ({ ...prev, villages: errorMessage }));
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive"
-      });
+      
+      if (cachedVillages && cachedVillages.length > 0) {
+        setVillages(cachedVillages);
+        console.log('Using stale cache after error');
+      } else {
+        setErrors(prev => ({ ...prev, villages: 'Failed to load villages' }));
+      }
     } finally {
       setLoading(prev => ({ ...prev, villages: false }));
     }
-  }, []);
+  }, [cache]);
 
   return {
     states,
