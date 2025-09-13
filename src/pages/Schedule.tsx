@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Calendar, Plus, MapPin } from 'lucide-react';
+import { ArrowLeft, Calendar, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
+import LandSelector from '@/components/schedule/LandSelector';
+import CropDateInput from '@/components/schedule/CropDateInput';
 import CropScheduleView from '@/components/schedule/CropScheduleView';
+import { format } from 'date-fns';
 
 interface Land {
   id: string;
@@ -15,16 +17,34 @@ interface Land {
   area_acres: number;
   area_guntas?: number;
   village?: string;
+  taluka?: string;
+  district?: string;
+  state?: string;
+  survey_number?: string;
+  soil_type?: string;
+  water_source?: string;
+  irrigation_type?: string;
   current_crop?: string;
+  soil_ph?: number;
+  organic_carbon_percent?: number;
 }
+
+type FlowStep = 'land-selection' | 'crop-input' | 'schedule-view';
 
 export default function Schedule() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user } = useAuthStore();
+  const { user, session } = useAuthStore();
   const [lands, setLands] = useState<Land[]>([]);
-  const [selectedLandId, setSelectedLandId] = useState<string>('');
+  const [selectedLand, setSelectedLand] = useState<Land | null>(null);
   const [loading, setLoading] = useState(true);
+  const [flowStep, setFlowStep] = useState<FlowStep>('land-selection');
+  const [scheduleData, setScheduleData] = useState<{
+    cropName: string;
+    cropVariety: string;
+    sowingDate: Date;
+  } | null>(null);
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     fetchLands();
@@ -36,7 +56,13 @@ export default function Schedule() {
     try {
       const { data, error } = await supabase
         .from('lands')
-        .select('id, name, area_acres, area_guntas, village, current_crop')
+        .select(`
+          id, name, area_acres, area_guntas, 
+          village, taluka, district, state,
+          survey_number, soil_type, water_source, 
+          irrigation_type, current_crop,
+          soil_ph, organic_carbon_percent
+        `)
         .eq('farmer_id', user.id)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
@@ -45,8 +71,6 @@ export default function Schedule() {
       
       if (data && data.length > 0) {
         setLands(data);
-        // Automatically select the first land
-        setSelectedLandId(data[0].id);
       }
     } catch (error) {
       console.error('Error fetching lands:', error);
@@ -60,7 +84,72 @@ export default function Schedule() {
     }
   };
 
-  const selectedLand = lands.find(land => land.id === selectedLandId);
+  const handleLandSelect = (land: Land) => {
+    setSelectedLand(land);
+    setFlowStep('crop-input');
+  };
+
+  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date) => {
+    if (!selectedLand) return;
+
+    setScheduleData({ cropName, cropVariety, sowingDate });
+    
+    try {
+      setGenerating(true);
+
+      // Fetch weather data if available
+      const weatherData = null; // Can be integrated with weather API later
+
+      // Call edge function to generate schedule
+      const response = await supabase.functions.invoke('generate-crop-schedule', {
+        body: {
+          landId: selectedLand.id,
+          cropName,
+          cropVariety,
+          sowingDate: format(sowingDate, 'yyyy-MM-dd'),
+          weatherData,
+          regenerate: false,
+        },
+        headers: {
+          'x-tenant-id': user?.tenantId || '',
+          'x-farmer-id': user?.id || '',
+          'x-session-token': session?.token || '',
+        },
+      });
+
+      if (response.error) throw response.error;
+
+      const { data } = response;
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to generate schedule');
+      }
+
+      toast({
+        title: '✅ Schedule Generated',
+        description: `AI crop schedule created for ${cropName}`,
+      });
+
+      setFlowStep('schedule-view');
+    } catch (error) {
+      console.error('Error generating schedule:', error);
+      toast({
+        title: 'Generation Failed',
+        description: error instanceof Error ? error.message : 'Failed to generate schedule',
+        variant: 'destructive',
+      });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleBack = () => {
+    if (flowStep === 'crop-input') {
+      setFlowStep('land-selection');
+      setSelectedLand(null);
+    } else if (flowStep === 'schedule-view') {
+      setFlowStep('crop-input');
+    }
+  };
 
   if (loading) {
     return (
@@ -112,55 +201,43 @@ export default function Schedule() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigate('/app')}
+            onClick={() => flowStep === 'land-selection' ? navigate('/app') : handleBack()}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
             <h1 className="text-2xl font-bold">AI Crop Schedule</h1>
             <p className="text-muted-foreground">
-              Manage crop schedules for your lands
+              {flowStep === 'land-selection' && 'Select your land'}
+              {flowStep === 'crop-input' && 'Choose crop and date'}
+              {flowStep === 'schedule-view' && 'Your crop schedule'}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Land Selection Tabs */}
-      {lands.length > 1 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Select Land</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Tabs value={selectedLandId} onValueChange={setSelectedLandId}>
-              <TabsList className="w-full flex-wrap h-auto p-1">
-                {lands.map(land => (
-                  <TabsTrigger 
-                    key={land.id} 
-                    value={land.id}
-                    className="flex items-center gap-2"
-                  >
-                    <MapPin className="h-3 w-3" />
-                    <span>{land.name}</span>
-                    {land.current_crop && (
-                      <span className="text-xs text-muted-foreground">
-                        ({land.current_crop})
-                      </span>
-                    )}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
-          </CardContent>
-        </Card>
+      {/* Flow Steps */}
+      {flowStep === 'land-selection' && (
+        <LandSelector 
+          lands={lands}
+          onSelectLand={handleLandSelect}
+        />
       )}
 
-      {/* Schedule View */}
-      {selectedLand && (
+      {flowStep === 'crop-input' && selectedLand && (
+        <CropDateInput
+          land={selectedLand}
+          onSubmit={handleCropDateSubmit}
+          onBack={handleBack}
+          loading={generating}
+        />
+      )}
+
+      {flowStep === 'schedule-view' && selectedLand && scheduleData && (
         <CropScheduleView
           landId={selectedLand.id}
           landName={selectedLand.name}
-          currentCrop={selectedLand.current_crop}
+          currentCrop={scheduleData.cropName}
         />
       )}
     </div>
