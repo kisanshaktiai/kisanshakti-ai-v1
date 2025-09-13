@@ -212,4 +212,72 @@
   .shadow-3xl {
     box-shadow: 0 35px 60px -15px rgba(0, 0, 0, 0.5);
   }
+  
+  /* Premium glass cards for crop selection */
+  .glass-card {
+    @apply bg-white/70 dark:bg-black/20 backdrop-blur-xl border-2 border-white/30 dark:border-white/20;
+    @apply rounded-2xl shadow-lg;
+    box-shadow: 
+      0 8px 32px 0 rgba(31, 38, 135, 0.15),
+      inset 0 2px 4px 0 rgba(255, 255, 255, 0.3),
+      inset 0 -2px 4px 0 rgba(0, 0, 0, 0.1);
+  }
+  
+  .glass-card-premium {
+    @apply bg-white/60 dark:bg-black/30 backdrop-blur-2xl border-2 border-white/40 dark:border-white/30;
+    @apply rounded-2xl;
+    box-shadow: 
+      0 20px 40px 0 rgba(31, 38, 135, 0.2),
+      0 4px 12px 0 rgba(0, 0, 0, 0.1),
+      inset 0 4px 8px 0 rgba(255, 255, 255, 0.4),
+      inset 0 -4px 8px 0 rgba(0, 0, 0, 0.05);
+  }
+  
+  .glass-card:hover,
+  .glass-card-glow {
+    @apply border-white/50 dark:border-white/40;
+    box-shadow: 
+      0 12px 48px 0 rgba(31, 38, 135, 0.25),
+      0 0 24px 0 hsl(var(--primary) / 0.15),
+      inset 0 2px 4px 0 rgba(255, 255, 255, 0.4),
+      inset 0 -2px 4px 0 rgba(0, 0, 0, 0.1);
+  }
+  
+  .glass-card-selected {
+    @apply border-2;
+    border-image: linear-gradient(135deg, hsl(var(--primary) / 0.8), hsl(var(--accent) / 0.8)) 1;
+    box-shadow: 
+      0 12px 48px 0 hsl(var(--primary) / 0.3),
+      0 0 32px 0 hsl(var(--primary) / 0.2),
+      inset 0 2px 4px 0 rgba(255, 255, 255, 0.5);
+  }
+  
+  .glass-checkmark {
+    @apply rounded-full p-1.5;
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+    box-shadow: 
+      0 4px 12px 0 hsl(var(--primary) / 0.4),
+      0 0 20px 0 hsl(var(--primary) / 0.3);
+  }
+  
+  .glass-badge {
+    @apply bg-white/60 dark:bg-black/40 backdrop-blur-md border border-white/30 dark:border-white/20;
+    box-shadow: 
+      0 2px 8px 0 rgba(0, 0, 0, 0.1),
+      inset 0 1px 2px 0 rgba(255, 255, 255, 0.3);
+  }
+  
+  /* Animation utilities */
+  @keyframes pulse-subtle {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.8;
+    }
+  }
+  
+  .animate-pulse-subtle {
+    animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
 }

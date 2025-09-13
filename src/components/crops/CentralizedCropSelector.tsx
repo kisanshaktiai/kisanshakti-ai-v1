@@ -159,37 +159,57 @@ export function CentralizedCropSelector({
   const renderGroups = () => (
     <AnimatePresence mode="wait">
       <motion.div
-        initial={{ opacity: 0, y: 10 }}
+        initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -10 }}
-        className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4"
+        exit={{ opacity: 0, y: -20 }}
+        className="grid grid-cols-3 lg:grid-cols-4 gap-4 p-6"
       >
         {groups.map((group, index) => (
           <motion.div
             key={group.id}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: index * 0.05 }}
+            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ 
+              delay: index * 0.03,
+              type: "spring",
+              stiffness: 260,
+              damping: 20
+            }}
+            whileHover={{ scale: 1.05, y: -5 }}
+            whileTap={{ scale: 0.98 }}
           >
-            <Card
+            <div
               className={cn(
-                "relative p-4 cursor-pointer transition-all hover:shadow-lg border-2",
-                "hover:border-primary/50 active:scale-95",
-                "bg-gradient-to-br from-background to-muted/20",
-                "group overflow-hidden"
+                "relative cursor-pointer transition-all duration-300",
+                "glass-card-premium hover:glass-card-glow",
+                "group"
               )}
               onClick={() => handleGroupSelect(group)}
             >
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-primary/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative flex flex-col items-center space-y-2">
-                <span className="text-3xl transform group-hover:scale-110 transition-transform">
-                  {group.group_icon}
-                </span>
-                <span className="text-sm font-medium text-center">
+              {/* Gradient background effect */}
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/10 via-accent/5 to-secondary/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              
+              {/* Content */}
+              <div className="relative flex flex-col items-center p-6 space-y-3">
+                {/* Icon with gradient background */}
+                <div className="relative">
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-accent/20 rounded-full blur-xl group-hover:blur-2xl transition-all duration-300" />
+                  <span className="relative text-4xl lg:text-5xl transform group-hover:scale-110 transition-transform duration-300 filter drop-shadow-lg">
+                    {group.group_icon}
+                  </span>
+                </div>
+                
+                {/* Label */}
+                <span className="text-sm font-semibold text-foreground/90 group-hover:text-foreground transition-colors duration-300">
                   {group.group_name}
                 </span>
               </div>
-            </Card>
+              
+              {/* Hover glow effect */}
+              <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none">
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/10 via-transparent to-accent/10" />
+              </div>
+            </div>
           </motion.div>
         ))}
       </motion.div>
@@ -247,58 +267,72 @@ export function CentralizedCropSelector({
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.02 }}
                 >
-                  <Card
+                  <div
                     className={cn(
-                      "p-3 cursor-pointer transition-all group",
-                      "hover:shadow-md active:scale-[0.98]",
-                      isSelected ? "border-primary bg-gradient-to-r from-primary/10 to-primary/5 shadow-md" : "hover:border-primary/50",
-                      "relative overflow-hidden"
+                      "relative cursor-pointer transition-all duration-300",
+                      "glass-card hover:glass-card-glow",
+                      isSelected && "glass-card-selected",
+                      "group"
                     )}
                     onClick={() => handleCropSelect(crop)}
                   >
-                    <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                    <div className="relative flex items-center justify-between">
+                    {/* Selection overlay */}
+                    {isSelected && (
+                      <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary/20 via-accent/10 to-secondary/10 animate-pulse-subtle" />
+                    )}
+                    
+                    {/* Hover gradient */}
+                    <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    
+                    <div className="relative flex items-center justify-between p-4">
                       <div className="flex items-center gap-3">
-                        <motion.span 
-                          className="text-xl"
-                          whileHover={{ scale: 1.1 }}
-                          transition={{ type: "spring", stiffness: 400 }}
+                        {/* Icon with gradient shadow */}
+                        <motion.div 
+                          className="relative"
+                          whileHover={{ scale: 1.15, rotate: 5 }}
+                          transition={{ type: "spring", stiffness: 300 }}
                         >
-                          {crop.icon || "🌱"}
-                        </motion.span>
-                        <div>
-                          <p className="font-medium flex items-center gap-2">
+                          <div className="absolute inset-0 bg-gradient-to-br from-primary/30 to-accent/30 rounded-full blur-lg group-hover:blur-xl transition-all duration-300" />
+                          <span className="relative text-2xl filter drop-shadow-md">
+                            {crop.icon || "🌱"}
+                          </span>
+                        </motion.div>
+                        
+                        <div className="flex-1">
+                          <p className="font-semibold text-foreground/90 group-hover:text-foreground flex items-center gap-2 transition-colors duration-300">
                             {crop.label}
                             {crop.is_popular && (
-                              <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                              <Badge className="glass-badge text-xs px-2 py-0.5">
                                 <Sparkles className="h-3 w-3 mr-1" />
                                 Popular
                               </Badge>
                             )}
                           </p>
                           {crop.label_local && (
-                            <p className="text-xs text-muted-foreground">{crop.label_local}</p>
+                            <p className="text-xs text-muted-foreground/80 mt-0.5">{crop.label_local}</p>
                           )}
                           {crop.season && (
-                            <Badge variant="outline" className="mt-1 text-xs">
+                            <Badge variant="outline" className="mt-2 text-xs glass-badge">
                               {crop.season}
                             </Badge>
                           )}
                         </div>
                       </div>
+                      
+                      {/* Selection checkmark */}
                       {isSelected && (
                         <motion.div
-                          initial={{ scale: 0 }}
-                          animate={{ scale: 1 }}
-                          transition={{ type: "spring", stiffness: 400 }}
+                          initial={{ scale: 0, rotate: -180 }}
+                          animate={{ scale: 1, rotate: 0 }}
+                          transition={{ type: "spring", stiffness: 500, damping: 20 }}
                         >
-                          <div className="bg-primary text-primary-foreground rounded-full p-1">
-                            <Check className="h-4 w-4" />
+                          <div className="glass-checkmark">
+                            <Check className="h-4 w-4 text-white" />
                           </div>
                         </motion.div>
                       )}
                     </div>
-                  </Card>
+                  </div>
                 </motion.div>
               );
             })}
