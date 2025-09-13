@@ -237,23 +237,23 @@ const Weather: React.FC = () => {
         condition={currentWeather.main} 
         className="relative h-[55vh] md:h-[60vh] overflow-hidden"
       >
-        {/* Gradient Overlays for depth */}
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-background/60" />
-        <div className="absolute inset-0 bg-gradient-to-tr from-primary/5 via-transparent to-secondary/5" />
+        {/* Gradient Overlays for depth and contrast */}
+        <div className="absolute inset-0 bg-gradient-to-b from-background/20 via-background/10 to-background/60" />
+        <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 via-transparent to-secondary/10" />
         
         <div className="relative z-10 h-full flex flex-col p-4 md:p-6">
           {/* Header with Location and Actions */}
           <div className="flex items-start justify-between mb-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-full bg-overlay-light/10 backdrop-blur-md">
-                  <MapPin className="h-4 w-4 text-overlay-light" />
+                <div className="p-1.5 rounded-full bg-background/90 backdrop-blur-md border border-border/50">
+                  <MapPin className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <h2 className="text-overlay-light font-semibold text-lg leading-tight">
+                  <h2 className="text-foreground font-semibold text-lg leading-tight drop-shadow-sm">
                     {getLocationDisplay()}
                   </h2>
-                  <p className="text-overlay-light/70 text-xs">
+                  <p className="text-muted-foreground text-xs">
                     {format(new Date(), 'EEEE, MMMM d, yyyy')}
                   </p>
                 </div>
@@ -263,7 +263,7 @@ const Weather: React.FC = () => {
               size="icon"
               variant="ghost"
               className={cn(
-                "rounded-full bg-overlay-light/10 backdrop-blur-md hover:bg-overlay-light/20 text-overlay-light",
+                "rounded-full bg-background/90 backdrop-blur-md hover:bg-background/95 text-foreground border border-border/50",
                 isRefreshing && "animate-spin"
               )}
               onClick={handleRefresh}
@@ -277,24 +277,24 @@ const Weather: React.FC = () => {
             <div className="text-center space-y-4">
               {/* Animated Weather Icon */}
               <div className="relative inline-block">
-                <div className="absolute inset-0 bg-overlay-light/10 rounded-full blur-3xl scale-150 animate-pulse" />
+                <div className="absolute inset-0 bg-primary/20 rounded-full blur-3xl scale-150 animate-pulse" />
                 {getWeatherIcon(currentWeather.main, "h-20 w-20 md:h-24 md:w-24 relative drop-shadow-2xl")}
               </div>
               
               {/* Temperature Display */}
               <div className="space-y-2">
                 <div className="flex items-start justify-center">
-                  <h1 className="text-7xl md:text-8xl font-bold text-overlay-light tracking-tighter">
+                  <h1 className="text-7xl md:text-8xl font-bold text-foreground tracking-tighter drop-shadow-sm">
                     {Math.round(currentWeather.temp)}
                   </h1>
-                  <span className="text-3xl text-overlay-light/80 font-light mt-2">°C</span>
+                  <span className="text-3xl text-muted-foreground font-light mt-2">°C</span>
                 </div>
-                <p className="text-xl md:text-2xl capitalize text-overlay-light/90 font-medium">
+                <p className="text-xl md:text-2xl capitalize text-foreground font-medium">
                   {currentWeather.description}
                 </p>
-                <div className="flex items-center justify-center gap-4 text-overlay-light/70">
+                <div className="flex items-center justify-center gap-4 text-muted-foreground">
                   <span className="text-sm">Feels like {Math.round(currentWeather.feels_like)}°</span>
-                  <span className="text-overlay-light/40">•</span>
+                  <span className="text-muted-foreground/60">•</span>
                   <span className="text-sm">H: {Math.round(currentWeather.temp_max)}° L: {Math.round(currentWeather.temp_min)}°</span>
                 </div>
               </div>
@@ -309,13 +309,13 @@ const Weather: React.FC = () => {
               { icon: Eye, value: `${(currentWeather.visibility / 1000).toFixed(1)}`, unit: 'km', label: 'Visibility' },
               { icon: Gauge, value: `${currentWeather.pressure}`, unit: 'hPa', label: 'Pressure' },
             ].map((stat, idx) => (
-              <div key={idx} className="backdrop-blur-md bg-overlay-light/10 rounded-2xl p-3 text-center border border-overlay-light/10">
-                <stat.icon className="h-4 w-4 mx-auto mb-1.5 text-overlay-light/80" />
-                <p className="text-lg font-bold text-overlay-light">
+              <div key={idx} className="backdrop-blur-md bg-background/90 rounded-2xl p-3 text-center border border-border/50">
+                <stat.icon className="h-4 w-4 mx-auto mb-1.5 text-primary" />
+                <p className="text-lg font-bold text-foreground">
                   {stat.value}
-                  <span className="text-xs font-normal text-overlay-light/60">{stat.unit}</span>
+                  <span className="text-xs font-normal text-muted-foreground">{stat.unit}</span>
                 </p>
-                <p className="text-[10px] text-overlay-light/60 mt-0.5">{stat.label}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">{stat.label}</p>
               </div>
             ))}
           </div>
