@@ -424,7 +424,7 @@ export function LandFormDialog({
                             <Select 
                               onValueChange={field.onChange} 
                               value={field.value}
-                              disabled={!stateId || locationLoading}
+                              disabled={!stateId || locationLoading.districts}
                             >
                               <FormControl>
                                 <SelectTrigger className="h-9 text-sm">
@@ -455,7 +455,7 @@ export function LandFormDialog({
                             <Select 
                               onValueChange={field.onChange} 
                               value={field.value}
-                              disabled={!districtId || locationLoading}
+                              disabled={!districtId || locationLoading.talukas}
                             >
                               <FormControl>
                                 <SelectTrigger className="h-9 text-sm">
@@ -484,7 +484,7 @@ export function LandFormDialog({
                             <Select 
                               onValueChange={field.onChange} 
                               value={field.value}
-                              disabled={!talukaId || locationLoading}
+                              disabled={!talukaId || locationLoading.villages}
                             >
                               <FormControl>
                                 <SelectTrigger className="h-9 text-sm">
