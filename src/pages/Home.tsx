@@ -26,6 +26,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
+import { landsApi } from '@/services/landsApi';
+import { useWeather } from '@/hooks/useWeather';
 
 interface FeatureCard {
   title: string;
@@ -44,6 +46,27 @@ export default function Home() {
   const { t } = useTranslation();
   const { user } = useAuthStore();
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [lands, setLands] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { currentWeather } = useWeather();
+
+  // Fetch lands data
+  useEffect(() => {
+    const fetchLands = async () => {
+      if (!user?.id) return;
+      
+      try {
+        const data = await landsApi.fetchLands();
+        setLands(data || []);
+      } catch (error) {
+        console.error('Error fetching lands:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLands();
+  }, [user]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -52,26 +75,39 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
+  // Calculate total area
+  const totalArea = lands.reduce((sum, land) => {
+    const acres = land.area_acres || 0;
+    const guntas = land.area_guntas || 0;
+    return sum + acres + (guntas / 40); // Convert guntas to acres
+  }, 0);
+
+  // Get next crop from lands
+  const nextCrop = lands.find(land => land.current_crop)?.current_crop || 'Not planned';
+  
+  // Calculate NDVI average (placeholder - will be replaced with actual NDVI data)
+  const avgNdvi = lands.length > 0 ? 0.85 : 0;
+
   const mainFeatures: FeatureCard[] = [
     {
       title: t('home.myLand'),
       icon: MapPin,
       path: '/app/lands',
       description: 'Manage your agricultural lands',
-      stats: '3 Plots',
+      stats: lands.length > 0 ? `${lands.length} Plot${lands.length > 1 ? 's' : ''}` : 'No plots',
       color: 'bg-gradient-primary',
-      badge: 'Active',
-      progress: 75
+      badge: lands.length > 0 ? 'Active' : 'Add Land',
+      progress: lands.length > 0 ? Math.min((lands.length / 5) * 100, 100) : 0
     },
     {
       title: 'AI Crop Schedule',
       icon: Calendar,
       path: '/app/schedule',
       description: 'Smart planting calendar',
-      stats: 'Next: Wheat',
+      stats: `Next: ${nextCrop}`,
       color: 'bg-gradient-secondary',
-      trend: 'up',
-      trendValue: '15%'
+      trend: lands.length > 0 ? 'up' : undefined,
+      trendValue: lands.length > 0 ? '15%' : undefined
     },
     {
       title: t('home.aiChat'),
@@ -100,10 +136,10 @@ export default function Home() {
       icon: Cloud,
       path: '/app/weather',
       description: 'Real-time forecasts',
-      stats: '28°C',
+      stats: currentWeather ? `${Math.round(currentWeather.temp)}°C` : '---',
       color: 'bg-accent/10',
-      trend: 'down',
-      trendValue: '-2°C'
+      trend: currentWeather && currentWeather.temp < 30 ? 'down' : 'up',
+      trendValue: currentWeather ? `${currentWeather.feels_like > currentWeather.temp ? '+' : ''}${Math.round(currentWeather.feels_like - currentWeather.temp)}°C` : undefined
     },
     {
       title: 'Community',
@@ -119,9 +155,9 @@ export default function Home() {
       icon: Satellite,
       path: '/app/lands',
       description: 'Crop health monitoring',
-      stats: 'Good',
+      stats: avgNdvi > 0 ? `Score: ${avgNdvi}` : 'No data',
       color: 'bg-primary/10',
-      progress: 85
+      progress: avgNdvi > 0 ? avgNdvi * 100 : 0
     },
     {
       title: t('home.governmentSchemes'),
@@ -146,10 +182,30 @@ export default function Home() {
 
   // Quick stats for the hero section
   const quickStats = [
-    { icon: Thermometer, label: 'Temperature', value: '28°C', trend: 'stable' },
-    { icon: Droplets, label: 'Humidity', value: '65%', trend: 'up' },
-    { icon: Wind, label: 'Wind Speed', value: '12 km/h', trend: 'down' },
-    { icon: Activity, label: 'Soil Health', value: 'Good', trend: 'up' }
+    { 
+      icon: Thermometer, 
+      label: 'Temperature', 
+      value: currentWeather ? `${Math.round(currentWeather.temp)}°C` : '---', 
+      trend: currentWeather && currentWeather.temp > 25 ? 'up' : 'stable' 
+    },
+    { 
+      icon: Droplets, 
+      label: 'Humidity', 
+      value: currentWeather ? `${currentWeather.humidity}%` : '---', 
+      trend: currentWeather && currentWeather.humidity > 60 ? 'up' : 'down' 
+    },
+    { 
+      icon: Wind, 
+      label: 'Wind Speed', 
+      value: currentWeather ? `${Math.round(currentWeather.wind_speed * 3.6)} km/h` : '---', 
+      trend: currentWeather && currentWeather.wind_speed > 5 ? 'up' : 'down' 
+    },
+    { 
+      icon: Activity, 
+      label: 'Total Area', 
+      value: totalArea > 0 ? `${totalArea.toFixed(1)} acres` : 'No land', 
+      trend: lands.length > 0 ? 'up' : 'stable' 
+    }
   ];
 
   return (
@@ -315,36 +371,65 @@ export default function Home() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 bg-success rounded-full animate-pulse" />
-                <div>
-                  <p className="text-sm font-medium">Wheat field analyzed</p>
-                  <p className="text-xs text-muted-foreground">NDVI Score: 0.85</p>
+            {lands.length > 0 ? (
+              <>
+                {lands.slice(0, 3).map((land, index) => (
+                  <div key={land.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-2 h-2 rounded-full",
+                        index === 0 ? "bg-success animate-pulse" : 
+                        index === 1 ? "bg-accent" : "bg-primary"
+                      )} />
+                      <div>
+                        <p className="text-sm font-medium">{land.name || 'Unnamed Land'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {land.area_acres} acres • {land.village || 'Location not set'}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {land.current_crop || 'No crop'}
+                    </span>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 bg-success rounded-full animate-pulse" />
+                    <div>
+                      <p className="text-sm font-medium">No lands added yet</p>
+                      <p className="text-xs text-muted-foreground">Add your first land to get started</p>
+                    </div>
+                  </div>
+                  <Link to="/app/lands/add" className="text-xs text-primary">Add Land</Link>
                 </div>
-              </div>
-              <span className="text-xs text-muted-foreground">2h ago</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 bg-accent rounded-full" />
-                <div>
-                  <p className="text-sm font-medium">Weather alert</p>
-                  <p className="text-xs text-muted-foreground">Rain expected tomorrow</p>
+                {currentWeather && currentWeather.description && (
+                  <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 bg-accent rounded-full" />
+                      <div>
+                        <p className="text-sm font-medium">Current Weather</p>
+                        <p className="text-xs text-muted-foreground">{currentWeather.description}</p>
+                      </div>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{currentWeather.temp}°C</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 bg-primary rounded-full" />
+                    <div>
+                      <p className="text-sm font-medium">Government Schemes</p>
+                      <p className="text-xs text-muted-foreground">Check available subsidies</p>
+                    </div>
+                  </div>
+                  <Link to="/app/schemes" className="text-xs text-primary">View</Link>
                 </div>
-              </div>
-              <span className="text-xs text-muted-foreground">5h ago</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="w-2 h-2 bg-primary rounded-full" />
-                <div>
-                  <p className="text-sm font-medium">New scheme available</p>
-                  <p className="text-xs text-muted-foreground">PM-KISAN update</p>
-                </div>
-              </div>
-              <span className="text-xs text-muted-foreground">1d ago</span>
-            </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
