@@ -135,7 +135,7 @@ export default function Weather() {
 
   return (
     <div className="min-h-screen relative bg-gradient-to-br from-background via-background to-primary/5">
-      <AnimatedWeatherBackground weather={currentWeather.main} />
+      <AnimatedWeatherBackground condition={currentWeather.main || 'clear'} />
       <WeatherAnimation condition={getWeatherCondition()} />
       
       <div className="relative z-10 container mx-auto px-4 py-6 space-y-6 pb-20">
