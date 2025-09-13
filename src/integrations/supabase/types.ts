@@ -5332,6 +5332,7 @@ export type Database = {
         Row: {
           area_acres: number
           area_guntas: number | null
+          area_sqft: number | null
           boundary: unknown | null
           boundary_method: string | null
           boundary_polygon_old: Json | null
@@ -5341,6 +5342,7 @@ export type Database = {
           cultivation_date: string | null
           current_crop: string | null
           current_crop_id: string | null
+          deleted_at: string | null
           district: string | null
           district_id: string | null
           elevation_meters: number | null
@@ -5388,6 +5390,7 @@ export type Database = {
         Insert: {
           area_acres: number
           area_guntas?: number | null
+          area_sqft?: number | null
           boundary?: unknown | null
           boundary_method?: string | null
           boundary_polygon_old?: Json | null
@@ -5397,6 +5400,7 @@ export type Database = {
           cultivation_date?: string | null
           current_crop?: string | null
           current_crop_id?: string | null
+          deleted_at?: string | null
           district?: string | null
           district_id?: string | null
           elevation_meters?: number | null
@@ -5444,6 +5448,7 @@ export type Database = {
         Update: {
           area_acres?: number
           area_guntas?: number | null
+          area_sqft?: number | null
           boundary?: unknown | null
           boundary_method?: string | null
           boundary_polygon_old?: Json | null
@@ -5453,6 +5458,7 @@ export type Database = {
           cultivation_date?: string | null
           current_crop?: string | null
           current_crop_id?: string | null
+          deleted_at?: string | null
           district?: string | null
           district_id?: string | null
           elevation_meters?: number | null
@@ -5531,6 +5537,13 @@ export type Database = {
             columns: ["current_crop_id"]
             isOneToOne: false
             referencedRelation: "crops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lands_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
             referencedColumns: ["id"]
           },
           {

@@ -16,7 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { Progress } from '@/components/ui/progress';
-import { LandCard } from '@/components/land/LandCard';
+import { ModernLandCard } from '@/components/land/ModernLandCard';
 
 interface Land {
   id: string;
@@ -26,15 +26,23 @@ interface Land {
   village?: string;
   taluka?: string;
   district?: string;
+  state?: string;
   current_crop?: string;
+  previous_crop?: string;
   crop_stage?: string;
   soil_type?: string;
+  water_source?: string;
+  irrigation_type?: string;
   irrigation_source?: string;
   soil_ph?: number;
   organic_carbon_percent?: number;
   survey_number?: string;
   ownership_type?: string;
   last_soil_test_date?: string;
+  planting_date?: string;
+  expected_harvest_date?: string;
+  boundary_polygon_old?: any;
+  center_point_old?: any;
   created_at: string;
   updated_at: string;
 }
@@ -67,6 +75,7 @@ export default function LandManagement() {
         .select('*')
         .eq('farmer_id', user.id)
         .eq('is_active', true)
+        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -160,93 +169,6 @@ export default function LandManagement() {
     });
   };
 
-  const LandCard = ({ land }: { land: Land }) => (
-    <Card 
-      className="cursor-pointer hover:shadow-lg transition-all hover:scale-[1.02]"
-      onClick={() => navigate(`/app/lands/${land.id}`)}
-    >
-      <CardHeader className="pb-3">
-        <div className="flex justify-between items-start">
-          <div>
-            <CardTitle className="text-lg">{land.name}</CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              {land.village && `${land.village}, `}{land.taluka}
-            </p>
-          </div>
-          <Badge variant="outline" className="ml-2">
-            {land.area_acres} acres
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {land.current_crop && (
-          <div className="flex items-center gap-2">
-            <Sprout className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">{land.current_crop}</span>
-            {land.crop_stage && (
-              <Badge className={`${getCropStageColor(land.crop_stage)} text-primary-foreground text-xs`}>
-                {land.crop_stage}
-              </Badge>
-            )}
-          </div>
-        )}
-        
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">
-              {land.survey_number || 'No survey number'}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <div className="flex-1">
-            <div className="text-xs text-muted-foreground mb-1">Soil Health</div>
-            <div className="flex items-center gap-2">
-              <div className={`h-2 w-2 rounded-full ${getSoilHealthColor(land.soil_ph, land.organic_carbon_percent)}`} />
-              <span className="text-xs">
-                {land.soil_ph ? `pH ${land.soil_ph}` : 'No data'}
-              </span>
-            </div>
-          </div>
-          <div className="flex-1">
-            <div className="text-xs text-muted-foreground mb-1">Irrigation</div>
-            <span className="text-xs">
-              {land.irrigation_source || 'Not specified'}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex gap-2 pt-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="flex-1 h-8"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate(`/app/lands/${land.id}/activities`);
-            }}
-          >
-            <Activity className="h-3 w-3 mr-1" />
-            Activities
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="flex-1 h-8"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate(`/app/lands/${land.id}/gallery`);
-            }}
-          >
-            <Camera className="h-3 w-3 mr-1" />
-            Gallery
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
 
   const LandListItem = ({ land }: { land: Land }) => (
     <Card 
@@ -451,9 +373,9 @@ export default function LandManagement() {
           </CardContent>
         </Card>
       ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredLands.map(land => (
-            <LandCard key={land.id} land={land} />
+            <ModernLandCard key={land.id} land={land} onRefresh={fetchLands} />
           ))}
         </div>
       ) : (
