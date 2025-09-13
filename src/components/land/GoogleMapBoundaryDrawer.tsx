@@ -51,6 +51,10 @@ export function GoogleMapBoundaryDrawer({
     mapTypeId: 'hybrid', // Shows satellite with labels
     disableDefaultUI: false,
     zoom: 18, // Start with a closer zoom for better visibility
+    // Prevent accidental zooming when clicking to mark points
+    disableDoubleClickZoom: true,
+    // Disable clickable POIs to prevent interference with point marking
+    clickableIcons: false,
     zoomControl: true,
     zoomControlOptions: {
       position: typeof google !== 'undefined' ? google.maps.ControlPosition.RIGHT_CENTER : 7,
