@@ -75,7 +75,6 @@ export default function LandManagement() {
         .select('*')
         .eq('farmer_id', user.id)
         .eq('is_active', true)
-        .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
