@@ -44,7 +44,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLandFormData } from '@/hooks/useLandFormData';
-import { useLocationData } from '@/hooks/useLocationData';
+import { useSimpleLocationData } from '@/hooks/useSimpleLocationData';
 import { supabase } from '@/integrations/supabase/client';
 
 // Modern ownership type options
@@ -108,7 +108,7 @@ export function LandFormDialog({
     loadTalukas, 
     loadVillages,
     loading: locationLoading
-  } = useLocationData();
+  } = useSimpleLocationData();
   
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -131,60 +131,22 @@ export function LandFormDialog({
   const districtId = form.watch('district_id');
   const talukaId = form.watch('taluka_id');
 
+  // Simple location loading - just load data when parent changes
   useEffect(() => {
     if (stateId) {
-      // Load districts first, then clear dependent fields after load completes
-      loadDistricts(stateId).then(() => {
-        const currentDistrictId = form.getValues('district_id');
-        // Only clear if district doesn't belong to this state
-        const validDistrict = districts.some(d => d.id === currentDistrictId && d.state_id === stateId);
-        if (!validDistrict) {
-          form.setValue('district_id', '');
-          form.setValue('taluka_id', '');
-          form.setValue('village_id', '');
-        }
-      });
-    } else {
-      // Clear all dependent fields if no state
-      form.setValue('district_id', '');
-      form.setValue('taluka_id', '');
-      form.setValue('village_id', '');
+      loadDistricts(stateId);
     }
   }, [stateId, loadDistricts]);
 
   useEffect(() => {
     if (districtId) {
-      // Load talukas first, then clear dependent fields after load completes
-      loadTalukas(districtId).then(() => {
-        const currentTalukaId = form.getValues('taluka_id');
-        // Only clear if taluka doesn't belong to this district
-        const validTaluka = talukas.some(t => t.id === currentTalukaId && t.district_id === districtId);
-        if (!validTaluka) {
-          form.setValue('taluka_id', '');
-          form.setValue('village_id', '');
-        }
-      });
-    } else {
-      // Clear all dependent fields if no district
-      form.setValue('taluka_id', '');
-      form.setValue('village_id', '');
+      loadTalukas(districtId);
     }
   }, [districtId, loadTalukas]);
 
   useEffect(() => {
     if (talukaId) {
-      // Load villages first, then clear dependent field after load completes
-      loadVillages(talukaId).then(() => {
-        const currentVillageId = form.getValues('village_id');
-        // Only clear if village doesn't belong to this taluka
-        const validVillage = villages.some(v => v.id === currentVillageId && v.taluka_id === talukaId);
-        if (!validVillage) {
-          form.setValue('village_id', '');
-        }
-      });
-    } else {
-      // Clear village if no taluka
-      form.setValue('village_id', '');
+      loadVillages(talukaId);
     }
   }, [talukaId, loadVillages]);
 
@@ -433,7 +395,7 @@ export function LandFormDialog({
                             <Select 
                               onValueChange={field.onChange} 
                               value={field.value}
-                              disabled={locationLoading.states}
+                              disabled={locationLoading}
                             >
                               <FormControl>
                                 <SelectTrigger className="h-9 text-sm">
@@ -441,9 +403,9 @@ export function LandFormDialog({
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {states.length === 0 && !locationLoading.states ? (
+                                {states.length === 0 ? (
                                   <div className="text-sm text-muted-foreground p-2 text-center">
-                                    No states found
+                                    {locationLoading ? "Loading..." : "No states found"}
                                   </div>
                                 ) : (
                                   states.map((state) => (
@@ -468,22 +430,23 @@ export function LandFormDialog({
                             <Select 
                               onValueChange={field.onChange} 
                               value={field.value}
-                              disabled={!stateId || locationLoading.districts}
+                              disabled={!stateId || locationLoading}
                             >
                               <FormControl>
                                 <SelectTrigger className="h-9 text-sm">
                                   <SelectValue placeholder={
                                     !stateId ? "Select state first" :
-                                    locationLoading.districts ? "Loading..." :
+                                    locationLoading ? "Loading..." :
                                     districts.length === 0 ? "No districts available" :
                                     "Select district"
                                   } />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {districts.length === 0 && !locationLoading.districts ? (
+                                {districts.length === 0 ? (
                                   <div className="text-sm text-muted-foreground p-2 text-center">
-                                    {!stateId ? "Select a state first" : "No districts found"}
+                                    {!stateId ? "Select a state first" : 
+                                     locationLoading ? "Loading..." : "No districts found"}
                                   </div>
                                 ) : (
                                   districts.map((district) => (
@@ -510,24 +473,31 @@ export function LandFormDialog({
                             <Select 
                               onValueChange={field.onChange} 
                               value={field.value}
-                              disabled={!districtId || locationLoading.talukas}
+                              disabled={!districtId || locationLoading}
                             >
                               <FormControl>
                                 <SelectTrigger className="h-9 text-sm">
                                   <SelectValue placeholder={
                                     !districtId ? "Select district first" :
-                                    locationLoading.talukas ? "Loading..." :
+                                    locationLoading ? "Loading..." :
                                     talukas.length === 0 ? "No talukas available" :
                                     "Select taluka"
                                   } />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {talukas.map((taluka) => (
-                                  <SelectItem key={taluka.id} value={taluka.id}>
-                                    {taluka.name}
-                                  </SelectItem>
-                                ))}
+                                {talukas.length === 0 ? (
+                                  <div className="text-sm text-muted-foreground p-2 text-center">
+                                    {!districtId ? "Select a district first" : 
+                                     locationLoading ? "Loading..." : "No talukas found"}
+                                  </div>
+                                ) : (
+                                  talukas.map((taluka) => (
+                                    <SelectItem key={taluka.id} value={taluka.id}>
+                                      {taluka.name}
+                                    </SelectItem>
+                                  ))
+                                )}
                               </SelectContent>
                             </Select>
                             <FormMessage className="text-xs" />
@@ -544,24 +514,31 @@ export function LandFormDialog({
                             <Select 
                               onValueChange={field.onChange} 
                               value={field.value}
-                              disabled={!talukaId || locationLoading.villages}
+                              disabled={!talukaId || locationLoading}
                             >
                               <FormControl>
                                 <SelectTrigger className="h-9 text-sm">
                                   <SelectValue placeholder={
                                     !talukaId ? "Select taluka first" :
-                                    locationLoading.villages ? "Loading..." :
+                                    locationLoading ? "Loading..." :
                                     villages.length === 0 ? "No villages available" :
                                     "Select village"
                                   } />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {villages.map((village) => (
-                                  <SelectItem key={village.id} value={village.id}>
-                                    {village.name}
-                                  </SelectItem>
-                                ))}
+                                {villages.length === 0 ? (
+                                  <div className="text-sm text-muted-foreground p-2 text-center">
+                                    {!talukaId ? "Select a taluka first" : 
+                                     locationLoading ? "Loading..." : "No villages found"}
+                                  </div>
+                                ) : (
+                                  villages.map((village) => (
+                                    <SelectItem key={village.id} value={village.id}>
+                                      {village.name}
+                                    </SelectItem>
+                                  ))
+                                )}
                               </SelectContent>
                             </Select>
                             <FormMessage className="text-xs" />
