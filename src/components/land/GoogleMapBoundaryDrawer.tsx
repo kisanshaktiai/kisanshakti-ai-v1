@@ -51,14 +51,17 @@ export function GoogleMapBoundaryDrawer({
     mapTypeId: 'hybrid', // Shows satellite with labels
     disableDefaultUI: false,
     zoom: 18, // Start with a closer zoom for better visibility
-    // Prevent accidental zooming when clicking to mark points
+    // Critical: Prevent ALL zoom on click/tap for smooth boundary marking
     disableDoubleClickZoom: true,
+    scrollwheel: true, // Allow scroll wheel zoom on desktop
     // Disable clickable POIs to prevent interference with point marking
     clickableIcons: false,
-    zoomControl: true,
+    zoomControl: true, // Keep zoom buttons visible for farmers
     zoomControlOptions: {
       position: typeof google !== 'undefined' ? google.maps.ControlPosition.RIGHT_CENTER : 7,
     },
+    // 'greedy' allows single finger pan on mobile (farmer-friendly)
+    // Also prevents accidental zoom while marking points
     gestureHandling: 'greedy',
     tilt: 0, // Start with no tilt for easier drawing
     rotateControl: true,
@@ -68,10 +71,7 @@ export function GoogleMapBoundaryDrawer({
       position: typeof google !== 'undefined' ? google.maps.ControlPosition.TOP_LEFT : 1,
       style: typeof google !== 'undefined' ? google.maps.MapTypeControlStyle.HORIZONTAL_BAR : 0,
     },
-    streetViewControl: true,
-    streetViewControlOptions: {
-      position: typeof google !== 'undefined' ? google.maps.ControlPosition.RIGHT_TOP : 3,
-    },
+    streetViewControl: false, // Disable street view to reduce clutter for farmers
     fullscreenControl: true,
     fullscreenControlOptions: {
       position: typeof google !== 'undefined' ? google.maps.ControlPosition.RIGHT_TOP : 3,
