@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
 import { GoogleMapBoundaryDrawer } from '@/components/land/GoogleMapBoundaryDrawer';
 import { ModernLandWizard } from '@/components/land/ModernLandWizard';
+import { LandInstructionDialog } from '@/components/land/LandInstructionDialog';
 import { Card } from '@/components/ui/card';
 import { Loader2 } from 'lucide-react';
 
@@ -15,14 +16,26 @@ export default function AddLand() {
   const navigate = useNavigate();
   const { isLoaded, loadError, isLoading } = useGoogleMapsApi();
   
+  const [showInstructions, setShowInstructions] = useState(true);
+  const [showMap, setShowMap] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [boundary, setBoundary] = useState<LatLng[]>([]);
   const [area, setArea] = useState({ sqft: 0, guntha: 0, acres: 0 });
+
+  const handleInstructionStart = () => {
+    setShowInstructions(false);
+    setShowMap(true);
+  };
+
+  const handleInstructionClose = () => {
+    navigate('/app/lands');
+  };
 
   const handleMapSave = (boundaryPoints: LatLng[], calculatedArea: typeof area) => {
     console.log('Map boundary saved:', { boundaryPoints, calculatedArea });
     setBoundary(boundaryPoints);
     setArea(calculatedArea);
+    setShowMap(false);
     setShowForm(true);
   };
 
@@ -60,6 +73,17 @@ export default function AddLand() {
     );
   }
 
+  // Show instructions dialog first
+  if (showInstructions) {
+    return (
+      <LandInstructionDialog
+        open={showInstructions}
+        onClose={handleInstructionClose}
+        onStart={handleInstructionStart}
+      />
+    );
+  }
+
   // Show form if boundary is drawn
   if (showForm) {
     return (
@@ -73,12 +97,16 @@ export default function AddLand() {
   }
 
   // Show map for drawing boundary
-  return (
-    <div className="fixed inset-0 z-[60] bg-background">
-      <GoogleMapBoundaryDrawer
-        onSave={handleMapSave}
-        onCancel={handleCancel}
-      />
-    </div>
-  );
+  if (showMap) {
+    return (
+      <div className="fixed inset-0 z-[60] bg-background">
+        <GoogleMapBoundaryDrawer
+          onSave={handleMapSave}
+          onCancel={handleCancel}
+        />
+      </div>
+    );
+  }
+
+  return null;
 }
