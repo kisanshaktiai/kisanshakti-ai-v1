@@ -9,6 +9,9 @@ verify_jwt = true
 [functions.google-maps-config]
 verify_jwt = false
 
+[functions.save-land]
+verify_jwt = true
+
 [functions.get-white-label-config]
 verify_jwt = false
 
