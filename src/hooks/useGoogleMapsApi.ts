@@ -94,5 +94,6 @@ export function useGoogleMapsApi() {
     isLoaded: !!(isLoaded && apiKey && !isKeyLoading),
     loadError: actualLoadError || error,
     isLoading: isKeyLoading || (!apiKey && !error),
+    apiKey, // Return the API key for static map generation
   };
 }

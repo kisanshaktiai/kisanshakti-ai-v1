@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
 
 interface ModernLandCardProps {
   land: {
@@ -62,10 +63,14 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
   const { toast } = useToast();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const { apiKey } = useGoogleMapsApi();
   
-  // Generate static map URL with boundary polygon
+  // Generate static map URL with boundary polygon using visible parameter
   const getStaticMapUrl = () => {
-    const API_KEY = 'AIzaSyA7T__VHsi2H8km-jRytv4Mdjzae7Uokjg';
+    // Return placeholder if API key not loaded yet
+    if (!apiKey) {
+      return '/placeholder.svg';
+    }
     
     try {
       // If no polygon, use center point with default zoom
@@ -81,7 +86,7 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
             `&style=feature:poi|visibility:off` +
             `&style=feature:road|visibility:off` +
             `&markers=color:green|size:large|${center}` +
-            `&key=${API_KEY}`;
+            `&key=${apiKey}`;
         }
         return '/placeholder.svg';
       }
@@ -103,45 +108,33 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
         maxLng = Math.max(maxLng, coord[0]);
       });
       
-      // Calculate center from bounds
-      const centerLat = (minLat + maxLat) / 2;
-      const centerLng = (minLng + maxLng) / 2;
-      const center = `${centerLat},${centerLng}`;
-      
-      // Calculate appropriate zoom level based on bounds
-      // Add padding to the bounds (about 20% expansion)
+      // Add padding to the bounds (25% expansion for better visibility)
       const latDiff = maxLat - minLat;
       const lngDiff = maxLng - minLng;
-      const paddingFactor = 0.3; // 30% padding for better visibility
+      const paddingFactor = 0.25;
       
-      const paddedMinLat = minLat - (latDiff * paddingFactor);
-      const paddedMaxLat = maxLat + (latDiff * paddingFactor);
-      const paddedMinLng = minLng - (lngDiff * paddingFactor);
-      const paddedMaxLng = maxLng + (lngDiff * paddingFactor);
+      // Ensure minimum bounds for very small polygons
+      const minBoundSize = 0.0005; // Approximately 50 meters
+      const effectiveLatDiff = Math.max(latDiff, minBoundSize);
+      const effectiveLngDiff = Math.max(lngDiff, minBoundSize);
       
-      // Estimate zoom level based on bounds (simplified calculation)
-      const maxDiff = Math.max(paddedMaxLat - paddedMinLat, paddedMaxLng - paddedMinLng);
-      let zoom = 20; // Start with max zoom
+      const paddedMinLat = minLat - (effectiveLatDiff * paddingFactor);
+      const paddedMaxLat = maxLat + (effectiveLatDiff * paddingFactor);
+      const paddedMinLng = minLng - (effectiveLngDiff * paddingFactor);
+      const paddedMaxLng = maxLng + (effectiveLngDiff * paddingFactor);
       
-      if (maxDiff > 0.0001) zoom = 19;
-      if (maxDiff > 0.0005) zoom = 18;
-      if (maxDiff > 0.001) zoom = 17;
-      if (maxDiff > 0.005) zoom = 16;
-      if (maxDiff > 0.01) zoom = 15;
-      if (maxDiff > 0.05) zoom = 14;
-      if (maxDiff > 0.1) zoom = 13;
-      if (maxDiff > 0.5) zoom = 12;
+      // Create visible bounds parameter (ensures entire polygon is visible)
+      const visibleBounds = `${paddedMinLat},${paddedMinLng}|${paddedMaxLat},${paddedMaxLng}`;
       
       // Create path from boundary points with enhanced styling
       const path = coordinates
         .map((coord: number[]) => `${coord[1]},${coord[0]}`)
         .join('|');
       
-      // Generate map URL with enhanced polygon visibility
-      // Using white border with green fill for better contrast
+      // Generate map URL using visible parameter for automatic zoom/center
+      // This ensures the entire polygon is always visible with proper padding
       return `https://maps.googleapis.com/maps/api/staticmap?` +
-        `center=${center}` +
-        `&zoom=${zoom}` +
+        `visible=${visibleBounds}` + // Use visible parameter instead of manual zoom/center
         `&size=600x300` +
         `&maptype=satellite` +
         `&style=feature:all|element:labels|visibility:off` +
@@ -149,9 +142,10 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
         `&style=feature:road|visibility:off` +
         `&style=feature:administrative|visibility:off` +
         `&style=feature:transit|visibility:off` +
-        `&path=color:0xffffff|weight:4|${path}` + // White border (outer)
+        `&style=feature:water|element:labels|visibility:off` +
+        `&path=color:0xffffff|weight:4|${path}` + // White border (outer) for contrast
         `&path=color:0x00ff00|weight:2|fillcolor:0x00ff0044|${path}` + // Green fill with border
-        `&key=${API_KEY}`;
+        `&key=${apiKey}`;
     } catch (error) {
       console.error('Error generating map URL:', error);
       return '/placeholder.svg';
