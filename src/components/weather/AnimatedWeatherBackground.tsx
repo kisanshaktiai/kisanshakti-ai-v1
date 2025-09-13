@@ -13,7 +13,7 @@ export const AnimatedWeatherBackground: React.FC<AnimatedWeatherBackgroundProps>
   children
 }) => {
   const getWeatherAnimation = () => {
-    const weatherCondition = condition.toLowerCase();
+    const weatherCondition = (condition || 'clear').toLowerCase();
     
     if (weatherCondition.includes('rain') || weatherCondition.includes('drizzle')) {
       return 'rain-animation';
