@@ -116,6 +116,8 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
         description: 'Failed to load crop schedule',
         variant: 'destructive',
       });
+      // Show generator on error as well
+      setShowGenerator(true);
     } finally {
       setLoading(false);
     }

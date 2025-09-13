@@ -6,6 +6,7 @@ import { ArrowLeft, Calendar, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
+import { landsApi } from '@/services/landsApi';
 import LandSelector from '@/components/schedule/LandSelector';
 import CropDateInput from '@/components/schedule/CropDateInput';
 import CropScheduleView from '@/components/schedule/CropScheduleView';
@@ -54,29 +55,36 @@ export default function Schedule() {
     if (!user?.id) return;
     
     try {
-      const { data, error } = await supabase
-        .from('lands')
-        .select(`
-          id, name, area_acres, area_guntas, 
-          village, taluka, district, state,
-          survey_number, soil_type, water_source, 
-          irrigation_type, current_crop,
-          soil_ph, organic_carbon_percent
-        `)
-        .eq('farmer_id', user.id)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
+      // Use lands API service which properly fetches from the edge function
+      const data = await landsApi.fetchLands();
       
       if (data && data.length > 0) {
-        setLands(data);
+        // Map the API response to our Land interface
+        const mappedLands: Land[] = data.map(land => ({
+          id: land.id || '',
+          name: land.name || 'Unnamed Land',
+          area_acres: land.area_acres || 0,
+          area_guntas: land.area_guntas,
+          village: land.village || undefined,
+          taluka: land.taluka || undefined,
+          district: land.district || undefined,
+          state: land.state || undefined,
+          survey_number: land.survey_number || undefined,
+          soil_type: land.soil_type || undefined,
+          water_source: land.water_source || undefined,
+          irrigation_type: land.irrigation_type || undefined,
+          current_crop: land.current_crop || undefined,
+          // These fields might be in the actual response but not in the interface
+          soil_ph: undefined,
+          organic_carbon_percent: undefined,
+        }));
+        setLands(mappedLands);
       }
     } catch (error) {
       console.error('Error fetching lands:', error);
       toast({
         title: 'Error',
-        description: 'Failed to fetch lands',
+        description: 'Failed to fetch lands. Please try again.',
         variant: 'destructive',
       });
     } finally {
