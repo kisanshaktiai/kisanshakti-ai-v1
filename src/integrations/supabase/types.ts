@@ -5458,6 +5458,8 @@ export type Database = {
           boundary: unknown | null
           boundary_method: string | null
           boundary_polygon_old: Json | null
+          center_lat: number | null
+          center_lon: number | null
           center_point_old: Json | null
           created_at: string
           crop_stage: string | null
@@ -5484,6 +5486,7 @@ export type Database = {
           last_soil_test_date: string | null
           last_sowing_date: string | null
           location_context: Json | null
+          location_coords: Json | null
           marketplace_enabled: boolean | null
           name: string
           nitrogen_kg_per_ha: number | null
@@ -5516,6 +5519,8 @@ export type Database = {
           boundary?: unknown | null
           boundary_method?: string | null
           boundary_polygon_old?: Json | null
+          center_lat?: number | null
+          center_lon?: number | null
           center_point_old?: Json | null
           created_at?: string
           crop_stage?: string | null
@@ -5542,6 +5547,7 @@ export type Database = {
           last_soil_test_date?: string | null
           last_sowing_date?: string | null
           location_context?: Json | null
+          location_coords?: Json | null
           marketplace_enabled?: boolean | null
           name: string
           nitrogen_kg_per_ha?: number | null
@@ -5574,6 +5580,8 @@ export type Database = {
           boundary?: unknown | null
           boundary_method?: string | null
           boundary_polygon_old?: Json | null
+          center_lat?: number | null
+          center_lon?: number | null
           center_point_old?: Json | null
           created_at?: string
           crop_stage?: string | null
@@ -5600,6 +5608,7 @@ export type Database = {
           last_soil_test_date?: string | null
           last_sowing_date?: string | null
           location_context?: Json | null
+          location_coords?: Json | null
           marketplace_enabled?: boolean | null
           name?: string
           nitrogen_kg_per_ha?: number | null
@@ -12696,6 +12705,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "fk_weather_land"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "weather_observations_farmer_id_fkey"
             columns: ["farmer_id"]
             isOneToOne: false
@@ -13174,6 +13190,61 @@ export type Database = {
         }
         Relationships: []
       }
+      weather_with_location: {
+        Row: {
+          area_acres: number | null
+          center_lat: number | null
+          center_lon: number | null
+          cloud_coverage_percent: number | null
+          created_at: string | null
+          dew_point_celsius: number | null
+          district: string | null
+          farmer_id: string | null
+          feels_like_celsius: number | null
+          humidity_percent: number | null
+          id: string | null
+          land_id: string | null
+          land_name: string | null
+          location_coords: Json | null
+          metadata: Json | null
+          observation_date: string | null
+          observation_time: string | null
+          pressure_hpa: number | null
+          rainfall_mm: number | null
+          temperature_celsius: number | null
+          tenant_id: string | null
+          updated_at: string | null
+          uv_index: number | null
+          village: string | null
+          visibility_km: number | null
+          weather_condition: string | null
+          wind_direction: string | null
+          wind_speed_kmh: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fk_weather_land"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_observations_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       _postgis_deprecate: {
@@ -13332,6 +13403,10 @@ export type Database = {
           p_step_id: string
         }
         Returns: Json
+      }
+      aggregate_weather_data: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
       archive_tenant_data: {
         Args: {
