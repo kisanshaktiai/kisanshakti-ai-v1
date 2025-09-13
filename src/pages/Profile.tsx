@@ -37,6 +37,7 @@ import {
   RadialBar,
   Legend
 } from 'recharts';
+import { SyncStatus } from '@/components/sync/SyncStatus';
 
 export default function Profile() {
   const { t } = useTranslation();
@@ -116,6 +117,8 @@ export default function Profile() {
 
   return (
     <div className="p-4 space-y-6 pb-20 animate-fade-in">
+      {/* Sync Status Card */}
+      <SyncStatus />
       {/* Header Section */}
       <div className="relative">
         <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-primary/10 rounded-2xl blur-2xl" />

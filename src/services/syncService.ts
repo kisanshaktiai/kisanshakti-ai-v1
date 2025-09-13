@@ -280,6 +280,10 @@ class SyncService {
   private async syncSchedules(schedules: any[], result: SyncResult): Promise<void> {
     const syncedIds: string[] = [];
     
+    // Get tenant context from auth store
+    const authState = useAuthStore.getState();
+    const tenantId = authState.user?.tenantId;
+    
     for (const schedule of schedules) {
       try {
         const { data: existing } = await supabase
@@ -296,10 +300,11 @@ class SyncService {
               resolution: 'server_win',
             });
           } else {
+            // Update existing schedule with available fields
             await supabase
               .from('crop_schedules')
               .update({
-                tasks: schedule.tasks,
+                generation_params: { tasks: schedule.tasks },
                 updated_at: new Date(schedule.lastModified).toISOString(),
               })
               .eq('id', schedule.id);
@@ -307,13 +312,16 @@ class SyncService {
             syncedIds.push(schedule.id);
           }
         } else {
+          // Insert new schedule - using actual crop_schedules table structure
           await supabase
             .from('crop_schedules')
             .insert({
+              farmer_id: schedule.land_id, // Using land_id as farmer reference
               land_id: schedule.land_id,
+              tenant_id: tenantId || '',
               crop_name: schedule.crop_id,
-              farmer_id: schedule.land_id, // Using land_id as placeholder
-              schedule_data: { tasks: schedule.tasks },
+              sowing_date: new Date().toISOString(),
+              generation_params: { tasks: schedule.tasks },
               created_at: new Date(schedule.lastModified).toISOString(),
             });
           
@@ -381,6 +389,7 @@ class SyncService {
       const { data: schedules } = await supabase
         .from('crop_schedules')
         .select('*')
+        .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false });
 
       if (schedules && schedules.length > 0) {
@@ -389,7 +398,7 @@ class SyncService {
             id: s.id,
             land_id: s.land_id,
             crop_id: s.crop_name,
-            tasks: s.schedule_data?.tasks || [],
+            tasks: (s.generation_params as any)?.tasks || [],
             lastModified: new Date(s.updated_at || s.created_at).getTime(),
             syncStatus: 'synced' as const,
           })),

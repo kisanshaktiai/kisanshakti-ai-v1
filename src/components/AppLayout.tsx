@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTranslation } from 'react-i18next';
 import { Leaf } from 'lucide-react';
 import { useEffect } from 'react';
+import { SyncButton } from '@/components/sync/SyncButton';
 
 export function AppLayout() {
   const { tenant, applyWhiteLabelTheme } = useTenantStore();
@@ -51,7 +52,10 @@ export function AppLayout() {
             </p>
           </div>
         </div>
-        <LanguageSelector />
+        <div className="flex items-center gap-2">
+          <SyncButton />
+          <LanguageSelector />
+        </div>
       </header>
 
       {/* Main Content */}
