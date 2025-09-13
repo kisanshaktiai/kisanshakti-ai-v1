@@ -65,35 +65,92 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
   
   // Generate static map URL with boundary polygon
   const getStaticMapUrl = () => {
-    if (!land.boundary_polygon_old || !land.boundary_polygon_old.coordinates) {
-      return '/placeholder.svg';
-    }
-    
     const API_KEY = 'AIzaSyA7T__VHsi2H8km-jRytv4Mdjzae7Uokjg';
     
     try {
+      // If no polygon, use center point with default zoom
+      if (!land.boundary_polygon_old || !land.boundary_polygon_old.coordinates) {
+        if (land.center_point_old?.coordinates) {
+          const center = `${land.center_point_old.coordinates[1]},${land.center_point_old.coordinates[0]}`;
+          return `https://maps.googleapis.com/maps/api/staticmap?` +
+            `center=${center}` +
+            `&zoom=16` +
+            `&size=600x300` +
+            `&maptype=satellite` +
+            `&style=feature:all|element:labels|visibility:off` +
+            `&style=feature:poi|visibility:off` +
+            `&style=feature:road|visibility:off` +
+            `&markers=color:green|size:large|${center}` +
+            `&key=${API_KEY}`;
+        }
+        return '/placeholder.svg';
+      }
+      
       // Get polygon coordinates
       const coordinates = land.boundary_polygon_old.coordinates[0];
       if (!coordinates || coordinates.length === 0) return '/placeholder.svg';
       
-      // Create path from boundary points
+      // Calculate bounds of the polygon
+      let minLat = coordinates[0][1];
+      let maxLat = coordinates[0][1];
+      let minLng = coordinates[0][0];
+      let maxLng = coordinates[0][0];
+      
+      coordinates.forEach((coord: number[]) => {
+        minLat = Math.min(minLat, coord[1]);
+        maxLat = Math.max(maxLat, coord[1]);
+        minLng = Math.min(minLng, coord[0]);
+        maxLng = Math.max(maxLng, coord[0]);
+      });
+      
+      // Calculate center from bounds
+      const centerLat = (minLat + maxLat) / 2;
+      const centerLng = (minLng + maxLng) / 2;
+      const center = `${centerLat},${centerLng}`;
+      
+      // Calculate appropriate zoom level based on bounds
+      // Add padding to the bounds (about 20% expansion)
+      const latDiff = maxLat - minLat;
+      const lngDiff = maxLng - minLng;
+      const paddingFactor = 0.3; // 30% padding for better visibility
+      
+      const paddedMinLat = minLat - (latDiff * paddingFactor);
+      const paddedMaxLat = maxLat + (latDiff * paddingFactor);
+      const paddedMinLng = minLng - (lngDiff * paddingFactor);
+      const paddedMaxLng = maxLng + (lngDiff * paddingFactor);
+      
+      // Estimate zoom level based on bounds (simplified calculation)
+      const maxDiff = Math.max(paddedMaxLat - paddedMinLat, paddedMaxLng - paddedMinLng);
+      let zoom = 20; // Start with max zoom
+      
+      if (maxDiff > 0.0001) zoom = 19;
+      if (maxDiff > 0.0005) zoom = 18;
+      if (maxDiff > 0.001) zoom = 17;
+      if (maxDiff > 0.005) zoom = 16;
+      if (maxDiff > 0.01) zoom = 15;
+      if (maxDiff > 0.05) zoom = 14;
+      if (maxDiff > 0.1) zoom = 13;
+      if (maxDiff > 0.5) zoom = 12;
+      
+      // Create path from boundary points with enhanced styling
       const path = coordinates
         .map((coord: number[]) => `${coord[1]},${coord[0]}`)
         .join('|');
       
-      // Center point for map
-      const center = land.center_point_old?.coordinates 
-        ? `${land.center_point_old.coordinates[1]},${land.center_point_old.coordinates[0]}`
-        : `${coordinates[0][1]},${coordinates[0][0]}`;
-      
-      // Generate map URL with green filled polygon
+      // Generate map URL with enhanced polygon visibility
+      // Using white border with green fill for better contrast
       return `https://maps.googleapis.com/maps/api/staticmap?` +
         `center=${center}` +
-        `&zoom=15` +
+        `&zoom=${zoom}` +
         `&size=600x300` +
         `&maptype=satellite` +
         `&style=feature:all|element:labels|visibility:off` +
-        `&path=color:0x00ff00|weight:3|fillcolor:0x00ff0033|${path}` +
+        `&style=feature:poi|visibility:off` +
+        `&style=feature:road|visibility:off` +
+        `&style=feature:administrative|visibility:off` +
+        `&style=feature:transit|visibility:off` +
+        `&path=color:0xffffff|weight:4|${path}` + // White border (outer)
+        `&path=color:0x00ff00|weight:2|fillcolor:0x00ff0044|${path}` + // Green fill with border
         `&key=${API_KEY}`;
     } catch (error) {
       console.error('Error generating map URL:', error);
