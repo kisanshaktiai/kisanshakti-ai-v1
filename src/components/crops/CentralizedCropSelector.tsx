@@ -220,14 +220,16 @@ export function CentralizedCropSelector({
     <div className="flex flex-col h-full">
       {showHeader && (
         <div className="flex items-center gap-2 p-4 border-b bg-muted/30">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleBack}
-            className="h-8 w-8"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
+          {step === 'crops' && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleBack}
+              className="h-8 w-8"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+          )}
           <span className="font-medium flex items-center gap-2">
             <span className="text-lg">{selectedGroup?.group_icon}</span>
             {selectedGroup?.group_name}
@@ -243,7 +245,7 @@ export function CentralizedCropSelector({
               placeholder="Search crops..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+              className="pl-10 glass-card"
             />
           </div>
         </div>
@@ -252,7 +254,7 @@ export function CentralizedCropSelector({
       <ScrollArea className="flex-1">
         <AnimatePresence mode="wait">
           <motion.div 
-            className="grid grid-cols-1 gap-2 p-4"
+            className="grid grid-cols-3 gap-3 p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -263,16 +265,17 @@ export function CentralizedCropSelector({
               return (
                 <motion.div
                   key={crop.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.02 }}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: index * 0.02, type: "spring", stiffness: 300 }}
+                  whileHover={{ scale: 1.03 }}
                 >
                   <div
                     className={cn(
                       "relative cursor-pointer transition-all duration-300",
-                      "glass-card hover:glass-card-glow",
+                      "glass-card hover:glass-card-glow p-4",
                       isSelected && "glass-card-selected",
-                      "group"
+                      "group h-full"
                     )}
                     onClick={() => handleCropSelect(crop)}
                   >
@@ -281,53 +284,54 @@ export function CentralizedCropSelector({
                       <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary/20 via-accent/10 to-secondary/10 animate-pulse-subtle" />
                     )}
                     
-                    {/* Hover gradient */}
-                    <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                    
-                    <div className="relative flex items-center justify-between p-4">
-                      <div className="flex items-center gap-3">
-                        {/* Icon with gradient shadow */}
-                        <motion.div 
-                          className="relative"
-                          whileHover={{ scale: 1.15, rotate: 5 }}
-                          transition={{ type: "spring", stiffness: 300 }}
-                        >
-                          <div className="absolute inset-0 bg-gradient-to-br from-primary/30 to-accent/30 rounded-full blur-lg group-hover:blur-xl transition-all duration-300" />
-                          <span className="relative text-2xl filter drop-shadow-md">
-                            {crop.icon || "🌱"}
-                          </span>
-                        </motion.div>
-                        
-                        <div className="flex-1">
-                          <p className="font-semibold text-foreground/90 group-hover:text-foreground flex items-center gap-2 transition-colors duration-300">
-                            {crop.label}
-                            {crop.is_popular && (
-                              <Badge className="glass-badge text-xs px-2 py-0.5">
-                                <Sparkles className="h-3 w-3 mr-1" />
-                                Popular
-                              </Badge>
-                            )}
-                          </p>
-                          {crop.label_local && (
-                            <p className="text-xs text-muted-foreground/80 mt-0.5">{crop.label_local}</p>
-                          )}
-                          {crop.season && (
-                            <Badge variant="outline" className="mt-2 text-xs glass-badge">
-                              {crop.season}
-                            </Badge>
-                          )}
-                        </div>
+                    {/* Content - Vertical layout for grid */}
+                    <div className="relative flex flex-col items-center text-center space-y-2">
+                      {/* Icon */}
+                      <motion.div 
+                        className="relative"
+                        whileHover={{ scale: 1.15, rotate: 5 }}
+                        transition={{ type: "spring", stiffness: 300 }}
+                      >
+                        <div className="absolute inset-0 bg-gradient-to-br from-primary/30 to-accent/30 rounded-full blur-lg" />
+                        <span className="relative text-3xl filter drop-shadow-md">
+                          {crop.icon || "🌱"}
+                        </span>
+                      </motion.div>
+                      
+                      {/* Label */}
+                      <div className="space-y-1">
+                        <p className="font-semibold text-sm text-foreground/90 group-hover:text-foreground transition-colors">
+                          {crop.label}
+                        </p>
+                        {crop.label_local && (
+                          <p className="text-xs text-muted-foreground/70">{crop.label_local}</p>
+                        )}
+                      </div>
+                      
+                      {/* Badges */}
+                      <div className="flex flex-wrap gap-1 justify-center">
+                        {crop.is_popular && (
+                          <Badge className="glass-badge text-xs px-1.5 py-0">
+                            <Sparkles className="h-3 w-3" />
+                          </Badge>
+                        )}
+                        {crop.season && (
+                          <Badge variant="outline" className="text-xs glass-badge px-1.5 py-0">
+                            {crop.season}
+                          </Badge>
+                        )}
                       </div>
                       
                       {/* Selection checkmark */}
                       {isSelected && (
                         <motion.div
+                          className="absolute top-2 right-2"
                           initial={{ scale: 0, rotate: -180 }}
                           animate={{ scale: 1, rotate: 0 }}
                           transition={{ type: "spring", stiffness: 500, damping: 20 }}
                         >
                           <div className="glass-checkmark">
-                            <Check className="h-4 w-4 text-white" />
+                            <Check className="h-3 w-3 text-white" />
                           </div>
                         </motion.div>
                       )}

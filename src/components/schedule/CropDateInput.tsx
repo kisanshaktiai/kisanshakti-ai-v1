@@ -74,73 +74,51 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Land Info Bar */}
-      <Card className="bg-gradient-to-r from-primary/5 to-primary/10">
-        <CardContent className="p-3">
+      {/* Crop Selection at Top */}
+      <Card className="glass-card-premium">
+        <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onBack}
-              className="p-1 h-8"
-            >
-              <ChevronLeft className="h-4 w-4 mr-1" />
-              Back
-            </Button>
-            
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                <p className="text-sm font-medium">{land.name}</p>
-                <p className="text-xs text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Wheat className="h-5 w-5 text-primary" />
+              <div>
+                <CardTitle className="text-lg">{land.name}</CardTitle>
+                <CardDescription className="text-xs">
                   {land.area_acres} acres {land.area_guntas && `${land.area_guntas} guntas`}
-                </p>
-              </div>
-              <div className="flex items-center gap-1">
-                {land.soil_type && (
-                  <Badge variant="secondary" className="text-xs">
-                    {land.soil_type}
-                  </Badge>
-                )}
-                {land.water_source && (
-                  <Badge variant="secondary" className="text-xs">
-                    <Droplets className="h-3 w-3" />
-                  </Badge>
-                )}
+                </CardDescription>
               </div>
             </div>
+            <div className="flex items-center gap-2">
+              {land.soil_type && (
+                <Badge className="glass-badge text-xs">
+                  {land.soil_type}
+                </Badge>
+              )}
+              {land.water_source && (
+                <Badge className="glass-badge text-xs">
+                  <Droplets className="h-3 w-3" />
+                </Badge>
+              )}
+            </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Crop Selection */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <Wheat className="h-5 w-5 text-primary" />
-            Select Crop
-          </CardTitle>
-          <CardDescription>
-            Choose the crop you plan to cultivate
-          </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <CentralizedCropSelector
             selectedCropId={cropId}
             onSelect={handleCropSelect}
-            className="border-0 shadow-none"
+            className="border-0 shadow-none bg-transparent"
             showHeader={false}
             variant="compact"
           />
           
           {cropName && (
             <div className="p-4 pt-0 space-y-2">
-              <Label htmlFor="variety">Variety (Optional)</Label>
+              <Label htmlFor="variety" className="text-sm text-foreground/80">Variety (Optional)</Label>
               <Input
                 id="variety"
                 placeholder="e.g., IR-64, HD-2967, BT Cotton"
                 value={cropVariety}
                 onChange={(e) => setCropVariety(e.target.value)}
-                className="h-9"
+                className="h-9 glass-card"
               />
             </div>
           )}
