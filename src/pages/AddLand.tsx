@@ -91,45 +91,6 @@ export default function AddLand() {
       const centerLat = boundaryPoints.reduce((sum: number, p: any) => sum + p.lat, 0) / boundaryPoints.length;
       const centerLng = boundaryPoints.reduce((sum: number, p: any) => sum + p.lng, 0) / boundaryPoints.length;
 
-      // Get location names from the IDs
-      let stateName = '', districtName = '', talukaName = '', villageName = '';
-      
-      if (formData.state_id) {
-        const { data } = await supabase
-          .from('states')
-          .select('name')
-          .eq('id', formData.state_id)
-          .single();
-        stateName = data?.name || '';
-      }
-      
-      if (formData.district_id) {
-        const { data } = await supabase
-          .from('districts')
-          .select('name')
-          .eq('id', formData.district_id)
-          .single();
-        districtName = data?.name || '';
-      }
-      
-      if (formData.taluka_id) {
-        const { data } = await supabase
-          .from('talukas')
-          .select('name')
-          .eq('id', formData.taluka_id)
-          .single();
-        talukaName = data?.name || '';
-      }
-      
-      if (formData.village_id) {
-        const { data } = await supabase
-          .from('villages')
-          .select('name')
-          .eq('id', formData.village_id)
-          .single();
-        villageName = data?.name || '';
-      }
-
       const { error } = await supabase.from('lands').insert({
         farmer_id: user.id,
         tenant_id: user.tenantId,
@@ -141,16 +102,6 @@ export default function AddLand() {
         soil_type: formData.soil_type || null,
         water_source: formData.water_source || null,
         irrigation_type: formData.irrigation_type || null,
-        // Store location IDs
-        state_id: formData.state_id || null,
-        district_id: formData.district_id || null,
-        taluka_id: formData.taluka_id || null,
-        village_id: formData.village_id || null,
-        // Store location names for display
-        state: stateName,
-        district: districtName,
-        taluka: talukaName,
-        village: villageName,
         boundary_polygon_old: {
           type: 'Polygon',
           coordinates: [coordinates]

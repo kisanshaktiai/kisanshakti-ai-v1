@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import { 
   Select,
   SelectContent,
@@ -36,15 +36,13 @@ import {
   Droplets, 
   Mountain, 
   Leaf, 
-  Trees, 
-  CheckCircle2,
+  Trees,
   Sprout,
-  Map,
-  Info
+  FileText,
+  CheckCircle2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLandFormData } from '@/hooks/useLandFormData';
-import { useSimpleLocationData } from '@/hooks/useSimpleLocationData';
 import { supabase } from '@/integrations/supabase/client';
 
 // Modern ownership type options
@@ -54,18 +52,15 @@ const ownershipTypes = [
   { value: 'shared', label: 'Shared', icon: Leaf, color: 'text-accent' },
 ];
 
-// Enhanced form schema matching database fields
+// Simplified form schema - only essential fields
 const formSchema = z.object({
   name: z.string().min(2, 'Land name must be at least 2 characters'),
   survey_no: z.string().optional(),
   ownership_type: z.enum(['owned', 'leased', 'shared']),
-  state_id: z.string().optional(),
-  district_id: z.string().optional(),
-  taluka_id: z.string().optional(),
-  village_id: z.string().optional(),
   soil_type: z.string().optional(),
   water_source: z.string().optional(),
   irrigation_type: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -97,18 +92,7 @@ export function LandFormDialog({
   existingLandId
 }: LandFormDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState('basic');
   const { soilTypes, waterSources, irrigationTypes, loading: dataLoading } = useLandFormData();
-  const { 
-    states, 
-    districts, 
-    talukas, 
-    villages, 
-    loadDistricts, 
-    loadTalukas, 
-    loadVillages,
-    loading: locationLoading
-  } = useSimpleLocationData();
   
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -116,39 +100,12 @@ export function LandFormDialog({
       name: '',
       survey_no: '',
       ownership_type: 'owned',
-      state_id: '',
-      district_id: '',
-      taluka_id: '',
-      village_id: '',
       soil_type: '',
       water_source: '',
       irrigation_type: '',
+      notes: '',
     },
   });
-
-  // Watch for location changes
-  const stateId = form.watch('state_id');
-  const districtId = form.watch('district_id');
-  const talukaId = form.watch('taluka_id');
-
-  // Simple location loading - just load data when parent changes
-  useEffect(() => {
-    if (stateId) {
-      loadDistricts(stateId);
-    }
-  }, [stateId, loadDistricts]);
-
-  useEffect(() => {
-    if (districtId) {
-      loadTalukas(districtId);
-    }
-  }, [districtId, loadTalukas]);
-
-  useEffect(() => {
-    if (talukaId) {
-      loadVillages(talukaId);
-    }
-  }, [talukaId, loadVillages]);
 
   // Load existing land data if editing
   useEffect(() => {
@@ -161,32 +118,15 @@ export function LandFormDialog({
           .maybeSingle();
         
         if (data && !error) {
-          // Set the form values including location IDs
           form.reset({
             name: data.name || '',
             survey_no: data.survey_number || '',
             ownership_type: (data.ownership_type as 'owned' | 'leased' | 'shared') || 'owned',
-            state_id: data.state_id || '',
-            district_id: data.district_id || '',
-            taluka_id: data.taluka_id || '',
-            village_id: data.village_id || '',
             soil_type: data.soil_type || '',
             water_source: data.water_source || '',
             irrigation_type: data.irrigation_type || '',
+            notes: data.notes || '',
           });
-          
-          // Load districts, talukas, and villages if they exist
-          if (data.state_id) {
-            await loadDistricts(data.state_id);
-            
-            if (data.district_id) {
-              await loadTalukas(data.district_id);
-              
-              if (data.taluka_id) {
-                await loadVillages(data.taluka_id);
-              }
-            }
-          }
         }
       };
       loadLandData();
@@ -196,21 +136,10 @@ export function LandFormDialog({
   const handleSubmit = async (data: FormData) => {
     setIsSubmitting(true);
     try {
-      // Get names from selected IDs for saving
-      const selectedState = states.find(s => s.id === data.state_id);
-      const selectedDistrict = districts.find(d => d.id === data.district_id);
-      const selectedTaluka = talukas.find(t => t.id === data.taluka_id);
-      const selectedVillage = villages.find(v => v.id === data.village_id);
-
       await onSubmit({
         ...data,
         boundary: boundary,
-        // Store names in database for backward compatibility
-        state: selectedState?.name,
-        district: selectedDistrict?.name,
-        taluka: selectedTaluka?.name,
-        village: selectedVillage?.name,
-      } as any);
+      });
       form.reset();
     } finally {
       setIsSubmitting(false);
@@ -234,19 +163,19 @@ export function LandFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[750px] h-[90vh] p-0 overflow-hidden z-[100]" aria-describedby="land-form-description">
-        {/* Compact Header with Area Info */}
+      <DialogContent className="sm:max-w-[700px] h-[85vh] p-0 overflow-hidden z-[100]" aria-describedby="land-form-description">
+        {/* Header with Area Info */}
         <div className="bg-gradient-to-r from-primary/5 to-primary/10 px-6 py-4 border-b">
           <DialogHeader>
             <DialogTitle className="text-lg font-semibold">
               {existingLandId ? 'Edit' : 'Complete'} Land Details
             </DialogTitle>
             <p id="land-form-description" className="text-xs text-muted-foreground mt-1">
-              Fill in the details to save your land
+              Fill in the essential details to save your land
             </p>
           </DialogHeader>
           
-          {/* Area and Boundary Info Card */}
+          {/* Area and Boundary Info Cards */}
           <div className="grid grid-cols-2 gap-3 mt-3">
             <Card className="p-3 bg-card/50 backdrop-blur">
               <div className="flex items-center gap-2">
@@ -284,29 +213,16 @@ export function LandFormDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col h-full">
-            {/* Tabs for organizing form sections */}
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-              <TabsList className="grid w-full grid-cols-2 p-1 mx-6 mt-4 mb-2">
-                <TabsTrigger 
-                  value="basic" 
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                >
-                  <Info className="h-4 w-4 mr-2" />
-                  Basic Info
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="characteristics"
-                  className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                >
-                  <Sprout className="h-4 w-4 mr-2" />
-                  Land Details
-                </TabsTrigger>
-              </TabsList>
-              
-              <ScrollArea className="flex-1 px-6">
-                <TabsContent value="basic" className="space-y-4 mt-4">
-                  {/* Basic Information */}
-                  <div className="grid grid-cols-2 gap-3">
+            <ScrollArea className="flex-1 px-6 py-4">
+              <div className="space-y-6">
+                {/* Basic Information Section */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Basic Information
+                  </h3>
+                  
+                  <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
                       name="name"
@@ -389,314 +305,145 @@ export function LandFormDialog({
                       </FormItem>
                     )}
                   />
+                </div>
 
-                  {/* Location Details */}
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-semibold text-muted-foreground">Location Details</h4>
-                    
-                    <div className="grid grid-cols-2 gap-3">
-                      <FormField
-                        control={form.control}
-                        name="state_id"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-xs font-medium">State</FormLabel>
-                            <Select 
-                              onValueChange={field.onChange} 
-                              value={field.value}
-                              disabled={locationLoading}
-                            >
-                              <FormControl>
-                                <SelectTrigger className="h-9 text-sm">
-                                  <SelectValue placeholder="Select state" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {states.length === 0 ? (
-                                  <div className="text-sm text-muted-foreground p-2 text-center">
-                                    {locationLoading ? "Loading..." : "No states found"}
-                                  </div>
-                                ) : (
-                                  states.map((state) => (
-                                    <SelectItem key={state.id} value={state.id}>
-                                      {state.name}
-                                    </SelectItem>
-                                  ))
-                                )}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage className="text-xs" />
-                          </FormItem>
-                        )}
-                      />
+                {/* Land Characteristics Section */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
+                    <Sprout className="h-4 w-4" />
+                    Land Characteristics
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="soil_type"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-medium">Soil Type</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger className="h-9 text-sm">
+                                <SelectValue placeholder="Select soil type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {soilTypes.map((type) => (
+                                <SelectItem key={type.id} value={type.value}>
+                                  {type.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage className="text-xs" />
+                        </FormItem>
+                      )}
+                    />
 
-                      <FormField
-                        control={form.control}
-                        name="district_id"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-xs font-medium">District</FormLabel>
-                            <Select 
-                              onValueChange={field.onChange} 
-                              value={field.value}
-                              disabled={!stateId || locationLoading}
-                            >
-                              <FormControl>
-                                <SelectTrigger className="h-9 text-sm">
-                                  <SelectValue placeholder={
-                                    !stateId ? "Select state first" :
-                                    locationLoading ? "Loading..." :
-                                    districts.length === 0 ? "No districts available" :
-                                    "Select district"
-                                  } />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {districts.length === 0 ? (
-                                  <div className="text-sm text-muted-foreground p-2 text-center">
-                                    {!stateId ? "Select a state first" : 
-                                     locationLoading ? "Loading..." : "No districts found"}
-                                  </div>
-                                ) : (
-                                  districts.map((district) => (
-                                    <SelectItem key={district.id} value={district.id}>
-                                      {district.name}
-                                    </SelectItem>
-                                  ))
-                                )}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage className="text-xs" />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
+                    <FormField
+                      control={form.control}
+                      name="water_source"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-medium">
+                            <Droplets className="inline h-3 w-3 mr-1" />
+                            Water Source
+                          </FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger className="h-9 text-sm">
+                                <SelectValue placeholder="Select water source" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {waterSources.map((source) => (
+                                <SelectItem key={source.id} value={source.value}>
+                                  {source.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage className="text-xs" />
+                        </FormItem>
+                      )}
+                    />
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <FormField
-                        control={form.control}
-                        name="taluka_id"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-xs font-medium">Taluka/Block</FormLabel>
-                            <Select 
-                              onValueChange={field.onChange} 
-                              value={field.value}
-                              disabled={!districtId || locationLoading}
-                            >
-                              <FormControl>
-                                <SelectTrigger className="h-9 text-sm">
-                                  <SelectValue placeholder={
-                                    !districtId ? "Select district first" :
-                                    locationLoading ? "Loading..." :
-                                    talukas.length === 0 ? "No talukas available" :
-                                    "Select taluka"
-                                  } />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {talukas.length === 0 ? (
-                                  <div className="text-sm text-muted-foreground p-2 text-center">
-                                    {!districtId ? "Select a district first" : 
-                                     locationLoading ? "Loading..." : "No talukas found"}
-                                  </div>
-                                ) : (
-                                  talukas.map((taluka) => (
-                                    <SelectItem key={taluka.id} value={taluka.id}>
-                                      {taluka.name}
-                                    </SelectItem>
-                                  ))
-                                )}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage className="text-xs" />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="village_id"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-xs font-medium">Village/Town</FormLabel>
-                            <Select 
-                              onValueChange={field.onChange} 
-                              value={field.value}
-                              disabled={!talukaId || locationLoading}
-                            >
-                              <FormControl>
-                                <SelectTrigger className="h-9 text-sm">
-                                  <SelectValue placeholder={
-                                    !talukaId ? "Select taluka first" :
-                                    locationLoading ? "Loading..." :
-                                    villages.length === 0 ? "No villages available" :
-                                    "Select village"
-                                  } />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {villages.length === 0 ? (
-                                  <div className="text-sm text-muted-foreground p-2 text-center">
-                                    {!talukaId ? "Select a taluka first" : 
-                                     locationLoading ? "Loading..." : "No villages found"}
-                                  </div>
-                                ) : (
-                                  villages.map((village) => (
-                                    <SelectItem key={village.id} value={village.id}>
-                                      {village.name}
-                                    </SelectItem>
-                                  ))
-                                )}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage className="text-xs" />
-                          </FormItem>
-                        )}
-                      />
-                    </div>
-                    
-                    {locationLoading && (
-                      <div className="flex items-center justify-center py-2">
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />
-                        <span className="text-xs text-muted-foreground">Loading locations...</span>
-                      </div>
-                    )}
+                    <FormField
+                      control={form.control}
+                      name="irrigation_type"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-xs font-medium">Irrigation Type</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger className="h-9 text-sm">
+                                <SelectValue placeholder="Select irrigation" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {irrigationTypes.map((type) => (
+                                <SelectItem key={type.id} value={type.value}>
+                                  {type.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage className="text-xs" />
+                        </FormItem>
+                      )}
+                    />
                   </div>
-                </TabsContent>
 
-                <TabsContent value="characteristics" className="space-y-4 mt-4">
-                  {/* Soil Type */}
+                  {/* Notes Field */}
                   <FormField
                     control={form.control}
-                    name="soil_type"
+                    name="notes"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="text-xs font-medium">Soil Type</FormLabel>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {soilTypes.map((soil) => (
-                            <Badge
-                              key={soil.id}
-                              variant={field.value === soil.value ? "default" : "outline"}
-                              className={cn(
-                                "px-3 py-1.5 cursor-pointer transition-all text-xs",
-                                field.value === soil.value 
-                                  ? "bg-warning hover:bg-warning/90 text-warning-foreground border-warning" 
-                                  : "hover:bg-warning/10"
-                              )}
-                              onClick={() => field.onChange(soil.value)}
-                            >
-                              {soil.label}
-                            </Badge>
-                          ))}
-                        </div>
+                        <FormLabel className="text-xs font-medium">Additional Notes</FormLabel>
+                        <FormControl>
+                          <Textarea 
+                            placeholder="Any additional information about the land..." 
+                            className="resize-none text-sm"
+                            rows={3}
+                            {...field} 
+                          />
+                        </FormControl>
                         <FormMessage className="text-xs" />
                       </FormItem>
                     )}
                   />
-
-                  {/* Water Source */}
-                  <FormField
-                    control={form.control}
-                    name="water_source"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs font-medium">Water Source</FormLabel>
-                        <div className="grid grid-cols-4 gap-2 mt-2">
-                          {waterSources.map((source) => (
-                            <Card
-                              key={source.id}
-                              className={cn(
-                                "p-2 cursor-pointer transition-all text-center",
-                                field.value === source.value 
-                                  ? "border-info bg-info/10 border-2" 
-                                  : "border hover:border-gray-300 dark:hover:border-gray-600"
-                              )}
-                              onClick={() => field.onChange(source.value)}
-                            >
-                              <Droplets className={cn(
-                                "h-4 w-4 mx-auto mb-1",
-                                field.value === source.value 
-                                  ? "text-info" 
-                                  : "text-muted-foreground"
-                              )} />
-                              <span className="text-[11px] leading-tight">{source.label}</span>
-                            </Card>
-                          ))}
-                        </div>
-                        <FormMessage className="text-xs" />
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* Irrigation Type */}
-                  <FormField
-                    control={form.control}
-                    name="irrigation_type"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-xs font-medium">Irrigation Type</FormLabel>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {irrigationTypes.map((type) => (
-                            <Badge
-                              key={type.id}
-                              variant={field.value === type.value ? "default" : "outline"}
-                              className={cn(
-                                "px-3 py-1.5 cursor-pointer transition-all text-xs",
-                                field.value === type.value 
-                                  ? "bg-info hover:bg-info/90 text-info-foreground border-info" 
-                                  : "hover:bg-info/10"
-                              )}
-                              onClick={() => field.onChange(type.value)}
-                            >
-                              {type.label}
-                            </Badge>
-                          ))}
-                        </div>
-                        <FormMessage className="text-xs" />
-                      </FormItem>
-                    )}
-                  />
-                </TabsContent>
-              </ScrollArea>
-            </Tabs>
-
-            {/* Fixed Footer with Save Button */}
-            <div className="border-t px-6 py-4 bg-background/95 backdrop-blur">
-              <div className="flex justify-between items-center">
-                <p className="text-xs text-muted-foreground">
-                  {!form.formState.isValid && "Please fill required fields"}
-                </p>
-                <div className="flex gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="default"
-                    onClick={onClose}
-                    disabled={isSubmitting}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    size="default"
-                    disabled={isSubmitting || !form.formState.isValid}
-                    className="min-w-[120px]"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle2 className="mr-2 h-4 w-4" />
-                        Save Land
-                      </>
-                    )}
-                  </Button>
                 </div>
               </div>
+            </ScrollArea>
+
+            {/* Footer Actions */}
+            <div className="flex items-center justify-between px-6 py-4 border-t bg-muted/30">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={onClose}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="min-w-[120px]"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 mr-2" />
+                    Save Land
+                  </>
+                )}
+              </Button>
             </div>
           </form>
         </Form>
