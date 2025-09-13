@@ -1,8 +1,23 @@
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useNavigate } from 'react-router-dom';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { MapPin, Droplets, Mountain, FileText, ChevronRight } from 'lucide-react';
+import { 
+  MapPin, 
+  Droplets, 
+  Mountain, 
+  Sprout, 
+  Trees, 
+  MoreVertical,
+  Plus,
+  Wheat,
+  TreePine,
+  ChevronRight,
+  Waves,
+  Grid3x3
+} from 'lucide-react';
+import { motion } from 'framer-motion';
+import { cn } from '@/lib/utils';
 
 interface Land {
   id: string;
@@ -18,6 +33,8 @@ interface Land {
   water_source?: string;
   irrigation_type?: string;
   current_crop?: string;
+  soil_ph?: number;
+  organic_carbon_percent?: number;
 }
 
 interface LandSelectorProps {
@@ -25,83 +42,217 @@ interface LandSelectorProps {
   onSelectLand: (land: Land) => void;
 }
 
-const LandSelector: React.FC<LandSelectorProps> = ({ lands, onSelectLand }) => {
-  return (
-    <div className="space-y-4">
-      <div className="mb-6">
-        <h2 className="text-xl font-semibold mb-2">Select Your Land</h2>
-        <p className="text-muted-foreground">Choose a land parcel to generate AI crop schedule</p>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        {lands.map((land) => (
-          <Card 
-            key={land.id} 
-            className="cursor-pointer hover:shadow-lg transition-shadow"
-            onClick={() => onSelectLand(land)}
-          >
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between">
-                <div className="space-y-1">
-                  <CardTitle className="text-lg">{land.name || 'Unnamed Land'}</CardTitle>
-                  {land.survey_number && (
-                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                      <FileText className="h-3 w-3" />
-                      <span>Survey #{land.survey_number}</span>
-                    </div>
-                  )}
-                </div>
-                <ChevronRight className="h-5 w-5 text-muted-foreground" />
-              </div>
-            </CardHeader>
-            
-            <CardContent className="space-y-3">
-              {/* Area Information */}
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Area:</span>
-                <span className="text-sm font-medium">
-                  {land.area_acres} acres {land.area_guntas && `${land.area_guntas} guntas`}
-                </span>
-              </div>
-
-              {/* Location */}
-              {(land.village || land.district) && (
-                <div className="flex items-start gap-2">
-                  <MapPin className="h-3 w-3 text-muted-foreground mt-1" />
-                  <div className="text-sm text-muted-foreground">
-                    {[land.village, land.taluka, land.district, land.state]
-                      .filter(Boolean)
-                      .join(', ')}
-                  </div>
-                </div>
-              )}
-
-              {/* Tags for soil and water */}
-              <div className="flex flex-wrap gap-2">
-                {land.soil_type && (
-                  <Badge variant="secondary" className="text-xs">
-                    <Mountain className="h-3 w-3 mr-1" />
-                    {land.soil_type}
-                  </Badge>
-                )}
-                {land.water_source && (
-                  <Badge variant="secondary" className="text-xs">
-                    <Droplets className="h-3 w-3 mr-1" />
-                    {land.water_source}
-                  </Badge>
-                )}
-                {land.current_crop && (
-                  <Badge variant="outline" className="text-xs">
-                    🌾 {land.current_crop}
-                  </Badge>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
+const getSoilIcon = (soilType?: string) => {
+  if (!soilType) return Mountain;
+  const type = soilType.toLowerCase();
+  if (type.includes('clay')) return Mountain;
+  if (type.includes('loam')) return TreePine;
+  return Mountain;
 };
 
-export default LandSelector;
+const getWaterIcon = (waterSource?: string) => {
+  if (!waterSource) return Droplets;
+  const source = waterSource.toLowerCase();
+  if (source.includes('well')) return Droplets;
+  if (source.includes('river') || source.includes('canal')) return Waves;
+  return Droplets;
+};
+
+const getCropIcon = (crop?: string) => {
+  if (!crop) return Sprout;
+  const cropName = crop.toLowerCase();
+  if (cropName.includes('wheat') || cropName.includes('rice')) return Wheat;
+  if (cropName.includes('tree') || cropName.includes('fruit')) return Trees;
+  return Sprout;
+};
+
+export default function LandSelector({ lands, onSelectLand }: LandSelectorProps) {
+  const navigate = useNavigate();
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { y: 20, opacity: 0 },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: {
+        type: "spring" as const,
+        stiffness: 100
+      }
+    }
+  };
+
+  return (
+    <div className="relative">
+      <motion.div 
+        className="grid gap-6 sm:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
+        {lands.map((land) => {
+          const SoilIcon = getSoilIcon(land.soil_type);
+          const WaterIcon = getWaterIcon(land.water_source);
+          const CropIcon = getCropIcon(land.current_crop);
+          
+          return (
+            <motion.div key={land.id} variants={itemVariants}>
+              <Card 
+                className={cn(
+                  "group relative overflow-hidden cursor-pointer",
+                  "bg-card/80 backdrop-blur-md",
+                  "border border-border/50",
+                  "hover:border-primary/50",
+                  "shadow-lg hover:shadow-xl",
+                  "transition-all duration-300 ease-out",
+                  "hover:scale-[1.02]"
+                )}
+                onClick={() => onSelectLand(land)}
+              >
+                {/* Gradient overlay on hover */}
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                
+                {/* Content */}
+                <div className="relative p-6 space-y-5">
+                  {/* Header */}
+                  <div className="space-y-2">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <h3 className="text-xl font-bold text-foreground group-hover:text-primary transition-colors">
+                          {land.name}
+                        </h3>
+                        {land.survey_number && (
+                          <p className="text-sm text-muted-foreground flex items-center gap-1">
+                            <Grid3x3 className="h-3 w-3" />
+                            Survey #{land.survey_number}
+                          </p>
+                        )}
+                      </div>
+                      <ChevronRight className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors group-hover:translate-x-1 duration-300" />
+                    </div>
+                  </div>
+
+                  {/* Area Display */}
+                  <div className="bg-gradient-to-r from-primary/10 to-accent/10 rounded-xl p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-background/80 rounded-lg">
+                        <Trees className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-bold text-foreground">
+                          {land.area_acres} <span className="text-base font-medium text-muted-foreground">acres</span>
+                        </p>
+                        {land.area_guntas && land.area_guntas > 0 && (
+                          <p className="text-sm text-muted-foreground">
+                            {land.area_guntas} guntas
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Location */}
+                  {(land.village || land.district) && (
+                    <div className="flex items-start gap-2">
+                      <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
+                      <div className="text-sm text-muted-foreground">
+                        {land.village && <span>{land.village}</span>}
+                        {land.village && land.district && ', '}
+                        {land.district && <span>{land.district}</span>}
+                        {land.state && (
+                          <>
+                            {(land.village || land.district) && ', '}
+                            <span>{land.state}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pills for attributes */}
+                  <div className="flex flex-wrap gap-2">
+                    {land.soil_type && (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-secondary/20 to-secondary/10 border border-secondary/20">
+                        <SoilIcon className="h-3.5 w-3.5 text-secondary" />
+                        <span className="text-xs font-medium text-secondary-foreground/90">
+                          {land.soil_type}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {land.water_source && (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-info/20 to-info/10 border border-info/20">
+                        <WaterIcon className="h-3.5 w-3.5 text-info" />
+                        <span className="text-xs font-medium text-info-foreground/90">
+                          {land.water_source}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {land.irrigation_type && (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-accent/20 to-accent/10 border border-accent/20">
+                        <Droplets className="h-3.5 w-3.5 text-accent" />
+                        <span className="text-xs font-medium text-accent-foreground/90">
+                          {land.irrigation_type}
+                        </span>
+                      </div>
+                    )}
+                    
+                    {land.current_crop && (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-success/20 to-success/10 border border-success/20">
+                        <CropIcon className="h-3.5 w-3.5 text-success" />
+                        <span className="text-xs font-medium text-success-foreground/90">
+                          {land.current_crop}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            </motion.div>
+          );
+        })}
+      </motion.div>
+
+      {/* Floating Action Button */}
+      <motion.div
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ 
+          delay: 0.5,
+          type: "spring",
+          stiffness: 200,
+          damping: 10
+        }}
+        className="fixed bottom-6 right-6 z-50"
+      >
+        <Button
+          size="lg"
+          onClick={() => navigate('/app/lands/add')}
+          className={cn(
+            "h-14 w-14 rounded-full",
+            "bg-gradient-to-r from-primary to-primary-hover",
+            "hover:from-primary-hover hover:to-primary",
+            "shadow-xl hover:shadow-2xl",
+            "transition-all duration-300",
+            "group"
+          )}
+        >
+          <Plus className="h-6 w-6 transition-transform duration-300 group-hover:rotate-90" />
+        </Button>
+        
+        {/* Glowing effect */}
+        <div className="absolute inset-0 rounded-full bg-primary/30 blur-xl animate-pulse" />
+      </motion.div>
+    </div>
+  );
+}
