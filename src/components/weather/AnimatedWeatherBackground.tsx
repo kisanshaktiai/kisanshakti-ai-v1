@@ -39,8 +39,8 @@ export const AnimatedWeatherBackground: React.FC<AnimatedWeatherBackgroundProps>
   const animationClass = getWeatherAnimation();
 
   return (
-    <div className={cn('relative overflow-hidden', className)}>
-      <div className={`absolute inset-0 ${animationClass}`}>
+    <div className={cn('relative overflow-hidden bg-gradient-to-br from-background to-muted', className)}>
+      <div className={`absolute inset-0 ${animationClass} pointer-events-none`}>
         {/* Rain Animation */}
         {animationClass === 'rain-animation' && (
           <div className="rain-container">
@@ -149,12 +149,12 @@ export const AnimatedWeatherBackground: React.FC<AnimatedWeatherBackgroundProps>
           position: absolute;
           width: 2px;
           height: 20px;
-          background: linear-gradient(transparent, rgba(var(--primary), 0.6));
+          background: linear-gradient(transparent, hsl(var(--primary) / 0.6));
           animation: rain-fall linear infinite;
         }
 
         .storm-rain {
-          background: linear-gradient(transparent, rgba(var(--primary), 0.8));
+          background: linear-gradient(transparent, hsl(var(--primary) / 0.8));
           height: 25px;
         }
 
@@ -166,9 +166,10 @@ export const AnimatedWeatherBackground: React.FC<AnimatedWeatherBackgroundProps>
 
         .snowflake {
           position: absolute;
-          color: rgba(255, 255, 255, 0.8);
+          color: hsl(var(--foreground) / 0.8);
           font-size: 1.5rem;
           animation: snow-fall linear infinite;
+          filter: drop-shadow(0 0 2px hsl(var(--background)));
         }
 
         @keyframes snow-fall {
@@ -186,7 +187,7 @@ export const AnimatedWeatherBackground: React.FC<AnimatedWeatherBackgroundProps>
           position: absolute;
           width: 100px;
           height: 40px;
-          background: radial-gradient(ellipse at center, rgba(var(--muted), 0.4), transparent);
+          background: radial-gradient(ellipse at center, hsl(var(--muted) / 0.4), transparent);
           border-radius: 50%;
           animation: cloud-drift linear infinite;
         }
@@ -205,6 +206,7 @@ export const AnimatedWeatherBackground: React.FC<AnimatedWeatherBackgroundProps>
           width: 100%;
           height: 100%;
           animation: lightning-flash 4s infinite;
+          pointer-events: none;
         }
 
         @keyframes lightning-flash {
@@ -212,13 +214,13 @@ export const AnimatedWeatherBackground: React.FC<AnimatedWeatherBackgroundProps>
             background: transparent;
           }
           91% {
-            background: rgba(255, 255, 255, 0.2);
+            background: hsl(var(--foreground) / 0.2);
           }
           92% {
             background: transparent;
           }
           93% {
-            background: rgba(255, 255, 255, 0.1);
+            background: hsl(var(--foreground) / 0.1);
           }
         }
 
@@ -226,7 +228,7 @@ export const AnimatedWeatherBackground: React.FC<AnimatedWeatherBackgroundProps>
           position: absolute;
           width: 200%;
           height: 100%;
-          background: linear-gradient(90deg, transparent, rgba(var(--muted), 0.3), transparent);
+          background: linear-gradient(90deg, transparent, hsl(var(--muted) / 0.3), transparent);
           animation: fog-drift 20s ease-in-out infinite;
         }
 
