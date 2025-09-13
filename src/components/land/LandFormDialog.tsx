@@ -161,23 +161,32 @@ export function LandFormDialog({
           .maybeSingle();
         
         if (data && !error) {
-          // For now, we can't pre-fill location as we don't have IDs in database
-          // Just reset with the basic values
+          // Set the form values including location IDs
           form.reset({
             name: data.name || '',
             survey_no: data.survey_number || '',
             ownership_type: (data.ownership_type as 'owned' | 'leased' | 'shared') || 'owned',
-            state_id: '',
-            district_id: '',
-            taluka_id: '',
-            village_id: '',
+            state_id: data.state_id || '',
+            district_id: data.district_id || '',
+            taluka_id: data.taluka_id || '',
+            village_id: data.village_id || '',
             soil_type: data.soil_type || '',
             water_source: data.water_source || '',
             irrigation_type: data.irrigation_type || '',
           });
           
-          // TODO: In future, we can try to match names to IDs if needed
-          // For now, user will need to re-select location when editing
+          // Load districts, talukas, and villages if they exist
+          if (data.state_id) {
+            await loadDistricts(data.state_id);
+            
+            if (data.district_id) {
+              await loadTalukas(data.district_id);
+              
+              if (data.taluka_id) {
+                await loadVillages(data.taluka_id);
+              }
+            }
+          }
         }
       };
       loadLandData();

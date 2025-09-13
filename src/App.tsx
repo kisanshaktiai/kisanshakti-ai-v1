@@ -29,6 +29,7 @@ import PinAuth from "./pages/PinAuth";
 import SetPin from "./pages/SetPin";
 import LandManagement from "./pages/LandManagement";
 import AddLand from "./pages/AddLand";
+import EditLand from "./pages/EditLand";
 import LandDetails from "./pages/LandDetails";
 import AIChat from "./pages/AIChat";
 import Social from "./pages/Social";
@@ -271,6 +272,10 @@ const router = createBrowserRouter(
         {
           path: "lands/add",
           element: <AddLand />,
+        },
+        {
+          path: "lands/:id/edit",
+          element: <EditLand />,
         },
         {
           path: "lands/:id",

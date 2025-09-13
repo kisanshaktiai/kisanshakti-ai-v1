@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/use-toast';
@@ -8,7 +8,6 @@ import { useAuthStore } from '@/stores/authStore';
 import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
 import { GoogleMapBoundaryDrawer } from '@/components/land/GoogleMapBoundaryDrawer';
 import { LandFormDialog } from '@/components/land/LandFormDialog';
-import { LandInstructionDialog } from '@/components/land/LandInstructionDialog';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 
@@ -17,9 +16,10 @@ interface LatLng {
   lng: number;
 }
 
-export default function AddLand() {
+export default function EditLand() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { id } = useParams();
   const { toast } = useToast();
   const { user } = useAuthStore();
   const { isLoaded, loadError, isLoading } = useGoogleMapsApi();
@@ -27,25 +27,80 @@ export default function AddLand() {
   const [showForm, setShowForm] = useState(false);
   const [boundary, setBoundary] = useState<LatLng[]>([]);
   const [area, setArea] = useState({ sqft: 0, guntha: 0, acres: 0 });
-  const [showInstructions, setShowInstructions] = useState(true);
   const [centerCoordinates, setCenterCoordinates] = useState({ lat: 0, lng: 0 });
+  const [landData, setLandData] = useState<any>(null);
+  const [loadingLand, setLoadingLand] = useState(true);
 
-  // Debug log for state changes
-  console.log('AddLand render - showForm:', showForm, 'boundary:', boundary.length, 'area:', area);
+  // Load existing land data
+  useEffect(() => {
+    const loadLandData = async () => {
+      if (!id || !user?.id) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('lands')
+          .select('*')
+          .eq('id', id)
+          .eq('farmer_id', user.id)
+          .single();
+
+        if (error) throw error;
+        
+        setLandData(data);
+        
+        // Parse boundary from database
+        if (data.boundary_polygon_old && typeof data.boundary_polygon_old === 'object' && 'coordinates' in data.boundary_polygon_old) {
+          const polygonData = data.boundary_polygon_old as any;
+          if (polygonData.coordinates?.[0]) {
+            const coords = polygonData.coordinates[0];
+            const boundaryPoints = coords.map((coord: number[]) => ({
+              lng: coord[0],
+              lat: coord[1]
+            }));
+            // Remove last point if it's a duplicate of first (closing point)
+            if (boundaryPoints.length > 1 && 
+                boundaryPoints[0].lat === boundaryPoints[boundaryPoints.length - 1].lat &&
+                boundaryPoints[0].lng === boundaryPoints[boundaryPoints.length - 1].lng) {
+              boundaryPoints.pop();
+            }
+            setBoundary(boundaryPoints);
+          }
+        }
+        
+        // Set area
+        setArea({
+          acres: data.area_acres || 0,
+          guntha: data.area_guntas || 0,
+          sqft: (data.area_acres || 0) * 43560
+        });
+        
+        // Set center
+        if (data.center_point_old && typeof data.center_point_old === 'object' && 'coordinates' in data.center_point_old) {
+          const centerData = data.center_point_old as any;
+          setCenterCoordinates({
+            lng: centerData.coordinates[0],
+            lat: centerData.coordinates[1]
+          });
+        }
+        
+        setShowForm(true);
+      } catch (error) {
+        console.error('Error loading land:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load land details',
+          variant: 'destructive',
+        });
+        navigate('/app/lands');
+      } finally {
+        setLoadingLand(false);
+      }
+    };
+
+    loadLandData();
+  }, [id, user, navigate, toast]);
 
   const handleMapSave = (boundaryPoints: LatLng[], calculatedArea: typeof area) => {
-    console.log('handleMapSave called', { boundaryPoints, calculatedArea });
-    
-    // Validate boundary points
-    if (!boundaryPoints || boundaryPoints.length < 3) {
-      toast({
-        title: 'Invalid Boundary',
-        description: 'Please draw at least 3 points to create a valid boundary',
-        variant: 'destructive',
-      });
-      return;
-    }
-    
     setBoundary(boundaryPoints);
     setArea(calculatedArea);
     
@@ -59,15 +114,11 @@ export default function AddLand() {
       });
     }
     
-    console.log('Setting showForm to true');
-    // Use setTimeout to ensure state update happens after render
-    setTimeout(() => {
-      setShowForm(true);
-    }, 100);
+    setShowForm(true);
   };
 
   const handleFormSubmit = async (formData: any) => {
-    if (!user?.id || !user?.tenantId) {
+    if (!user?.id || !user?.tenantId || !id) {
       toast({
         title: 'Error',
         description: 'User session not found',
@@ -130,55 +181,56 @@ export default function AddLand() {
         villageName = data?.name || '';
       }
 
-      const { error } = await supabase.from('lands').insert({
-        farmer_id: user.id,
-        tenant_id: user.tenantId,
-        name: formData.name,
-        survey_number: formData.survey_no || null,
-        ownership_type: formData.ownership_type,
-        area_acres: area.acres,
-        area_guntas: area.guntha,
-        soil_type: formData.soil_type || null,
-        water_source: formData.water_source || null,
-        irrigation_type: formData.irrigation_type || null,
-        // Store location IDs
-        state_id: formData.state_id || null,
-        district_id: formData.district_id || null,
-        taluka_id: formData.taluka_id || null,
-        village_id: formData.village_id || null,
-        // Store location names for display
-        state: stateName,
-        district: districtName,
-        taluka: talukaName,
-        village: villageName,
-        boundary_polygon_old: {
-          type: 'Polygon',
-          coordinates: [coordinates]
-        },
-        center_point_old: {
-          type: 'Point',
-          coordinates: [centerLng, centerLat]
-        },
-        boundary_method: 'google_maps',
-        gps_accuracy_meters: 10, // Default accuracy
-        gps_recorded_at: new Date().toISOString(),
-        is_active: true,
-        notes: formData.notes || null,
-      });
+      const { error } = await supabase
+        .from('lands')
+        .update({
+          name: formData.name,
+          survey_number: formData.survey_no || null,
+          ownership_type: formData.ownership_type,
+          area_acres: area.acres,
+          area_guntas: area.guntha,
+          soil_type: formData.soil_type || null,
+          water_source: formData.water_source || null,
+          irrigation_type: formData.irrigation_type || null,
+          // Store location IDs
+          state_id: formData.state_id || null,
+          district_id: formData.district_id || null,
+          taluka_id: formData.taluka_id || null,
+          village_id: formData.village_id || null,
+          // Store location names for display
+          state: stateName,
+          district: districtName,
+          taluka: talukaName,
+          village: villageName,
+          boundary_polygon_old: {
+            type: 'Polygon',
+            coordinates: [coordinates]
+          },
+          center_point_old: {
+            type: 'Point',
+            coordinates: [centerLng, centerLat]
+          },
+          boundary_method: 'google_maps',
+          gps_accuracy_meters: 10, // Default accuracy
+          gps_recorded_at: new Date().toISOString(),
+          notes: formData.notes || null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
 
       if (error) throw error;
 
       toast({
         title: 'Success',
-        description: 'Land added successfully',
+        description: 'Land updated successfully',
       });
 
       navigate('/app/lands');
     } catch (error) {
-      console.error('Error adding land:', error);
+      console.error('Error updating land:', error);
       toast({
         title: 'Error',
-        description: 'Failed to add land',
+        description: 'Failed to update land',
         variant: 'destructive',
       });
       throw error;
@@ -190,12 +242,12 @@ export default function AddLand() {
   };
 
   // Loading state
-  if (isLoading || !isLoaded) {
+  if (isLoading || !isLoaded || loadingLand) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background z-50">
         <Card className="p-6 space-y-4 text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-          <p className="text-muted-foreground">Loading Google Maps...</p>
+          <p className="text-muted-foreground">Loading land details...</p>
         </Card>
       </div>
     );
@@ -209,7 +261,7 @@ export default function AddLand() {
           <h2 className="text-xl font-semibold text-destructive">Failed to Load Maps</h2>
           <p className="text-muted-foreground">
             {loadError === 'User not authenticated' 
-              ? 'Please sign in to add land parcels.'
+              ? 'Please sign in to edit land parcels.'
               : 'Could not load Google Maps. Please check your internet connection and try again.'}
           </p>
           <Button onClick={() => navigate('/app/lands')} className="w-full">
@@ -221,50 +273,33 @@ export default function AddLand() {
     );
   }
 
-  // Show instruction dialog first, then fullscreen map
-  if (showInstructions) {
+  // If we want to allow editing the boundary
+  if (!showForm && boundary.length > 0) {
     return (
       <>
-        <div className="min-h-screen bg-background p-4 flex items-center justify-center">
-          <Card className="max-w-md p-6 text-center">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-            <p className="text-muted-foreground">Preparing map...</p>
-          </Card>
+        <div className="fixed inset-0 z-[60] bg-background">
+          <GoogleMapBoundaryDrawer
+            onSave={handleMapSave}
+            onCancel={handleCancel}
+          />
         </div>
-        <LandInstructionDialog
-          open={showInstructions}
-          onClose={() => navigate('/app/lands')}
-          onStart={() => setShowInstructions(false)}
-        />
       </>
     );
   }
 
-  // Main map view - fullscreen without header and bottom navigation
+  // Show form directly for editing other details
   return (
-    <>
-      <div className="fixed inset-0 z-[60] bg-background">
-        <GoogleMapBoundaryDrawer
-          onSave={handleMapSave}
-          onCancel={handleCancel}
-        />
-      </div>
-      
-      <LandFormDialog
-        open={showForm}
-        onClose={() => {
-          console.log('Closing form dialog');
-          setShowForm(false);
-        }}
-        onSubmit={async (formData) => {
-          console.log('Form submitted with data:', formData);
-          await handleFormSubmit(formData);
-          setShowForm(false);
-        }}
-        area={area}
-        centerCoordinates={centerCoordinates}
-        boundary={boundary}
-      />
-    </>
+    <LandFormDialog
+      open={showForm}
+      onClose={() => navigate('/app/lands')}
+      onSubmit={async (formData) => {
+        await handleFormSubmit(formData);
+        setShowForm(false);
+      }}
+      area={area}
+      centerCoordinates={centerCoordinates}
+      boundary={boundary}
+      existingLandId={id}
+    />
   );
 }

@@ -5342,6 +5342,7 @@ export type Database = {
           current_crop: string | null
           current_crop_id: string | null
           district: string | null
+          district_id: string | null
           elevation_meters: number | null
           expected_harvest_date: string | null
           farmer_id: string
@@ -5374,11 +5375,14 @@ export type Database = {
           soil_ph: number | null
           soil_type: string | null
           state: string | null
+          state_id: string | null
           survey_number: string | null
           taluka: string | null
+          taluka_id: string | null
           tenant_id: string
           updated_at: string
           village: string | null
+          village_id: string | null
           water_source: string | null
         }
         Insert: {
@@ -5394,6 +5398,7 @@ export type Database = {
           current_crop?: string | null
           current_crop_id?: string | null
           district?: string | null
+          district_id?: string | null
           elevation_meters?: number | null
           expected_harvest_date?: string | null
           farmer_id: string
@@ -5426,11 +5431,14 @@ export type Database = {
           soil_ph?: number | null
           soil_type?: string | null
           state?: string | null
+          state_id?: string | null
           survey_number?: string | null
           taluka?: string | null
+          taluka_id?: string | null
           tenant_id: string
           updated_at?: string
           village?: string | null
+          village_id?: string | null
           water_source?: string | null
         }
         Update: {
@@ -5446,6 +5454,7 @@ export type Database = {
           current_crop?: string | null
           current_crop_id?: string | null
           district?: string | null
+          district_id?: string | null
           elevation_meters?: number | null
           expected_harvest_date?: string | null
           farmer_id?: string
@@ -5478,14 +5487,45 @@ export type Database = {
           soil_ph?: number | null
           soil_type?: string | null
           state?: string | null
+          state_id?: string | null
           survey_number?: string | null
           taluka?: string | null
+          taluka_id?: string | null
           tenant_id?: string
           updated_at?: string
           village?: string | null
+          village_id?: string | null
           water_source?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_lands_district"
+            columns: ["district_id"]
+            isOneToOne: false
+            referencedRelation: "districts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_lands_state"
+            columns: ["state_id"]
+            isOneToOne: false
+            referencedRelation: "states"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_lands_taluka"
+            columns: ["taluka_id"]
+            isOneToOne: false
+            referencedRelation: "talukas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_lands_village"
+            columns: ["village_id"]
+            isOneToOne: false
+            referencedRelation: "villages"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "lands_current_crop_id_fkey"
             columns: ["current_crop_id"]
