@@ -17,6 +17,7 @@ interface GoogleMapBoundaryDrawerProps {
   onSave: (boundary: LatLng[], area: { sqft: number; guntha: number; acres: number }) => void;
   onCancel: () => void;
   initialCenter?: LatLng;
+  initialBoundary?: LatLng[];
 }
 
 const mapContainerStyle = {
@@ -27,14 +28,15 @@ const mapContainerStyle = {
 export function GoogleMapBoundaryDrawer({ 
   onSave, 
   onCancel,
-  initialCenter 
+  initialCenter,
+  initialBoundary = []
 }: GoogleMapBoundaryDrawerProps) {
   const { toast } = useToast();
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [center, setCenter] = useState<LatLng>(
     initialCenter || { lat: 20.5937, lng: 78.9629 } // Default to India center
   );
-  const [boundary, setBoundary] = useState<LatLng[]>([]);
+  const [boundary, setBoundary] = useState<LatLng[]>(initialBoundary);
   const [mode, setMode] = useState<'draw' | 'walk'>('draw');
   const [isTracking, setIsTracking] = useState(false);
   const [currentPosition, setCurrentPosition] = useState<LatLng | null>(null);

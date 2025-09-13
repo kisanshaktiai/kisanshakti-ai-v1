@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Loader2, ArrowLeft } from 'lucide-react';
+import { Loader2, ArrowLeft, MapPin, Edit } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
 import { GoogleMapBoundaryDrawer } from '@/components/land/GoogleMapBoundaryDrawer';
-import { LandFormDialog } from '@/components/land/LandFormDialog';
+import { ModernLandWizard } from '@/components/land/ModernLandWizard';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { landsApi } from '@/services/landsApi';
 
 interface LatLng {
   lat: number;
@@ -24,27 +24,24 @@ export default function EditLand() {
   const { user } = useAuthStore();
   const { isLoaded, loadError, isLoading } = useGoogleMapsApi();
   
+  const [showMap, setShowMap] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [boundary, setBoundary] = useState<LatLng[]>([]);
   const [area, setArea] = useState({ sqft: 0, guntha: 0, acres: 0 });
-  const [centerCoordinates, setCenterCoordinates] = useState({ lat: 0, lng: 0 });
+  const [initialCenter, setInitialCenter] = useState<LatLng | undefined>(undefined);
   const [landData, setLandData] = useState<any>(null);
   const [loadingLand, setLoadingLand] = useState(true);
 
   // Load existing land data
   useEffect(() => {
     const loadLandData = async () => {
-      if (!id || !user?.id) return;
+      if (!id) return;
       
       try {
-        const { data, error } = await supabase
-          .from('lands')
-          .select('*')
-          .eq('id', id)
-          .eq('farmer_id', user.id)
-          .single();
+        // Use the API service to fetch land data
+        const data = await landsApi.fetchLandById(id);
 
-        if (error) throw error;
+        if (!data) throw new Error('Land not found');
         
         setLandData(data);
         
@@ -74,16 +71,25 @@ export default function EditLand() {
           sqft: (data.area_acres || 0) * 43560
         });
         
-        // Set center
+        // Set center for map initialization
         if (data.center_point_old && typeof data.center_point_old === 'object' && 'coordinates' in data.center_point_old) {
           const centerData = data.center_point_old as any;
-          setCenterCoordinates({
+          setInitialCenter({
             lng: centerData.coordinates[0],
             lat: centerData.coordinates[1]
           });
+        } else if (boundary.length > 0) {
+          // Calculate center from boundary if no center point saved
+          const sumLat = boundary.reduce((sum, point) => sum + point.lat, 0);
+          const sumLng = boundary.reduce((sum, point) => sum + point.lng, 0);
+          setInitialCenter({
+            lat: sumLat / boundary.length,
+            lng: sumLng / boundary.length
+          });
         }
         
-        setShowForm(true);
+        // Show map with preloaded boundary
+        setShowMap(true);
       } catch (error) {
         console.error('Error loading land:', error);
         toast({
@@ -98,94 +104,19 @@ export default function EditLand() {
     };
 
     loadLandData();
-  }, [id, user, navigate, toast]);
+  }, [id, navigate, toast]);
 
   const handleMapSave = (boundaryPoints: LatLng[], calculatedArea: typeof area) => {
     setBoundary(boundaryPoints);
     setArea(calculatedArea);
-    
-    // Calculate center coordinates for the boundary
-    if (boundaryPoints.length > 0) {
-      const sumLat = boundaryPoints.reduce((sum, point) => sum + point.lat, 0);
-      const sumLng = boundaryPoints.reduce((sum, point) => sum + point.lng, 0);
-      setCenterCoordinates({
-        lat: sumLat / boundaryPoints.length,
-        lng: sumLng / boundaryPoints.length
-      });
-    }
-    
+    setShowMap(false);
     setShowForm(true);
   };
 
-  const handleFormSubmit = async (formData: any) => {
-    if (!user?.id || !user?.tenantId || !id) {
-      toast({
-        title: 'Error',
-        description: 'User session not found',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    try {
-      // Get boundary points from formData (passed from the form)
-      const boundaryPoints = formData.boundary || boundary;
-      
-      // Prepare the boundary polygon in GeoJSON format
-      const coordinates = boundaryPoints.map((point: any) => [point.lng, point.lat]);
-      // Close the polygon by adding the first point at the end
-      if (coordinates.length > 0) {
-        coordinates.push(coordinates[0]);
-      }
-
-      // Calculate center point
-      const centerLat = boundaryPoints.reduce((sum: number, p: any) => sum + p.lat, 0) / boundaryPoints.length;
-      const centerLng = boundaryPoints.reduce((sum: number, p: any) => sum + p.lng, 0) / boundaryPoints.length;
-
-      const { error } = await supabase
-        .from('lands')
-        .update({
-          name: formData.name,
-          survey_number: formData.survey_no || null,
-          ownership_type: formData.ownership_type,
-          area_acres: area.acres,
-          area_guntas: area.guntha,
-          soil_type: formData.soil_type || null,
-          water_source: formData.water_source || null,
-          irrigation_type: formData.irrigation_type || null,
-          boundary_polygon_old: {
-            type: 'Polygon',
-            coordinates: [coordinates]
-          },
-          center_point_old: {
-            type: 'Point',
-            coordinates: [centerLng, centerLat]
-          },
-          boundary_method: 'google_maps',
-          gps_accuracy_meters: 10, // Default accuracy
-          gps_recorded_at: new Date().toISOString(),
-          notes: formData.notes || null,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id);
-
-      if (error) throw error;
-
-      toast({
-        title: 'Success',
-        description: 'Land updated successfully',
-      });
-
-      navigate('/app/lands');
-    } catch (error) {
-      console.error('Error updating land:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to update land',
-        variant: 'destructive',
-      });
-      throw error;
-    }
+  const handleFormComplete = () => {
+    // The ModernLandWizard will handle the save internally
+    // We just need to navigate back after completion
+    navigate('/app/lands');
   };
 
   const handleCancel = () => {
@@ -224,33 +155,49 @@ export default function EditLand() {
     );
   }
 
-  // If we want to allow editing the boundary
-  if (!showForm && boundary.length > 0) {
+  // Show map with preloaded boundary for editing
+  if (showMap && !showForm) {
     return (
       <>
         <div className="fixed inset-0 z-[60] bg-background">
-          <GoogleMapBoundaryDrawer
-            onSave={handleMapSave}
-            onCancel={handleCancel}
-          />
+          {/* Title bar */}
+          <div className="absolute top-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-b z-10 p-4">
+            <div className="flex items-center gap-3">
+              <Edit className="h-5 w-5 text-primary" />
+              <h1 className="text-lg font-semibold">
+                Editing Land: {landData?.name || 'Land Parcel'}
+              </h1>
+            </div>
+          </div>
+          
+          {/* Map component with preloaded boundary */}
+          <div className="pt-16 h-full">
+            <GoogleMapBoundaryDrawer
+              onSave={handleMapSave}
+              onCancel={handleCancel}
+              initialCenter={initialCenter}
+              initialBoundary={boundary}
+            />
+          </div>
         </div>
       </>
     );
   }
 
-  // Show form directly for editing other details
-  return (
-    <LandFormDialog
-      open={showForm}
-      onClose={() => navigate('/app/lands')}
-      onSubmit={async (formData) => {
-        await handleFormSubmit(formData);
-        setShowForm(false);
-      }}
-      area={area}
-      centerCoordinates={centerCoordinates}
-      boundary={boundary}
-      existingLandId={id}
-    />
-  );
+  // Show form for editing other details
+  if (showForm) {
+    return (
+      <EditLandWizard
+        landId={id!}
+        boundary={boundary}
+        area={area}
+        existingData={landData}
+        onComplete={handleFormComplete}
+        onCancel={handleCancel}
+      />
+    );
+  }
+
+  // Default state - shouldn't reach here
+  return null;
 }
