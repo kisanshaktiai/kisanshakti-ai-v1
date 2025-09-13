@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { GoogleMap, Marker, Polygon, Polyline } from '@react-google-maps/api';
+import { GoogleMap, Marker, Polygon, Polyline, LoadScript } from '@react-google-maps/api';
 import * as turf from '@turf/turf';
 import { MapControls } from './MapControls';
 import { AreaDisplay } from './AreaDisplay';
 import { useToast } from '@/components/ui/use-toast';
 import LocationService from '@/services/LocationService';
 import { Card } from '@/components/ui/card';
-import { Satellite, Navigation, MapPin } from 'lucide-react';
+import { Satellite, Navigation, MapPin, Loader2 } from 'lucide-react';
 
 interface LatLng {
   lat: number;
@@ -50,20 +50,28 @@ export function GoogleMapBoundaryDrawer({
   const mapOptions: google.maps.MapOptions = {
     mapTypeId: 'hybrid', // Shows satellite with labels
     disableDefaultUI: false,
+    zoom: 18, // Start with a closer zoom for better visibility
     zoomControl: true,
     zoomControlOptions: {
       position: typeof google !== 'undefined' ? google.maps.ControlPosition.RIGHT_CENTER : 7,
     },
     gestureHandling: 'greedy',
-    tilt: 45,
+    tilt: 0, // Start with no tilt for easier drawing
     rotateControl: true,
     mapTypeControl: true,
     mapTypeControlOptions: {
-      mapTypeIds: ['hybrid', 'roadmap', 'satellite', 'terrain'],
+      mapTypeIds: ['hybrid', 'satellite', 'roadmap', 'terrain'],
       position: typeof google !== 'undefined' ? google.maps.ControlPosition.TOP_LEFT : 1,
+      style: typeof google !== 'undefined' ? google.maps.MapTypeControlStyle.HORIZONTAL_BAR : 0,
     },
-    streetViewControl: false,
-    fullscreenControl: false, // Hide fullscreen control
+    streetViewControl: true,
+    streetViewControlOptions: {
+      position: typeof google !== 'undefined' ? google.maps.ControlPosition.RIGHT_TOP : 3,
+    },
+    fullscreenControl: true,
+    fullscreenControlOptions: {
+      position: typeof google !== 'undefined' ? google.maps.ControlPosition.RIGHT_TOP : 3,
+    },
     scaleControl: true,
     styles: [
       {
@@ -78,6 +86,11 @@ export function GoogleMapBoundaryDrawer({
       },
       {
         featureType: 'poi',
+        elementType: 'labels',
+        stylers: [{ visibility: 'on' }]
+      },
+      {
+        featureType: 'administrative',
         elementType: 'labels',
         stylers: [{ visibility: 'on' }]
       }
@@ -159,18 +172,38 @@ export function GoogleMapBoundaryDrawer({
   }, [boundary]);
 
   const onLoad = useCallback((mapInstance: google.maps.Map) => {
+    console.log('Map loaded successfully');
     setMap(mapInstance);
     
+    // Set initial map type to hybrid
+    mapInstance.setMapTypeId('hybrid');
+    
     // Pan to current position if available
-            if (currentPosition) {
-              mapInstance.panTo(currentPosition);
-              // Adjust zoom based on location accuracy
-              const zoom = locationSource === 'gps' ? 18 : 
-                          locationSource === 'village' ? 16 :
-                          locationSource === 'taluka' ? 14 :
-                          locationSource === 'district' ? 12 : 10;
-              mapInstance.setZoom(zoom);
-            }
+    if (currentPosition) {
+      mapInstance.panTo(currentPosition);
+      // Adjust zoom based on location accuracy
+      const zoom = locationSource === 'gps' ? 18 : 
+                  locationSource === 'village' ? 16 :
+                  locationSource === 'taluka' ? 14 :
+                  locationSource === 'district' ? 12 : 10;
+      mapInstance.setZoom(zoom);
+    } else {
+      // If no position, try to get location again
+      LocationService.getCurrentLocation().then(location => {
+        if (location) {
+          const newCenter = {
+            lat: location.lat,
+            lng: location.lon,
+          };
+          mapInstance.panTo(newCenter);
+          mapInstance.setZoom(18);
+          setCurrentPosition(newCenter);
+          setCenter(newCenter);
+        }
+      }).catch(error => {
+        console.error('Error getting location on map load:', error);
+      });
+    }
   }, [currentPosition]);
 
   const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
@@ -417,8 +450,27 @@ export function GoogleMapBoundaryDrawer({
     }
   }, [map, toast]);
 
+  // Loading state
+  const [mapLoading, setMapLoading] = useState(true);
+
+  const handleMapLoad = useCallback((mapInstance: google.maps.Map) => {
+    onLoad(mapInstance);
+    setMapLoading(false);
+  }, [onLoad]);
+
   return (
     <div className="relative w-full h-full">
+      {/* Loading overlay */}
+      {mapLoading && (
+        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
+          <Card className="p-6 space-y-4 text-center">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+            <p className="text-muted-foreground">Loading Hybrid Map...</p>
+            <p className="text-xs text-muted-foreground">Getting your location...</p>
+          </Card>
+        </div>
+      )}
+
       {/* Location button - bottom right like Google Maps */}
       <button
         onClick={handleCenterOnLocation}
@@ -447,7 +499,16 @@ export function GoogleMapBoundaryDrawer({
         zoom={18}
         options={mapOptions}
         onClick={handleMapClick}
-        onLoad={onLoad}
+        onLoad={handleMapLoad}
+        onMapTypeIdChanged={() => {
+          if (map) {
+            console.log('Map type changed to:', map.getMapTypeId());
+          }
+        }}
+        onTilesLoaded={() => {
+          console.log('Map tiles loaded');
+          setMapLoading(false);
+        }}
       >
         {/* Current position marker - only render if google is loaded */}
         {currentPosition && typeof google !== 'undefined' && (
