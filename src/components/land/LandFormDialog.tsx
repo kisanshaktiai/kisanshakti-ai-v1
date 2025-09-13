@@ -133,27 +133,60 @@ export function LandFormDialog({
 
   useEffect(() => {
     if (stateId) {
-      loadDistricts(stateId);
+      // Load districts first, then clear dependent fields after load completes
+      loadDistricts(stateId).then(() => {
+        const currentDistrictId = form.getValues('district_id');
+        // Only clear if district doesn't belong to this state
+        const validDistrict = districts.some(d => d.id === currentDistrictId && d.state_id === stateId);
+        if (!validDistrict) {
+          form.setValue('district_id', '');
+          form.setValue('taluka_id', '');
+          form.setValue('village_id', '');
+        }
+      });
+    } else {
+      // Clear all dependent fields if no state
       form.setValue('district_id', '');
       form.setValue('taluka_id', '');
       form.setValue('village_id', '');
     }
-  }, [stateId]);
+  }, [stateId, loadDistricts]);
 
   useEffect(() => {
     if (districtId) {
-      loadTalukas(districtId);
+      // Load talukas first, then clear dependent fields after load completes
+      loadTalukas(districtId).then(() => {
+        const currentTalukaId = form.getValues('taluka_id');
+        // Only clear if taluka doesn't belong to this district
+        const validTaluka = talukas.some(t => t.id === currentTalukaId && t.district_id === districtId);
+        if (!validTaluka) {
+          form.setValue('taluka_id', '');
+          form.setValue('village_id', '');
+        }
+      });
+    } else {
+      // Clear all dependent fields if no district
       form.setValue('taluka_id', '');
       form.setValue('village_id', '');
     }
-  }, [districtId]);
+  }, [districtId, loadTalukas]);
 
   useEffect(() => {
     if (talukaId) {
-      loadVillages(talukaId);
+      // Load villages first, then clear dependent field after load completes
+      loadVillages(talukaId).then(() => {
+        const currentVillageId = form.getValues('village_id');
+        // Only clear if village doesn't belong to this taluka
+        const validVillage = villages.some(v => v.id === currentVillageId && v.taluka_id === talukaId);
+        if (!validVillage) {
+          form.setValue('village_id', '');
+        }
+      });
+    } else {
+      // Clear village if no taluka
       form.setValue('village_id', '');
     }
-  }, [talukaId]);
+  }, [talukaId, loadVillages]);
 
   // Load existing land data if editing
   useEffect(() => {
@@ -163,9 +196,11 @@ export function LandFormDialog({
           .from('lands')
           .select('*')
           .eq('id', existingLandId)
-          .single();
+          .maybeSingle();
         
         if (data && !error) {
+          // For now, we can't pre-fill location as we don't have IDs in database
+          // Just reset with the basic values
           form.reset({
             name: data.name || '',
             survey_no: data.survey_number || '',
@@ -178,6 +213,9 @@ export function LandFormDialog({
             water_source: data.water_source || '',
             irrigation_type: data.irrigation_type || '',
           });
+          
+          // TODO: In future, we can try to match names to IDs if needed
+          // For now, user will need to re-select location when editing
         }
       };
       loadLandData();
@@ -403,11 +441,17 @@ export function LandFormDialog({
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {states.map((state) => (
-                                  <SelectItem key={state.id} value={state.id}>
-                                    {state.name}
-                                  </SelectItem>
-                                ))}
+                                {states.length === 0 && !locationLoading.states ? (
+                                  <div className="text-sm text-muted-foreground p-2 text-center">
+                                    No states found
+                                  </div>
+                                ) : (
+                                  states.map((state) => (
+                                    <SelectItem key={state.id} value={state.id}>
+                                      {state.name}
+                                    </SelectItem>
+                                  ))
+                                )}
                               </SelectContent>
                             </Select>
                             <FormMessage className="text-xs" />
@@ -437,11 +481,17 @@ export function LandFormDialog({
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                {districts.map((district) => (
-                        <SelectItem key={district.id} value={district.id}>
-                          {district.name}
-                        </SelectItem>
-                                ))}
+                                {districts.length === 0 && !locationLoading.districts ? (
+                                  <div className="text-sm text-muted-foreground p-2 text-center">
+                                    {!stateId ? "Select a state first" : "No districts found"}
+                                  </div>
+                                ) : (
+                                  districts.map((district) => (
+                                    <SelectItem key={district.id} value={district.id}>
+                                      {district.name}
+                                    </SelectItem>
+                                  ))
+                                )}
                               </SelectContent>
                             </Select>
                             <FormMessage className="text-xs" />
