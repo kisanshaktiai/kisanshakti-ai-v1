@@ -47,7 +47,7 @@ interface LocationCache {
   clearCache: () => void;
 }
 
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes for better performance
 
 export const useLocationCache = create<LocationCache>()(
   persist(
@@ -148,41 +148,52 @@ export const useLocationCache = create<LocationCache>()(
       name: 'location-cache',
       storage: {
         getItem: (name) => {
-          const str = localStorage.getItem(name);
-          if (!str) return null;
-          const { state } = JSON.parse(str);
-          return {
-            state: {
-              ...state,
-              districts: new Map(state.districts),
-              talukas: new Map(state.talukas),
-              villages: new Map(state.villages),
-              lastFetch: {
-                ...state.lastFetch,
-                districts: new Map(state.lastFetch.districts),
-                talukas: new Map(state.lastFetch.talukas),
-                villages: new Map(state.lastFetch.villages),
+          try {
+            const str = localStorage.getItem(name);
+            if (!str) return null;
+            const parsed = JSON.parse(str);
+            
+            // Convert arrays back to Maps
+            return {
+              state: {
+                ...parsed.state,
+                districts: new Map(parsed.state.districts || []),
+                talukas: new Map(parsed.state.talukas || []),
+                villages: new Map(parsed.state.villages || []),
+                lastFetch: {
+                  states: parsed.state.lastFetch?.states || 0,
+                  districts: new Map(parsed.state.lastFetch?.districts || []),
+                  talukas: new Map(parsed.state.lastFetch?.talukas || []),
+                  villages: new Map(parsed.state.lastFetch?.villages || []),
+                },
               },
-            },
-          };
+            };
+          } catch (error) {
+            console.error('Error loading location cache:', error);
+            return null;
+          }
         },
         setItem: (name, value) => {
-          const { state } = value as { state: LocationCache };
-          const serialized = {
-            state: {
-              ...state,
-              districts: Array.from(state.districts.entries()),
-              talukas: Array.from(state.talukas.entries()),
-              villages: Array.from(state.villages.entries()),
-              lastFetch: {
-                ...state.lastFetch,
-                districts: Array.from(state.lastFetch.districts.entries()),
-                talukas: Array.from(state.lastFetch.talukas.entries()),
-                villages: Array.from(state.lastFetch.villages.entries()),
+          try {
+            const { state } = value as { state: LocationCache };
+            const serialized = {
+              state: {
+                ...state,
+                districts: Array.from(state.districts.entries()),
+                talukas: Array.from(state.talukas.entries()),
+                villages: Array.from(state.villages.entries()),
+                lastFetch: {
+                  states: state.lastFetch.states,
+                  districts: Array.from(state.lastFetch.districts.entries()),
+                  talukas: Array.from(state.lastFetch.talukas.entries()),
+                  villages: Array.from(state.lastFetch.villages.entries()),
+                },
               },
-            },
-          };
-          localStorage.setItem(name, JSON.stringify(serialized));
+            };
+            localStorage.setItem(name, JSON.stringify(serialized));
+          } catch (error) {
+            console.error('Error saving location cache:', error);
+          }
         },
         removeItem: (name) => localStorage.removeItem(name),
       },

@@ -428,14 +428,19 @@ export function LandFormDialog({
                             >
                               <FormControl>
                                 <SelectTrigger className="h-9 text-sm">
-                                  <SelectValue placeholder={stateId ? "Select district" : "Select state first"} />
+                                  <SelectValue placeholder={
+                                    !stateId ? "Select state first" :
+                                    locationLoading.districts ? "Loading..." :
+                                    districts.length === 0 ? "No districts available" :
+                                    "Select district"
+                                  } />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
                                 {districts.map((district) => (
-                                  <SelectItem key={district.id} value={district.id}>
-                                    {district.name}
-                                  </SelectItem>
+                        <SelectItem key={district.id} value={district.id}>
+                          {district.name}
+                        </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
@@ -459,7 +464,12 @@ export function LandFormDialog({
                             >
                               <FormControl>
                                 <SelectTrigger className="h-9 text-sm">
-                                  <SelectValue placeholder={districtId ? "Select taluka" : "Select district first"} />
+                                  <SelectValue placeholder={
+                                    !districtId ? "Select district first" :
+                                    locationLoading.talukas ? "Loading..." :
+                                    talukas.length === 0 ? "No talukas available" :
+                                    "Select taluka"
+                                  } />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
@@ -488,7 +498,12 @@ export function LandFormDialog({
                             >
                               <FormControl>
                                 <SelectTrigger className="h-9 text-sm">
-                                  <SelectValue placeholder={talukaId ? "Select village" : "Select taluka first"} />
+                                  <SelectValue placeholder={
+                                    !talukaId ? "Select taluka first" :
+                                    locationLoading.villages ? "Loading..." :
+                                    villages.length === 0 ? "No villages available" :
+                                    "Select village"
+                                  } />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
