@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Loader2, ChevronLeft, Check, Search, Sparkles } from 'lucide-react';
+import { Loader2, ChevronLeft, ChevronRight, Check, Search, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -162,54 +162,69 @@ export function CentralizedCropSelector({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -20 }}
-        className="grid grid-cols-3 lg:grid-cols-4 gap-4 p-6"
+        className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 p-4"
       >
         {groups.map((group, index) => (
           <motion.div
             key={group.id}
-            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ 
-              delay: index * 0.03,
+              delay: index * 0.02,
               type: "spring",
-              stiffness: 260,
-              damping: 20
+              stiffness: 400,
+              damping: 25
             }}
-            whileHover={{ scale: 1.05, y: -5 }}
-            whileTap={{ scale: 0.98 }}
+            whileTap={{ scale: 0.97 }}
           >
-            <div
+            <button
               className={cn(
-                "relative cursor-pointer transition-all duration-300",
-                "glass-card-premium hover:glass-card-glow",
-                "group"
+                "relative w-full aspect-square",
+                "bg-gradient-to-br from-white/90 to-white/70 dark:from-black/40 dark:to-black/20",
+                "backdrop-blur-2xl border border-white/50 dark:border-white/20",
+                "rounded-2xl shadow-xl hover:shadow-2xl",
+                "transition-all duration-300 ease-out",
+                "hover:-translate-y-1 active:translate-y-0",
+                "group overflow-hidden"
               )}
               onClick={() => handleGroupSelect(group)}
             >
-              {/* Gradient background effect */}
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/10 via-accent/5 to-secondary/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+              {/* Animated gradient background */}
+              <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-accent/10 to-transparent animate-gradient-shift" />
+              </div>
+              
+              {/* Glow effect */}
+              <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 to-accent/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-60 transition-opacity duration-500" />
               
               {/* Content */}
-              <div className="relative flex flex-col items-center p-6 space-y-3">
-                {/* Icon with gradient background */}
-                <div className="relative">
-                  <div className="absolute inset-0 bg-gradient-to-br from-primary/20 to-accent/20 rounded-full blur-xl group-hover:blur-2xl transition-all duration-300" />
-                  <span className="relative text-4xl lg:text-5xl transform group-hover:scale-110 transition-transform duration-300 filter drop-shadow-lg">
+              <div className="relative h-full flex flex-col items-center justify-center p-4 space-y-2">
+                {/* Icon container with animation */}
+                <motion.div
+                  className="relative"
+                  whileHover={{ rotate: [0, -5, 5, 0], scale: 1.1 }}
+                  transition={{ duration: 0.5 }}
+                >
+                  <span className="text-4xl sm:text-5xl filter drop-shadow-xl">
                     {group.group_icon}
                   </span>
-                </div>
+                </motion.div>
                 
-                {/* Label */}
-                <span className="text-sm font-semibold text-foreground/90 group-hover:text-foreground transition-colors duration-300">
+                {/* Label with better typography */}
+                <span className="text-xs sm:text-sm font-semibold text-foreground/80 group-hover:text-foreground transition-colors text-center leading-tight">
                   {group.group_name}
                 </span>
+                
+                {/* Subtle arrow indicator */}
+                <motion.div
+                  className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-all duration-300"
+                  initial={{ x: -10 }}
+                  whileHover={{ x: 0 }}
+                >
+                  <ChevronRight className="h-4 w-4 text-primary/60" />
+                </motion.div>
               </div>
-              
-              {/* Hover glow effect */}
-              <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none">
-                <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/10 via-transparent to-accent/10" />
-              </div>
-            </div>
+            </button>
           </motion.div>
         ))}
       </motion.div>
@@ -254,7 +269,7 @@ export function CentralizedCropSelector({
       <ScrollArea className="flex-1">
         <AnimatePresence mode="wait">
           <motion.div 
-            className="grid grid-cols-3 gap-3 p-4"
+            className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -265,78 +280,108 @@ export function CentralizedCropSelector({
               return (
                 <motion.div
                   key={crop.id}
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: index * 0.02, type: "spring", stiffness: 300 }}
-                  whileHover={{ scale: 1.03 }}
+                  initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ 
+                    delay: index * 0.01,
+                    type: "spring",
+                    stiffness: 500,
+                    damping: 30
+                  }}
+                  whileTap={{ scale: 0.97 }}
                 >
-                  <div
+                  <button
                     className={cn(
-                      "relative cursor-pointer transition-all duration-300",
-                      "glass-card hover:glass-card-glow p-4",
-                      isSelected && "glass-card-selected",
-                      "group h-full"
+                      "relative w-full p-4 text-left",
+                      "bg-gradient-to-br from-white/80 to-white/60 dark:from-black/30 dark:to-black/10",
+                      "backdrop-blur-xl border",
+                      isSelected 
+                        ? "border-primary/50 shadow-xl shadow-primary/20" 
+                        : "border-white/40 dark:border-white/20 shadow-lg",
+                      "rounded-xl transition-all duration-300",
+                      "hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0",
+                      "group overflow-hidden"
                     )}
                     onClick={() => handleCropSelect(crop)}
                   >
-                    {/* Selection overlay */}
+                    {/* Selection gradient overlay */}
                     {isSelected && (
-                      <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-primary/20 via-accent/10 to-secondary/10 animate-pulse-subtle" />
+                      <motion.div
+                        className="absolute inset-0 bg-gradient-to-br from-primary/15 to-accent/10"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.3 }}
+                      />
                     )}
                     
-                    {/* Content - Vertical layout for grid */}
-                    <div className="relative flex flex-col items-center text-center space-y-2">
-                      {/* Icon */}
+                    {/* Hover effect */}
+                    <div className="absolute inset-0 bg-gradient-to-br from-primary/0 to-accent/0 group-hover:from-primary/10 group-hover:to-accent/5 transition-all duration-500" />
+                    
+                    {/* Content */}
+                    <div className="relative flex flex-col items-center text-center space-y-3">
+                      {/* Icon with modern effect */}
                       <motion.div 
                         className="relative"
-                        whileHover={{ scale: 1.15, rotate: 5 }}
-                        transition={{ type: "spring", stiffness: 300 }}
+                        whileHover={{ rotate: [0, -10, 10, 0], scale: 1.1 }}
+                        transition={{ duration: 0.4 }}
                       >
-                        <div className="absolute inset-0 bg-gradient-to-br from-primary/30 to-accent/30 rounded-full blur-lg" />
-                        <span className="relative text-3xl filter drop-shadow-md">
+                        {/* Icon shadow/glow */}
+                        <div className={cn(
+                          "absolute inset-0 rounded-full blur-xl transition-all duration-300",
+                          isSelected 
+                            ? "bg-gradient-to-br from-primary/40 to-accent/40" 
+                            : "bg-gradient-to-br from-primary/20 to-accent/20 group-hover:from-primary/30 group-hover:to-accent/30"
+                        )} />
+                        <span className="relative text-3xl sm:text-4xl filter drop-shadow-lg">
                           {crop.icon || "🌱"}
                         </span>
                       </motion.div>
                       
-                      {/* Label */}
-                      <div className="space-y-1">
-                        <p className="font-semibold text-sm text-foreground/90 group-hover:text-foreground transition-colors">
+                      {/* Labels */}
+                      <div className="space-y-1 w-full">
+                        <p className={cn(
+                          "font-semibold text-sm leading-tight transition-colors",
+                          isSelected ? "text-primary" : "text-foreground/80 group-hover:text-foreground"
+                        )}>
                           {crop.label}
                         </p>
                         {crop.label_local && (
-                          <p className="text-xs text-muted-foreground/70">{crop.label_local}</p>
+                          <p className="text-xs text-muted-foreground/70 leading-tight">
+                            {crop.label_local}
+                          </p>
                         )}
                       </div>
                       
-                      {/* Badges */}
+                      {/* Badges - Minimal and modern */}
                       <div className="flex flex-wrap gap-1 justify-center">
                         {crop.is_popular && (
-                          <Badge className="glass-badge text-xs px-1.5 py-0">
-                            <Sparkles className="h-3 w-3" />
-                          </Badge>
+                          <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/30">
+                            <Sparkles className="h-2.5 w-2.5 text-yellow-600 dark:text-yellow-400" />
+                            <span className="text-[10px] font-medium text-yellow-700 dark:text-yellow-300">Popular</span>
+                          </span>
                         )}
                         {crop.season && (
-                          <Badge variant="outline" className="text-xs glass-badge px-1.5 py-0">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted/50 text-muted-foreground font-medium">
                             {crop.season}
-                          </Badge>
+                          </span>
                         )}
                       </div>
                       
-                      {/* Selection checkmark */}
+                      {/* Selection indicator - Modern checkbox */}
                       {isSelected && (
                         <motion.div
                           className="absolute top-2 right-2"
                           initial={{ scale: 0, rotate: -180 }}
                           animate={{ scale: 1, rotate: 0 }}
-                          transition={{ type: "spring", stiffness: 500, damping: 20 }}
+                          transition={{ type: "spring", stiffness: 500, damping: 25 }}
                         >
-                          <div className="glass-checkmark">
+                          <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/30 flex items-center justify-center">
                             <Check className="h-3 w-3 text-white" />
                           </div>
                         </motion.div>
                       )}
                     </div>
-                  </div>
+                  </button>
                 </motion.div>
               );
             })}
