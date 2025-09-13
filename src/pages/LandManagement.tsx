@@ -70,15 +70,11 @@ export default function LandManagement() {
     
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('lands')
-        .select('*')
-        .eq('farmer_id', user.id)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setLands(data || []);
+      const { landsApi } = await import('@/services/landsApi');
+      const data = await landsApi.fetchLands();
+      // Filter out any lands without IDs and ensure type compatibility
+      const validLands = (data || []).filter(land => land.id) as Land[];
+      setLands(validLands);
       
       // Store in localStorage for offline access
       if (data) {

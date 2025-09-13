@@ -17,3 +17,6 @@ verify_jwt = false
 
 [functions.filter-community-image]
 verify_jwt = true
+
+[functions.lands-api]
+verify_jwt = false

@@ -13672,6 +13672,14 @@ export type Database = {
         Args: { "": number }
         Returns: string
       }
+      get_session_farmer_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      get_session_tenant_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       get_spray_suitability: {
         Args: {
           humidity_percent: number
@@ -14098,6 +14106,10 @@ export type Database = {
           p_type?: string
         }
         Returns: string
+      }
+      set_app_session: {
+        Args: { p_farmer: string; p_tenant: string }
+        Returns: undefined
       }
       set_limit: {
         Args: { "": number }

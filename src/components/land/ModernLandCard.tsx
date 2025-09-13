@@ -110,15 +110,8 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
-      const { error } = await supabase
-        .from('lands')
-        .update({
-          is_active: false,
-          deleted_at: new Date().toISOString()
-        })
-        .eq('id', land.id);
-        
-      if (error) throw error;
+      const { landsApi } = await import('@/services/landsApi');
+      await landsApi.deleteLand(land.id);
       
       toast({
         title: 'Land Removed',
