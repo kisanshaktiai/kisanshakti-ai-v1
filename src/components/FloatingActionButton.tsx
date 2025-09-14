@@ -23,6 +23,32 @@ const fabItems = [
   { id: 'market', icon: ShoppingBag, labelKey: 'fab.market', path: '/app/market', color: 'from-teal-500 to-green-500' }
 ];
 
+// Helper function to extract gradient colors
+const getGradientColors = (colorString: string) => {
+  const fromColor = colorString.match(/from-(\S+)/)?.[1] || 'primary';
+  const toColor = colorString.match(/to-(\S+)/)?.[1] || 'primary-glow';
+  
+  // Convert Tailwind color names to actual colors
+  const colorMap: Record<string, string> = {
+    'green-500': '#10b981',
+    'emerald-500': '#10b981',
+    'blue-500': '#3b82f6',
+    'cyan-500': '#06b6d4',
+    'purple-500': '#a855f7',
+    'pink-500': '#ec4899',
+    'orange-500': '#f97316',
+    'red-500': '#ef4444',
+    'sky-500': '#0ea5e9',
+    'indigo-500': '#6366f1',
+    'teal-500': '#14b8a6',
+  };
+  
+  const from = colorMap[fromColor] || 'var(--primary)';
+  const to = colorMap[toColor] || 'var(--primary-glow)';
+  
+  return `${from}, ${to}`;
+};
+
 export function FloatingActionButton() {
   const [isExpanded, setIsExpanded] = useState(false);
   const { t } = useTranslation();
@@ -79,14 +105,14 @@ export function FloatingActionButton() {
                   onClick={() => handleItemClick(item.path)}
                   className={cn(
                     "w-12 h-12 rounded-full",
-                    "bg-gradient-to-br shadow-xl",
+                    "shadow-xl",
                     "flex items-center justify-center",
                     "transition-all duration-300",
                     "hover:scale-110 active:scale-95",
                     "text-white"
                   )}
                   style={{
-                    background: `linear-gradient(135deg, ${item.color.split(' ')[1].replace('from-', '')} 0%, ${item.color.split(' ')[3].replace('to-', '')} 100%)`
+                    backgroundImage: `linear-gradient(135deg, ${getGradientColors(item.color)})`
                   }}
                 >
                   <item.icon className="w-5 h-5" />

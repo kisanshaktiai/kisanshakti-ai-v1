@@ -95,37 +95,56 @@ export function ChatInterface() {
       loadLands();
       loadChatSessions();
       
-      // Check for InstaScan context
-      const instaScanContext = sessionStorage.getItem('instaScanContext');
-      if (instaScanContext) {
-        const context = JSON.parse(instaScanContext);
-        sessionStorage.removeItem('instaScanContext');
-        
-        // Create a new session with InstaScan context
-        const newSession = createNewSession('general');
-        
-        // Add the context as the first message
-        const contextMessage: Message = {
-          id: crypto.randomUUID(),
-          role: 'user',
-          content: `I just scanned a ${context.cropName} crop. Condition: ${context.cropCondition}. ${context.diseases.length > 0 ? `Diseases detected: ${context.diseases.join(', ')}. ` : ''}Initial suggestions: ${context.suggestions.join('. ')}. Please provide detailed guidance.`,
-          timestamp: new Date(),
-          attachments: context.imageUrl ? [{
-            type: 'image',
-            url: context.imageUrl,
-            name: 'Crop Scan'
-          }] : undefined
-        };
-        
-        newSession.messages.push(contextMessage);
-        setCurrentSession(newSession);
-        setSessions([newSession]);
-        
-        // Automatically send to AI for detailed analysis
-        setTimeout(() => {
-          sendMessage(contextMessage.content, context.imageUrl);
-        }, 500);
-      }
+      // Check for InstaScan context after a short delay to ensure everything is loaded
+      setTimeout(() => {
+        const instaScanContext = sessionStorage.getItem('instaScanContext');
+        if (instaScanContext) {
+          const context = JSON.parse(instaScanContext);
+          sessionStorage.removeItem('instaScanContext');
+          
+          // Create a new session with InstaScan context
+          const newSession: ChatSession = {
+            id: crypto.randomUUID(),
+            title: `Crop Scan - ${context.cropName}`,
+            landId: undefined,
+            landName: undefined,
+            type: 'general',
+            isFavorite: false,
+            messages: [],
+            createdAt: new Date(),
+            updatedAt: new Date()
+          };
+          
+          // Add the context as the first message
+          const contextMessage: Message = {
+            id: crypto.randomUUID(),
+            role: 'user',
+            content: `I just scanned a ${context.cropName} crop. Condition: ${context.cropCondition}. ${context.diseases.length > 0 ? `Diseases detected: ${context.diseases.join(', ')}. ` : ''}Initial suggestions: ${context.suggestions.join('. ')}. Please provide detailed guidance.`,
+            timestamp: new Date(),
+            attachments: context.imageUrl ? [{
+              type: 'image',
+              url: context.imageUrl,
+              name: 'Crop Scan'
+            }] : undefined
+          };
+          
+          newSession.messages.push(contextMessage);
+          setCurrentSession(newSession);
+          setSessions([newSession]);
+          
+          // Trigger message send with the content
+          setInputMessage(contextMessage.content);
+          if (context.imageUrl) {
+            setUploadedImage(context.imageUrl);
+          }
+          
+          // Auto-send after a brief delay
+          setTimeout(() => {
+            const sendButton = document.querySelector('[data-send-button]') as HTMLButtonElement;
+            sendButton?.click();
+          }, 100);
+        }
+      }, 1000);
     }
   }, [user]);
 
@@ -640,7 +659,7 @@ export function ChatInterface() {
               </Button>
               
               {/* Voice/Send Button */}
-              {inputMessage.trim() || uploadedImage || uploadedFile ? <Button type="button" size="icon" onClick={sendMessage} disabled={isLoading} className="h-10 w-10 rounded-full shrink-0 bg-primary hover:bg-primary/90">
+              {inputMessage.trim() || uploadedImage || uploadedFile ? <Button type="button" size="icon" onClick={sendMessage} disabled={isLoading} className="h-10 w-10 rounded-full shrink-0 bg-primary hover:bg-primary/90" data-send-button>
                   {isLoading ? <Loader2 className="h-5 w-5 animate-spin text-primary-foreground" /> : <Send className="h-5 w-5 text-primary-foreground" />}
                 </Button> : <Button type="button" variant={isListening ? "destructive" : "default"} size="icon" onClick={isSpeechSupported ? toggleListening : undefined} disabled={isLoading || !isSpeechSupported} className="h-10 w-10 rounded-full shrink-0 bg-success hover:bg-success/90 text-success-foreground" title={isListening ? 'Stop recording' : 'Start recording'}>
                   {isListening ? <MicOff className="h-5 w-5 animate-pulse" /> : <Mic className="h-5 w-5" />}
