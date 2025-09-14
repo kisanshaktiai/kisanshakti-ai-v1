@@ -105,6 +105,18 @@
     "lastSynced": "Last synced",
     "online": "Online",
     "offline": "Offline",
-    "aiTyping": "AI is typing..."
+    "aiTyping": "AI is typing...",
+    "feedbackHelps": "This helps us improve our AI responses.",
+    "title": "KisanShakti AI",
+    "general": "General",
+    "adviceFor": "Advice for",
+    "cached": "Cached",
+    "welcome": "Welcome to KisanShakti AI",
+    "addLandPrompt": "Add your lands to get personalized farming advice",
+    "startPrompt": "Ask me anything about farming, weather, or your crops",
+    "weatherPrompt": "What is the weather forecast for my area?",
+    "soilPrompt": "Can you analyze my soil condition and provide recommendations?",
+    "fertilizerPrompt": "What fertilizers should I use for optimal crop growth?",
+    "diseasePrompt": "Help me identify any diseases in my crops."
   }
 }
