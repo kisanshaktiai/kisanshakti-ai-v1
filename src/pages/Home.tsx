@@ -228,24 +228,104 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Quick Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
-            {quickStats.map((stat, index) => {
-              const Icon = stat.icon;
-              return (
-                <div key={index} className="bg-card/80 backdrop-blur-sm rounded-xl p-3 border border-border/50">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Icon className="w-4 h-4 text-primary" />
-                      <span className="text-xs text-muted-foreground">{stat.label}</span>
-                    </div>
-                    {stat.trend === 'up' && <ArrowUpRight className="w-3 h-3 text-success" />}
-                    {stat.trend === 'down' && <ArrowDownRight className="w-3 h-3 text-destructive" />}
+          {/* Glassmorphic Stats Card */}
+          <div className="mt-4 relative">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-accent/10 to-secondary/10 rounded-2xl" />
+            <div className="relative bg-card/40 backdrop-blur-xl rounded-2xl p-5 border border-border/20 shadow-glass">
+              {/* Temperature Section */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <Thermometer className="w-12 h-12 text-primary animate-temp-pulse" />
+                    <div className="absolute inset-0 bg-primary/20 blur-xl animate-pulse" />
                   </div>
-                  <p className="text-lg font-semibold mt-1">{stat.value}</p>
+                  <div>
+                    <p className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                      {currentWeather ? `${Math.round(currentWeather.temp)}°` : '---'}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Feels like {currentWeather ? `${Math.round(currentWeather.feels_like)}°` : '---'}
+                    </p>
+                  </div>
                 </div>
-              );
-            })}
+                {currentWeather && currentWeather.temp > 25 && (
+                  <div className="flex items-center gap-1 px-2 py-1 bg-warning/10 rounded-full">
+                    <ArrowUpRight className="w-3 h-3 text-warning" />
+                    <span className="text-xs text-warning">High</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Inline Weather Stats */}
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg">
+                  <Droplets className="w-4 h-4 text-blue-500 animate-drip" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Humidity</p>
+                    <p className="text-sm font-semibold">{currentWeather ? `${currentWeather.humidity}%` : '---'}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg">
+                  <Wind className="w-4 h-4 text-green-500 animate-sway" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Wind</p>
+                    <p className="text-sm font-semibold">
+                      {currentWeather ? `${Math.round(currentWeather.wind_speed * 3.6)} km/h` : '---'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 p-2 bg-muted/30 rounded-lg">
+                  <Cloud className="w-4 h-4 text-gray-500 animate-float" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Rain</p>
+                    <p className="text-sm font-semibold">
+                      {currentWeather && currentWeather.clouds ? `${currentWeather.clouds}%` : '0%'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Total Area with Progress Ring */}
+              <div className="flex items-center justify-between p-3 bg-gradient-to-r from-primary/5 to-accent/5 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="relative w-12 h-12">
+                    <svg className="w-12 h-12 transform -rotate-90">
+                      <circle
+                        cx="24"
+                        cy="24"
+                        r="20"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        fill="none"
+                        className="text-muted/20"
+                      />
+                      <circle
+                        cx="24"
+                        cy="24"
+                        r="20"
+                        stroke="currentColor"
+                        strokeWidth="3"
+                        fill="none"
+                        strokeDasharray={`${Math.min((lands.length / 5) * 125.6, 125.6)} 125.6`}
+                        className="text-primary transition-all duration-1000 animate-progress-fill"
+                      />
+                    </svg>
+                    <Activity className="w-5 h-5 text-primary absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">Total Area</p>
+                    <p className="text-lg font-bold text-primary">
+                      {totalArea > 0 ? `${totalArea.toFixed(1)} acres` : 'No land'}
+                    </p>
+                  </div>
+                </div>
+                {lands.length > 0 && (
+                  <Badge variant="secondary" className="animate-slide-in">
+                    {lands.length} Plot{lands.length > 1 ? 's' : ''}
+                  </Badge>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>

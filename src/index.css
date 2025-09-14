@@ -4,6 +4,76 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Glassmorphism utilities */
+@layer utilities {
+  .shadow-glass {
+    box-shadow: 
+      0 8px 32px 0 rgba(31, 38, 135, 0.37),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.1);
+  }
+  
+  /* Weather animations */
+  @keyframes temp-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+  }
+  
+  @keyframes drip {
+    0% { transform: translateY(0); }
+    50% { transform: translateY(2px); }
+    100% { transform: translateY(0); }
+  }
+  
+  @keyframes sway {
+    0%, 100% { transform: rotate(-3deg); }
+    50% { transform: rotate(3deg); }
+  }
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+  
+  @keyframes progress-fill {
+    from { stroke-dasharray: 0 125.6; }
+  }
+  
+  @keyframes slide-in {
+    from { 
+      opacity: 0;
+      transform: translateX(10px);
+    }
+    to { 
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  
+  .animate-temp-pulse {
+    animation: temp-pulse 2s ease-in-out infinite;
+  }
+  
+  .animate-drip {
+    animation: drip 2s ease-in-out infinite;
+  }
+  
+  .animate-sway {
+    animation: sway 2s ease-in-out infinite;
+  }
+  
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+  
+  .animate-progress-fill {
+    animation: progress-fill 1s ease-out forwards;
+  }
+  
+  .animate-slide-in {
+    animation: slide-in 0.5s ease-out forwards;
+  }
+}
+
 /* KisanShakti Design System - Farmer-friendly colors inspired by Indian agriculture */
 
 @layer base {
