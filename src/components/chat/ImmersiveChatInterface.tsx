@@ -106,7 +106,8 @@ export function ImmersiveChatInterface() {
   const [lands, setLands] = useState<Land[]>([]);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const [showHeaderFooter, setShowHeaderFooter] = useState(false);
+  const [headerVisible, setHeaderVisible] = useState(true);
+  const [currentLand, setCurrentLand] = useState<Land | null>(null);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -172,8 +173,8 @@ export function ImmersiveChatInterface() {
     
     // Swipe down from top to show header
     if (touchStartY.current < 50 && deltaY > 50) {
-      setShowHeaderFooter(true);
-      setTimeout(() => setShowHeaderFooter(false), 3000);
+      setHeaderVisible(true);
+      setTimeout(() => setHeaderVisible(false), 3000);
     }
   };
 
@@ -469,6 +470,11 @@ Please provide detailed guidance.`;
     setInputMessage(prompts[action] || action);
   };
 
+  const handleLandSwitch = (land: Land) => {
+    setCurrentLand(land);
+    switchLandContext(land.id);
+  };
+
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type.startsWith('image/')) {
@@ -494,10 +500,10 @@ Please provide detailed guidance.`;
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Hidden Header - Swipe to reveal */}
+      {/* Dynamic Header - Initially visible */}
       <div className={cn(
-        "absolute top-0 left-0 right-0 z-50 bg-background/95 backdrop-blur-md border-b transition-transform duration-300",
-        showHeaderFooter ? "translate-y-0" : "-translate-y-full"
+        "bg-card/95 backdrop-blur-md border-b transition-transform duration-300 z-50",
+        headerVisible ? "translate-y-0" : "-translate-y-full"
       )}>
         <div className="flex items-center justify-between p-3">
           <Button
@@ -523,58 +529,63 @@ Please provide detailed guidance.`;
         </div>
       </div>
 
-      {/* Land Selection Row */}
-      <div className="bg-card/90 backdrop-blur-sm border-b px-3 py-2 z-40">
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide">
-          {/* General Chat */}
-          <button
-            onClick={() => switchLandContext('general')}
-            className={cn(
-              "shrink-0 px-3 py-1.5 rounded-full flex items-center gap-2 text-xs font-medium transition-all",
-              selectedLandId === 'general' 
-                ? "bg-primary text-primary-foreground shadow-lg scale-105" 
-                : "bg-card border hover:bg-accent"
-            )}
-          >
-            <Globe className="w-3.5 h-3.5" />
-            <span>{t('chat.general', 'General')}</span>
-          </button>
-          
-          {/* Land Cards */}
-          {lands.map(land => {
-            const CropIcon = getCropIcon(land.primary_crop || land.current_crop);
-            const healthStatus = getHealthStatus(land.health_score, land.soil_type);
+      {/* Land Selection Row - Always visible at the top */}
+      <div className="bg-background/95 backdrop-blur-sm border-b px-3 py-2 sticky top-0 z-40">
+        <ScrollArea className="w-full">
+          <div className="flex gap-2 pb-1">
+            {/* General Chat */}
+            <button
+              onClick={() => {
+                setCurrentLand(null);
+                switchLandContext('general');
+              }}
+              className={cn(
+                "shrink-0 px-3 py-1.5 rounded-full flex items-center gap-2 text-xs font-medium transition-all whitespace-nowrap",
+                !currentLand 
+                  ? "bg-primary text-primary-foreground shadow-lg scale-105" 
+                  : "bg-card/50 hover:bg-card/80 border border-border"
+              )}
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span>{t('chat.general', 'General')}</span>
+            </button>
             
-            return (
-              <button
-                key={land.id}
-                onClick={() => switchLandContext(land.id)}
-                className={cn(
-                  "shrink-0 px-3 py-1.5 rounded-full flex items-center gap-2 text-xs font-medium transition-all",
-                  selectedLandId === land.id 
-                    ? "bg-primary text-primary-foreground shadow-lg scale-105" 
-                    : "bg-card border hover:bg-accent"
-                )}
-              >
-                <CropIcon className="w-3.5 h-3.5" />
-                <span className="max-w-[80px] truncate">{land.name}</span>
-                <Badge className={cn("h-4 px-1 text-[9px]", healthStatus.color)}>
-                  {healthStatus.text}
-                </Badge>
-              </button>
-            );
-          })}
-          
-          {/* Add Land Hint */}
-          {lands.length === 0 && (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-card/50 border border-dashed">
-              <Plus className="w-3.5 h-3.5 text-muted-foreground" />
-              <span className="text-xs text-muted-foreground">
-                {t('chat.addLandHint', 'Add lands to unlock personalized advice')}
-              </span>
-            </div>
-          )}
-        </div>
+            {/* Land Cards */}
+            {lands.map(land => {
+              const CropIcon = getCropIcon(land.primary_crop || land.current_crop);
+              const healthStatus = getHealthStatus(land.health_score, land.soil_type);
+              
+              return (
+                <button
+                  key={land.id}
+                  onClick={() => handleLandSwitch(land)}
+                  className={cn(
+                    "shrink-0 px-3 py-1.5 rounded-full flex items-center gap-2 text-xs font-medium transition-all whitespace-nowrap",
+                    currentLand?.id === land.id 
+                      ? "bg-primary text-primary-foreground shadow-lg scale-105" 
+                      : "bg-card/50 hover:bg-card/80 border border-border"
+                  )}
+                >
+                  <CropIcon className="w-3.5 h-3.5" />
+                  <span className="max-w-[80px] truncate">{land.name}</span>
+                  <Badge className={cn("h-4 px-1 text-[9px]", healthStatus.color)}>
+                    {healthStatus.text}
+                  </Badge>
+                </button>
+              );
+            })}
+            
+            {/* Add Land Hint */}
+            {lands.length === 0 && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/50 border border-dashed">
+                <Plus className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground">
+                  {t('chat.addLandHint', 'Add lands to unlock personalized advice')}
+                </span>
+              </div>
+            )}
+          </div>
+        </ScrollArea>
       </div>
 
       {/* Chat Messages Area */}
