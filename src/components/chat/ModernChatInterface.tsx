@@ -147,17 +147,30 @@ export function ModernChatInterface() {
 
   const loadLands = async () => {
     try {
+      if (!user?.id) {
+        console.log('No user ID available for loading lands');
+        return;
+      }
+      
       const { data, error } = await supabase
         .from('lands')
         .select('*')
-        .eq('farmer_id', user?.id)
+        .eq('farmer_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error loading lands:', error);
+        throw error;
+      }
+      
       setLands(data || []);
+      // Cache lands for offline use
+      if (data) {
+        localStorage.setItem('cached_lands', JSON.stringify(data));
+      }
     } catch (error) {
       console.error('Error loading lands:', error);
-      // Load from cache if offline
+      // Load from cache if offline or error
       const cachedLands = localStorage.getItem('cached_lands');
       if (cachedLands) {
         setLands(JSON.parse(cachedLands));
@@ -174,7 +187,7 @@ export function ModernChatInterface() {
         .eq('user_id', user?.id)
         .order('updated_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle(); // Use maybeSingle instead of single to avoid error when no data
 
       if (sessionData && !sessionError) {
         const formattedSession: ChatSession = {
