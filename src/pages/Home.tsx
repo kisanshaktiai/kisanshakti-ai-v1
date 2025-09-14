@@ -228,104 +228,24 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Compact Glassmorphic Stats Card */}
-          <div className="mt-2 relative">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-accent/5 to-secondary/5 rounded-xl" />
-            <div className="relative bg-card/30 backdrop-blur-md rounded-xl p-2.5 border border-border/10 shadow-sm">
-              {/* Temperature Section */}
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Thermometer className="w-6 h-6 text-primary animate-temp-pulse" />
-                    <div className="absolute inset-0 bg-primary/10 blur-lg animate-pulse" />
+          {/* Quick Stats Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+            {quickStats.map((stat, index) => {
+              const Icon = stat.icon;
+              return (
+                <div key={index} className="bg-card/80 backdrop-blur-sm rounded-xl p-3 border border-border/50">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Icon className="w-4 h-4 text-primary" />
+                      <span className="text-xs text-muted-foreground">{stat.label}</span>
+                    </div>
+                    {stat.trend === 'up' && <ArrowUpRight className="w-3 h-3 text-success" />}
+                    {stat.trend === 'down' && <ArrowDownRight className="w-3 h-3 text-destructive" />}
                   </div>
-                  <div>
-                    <p className="text-lg font-semibold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                      {currentWeather ? `${Math.round(currentWeather.temp)}°` : '---'}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">
-                      Feels {currentWeather ? `${Math.round(currentWeather.feels_like)}°` : '---'}
-                    </p>
-                  </div>
+                  <p className="text-lg font-semibold mt-1">{stat.value}</p>
                 </div>
-                {currentWeather && currentWeather.temp > 25 && (
-                  <div className="flex items-center gap-0.5 px-1 py-0.5 bg-warning/10 rounded-full">
-                    <ArrowUpRight className="w-2 h-2 text-warning" />
-                    <span className="text-[9px] text-warning">High</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Inline Weather Stats */}
-              <div className="grid grid-cols-3 gap-1 mb-2">
-                <div className="flex items-center gap-1 p-1 bg-muted/20 rounded">
-                  <Droplets className="w-3 h-3 text-blue-500 animate-drip" />
-                  <div>
-                    <p className="text-[9px] text-muted-foreground">Humidity</p>
-                    <p className="text-[10px] font-medium">{currentWeather ? `${currentWeather.humidity}%` : '---'}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 p-1 bg-muted/20 rounded">
-                  <Wind className="w-3 h-3 text-green-500 animate-sway" />
-                  <div>
-                    <p className="text-[9px] text-muted-foreground">Wind</p>
-                    <p className="text-[10px] font-medium">
-                      {currentWeather ? `${Math.round(currentWeather.wind_speed * 3.6)}km/h` : '---'}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1 p-1 bg-muted/20 rounded">
-                  <Cloud className="w-3 h-3 text-gray-500 animate-float" />
-                  <div>
-                    <p className="text-[9px] text-muted-foreground">Clouds</p>
-                    <p className="text-[10px] font-medium">
-                      {currentWeather && currentWeather.clouds ? `${currentWeather.clouds}%` : '0%'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Total Area with Compact Progress Ring */}
-              <div className="flex items-center justify-between p-1.5 bg-gradient-to-r from-primary/5 to-accent/5 rounded">
-                <div className="flex items-center gap-2">
-                  <div className="relative w-7 h-7">
-                    <svg className="w-7 h-7 transform -rotate-90">
-                      <circle
-                        cx="14"
-                        cy="14"
-                        r="12"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        fill="none"
-                        className="text-muted/20"
-                      />
-                      <circle
-                        cx="14"
-                        cy="14"
-                        r="12"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        fill="none"
-                        strokeDasharray={`${Math.min((lands.length / 5) * 75.4, 75.4)} 75.4`}
-                        className="text-primary transition-all duration-1000 animate-progress-fill"
-                      />
-                    </svg>
-                    <Activity className="w-3 h-3 text-primary absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-medium text-muted-foreground">Total Area</p>
-                    <p className="text-xs font-semibold text-primary">
-                      {totalArea > 0 ? `${totalArea.toFixed(1)} acres` : 'No land'}
-                    </p>
-                  </div>
-                </div>
-                {lands.length > 0 && (
-                  <Badge variant="secondary" className="text-[9px] px-1 py-0 h-4 animate-slide-in">
-                    {lands.length} Plot{lands.length > 1 ? 's' : ''}
-                  </Badge>
-                )}
-              </div>
-            </div>
+              );
+            })}
           </div>
         </div>
       </div>
