@@ -15,9 +15,9 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 
 const fabItems = [
-  { id: 'land', icon: MapPin, labelKey: 'fab.addLand', path: '/app/land/add', color: 'from-green-500 to-emerald-500' },
-  { id: 'note', icon: FileText, labelKey: 'fab.addNote', path: '/app/notes', color: 'from-blue-500 to-cyan-500' },
-  { id: 'finance', icon: DollarSign, labelKey: 'fab.addFinance', path: '/app/finance', color: 'from-purple-500 to-pink-500' },
+  { id: 'land', icon: MapPin, labelKey: 'fab.addLand', path: '/app/lands/add', color: 'from-green-500 to-emerald-500' },
+  { id: 'notes', icon: FileText, labelKey: 'fab.addNote', path: '/app/chat', color: 'from-blue-500 to-cyan-500' },
+  { id: 'finance', icon: DollarSign, labelKey: 'fab.addFinance', path: '/app/market', color: 'from-purple-500 to-pink-500' },
   { id: 'schedule', icon: Calendar, labelKey: 'fab.schedule', path: '/app/schedule', color: 'from-orange-500 to-red-500' },
   { id: 'weather', icon: Cloud, labelKey: 'fab.weather', path: '/app/weather', color: 'from-sky-500 to-indigo-500' },
   { id: 'market', icon: ShoppingBag, labelKey: 'fab.market', path: '/app/market', color: 'from-teal-500 to-green-500' }
