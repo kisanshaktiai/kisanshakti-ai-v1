@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChatInterface } from '@/components/chat/ChatInterface';
+import { ModernChatInterface } from '@/components/chat/ModernChatInterface';
 import { useTranslation } from 'react-i18next';
 
 export default function AIChat() {
@@ -7,7 +7,7 @@ export default function AIChat() {
 
   return (
     <div className="h-full">
-      <ChatInterface />
+      <ModernChatInterface />
     </div>
   );
 }

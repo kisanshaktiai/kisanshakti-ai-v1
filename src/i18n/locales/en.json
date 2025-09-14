@@ -94,6 +94,15 @@
     "capture": "Capture",
     "title": "AI Agriculture Assistant",
     "welcome": "Welcome to AI Agriculture Assistant",
-    "askAnything": "Ask me anything about farming, crops, weather, or upload images for analysis"
+    "askAnything": "Ask me anything about farming, crops, weather, or upload images for analysis",
+    "addLandHint": "Add lands for personalized advice",
+    "checkWeather": "Check Weather",
+    "soilReport": "Soil Report",
+    "fertilizerAdvice": "Fertilizer Advice",
+    "diseaseDetection": "Disease Detection",
+    "lastSynced": "Last synced",
+    "online": "Online",
+    "offline": "Offline",
+    "aiTyping": "AI is typing..."
   }
 }
