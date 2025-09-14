@@ -94,6 +94,38 @@ export function ChatInterface() {
     if (user?.id) {
       loadLands();
       loadChatSessions();
+      
+      // Check for InstaScan context
+      const instaScanContext = sessionStorage.getItem('instaScanContext');
+      if (instaScanContext) {
+        const context = JSON.parse(instaScanContext);
+        sessionStorage.removeItem('instaScanContext');
+        
+        // Create a new session with InstaScan context
+        const newSession = createNewSession('general');
+        
+        // Add the context as the first message
+        const contextMessage: Message = {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: `I just scanned a ${context.cropName} crop. Condition: ${context.cropCondition}. ${context.diseases.length > 0 ? `Diseases detected: ${context.diseases.join(', ')}. ` : ''}Initial suggestions: ${context.suggestions.join('. ')}. Please provide detailed guidance.`,
+          timestamp: new Date(),
+          attachments: context.imageUrl ? [{
+            type: 'image',
+            url: context.imageUrl,
+            name: 'Crop Scan'
+          }] : undefined
+        };
+        
+        newSession.messages.push(contextMessage);
+        setCurrentSession(newSession);
+        setSessions([newSession]);
+        
+        // Automatically send to AI for detailed analysis
+        setTimeout(() => {
+          sendMessage(contextMessage.content, context.imageUrl);
+        }, 500);
+      }
     }
   }, [user]);
 

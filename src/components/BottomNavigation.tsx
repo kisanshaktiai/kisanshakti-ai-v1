@@ -1,8 +1,9 @@
 import { NavLink } from 'react-router-dom';
-import { Home, Users, TrendingUp, User, Menu, Scan } from 'lucide-react';
+import { Home, Users, TrendingUp, User, Scan } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
+import { InstaScanFlow } from '@/components/InstaScan/InstaScanFlow';
 
 interface BottomNavigationProps {
   onMenuOpen: () => void;
@@ -19,16 +20,18 @@ const navItems = [
 export function BottomNavigation({ onMenuOpen }: BottomNavigationProps) {
   const { t } = useTranslation();
   const [isPulsing, setIsPulsing] = useState(false);
+  const [showInstaScan, setShowInstaScan] = useState(false);
 
   const handleActionClick = () => {
     setIsPulsing(true);
-    onMenuOpen();
+    setShowInstaScan(true);
     setTimeout(() => setIsPulsing(false), 600);
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 h-20 glassmorphism-nav border-t border-nav-border/20 z-50 backdrop-blur-xl">
-      <div className="h-full flex justify-around items-center px-3 relative">
+    <>
+      <nav className="fixed bottom-0 left-0 right-0 h-20 glassmorphism-nav border-t border-nav-border/20 z-50 backdrop-blur-xl">
+        <div className="h-full flex justify-around items-center px-3 relative">
         {navItems.map(({ path, icon: Icon, labelKey, isAction }, index) => {
           // Central action button
           if (isAction) {
@@ -98,7 +101,14 @@ export function BottomNavigation({ onMenuOpen }: BottomNavigationProps) {
             </NavLink>
           ) : null;
         })}
-      </div>
-    </nav>
+        </div>
+      </nav>
+      
+      {/* InstaScan Flow */}
+      <InstaScanFlow 
+        isOpen={showInstaScan} 
+        onClose={() => setShowInstaScan(false)} 
+      />
+    </>
   );
 }

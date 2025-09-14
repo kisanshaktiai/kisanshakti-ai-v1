@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { BottomNavigation } from './BottomNavigation';
 import { HindenburgMenu } from './HindenburgMenu';
+import { FloatingActionButton } from './FloatingActionButton';
 import { LanguageSelector } from './LanguageSelector';
 import { useTenantStore } from '@/stores/tenantStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -67,6 +68,9 @@ export function AppLayout() {
 
       {/* Bottom Navigation */}
       <BottomNavigation onMenuOpen={() => setIsMenuOpen(true)} />
+      
+      {/* Floating Action Button */}
+      <FloatingActionButton />
       
       {/* Hindenburg Menu */}
       <HindenburgMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
