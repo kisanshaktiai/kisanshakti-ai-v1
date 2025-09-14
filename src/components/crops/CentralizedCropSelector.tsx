@@ -162,7 +162,7 @@ export function CentralizedCropSelector({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -20 }}
-        className="grid grid-cols-3 gap-3 p-4 max-h-[60vh] overflow-y-auto"
+        className="grid grid-cols-3 gap-3 p-4 h-full overflow-y-auto"
       >
         {groups.map((group, index) => (
           <motion.div
@@ -266,7 +266,7 @@ export function CentralizedCropSelector({
         </div>
       )}
 
-      <ScrollArea className="flex-1 max-h-[60vh]">
+      <ScrollArea className="flex-1 h-full">
         <AnimatePresence mode="wait">
           <motion.div 
             className="grid grid-cols-3 gap-2 p-4"
@@ -413,10 +413,10 @@ export function CentralizedCropSelector({
   }
 
   const containerClass = cn(
-    "bg-background rounded-lg overflow-hidden",
-    variant === 'compact' && "max-h-[50vh]",
-    variant === 'modal' && "min-h-[400px] max-h-[70vh]",
-    variant === 'default' && "h-auto",
+    "bg-background rounded-lg overflow-hidden flex flex-col",
+    variant === 'compact' && "h-full",
+    variant === 'modal' && "h-[calc(100vh-10rem)]",
+    variant === 'default' && "h-full",
     className
   );
 

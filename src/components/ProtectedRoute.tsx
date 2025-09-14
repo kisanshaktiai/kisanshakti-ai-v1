@@ -15,15 +15,18 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
 
   // Validate session on mount and when session changes
   useEffect(() => {
-    console.log('ProtectedRoute: Validating session', { 
-      session, 
-      isAuthenticated, 
-      isPinRequired,
-      sessionPinVerified: session?.isPinVerified 
-    });
-    const isValid = validateSession();
-    console.log('Session validation result:', isValid);
-  }, [validateSession, session]);
+    // Only validate if we have auth state loaded
+    if (!isLoading) {
+      console.log('ProtectedRoute: Validating session', { 
+        session, 
+        isAuthenticated, 
+        isPinRequired,
+        sessionPinVerified: session?.isPinVerified 
+      });
+      const isValid = validateSession();
+      console.log('Session validation result:', isValid);
+    }
+  }, [validateSession, session, isLoading]);
 
   // Debug logs
   useEffect(() => {

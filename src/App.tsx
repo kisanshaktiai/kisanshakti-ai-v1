@@ -76,6 +76,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       const tenantPromise = fetchTenant();
       
       // Check authentication status in parallel
+      // This will restore auth state from localStorage if it exists
       const authPromise = checkAuth();
       
       // Fetch initial GPS location when app starts

@@ -116,28 +116,32 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
           </div>
         </div>
 
-        {/* Crop Selection Section */}
-        <div className="max-h-[50vh] overflow-y-auto">
+        {/* Crop Selection Section - Full height for mobile */}
+        <div className="h-[calc(100vh-22rem)] sm:max-h-[50vh] overflow-hidden flex flex-col">
           <div className="flex items-center gap-2 mb-3 px-4">
             <Wheat className="h-4 w-4 text-primary" />
             <span className="text-sm font-medium">Select Crop</span>
           </div>
           
-          <CentralizedCropSelector
-            selectedCropId={cropId}
-            onSelect={handleCropSelect}
-            className="border-0 shadow-none bg-transparent"
-            showHeader={false}
-            variant="compact"
-            showSearch={true}
-          />
-          {/* Variety Input - Shows only when crop is selected */}
-          {cropName && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="p-4 pt-0 space-y-2"
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <CentralizedCropSelector
+              selectedCropId={cropId}
+              onSelect={handleCropSelect}
+              className="h-full border-0 shadow-none bg-transparent"
+              showHeader={false}
+              variant="compact"
+              showSearch={true}
+            />
+          </div>
+        </div>
+        
+        {/* Variety Input - Shows only when crop is selected */}
+        {cropName && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="p-4 pt-0 space-y-2"
             >
               <Label htmlFor="variety" className="text-xs font-medium text-muted-foreground">
                 Variety (Optional)
@@ -149,9 +153,8 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                 onChange={(e) => setCropVariety(e.target.value)}
                 className="h-10 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-white/30 dark:border-white/20 focus:border-primary/50 transition-all"
               />
-            </motion.div>
-          )}
-        </div>
+          </motion.div>
+        )}
       </motion.div>
 
       {/* Date Selection Card - Only shows when crop is selected */}
