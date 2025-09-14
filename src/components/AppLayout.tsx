@@ -1,17 +1,19 @@
 import { Outlet } from 'react-router-dom';
 import { BottomNavigation } from './BottomNavigation';
+import { HindenburgMenu } from './HindenburgMenu';
 import { LanguageSelector } from './LanguageSelector';
 import { useTenantStore } from '@/stores/tenantStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useTranslation } from 'react-i18next';
 import { Leaf } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { SyncButton } from '@/components/sync/SyncButton';
 
 export function AppLayout() {
   const { tenant, applyWhiteLabelTheme } = useTenantStore();
   const { user } = useAuthStore();
   const { t } = useTranslation();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // Apply theme whenever tenant changes
   useEffect(() => {
@@ -64,7 +66,10 @@ export function AppLayout() {
       </main>
 
       {/* Bottom Navigation */}
-      <BottomNavigation />
+      <BottomNavigation onMenuOpen={() => setIsMenuOpen(true)} />
+      
+      {/* Hindenburg Menu */}
+      <HindenburgMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
     </div>
   );
 }
