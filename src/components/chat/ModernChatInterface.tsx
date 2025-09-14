@@ -53,6 +53,7 @@ interface Land {
   name: string;
   village?: string;
   primary_crop?: string;
+  current_crop?: string;
   soil_type?: string;
   area?: number;
   crop_history?: any[];
@@ -479,101 +480,126 @@ Please provide detailed guidance.`;
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] max-w-full overflow-hidden">
-      {/* Compact Header with Land Selection */}
-      <div className="bg-card/95 backdrop-blur-sm border-b px-3 py-2">
-        {/* Top Row - Status and Actions */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-xs">
-              {isOnline ? (
-                <>
-                  <Cloud className="w-3 h-3 mr-1" />
-                  {t('common.online')}
-                </>
-              ) : (
-                <>
-                  <CloudOff className="w-3 h-3 mr-1" />
-                  {t('common.offline')}
-                </>
-              )}
-            </Badge>
-            {currentSession?.lastSyncedAt && !isOnline && (
-              <span className="text-xs text-muted-foreground">
-                <Zap className="w-3 h-3 inline mr-1" />
-                Last synced: {format(currentSession.lastSyncedAt, 'h:mm a')}
-              </span>
-            )}
-          </div>
-          <div className="flex gap-1">
+    <div className="flex flex-col h-full max-w-full overflow-hidden">
+      {/* Language Selector Modal */}
+      {showLanguageSelector && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-card rounded-lg p-6 max-w-sm w-full">
+            <h3 className="text-lg font-semibold mb-4">{t('chat.selectLanguage')}</h3>
+            <div className="grid grid-cols-2 gap-2">
+              {['en', 'hi', 'mr', 'pa', 'ta'].map((lang) => (
+                <Button
+                  key={lang}
+                  variant={i18n.language === lang ? 'default' : 'outline'}
+                  onClick={() => {
+                    i18n.changeLanguage(lang);
+                    setShowLanguageSelector(false);
+                  }}
+                >
+                  {t(`languages.${lang}`)}
+                </Button>
+              ))}
+            </div>
             <Button
-              size="icon"
+              className="w-full mt-4"
               variant="ghost"
-              className="h-8 w-8"
-              onClick={() => setShowLanguageSelector(!showLanguageSelector)}
+              onClick={() => setShowLanguageSelector(false)}
             >
-              <Languages className="h-4 w-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8"
-              onClick={() => loadOrCreateSession()}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8"
-              onClick={() => setVoiceEnabled(!voiceEnabled)}
-            >
-              {voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+              {t('common.cancel')}
             </Button>
           </div>
         </div>
+      )}
 
-        {/* Land Selection Row */}
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          <Button
-            variant={selectedLandId === 'general' ? 'default' : 'outline'}
-            size="sm"
-            className="shrink-0 h-8"
-            onClick={() => switchLandContext('general')}
-          >
-            <Globe className="w-3 h-3 mr-1" />
-            {t('chat.generalChat')}
-          </Button>
-          
-          {lands.length === 0 ? (
-            <span className="text-xs text-muted-foreground py-2 px-3">
-              {t('chat.addLandHint')}
-            </span>
-          ) : (
-            lands.map(land => {
-              const CropIcon = getCropIcon(land.primary_crop);
+      {/* Ultra-Compact Header with Land Selection */}
+      <div className="bg-card/95 backdrop-blur-sm border-b px-2 py-1">
+        {/* Single Row with Everything */}
+        <div className="flex items-center gap-1.5">
+          {/* Online Status Badge */}
+          <Badge variant={isOnline ? 'default' : 'secondary'} className={cn("h-6 text-[10px] px-1.5 shrink-0", isOnline && "bg-success text-success-foreground")}>
+            {isOnline ? (
+              <Cloud className="w-3 h-3" />
+            ) : (
+              <CloudOff className="w-3 h-3" />
+            )}
+          </Badge>
+
+          {/* Land Selection - Horizontally Scrollable */}
+          <div className="flex-1 flex gap-1 overflow-x-auto scrollbar-hide">
+            <Button
+              variant={selectedLandId === 'general' ? 'default' : 'outline'}
+              size="sm"
+              className={cn(
+                "shrink-0 h-7 px-2 text-xs",
+                selectedLandId === 'general' && "bg-primary"
+              )}
+              onClick={() => switchLandContext('general')}
+            >
+              <Globe className="w-3 h-3 mr-1" />
+              General
+            </Button>
+            
+            {lands.map(land => {
+              const CropIcon = getCropIcon(land.primary_crop || land.current_crop);
               return (
                 <Button
                   key={land.id}
                   variant={selectedLandId === land.id ? 'default' : 'outline'}
                   size="sm"
-                  className="shrink-0 h-8 gap-1"
+                  className={cn(
+                    "shrink-0 h-7 px-2 text-xs gap-1",
+                    selectedLandId === land.id && "bg-primary"
+                  )}
                   onClick={() => switchLandContext(land.id)}
                 >
                   <CropIcon className="w-3 h-3" />
-                  <span className="max-w-[100px] truncate">{land.name}</span>
-                  <Badge className={cn("ml-1 h-4 px-1 text-[10px]", getSoilStatusColor(land.soil_type))}>
+                  <span className="max-w-[80px] truncate">{land.name}</span>
+                  <Badge className={cn("h-4 px-1 text-[9px]", getSoilStatusColor(land.soil_type))}>
                     {land.soil_type?.slice(0, 3).toUpperCase() || 'N/A'}
                   </Badge>
                 </Button>
               );
-            })
-          )}
+            })}
+            
+            {lands.length === 0 && (
+              <span className="text-[11px] text-muted-foreground py-1.5 px-2 italic">
+                {t('chat.addLandHint')}
+              </span>
+            )}
+          </div>
+
+          {/* Compact Actions */}
+          <div className="flex gap-0.5 shrink-0">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6"
+              onClick={() => setShowLanguageSelector(!showLanguageSelector)}
+            >
+              <Languages className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6"
+              onClick={() => loadOrCreateSession()}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-6 w-6"
+              onClick={() => setVoiceEnabled(!voiceEnabled)}
+            >
+              {voiceEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Messages Area - Maximized */}
-      <ScrollArea className="flex-1 px-3 py-4" ref={scrollAreaRef}>
+      <ScrollArea className="flex-1 px-3 py-2" ref={scrollAreaRef}>
         <div className="space-y-4 max-w-4xl mx-auto">
           {currentSession?.messages.map((message) => (
             <div
@@ -698,14 +724,13 @@ Please provide detailed guidance.`;
             </div>
           )}
 
-          {/* Empty State */}
+          {/* Empty State - Minimal */}
           {(!currentSession || currentSession.messages.length === 0) && !isTyping && (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/20 flex items-center justify-center mb-4">
-                <Bot className="w-8 h-8 text-primary" />
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/20 flex items-center justify-center mb-2">
+                <Bot className="w-6 h-6 text-primary" />
               </div>
-              <h3 className="text-lg font-semibold mb-2">{t('chat.welcome')}</h3>
-              <p className="text-sm text-muted-foreground max-w-md">
+              <p className="text-xs text-muted-foreground max-w-xs">
                 {lands.length === 0 ? t('chat.addLandHint') : t('chat.askAnything')}
               </p>
             </div>

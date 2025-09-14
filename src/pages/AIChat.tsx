@@ -6,7 +6,7 @@ export default function AIChat() {
   const { t } = useTranslation();
 
   return (
-    <div className="h-full">
+    <div className="h-[calc(100vh-4rem)]">
       <ModernChatInterface />
     </div>
   );
