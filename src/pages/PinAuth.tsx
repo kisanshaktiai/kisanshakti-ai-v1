@@ -6,10 +6,13 @@ import { Card } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useAuthFlowStore } from '@/stores/authFlowStore';
-import { Loader2, Lock, ArrowLeft } from 'lucide-react';
+import { Loader2, Lock, ArrowLeft, WifiOff } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useTenantStore } from '@/stores/tenantStore';
+import { offlineAuthService } from '@/services/offlineAuthService';
+import { useOfflineStatus } from '@/hooks/useOfflineStatus';
+import { toast } from '@/hooks/use-toast';
 
 export default function PinAuth() {
   const { t } = useTranslation();
@@ -21,6 +24,7 @@ export default function PinAuth() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempts, setAttempts] = useState(0);
+  const isOnline = useOfflineStatus();
   
   const mobile = localStorage.getItem('authMobile');
   const farmerId = localStorage.getItem('farmerId');
@@ -41,78 +45,75 @@ export default function PinAuth() {
     setError(null);
 
     try {
-      // MULTI-TENANT VERIFICATION: Verify farmer belongs to correct tenant
-      const { data: farmer, error: fetchError } = await supabase
-        .from('farmers')
-        .select('*')
-        .eq('id', farmerId)
-        .eq('tenant_id', tenantId)
-        .single();
+      // Use offline-first authentication
+      const authResult = await offlineAuthService.authenticateWithFallback(
+        mobile!,
+        value,
+        farmerId!,
+        tenantId!
+      );
 
-      if (fetchError) {
-        throw fetchError;
+      if (!authResult.success) {
+        throw new Error(authResult.error || 'Authentication failed');
       }
 
-      // Call the validate_farmer_pin function to verify PIN
-      const { data: isValid, error: validationError } = await supabase
-        .rpc('validate_farmer_pin', {
-          p_farmer_id: farmerId,
-          p_pin: value,
-          p_tenant_id: tenantId
+      const farmer = authResult.farmerData;
+      const profileData = authResult.profileData;
+
+      // If we're offline, show a notification
+      if (authResult.isOffline) {
+        toast({
+          title: 'Offline Mode',
+          description: 'You are logged in offline. Data will sync when connection is restored.',
+          variant: 'default',
         });
-
-      if (validationError) {
-        console.error('PIN validation error:', validationError);
-        // Fallback to direct comparison if function doesn't exist
-        const isPinValid = farmer.pin === value;
-        console.log('Fallback PIN check:', { entered: value, stored: farmer.pin, isValid: isPinValid });
-        
-        if (isPinValid) {
-          // PIN is correct
-        } else {
-          throw new Error('Incorrect PIN');
+      } else {
+        // Update login stats only if online
+        try {
+          await supabase
+            .from('farmers')
+            .update({
+              last_login_at: new Date().toISOString(),
+              last_app_open: new Date().toISOString(),
+              total_app_opens: (farmer.total_app_opens || 0) + 1,
+              failed_login_attempts: 0
+            })
+            .eq('id', farmerId);
+        } catch (error) {
+          console.log('Could not update login stats, will sync later');
         }
+        
+        // Cache auth data for offline use
+        await offlineAuthService.cacheAuthData(
+          farmer.id,
+          farmer.tenant_id,
+          farmer.mobile_number,
+          value,
+          farmer,
+          profileData
+        );
       }
 
-      console.log('PIN validation result:', isValid);
+      // Update existing session or create new one
+      const updatedSession = session ? {
+        ...session,
+        isPinVerified: true,
+        isOffline: authResult.isOffline
+      } : {
+        farmerId: farmer.id,
+        tenantId: farmer.tenant_id,
+        mobile: farmer.mobile_number,
+        token: `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`,
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days for offline
+        isPinVerified: true,
+        isOffline: authResult.isOffline
+      };
 
-      if (isValid || farmer.pin === value) {
-        // Update login stats
-        await supabase
-          .from('farmers')
-          .update({
-            last_login_at: new Date().toISOString(),
-            last_app_open: new Date().toISOString(),
-            total_app_opens: (farmer.total_app_opens || 0) + 1,
-            failed_login_attempts: 0
-          })
-          .eq('id', farmerId);
-
-        // Fetch user profile data
-        const { data: profileData } = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('farmer_id', farmer.id)
-          .maybeSingle();
-
-        // Update existing session or create new one
-        const updatedSession = session ? {
-          ...session,
-          isPinVerified: true
-        } : {
-          farmerId: farmer.id,
-          tenantId: farmer.tenant_id,
-          mobile: farmer.mobile_number,
-          token: `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`,
-          createdAt: new Date().toISOString(),
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-          isPinVerified: true
-        };
-
-        // Set session and user in store with complete profile data
-        console.log('PIN verified successfully, setting session:', updatedSession);
-        setSession(updatedSession);
-        setUser({
+      // Set session and user in store with complete profile data
+      console.log('PIN verified successfully, setting session:', updatedSession);
+      setSession(updatedSession);
+      setUser({
           id: farmer.id,
           phone: farmer.mobile_number,
           name: profileData?.full_name || farmer.farmer_code || 'Farmer',
@@ -145,42 +146,31 @@ export default function PinAuth() {
           annualIncomeRange: farmer.annual_income_range || profileData?.annual_income_range || ''
         });
 
-        // Clear temp storage but keep session data
-        localStorage.removeItem('authMobile');
-        localStorage.removeItem('farmerId');
-        
-        // Set step and force navigation
-        setStep('dashboard');
-        console.log('Navigating to dashboard...');
-        
-        // Use setTimeout to ensure state updates are processed
-        setTimeout(() => {
-          navigate('/app', { replace: true });
-        }, 100);
-      } else {
-        // Update failed attempts
-        const newAttempts = attempts + 1;
-        setAttempts(newAttempts);
-        
-        await supabase
-          .from('farmers')
-          .update({
-            failed_login_attempts: (farmer.failed_login_attempts || 0) + 1,
-            last_failed_login: new Date().toISOString()
-          })
-          .eq('id', farmerId);
-        
-        if (newAttempts >= 3) {
-          setError(t('auth.tooManyAttempts') || 'Too many failed attempts. Please try again later.');
-          setTimeout(() => navigate('/auth'), 3000);
-        } else {
-          setError(t('auth.incorrectPin') || `Incorrect PIN. ${3 - newAttempts} attempts remaining.`);
-        }
-        setPin('');
-      }
+      // Clear temp storage but keep session data
+      localStorage.removeItem('authMobile');
+      localStorage.removeItem('farmerId');
+      
+      // Set step and force navigation
+      setStep('dashboard');
+      console.log('Navigating to dashboard...');
+      
+      // Use setTimeout to ensure state updates are processed
+      setTimeout(() => {
+        navigate('/app', { replace: true });
+      }, 100);
     } catch (err: any) {
       console.error('Error verifying PIN:', err);
-      setError(err.message || 'Something went wrong. Please try again.');
+      setError(err.message || 'Authentication failed. Please try again.');
+      setPin('');
+      
+      // Increment attempts
+      const newAttempts = attempts + 1;
+      setAttempts(newAttempts);
+      
+      if (newAttempts >= 3) {
+        setError(t('auth.tooManyAttempts') || 'Too many failed attempts. Please try again later.');
+        setTimeout(() => navigate('/auth'), 3000);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -222,6 +212,15 @@ export default function PinAuth() {
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {!isOnline && (
+          <Alert>
+            <WifiOff className="h-4 w-4" />
+            <AlertDescription>
+              You are offline. Using cached credentials.
+            </AlertDescription>
           </Alert>
         )}
 

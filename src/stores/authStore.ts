@@ -42,6 +42,7 @@ interface Session {
   createdAt: string;
   expiresAt: string;
   isPinVerified: boolean;
+  isOffline?: boolean;
 }
 
 interface AuthState {
@@ -68,8 +69,9 @@ const generateSessionToken = () => {
   return `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
 };
 
-// Session expires after 24 hours
+// Session expires after 24 hours for online, 7 days for offline
 const SESSION_DURATION = 24 * 60 * 60 * 1000;
+const OFFLINE_SESSION_DURATION = 7 * 24 * 60 * 60 * 1000;
 
 export const useAuthStore = create<AuthState>()(
   persist(
