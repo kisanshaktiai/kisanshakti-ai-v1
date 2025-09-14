@@ -415,8 +415,8 @@ Please provide detailed guidance.`;
       };
     });
 
-    // Save feedback to database
-    if (isOnline) {
+    // Save feedback to database - update existing message
+    if (isOnline && currentSession) {
       try {
         await supabase.from('chat_messages')
           .update({ feedback })

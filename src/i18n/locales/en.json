@@ -69,7 +69,9 @@
     "save": "Save",
     "cancel": "Cancel",
     "search": "Search",
-    "filter": "Filter"
+    "filter": "Filter",
+    "online": "Online",
+    "offline": "Offline"
   },
   "home": {
     "greeting": "Hello, {{name}}",

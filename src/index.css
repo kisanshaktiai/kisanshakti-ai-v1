@@ -46,6 +46,13 @@
     --info: 199 89% 48%;
     --info-foreground: 0 0% 100%;
     
+    /* Glassmorphic Chat Effects */
+    --chat-bubble-blur: 12px;
+    --chat-bubble-bg: rgba(255, 255, 255, 0.85);
+    --chat-bubble-border: rgba(255, 255, 255, 0.3);
+    --chat-bubble-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+    --info-foreground: 0 0% 100%;
+    
     /* Muted */
     --muted: 60 5% 96%;
     --muted-foreground: 140 5% 40%;
@@ -384,5 +391,16 @@
   
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
     background-color: hsl(var(--muted-foreground) / 0.5);
+  }
+  
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
   }
 }

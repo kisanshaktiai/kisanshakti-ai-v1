@@ -1532,7 +1532,9 @@ export type Database = {
           attachments: Json | null
           content: string
           created_at: string
+          feedback: string | null
           id: string
+          land_name: string | null
           metadata: Json | null
           role: string
           session_id: string
@@ -1541,7 +1543,9 @@ export type Database = {
           attachments?: Json | null
           content: string
           created_at?: string
+          feedback?: string | null
           id?: string
+          land_name?: string | null
           metadata?: Json | null
           role: string
           session_id: string
@@ -1550,7 +1554,9 @@ export type Database = {
           attachments?: Json | null
           content?: string
           created_at?: string
+          feedback?: string | null
           id?: string
+          land_name?: string | null
           metadata?: Json | null
           role?: string
           session_id?: string
@@ -1571,6 +1577,7 @@ export type Database = {
           id: string
           is_favorite: boolean | null
           land_id: string | null
+          land_name: string | null
           title: string
           type: string
           updated_at: string
@@ -1581,6 +1588,7 @@ export type Database = {
           id?: string
           is_favorite?: boolean | null
           land_id?: string | null
+          land_name?: string | null
           title: string
           type?: string
           updated_at?: string
@@ -1591,6 +1599,7 @@ export type Database = {
           id?: string
           is_favorite?: boolean | null
           land_id?: string | null
+          land_name?: string | null
           title?: string
           type?: string
           updated_at?: string
