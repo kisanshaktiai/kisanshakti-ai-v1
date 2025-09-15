@@ -102,20 +102,24 @@ export function CreatePost({ onClose, onPostCreated }: CreatePostProps) {
 
   return (
     <Dialog open onOpenChange={() => onClose()}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[500px] bg-card/95 backdrop-blur-xl border-border/50">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-primary" />
-            Create Post
+          <DialogTitle className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
+              <Users className="h-5 w-5 text-primary" />
+            </div>
+            <span className="text-lg font-semibold text-foreground">Create Post</span>
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           {/* Community Selection */}
           {communities.length > 0 && (
             <div className="space-y-2">
-              <Label htmlFor="community">Select Community (optional)</Label>
+              <Label htmlFor="community" className="text-sm font-medium text-foreground">
+                Select Community (optional)
+              </Label>
               <Select value={selectedCommunity} onValueChange={setSelectedCommunity}>
-                <SelectTrigger id="community">
+                <SelectTrigger id="community" className="bg-muted/50 border-border/50 focus:border-primary/50">
                   <SelectValue placeholder="Choose a community..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -132,21 +136,23 @@ export function CreatePost({ onClose, onPostCreated }: CreatePostProps) {
 
           {/* Post Content */}
           <div className="space-y-2">
-            <Label htmlFor="content">What's on your mind?</Label>
+            <Label htmlFor="content" className="text-sm font-medium text-foreground">
+              What's on your mind?
+            </Label>
             <Textarea
               id="content"
               placeholder="Share your thoughts, tips, or questions with the farming community..."
               value={content}
               onChange={(e) => setContent(e.target.value)}
               rows={5}
-              className="resize-none"
+              className="resize-none bg-muted/50 border-border/50 focus:border-primary/50 transition-all"
             />
           </div>
 
-          {/* Hashtags */}
+          {/* Modern Hashtags */}
           <div className="space-y-2">
-            <Label htmlFor="hashtags" className="flex items-center gap-2">
-              <Hash className="h-4 w-4" />
+            <Label htmlFor="hashtags" className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Hash className="h-4 w-4 text-primary" />
               Hashtags
             </Label>
             <Input
@@ -154,25 +160,37 @@ export function CreatePost({ onClose, onPostCreated }: CreatePostProps) {
               placeholder="#farming #organic #tips"
               value={hashtags}
               onChange={(e) => setHashtags(e.target.value)}
+              className="bg-muted/50 border-border/50 focus:border-primary/50 transition-all"
             />
             <p className="text-xs text-muted-foreground">
               Separate hashtags with spaces
             </p>
           </div>
 
-          {/* Actions */}
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={onClose} disabled={loading}>
-              <X className="h-4 w-4 mr-2" />
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleSubmit} 
-              disabled={loading || !content.trim()}
-              className="min-w-[100px]"
-            >
-              {loading ? "Posting..." : "Post"}
-            </Button>
+          {/* Modern Actions */}
+          <div className="flex justify-between items-center">
+            <div className="flex gap-2">
+              <Button variant="ghost" size="icon" className="hover:bg-primary/10">
+                <Image className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={onClose} 
+                disabled={loading}
+                className="border-border/50 hover:bg-muted/50"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleSubmit} 
+                disabled={loading || !content.trim()}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25"
+              >
+                {loading ? "Posting..." : "Share Post"}
+              </Button>
+            </div>
           </div>
         </div>
       </DialogContent>

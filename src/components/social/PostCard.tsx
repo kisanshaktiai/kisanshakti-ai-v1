@@ -20,19 +20,19 @@ export function PostCard({ post, onLike, onShare, onSave, isLiked, isSaved }: Po
   const [showComments, setShowComments] = useState(false);
 
   return (
-    <Card className="border-0 border-b rounded-none">
+    <Card className="border-0 border-b border-border/50 rounded-none bg-card/50 backdrop-blur-sm hover:bg-card/80 transition-all">
       <div className="p-4">
-        {/* Header */}
+        {/* Modern Header */}
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
-            <Avatar className="w-10 h-10">
-              <AvatarFallback className="bg-primary/10 text-primary">
-                {post.farmer?.farmer_name?.[0] || 'F'}
+            <Avatar className="w-10 h-10 border-2 border-background shadow-sm">
+              <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-primary font-semibold">
+                {post.farmer?.farmer_name?.[0]?.toUpperCase() || 'F'}
               </AvatarFallback>
             </Avatar>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-medium">{post.farmer?.farmer_name || 'Farmer'}</span>
+                <span className="font-semibold text-foreground">{post.farmer?.farmer_name || 'Farmer'}</span>
                 {post.is_expert_verified && (
                   <CheckCircle className="w-4 h-4 text-primary" />
                 )}
@@ -40,8 +40,8 @@ export function PostCard({ post, onLike, onShare, onSave, isLiked, isSaved }: Po
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 {post.community && (
                   <>
-                    <span>{post.community.name}</span>
-                    <span>•</span>
+                    <span className="text-primary/70">{post.community.name}</span>
+                    <span className="opacity-50">•</span>
                   </>
                 )}
                 <span>{formatDistanceToNow(new Date(post.created_at), { addSuffix: true })}</span>
@@ -49,7 +49,7 @@ export function PostCard({ post, onLike, onShare, onSave, isLiked, isSaved }: Po
             </div>
           </div>
           {post.is_success_story && (
-            <Badge variant="secondary" className="bg-success/10 text-success">
+            <Badge variant="secondary" className="bg-gradient-to-r from-primary/10 to-primary/5 text-primary border-primary/20">
               Success Story
             </Badge>
           )}
@@ -57,18 +57,20 @@ export function PostCard({ post, onLike, onShare, onSave, isLiked, isSaved }: Po
 
         {/* Content */}
         <div className="mb-3">
-          <p className="text-sm whitespace-pre-wrap">{post.content}</p>
+          <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">{post.content}</p>
           
           {/* Media */}
           {post.media_urls && post.media_urls.length > 0 && (
             <div className="mt-3 grid grid-cols-2 gap-2">
               {post.media_urls.map((url: string, index: number) => (
-                <img
-                  key={index}
-                  src={url}
-                  alt={`Post media ${index + 1}`}
-                  className="rounded-lg w-full h-40 object-cover"
-                />
+                <div key={index} className="relative overflow-hidden rounded-xl group">
+                  <img
+                    src={url}
+                    alt={`Post media ${index + 1}`}
+                    className="w-full h-40 object-cover transition-transform group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
               ))}
             </div>
           )}
@@ -80,7 +82,7 @@ export function PostCard({ post, onLike, onShare, onSave, isLiked, isSaved }: Po
                 <Button
                   key={index}
                   variant="outline"
-                  className="w-full justify-start"
+                  className="w-full justify-start border-border/50 hover:bg-primary/5 hover:border-primary/50 transition-all"
                   size="sm"
                 >
                   {option.text}
@@ -91,9 +93,13 @@ export function PostCard({ post, onLike, onShare, onSave, isLiked, isSaved }: Po
 
           {/* Hashtags */}
           {post.hashtags && post.hashtags.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap gap-1.5">
               {post.hashtags.map((tag: string) => (
-                <Badge key={tag} variant="secondary" className="text-xs">
+                <Badge 
+                  key={tag} 
+                  variant="secondary" 
+                  className="text-xs bg-primary/5 text-primary hover:bg-primary/10 cursor-pointer transition-colors"
+                >
                   #{tag}
                 </Badge>
               ))}
@@ -101,38 +107,44 @@ export function PostCard({ post, onLike, onShare, onSave, isLiked, isSaved }: Po
           )}
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1">
+        {/* Modern Actions */}
+        <div className="flex items-center justify-between border-t border-border/30 pt-2">
+          <div className="flex items-center gap-0.5">
             <Button
               variant="ghost"
               size="sm"
               onClick={onLike}
-              className={isLiked ? 'text-destructive' : ''}
+              className={`hover:bg-primary/5 transition-all ${isLiked ? 'text-destructive' : 'text-muted-foreground hover:text-foreground'}`}
             >
-              <Heart className={`w-4 h-4 mr-1 ${isLiked ? 'fill-current' : ''}`} />
-              {post.likes_count || 0}
+              <Heart className={`w-4 h-4 mr-1.5 transition-transform ${isLiked ? 'fill-current scale-110' : ''}`} />
+              <span className="text-xs font-medium">{post.likes_count || 0}</span>
             </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setShowComments(!showComments)}
+              className="text-muted-foreground hover:text-foreground hover:bg-primary/5 transition-all"
             >
-              <MessageCircle className="w-4 h-4 mr-1" />
-              {post.comments_count || 0}
+              <MessageCircle className="w-4 h-4 mr-1.5" />
+              <span className="text-xs font-medium">{post.comments_count || 0}</span>
             </Button>
-            <Button variant="ghost" size="sm" onClick={onShare}>
-              <Share2 className="w-4 h-4 mr-1" />
-              {post.shares_count || 0}
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={onShare}
+              className="text-muted-foreground hover:text-foreground hover:bg-primary/5 transition-all"
+            >
+              <Share2 className="w-4 h-4 mr-1.5" />
+              <span className="text-xs font-medium">{post.shares_count || 0}</span>
             </Button>
           </div>
           <Button
             variant="ghost"
             size="sm"
             onClick={onSave}
-            className={isSaved ? 'text-primary' : ''}
+            className={`hover:bg-primary/5 transition-all ${isSaved ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
           >
-            <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-current' : ''}`} />
+            <Bookmark className={`w-4 h-4 transition-transform ${isSaved ? 'fill-current scale-110' : ''}`} />
           </Button>
         </div>
 

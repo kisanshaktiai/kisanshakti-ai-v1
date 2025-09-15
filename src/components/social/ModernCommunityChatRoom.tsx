@@ -72,14 +72,16 @@ export function ModernCommunityChatRoom() {
   const inputRef = useRef<HTMLInputElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
-  // Hide FAB and bottom navigation on mount
+  // Hide FAB, bottom navigation, and header on mount for full screen experience
   useEffect(() => {
     const fab = document.querySelector('.floating-action-button');
     const bottomNav = document.querySelector('nav.fixed.bottom-0');
     const appLayout = document.querySelector('.pb-nav');
+    const header = document.querySelector('header');
     
     if (fab) (fab as HTMLElement).style.display = 'none';
     if (bottomNav) (bottomNav as HTMLElement).style.display = 'none';
+    if (header) (header as HTMLElement).style.display = 'none';
     if (appLayout) {
       appLayout.classList.remove('pb-nav');
       appLayout.classList.add('pb-0');
@@ -88,6 +90,7 @@ export function ModernCommunityChatRoom() {
     return () => {
       if (fab) (fab as HTMLElement).style.display = '';
       if (bottomNav) (bottomNav as HTMLElement).style.display = '';
+      if (header) (header as HTMLElement).style.display = '';
       if (appLayout) {
         appLayout.classList.add('pb-nav');
         appLayout.classList.remove('pb-0');

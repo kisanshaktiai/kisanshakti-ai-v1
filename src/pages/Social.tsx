@@ -148,90 +148,91 @@ export default function Social() {
 
   return (
     <div className="bg-background">
-      {/* Header */}
-      <div className="sticky top-14 z-30 bg-card border-b">
+      {/* Modern Mobile-First Header */}
+      <div className="sticky top-14 z-30 bg-card/80 backdrop-blur-xl border-b border-border/50">
         <div className="flex items-center justify-between p-4">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold text-primary">
-              Farmer Community
-            </h1>
-            {userStats && (
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="bg-primary/10">
-                  Level {userStats.level}
-                </Badge>
-                <Badge variant="outline">
-                  {userStats.points} pts
-                </Badge>
-              </div>
-            )}
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
+              <Users className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold text-foreground">
+                Community
+              </h1>
+              {userStats && (
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-xs text-muted-foreground">
+                    Level {userStats.level} • {userStats.points} pts
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <Button
               size="icon"
               variant="ghost"
               onClick={() => setShowNotifications(!showNotifications)}
-              className="relative"
+              className="relative hover:bg-primary/10 transition-colors"
             >
               <Bell className="h-5 w-5" />
               {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-destructive text-destructive-foreground text-xs flex items-center justify-center">
+                <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center shadow-lg">
                   {unreadCount > 9 ? '9+' : unreadCount}
                 </span>
               )}
             </Button>
             
             <Button
-              size="sm"
+              size="icon"
               onClick={() => setShowCreatePost(true)}
-              className="gap-2"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-primary/25"
             >
-              <Plus className="h-4 w-4" />
-              Post
+              <Plus className="h-5 w-5" />
             </Button>
           </div>
         </div>
 
-        {/* Search Bar */}
+        {/* Modern Search Bar */}
         <div className="px-4 pb-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search posts, communities, or farmers..."
+              placeholder="Search communities..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 pr-10"
+              className="pl-10 pr-10 bg-muted/50 border-border/50 focus:border-primary/50 transition-all"
             />
             <Button
               size="icon"
               variant="ghost"
-              className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 hover:bg-primary/10"
             >
               <Filter className="h-4 w-4" />
             </Button>
           </div>
         </div>
 
-        {/* Tabs */}
+        {/* Modern Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="w-full justify-start px-4 h-12 bg-transparent rounded-none">
+          <TabsList className="w-full justify-start px-2 h-12 bg-transparent rounded-none border-b-0">
             {tabConfig.map((tab) => {
               const Icon = tab.icon;
               return (
                 <TabsTrigger
                   key={tab.id}
                   value={tab.id}
-                  className="relative data-[state=active]:bg-primary/10 flex-1 sm:flex-initial"
+                  className="relative data-[state=active]:bg-transparent data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:text-primary rounded-none flex-1 transition-all"
                 >
-                  <Icon className="h-4 w-4 mr-2" />
-                  <span className="hidden sm:inline">{tab.label}</span>
+                  <Icon className="h-4 w-4 mr-1.5" />
+                  <span className="text-xs font-medium">{tab.label}</span>
                   {tab.badge && tab.badge > 0 && (
                     <Badge
                       variant="destructive"
-                      className="ml-2 h-5 px-1 min-w-[20px]"
+                      className="ml-1 h-4 px-1 min-w-[16px] text-[10px]"
                     >
-                      {tab.badge}
+                      {tab.badge > 9 ? '9+' : tab.badge}
                     </Badge>
                   )}
                 </TabsTrigger>

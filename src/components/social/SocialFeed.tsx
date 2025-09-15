@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { PostCard } from './PostCard';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Users } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface SocialFeedProps {
@@ -195,17 +195,26 @@ export function SocialFeed({ searchQuery = '', selectedCommunity = null }: Socia
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-12 h-12 border-3 border-primary/30 border-t-primary rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">Loading posts...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <ScrollArea className="h-[calc(100vh-12rem)]">
-      <div className="divide-y">
+    <ScrollArea className="h-[calc(100dvh-12rem)]">
+      <div className="divide-y divide-border/30">
         {posts.length === 0 ? (
-          <div className="text-center py-12 px-4">
-            <p className="text-muted-foreground">No posts yet. Be the first to share!</p>
+          <div className="flex flex-col items-center justify-center py-16 px-4 gap-4">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
+              <Users className="w-8 h-8 text-primary/50" />
+            </div>
+            <div className="text-center">
+              <p className="text-muted-foreground">No posts yet</p>
+              <p className="text-sm text-muted-foreground/70 mt-1">Be the first to share with the community!</p>
+            </div>
           </div>
         ) : (
           posts.map((post) => (
