@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { 
   MapPin, Wheat, Languages, Users, Search, Activity,
   MessageSquare, Check, TrendingUp, Globe, Sparkles, 
-  BookOpen, Zap
+  BookOpen, Zap, Plus
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -298,71 +298,129 @@ function CommunityCard({ community, isJoined, onJoin, onLeave, icon, onClick }: 
   
   return (
     <Card 
-      className="group relative overflow-hidden p-4 cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-[1.02] border-border/50"
+      className="group relative overflow-hidden cursor-pointer transition-all duration-500 hover:shadow-2xl hover:scale-[1.01] border-border/30 bg-gradient-to-br from-card to-card/50"
       onClick={onClick}
     >
-      <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+      {/* Premium gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
       
-      <div className="relative flex items-start justify-between">
-        <div className="flex gap-3 flex-1">
-          <div className="relative">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
-              {icon}
+      {/* Animated border gradient */}
+      <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-primary/20 via-accent/20 to-primary/20 opacity-0 group-hover:opacity-100 blur-xl transition-opacity duration-700 -z-10" />
+      
+      <div className="relative p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex gap-4 flex-1">
+            {/* Modern icon container */}
+            <div className="relative">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/15 via-primary/10 to-accent/10 flex items-center justify-center group-hover:scale-110 transition-all duration-300 shadow-lg">
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-primary/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                {icon}
+              </div>
+              {isJoined && (
+                <>
+                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-background animate-pulse shadow-lg shadow-green-500/50" />
+                  <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full animate-ping" />
+                </>
+              )}
             </div>
-            {isJoined && (
-              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-background animate-pulse" />
-            )}
+            
+            <div className="flex-1 min-w-0 space-y-3">
+              {/* Community name with gradient hover */}
+              <div>
+                <h3 className="font-bold text-lg text-foreground truncate group-hover:bg-gradient-to-r group-hover:from-primary group-hover:to-accent group-hover:bg-clip-text group-hover:text-transparent transition-all duration-300">
+                  {community.name}
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1 line-clamp-2 leading-relaxed">
+                  {community.description || 'Join this community to connect with like-minded farmers'}
+                </p>
+              </div>
+              
+              {/* Enhanced stats badges */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant="secondary" className="text-xs bg-gradient-to-r from-secondary/60 to-secondary/40 border-secondary/30 backdrop-blur-sm">
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse mr-1.5" />
+                  <Users className="w-3 h-3 mr-1" />
+                  <span className="font-semibold">{community.member_count || 0}</span>
+                  <span className="opacity-75 ml-1">members</span>
+                </Badge>
+                
+                <Badge variant="outline" className="text-xs bg-background/50 backdrop-blur-sm">
+                  <MessageSquare className="w-3 h-3 mr-1 text-primary" />
+                  <span className="font-semibold">{community.post_count || 0}</span>
+                  <span className="opacity-75 ml-1">posts</span>
+                </Badge>
+                
+                {community.is_verified && (
+                  <Badge className="text-xs bg-gradient-to-r from-blue-500/10 to-blue-600/10 text-blue-600 border-blue-500/30">
+                    <Check className="w-3 h-3 mr-1" />
+                    Verified
+                  </Badge>
+                )}
+                
+                {community.trending_score > 50 && (
+                  <Badge className="text-xs bg-gradient-to-r from-orange-500/10 to-red-500/10 text-orange-600 border-orange-500/30 animate-pulse">
+                    <TrendingUp className="w-3 h-3 mr-1" />
+                    Trending
+                  </Badge>
+                )}
+                
+                {/* New activity indicator */}
+                {community.last_activity && (
+                  <Badge variant="outline" className="text-xs border-yellow-500/30 bg-yellow-500/5">
+                    <Sparkles className="w-3 h-3 mr-1 text-yellow-500" />
+                    Active now
+                  </Badge>
+                )}
+              </div>
+              
+              {/* Tags */}
+              {community.tags && community.tags.length > 0 && (
+                <div className="flex gap-1.5 flex-wrap">
+                  {community.tags.slice(0, 3).map((tag: string, index: number) => (
+                    <span 
+                      key={index}
+                      className="text-[10px] px-2 py-0.5 rounded-full bg-muted/50 text-muted-foreground font-medium"
+                    >
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-foreground truncate group-hover:text-primary transition-colors">
-              {community.name}
-            </h3>
-            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-              {community.description || 'Join this community to connect with others'}
-            </p>
-            
-            <div className="flex items-center gap-2 mt-3 flex-wrap">
-              <Badge variant="secondary" className="text-xs bg-secondary/50">
-                <Users className="w-3 h-3 mr-1" />
-                {community.member_count || 0} members
-              </Badge>
-              <Badge variant="outline" className="text-xs">
-                <MessageSquare className="w-3 h-3 mr-1" />
-                {community.post_count || 0} posts
-              </Badge>
-              {community.is_verified && (
-                <Badge variant="default" className="text-xs bg-primary/10 text-primary">
-                  <Check className="w-3 h-3 mr-1" />
-                  Verified
-                </Badge>
-              )}
-              {community.trending_score > 50 && (
-                <Badge variant="destructive" className="text-xs bg-orange-500/10 text-orange-600">
-                  <TrendingUp className="w-3 h-3 mr-1" />
-                  Trending
-                </Badge>
-              )}
-            </div>
-          </div>
+          {/* Modern action button */}
+          <Button
+            size="sm"
+            variant={isJoined ? "outline" : "default"}
+            onClick={handleAction}
+            disabled={isJoining}
+            className={cn(
+              "min-w-[85px] h-9 font-semibold transition-all duration-300 shadow-lg",
+              isJoined 
+                ? "border-border/50 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive hover:scale-105" 
+                : "bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 hover:scale-105 hover:shadow-xl hover:shadow-primary/25"
+            )}
+          >
+            {isJoining ? (
+              <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <span className="flex items-center gap-1.5">
+                {isJoined ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    Joined
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-3.5 h-3.5" />
+                    Join
+                  </>
+                )}
+              </span>
+            )}
+          </Button>
         </div>
-        
-        <Button
-          size="sm"
-          variant={isJoined ? "outline" : "default"}
-          onClick={handleAction}
-          disabled={isJoining}
-          className={cn(
-            "min-w-[80px] transition-all",
-            isJoined ? "hover:bg-destructive hover:text-destructive-foreground hover:border-destructive" : ""
-          )}
-        >
-          {isJoining ? (
-            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-          ) : (
-            isJoined ? "Leave" : "Join"
-          )}
-        </Button>
       </div>
     </Card>
   );
