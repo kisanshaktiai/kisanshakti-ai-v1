@@ -71,7 +71,25 @@
     "search": "Search",
     "filter": "Filter",
     "online": "Online",
-    "offline": "Offline"
+    "offline": "Offline",
+    "comingSoon": "Coming Soon"
+  },
+  "fab": {
+    "myLands": "My Lands",
+    "aiSchedule": "AI Crop Schedule",
+    "aiChat": "AI Chat",
+    "market": "Market",
+    "weather": "Weather",
+    "community": "Community",
+    "ndviSatellite": "NDVI & Satellite",
+    "govSchemes": "Government Schemes",
+    "analytics": "Analytics",
+    "profile": "Profile",
+    "insurance": "Insurance",
+    "loan": "Loan",
+    "open": "Open Menu",
+    "close": "Close Menu",
+    "menuOpened": "Feature menu opened"
   },
   "home": {
     "greeting": "Hello, {{name}}",

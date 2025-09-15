@@ -444,7 +444,11 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           settings: {
             languages: settingsObj.languages || ['en', 'hi', 'pa', 'mr', 'ta'],
             defaultLanguage: settingsObj.defaultLanguage || 'hi',
-            features: settingsObj.features || ['weather', 'market', 'advisory', 'schemes'],
+            features: settingsObj.features || [
+              'lands', 'schedule', 'chat', 'market', 
+              'weather', 'social', 'ndvi', 'schemes', 
+              'analytics', 'profile'
+            ],
           },
         };
 

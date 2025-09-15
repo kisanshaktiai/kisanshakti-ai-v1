@@ -219,6 +219,36 @@
   .shadow-3xl {
     box-shadow: 0 35px 60px -15px rgba(0, 0, 0, 0.5);
   }
+
+  /* Custom Animations for FAB */
+  @keyframes scale-out {
+    0% {
+      transform: scale(0);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(3);
+      opacity: 0;
+    }
+  }
+
+  .animate-scale-out {
+    animation: scale-out 0.6s ease-out forwards;
+  }
+
+  /* Radial gradient for FAB */
+  .bg-gradient-radial {
+    background: radial-gradient(circle at center, var(--tw-gradient-from), var(--tw-gradient-to));
+  }
+
+  /* Scrollbar hide utility */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
   
   /* Premium glass cards for crop selection */
   .glass-card {

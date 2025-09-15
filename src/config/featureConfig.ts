@@ -1,0 +1,187 @@
+import { 
+  MapPin, 
+  Calendar, 
+  MessageSquare, 
+  ShoppingBag, 
+  Cloud, 
+  Users, 
+  Satellite, 
+  Building2,
+  BarChart3,
+  User,
+  Shield,
+  DollarSign,
+  Leaf,
+  FileText
+} from 'lucide-react';
+
+export interface FeatureItem {
+  id: string;
+  icon: any;
+  labelKey: string;
+  path: string;
+  enabled: boolean;
+  comingSoon?: boolean;
+  order: number;
+  category?: string;
+  requiredPermissions?: string[];
+  color?: string; // Theme-based color reference
+}
+
+// Central feature configuration
+export const defaultFeatures: FeatureItem[] = [
+  {
+    id: 'lands',
+    icon: MapPin,
+    labelKey: 'fab.myLands',
+    path: '/app/lands',
+    enabled: true,
+    order: 1,
+    category: 'farm-management'
+  },
+  {
+    id: 'schedule',
+    icon: Calendar,
+    labelKey: 'fab.aiSchedule',
+    path: '/app/schedule',
+    enabled: true,
+    order: 2,
+    category: 'ai-tools'
+  },
+  {
+    id: 'chat',
+    icon: MessageSquare,
+    labelKey: 'fab.aiChat',
+    path: '/app/chat',
+    enabled: true,
+    order: 3,
+    category: 'ai-tools'
+  },
+  {
+    id: 'market',
+    icon: ShoppingBag,
+    labelKey: 'fab.market',
+    path: '/app/market',
+    enabled: true,
+    order: 4,
+    category: 'commerce'
+  },
+  {
+    id: 'weather',
+    icon: Cloud,
+    labelKey: 'fab.weather',
+    path: '/app/weather',
+    enabled: true,
+    order: 5,
+    category: 'tools'
+  },
+  {
+    id: 'social',
+    icon: Users,
+    labelKey: 'fab.community',
+    path: '/app/social',
+    enabled: true,
+    order: 6,
+    category: 'community'
+  },
+  {
+    id: 'ndvi',
+    icon: Satellite,
+    labelKey: 'fab.ndviSatellite',
+    path: '/app/ndvi',
+    enabled: true,
+    order: 7,
+    category: 'tools'
+  },
+  {
+    id: 'schemes',
+    icon: Building2,
+    labelKey: 'fab.govSchemes',
+    path: '/app/schemes',
+    enabled: true,
+    order: 8,
+    category: 'resources'
+  },
+  {
+    id: 'analytics',
+    icon: BarChart3,
+    labelKey: 'fab.analytics',
+    path: '/app/analytics',
+    enabled: true,
+    order: 9,
+    category: 'tools'
+  },
+  {
+    id: 'profile',
+    icon: User,
+    labelKey: 'fab.profile',
+    path: '/app/profile',
+    enabled: true,
+    order: 10,
+    category: 'account'
+  },
+  {
+    id: 'insurance',
+    icon: Shield,
+    labelKey: 'fab.insurance',
+    path: '/app/insurance',
+    enabled: false,
+    comingSoon: true,
+    order: 11,
+    category: 'services'
+  },
+  {
+    id: 'loan',
+    icon: DollarSign,
+    labelKey: 'fab.loan',
+    path: '/app/loan',
+    enabled: false,
+    comingSoon: true,
+    order: 12,
+    category: 'services'
+  }
+];
+
+// Feature categories for organization
+export const featureCategories = {
+  'farm-management': {
+    name: 'Farm Management',
+    icon: Leaf,
+    order: 1
+  },
+  'ai-tools': {
+    name: 'AI Tools',
+    icon: MessageSquare,
+    order: 2
+  },
+  'commerce': {
+    name: 'Commerce',
+    icon: ShoppingBag,
+    order: 3
+  },
+  'tools': {
+    name: 'Tools',
+    icon: FileText,
+    order: 4
+  },
+  'community': {
+    name: 'Community',
+    icon: Users,
+    order: 5
+  },
+  'resources': {
+    name: 'Resources',
+    icon: Building2,
+    order: 6
+  },
+  'services': {
+    name: 'Services',
+    icon: Shield,
+    order: 7
+  },
+  'account': {
+    name: 'Account',
+    icon: User,
+    order: 8
+  }
+};
