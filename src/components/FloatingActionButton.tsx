@@ -65,9 +65,9 @@ export function FloatingActionButton() {
         />
       )}
 
-      {/* FAB Container - Enhanced positioning with dynamic bottom offset */}
-      <div className="fixed right-4 z-[45]" style={{ bottom: 'calc(7rem + env(safe-area-inset-bottom, 0))' }}>
-        {/* Expanded Menu Items with Premium Glassmorphism */}
+      {/* FAB Container */}
+      <div className="fixed right-4 z-50" style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0))' }}>
+        {/* Expanded Menu Items with Glassmorphism */}
         <div className={cn(
           "absolute bottom-16 right-0 transition-all duration-300",
           isExpanded ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none"
@@ -135,29 +135,23 @@ export function FloatingActionButton() {
           </div>
         </div>
 
-        {/* Main FAB Button - Modern 2025 Premium Design */}
+        {/* Main FAB Button with Morph Animation */}
         <button
           onClick={toggleExpanded}
           aria-label={isExpanded ? t('fab.close') : t('fab.open')}
           className={cn(
-            "w-14 h-14 rounded-full",
+            "w-16 h-16 rounded-2xl",
             "bg-gradient-to-br from-primary via-accent to-primary-glow",
-            "shadow-elegant shadow-primary/25",
+            "shadow-2xl shadow-primary/30",
             "flex items-center justify-center",
-            "transition-all duration-500 ease-out",
-            "hover:scale-110 hover:shadow-glow hover:shadow-primary/35",
+            "transition-all duration-300",
+            "hover:scale-110 hover:shadow-3xl hover:shadow-primary/40",
             "active:scale-95",
-            "relative overflow-hidden group",
-            "ring-4 ring-background/80 ring-offset-2 ring-offset-transparent",
-            "before:absolute before:inset-0 before:rounded-full",
-            "before:bg-gradient-radial before:from-white/10 before:to-transparent",
-            "before:opacity-0 before:transition-opacity before:duration-300",
-            "hover:before:opacity-100",
-            "backdrop-blur-sm"
+            "relative overflow-hidden group"
           )}
         >
-          {/* Premium animated gradient overlay */}
-          <div className="absolute inset-0 rounded-full bg-gradient-conic from-primary-foreground/10 via-transparent to-primary-foreground/10 opacity-0 group-hover:opacity-100 transition-opacity duration-700 animate-spin-slow" />
+          {/* Animated gradient background */}
+          <div className="absolute inset-0 bg-gradient-radial from-primary-foreground/20 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           
           {/* Morphing Icon Container */}
           <div className={cn(

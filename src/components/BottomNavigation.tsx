@@ -45,8 +45,8 @@ export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = fal
 
   return (
     <>
-      <nav className="fixed bottom-0 left-0 right-0 glassmorphism-nav border-t border-border/5 z-40 backdrop-blur-2xl pb-safe bg-background/70">
-        <div className="h-20 flex justify-around items-center px-4 relative">
+      <nav className="fixed bottom-0 left-0 right-0 glassmorphism-nav border-t border-border/10 z-50 backdrop-blur-xl pb-safe">
+        <div className="h-20 flex justify-around items-center px-3 relative">
           {/* Nav items before the action button */}
           {navItemsBeforeAction.map(({ path, icon: Icon, labelKey }) => (
             <NavLink
@@ -95,34 +95,24 @@ export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = fal
             </NavLink>
           ))}
 
-          {/* Central action button - Modern 2025 Premium Design */}
+          {/* Central action button */}
           {hasAction && !hideAction && (
             <button
               onClick={handleActionClick}
               className={cn(
-                "absolute left-1/2 -translate-x-1/2 -top-5",
-                "w-[60px] h-[60px] rounded-full",
-                "bg-gradient-to-br from-primary via-accent to-primary-glow",
-                "shadow-elegant shadow-primary/25",
+                "absolute left-1/2 -translate-x-1/2 -top-4",
+                "w-16 h-16 rounded-full",
+                "bg-gradient-primary",
+                "shadow-elegant shadow-primary/30",
                 "flex items-center justify-center",
-                "transition-all duration-500 ease-out",
-                "hover:scale-110 hover:shadow-glow hover:shadow-primary/35",
-                "hover:-translate-y-1",
+                "transition-smooth",
+                "hover:scale-110 hover:shadow-glow",
                 "active:scale-95",
-                "ring-4 ring-background/90 ring-offset-2 ring-offset-background/50",
-                "before:absolute before:inset-0 before:rounded-full",
-                "before:bg-gradient-radial before:from-white/15 before:to-transparent",
-                "before:opacity-0 before:transition-opacity before:duration-300",
-                "hover:before:opacity-100",
                 isPulsing && "animate-pulse"
               )}
             >
-              <div className="w-[52px] h-[52px] rounded-full bg-gradient-to-t from-background/5 to-background/15 backdrop-blur-md flex items-center justify-center">
-                <Scan className="w-6 h-6 text-primary-foreground drop-shadow-lg" />
-              </div>
-              {/* Premium ripple effect */}
-              <div className="absolute inset-0 rounded-full overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-conic from-primary-foreground/10 via-transparent to-primary-foreground/10 opacity-0 hover:opacity-100 transition-opacity duration-700 animate-spin-slow" />
+              <div className="w-14 h-14 rounded-full bg-background/10 backdrop-blur-sm flex items-center justify-center">
+                <Scan className="w-7 h-7 text-primary-foreground drop-shadow-lg" />
               </div>
             </button>
           )}

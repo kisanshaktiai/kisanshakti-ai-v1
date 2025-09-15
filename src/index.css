@@ -98,15 +98,11 @@
     --gradient-success: linear-gradient(135deg, hsl(142 76% 36%), hsl(45 93% 47%));
     --gradient-warning: linear-gradient(135deg, hsl(38 92% 50%), hsl(45 93% 47%));
     --gradient-danger: linear-gradient(135deg, hsl(0 84% 50%), hsl(30 85% 50%));
-    --gradient-conic: conic-gradient(from 180deg at 50% 50%, hsl(142 76% 44%), hsl(142 76% 36%), hsl(142 76% 44%));
-    --gradient-radial: radial-gradient(circle at center, hsl(142 76% 36% / 0.15), transparent 70%);
     
     /* Shadows */
     --shadow-sm: 0 1px 2px 0 hsl(142 76% 36% / 0.05);
     --shadow-md: 0 4px 6px -1px hsl(142 76% 36% / 0.1);
     --shadow-lg: 0 10px 15px -3px hsl(142 76% 36% / 0.1);
-    --shadow-elegant: 0 20px 40px -10px hsl(142 76% 36% / 0.25);
-    --shadow-glow: 0 0 40px 5px hsl(142 76% 36% / 0.3);
     
     /* Animations */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
