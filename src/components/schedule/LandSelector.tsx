@@ -221,47 +221,69 @@ export default function LandSelector({ lands, onSelectLand }: LandSelectorProps)
         })}
       </motion.div>
 
-      {/* Floating Action Button */}
+      {/* Add Land Card - Positioned after last land card */}
       <motion.div
-        initial={{ scale: 0, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
+        variants={itemVariants}
+        initial="hidden"
+        animate="visible"
         transition={{ 
-          delay: 0.5,
+          delay: (lands.length * 0.1) + 0.2,
           type: "spring",
-          stiffness: 200,
-          damping: 10
+          stiffness: 100
         }}
-        className="fixed bottom-20 right-6 z-50"
+        className="mt-6"
       >
-        <div className="relative">
-          {/* Glowing effect behind button */}
-          <div className="absolute inset-0 rounded-full bg-primary blur-2xl opacity-40 animate-pulse" />
-          
-          <Button
-            size="lg"
-            onClick={() => navigate('/app/lands/add')}
-            className={cn(
-              "relative h-14 w-14 rounded-full",
-              "bg-gradient-to-br from-primary via-primary to-primary-hover",
-              "hover:from-primary-hover hover:to-primary",
-              "shadow-2xl hover:shadow-3xl",
-              "transition-all duration-300",
-              "group",
-              "border-2 border-white/20"
-            )}
-          >
-            <Plus className="h-6 w-6 text-white transition-transform duration-300 group-hover:rotate-90" />
-          </Button>
-        </div>
-        
-        {/* Label on hover */}
-        <motion.div
-          initial={{ opacity: 0, x: 10 }}
-          whileHover={{ opacity: 1, x: 0 }}
-          className="absolute right-16 top-1/2 -translate-y-1/2 bg-foreground text-background px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap pointer-events-none"
+        <Card 
+          className={cn(
+            "group relative overflow-hidden cursor-pointer",
+            "bg-gradient-to-br from-success/10 via-success/5 to-transparent",
+            "border-2 border-dashed border-success/30",
+            "hover:border-success/50",
+            "shadow-md hover:shadow-xl",
+            "transition-all duration-300 ease-out",
+            "hover:scale-[1.02]",
+            "rounded-2xl"
+          )}
+          onClick={() => navigate('/app/lands/add')}
         >
-          Add New Land
-        </motion.div>
+          {/* Animated gradient background */}
+          <div className="absolute inset-0 bg-gradient-to-br from-success/5 via-transparent to-success/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+          
+          {/* Content */}
+          <div className="relative p-6 flex flex-col items-center justify-center space-y-3">
+            {/* Icon Container */}
+            <motion.div
+              whileHover={{ scale: 1.1, rotate: 90 }}
+              whileTap={{ scale: 0.95 }}
+              className={cn(
+                "p-4 rounded-2xl",
+                "bg-gradient-to-br from-success/20 to-success/10",
+                "border border-success/20",
+                "shadow-lg group-hover:shadow-success/20"
+              )}
+            >
+              <Plus className="h-8 w-8 text-success" />
+            </motion.div>
+            
+            {/* Text */}
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-semibold text-foreground group-hover:text-success transition-colors">
+                Add New Land
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Register your agricultural land
+              </p>
+            </div>
+            
+            {/* Decorative elements */}
+            <div className="absolute top-3 right-3 opacity-20 group-hover:opacity-40 transition-opacity">
+              <Trees className="h-12 w-12 text-success" />
+            </div>
+            <div className="absolute bottom-3 left-3 opacity-20 group-hover:opacity-40 transition-opacity">
+              <Wheat className="h-10 w-10 text-success rotate-12" />
+            </div>
+          </div>
+        </Card>
       </motion.div>
     </div>
   );
