@@ -332,7 +332,7 @@ export function Communities({ onCommunitySelect }: CommunitiesProps = {}) {
   );
 }
 
-function CommunityCard({ community, isJoined, onJoin, onLeave, icon, onClick }: any) {
+function ModernCommunityCard({ community, isJoined, onJoin, onLeave, icon, onClick }: any) {
   const [isJoining, setIsJoining] = useState(false);
   
   const handleAction = async (e: React.MouseEvent) => {

@@ -532,20 +532,19 @@ export function ModernCommunityChatRoom() {
 
       {/* Typing Indicator */}
       <AnimatePresence>
-          {typingUsers.length > 0 && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="px-4 pb-2 overflow-hidden"
-            >
-              <p className="text-xs text-muted-foreground animate-pulse">
-                {typingUsers.join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing...
-              </p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+        {typingUsers.length > 0 && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="px-4 pb-2 overflow-hidden"
+          >
+            <p className="text-xs text-muted-foreground animate-pulse">
+              {typingUsers.join(', ')} {typingUsers.length === 1 ? 'is' : 'are'} typing...
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-4 py-4" ref={scrollAreaRef}>
@@ -664,6 +663,6 @@ export function ModernCommunityChatRoom() {
           </Button>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
