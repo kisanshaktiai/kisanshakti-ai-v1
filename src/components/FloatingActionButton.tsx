@@ -111,7 +111,10 @@ export function FloatingActionButton() {
                 >
                   {/* Ripple effect background */}
                   <div className="absolute inset-0 bg-gradient-radial from-primary-foreground/10 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300" />
-                  {React.createElement(item.icon, { className: "w-6 h-6 relative z-10" })}
+                  {/* Safe icon rendering with type check */}
+                  {item.icon && typeof item.icon === 'function' && (
+                    <item.icon className="w-6 h-6 relative z-10" />
+                  )}
                 </button>
               </div>
             ))}
