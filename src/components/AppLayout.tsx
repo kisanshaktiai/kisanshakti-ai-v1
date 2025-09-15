@@ -17,8 +17,9 @@ export function AppLayout() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
   
-  // Check if we're on the AI chat page
+  // Check if we're on the AI chat page or community chat
   const isAIChat = location.pathname === '/app/chat';
+  const isCommunityChat = location.pathname.includes('/app/social/community/');
 
   // Apply theme whenever tenant changes
   useEffect(() => {
@@ -34,8 +35,8 @@ export function AppLayout() {
 
   return (
     <div className="min-h-mobile-screen bg-background">
-      {/* Header - Hidden on AI Chat */}
-      {!isAIChat && (
+      {/* Header - Hidden on AI Chat and Community Chat */}
+      {!isAIChat && !isCommunityChat && (
         <header className="fixed top-0 left-0 right-0 h-14 bg-card border-b border-border z-40 flex items-center justify-between px-4 pt-safe">
           <div className="flex items-center gap-3">
             {logoUrl ? (
@@ -67,16 +68,24 @@ export function AppLayout() {
         </header>
       )}
 
-      {/* Main Content - Adjust padding based on AI Chat */}
-      <main className={isAIChat ? "" : "pt-14 pb-nav-safe mobile-scroll-container"}>
+      {/* Main Content - Adjust padding based on route */}
+      <main className={
+        isAIChat || isCommunityChat 
+          ? "" 
+          : "pt-14 pb-nav-safe mobile-scroll-container"
+      }>
         <Outlet />
       </main>
 
-      {/* Bottom Navigation - Hidden on AI Chat */}
-      {!isAIChat && <BottomNavigation onMenuOpen={() => setIsMenuOpen(true)} />}
+      {/* Bottom Navigation - Hidden on full-screen routes */}
+      <BottomNavigation 
+        onMenuOpen={() => setIsMenuOpen(true)} 
+        hideNav={isAIChat || isCommunityChat}
+        hideAction={false}
+      />
       
-      {/* Floating Action Button - Hidden on AI Chat */}
-      {!isAIChat && <FloatingActionButton />}
+      {/* Floating Action Button - Hidden on full-screen routes */}
+      {!isAIChat && !isCommunityChat && <FloatingActionButton />}
       
       {/* Hindenburg Menu */}
       <HindenburgMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
