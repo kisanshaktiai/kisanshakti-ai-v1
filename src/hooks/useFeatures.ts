@@ -14,27 +14,38 @@ export function useFeatures() {
       try {
         const parsed = JSON.parse(cachedFeatures);
         setFeatures(parsed);
+        setIsLoading(false);
+        return; // Use cached features if available
       } catch (error) {
         console.error('Error parsing cached features:', error);
       }
     }
 
-    // Apply tenant-specific feature configuration
+    // Apply tenant-specific feature configuration if available
+    // Otherwise, enable all features by default (except coming soon)
+    let updatedFeatures: FeatureItem[];
+    
     if (tenant?.settings?.features) {
       // Ensure features is an array
       const enabledFeatureIds = Array.isArray(tenant.settings.features) 
         ? tenant.settings.features 
         : [];
-      const updatedFeatures = defaultFeatures.map(feature => ({
+      updatedFeatures = defaultFeatures.map(feature => ({
         ...feature,
         enabled: feature.comingSoon ? false : enabledFeatureIds.includes(feature.id)
       }));
-      
-      setFeatures(updatedFeatures);
-      
-      // Cache for offline support
-      localStorage.setItem('app_features', JSON.stringify(updatedFeatures));
+    } else {
+      // No tenant settings - enable all features by default (except coming soon)
+      updatedFeatures = defaultFeatures.map(feature => ({
+        ...feature,
+        enabled: !feature.comingSoon // Enable all features except coming soon ones
+      }));
     }
+    
+    setFeatures(updatedFeatures);
+    
+    // Cache for offline support
+    localStorage.setItem('app_features', JSON.stringify(updatedFeatures));
     
     setIsLoading(false);
   }, [tenant]);
