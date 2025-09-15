@@ -221,69 +221,38 @@ export default function LandSelector({ lands, onSelectLand }: LandSelectorProps)
         })}
       </motion.div>
 
-      {/* Add Land Card - Positioned after last land card */}
+      {/* Add Land Button - Positioned at bottom right of last card */}
       <motion.div
-        variants={itemVariants}
-        initial="hidden"
-        animate="visible"
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
         transition={{ 
           delay: (lands.length * 0.1) + 0.2,
           type: "spring",
-          stiffness: 100
+          stiffness: 200,
+          damping: 15
         }}
-        className="mt-6"
+        className="flex justify-end mt-4 mb-4 pr-4"
       >
-        <Card 
-          className={cn(
-            "group relative overflow-hidden cursor-pointer",
-            "bg-gradient-to-br from-success/10 via-success/5 to-transparent",
-            "border-2 border-dashed border-success/30",
-            "hover:border-success/50",
-            "shadow-md hover:shadow-xl",
-            "transition-all duration-300 ease-out",
-            "hover:scale-[1.02]",
-            "rounded-2xl"
-          )}
+        <button
           onClick={() => navigate('/app/lands/add')}
+          className={cn(
+            "group relative",
+            "flex items-center justify-center",
+            "h-14 w-14",
+            "rounded-2xl",
+            "bg-gradient-to-br from-success/90 to-success",
+            "hover:from-success hover:to-success/90",
+            "shadow-lg hover:shadow-xl hover:shadow-success/20",
+            "transition-all duration-300",
+            "hover:scale-105 active:scale-95",
+            "border border-success/20"
+          )}
         >
-          {/* Animated gradient background */}
-          <div className="absolute inset-0 bg-gradient-to-br from-success/5 via-transparent to-success/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+          <Plus className="h-6 w-6 text-white transition-transform duration-300 group-hover:rotate-90" />
           
-          {/* Content */}
-          <div className="relative p-6 flex flex-col items-center justify-center space-y-3">
-            {/* Icon Container */}
-            <motion.div
-              whileHover={{ scale: 1.1, rotate: 90 }}
-              whileTap={{ scale: 0.95 }}
-              className={cn(
-                "p-4 rounded-2xl",
-                "bg-gradient-to-br from-success/20 to-success/10",
-                "border border-success/20",
-                "shadow-lg group-hover:shadow-success/20"
-              )}
-            >
-              <Plus className="h-8 w-8 text-success" />
-            </motion.div>
-            
-            {/* Text */}
-            <div className="text-center space-y-1">
-              <h3 className="text-lg font-semibold text-foreground group-hover:text-success transition-colors">
-                Add New Land
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                Register your agricultural land
-              </p>
-            </div>
-            
-            {/* Decorative elements */}
-            <div className="absolute top-3 right-3 opacity-20 group-hover:opacity-40 transition-opacity">
-              <Trees className="h-12 w-12 text-success" />
-            </div>
-            <div className="absolute bottom-3 left-3 opacity-20 group-hover:opacity-40 transition-opacity">
-              <Wheat className="h-10 w-10 text-success rotate-12" />
-            </div>
-          </div>
-        </Card>
+          {/* Ripple effect on hover */}
+          <div className="absolute inset-0 rounded-2xl bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+        </button>
       </motion.div>
     </div>
   );
