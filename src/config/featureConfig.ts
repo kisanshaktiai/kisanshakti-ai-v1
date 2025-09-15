@@ -1,9 +1,9 @@
 import { 
-  MapPin, 
+  Wheat, 
   Calendar, 
   MessageSquare, 
-  ShoppingBag, 
-  Cloud, 
+  ShoppingCart, 
+  Sun, 
   Users, 
   Satellite, 
   Building2,
@@ -32,7 +32,7 @@ export interface FeatureItem {
 export const defaultFeatures: FeatureItem[] = [
   {
     id: 'lands',
-    icon: MapPin,
+    icon: Wheat,
     labelKey: 'fab.myLands',
     path: '/app/lands',
     enabled: true,
@@ -59,7 +59,7 @@ export const defaultFeatures: FeatureItem[] = [
   },
   {
     id: 'market',
-    icon: ShoppingBag,
+    icon: ShoppingCart,
     labelKey: 'fab.market',
     path: '/app/market',
     enabled: true,
@@ -68,7 +68,7 @@ export const defaultFeatures: FeatureItem[] = [
   },
   {
     id: 'weather',
-    icon: Cloud,
+    icon: Sun,
     labelKey: 'fab.weather',
     path: '/app/weather',
     enabled: true,
@@ -156,7 +156,7 @@ export const featureCategories = {
   },
   'commerce': {
     name: 'Commerce',
-    icon: ShoppingBag,
+    icon: ShoppingCart,
     order: 3
   },
   'tools': {
