@@ -148,22 +148,25 @@ export default function Social() {
 
   return (
     <div className="bg-background">
-      {/* Modern Mobile-First Header */}
-      <div className="sticky top-14 z-30 bg-card/80 backdrop-blur-xl border-b border-border/50">
+      {/* Ultra Modern Mobile-First Header */}
+      <div className="sticky top-0 z-30 bg-gradient-to-b from-card/95 via-card/85 to-card/0 backdrop-blur-2xl">
         <div className="flex items-center justify-between p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
-              <Users className="w-5 h-5 text-primary" />
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary/30 via-primary/20 to-accent/20 flex items-center justify-center shadow-lg">
+              <Users className="w-6 h-6 text-primary" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-foreground">
-                Community
+              <h1 className="text-xl font-bold bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
+                Community Hub
               </h1>
               {userStats && (
                 <div className="flex items-center gap-2 mt-0.5">
-                  <span className="text-xs text-muted-foreground">
-                    Level {userStats.level} • {userStats.points} pts
-                  </span>
+                  <Badge className="h-5 px-2 text-[10px] bg-gradient-to-r from-primary/20 to-accent/20 text-primary border-primary/30">
+                    Lvl {userStats.level}
+                  </Badge>
+                  <Badge variant="outline" className="h-5 px-2 text-[10px]">
+                    {userStats.points} pts
+                  </Badge>
                 </div>
               )}
             </div>
@@ -252,7 +255,7 @@ export default function Social() {
             />
           </TabsContent>
 
-          <TabsContent value="communities" className="mt-0">
+          <TabsContent value="communities" className="mt-0 px-2">
             <Communities />
           </TabsContent>
 

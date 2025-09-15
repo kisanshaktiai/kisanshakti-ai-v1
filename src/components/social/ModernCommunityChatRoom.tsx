@@ -74,10 +74,12 @@ export function ModernCommunityChatRoom() {
 
   // Hide FAB, bottom navigation, and header on mount for full screen experience
   useEffect(() => {
+    // Hide navigation elements
     const fab = document.querySelector('.floating-action-button');
     const bottomNav = document.querySelector('nav.fixed.bottom-0');
     const appLayout = document.querySelector('.pb-nav');
     const header = document.querySelector('header');
+    const mainContainer = document.querySelector('main');
     
     if (fab) (fab as HTMLElement).style.display = 'none';
     if (bottomNav) (bottomNav as HTMLElement).style.display = 'none';
@@ -86,6 +88,12 @@ export function ModernCommunityChatRoom() {
       appLayout.classList.remove('pb-nav');
       appLayout.classList.add('pb-0');
     }
+    if (mainContainer) {
+      mainContainer.classList.add('!p-0');
+    }
+    
+    // Add full screen class to body
+    document.body.classList.add('chat-fullscreen');
     
     return () => {
       if (fab) (fab as HTMLElement).style.display = '';
@@ -95,6 +103,10 @@ export function ModernCommunityChatRoom() {
         appLayout.classList.add('pb-nav');
         appLayout.classList.remove('pb-0');
       }
+      if (mainContainer) {
+        mainContainer.classList.remove('!p-0');
+      }
+      document.body.classList.remove('chat-fullscreen');
     };
   }, []);
 
@@ -435,58 +447,91 @@ export function ModernCommunityChatRoom() {
   }
 
   return (
-    <div className="fixed inset-0 bg-background flex flex-col">
-      {/* Modern Header */}
-      <div className="bg-card/80 backdrop-blur-xl border-b border-border/50">
+    <motion.div 
+      className="fixed inset-0 bg-gradient-to-br from-background via-background/98 to-background/95 flex flex-col z-50"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      {/* Ultra Modern Header with Glassmorphism */}
+      <motion.div 
+        className="bg-gradient-to-b from-card/90 via-card/80 to-card/70 backdrop-blur-2xl border-b border-border/30"
+        initial={{ y: -100 }}
+        animate={{ y: 0 }}
+        transition={{ type: "spring", stiffness: 100 }}
+      >
         <div className="flex items-center justify-between p-4">
           <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => navigate(-1)}
-              className="hover:bg-primary/10"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
+            <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate(-1)}
+                className="hover:bg-primary/10 rounded-xl"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+            </motion.div>
             
             <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
-                  <Hash className="w-5 h-5 text-primary" />
+              <motion.div 
+                className="relative"
+                whileHover={{ rotate: [0, -10, 10, 0] }}
+                transition={{ duration: 0.5 }}
+              >
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary/30 via-primary/20 to-accent/20 flex items-center justify-center shadow-lg">
+                  <Hash className="w-6 h-6 text-primary" />
                 </div>
-                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-background" />
-              </div>
+                <motion.div 
+                  className="absolute -bottom-1 -right-1"
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                >
+                  <div className="w-3.5 h-3.5 bg-gradient-to-br from-green-400 to-green-600 rounded-full border-2 border-background shadow-lg shadow-green-500/50" />
+                </motion.div>
+              </motion.div>
               
               <div>
-                <h3 className="font-semibold text-foreground">{community?.name}</h3>
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Users className="w-3 h-3" />
-                  <span>{community?.member_count || 0} members</span>
-                  <Circle className="w-1 h-1 fill-current" />
-                  <span className="text-green-500">{onlineUsers} online</span>
+                <h3 className="font-bold text-lg bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent">
+                  {community?.name}
+                </h3>
+                <div className="flex items-center gap-2 text-xs text-muted-foreground/80">
+                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted/30">
+                    <Users className="w-3 h-3" />
+                    <span className="font-medium">{community?.member_count || 0}</span>
+                  </div>
+                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/10 text-green-600">
+                    <Circle className="w-2 h-2 fill-current animate-pulse" />
+                    <span className="font-medium">{onlineUsers} active</span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
           
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="hover:bg-primary/10">
-              <Search className="w-5 h-5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="hover:bg-primary/10">
-              <Phone className="w-5 h-5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="hover:bg-primary/10">
-              <Video className="w-5 h-5" />
-            </Button>
-            <Button variant="ghost" size="icon" className="hover:bg-primary/10">
-              <MoreVertical className="w-5 h-5" />
-            </Button>
+            {[Search, Phone, Video, MoreVertical].map((Icon, index) => (
+              <motion.div
+                key={index}
+                initial={{ opacity: 0, scale: 0 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: index * 0.1 }}
+              >
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="hover:bg-primary/10 rounded-xl"
+                >
+                  <Icon className="w-5 h-5" />
+                </Button>
+              </motion.div>
+            ))}
           </div>
         </div>
+      </motion.div>
 
-        {/* Typing Indicator */}
-        <AnimatePresence>
+      {/* Typing Indicator */}
+      <AnimatePresence>
           {typingUsers.length > 0 && (
             <motion.div
               initial={{ height: 0, opacity: 0 }}
