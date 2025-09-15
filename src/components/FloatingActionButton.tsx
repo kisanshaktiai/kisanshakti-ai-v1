@@ -13,6 +13,11 @@ export function FloatingActionButton() {
   const navigate = useNavigate();
   const { enabledFeatures, isLoading } = useFeatures();
 
+  // Debug logging
+  console.log('FAB Debug - enabledFeatures:', enabledFeatures);
+  console.log('FAB Debug - isLoading:', isLoading);
+  console.log('FAB Debug - isExpanded:', isExpanded);
+
   const handleItemClick = (path: string, enabled: boolean, comingSoon?: boolean) => {
     if (!enabled || comingSoon) return;
     navigate(path);
@@ -20,6 +25,7 @@ export function FloatingActionButton() {
   };
 
   const toggleExpanded = () => {
+    console.log('FAB Debug - Toggle clicked, current state:', isExpanded);
     setIsMorphing(true);
     setIsExpanded(!isExpanded);
     

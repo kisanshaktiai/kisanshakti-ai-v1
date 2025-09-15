@@ -6,21 +6,16 @@ export function useFeatures() {
   const { tenant } = useTenantStore();
   const [features, setFeatures] = useState<FeatureItem[]>(defaultFeatures);
   const [isLoading, setIsLoading] = useState(true);
+  
+  console.log('useFeatures Debug - tenant:', tenant);
+  console.log('useFeatures Debug - defaultFeatures:', defaultFeatures);
 
   useEffect(() => {
-    // Load features from local storage for offline support
-    const cachedFeatures = localStorage.getItem('app_features');
-    if (cachedFeatures) {
-      try {
-        const parsed = JSON.parse(cachedFeatures);
-        setFeatures(parsed);
-        setIsLoading(false);
-        return; // Use cached features if available
-      } catch (error) {
-        console.error('Error parsing cached features:', error);
-      }
-    }
-
+    console.log('useFeatures Debug - Effect running');
+    
+    // Clear any problematic cached features
+    localStorage.removeItem('app_features'); // Clear cache to fix icon issues
+    
     // Apply tenant-specific feature configuration if available
     // Otherwise, enable all features by default (except coming soon)
     let updatedFeatures: FeatureItem[];
@@ -30,18 +25,21 @@ export function useFeatures() {
       const enabledFeatureIds = Array.isArray(tenant.settings.features) 
         ? tenant.settings.features 
         : [];
+      console.log('useFeatures Debug - Tenant feature IDs:', enabledFeatureIds);
       updatedFeatures = defaultFeatures.map(feature => ({
         ...feature,
         enabled: feature.comingSoon ? false : enabledFeatureIds.includes(feature.id)
       }));
     } else {
       // No tenant settings - enable all features by default (except coming soon)
+      console.log('useFeatures Debug - No tenant settings, enabling all features');
       updatedFeatures = defaultFeatures.map(feature => ({
         ...feature,
         enabled: !feature.comingSoon // Enable all features except coming soon ones
       }));
     }
     
+    console.log('useFeatures Debug - Updated features:', updatedFeatures);
     setFeatures(updatedFeatures);
     
     // Cache for offline support
@@ -51,9 +49,11 @@ export function useFeatures() {
   }, [tenant]);
 
   const getEnabledFeatures = () => {
-    return features
+    const enabledList = features
       .filter(f => f.enabled || f.comingSoon)
       .sort((a, b) => a.order - b.order);
+    console.log('useFeatures Debug - getEnabledFeatures result:', enabledList);
+    return enabledList;
   };
 
   const getFeaturesByCategory = () => {
