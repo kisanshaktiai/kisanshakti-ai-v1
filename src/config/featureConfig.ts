@@ -35,7 +35,7 @@ export const defaultFeatures: FeatureItem[] = [
     icon: Wheat,
     labelKey: 'fab.myLands',
     path: '/app/lands',
-    enabled: false, // Will be set dynamically
+    enabled: false,
     order: 1,
     category: 'farm-management'
   },
@@ -44,7 +44,7 @@ export const defaultFeatures: FeatureItem[] = [
     icon: Calendar,
     labelKey: 'fab.aiSchedule',
     path: '/app/schedule',
-    enabled: false, // Will be set dynamically
+    enabled: false,
     order: 2,
     category: 'ai-tools'
   },
@@ -53,7 +53,7 @@ export const defaultFeatures: FeatureItem[] = [
     icon: MessageSquare,
     labelKey: 'fab.aiChat',
     path: '/app/chat',
-    enabled: false, // Will be set dynamically
+    enabled: false,
     order: 3,
     category: 'ai-tools'
   },
@@ -62,7 +62,7 @@ export const defaultFeatures: FeatureItem[] = [
     icon: ShoppingCart,
     labelKey: 'fab.market',
     path: '/app/market',
-    enabled: false, // Will be set dynamically
+    enabled: false,
     order: 4,
     category: 'commerce'
   },
@@ -71,7 +71,7 @@ export const defaultFeatures: FeatureItem[] = [
     icon: Sun,
     labelKey: 'fab.weather',
     path: '/app/weather',
-    enabled: false, // Will be set dynamically
+    enabled: false,
     order: 5,
     category: 'tools'
   },
@@ -80,7 +80,7 @@ export const defaultFeatures: FeatureItem[] = [
     icon: Users,
     labelKey: 'fab.community',
     path: '/app/social',
-    enabled: false, // Will be set dynamically
+    enabled: false,
     order: 6,
     category: 'community'
   },
@@ -89,7 +89,7 @@ export const defaultFeatures: FeatureItem[] = [
     icon: Satellite,
     labelKey: 'fab.ndviSatellite',
     path: '/app/ndvi',
-    enabled: false, // Will be set dynamically
+    enabled: false,
     order: 7,
     category: 'tools'
   },
@@ -98,7 +98,7 @@ export const defaultFeatures: FeatureItem[] = [
     icon: Building2,
     labelKey: 'fab.govSchemes',
     path: '/app/schemes',
-    enabled: false, // Will be set dynamically
+    enabled: false,
     order: 8,
     category: 'resources'
   },
@@ -107,7 +107,7 @@ export const defaultFeatures: FeatureItem[] = [
     icon: BarChart3,
     labelKey: 'fab.analytics',
     path: '/app/analytics',
-    enabled: false, // Will be set dynamically
+    enabled: false,
     order: 9,
     category: 'tools'
   },
@@ -116,7 +116,7 @@ export const defaultFeatures: FeatureItem[] = [
     icon: User,
     labelKey: 'fab.profile',
     path: '/app/profile',
-    enabled: false, // Will be set dynamically
+    enabled: false,
     order: 10,
     category: 'account'
   },

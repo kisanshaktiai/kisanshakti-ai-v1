@@ -45,7 +45,15 @@ export function FloatingActionButton() {
     }
   }, [isExpanded, t]);
 
-  if (isLoading) return null;
+  if (isLoading) {
+    console.log('FAB Debug - Still loading features');
+    return null;
+  }
+  
+  if (!enabledFeatures || enabledFeatures.length === 0) {
+    console.log('FAB Debug - No enabled features available');
+    return null;
+  }
 
   return (
     <>
