@@ -34,7 +34,7 @@ import LandDetails from "./pages/LandDetails";
 import AIChat from "./pages/AIChat";
 import Social from "./pages/Social";
 import { CommunityPage } from "./components/social/CommunityPage";
-import { WhatsAppChatRoom } from "./components/community/WhatsAppChatRoom";
+import { ModernCommunityChatRoom } from "./components/social/ModernCommunityChatRoom";
 import CropSelectionTest from "./pages/CropSelectionTest";
 import Schedule from "./pages/Schedule";
 
@@ -308,8 +308,8 @@ const router = createBrowserRouter(
           element: <CommunityPage />,
         },
         {
-          path: "community-chat/:id",
-          element: <WhatsAppChatRoom />,
+          path: "community/:id/chat",
+          element: <ModernCommunityChatRoom />,
         },
       ],
     },

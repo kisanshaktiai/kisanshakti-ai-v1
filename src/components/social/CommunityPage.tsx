@@ -16,7 +16,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useToast } from '@/hooks/use-toast';
 import { PostCard } from './PostCard';
-import { EnhancedCommunityChat } from '../community/EnhancedCommunityChat';
 import { format } from 'date-fns';
 
 interface Member {
@@ -417,16 +416,21 @@ export function CommunityPage() {
 
           {/* Chat Tab */}
           <TabsContent value="chat">
-            <Card>
-              <EnhancedCommunityChat
-                communityId={id!}
-                communityName={community.name}
-                communityType={community.community_type}
-                memberCount={members.length}
-                language={community.language || 'en'}
-                tags={community.tags || []}
-                isModerator={community.moderator_ids?.includes(user?.id) || false}
-              />
+            <Card className="flex items-center justify-center py-12">
+              <div className="text-center space-y-4 max-w-md">
+                <MessageSquare className="w-12 h-12 mx-auto text-muted-foreground" />
+                <h3 className="text-lg font-semibold">Join the conversation</h3>
+                <p className="text-sm text-muted-foreground">
+                  Connect with other farmers in real-time chat
+                </p>
+                <Button 
+                  onClick={() => navigate(`/app/community/${id}/chat`)}
+                  className="bg-gradient-to-r from-primary to-primary/80"
+                >
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  Open Chat Room
+                </Button>
+              </div>
             </Card>
           </TabsContent>
 

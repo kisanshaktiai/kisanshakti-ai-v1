@@ -19,7 +19,7 @@ export function AppLayout() {
   
   // Check if we're on the AI chat page or community chat
   const isAIChat = location.pathname === '/app/chat';
-  const isCommunityChat = location.pathname.includes('/app/social/community/');
+  const isCommunityChat = location.pathname.includes('/app/community/') && location.pathname.includes('/chat');
 
   // Apply theme whenever tenant changes
   useEffect(() => {
