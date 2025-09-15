@@ -7,9 +7,20 @@ const ScrollArea = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root>
 >(({ className, children, ...props }, ref) => (
-  <ScrollAreaPrimitive.Root ref={ref} className={cn("relative overflow-hidden", className)} {...props}>
-    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">{children}</ScrollAreaPrimitive.Viewport>
-    <ScrollBar />
+  <ScrollAreaPrimitive.Root 
+    ref={ref} 
+    className={cn(
+      "relative overflow-hidden",
+      // On mobile, use native scrolling
+      "touch:overflow-auto touch:-webkit-overflow-scrolling-touch",
+      className
+    )} 
+    {...props}
+  >
+    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit] mobile-scroll-container">
+      {children}
+    </ScrollAreaPrimitive.Viewport>
+    <ScrollBar className="hidden md:flex" />
     <ScrollAreaPrimitive.Corner />
   </ScrollAreaPrimitive.Root>
 ));

@@ -33,10 +33,10 @@ export function AppLayout() {
   const tagline = tenant?.whiteLabel?.brand_identity?.tagline || t('app.tagline');
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-mobile-screen bg-background">
       {/* Header - Hidden on AI Chat */}
       {!isAIChat && (
-        <header className="fixed top-0 left-0 right-0 h-14 bg-card border-b border-border z-40 flex items-center justify-between px-4">
+        <header className="fixed top-0 left-0 right-0 h-14 bg-card border-b border-border z-40 flex items-center justify-between px-4 pt-safe">
           <div className="flex items-center gap-3">
             {logoUrl ? (
               <img 
@@ -68,7 +68,7 @@ export function AppLayout() {
       )}
 
       {/* Main Content - Adjust padding based on AI Chat */}
-      <main className={isAIChat ? "" : "pt-14 pb-nav"}>
+      <main className={isAIChat ? "" : "pt-14 pb-nav-safe mobile-scroll-container"}>
         <Outlet />
       </main>
 

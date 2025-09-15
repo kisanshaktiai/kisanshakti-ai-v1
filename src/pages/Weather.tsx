@@ -138,7 +138,7 @@ export default function Weather() {
       <AnimatedWeatherBackground condition={currentWeather.main || 'clear'} />
       <WeatherAnimation condition={getWeatherCondition()} />
       
-      <div className="relative z-10 container mx-auto px-4 py-6 space-y-6 pb-20">
+      <div className="relative z-10 container mx-auto px-4 py-6 space-y-6">
         {/* Header with location and sync */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div className="flex items-center gap-3">

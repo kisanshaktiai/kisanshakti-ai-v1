@@ -209,7 +209,7 @@ export default function Home() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-subtle">
+    <div className="bg-gradient-subtle">
       {/* Hero Section with Welcome */}
       <div className="relative overflow-hidden bg-gradient-earth p-6 rounded-b-3xl shadow-elegant">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-accent/20" />

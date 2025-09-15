@@ -147,7 +147,7 @@ export default function Social() {
   ];
 
   return (
-    <div className="min-h-screen bg-background pb-nav">
+    <div className="bg-background">
       {/* Header */}
       <div className="sticky top-14 z-30 bg-card border-b">
         <div className="flex items-center justify-between p-4">

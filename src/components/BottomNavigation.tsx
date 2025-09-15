@@ -30,8 +30,8 @@ export function BottomNavigation({ onMenuOpen }: BottomNavigationProps) {
 
   return (
     <>
-      <nav className="fixed bottom-0 left-0 right-0 h-20 glassmorphism-nav border-t border-nav-border/20 z-50 backdrop-blur-xl">
-        <div className="h-full flex justify-around items-center px-3 relative">
+      <nav className="fixed bottom-0 left-0 right-0 glassmorphism-nav border-t border-nav-border/20 z-50 backdrop-blur-xl pb-safe">
+        <div className="h-20 flex justify-around items-center px-3 relative">
         {navItems.map(({ path, icon: Icon, labelKey, isAction }, index) => {
           // Central action button
           if (isAction) {
