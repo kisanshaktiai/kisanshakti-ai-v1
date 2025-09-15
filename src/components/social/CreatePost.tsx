@@ -22,7 +22,7 @@ interface Community {
 export function CreatePost({ onClose, onPostCreated }: CreatePostProps) {
   const { toast } = useToast();
   const [content, setContent] = useState('');
-  const [selectedCommunity, setSelectedCommunity] = useState('');
+  const [selectedCommunity, setSelectedCommunity] = useState('none');
   const [hashtags, setHashtags] = useState('');
   const [loading, setLoading] = useState(false);
   const [communities, setCommunities] = useState<Community[]>([]);
@@ -74,7 +74,7 @@ export function CreatePost({ onClose, onPostCreated }: CreatePostProps) {
     try {
       const { error } = await supabase.from('social_posts').insert({
         farmer_id: farmerId,
-        community_id: selectedCommunity || null,
+        community_id: selectedCommunity === 'none' ? null : selectedCommunity,
         content,
         hashtags: hashtags.split(' ').filter(tag => tag.startsWith('#')).map(tag => tag.slice(1)),
         post_type: 'text',
@@ -123,7 +123,7 @@ export function CreatePost({ onClose, onPostCreated }: CreatePostProps) {
                   <SelectValue placeholder="Choose a community..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No community (Public post)</SelectItem>
+                  <SelectItem value="none">No community (Public post)</SelectItem>
                   {communities.map((community) => (
                     <SelectItem key={community.id} value={community.id}>
                       {community.name}
