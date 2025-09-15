@@ -21,7 +21,10 @@ export function useFeatures() {
 
     // Apply tenant-specific feature configuration
     if (tenant?.settings?.features) {
-      const enabledFeatureIds = tenant.settings.features;
+      // Ensure features is an array
+      const enabledFeatureIds = Array.isArray(tenant.settings.features) 
+        ? tenant.settings.features 
+        : [];
       const updatedFeatures = defaultFeatures.map(feature => ({
         ...feature,
         enabled: feature.comingSoon ? false : enabledFeatureIds.includes(feature.id)
