@@ -47,7 +47,7 @@ class LandsApiService {
 
   async fetchLands(): Promise<LandData[]> {
     try {
-      const response = await fetch(`${LANDS_API_URL}/lands`, {
+      const response = await fetch(LANDS_API_URL, {
         method: 'GET',
         headers: this.getHeaders(),
       });
@@ -67,7 +67,7 @@ class LandsApiService {
 
   async createLand(landData: Omit<LandData, 'id'>): Promise<LandData> {
     try {
-      const response = await fetch(`${LANDS_API_URL}/lands`, {
+      const response = await fetch(LANDS_API_URL, {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify(landData),
@@ -88,7 +88,7 @@ class LandsApiService {
 
   async updateLand(id: string, landData: Partial<LandData>): Promise<LandData> {
     try {
-      const response = await fetch(`${LANDS_API_URL}/lands/${id}`, {
+      const response = await fetch(`${LANDS_API_URL}/${id}`, {
         method: 'PUT',
         headers: this.getHeaders(),
         body: JSON.stringify(landData),
@@ -109,7 +109,7 @@ class LandsApiService {
 
   async deleteLand(id: string): Promise<void> {
     try {
-      const response = await fetch(`${LANDS_API_URL}/lands/${id}`, {
+      const response = await fetch(`${LANDS_API_URL}/${id}`, {
         method: 'DELETE',
         headers: this.getHeaders(),
       });
@@ -127,7 +127,7 @@ class LandsApiService {
   // Fetch a specific land by ID - uses the Edge Function
   async fetchLandById(id: string): Promise<LandData | null> {
     try {
-      const response = await fetch(`${LANDS_API_URL}/lands/${id}`, {
+      const response = await fetch(`${LANDS_API_URL}/${id}`, {
         method: 'GET',
         headers: this.getHeaders(),
       });

@@ -39,11 +39,13 @@ serve(async (req) => {
       );
     }
 
-    // Parse request URL
+    // Parse request URL - extract only the path after '/lands-api'
     const url = new URL(req.url);
-    const pathSegments = url.pathname.split('/').filter(s => s);
-    const operation = pathSegments[0]; // 'lands'
-    const landId = pathSegments[1]; // optional land ID for specific operations
+    const pathAfterFunction = url.pathname.split('/lands-api')[1] || '';
+    const cleanPath = pathAfterFunction.startsWith('/') ? pathAfterFunction.slice(1) : pathAfterFunction;
+    
+    // Get land ID if present (e.g., /lands-api/{id})
+    const landId = cleanPath && !cleanPath.includes('/') ? cleanPath : null;
 
     // Set session variables for RLS
     const { error: sessionError } = await supabase.rpc('set_app_session', {
