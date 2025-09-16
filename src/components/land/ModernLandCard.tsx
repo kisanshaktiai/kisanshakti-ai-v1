@@ -14,10 +14,12 @@ import {
   Globe,
   ChevronRight,
   Clock,
-  MoreVertical,
   Share2,
   Copy,
-  Eye
+  Eye,
+  Satellite,
+  Activity,
+  Percent
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -32,17 +34,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface ModernLandCardProps {
   land: {
@@ -239,38 +235,52 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
               onError={() => setImageLoading(false)}
             />
             
-            {/* Mobile-optimized Action Menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  size="icon"
-                  variant="secondary"
-                  className="absolute top-2 right-2 h-8 w-8 bg-background/90 backdrop-blur hover:bg-background shadow-lg z-20"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={() => navigate(`/app/lands/${land.id}`)}>
-                  <Eye className="h-4 w-4 mr-2" />
-                  View Details
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleEdit}>
-                  <Edit3 className="h-4 w-4 mr-2" />
-                  Edit Land
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleShare}>
-                  <Share2 className="h-4 w-4 mr-2" />
-                  Share
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setDeleteDialogOpen(true)} className="text-destructive">
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* Direct Action Icons */}
+            <div className="absolute top-2 right-2 flex gap-1 z-20">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="secondary"
+                      className="h-8 w-8 bg-background/90 backdrop-blur hover:bg-background shadow-lg"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEdit();
+                      }}
+                    >
+                      <Edit3 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Edit</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="secondary"
+                      className="h-8 w-8 bg-background/90 backdrop-blur hover:bg-background shadow-lg"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteDialogOpen(true);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Delete</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+            
+            {/* Utilized Percentage Badge */}
+            <Badge className="absolute top-2 left-2 bg-primary/90 backdrop-blur text-primary-foreground border-primary/20 z-20 text-xs sm:text-sm">
+              <Percent className="h-3 w-3 mr-1" />
+              {land.current_crop ? '85% Utilized' : '0% Utilized'}
+            </Badge>
             
             {/* Area Badge */}
             <Badge className="absolute bottom-2 left-2 bg-background/90 backdrop-blur border-primary/20 z-20 text-xs sm:text-sm">
@@ -323,8 +333,37 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
               </div>
             )}
             
+            {/* Smart Action Buttons */}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 h-8 text-xs font-medium"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/app/lands/${land.id}/soil`);
+                }}
+              >
+                <Activity className="h-3 w-3 mr-1" />
+                Soil Health
+              </Button>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 h-8 text-xs font-medium"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/app/lands/${land.id}/ndvi`);
+                }}
+              >
+                <Satellite className="h-3 w-3 mr-1" />
+                NDVI Data
+              </Button>
+            </div>
+            
             {/* Land Details Tags */}
-            <div className="flex flex-wrap gap-1.5 mt-auto">
+            <div className="flex flex-wrap gap-1.5">
               {land.irrigation_type && (
                 <Badge variant="secondary" className="text-xs px-2 py-0.5">
                   <Droplets className="h-2.5 w-2.5 mr-1" />
