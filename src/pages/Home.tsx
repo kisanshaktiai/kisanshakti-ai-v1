@@ -211,26 +211,87 @@ export default function Home() {
 
   return (
     <div className="bg-gradient-subtle">
-      {/* Hero Section with Welcome */}
-      <div className="relative overflow-hidden bg-gradient-earth p-6 rounded-b-3xl shadow-elegant">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-accent/20" />
+      {/* Hero Section with Weather Animation */}
+      <div className="relative overflow-hidden bg-gradient-earth p-4 pb-6 rounded-b-3xl shadow-elegant">
+        {/* Weather-based animated background */}
+        <div className="absolute inset-0">
+          {/* Base gradient */}
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-accent/20" />
+          
+          {/* Weather-based animations */}
+          {currentWeather && (
+            <>
+              {/* Sunny animation */}
+              {currentWeather.main === 'Clear' && (
+                <div className="absolute inset-0">
+                  <div className="absolute top-4 right-8 w-24 h-24 bg-yellow-400/20 rounded-full blur-2xl animate-pulse" />
+                  <div className="absolute top-12 right-16 w-16 h-16 bg-orange-400/15 rounded-full blur-xl animate-[pulse_3s_ease-in-out_infinite]" />
+                </div>
+              )}
+              
+              {/* Cloudy animation */}
+              {(currentWeather.main === 'Clouds' || currentWeather.main === 'Mist') && (
+                <div className="absolute inset-0 overflow-hidden">
+                  <div className="absolute -top-4 left-0 w-32 h-20 bg-gray-300/10 rounded-full blur-xl animate-[slide-in-right_20s_ease-in-out_infinite]" />
+                  <div className="absolute top-8 right-0 w-40 h-24 bg-gray-400/10 rounded-full blur-2xl animate-[slide-out-right_25s_ease-in-out_infinite]" />
+                  <div className="absolute top-16 left-1/3 w-28 h-16 bg-gray-300/10 rounded-full blur-xl animate-[slide-in-right_30s_ease-in-out_infinite]" />
+                </div>
+              )}
+              
+              {/* Rainy animation */}
+              {(currentWeather.main === 'Rain' || currentWeather.main === 'Drizzle') && (
+                <div className="absolute inset-0 overflow-hidden">
+                  <div className="absolute inset-0 opacity-30">
+                    {[...Array(15)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="absolute w-0.5 h-8 bg-gradient-to-b from-transparent via-blue-400/40 to-transparent animate-[fade-in_2s_ease-in-out_infinite]"
+                        style={{
+                          left: `${Math.random() * 100}%`,
+                          top: `${Math.random() * 100}%`,
+                          animationDelay: `${Math.random() * 2}s`,
+                          transform: `rotate(15deg)`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Thunderstorm animation */}
+              {currentWeather.main === 'Thunderstorm' && (
+                <div className="absolute inset-0">
+                  <div className="absolute inset-0 bg-purple-900/5 animate-[pulse_4s_ease-in-out_infinite]" />
+                  <div className="absolute top-0 left-1/4 w-1 h-full bg-gradient-to-b from-transparent via-purple-400/20 to-transparent animate-[scale-in_3s_ease-in-out_infinite]" />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        
         <div className="relative z-10">
-          <div className="flex items-start justify-between mb-6">
+          <div className="flex items-start justify-between mb-4">
             <div>
-              <p className="text-muted-foreground flex items-center gap-2">
-                <Leaf className="w-4 h-4" />
+              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                <Leaf className="w-3 h-3" />
                 {currentTime.toLocaleDateString('en-IN', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
+                  weekday: 'short',
+                  month: 'short',
                   day: 'numeric',
+                })}
+              </p>
+              {/* Very small sync info */}
+              <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+                Last sync: {currentTime.toLocaleTimeString('en-IN', { 
+                  hour: '2-digit', 
+                  minute: '2-digit' 
                 })}
               </p>
             </div>
           </div>
 
           {/* Quick Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
             {quickStats.map((stat, index) => {
               const Icon = stat.icon;
               return (
