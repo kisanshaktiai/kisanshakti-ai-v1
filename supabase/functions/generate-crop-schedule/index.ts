@@ -120,34 +120,61 @@ Important:
 
     console.log('Generating crop schedule with OpenAI...');
     
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { 
-            role: 'system', 
-            content: 'You are an expert agricultural advisor with deep knowledge of FAO and ICAR guidelines. Generate practical, science-based crop schedules optimized for Indian farming conditions.' 
-          },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.7,
-        response_format: { type: "json_object" }
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('OpenAI API error:', error);
-      throw new Error('Failed to generate crop schedule');
+    // Check if OpenAI API key is configured
+    if (!openAIApiKey) {
+      console.error('OpenAI API key not configured in Supabase secrets');
+      throw new Error('AI service not configured. Please contact support.');
     }
+    
+    let scheduleData: any;
+    
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openAIApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { 
+              role: 'system', 
+              content: 'You are an expert agricultural advisor with deep knowledge of FAO and ICAR guidelines. Generate practical, science-based crop schedules optimized for Indian farming conditions.' 
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.7,
+          response_format: { type: "json_object" }
+        }),
+      });
 
-    const aiResponse = await response.json();
-    const scheduleData = JSON.parse(aiResponse.choices[0].message.content);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('OpenAI API error:', errorText);
+        
+        // Parse error to check for specific issues
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.error?.code === 'insufficient_quota') {
+            console.error('OpenAI API quota exceeded');
+            // Generate a fallback schedule
+            scheduleData = generateFallbackSchedule(cropName, cropVariety, sowingDate, land);
+          } else {
+            throw new Error(`OpenAI API error: ${errorData.error?.message || 'Unknown error'}`);
+          }
+        } catch (parseError) {
+          throw new Error('Failed to generate crop schedule');
+        }
+      } else {
+        const aiResponse = await response.json();
+        scheduleData = JSON.parse(aiResponse.choices[0].message.content);
+      }
+    } catch (error) {
+      console.error('Error calling OpenAI API:', error);
+      // Use fallback schedule generation
+      scheduleData = generateFallbackSchedule(cropName, cropVariety, sowingDate, land);
+    }
 
     // If regenerating, deactivate existing schedules
     if (regenerate) {
@@ -246,3 +273,310 @@ Important:
     );
   }
 });
+
+// Fallback schedule generator for when OpenAI API fails
+function generateFallbackSchedule(cropName: string, cropVariety: string | null, sowingDate: string, land: any) {
+  console.log('Generating fallback schedule due to API limitations');
+  
+  const sowingDateObj = new Date(sowingDate);
+  const lifecycleDays = getDefaultLifecycleDays(cropName);
+  const harvestDate = new Date(sowingDateObj);
+  harvestDate.setDate(harvestDate.getDate() + lifecycleDays);
+  
+  // Generate basic tasks based on crop type
+  const tasks = generateBasicTasks(cropName, sowingDateObj, lifecycleDays, land);
+  
+  return {
+    lifecycle_days: lifecycleDays,
+    expected_harvest_date: harvestDate.toISOString().split('T')[0],
+    tasks: tasks,
+    best_practices: getDefaultBestPractices(cropName),
+    common_issues: getDefaultCommonIssues(cropName),
+    yield_estimate: getDefaultYieldEstimate(cropName, land.area_acres)
+  };
+}
+
+function getDefaultLifecycleDays(cropName: string): number {
+  const cropLifecycles: Record<string, number> = {
+    'rice': 120,
+    'wheat': 110,
+    'maize': 90,
+    'cotton': 180,
+    'sugarcane': 365,
+    'groundnut': 100,
+    'soybean': 90,
+    'potato': 90,
+    'tomato': 75,
+    'onion': 120,
+    'chili': 150,
+    'brinjal': 120,
+    'okra': 55,
+    'cabbage': 90,
+    'cauliflower': 85
+  };
+  
+  return cropLifecycles[cropName.toLowerCase()] || 90;
+}
+
+function generateBasicTasks(cropName: string, sowingDate: Date, lifecycleDays: number, land: any) {
+  const tasks = [];
+  
+  // Land Preparation (Day -7)
+  const prepDate = new Date(sowingDate);
+  prepDate.setDate(prepDate.getDate() - 7);
+  tasks.push({
+    day_from_sowing: -7,
+    task_date: prepDate.toISOString().split('T')[0],
+    task_type: 'other',
+    task_name: 'Land Preparation',
+    task_description: 'Prepare the field for sowing by plowing, leveling, and creating beds/furrows as needed',
+    duration_hours: 8,
+    priority: 'high',
+    weather_dependent: true,
+    resources: {
+      labor_persons: 2
+    },
+    estimated_cost: 2000,
+    instructions: ['Plow the field', 'Level the soil', 'Create beds or furrows', 'Remove weeds and debris'],
+    precautions: ['Ensure soil moisture is optimal', 'Avoid working in wet conditions'],
+    ideal_weather: {
+      temperature_min: 15,
+      temperature_max: 35,
+      humidity_min: 40,
+      humidity_max: 70,
+      wind_speed_max: 20,
+      rainfall_ok: false
+    }
+  });
+  
+  // Sowing (Day 0)
+  tasks.push({
+    day_from_sowing: 0,
+    task_date: sowingDate.toISOString().split('T')[0],
+    task_type: 'other',
+    task_name: 'Sowing/Planting',
+    task_description: `Sow ${cropName} seeds or transplant seedlings at recommended spacing`,
+    duration_hours: 6,
+    priority: 'high',
+    weather_dependent: true,
+    resources: {
+      labor_persons: 3
+    },
+    estimated_cost: 1500,
+    instructions: ['Mark rows at proper spacing', 'Sow seeds at recommended depth', 'Cover seeds with soil', 'Light irrigation if needed'],
+    precautions: ['Use treated seeds', 'Maintain proper spacing', 'Avoid deep sowing'],
+    ideal_weather: {
+      temperature_min: 18,
+      temperature_max: 32,
+      humidity_min: 50,
+      humidity_max: 75,
+      wind_speed_max: 15,
+      rainfall_ok: false
+    }
+  });
+  
+  // First Irrigation (Day 3)
+  const firstIrrigationDate = new Date(sowingDate);
+  firstIrrigationDate.setDate(firstIrrigationDate.getDate() + 3);
+  tasks.push({
+    day_from_sowing: 3,
+    task_date: firstIrrigationDate.toISOString().split('T')[0],
+    task_type: 'irrigation',
+    task_name: 'First Irrigation',
+    task_description: 'Light irrigation to ensure seed germination',
+    duration_hours: 3,
+    priority: 'high',
+    weather_dependent: true,
+    resources: {
+      water_liters: land.area_acres * 5000,
+      labor_persons: 1
+    },
+    estimated_cost: 500,
+    instructions: ['Check soil moisture', 'Apply light irrigation', 'Avoid waterlogging', 'Ensure uniform water distribution'],
+    precautions: ['Do not over-irrigate', 'Check weather forecast'],
+    ideal_weather: {
+      temperature_min: 15,
+      temperature_max: 35,
+      humidity_min: 30,
+      humidity_max: 80,
+      wind_speed_max: 25,
+      rainfall_ok: false
+    }
+  });
+  
+  // Regular irrigation schedule
+  for (let day = 10; day < lifecycleDays - 10; day += 7) {
+    const irrigationDate = new Date(sowingDate);
+    irrigationDate.setDate(irrigationDate.getDate() + day);
+    tasks.push({
+      day_from_sowing: day,
+      task_date: irrigationDate.toISOString().split('T')[0],
+      task_type: 'irrigation',
+      task_name: `Irrigation - Week ${Math.floor(day / 7)}`,
+      task_description: 'Regular irrigation based on soil moisture and crop requirement',
+      duration_hours: 3,
+      priority: 'medium',
+      weather_dependent: true,
+      resources: {
+        water_liters: land.area_acres * 7000,
+        labor_persons: 1
+      },
+      estimated_cost: 500,
+      instructions: ['Check soil moisture', 'Irrigate as per requirement', 'Ensure proper drainage'],
+      precautions: ['Avoid water stress', 'Check for rainfall forecast'],
+      ideal_weather: {
+        temperature_min: 15,
+        temperature_max: 38,
+        humidity_min: 30,
+        humidity_max: 85,
+        wind_speed_max: 30,
+        rainfall_ok: false
+      }
+    });
+  }
+  
+  // Fertilizer applications
+  const fertilizerDays = [15, 30, 45, 60];
+  fertilizerDays.forEach((day, index) => {
+    if (day < lifecycleDays) {
+      const fertilizerDate = new Date(sowingDate);
+      fertilizerDate.setDate(fertilizerDate.getDate() + day);
+      tasks.push({
+        day_from_sowing: day,
+        task_date: fertilizerDate.toISOString().split('T')[0],
+        task_type: 'fertilizer',
+        task_name: `Fertilizer Application ${index + 1}`,
+        task_description: index === 0 ? 'Basal fertilizer application' : `Top dressing ${index}`,
+        duration_hours: 4,
+        priority: 'high',
+        weather_dependent: true,
+        resources: {
+          fertilizer_kg: land.area_acres * 50,
+          labor_persons: 2
+        },
+        estimated_cost: 2000,
+        instructions: ['Calculate fertilizer requirement', 'Apply uniformly', 'Light irrigation after application'],
+        precautions: ['Wear protective gear', 'Avoid contact with skin', 'Store fertilizer safely'],
+        ideal_weather: {
+          temperature_min: 15,
+          temperature_max: 35,
+          humidity_min: 40,
+          humidity_max: 75,
+          wind_speed_max: 15,
+          rainfall_ok: false
+        }
+      });
+    }
+  });
+  
+  // Weeding
+  const weedingDays = [20, 40];
+  weedingDays.forEach((day, index) => {
+    if (day < lifecycleDays) {
+      const weedingDate = new Date(sowingDate);
+      weedingDate.setDate(weedingDate.getDate() + day);
+      tasks.push({
+        day_from_sowing: day,
+        task_date: weedingDate.toISOString().split('T')[0],
+        task_type: 'weeding',
+        task_name: `Weeding ${index + 1}`,
+        task_description: 'Remove weeds to reduce competition for nutrients',
+        duration_hours: 6,
+        priority: 'medium',
+        weather_dependent: false,
+        resources: {
+          labor_persons: 3
+        },
+        estimated_cost: 1500,
+        instructions: ['Remove weeds carefully', 'Avoid damaging crop roots', 'Dispose of weeds properly'],
+        precautions: ['Use appropriate tools', 'Work when soil is moist but not wet'],
+        ideal_weather: {
+          temperature_min: 15,
+          temperature_max: 35,
+          humidity_min: 30,
+          humidity_max: 80,
+          wind_speed_max: 30,
+          rainfall_ok: false
+        }
+      });
+    }
+  });
+  
+  // Harvest
+  const harvestDate = new Date(sowingDate);
+  harvestDate.setDate(harvestDate.getDate() + lifecycleDays);
+  tasks.push({
+    day_from_sowing: lifecycleDays,
+    task_date: harvestDate.toISOString().split('T')[0],
+    task_type: 'harvest',
+    task_name: 'Harvesting',
+    task_description: `Harvest ${cropName} at optimal maturity`,
+    duration_hours: 8,
+    priority: 'high',
+    weather_dependent: true,
+    resources: {
+      labor_persons: 5
+    },
+    estimated_cost: 3000,
+    instructions: ['Check crop maturity', 'Harvest in morning hours', 'Handle produce carefully', 'Store in appropriate conditions'],
+    precautions: ['Avoid harvesting in wet conditions', 'Use clean containers'],
+    ideal_weather: {
+      temperature_min: 15,
+      temperature_max: 35,
+      humidity_min: 30,
+      humidity_max: 70,
+      wind_speed_max: 20,
+      rainfall_ok: false
+    }
+  });
+  
+  return tasks.sort((a, b) => a.day_from_sowing - b.day_from_sowing);
+}
+
+function getDefaultBestPractices(cropName: string): string[] {
+  return [
+    `Use certified seeds/planting material for ${cropName}`,
+    'Maintain proper plant spacing for optimal growth',
+    'Follow integrated pest management (IPM) practices',
+    'Ensure timely irrigation based on crop stage',
+    'Apply fertilizers based on soil test recommendations',
+    'Monitor crop regularly for pests and diseases',
+    'Harvest at proper maturity stage',
+    'Follow post-harvest handling best practices'
+  ];
+}
+
+function getDefaultCommonIssues(cropName: string): string[] {
+  return [
+    'Pest attacks - Monitor regularly and apply appropriate control measures',
+    'Nutrient deficiency - Look for yellowing leaves or stunted growth',
+    'Water stress - Maintain consistent soil moisture',
+    'Weed competition - Regular weeding required',
+    'Disease incidence - Use preventive fungicides if needed',
+    'Weather stress - Protect from extreme temperatures'
+  ];
+}
+
+function getDefaultYieldEstimate(cropName: string, areaAcres: number): any {
+  const yieldPerAcre: Record<string, { min: number, max: number }> = {
+    'rice': { min: 1500, max: 2500 },
+    'wheat': { min: 1200, max: 2000 },
+    'maize': { min: 2000, max: 3500 },
+    'cotton': { min: 400, max: 700 },
+    'sugarcane': { min: 30000, max: 45000 },
+    'groundnut': { min: 800, max: 1500 },
+    'soybean': { min: 800, max: 1200 },
+    'potato': { min: 8000, max: 12000 },
+    'tomato': { min: 10000, max: 20000 },
+    'onion': { min: 8000, max: 15000 }
+  };
+  
+  const defaultYield = { min: 1000, max: 2000 };
+  const cropYield = yieldPerAcre[cropName.toLowerCase()] || defaultYield;
+  
+  return {
+    min_kg: cropYield.min * areaAcres,
+    max_kg: cropYield.max * areaAcres,
+    unit: 'kg'
+  };
+}

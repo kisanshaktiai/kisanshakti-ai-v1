@@ -94,6 +94,19 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
 
       const { data } = response;
       if (!data.success) {
+        // Check if it's a quota issue
+        if (data.error?.includes('quota') || data.error?.includes('AI service')) {
+          toast({
+            title: 'Service Temporarily Limited',
+            description: 'Using basic schedule generation. Full AI features will be available soon.',
+            variant: 'default',
+          });
+          // Still proceed if we have a schedule
+          if (data.scheduleId) {
+            onComplete();
+            return;
+          }
+        }
         throw new Error(data.error || 'Failed to generate schedule');
       }
 
