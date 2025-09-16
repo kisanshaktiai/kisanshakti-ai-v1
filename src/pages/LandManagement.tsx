@@ -237,242 +237,209 @@ export default function LandManagement() {
   }
 
   return (
-    <div className="space-y-4 pb-20 md:pb-6">
-      {/* Mobile-optimized Stats Header */}
-      <AnimatePresence>
-        {showStats && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="bg-gradient-to-r from-primary/5 to-primary/10 rounded-lg border border-primary/10 p-3"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-semibold text-muted-foreground">Overview</h2>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 md:hidden"
-                onClick={() => setShowStats(false)}
-              >
-                <ChevronUp className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="flex items-center gap-2 bg-background/60 backdrop-blur-sm rounded-md p-2">
-                <div className="p-1.5 bg-primary/10 rounded-md">
-                  <MapPin className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Total</p>
-                  <p className="text-base font-bold">{lands.length}</p>
-                </div>
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Compact Stats Bar - Mobile optimized */}
+      {showStats && (
+        <div className="flex-shrink-0 bg-gradient-to-r from-primary/5 to-primary/10 border-b border-primary/10 px-4 py-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4 overflow-x-auto">
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <MapPin className="h-3.5 w-3.5 text-primary" />
+                <span className="text-sm font-semibold">{lands.length}</span>
+                <span className="text-xs text-muted-foreground">lands</span>
               </div>
               
-              <div className="flex items-center gap-2 bg-background/60 backdrop-blur-sm rounded-md p-2">
-                <div className="p-1.5 bg-primary/10 rounded-md">
-                  <Grid3x3 className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Area</p>
-                  <p className="text-base font-bold">{totalArea.toFixed(1)} ac</p>
-                </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <Grid3x3 className="h-3.5 w-3.5 text-primary" />
+                <span className="text-sm font-semibold">{totalArea.toFixed(1)}</span>
+                <span className="text-xs text-muted-foreground">acres</span>
               </div>
               
-              <div className="flex items-center gap-2 bg-background/60 backdrop-blur-sm rounded-md p-2">
-                <div className="p-1.5 bg-primary/10 rounded-md">
-                  <Sprout className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Active</p>
-                  <p className="text-base font-bold">{cultivatedLands}</p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-2 bg-background/60 backdrop-blur-sm rounded-md p-2">
-                <div className="p-1.5 bg-primary/10 rounded-md">
-                  <Activity className="h-4 w-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Usage</p>
-                  <div className="flex items-center gap-1">
-                    <p className="text-base font-bold">{lands.length ? Math.round((cultivatedLands / lands.length) * 100) : 0}%</p>
-                    <Progress value={(cultivatedLands / lands.length) * 100} className="h-1.5 w-12" />
-                  </div>
-                </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <Sprout className="h-3.5 w-3.5 text-primary" />
+                <span className="text-sm font-semibold">{cultivatedLands}</span>
+                <span className="text-xs text-muted-foreground">active</span>
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Offline Indicator */}
-      {!isOnline && (
-        <Card className="border-warning bg-warning/10">
-          <CardContent className="p-3">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-4 w-4 text-warning" />
-              <p className="text-sm text-warning-foreground">
-                You're offline. Changes will sync when connection is restored.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Mobile-optimized Search and Actions */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm pb-3 -mx-4 px-4 md:mx-0 md:px-0">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search lands..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 h-10"
-            />
-          </div>
-          
-          {/* Mobile Filter Sheet */}
-          <Sheet>
-            <SheetTrigger asChild className="md:hidden">
-              <Button variant="outline" size="icon" className="h-10 w-10">
-                <SlidersHorizontal className="h-4 w-4" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="bottom" className="h-auto">
-              <SheetHeader>
-                <SheetTitle>Filters & Sort</SheetTitle>
-              </SheetHeader>
-              <div className="space-y-4 mt-4">
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Filter by</label>
-                  <Select value={filterBy} onValueChange={setFilterBy}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Lands</SelectItem>
-                      <SelectItem value="withCrop">With Crop</SelectItem>
-                      <SelectItem value="noCrop">No Crop</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Sort by</label>
-                  <Select value={sortBy} onValueChange={setSortBy}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="name">Name</SelectItem>
-                      <SelectItem value="area">Area</SelectItem>
-                      <SelectItem value="date">Date</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div>
-                  <label className="text-sm font-medium mb-2 block">View mode</label>
-                  <div className="flex gap-2">
-                    <Button
-                      variant={viewMode === 'grid' ? 'default' : 'outline'}
-                      onClick={() => setViewMode('grid')}
-                      className="flex-1"
-                    >
-                      <Grid3x3 className="h-4 w-4 mr-2" />
-                      Grid
-                    </Button>
-                    <Button
-                      variant={viewMode === 'list' ? 'default' : 'outline'}
-                      onClick={() => setViewMode('list')}
-                      className="flex-1"
-                    >
-                      <List className="h-4 w-4 mr-2" />
-                      List
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </SheetContent>
-          </Sheet>
-          
-          {/* Desktop Filters */}
-          <div className="hidden md:flex gap-2">
-            <Select value={filterBy} onValueChange={setFilterBy}>
-              <SelectTrigger className="w-[140px] h-10">
-                <Filter className="h-4 w-4 mr-2" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Lands</SelectItem>
-                <SelectItem value="withCrop">With Crop</SelectItem>
-                <SelectItem value="noCrop">No Crop</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            <Select value={sortBy} onValueChange={setSortBy}>
-              <SelectTrigger className="w-[120px] h-10">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="name">Name</SelectItem>
-                <SelectItem value="area">Area</SelectItem>
-                <SelectItem value="date">Date</SelectItem>
-              </SelectContent>
-            </Select>
             
             <Button
-              variant="outline"
+              variant="ghost"
               size="icon"
-              onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
-              className="h-10 w-10"
+              className="h-6 w-6 md:hidden flex-shrink-0"
+              onClick={() => setShowStats(false)}
             >
-              {viewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid3x3 className="h-4 w-4" />}
-            </Button>
-            
-            <Button variant="outline" size="icon" onClick={exportData} className="h-10 w-10">
-              <Download className="h-4 w-4" />
+              <X className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
-      </div>
-
-      {/* Lands Display */}
-      {filteredLands.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="p-8 text-center">
-            <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No Lands Found</h3>
-            <p className="text-muted-foreground mb-6 text-sm">
-              {searchQuery ? 'Try adjusting your search or filters' : 'Start by adding your first land parcel'}
-            </p>
-            {!searchQuery && (
-              <Button onClick={() => navigate('/app/lands/add')} className="mx-auto">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Your First Land
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-          <AnimatePresence>
-            {filteredLands.map(land => (
-              <ModernLandCard key={land.id} land={land} onRefresh={fetchLands} />
-            ))}
-          </AnimatePresence>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          <AnimatePresence>
-            {filteredLands.map(land => (
-              <LandListItem key={land.id} land={land} />
-            ))}
-          </AnimatePresence>
-        </div>
       )}
+
+      {/* Scrollable Content Area */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Offline Indicator */}
+        {!isOnline && (
+          <div className="mx-4 mt-2 mb-3 bg-warning/10 border-l-4 border-warning rounded-md p-2 flex items-center gap-2">
+            <AlertCircle className="h-3.5 w-3.5 text-warning flex-shrink-0" />
+            <p className="text-xs text-warning-foreground">Offline - changes will sync later</p>
+          </div>
+        )}
+
+        {/* Search and Actions Bar - Sticky */}
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-3 px-4">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search lands..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 h-9"
+              />
+            </div>
+            
+            {/* Mobile Filter Sheet */}
+            <Sheet>
+              <SheetTrigger asChild className="md:hidden">
+                <Button variant="outline" size="icon" className="h-9 w-9">
+                  <SlidersHorizontal className="h-4 w-4" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="bottom" className="h-auto">
+                <SheetHeader>
+                  <SheetTitle>Filters & Sort</SheetTitle>
+                </SheetHeader>
+                <div className="space-y-4 mt-4">
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Filter by</label>
+                    <Select value={filterBy} onValueChange={setFilterBy}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Lands</SelectItem>
+                        <SelectItem value="withCrop">With Crop</SelectItem>
+                        <SelectItem value="noCrop">No Crop</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Sort by</label>
+                    <Select value={sortBy} onValueChange={setSortBy}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="name">Name</SelectItem>
+                        <SelectItem value="area">Area</SelectItem>
+                        <SelectItem value="date">Date</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">View mode</label>
+                    <div className="flex gap-2">
+                      <Button
+                        variant={viewMode === 'grid' ? 'default' : 'outline'}
+                        onClick={() => setViewMode('grid')}
+                        className="flex-1"
+                      >
+                        <Grid3x3 className="h-4 w-4 mr-2" />
+                        Grid
+                      </Button>
+                      <Button
+                        variant={viewMode === 'list' ? 'default' : 'outline'}
+                        onClick={() => setViewMode('list')}
+                        className="flex-1"
+                      >
+                        <List className="h-4 w-4 mr-2" />
+                        List
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
+            
+            {/* Desktop Filters */}
+            <div className="hidden md:flex gap-2">
+              <Select value={filterBy} onValueChange={setFilterBy}>
+                <SelectTrigger className="w-[140px] h-9">
+                  <Filter className="h-4 w-4 mr-2" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Lands</SelectItem>
+                  <SelectItem value="withCrop">With Crop</SelectItem>
+                  <SelectItem value="noCrop">No Crop</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Select value={sortBy} onValueChange={setSortBy}>
+                <SelectTrigger className="w-[120px] h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Name</SelectItem>
+                  <SelectItem value="area">Area</SelectItem>
+                  <SelectItem value="date">Date</SelectItem>
+                </SelectContent>
+              </Select>
+              
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+                className="h-9 w-9"
+              >
+                {viewMode === 'grid' ? <List className="h-4 w-4" /> : <Grid3x3 className="h-4 w-4" />}
+              </Button>
+              
+              <Button variant="outline" size="icon" onClick={exportData} className="h-9 w-9">
+                <Download className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Lands Display - Inside scrollable area */}
+        <div className="px-4 pb-24">
+          {filteredLands.length === 0 ? (
+            <Card className="border-dashed mx-auto mt-8">
+              <CardContent className="p-8 text-center">
+                <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No Lands Found</h3>
+                <p className="text-muted-foreground mb-6 text-sm">
+                  {searchQuery ? 'Try adjusting your search or filters' : 'Start by adding your first land parcel'}
+                </p>
+                {!searchQuery && (
+                  <Button onClick={() => navigate('/app/lands/add')} className="mx-auto">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Your First Land
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          ) : viewMode === 'grid' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mt-4">
+              <AnimatePresence>
+                {filteredLands.map(land => (
+                  <ModernLandCard key={land.id} land={land} onRefresh={fetchLands} />
+                ))}
+              </AnimatePresence>
+            </div>
+          ) : (
+            <div className="space-y-2 mt-4">
+              <AnimatePresence>
+                {filteredLands.map(land => (
+                  <LandListItem key={land.id} land={land} />
+                ))}
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Mobile Floating Action Button */}
       <div className="fixed bottom-20 right-4 md:hidden z-20">
