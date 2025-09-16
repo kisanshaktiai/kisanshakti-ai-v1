@@ -9859,7 +9859,7 @@ export type Database = {
           saves_count: number | null
           shares_count: number | null
           status: Database["public"]["Enums"]["post_status"] | null
-          tenant_id: string | null
+          tenant_id: string
           translations: Json | null
           updated_at: string | null
           views_count: number | null
@@ -9889,7 +9889,7 @@ export type Database = {
           saves_count?: number | null
           shares_count?: number | null
           status?: Database["public"]["Enums"]["post_status"] | null
-          tenant_id?: string | null
+          tenant_id: string
           translations?: Json | null
           updated_at?: string | null
           views_count?: number | null
@@ -9919,7 +9919,7 @@ export type Database = {
           saves_count?: number | null
           shares_count?: number | null
           status?: Database["public"]["Enums"]["post_status"] | null
-          tenant_id?: string | null
+          tenant_id?: string
           translations?: Json | null
           updated_at?: string | null
           views_count?: number | null
@@ -14186,6 +14186,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      get_jwt_tenant_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       get_location_context: {
         Args: { lat: number; lng: number }
         Returns: Json
@@ -14301,6 +14305,10 @@ export type Database = {
       }
       is_invite_valid: {
         Args: { invite_token: string }
+        Returns: boolean
+      }
+      is_moderator: {
+        Args: Record<PropertyKey, never>
         Returns: boolean
       }
       is_super_admin: {
