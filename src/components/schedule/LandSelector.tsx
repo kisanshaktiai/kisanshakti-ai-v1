@@ -217,10 +217,11 @@ export default function LandSelector({ lands, onSelectLand }: LandSelectorProps)
                   {/* Generate Schedule Button */}
                   <Button
                     onClick={() => onSelectLand(land)}
-                    className="w-full bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-primary-foreground font-medium shadow-md"
+                    className="w-full bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 text-primary-foreground font-medium shadow-md group"
                   >
-                    <Wheat className="h-4 w-4 mr-2" />
-                    Generate AI Schedule
+                    <Wheat className="h-4 w-4 mr-2 group-hover:animate-pulse" />
+                    Select Crop & Generate
+                    <ChevronRight className="h-4 w-4 ml-1 group-hover:translate-x-1 transition-transform" />
                   </Button>
                 </div>
               </Card>

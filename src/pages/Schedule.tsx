@@ -30,7 +30,7 @@ interface Land {
   organic_carbon_percent?: number;
 }
 
-type FlowStep = 'land-selection' | 'schedule-view';
+type FlowStep = 'land-selection' | 'crop-selection' | 'schedule-view';
 
 export default function Schedule() {
   const navigate = useNavigate();
@@ -93,74 +93,9 @@ export default function Schedule() {
     }
   };
 
-  const handleLandSelect = async (land: Land) => {
+  const handleLandSelect = (land: Land) => {
     setSelectedLand(land);
-    
-    // Auto-select crop from land's current crop if available
-    const defaultCrop = land.current_crop || 'wheat';
-    const defaultVariety = '';
-    const defaultSowingDate = new Date();
-    
-    setScheduleData({ 
-      cropName: defaultCrop, 
-      cropVariety: defaultVariety, 
-      sowingDate: defaultSowingDate 
-    });
-    
-    // Directly generate schedule
-    try {
-      setGenerating(true);
-      setFlowStep('schedule-view'); // Jump directly to schedule view
-
-      const response = await supabase.functions.invoke('generate-crop-schedule', {
-        body: {
-          landId: land.id,
-          cropName: defaultCrop,
-          cropVariety: defaultVariety,
-          sowingDate: format(defaultSowingDate, 'yyyy-MM-dd'),
-          weatherData: null,
-          regenerate: false,
-        },
-        headers: {
-          'x-tenant-id': user?.tenantId || '',
-          'x-farmer-id': user?.id || '',
-          'x-session-token': session?.token || '',
-        },
-      });
-
-      if (response.error) throw response.error;
-
-      const { data } = response;
-      
-      if (!data || !data.success) {
-        // Fallback to basic schedule if AI fails
-        toast({
-          title: '📋 Basic Schedule Generated',
-          description: `Created schedule for ${defaultCrop} on ${land.name}`,
-          className: 'bg-info/10 border-info/20',
-        });
-      } else {
-        toast({
-          title: '✨ AI Schedule Generated',
-          description: `Smart schedule created for ${defaultCrop} on ${land.name}`,
-          className: 'bg-success/10 border-success/20',
-        });
-      }
-      
-    } catch (error) {
-      console.error('Error generating schedule:', error);
-      
-      // Still show schedule view with basic data
-      setFlowStep('schedule-view');
-      
-      toast({
-        title: '⚡ Quick Schedule Created',
-        description: 'Using optimized farming practices',
-        className: 'bg-warning/10 border-warning/20',
-      });
-    } finally {
-      setGenerating(false);
-    }
+    setFlowStep('crop-selection');
   };
 
   const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date) => {
@@ -254,6 +189,8 @@ export default function Schedule() {
 
   const handleBack = () => {
     if (flowStep === 'schedule-view') {
+      setFlowStep('crop-selection');
+    } else if (flowStep === 'crop-selection') {
       setFlowStep('land-selection');
       setSelectedLand(null);
       setScheduleData(null);
@@ -323,6 +260,7 @@ export default function Schedule() {
                 </h1>
                 <p className="text-xs text-muted-foreground font-medium">
                   {flowStep === 'land-selection' && 'Select Your Land'}
+                  {flowStep === 'crop-selection' && 'Select Crop & Date'}
                   {flowStep === 'schedule-view' && 'AI Generated Schedule'}
                 </p>
               </div>
@@ -331,13 +269,13 @@ export default function Schedule() {
             {/* Modern Step Progress Bar */}
             <div className="flex flex-col items-end gap-1">
               <div className="flex items-center gap-1.5">
-                {['land-selection', 'schedule-view'].map((step, index) => (
+                {['land-selection', 'crop-selection', 'schedule-view'].map((step, index) => (
                   <div 
                     key={step}
                     className={`h-1.5 rounded-full transition-all duration-500 ${
                       flowStep === step 
                         ? 'w-8 bg-gradient-to-r from-primary to-accent shadow-lg shadow-primary/50' 
-                        : index < ['land-selection', 'schedule-view'].indexOf(flowStep)
+                        : index < ['land-selection', 'crop-selection', 'schedule-view'].indexOf(flowStep)
                         ? 'w-6 bg-primary/60'
                         : 'w-6 bg-primary/20'
                     }`} 
@@ -345,7 +283,7 @@ export default function Schedule() {
                 ))}
               </div>
               <span className="text-[10px] text-muted-foreground font-medium">
-                Step {['land-selection', 'schedule-view'].indexOf(flowStep) + 1} of 2
+                Step {['land-selection', 'crop-selection', 'schedule-view'].indexOf(flowStep) + 1} of 3
               </span>
             </div>
           </div>
@@ -362,6 +300,17 @@ export default function Schedule() {
                 <LandSelector 
                   lands={lands}
                   onSelectLand={handleLandSelect}
+                />
+              </div>
+            )}
+
+            {flowStep === 'crop-selection' && selectedLand && (
+              <div className="animate-slide-in-right">
+                <CropDateInput
+                  land={selectedLand}
+                  onSubmit={handleCropDateSubmit}
+                  onBack={handleBack}
+                  loading={generating}
                 />
               </div>
             )}
