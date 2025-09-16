@@ -86,7 +86,7 @@ export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = fal
                     )} />
                   </div>
                   <span className={cn(
-                    "text-[10px] mt-1 font-medium transition-all duration-300",
+                    "text-[11px] mt-1 font-medium transition-all duration-300 leading-tight",
                     isActive 
                       ? 'text-primary font-semibold' 
                       : 'text-muted-foreground/80'
@@ -160,7 +160,7 @@ export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = fal
                     )} />
                   </div>
                   <span className={cn(
-                    "text-[10px] mt-1 font-medium transition-all duration-300",
+                    "text-[11px] mt-1 font-medium transition-all duration-300 leading-tight",
                     isActive 
                       ? 'text-primary font-semibold' 
                       : 'text-muted-foreground/80'

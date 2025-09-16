@@ -74,7 +74,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   };
 
   return (
-    <div className="space-y-4 pb-20 sm:pb-4">
+    <div className="space-y-4 px-4 py-4 pb-20 sm:pb-4">
       {/* Combined Land Info + Crop Selection Card */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}

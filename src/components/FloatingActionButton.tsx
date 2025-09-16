@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Plus, Grid3X3, Leaf } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
@@ -11,7 +11,11 @@ export function FloatingActionButton() {
   const [isMorphing, setIsMorphing] = useState(false);
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const { enabledFeatures, isLoading } = useFeatures();
+  
+  // Hide FAB on schedule page
+  const shouldHideFAB = location.pathname === '/app/schedule';
 
   // Debug logging
   console.log('FAB Debug - enabledFeatures:', enabledFeatures);
@@ -52,6 +56,11 @@ export function FloatingActionButton() {
   
   if (!enabledFeatures || enabledFeatures.length === 0) {
     console.log('FAB Debug - No enabled features available');
+    return null;
+  }
+  
+  if (shouldHideFAB) {
+    console.log('FAB Debug - Hidden on schedule page');
     return null;
   }
 

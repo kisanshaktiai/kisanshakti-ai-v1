@@ -240,7 +240,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const upcomingCount = pendingTasks.filter(t => !isPast(new Date(t.task_date))).length;
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen px-4 py-4">
       {/* Modern Header Card with Glass Effect */}
       <Card className="bg-gradient-to-br from-primary/10 via-primary/5 to-accent/10 backdrop-blur-xl border-primary/20 shadow-xl overflow-hidden">
         <div className="relative p-4">

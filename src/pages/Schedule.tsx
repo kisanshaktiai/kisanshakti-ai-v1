@@ -242,7 +242,7 @@ export default function Schedule() {
     <div className="fixed inset-0 bg-gradient-to-br from-background via-accent/5 to-primary/5">
       {/* Modern Glass Header */}
       <div className="fixed top-0 left-0 right-0 z-40 bg-background/60 backdrop-blur-2xl border-b border-border/50">
-        <div className="px-4 py-3">
+        <div className="px-3 py-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Button
@@ -290,8 +290,8 @@ export default function Schedule() {
       </div>
 
       {/* Full Screen Content Area */}
-      <div className="fixed inset-0 pt-16 pb-20 overflow-y-auto">
-        <div className="min-h-full px-4 py-4">
+      <div className="fixed inset-0 pt-14 pb-16 overflow-y-auto">
+        <div className="min-h-full">
           {/* Flow Steps with Enhanced Animations */}
           <div className="relative">
             {flowStep === 'land-selection' && (

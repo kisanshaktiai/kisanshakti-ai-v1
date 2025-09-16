@@ -92,9 +92,9 @@ export default function LandSelector({ lands, onSelectLand }: LandSelectorProps)
   };
 
   return (
-    <div className="relative">
+    <div className="relative px-4 py-4">
       <motion.div 
-        className="grid gap-6 sm:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3"
+        className="grid gap-4 sm:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3"
         variants={containerVariants}
         initial="hidden"
         animate="visible"
