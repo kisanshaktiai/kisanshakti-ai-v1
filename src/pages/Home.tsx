@@ -76,10 +76,11 @@ export default function Home() {
   }, []);
 
   // Calculate total area from farmer's lands
+  // Note: area_acres, area_guntas, and area_sqft are different representations of the same area, not cumulative
   const totalArea = lands.reduce((sum, land) => {
+    // Use area_acres as the primary source (it's the total area in acres)
     const acres = parseFloat(land.area_acres) || 0;
-    const guntas = parseFloat(land.area_guntas) || 0;
-    return sum + acres + (guntas / 40); // Convert guntas to acres (40 guntas = 1 acre)
+    return sum + acres;
   }, 0);
 
   // Get next crop from lands
