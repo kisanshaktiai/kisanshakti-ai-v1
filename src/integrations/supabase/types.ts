@@ -1690,6 +1690,7 @@ export type Database = {
           icon_url: string | null
           id: string
           is_active: boolean | null
+          is_global: boolean | null
           is_verified: boolean | null
           language: string | null
           language_code: string | null
@@ -1718,6 +1719,7 @@ export type Database = {
           icon_url?: string | null
           id?: string
           is_active?: boolean | null
+          is_global?: boolean | null
           is_verified?: boolean | null
           language?: string | null
           language_code?: string | null
@@ -1746,6 +1748,7 @@ export type Database = {
           icon_url?: string | null
           id?: string
           is_active?: boolean | null
+          is_global?: boolean | null
           is_verified?: boolean | null
           language?: string | null
           language_code?: string | null
