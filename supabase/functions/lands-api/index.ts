@@ -47,8 +47,9 @@ serve(async (req) => {
 
     // Set session variables for RLS
     const { error: sessionError } = await supabase.rpc('set_app_session', {
-      p_tenant: tenantId,
-      p_farmer: farmerId
+      p_tenant_id: tenantId,
+      p_farmer_id: farmerId,
+      p_session_token: sessionToken
     });
 
     if (sessionError) {

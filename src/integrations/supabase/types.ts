@@ -1498,31 +1498,51 @@ export type Database = {
       cart_items: {
         Row: {
           added_at: string | null
+          farmer_id: string | null
           id: string
           product_id: string | null
           quantity: number
+          tenant_id: string | null
           user_id: string
         }
         Insert: {
           added_at?: string | null
+          farmer_id?: string | null
           id?: string
           product_id?: string | null
           quantity?: number
+          tenant_id?: string | null
           user_id: string
         }
         Update: {
           added_at?: string | null
+          farmer_id?: string | null
           id?: string
           product_id?: string | null
           quantity?: number
+          tenant_id?: string | null
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cart_items_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cart_items_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "marketplace_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cart_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1538,6 +1558,7 @@ export type Database = {
           metadata: Json | null
           role: string
           session_id: string
+          tenant_id: string | null
         }
         Insert: {
           attachments?: Json | null
@@ -1549,6 +1570,7 @@ export type Database = {
           metadata?: Json | null
           role: string
           session_id: string
+          tenant_id?: string | null
         }
         Update: {
           attachments?: Json | null
@@ -1560,6 +1582,7 @@ export type Database = {
           metadata?: Json | null
           role?: string
           session_id?: string
+          tenant_id?: string | null
         }
         Relationships: [
           {
@@ -1567,6 +1590,13 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "chat_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1578,6 +1608,7 @@ export type Database = {
           is_favorite: boolean | null
           land_id: string | null
           land_name: string | null
+          tenant_id: string | null
           title: string
           type: string
           updated_at: string
@@ -1589,6 +1620,7 @@ export type Database = {
           is_favorite?: boolean | null
           land_id?: string | null
           land_name?: string | null
+          tenant_id?: string | null
           title: string
           type?: string
           updated_at?: string
@@ -1600,6 +1632,7 @@ export type Database = {
           is_favorite?: boolean | null
           land_id?: string | null
           land_name?: string | null
+          tenant_id?: string | null
           title?: string
           type?: string
           updated_at?: string
@@ -1611,6 +1644,13 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "chat_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -1976,6 +2016,7 @@ export type Database = {
           parent_message_id: string | null
           reactions: Json | null
           read_by: Json | null
+          tenant_id: string | null
           translation_data: Json | null
           updated_at: string | null
         }
@@ -1996,6 +2037,7 @@ export type Database = {
           parent_message_id?: string | null
           reactions?: Json | null
           read_by?: Json | null
+          tenant_id?: string | null
           translation_data?: Json | null
           updated_at?: string | null
         }
@@ -2016,6 +2058,7 @@ export type Database = {
           parent_message_id?: string | null
           reactions?: Json | null
           read_by?: Json | null
+          tenant_id?: string | null
           translation_data?: Json | null
           updated_at?: string | null
         }
@@ -2039,6 +2082,13 @@ export type Database = {
             columns: ["parent_message_id"]
             isOneToOne: false
             referencedRelation: "community_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "community_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -6574,6 +6624,7 @@ export type Database = {
         Row: {
           buyer_id: string
           created_at: string | null
+          farmer_id: string | null
           id: string
           notes: string | null
           order_number: string
@@ -6582,6 +6633,7 @@ export type Database = {
           payment_status: string | null
           seller_id: string | null
           shipping_address: Json
+          tenant_id: string | null
           total_amount: number
           tracking_number: string | null
           updated_at: string | null
@@ -6589,6 +6641,7 @@ export type Database = {
         Insert: {
           buyer_id: string
           created_at?: string | null
+          farmer_id?: string | null
           id?: string
           notes?: string | null
           order_number?: string
@@ -6597,6 +6650,7 @@ export type Database = {
           payment_status?: string | null
           seller_id?: string | null
           shipping_address: Json
+          tenant_id?: string | null
           total_amount: number
           tracking_number?: string | null
           updated_at?: string | null
@@ -6604,6 +6658,7 @@ export type Database = {
         Update: {
           buyer_id?: string
           created_at?: string | null
+          farmer_id?: string | null
           id?: string
           notes?: string | null
           order_number?: string
@@ -6612,16 +6667,31 @@ export type Database = {
           payment_status?: string | null
           seller_id?: string | null
           shipping_address?: Json
+          tenant_id?: string | null
           total_amount?: number
           tracking_number?: string | null
           updated_at?: string | null
         }
         Relationships: [
           {
+            foreignKeyName: "marketplace_orders_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "marketplace_orders_seller_id_fkey"
             columns: ["seller_id"]
             isOneToOne: false
             referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_orders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -6632,6 +6702,7 @@ export type Database = {
           created_at: string | null
           description: string | null
           discount_price: number | null
+          farmer_id: string | null
           featured: boolean | null
           id: string
           images: Json | null
@@ -6643,6 +6714,7 @@ export type Database = {
           specifications: Json | null
           status: string | null
           tags: string[] | null
+          tenant_id: string | null
           unit: string
           updated_at: string | null
           views: number | null
@@ -6652,6 +6724,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           discount_price?: number | null
+          farmer_id?: string | null
           featured?: boolean | null
           id?: string
           images?: Json | null
@@ -6663,6 +6736,7 @@ export type Database = {
           specifications?: Json | null
           status?: string | null
           tags?: string[] | null
+          tenant_id?: string | null
           unit: string
           updated_at?: string | null
           views?: number | null
@@ -6672,6 +6746,7 @@ export type Database = {
           created_at?: string | null
           description?: string | null
           discount_price?: number | null
+          farmer_id?: string | null
           featured?: boolean | null
           id?: string
           images?: Json | null
@@ -6683,6 +6758,7 @@ export type Database = {
           specifications?: Json | null
           status?: string | null
           tags?: string[] | null
+          tenant_id?: string | null
           unit?: string
           updated_at?: string | null
           views?: number | null
@@ -6693,6 +6769,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "marketplace_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_products_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
             referencedColumns: ["id"]
           },
           {
@@ -6707,6 +6790,13 @@ export type Database = {
             columns: ["seller_id"]
             isOneToOne: false
             referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketplace_products_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -7676,32 +7766,45 @@ export type Database = {
       order_items: {
         Row: {
           created_at: string | null
+          farmer_id: string | null
           id: string
           order_id: string | null
           product_id: string | null
           quantity: number
+          tenant_id: string | null
           total_price: number
           unit_price: number
         }
         Insert: {
           created_at?: string | null
+          farmer_id?: string | null
           id?: string
           order_id?: string | null
           product_id?: string | null
           quantity: number
+          tenant_id?: string | null
           total_price: number
           unit_price: number
         }
         Update: {
           created_at?: string | null
+          farmer_id?: string | null
           id?: string
           order_id?: string | null
           product_id?: string | null
           quantity?: number
+          tenant_id?: string | null
           total_price?: number
           unit_price?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "order_items_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "order_items_order_id_fkey"
             columns: ["order_id"]
@@ -7714,6 +7817,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "marketplace_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -8941,12 +9051,14 @@ export type Database = {
           buyer_id: string
           comment: string | null
           created_at: string | null
+          farmer_id: string | null
           helpful_count: number | null
           id: string
           images: Json | null
           order_id: string | null
           product_id: string | null
           rating: number
+          tenant_id: string | null
           updated_at: string | null
           verified_purchase: boolean | null
         }
@@ -8954,12 +9066,14 @@ export type Database = {
           buyer_id: string
           comment?: string | null
           created_at?: string | null
+          farmer_id?: string | null
           helpful_count?: number | null
           id?: string
           images?: Json | null
           order_id?: string | null
           product_id?: string | null
           rating: number
+          tenant_id?: string | null
           updated_at?: string | null
           verified_purchase?: boolean | null
         }
@@ -8967,16 +9081,25 @@ export type Database = {
           buyer_id?: string
           comment?: string | null
           created_at?: string | null
+          farmer_id?: string | null
           helpful_count?: number | null
           id?: string
           images?: Json | null
           order_id?: string | null
           product_id?: string | null
           rating?: number
+          tenant_id?: string | null
           updated_at?: string | null
           verified_purchase?: boolean | null
         }
         Relationships: [
+          {
+            foreignKeyName: "product_reviews_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "product_reviews_order_id_fkey"
             columns: ["order_id"]
@@ -8989,6 +9112,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "marketplace_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_reviews_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -14650,7 +14780,13 @@ export type Database = {
         Returns: string
       }
       set_app_session: {
-        Args: { p_farmer: string; p_tenant: string }
+        Args:
+          | { p_farmer: string; p_tenant: string }
+          | {
+              p_farmer_id: string
+              p_session_token?: string
+              p_tenant_id: string
+            }
         Returns: undefined
       }
       set_limit: {

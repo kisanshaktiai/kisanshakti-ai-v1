@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
+import { dataIsolation, isolatedSupabase } from './dataIsolationService';
 
 const LANDS_API_URL = 'https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/lands-api';
 
@@ -35,18 +36,11 @@ interface LandData {
 
 class LandsApiService {
   private getHeaders(): HeadersInit {
-    const authStore = useAuthStore.getState();
-    const { user, session } = authStore;
-
-    if (!user || !session) {
-      throw new Error('No authentication context available');
-    }
-
+    // Use centralized data isolation service for headers
+    const headers = dataIsolation.getIsolationHeaders();
+    
     return {
-      'Content-Type': 'application/json',
-      'x-tenant-id': user.tenantId || '',
-      'x-farmer-id': user.id,
-      'x-session-token': session.token || '',
+      ...headers,
       'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbwYom1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4'
     };
   }
@@ -130,33 +124,35 @@ class LandsApiService {
     }
   }
 
-  // Legacy method for compatibility - uses direct Supabase access for specific queries
+  // Legacy method for compatibility - now uses isolated Supabase access
   async fetchLandById(id: string): Promise<LandData | null> {
-    const authStore = useAuthStore.getState();
-    const { user } = authStore;
-
-    if (!user) {
-      throw new Error('No authentication context available');
+    // Validate context first
+    const validation = dataIsolation.validateContext();
+    if (!validation.isValid) {
+      console.error('Invalid data isolation context:', validation.error);
+      throw new Error(validation.error || 'Invalid isolation context');
     }
 
+    const { farmerId } = dataIsolation.getIsolationContext();
+
     // Log query parameters for debugging
-    console.log('Fetching land with parameters:', {
+    console.log('Fetching land with isolated parameters:', {
       landId: id,
-      farmerId: user.id,
+      farmerId,
       filters: {
         is_active: true,
         deleted_at: null
       }
     });
 
-    const { data, error } = await supabase
+    // Use isolated Supabase client for tenant/farmer scoped query
+    const { data, error } = await isolatedSupabase
       .from('lands')
       .select('*')
       .eq('id', id)
-      .eq('farmer_id', user.id)
       .eq('is_active', true)
       .is('deleted_at', null)
-      .maybeSingle();  // Changed from .single() to .maybeSingle()
+      .maybeSingle();
 
     if (error) {
       console.error('Error fetching land by ID:', error);
