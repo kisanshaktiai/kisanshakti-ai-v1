@@ -116,14 +116,18 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
   };
 
   return (
-    <Card className="max-w-2xl mx-auto">
-      <CardHeader>
+    <Card className="bg-background/60 backdrop-blur-2xl border-border/50 shadow-2xl">
+      <CardHeader className="bg-gradient-to-r from-primary/10 to-accent/10 border-b border-border/50">
         <CardTitle className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-primary" />
-          Generate AI Crop Schedule
+          <div className="p-2 rounded-xl bg-gradient-to-br from-primary/20 to-accent/20 border border-primary/30">
+            <Sparkles className="h-5 w-5 text-primary" />
+          </div>
+          <span className="bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
+            Generate AI Crop Schedule
+          </span>
         </CardTitle>
         <CardDescription>
-          Create a personalized crop schedule for {landName}
+          Create a personalized schedule for {landName}
         </CardDescription>
       </CardHeader>
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Check, Clock, X, Mic, Volume2 } from 'lucide-react';
+import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Check, Clock, X, Mic, Volume2, Sparkles, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,9 +10,11 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { useTranslation } from 'react-i18next';
 import { format, addDays, isToday, isTomorrow, isPast, differenceInDays } from 'date-fns';
+import { motion, AnimatePresence } from 'framer-motion';
 import TaskTimeline from './TaskTimeline';
-import TaskCard from './TaskCard';
+import ModernTaskCard from './ModernTaskCard';
 import ScheduleGenerator from './ScheduleGenerator';
 
 interface CropSchedule {
@@ -57,7 +59,13 @@ interface CropScheduleViewProps {
 const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, currentCrop }) => {
   const { toast } = useToast();
   const { user } = useAuthStore();
-  const { speak, stop, isSpeaking } = useTextToSpeech();
+  const { i18n } = useTranslation();
+  const { speak, stop, isSpeaking } = useTextToSpeech({ 
+    language: i18n.language === 'hi' ? 'hi-IN' : 
+             i18n.language === 'mr' ? 'mr-IN' : 
+             i18n.language === 'pa' ? 'pa-IN' : 
+             i18n.language === 'ta' ? 'ta-IN' : 'en-US'
+  });
   
   const [loading, setLoading] = useState(true);
   const [schedule, setSchedule] = useState<CropSchedule | null>(null);
@@ -357,7 +365,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                         className="animate-fade-in"
                         style={{ animationDelay: `${index * 50}ms` }}
                       >
-                        <TaskCard
+                        <ModernTaskCard
                           task={task}
                           isOverdue={isOverdue}
                           daysUntil={daysUntil}
