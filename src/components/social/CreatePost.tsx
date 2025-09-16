@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { X, Image, Hash, Users, Globe, Lock, Sparkles, Camera, BarChart3, Calendar } from 'lucide-react';
+import { X, Image, Hash, Users, Globe, Lock, Sparkles, Camera, BarChart3 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
