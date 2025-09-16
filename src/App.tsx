@@ -33,6 +33,7 @@ import EditLand from "./pages/EditLand";
 import LandDetails from "./pages/LandDetails";
 import AIChat from "./pages/AIChat";
 import Social from "./pages/Social";
+import Analytics from "./pages/Analytics";
 import { CommunityPage } from "./components/social/CommunityPage";
 import { ModernCommunityChatRoom } from "./components/social/ModernCommunityChatRoom";
 import CropSelectionTest from "./pages/CropSelectionTest";
@@ -302,6 +303,10 @@ const router = createBrowserRouter(
         {
           path: "social",
           element: <Social />,
+        },
+        {
+          path: "analytics",
+          element: <Analytics />,
         },
         {
           path: "community/:id",
