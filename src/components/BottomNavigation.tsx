@@ -40,8 +40,13 @@ export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = fal
 
   // Calculate dynamic spacing based on FAB presence
   const hasAction = !hideAction && displayNavItems.some(item => item.isAction);
-  const navItemsBeforeAction = displayNavItems.filter(item => !item.isAction).slice(0, 2);
-  const navItemsAfterAction = displayNavItems.filter(item => !item.isAction).slice(2);
+  
+  // Get non-action items only
+  const regularNavItems = displayNavItems.filter(item => !item.isAction);
+  
+  // Split nav items around the action button
+  const navItemsBeforeAction = regularNavItems.slice(0, 2);
+  const navItemsAfterAction = regularNavItems.slice(2);
 
   return (
     <>
