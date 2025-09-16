@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/utils/supabase';
 import { useAuthStore } from '@/stores/authStore';
 import { dataIsolation, isolatedSupabase } from './dataIsolationService';
 
