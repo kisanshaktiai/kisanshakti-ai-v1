@@ -15731,7 +15731,7 @@ export type Database = {
         Args:
           | { p_force_new?: boolean; p_tenant_id: string }
           | { p_tenant_id: string; p_version?: number }
-        Returns: string
+        Returns: Json
       }
       suspend_tenant: {
         Args: { p_reason?: string; p_tenant_id: string }
