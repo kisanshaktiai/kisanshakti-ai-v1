@@ -212,7 +212,7 @@ export default function Home() {
   return (
     <div className="bg-gradient-subtle">
       {/* Hero Section with Weather Animation */}
-      <div className="relative overflow-hidden bg-gradient-earth p-4 pb-6 rounded-b-3xl shadow-elegant">
+      <div className="relative overflow-hidden bg-gradient-earth p-4 pb-4 rounded-b-3xl shadow-elegant">
         {/* Weather-based animated background */}
         <div className="absolute inset-0">
           {/* Base gradient */}
@@ -270,23 +270,23 @@ export default function Home() {
         </div>
         
         <div className="relative z-10">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <Leaf className="w-3 h-3" />
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <p className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                <Leaf className="w-3.5 h-3.5 text-primary" />
                 {currentTime.toLocaleDateString('en-IN', {
                   weekday: 'short',
                   month: 'short',
                   day: 'numeric',
+                  year: 'numeric'
                 })}
               </p>
-              {/* Very small sync info */}
-              <p className="text-[10px] text-muted-foreground/60 mt-0.5">
-                Last sync: {currentTime.toLocaleTimeString('en-IN', { 
+              <span className="text-[10px] text-muted-foreground/60">
+                • Last sync: {currentTime.toLocaleTimeString('en-IN', { 
                   hour: '2-digit', 
                   minute: '2-digit' 
                 })}
-              </p>
+              </span>
             </div>
           </div>
 
