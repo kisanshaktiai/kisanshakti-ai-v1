@@ -124,7 +124,7 @@ class LandsApiService {
     }
   }
 
-  // Legacy method for compatibility - now uses isolated Supabase access
+  // Fetch a specific land by ID - uses direct Supabase for complex query chaining
   async fetchLandById(id: string): Promise<LandData | null> {
     // Validate context first
     const validation = dataIsolation.validateContext();
@@ -133,11 +133,12 @@ class LandsApiService {
       throw new Error(validation.error || 'Invalid isolation context');
     }
 
-    const { farmerId } = dataIsolation.getIsolationContext();
+    const { tenantId, farmerId } = dataIsolation.getIsolationContext();
 
     // Log query parameters for debugging
     console.log('Fetching land with isolated parameters:', {
       landId: id,
+      tenantId,
       farmerId,
       filters: {
         is_active: true,
@@ -145,11 +146,14 @@ class LandsApiService {
       }
     });
 
-    // Use isolated Supabase client for tenant/farmer scoped query
-    const { data, error } = await isolatedSupabase
+    // Use direct Supabase client with manual isolation for complex query
+    // Lands table uses tenant_id for isolation, not farmer_id
+    const { data, error } = await supabase
       .from('lands')
       .select('*')
       .eq('id', id)
+      .eq('tenant_id', tenantId)
+      .eq('farmer_id', farmerId)
       .eq('is_active', true)
       .is('deleted_at', null)
       .maybeSingle();
@@ -160,7 +164,7 @@ class LandsApiService {
     }
 
     if (!data) {
-      console.log('No land found with ID:', id);
+      console.log('No land found with ID:', id, 'for tenant:', tenantId, 'and farmer:', farmerId);
       return null;
     }
 

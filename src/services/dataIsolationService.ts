@@ -111,9 +111,9 @@ export const isolatedSupabase = {
     const { tenantId, farmerId } = dataIsolation.getIsolationContext();
     
     return {
-      select: (columns?: string) => {
+      select: (columns?: string, options?: { skipFarmer?: boolean }) => {
         const query = baseQuery.select(columns || '*');
-        return dataIsolation.applyIsolation(query);
+        return dataIsolation.applyIsolation(query, options);
       },
       
       insert: (data: any) => {
