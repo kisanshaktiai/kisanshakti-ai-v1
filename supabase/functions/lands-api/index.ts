@@ -63,28 +63,65 @@ serve(async (req) => {
     // Handle different HTTP methods
     switch (req.method) {
       case 'GET': {
-        // List all lands for the farmer
-        const { data, error } = await supabase
-          .from('lands')
-          .select('*')
-          .eq('tenant_id', tenantId)
-          .eq('farmer_id', farmerId)
-          .eq('is_active', true)
-          .is('deleted_at', null)
-          .order('created_at', { ascending: false });
+        // Check if fetching a specific land by ID
+        if (landId) {
+          // Fetch specific land by ID
+          const { data, error } = await supabase
+            .from('lands')
+            .select('*')
+            .eq('id', landId)
+            .eq('tenant_id', tenantId)
+            .eq('farmer_id', farmerId)
+            .eq('is_active', true)
+            .is('deleted_at', null)
+            .single();
 
-        if (error) {
-          console.error('Error fetching lands:', error);
+          if (error) {
+            console.error('Error fetching land by ID:', error);
+            return new Response(
+              JSON.stringify({ error: error.message }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          if (!data) {
+            return new Response(
+              JSON.stringify({ 
+                error: 'Land not found', 
+                details: 'The requested land was not found or you do not have permission to view it' 
+              }),
+              { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
           return new Response(
-            JSON.stringify({ error: error.message }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            JSON.stringify({ data, success: true }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        } else {
+          // List all lands for the farmer
+          const { data, error } = await supabase
+            .from('lands')
+            .select('*')
+            .eq('tenant_id', tenantId)
+            .eq('farmer_id', farmerId)
+            .eq('is_active', true)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false });
+
+          if (error) {
+            console.error('Error fetching lands:', error);
+            return new Response(
+              JSON.stringify({ error: error.message }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          return new Response(
+            JSON.stringify({ data, success: true }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
-
-        return new Response(
-          JSON.stringify({ data, success: true }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
       }
 
       case 'POST': {

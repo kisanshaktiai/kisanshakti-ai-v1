@@ -124,51 +124,33 @@ class LandsApiService {
     }
   }
 
-  // Fetch a specific land by ID - uses direct Supabase for complex query chaining
+  // Fetch a specific land by ID - uses the Edge Function
   async fetchLandById(id: string): Promise<LandData | null> {
-    // Validate context first
-    const validation = dataIsolation.validateContext();
-    if (!validation.isValid) {
-      console.error('Invalid data isolation context:', validation.error);
-      throw new Error(validation.error || 'Invalid isolation context');
-    }
+    try {
+      const response = await fetch(`${LANDS_API_URL}/lands/${id}`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
 
-    const { tenantId, farmerId } = dataIsolation.getIsolationContext();
-
-    // Log query parameters for debugging
-    console.log('Fetching land with isolated parameters:', {
-      landId: id,
-      tenantId,
-      farmerId,
-      filters: {
-        is_active: true,
-        deleted_at: null
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Error fetching land by ID:', error);
+        
+        // Return null for 404 errors (land not found)
+        if (response.status === 404) {
+          console.log('Land not found with ID:', id);
+          return null;
+        }
+        
+        throw new Error(error.error || 'Failed to fetch land');
       }
-    });
 
-    // Use direct Supabase client with manual isolation for complex query
-    // Lands table uses tenant_id for isolation, not farmer_id
-    const { data, error } = await supabase
-      .from('lands')
-      .select('*')
-      .eq('id', id)
-      .eq('tenant_id', tenantId)
-      .eq('farmer_id', farmerId)
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .maybeSingle();
-
-    if (error) {
+      const result = await response.json();
+      return result.data || null;
+    } catch (error) {
       console.error('Error fetching land by ID:', error);
       return null;
     }
-
-    if (!data) {
-      console.log('No land found with ID:', id, 'for tenant:', tenantId, 'and farmer:', farmerId);
-      return null;
-    }
-
-    return data;
   }
 }
 
