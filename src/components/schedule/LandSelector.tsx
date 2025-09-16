@@ -221,7 +221,7 @@ export default function LandSelector({ lands, onSelectLand }: LandSelectorProps)
         })}
       </motion.div>
 
-      {/* Add Land Button - Positioned at bottom right of last card */}
+      {/* Add Land Button - Centered Below Last Card */}
       <motion.div
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -231,28 +231,16 @@ export default function LandSelector({ lands, onSelectLand }: LandSelectorProps)
           stiffness: 200,
           damping: 15
         }}
-        className="flex justify-end mt-4 mb-4 pr-4"
+        className="flex justify-center mt-6 mb-4"
       >
-        <button
+        <Button
           onClick={() => navigate('/app/lands/add')}
-          className={cn(
-            "group relative",
-            "flex items-center justify-center",
-            "h-14 w-14",
-            "rounded-2xl",
-            "bg-gradient-to-br from-success/90 to-success",
-            "hover:from-success hover:to-success/90",
-            "shadow-lg hover:shadow-xl hover:shadow-success/20",
-            "transition-all duration-300",
-            "hover:scale-105 active:scale-95",
-            "border border-success/20"
-          )}
+          className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg rounded-full px-8 py-6 flex items-center gap-3"
+          size="lg"
         >
-          <Plus className="h-6 w-6 text-white transition-transform duration-300 group-hover:rotate-90" />
-          
-          {/* Ripple effect on hover */}
-          <div className="absolute inset-0 rounded-2xl bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        </button>
+          <Plus className="h-5 w-5" />
+          <span className="font-medium">Add Land</span>
+        </Button>
       </motion.div>
     </div>
   );

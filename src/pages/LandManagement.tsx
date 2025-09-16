@@ -441,14 +441,15 @@ export default function LandManagement() {
         </div>
       </div>
 
-      {/* Mobile Floating Action Button */}
-      <div className="fixed bottom-20 right-4 md:hidden z-20">
+      {/* Add Land Button - Below Last Card */}
+      <div className="flex justify-center py-6 mb-20">
         <Button
-          size="lg"
           onClick={() => navigate('/app/lands/add')}
-          className="h-14 w-14 rounded-full shadow-xl"
+          className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg rounded-full px-8 py-6 flex items-center gap-3"
+          size="lg"
         >
-          <Plus className="h-6 w-6" />
+          <Plus className="h-5 w-5" />
+          <span className="font-medium">Add Land</span>
         </Button>
       </div>
     </div>

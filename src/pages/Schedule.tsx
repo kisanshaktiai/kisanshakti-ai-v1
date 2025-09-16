@@ -202,57 +202,83 @@ export default function Schedule() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header Card */}
-      <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-        <CardContent className="p-3">
+    <div className="min-h-screen bg-gradient-to-b from-background via-background/95 to-background/90">
+      {/* Modern Header with Glass Effect */}
+      <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-xl border-b border-border/50">
+        <div className="px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => flowStep === 'land-selection' ? navigate('/app') : handleBack()}
-                className="h-8 w-8"
+                className="h-9 w-9 rounded-full hover:bg-primary/10"
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
               <div>
-                <h1 className="text-base font-semibold">AI Crop Schedule</h1>
-                <p className="text-xs text-muted-foreground">
-                  {flowStep === 'land-selection' && 'Select your land'}
-                  {flowStep === 'crop-input' && 'Choose crop and date'}
-                  {flowStep === 'schedule-view' && 'Your crop schedule'}
+                <h1 className="text-lg font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
+                  AI Crop Schedule
+                </h1>
+                <p className="text-xs text-muted-foreground font-medium">
+                  {flowStep === 'land-selection' && 'Select your land to begin'}
+                  {flowStep === 'crop-input' && 'Configure crop details'}
+                  {flowStep === 'schedule-view' && 'Your personalized schedule'}
                 </p>
               </div>
             </div>
+            
+            {/* Step Indicator */}
+            <div className="flex items-center gap-1.5">
+              <div className={`h-2 w-2 rounded-full transition-colors duration-300 ${
+                flowStep === 'land-selection' ? 'bg-primary' : 'bg-primary/30'
+              }`} />
+              <div className={`h-2 w-2 rounded-full transition-colors duration-300 ${
+                flowStep === 'crop-input' ? 'bg-primary' : 'bg-primary/30'
+              }`} />
+              <div className={`h-2 w-2 rounded-full transition-colors duration-300 ${
+                flowStep === 'schedule-view' ? 'bg-primary' : 'bg-primary/30'
+              }`} />
+            </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      {/* Flow Steps */}
-      {flowStep === 'land-selection' && (
-        <LandSelector 
-          lands={lands}
-          onSelectLand={handleLandSelect}
-        />
-      )}
+      {/* Content Area with Padding */}
+      <div className="px-4 py-6 pb-24">
+        {/* Flow Steps with Animations */}
+        <div className="relative">
+          {flowStep === 'land-selection' && (
+            <div className="animate-fade-in">
+              <LandSelector 
+                lands={lands}
+                onSelectLand={handleLandSelect}
+              />
+            </div>
+          )}
 
-      {flowStep === 'crop-input' && selectedLand && (
-        <CropDateInput
-          land={selectedLand}
-          onSubmit={handleCropDateSubmit}
-          onBack={handleBack}
-          loading={generating}
-        />
-      )}
+          {flowStep === 'crop-input' && selectedLand && (
+            <div className="animate-slide-in-right">
+              <CropDateInput
+                land={selectedLand}
+                onSubmit={handleCropDateSubmit}
+                onBack={handleBack}
+                loading={generating}
+              />
+            </div>
+          )}
 
-      {flowStep === 'schedule-view' && selectedLand && scheduleData && (
-        <CropScheduleView
-          landId={selectedLand.id}
-          landName={selectedLand.name}
-          currentCrop={scheduleData.cropName}
-        />
-      )}
+          {flowStep === 'schedule-view' && selectedLand && scheduleData && (
+            <div className="animate-slide-in-right">
+              <CropScheduleView
+                landId={selectedLand.id}
+                landName={selectedLand.name}
+                currentCrop={scheduleData.cropName}
+              />
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

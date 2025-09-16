@@ -232,104 +232,148 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const upcomingCount = pendingTasks.filter(t => !isPast(new Date(t.task_date))).length;
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <Card className="p-6 bg-gradient-to-r from-green-50 to-blue-50 border-none">
-        <div className="flex justify-between items-start">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              {schedule.crop_name} {schedule.crop_variety && `(${schedule.crop_variety})`}
-            </h2>
-            <p className="text-gray-600">For: {landName}</p>
-            <div className="flex gap-4 mt-3 text-sm">
-              <div>
-                <span className="text-gray-500">Sowing:</span>{' '}
-                <span className="font-medium">{format(new Date(schedule.sowing_date), 'dd MMM yyyy')}</span>
+    <div className="min-h-screen">
+      {/* Modern Header Card with Glass Effect */}
+      <Card className="bg-gradient-to-br from-primary/10 via-primary/5 to-accent/10 backdrop-blur-xl border-primary/20 shadow-xl overflow-hidden">
+        <div className="relative p-4">
+          {/* Background pattern */}
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/5 to-transparent" />
+          
+          <div className="relative space-y-4">
+            {/* Crop Info */}
+            <div>
+              <h2 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
+                {schedule.crop_name} {schedule.crop_variety && `(${schedule.crop_variety})`}
+              </h2>
+              <p className="text-sm text-muted-foreground mt-1">For: {landName}</p>
+            </div>
+
+            {/* Date Pills */}
+            <div className="flex flex-wrap gap-2">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20">
+                <Calendar className="h-3 w-3 text-primary" />
+                <span className="text-xs font-medium">
+                  Sown: {format(new Date(schedule.sowing_date), 'dd MMM')}
+                </span>
               </div>
               {schedule.expected_harvest_date && (
-                <div>
-                  <span className="text-gray-500">Expected Harvest:</span>{' '}
-                  <span className="font-medium">{format(new Date(schedule.expected_harvest_date), 'dd MMM yyyy')}</span>
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-success/10 border border-success/20">
+                  <Package className="h-3 w-3 text-success" />
+                  <span className="text-xs font-medium">
+                    Harvest: {format(new Date(schedule.expected_harvest_date), 'dd MMM')}
+                  </span>
                 </div>
               )}
             </div>
-          </div>
-          <div className="flex gap-2">
+
+            {/* Quick Stats - Mobile Optimized Grid */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-background/60 backdrop-blur-sm rounded-xl p-3 text-center border border-border/50">
+                <p className="text-2xl font-bold text-info">{upcomingCount}</p>
+                <p className="text-[10px] text-muted-foreground font-medium">Upcoming</p>
+              </div>
+              <div className="bg-background/60 backdrop-blur-sm rounded-xl p-3 text-center border border-border/50">
+                <p className="text-2xl font-bold text-success">{completedTasks.length}</p>
+                <p className="text-[10px] text-muted-foreground font-medium">Done</p>
+              </div>
+              <div className="bg-background/60 backdrop-blur-sm rounded-xl p-3 text-center border border-border/50">
+                <p className="text-2xl font-bold text-warning">
+                  {pendingTasks.filter(t => isPast(new Date(t.task_date))).length}
+                </p>
+                <p className="text-[10px] text-muted-foreground font-medium">Overdue</p>
+              </div>
+            </div>
+
+            {/* Regenerate Button - Mobile Friendly */}
             <Button
               variant="outline"
               size="sm"
               onClick={() => setShowGenerator(true)}
+              className="w-full bg-background/60 backdrop-blur-sm border-primary/20 hover:bg-primary/10"
             >
+              <Leaf className="h-4 w-4 mr-2" />
               Regenerate Schedule
             </Button>
           </div>
         </div>
-
-        {/* Quick Stats */}
-        <div className="grid grid-cols-3 gap-4 mt-6">
-          <div className="bg-white/80 rounded-lg p-3 text-center">
-            <p className="text-2xl font-bold text-blue-600">{upcomingCount}</p>
-            <p className="text-sm text-gray-600">Upcoming Tasks</p>
-          </div>
-          <div className="bg-white/80 rounded-lg p-3 text-center">
-            <p className="text-2xl font-bold text-green-600">{completedTasks.length}</p>
-            <p className="text-sm text-gray-600">Completed</p>
-          </div>
-          <div className="bg-white/80 rounded-lg p-3 text-center">
-            <p className="text-2xl font-bold text-orange-600">
-              {pendingTasks.filter(t => isPast(new Date(t.task_date))).length}
-            </p>
-            <p className="text-sm text-gray-600">Overdue</p>
-          </div>
-        </div>
       </Card>
 
-      {/* View Mode Tabs */}
-      <Tabs value={viewMode} onValueChange={(v: any) => setViewMode(v)} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="today">Today</TabsTrigger>
-          <TabsTrigger value="week">This Week</TabsTrigger>
-          <TabsTrigger value="month">This Month</TabsTrigger>
-          <TabsTrigger value="all">All Tasks</TabsTrigger>
-        </TabsList>
+      {/* Modern Tabs with Smooth Transitions */}
+      <div className="mt-6">
+        <Tabs value={viewMode} onValueChange={(v: any) => setViewMode(v)} className="w-full">
+          <TabsList className="grid w-full grid-cols-4 bg-background/60 backdrop-blur-sm border border-border/50 rounded-xl p-1">
+            <TabsTrigger 
+              value="today" 
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg text-xs font-medium"
+            >
+              Today
+            </TabsTrigger>
+            <TabsTrigger 
+              value="week"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg text-xs font-medium"
+            >
+              Week
+            </TabsTrigger>
+            <TabsTrigger 
+              value="month"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg text-xs font-medium"
+            >
+              Month
+            </TabsTrigger>
+            <TabsTrigger 
+              value="all"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-lg text-xs font-medium"
+            >
+              All
+            </TabsTrigger>
+          </TabsList>
 
-        <TabsContent value={viewMode} className="mt-6">
-          {filteredTasks.length === 0 ? (
-            <Card className="p-8 text-center">
-              <p className="text-gray-500">No tasks scheduled for this period</p>
-            </Card>
-          ) : (
-            <div className="space-y-4">
-              {/* Timeline View for Week/Month */}
-              {(viewMode === 'week' || viewMode === 'month') && (
-                <TaskTimeline tasks={filteredTasks} onTaskClick={(task: any) => setSelectedTask(task)} />
-              )}
+          <TabsContent value={viewMode} className="mt-4 animate-fade-in">
+            {filteredTasks.length === 0 ? (
+              <Card className="p-12 text-center bg-background/60 backdrop-blur-sm border-border/50">
+                <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                <p className="text-muted-foreground">No tasks scheduled for this period</p>
+              </Card>
+            ) : (
+              <div className="space-y-4 pb-20">
+                {/* Timeline View for Week/Month - Mobile Optimized */}
+                {(viewMode === 'week' || viewMode === 'month') && (
+                  <div className="animate-scale-in">
+                    <TaskTimeline tasks={filteredTasks} onTaskClick={(task: any) => setSelectedTask(task)} />
+                  </div>
+                )}
 
-              {/* Task Cards */}
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {filteredTasks.map((task) => {
-                  const config = taskTypeConfig[task.task_type as keyof typeof taskTypeConfig] || taskTypeConfig.other;
-                  const TaskIcon = config.icon;
-                  const isOverdue = isPast(new Date(task.task_date)) && task.status === 'pending';
-                  const daysUntil = differenceInDays(new Date(task.task_date), new Date());
+                {/* Modern Task Cards Grid */}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {filteredTasks.map((task, index) => {
+                    const config = taskTypeConfig[task.task_type as keyof typeof taskTypeConfig] || taskTypeConfig.other;
+                    const TaskIcon = config.icon;
+                    const isOverdue = isPast(new Date(task.task_date)) && task.status === 'pending';
+                    const daysUntil = differenceInDays(new Date(task.task_date), new Date());
 
-                  return (
-                    <TaskCard
-                      key={task.id}
-                      task={task}
-                      isOverdue={isOverdue}
-                      daysUntil={daysUntil}
-                      onAction={handleTaskAction}
-                      onSpeak={() => speakTask(task)}
-                      isSpeaking={isSpeaking}
-                    />
-                  );
-                })}
+                    return (
+                      <div
+                        key={task.id}
+                        className="animate-fade-in"
+                        style={{ animationDelay: `${index * 50}ms` }}
+                      >
+                        <TaskCard
+                          task={task}
+                          isOverdue={isOverdue}
+                          daysUntil={daysUntil}
+                          onAction={handleTaskAction}
+                          onSpeak={() => speakTask(task)}
+                          isSpeaking={isSpeaking}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+            )}
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 };
