@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -6,6 +6,10 @@ import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { useAuthStore } from '@/stores/authStore';
+import { useTenantStore } from '@/stores/tenantStore';
+import { landsApi } from '@/services/landsApi';
+import { supabase } from '@/utils/supabase';
 import {
   TrendingUp,
   TrendingDown,
@@ -156,19 +160,93 @@ export default function Analytics() {
   const { speak, isSpeaking } = useTextToSpeech({ 
     language: i18n.language === 'hi' ? 'hi-IN' : 'en-US' 
   });
+  
+  const { user } = useAuthStore();
+  const { tenant } = useTenantStore();
+  const [isLoading, setIsLoading] = useState(true);
+  const [analyticsData, setAnalyticsData] = useState<any>({
+    lands: [],
+    crops: {},
+    totalArea: 0,
+    activeArea: 0,
+    waterUsage: 0,
+    soilHealth: 'Good',
+    weatherData: {},
+    marketPrices: {},
+    expectedIncome: 0,
+    tentativeExpenses: 0
+  });
 
-  // Mock data - replace with actual data from your backend
+  useEffect(() => {
+    loadAnalyticsData();
+  }, [user, tenant]);
+
+  const loadAnalyticsData = async () => {
+    if (!user || !tenant) return;
+    
+    setIsLoading(true);
+    try {
+      // Fetch lands with tenant isolation
+      const lands = await landsApi.fetchLands();
+      
+      // Calculate analytics from real data
+      const totalArea = lands.reduce((sum, land) => sum + (land.area_acres || 0), 0);
+      const activeArea = lands.filter(land => land.current_crop).reduce((sum, land) => sum + (land.area_acres || 0), 0);
+      
+      // Count crops
+      const cropCount: Record<string, number> = {};
+      lands.forEach(land => {
+        if (land.current_crop) {
+          cropCount[land.current_crop] = (cropCount[land.current_crop] || 0) + 1;
+        }
+      });
+      
+      // Calculate estimated income (₹25,000 per acre average)
+      const expectedIncome = totalArea * 25000;
+      
+      // Calculate estimated expenses (₹10,000 per acre average)
+      const tentativeExpenses = totalArea * 10000;
+      
+      setAnalyticsData({
+        lands,
+        crops: cropCount,
+        totalArea,
+        activeArea,
+        waterUsage: activeArea * 125, // 125L per acre average
+        soilHealth: 'Good',
+        weatherData: { temp: 28, humidity: 65, rainChance: 40 },
+        marketPrices: { rice: 2350, wheat: 1950 },
+        expectedIncome,
+        tentativeExpenses
+      });
+    } catch (error) {
+      console.error('Error loading analytics:', error);
+      toast({
+        title: t('error.loadingAnalytics'),
+        description: t('error.tryAgain'),
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Dynamic crop data from real tenant data
+  const cropLabels = Object.keys(analyticsData.crops);
+  const cropValues = Object.values(analyticsData.crops);
   const cropData = {
-    labels: ['Rice', 'Wheat', 'Cotton', 'Sugarcane'],
+    labels: cropLabels.length > 0 ? cropLabels : ['No Crops'],
     datasets: [{
-      data: [30, 25, 20, 25],
+      data: cropValues.length > 0 ? cropValues : [1],
       backgroundColor: [
-        'hsl(var(--success))',
-        'hsl(var(--warning))',
-        'hsl(var(--info))',
-        'hsl(var(--primary))',
+        'hsl(142 76% 36%)', // Green
+        'hsl(38 92% 50%)',  // Yellow
+        'hsl(199 89% 48%)', // Blue
+        'hsl(0 84% 60%)',   // Red
+        'hsl(30 41% 48%)',  // Brown
       ],
-      borderWidth: 0,
+      borderWidth: 2,
+      borderColor: 'hsl(0 0% 100%)',
     }]
   };
 
@@ -176,16 +254,18 @@ export default function Analytics() {
     labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
     datasets: [{
       label: 'Rice',
-      data: [2200, 2250, 2180, 2300, 2350],
-      borderColor: 'hsl(var(--success))',
-      backgroundColor: 'hsl(var(--success) / 0.1)',
+      data: [2200, 2250, 2180, 2300, analyticsData.marketPrices.rice || 2350],
+      borderColor: 'hsl(142 76% 36%)',
+      backgroundColor: 'hsla(142, 76%, 36%, 0.1)',
       tension: 0.4,
+      borderWidth: 2,
     }, {
       label: 'Wheat',
-      data: [1800, 1850, 1820, 1900, 1950],
-      borderColor: 'hsl(var(--primary))',
-      backgroundColor: 'hsl(var(--primary) / 0.1)',
+      data: [1800, 1850, 1820, 1900, analyticsData.marketPrices.wheat || 1950],
+      borderColor: 'hsl(199 89% 48%)',
+      backgroundColor: 'hsla(199, 89%, 48%, 0.1)',
       tension: 0.4,
+      borderWidth: 2,
     }]
   };
 
@@ -197,13 +277,31 @@ export default function Analytics() {
         display: false,
       },
       tooltip: {
-        backgroundColor: 'hsl(var(--popover))',
-        titleColor: 'hsl(var(--popover-foreground))',
-        bodyColor: 'hsl(var(--popover-foreground))',
-        borderColor: 'hsl(var(--border))',
+        backgroundColor: 'hsl(0 0% 100%)',
+        titleColor: 'hsl(140 25% 15%)',
+        bodyColor: 'hsl(140 25% 15%)',
+        borderColor: 'hsl(142 20% 90%)',
         borderWidth: 1,
       }
     },
+    scales: {
+      x: {
+        ticks: {
+          color: 'hsl(140 25% 15%)',
+        },
+        grid: {
+          color: 'hsla(142, 20%, 90%, 0.3)',
+        }
+      },
+      y: {
+        ticks: {
+          color: 'hsl(140 25% 15%)',
+        },
+        grid: {
+          color: 'hsla(142, 20%, 90%, 0.3)',
+        }
+      }
+    }
   };
 
   const speakCard = (text: string) => {
@@ -230,32 +328,32 @@ export default function Analytics() {
           {/* Crop Distribution */}
           <AnalyticsCard
             title={t('analytics.cropDistribution', '🌾 Crop Distribution')}
-            value="4"
+            value={cropLabels.length.toString()}
             subtitle={t('analytics.cropsGrown', 'Active Crops')}
             icon={<Wheat className="h-5 w-5 text-success" />}
             color="bg-success"
             onClick={() => navigate('/app/analytics/crops')}
-            onSpeak={() => speakCard('You have 4 active crops growing')}
+            onSpeak={() => speakCard(`You have ${cropLabels.length} active crops growing`)}
           >
             <div className="h-32">
-              <Pie data={cropData} options={chartOptions} />
+              <Pie data={cropData} options={{...chartOptions, plugins: {...chartOptions.plugins}}} />
             </div>
           </AnalyticsCard>
 
           {/* Land Utilization */}
           <AnalyticsCard
             title={t('analytics.landUtilization', '📏 Land Usage')}
-            value="75%"
-            subtitle={t('analytics.landUsed', '15 of 20 acres active')}
+            value={`${analyticsData.totalArea > 0 ? Math.round((analyticsData.activeArea / analyticsData.totalArea) * 100) : 0}%`}
+            subtitle={t('analytics.landUsed', `${analyticsData.activeArea} of ${analyticsData.totalArea} acres active`)}
             icon={<Ruler className="h-5 w-5 text-primary" />}
             color="bg-primary"
             onClick={() => navigate('/app/analytics/land')}
-            onSpeak={() => speakCard('75 percent of your land is being utilized')}
+            onSpeak={() => speakCard(`${Math.round((analyticsData.activeArea / analyticsData.totalArea) * 100)} percent of your land is being utilized`)}
           >
-            <Progress value={75} className="h-2 mt-2" />
+            <Progress value={analyticsData.totalArea > 0 ? (analyticsData.activeArea / analyticsData.totalArea) * 100 : 0} className="h-2 mt-2" />
             <div className="flex justify-between text-xs text-muted-foreground mt-2">
-              <span>{t('analytics.active', 'Active')}: 15</span>
-              <span>{t('analytics.idle', 'Idle')}: 5</span>
+              <span>{t('analytics.active', 'Active')}: {analyticsData.activeArea}</span>
+              <span>{t('analytics.idle', 'Idle')}: {analyticsData.totalArea - analyticsData.activeArea}</span>
             </div>
           </AnalyticsCard>
         </div>
@@ -264,12 +362,12 @@ export default function Analytics() {
         <AnalyticsCard
           title={t('analytics.waterIrrigation', '💧 Water & Irrigation')}
           value={t('analytics.optimal', 'Optimal')}
-          subtitle={t('analytics.waterUsage', '2,500L used today')}
+          subtitle={t('analytics.waterUsage', `${analyticsData.waterUsage}L used today`)}
           icon={<Droplets className="h-5 w-5 text-info" />}
           color="bg-info"
           trend={{ value: 12, isPositive: true }}
           onClick={() => navigate('/app/analytics/water')}
-          onSpeak={() => speakCard('Water usage is optimal at 2500 liters today')}
+          onSpeak={() => speakCard(`Water usage is optimal at ${analyticsData.waterUsage} liters today`)}
         >
           <div className="flex items-center gap-2">
             <div className="flex-1">
@@ -353,25 +451,25 @@ export default function Analytics() {
         {/* Expected Income */}
         <AnalyticsCard
           title={t('analytics.expectedIncome', '💵 Expected Income')}
-          value="₹4,50,000"
+          value={`₹${analyticsData.expectedIncome.toLocaleString('en-IN')}`}
           subtitle={t('analytics.perSeason', 'This season estimate')}
           icon={<Wallet className="h-5 w-5 text-success" />}
           color="bg-success"
           onClick={() => navigate('/app/analytics/income')}
-          onSpeak={() => speakCard('Expected income this season is 4 lakh 50 thousand rupees')}
+          onSpeak={() => speakCard(`Expected income this season is ${analyticsData.expectedIncome} rupees`)}
         >
           <div className="grid grid-cols-3 gap-2 mt-3">
             <div className="text-center">
               <p className="text-2xl">🌾</p>
-              <p className="text-xs font-medium">₹2.5L</p>
+              <p className="text-xs font-medium">₹{Math.round(analyticsData.expectedIncome * 0.5 / 1000)}K</p>
             </div>
             <div className="text-center">
               <p className="text-2xl">🌽</p>
-              <p className="text-xs font-medium">₹1.2L</p>
+              <p className="text-xs font-medium">₹{Math.round(analyticsData.expectedIncome * 0.3 / 1000)}K</p>
             </div>
             <div className="text-center">
               <p className="text-2xl">🥔</p>
-              <p className="text-xs font-medium">₹80K</p>
+              <p className="text-xs font-medium">₹{Math.round(analyticsData.expectedIncome * 0.2 / 1000)}K</p>
             </div>
           </div>
         </AnalyticsCard>
@@ -379,12 +477,12 @@ export default function Analytics() {
         {/* Tentative Expenses */}
         <AnalyticsCard
           title={t('analytics.expenses', '💵 Tentative Expenses')}
-          value="₹1,85,000"
-          subtitle={t('analytics.perAcre', '₹9,250 per acre')}
+          value={`₹${analyticsData.tentativeExpenses.toLocaleString('en-IN')}`}
+          subtitle={t('analytics.perAcre', `₹${Math.round(analyticsData.tentativeExpenses / (analyticsData.totalArea || 1)).toLocaleString('en-IN')} per acre`)}
           icon={<IndianRupee className="h-5 w-5 text-warning" />}
           color="bg-warning"
           onClick={() => navigate('/app/analytics/expenses')}
-          onSpeak={() => speakCard('Estimated expenses are 1 lakh 85 thousand rupees')}
+          onSpeak={() => speakCard(`Estimated expenses are ${analyticsData.tentativeExpenses} rupees`)}
         >
           <div className="grid grid-cols-4 gap-2 mt-3">
             <div className="text-center">
@@ -438,16 +536,16 @@ export default function Analytics() {
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">{t('analytics.income', 'Income')}</span>
-                <span className="text-sm font-medium text-success">+ ₹4,50,000</span>
+                <span className="text-sm font-medium text-success">+ ₹{analyticsData.expectedIncome.toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-muted-foreground">{t('analytics.expenses', 'Expenses')}</span>
-                <span className="text-sm font-medium text-destructive">- ₹1,85,000</span>
+                <span className="text-sm font-medium text-destructive">- ₹{analyticsData.tentativeExpenses.toLocaleString('en-IN')}</span>
               </div>
               <div className="pt-2 border-t border-border">
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium">{t('analytics.netProfit', 'Net Profit')}</span>
-                  <span className="text-lg font-bold text-primary">₹2,65,000</span>
+                  <span className="text-lg font-bold text-primary">₹{(analyticsData.expectedIncome - analyticsData.tentativeExpenses).toLocaleString('en-IN')}</span>
                 </div>
               </div>
             </div>

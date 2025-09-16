@@ -57,6 +57,7 @@ export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = fal
             <NavLink
               key={path}
               to={path!}
+              end={path === '/app'} // Add 'end' prop for exact matching on home route
               className={({ isActive }) =>
                 cn(
                   'flex flex-col items-center justify-center flex-1 h-full py-2',
@@ -130,6 +131,7 @@ export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = fal
             <NavLink
               key={path}
               to={path!}
+              end={path === '/app'} // Add 'end' prop for exact matching on home route
               className={({ isActive }) =>
                 cn(
                   'flex flex-col items-center justify-center flex-1 h-full py-2',
