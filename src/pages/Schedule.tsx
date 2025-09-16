@@ -30,7 +30,7 @@ interface Land {
   organic_carbon_percent?: number;
 }
 
-type FlowStep = 'land-selection' | 'crop-selection' | 'schedule-view';
+type FlowStep = 'land-selection' | 'crop-input' | 'schedule-view';
 
 export default function Schedule() {
   const navigate = useNavigate();
@@ -95,7 +95,7 @@ export default function Schedule() {
 
   const handleLandSelect = (land: Land) => {
     setSelectedLand(land);
-    setFlowStep('crop-selection');
+    setFlowStep('crop-input');
   };
 
   const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date) => {
@@ -188,12 +188,11 @@ export default function Schedule() {
   };
 
   const handleBack = () => {
-    if (flowStep === 'schedule-view') {
-      setFlowStep('crop-selection');
-    } else if (flowStep === 'crop-selection') {
+    if (flowStep === 'crop-input') {
       setFlowStep('land-selection');
       setSelectedLand(null);
-      setScheduleData(null);
+    } else if (flowStep === 'schedule-view') {
+      setFlowStep('crop-input');
     }
   };
 
@@ -259,9 +258,9 @@ export default function Schedule() {
                   AI Crop Schedule
                 </h1>
                 <p className="text-xs text-muted-foreground font-medium">
-                  {flowStep === 'land-selection' && 'Select Your Land'}
-                  {flowStep === 'crop-selection' && 'Select Crop & Date'}
-                  {flowStep === 'schedule-view' && 'AI Generated Schedule'}
+                  {flowStep === 'land-selection' && 'Step 1: Select Your Land'}
+                  {flowStep === 'crop-input' && 'Step 2: Crop Details'}
+                  {flowStep === 'schedule-view' && 'Step 3: AI Schedule'}
                 </p>
               </div>
             </div>
@@ -269,13 +268,13 @@ export default function Schedule() {
             {/* Modern Step Progress Bar */}
             <div className="flex flex-col items-end gap-1">
               <div className="flex items-center gap-1.5">
-                {['land-selection', 'crop-selection', 'schedule-view'].map((step, index) => (
+                {['land-selection', 'crop-input', 'schedule-view'].map((step, index) => (
                   <div 
                     key={step}
                     className={`h-1.5 rounded-full transition-all duration-500 ${
                       flowStep === step 
                         ? 'w-8 bg-gradient-to-r from-primary to-accent shadow-lg shadow-primary/50' 
-                        : index < ['land-selection', 'crop-selection', 'schedule-view'].indexOf(flowStep)
+                        : index < ['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep)
                         ? 'w-6 bg-primary/60'
                         : 'w-6 bg-primary/20'
                     }`} 
@@ -283,7 +282,7 @@ export default function Schedule() {
                 ))}
               </div>
               <span className="text-[10px] text-muted-foreground font-medium">
-                Step {['land-selection', 'crop-selection', 'schedule-view'].indexOf(flowStep) + 1} of 3
+                Step {['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep) + 1} of 3
               </span>
             </div>
           </div>
@@ -304,7 +303,7 @@ export default function Schedule() {
               </div>
             )}
 
-            {flowStep === 'crop-selection' && selectedLand && (
+            {flowStep === 'crop-input' && selectedLand && (
               <div className="animate-slide-in-right">
                 <CropDateInput
                   land={selectedLand}
@@ -317,31 +316,11 @@ export default function Schedule() {
 
             {flowStep === 'schedule-view' && selectedLand && scheduleData && (
               <div className="animate-slide-in-right">
-                {generating ? (
-                  <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
-                    <div className="relative">
-                      <div className="h-24 w-24 rounded-full border-4 border-primary/20 animate-pulse" />
-                      <div className="absolute inset-0 h-24 w-24 rounded-full border-4 border-t-primary animate-spin" />
-                    </div>
-                    <h2 className="mt-6 text-xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                      Generating AI Schedule
-                    </h2>
-                    <p className="mt-2 text-sm text-muted-foreground text-center max-w-sm">
-                      Creating personalized crop schedule for {selectedLand.name}
-                    </p>
-                    <div className="mt-4 flex items-center gap-2">
-                      <div className="h-1 w-1 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <div className="h-1 w-1 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <div className="h-1 w-1 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                  </div>
-                ) : (
-                  <CropScheduleView
-                    landId={selectedLand.id}
-                    landName={selectedLand.name}
-                    currentCrop={scheduleData.cropName}
-                  />
-                )}
+                <CropScheduleView
+                  landId={selectedLand.id}
+                  landName={selectedLand.name}
+                  currentCrop={scheduleData.cropName}
+                />
               </div>
             )}
           </div>
