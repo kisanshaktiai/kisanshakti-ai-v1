@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { PostCard } from './PostCard';
-import { Loader2, Users } from 'lucide-react';
+import { Loader2, Users, Sparkles } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface SocialFeedProps {
   searchQuery?: string;
@@ -194,46 +195,111 @@ export function SocialFeed({ searchQuery = '', selectedCommunity = null }: Socia
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-8">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-12 h-12 border-3 border-primary/30 border-t-primary rounded-full animate-spin" />
-          <p className="text-sm text-muted-foreground">Loading posts...</p>
-        </div>
+      <div className="flex items-center justify-center min-h-[50vh] p-8">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex flex-col items-center gap-4"
+        >
+          <div className="relative">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/10 animate-pulse" />
+            <div className="absolute inset-0 w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/30 to-transparent animate-ping" />
+          </div>
+          <div className="text-center space-y-1">
+            <p className="text-sm font-medium text-foreground">Loading posts</p>
+            <p className="text-xs text-muted-foreground">Fetching latest updates...</p>
+          </div>
+        </motion.div>
       </div>
     );
   }
 
+  const filteredPosts = posts.filter(post => {
+    if (selectedCommunity) {
+      return post.community?.id === selectedCommunity;
+    }
+    if (searchQuery) {
+      return post.content?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+             post.farmer?.farmer_name?.toLowerCase().includes(searchQuery.toLowerCase());
+    }
+    return true;
+  });
+
   return (
-    <ScrollArea className="h-[calc(100dvh-12rem)]">
-      <div className="divide-y divide-border/30">
-        {posts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 px-4 gap-4">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 flex items-center justify-center">
-              <Users className="w-8 h-8 text-primary/50" />
-            </div>
-            <div className="text-center">
-              <p className="text-muted-foreground">No posts yet</p>
-              <p className="text-sm text-muted-foreground/70 mt-1">Be the first to share with the community!</p>
-            </div>
-          </div>
-        ) : (
-          posts.map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              onLike={() => handleLike(post.id)}
-              onShare={() => handleShare(post.id)}
-              onSave={() => handleSave(post.id)}
-              isLiked={post.post_interactions?.some(
-                (i: any) => i.farmer_id === user?.id && i.interaction_type === 'like'
-              )}
-              isSaved={post.post_interactions?.some(
-                (i: any) => i.farmer_id === user?.id && i.interaction_type === 'save'
-              )}
-            />
-          ))
-        )}
-      </div>
-    </ScrollArea>
+    <div className="relative">
+      <ScrollArea className="h-[calc(100dvh-10rem)] md:h-[calc(100vh-12rem)]">
+        <AnimatePresence mode="wait">
+          {filteredPosts.length === 0 ? (
+            <motion.div 
+              key="empty"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="flex flex-col items-center justify-center min-h-[50vh] px-4 py-16"
+            >
+              <motion.div 
+                className="relative mb-6"
+                animate={{ 
+                  rotate: [0, 5, -5, 0],
+                  scale: [1, 1.05, 1]
+                }}
+                transition={{ 
+                  duration: 4,
+                  repeat: Infinity,
+                  repeatType: "reverse"
+                }}
+              >
+                <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-primary/20 via-primary/10 to-accent/10 flex items-center justify-center backdrop-blur-sm">
+                  <Sparkles className="w-10 h-10 text-primary/60" />
+                </div>
+              </motion.div>
+              <div className="text-center space-y-2 max-w-sm">
+                <h3 className="text-lg font-semibold text-foreground">No posts yet</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Be the first to share your farming experiences and connect with the community
+                </p>
+              </div>
+            </motion.div>
+          ) : (
+            <motion.div 
+              key="posts"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="divide-y divide-border/20 pb-20"
+            >
+              {filteredPosts.map((post, index) => (
+                <motion.div
+                  key={post.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ 
+                    opacity: 1, 
+                    y: 0,
+                    transition: { 
+                      delay: index * 0.05,
+                      duration: 0.3,
+                      ease: "easeOut"
+                    }
+                  }}
+                  exit={{ opacity: 0, y: -20 }}
+                >
+                  <PostCard
+                    post={post}
+                    onLike={() => handleLike(post.id)}
+                    onShare={() => handleShare(post.id)}
+                    onSave={() => handleSave(post.id)}
+                    isLiked={post.post_interactions?.some(
+                      (i: any) => i.farmer_id === user?.id && i.interaction_type === 'like'
+                    )}
+                    isSaved={post.post_interactions?.some(
+                      (i: any) => i.farmer_id === user?.id && i.interaction_type === 'save'
+                    )}
+                  />
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </ScrollArea>
+    </div>
   );
 }
