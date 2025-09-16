@@ -274,118 +274,127 @@ export default function LandDetails() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate('/app/lands')}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold">{land.name}</h1>
-            <p className="text-muted-foreground">
-              {land.village && `${land.village}, `}{land.taluka}
-            </p>
+    <div className="space-y-4 pb-20 md:pb-6">
+      {/* Mobile-optimized Header */}
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm pb-3 -mx-4 px-4 md:mx-0 md:px-0">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate('/app/lands')}
+              className="flex-shrink-0"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold truncate">{land.name}</h1>
+              <p className="text-sm text-muted-foreground truncate">
+                {land.village && `${land.village}, `}{land.taluka}
+              </p>
+            </div>
+          </div>
+          
+          {/* Mobile Actions Menu */}
+          <div className="flex gap-2 self-end sm:self-auto">
+            <Button variant="outline" size="icon" className="h-9 w-9 sm:h-10 sm:w-10">
+              <Share2 className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="icon" className="h-9 w-9 sm:h-10 sm:w-10 hidden sm:flex">
+              <Download className="h-4 w-4" />
+            </Button>
+            <Button 
+              variant="outline"
+              size="sm"
+              onClick={() => navigate(`/app/lands/${id}/edit`)}
+              className="h-9 px-3 sm:h-10 sm:px-4"
+            >
+              <Edit className="h-4 w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Edit</span>
+            </Button>
+            <Button 
+              variant="destructive"
+              size="sm"
+              onClick={() => setShowDeleteDialog(true)}
+              className="h-9 px-3 sm:h-10 sm:px-4"
+            >
+              <Trash2 className="h-4 w-4 mr-1 sm:mr-2" />
+              <span className="hidden sm:inline">Delete</span>
+            </Button>
           </div>
         </div>
-        
-        <div className="flex gap-2">
-          <Button variant="outline" size="icon">
-            <Share2 className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="icon">
-            <Download className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="outline" 
-            onClick={() => navigate(`/app/lands/${id}/edit`)}
-          >
-            <Edit className="h-4 w-4 mr-2" />
-            Edit
-          </Button>
-          <Button 
-            variant="destructive"
-            onClick={() => setShowDeleteDialog(true)}
-          >
-            <Trash2 className="h-4 w-4 mr-2" />
-            Delete
-          </Button>
-        </div>
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Area</p>
-                <p className="text-2xl font-bold">
-                  {land.area_acres} acres
-                  {land.area_guntas && <span className="text-sm"> {land.area_guntas}g</span>}
+      {/* Mobile-optimized Quick Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/10">
+          <CardContent className="p-4 md:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="space-y-1">
+                <p className="text-xs sm:text-sm text-muted-foreground">Total Area</p>
+                <p className="text-lg sm:text-2xl font-bold">
+                  {land.area_acres}
+                  <span className="text-xs sm:text-sm ml-1">acres</span>
+                  {land.area_guntas && <span className="text-xs"> {land.area_guntas}g</span>}
                 </p>
               </div>
-              <MapPin className="h-8 w-8 text-primary opacity-20" />
+              <MapPin className="h-6 w-6 sm:h-8 sm:w-8 text-primary opacity-20" />
             </div>
           </CardContent>
         </Card>
         
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Current Crop</p>
-                <p className="text-xl font-bold">{land.current_crop || 'No Crop'}</p>
+        <Card className="bg-gradient-to-br from-green-500/5 to-green-500/10 border-green-500/10">
+          <CardContent className="p-4 md:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="space-y-1">
+                <p className="text-xs sm:text-sm text-muted-foreground">Current Crop</p>
+                <p className="text-sm sm:text-xl font-bold line-clamp-1">{land.current_crop || 'No Crop'}</p>
                 {land.crop_stage && (
-                  <Badge variant="secondary" className="mt-1">{land.crop_stage}</Badge>
+                  <Badge variant="secondary" className="text-xs mt-1">{land.crop_stage}</Badge>
                 )}
               </div>
-              <Sprout className="h-8 w-8 text-primary opacity-20" />
+              <Sprout className="h-6 w-6 sm:h-8 sm:w-8 text-green-500 opacity-20" />
             </div>
           </CardContent>
         </Card>
         
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Soil Health</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <Progress value={soilHealthScore} className="w-20" />
-                  <span className="text-xl font-bold">{soilHealthScore}%</span>
+        <Card className="bg-gradient-to-br from-orange-500/5 to-orange-500/10 border-orange-500/10">
+          <CardContent className="p-4 md:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="space-y-1">
+                <p className="text-xs sm:text-sm text-muted-foreground">Soil Health</p>
+                <div className="flex items-center gap-2">
+                  <Progress value={soilHealthScore} className="w-12 sm:w-20" />
+                  <span className="text-sm sm:text-xl font-bold">{soilHealthScore}%</span>
                 </div>
               </div>
-              <Mountain className="h-8 w-8 text-primary opacity-20" />
+              <Mountain className="h-6 w-6 sm:h-8 sm:w-8 text-orange-500 opacity-20" />
             </div>
           </CardContent>
         </Card>
         
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Irrigation</p>
-                <p className="text-lg font-bold">{land.irrigation_source || 'Not Set'}</p>
-                <p className="text-xs text-muted-foreground">{land.water_source}</p>
+        <Card className="bg-gradient-to-br from-blue-500/5 to-blue-500/10 border-blue-500/10">
+          <CardContent className="p-4 md:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div className="space-y-1">
+                <p className="text-xs sm:text-sm text-muted-foreground">Irrigation</p>
+                <p className="text-sm sm:text-lg font-bold line-clamp-1">{land.irrigation_source || 'Not Set'}</p>
+                <p className="text-xs text-muted-foreground line-clamp-1">{land.water_source}</p>
               </div>
-              <Droplets className="h-8 w-8 text-primary opacity-20" />
+              <Droplets className="h-6 w-6 sm:h-8 sm:w-8 text-blue-500 opacity-20" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Detailed Information Tabs */}
+      {/* Mobile-optimized Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="soil">Soil Health</TabsTrigger>
-          <TabsTrigger value="activities">Activities</TabsTrigger>
-          <TabsTrigger value="history">Crop History</TabsTrigger>
-          <TabsTrigger value="gallery">Gallery</TabsTrigger>
+        <TabsList className="w-full overflow-x-auto flex justify-start md:grid md:grid-cols-5 bg-muted/50 p-1 h-auto">
+          <TabsTrigger value="overview" className="text-xs sm:text-sm whitespace-nowrap">Overview</TabsTrigger>
+          <TabsTrigger value="soil" className="text-xs sm:text-sm whitespace-nowrap">Soil</TabsTrigger>
+          <TabsTrigger value="activities" className="text-xs sm:text-sm whitespace-nowrap">Activities</TabsTrigger>
+          <TabsTrigger value="history" className="text-xs sm:text-sm whitespace-nowrap">History</TabsTrigger>
+          <TabsTrigger value="gallery" className="text-xs sm:text-sm whitespace-nowrap">Gallery</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
