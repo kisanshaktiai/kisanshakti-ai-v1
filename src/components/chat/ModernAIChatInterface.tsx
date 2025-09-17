@@ -16,7 +16,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { landsApi } from '@/services/landsApi';
 import { 
   Send, Mic, MicOff, ImageIcon, Volume2, VolumeX,
-  Bot, User, Loader2, X, Sprout, Layers, MapPin, Check, ScanLine
+  Bot, User, Loader2, X, Sprout, Layers, MapPin, Check, ScanLine, Plus
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -84,17 +84,24 @@ export function ModernAIChatInterface() {
   useEffect(() => {
     if (user?.id) {
       loadLands();
-      // Add welcome message
+    }
+  }, [user]);
+
+  // Add welcome message after lands are loaded
+  useEffect(() => {
+    if (user?.id && messages.length === 0) {
       const welcomeMessage: Message = {
         id: 'welcome',
         role: 'assistant',
-        content: t('chat.welcome', `Hello! I'm your AI farming assistant. How can I help you today?`),
+        content: lands.length === 0 
+          ? `Hello! I'm your AI farming assistant. I notice you haven't added any lands yet. Click "Add Land" above to register your farm, or ask me any general farming questions!`
+          : `Hello! I'm your AI farming assistant. Select a land above for specific advice, or ask me any farming questions!`,
         timestamp: new Date(),
         suggestions: ['Weather forecast', 'Pest control', 'Fertilizer guide', 'Crop calendar']
       };
       setMessages([welcomeMessage]);
     }
-  }, [user]);
+  }, [user, lands]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -104,7 +111,10 @@ export function ModernAIChatInterface() {
   // Load user's lands using lands-api for proper tenant isolation
   const loadLands = async () => {
     try {
+      console.log('Loading lands using lands-api...');
       const landsData = await landsApi.fetchLands();
+      console.log('Lands data received:', landsData);
+      
       // Filter and map lands data
       const validLands = (landsData || []).filter(land => land.id).map(land => ({
         id: land.id!,
@@ -114,15 +124,25 @@ export function ModernAIChatInterface() {
         soil_type: land.soil_type,
         location: (land as any).village || (land as any).location
       }));
+      
+      console.log('Valid lands processed:', validLands);
       setLands(validLands);
       
       // Cache for offline
       if (validLands.length > 0) {
         localStorage.setItem('cached_lands_ai', JSON.stringify(validLands));
+      } else {
+        // If no lands, check if we have cached lands
+        const cachedLands = localStorage.getItem('cached_lands_ai');
+        if (cachedLands) {
+          const parsed = JSON.parse(cachedLands);
+          console.log('Using cached lands:', parsed);
+          setLands(parsed);
+        }
       }
     } catch (error) {
       console.error('Error loading lands:', error);
-      // Load from cache if offline
+      // Load from cache if offline or error
       const cachedLands = localStorage.getItem('cached_lands_ai');
       if (cachedLands) {
         setLands(JSON.parse(cachedLands));
@@ -242,9 +262,20 @@ export function ModernAIChatInterface() {
 
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      {/* Minimal Header with Tiny Land Cards */}
-      <div className="bg-background/95 backdrop-blur-lg border-b">
+      {/* Header with AI Title and Land Cards */}
+      <div className="bg-background/95 backdrop-blur-lg border-b shadow-sm">
         <div className="px-3 py-2">
+          {/* AI Assistant Title */}
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <Bot className="w-4 h-4 text-primary" />
+              <h2 className="text-sm font-semibold">AI Farming Assistant</h2>
+            </div>
+            <Badge variant={isOnline ? 'default' : 'secondary'} className="text-xs">
+              {isOnline ? 'Online' : 'Offline'}
+            </Badge>
+          </div>
+          
           {/* Land Selection - Tiny Cards */}
           <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
             {/* General/All Lands Option */}
@@ -264,28 +295,40 @@ export function ModernAIChatInterface() {
             </button>
 
             {/* Individual Land Cards - Tiny */}
-            {lands.map((land) => (
+            {lands && lands.length > 0 ? (
+              lands.map((land) => (
+                <button
+                  key={land.id}
+                  onClick={() => selectLand(land)}
+                  className={cn(
+                    "shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+                    selectedLand?.id === land.id
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "bg-card hover:bg-muted border"
+                  )}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Sprout className="w-3 h-3" />
+                    <span className="max-w-[80px] truncate">{land.name}</span>
+                    {land.area_acres && (
+                      <span className="text-[10px] opacity-70">
+                        {land.area_acres}ac
+                      </span>
+                    )}
+                  </div>
+                </button>
+              ))
+            ) : (
               <button
-                key={land.id}
-                onClick={() => selectLand(land)}
-                className={cn(
-                  "shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
-                  selectedLand?.id === land.id
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "bg-card hover:bg-muted border"
-                )}
+                onClick={() => window.location.href = '/lands/add'}
+                className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-card hover:bg-muted border border-dashed"
               >
                 <div className="flex items-center gap-1.5">
-                  <Sprout className="w-3 h-3" />
-                  <span className="max-w-[80px] truncate">{land.name}</span>
-                  {land.area_acres && (
-                    <span className="text-[10px] opacity-70">
-                      {land.area_acres}ac
-                    </span>
-                  )}
+                  <Plus className="w-3 h-3" />
+                  <span>Add Land</span>
                 </div>
               </button>
-            ))}
+            )}
           </div>
         </div>
       </div>
