@@ -281,7 +281,7 @@ export default function Home() {
                   year: 'numeric'
                 })}</span>
               </div>
-              <div className="text-white text-sm">
+              <div className="text-white/70 text-xs ml-auto">
                 Last sync: {currentTime.toLocaleTimeString('en-IN', { 
                   hour: '2-digit', 
                   minute: '2-digit' 
