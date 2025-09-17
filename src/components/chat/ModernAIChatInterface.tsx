@@ -641,8 +641,8 @@ export function ModernAIChatInterface() {
         </div>
       </ScrollArea>
 
-      {/* Enhanced Input Area */}
-      <div className="border-t bg-background/95 backdrop-blur-lg">
+      {/* WhatsApp Style Input Area */}
+      <div className="border-t bg-muted/5">
         {/* Upload Previews */}
         {(uploadedImage || uploadedFile) && (
           <div className="px-4 pt-2 flex items-center gap-2">
@@ -680,41 +680,23 @@ export function ModernAIChatInterface() {
           </div>
         )}
         
-        <div className="p-2 max-w-4xl mx-auto">
-          <div className="flex items-center gap-2">
+        <div className="p-3">
+          <div className="flex items-center gap-2 max-w-4xl mx-auto">
             {/* WhatsApp-style input container */}
-            <div className="flex-1 flex items-end bg-muted/30 rounded-full px-2 py-1">
-              {/* Attachment Button (Replaces multiple buttons) */}
-              <div className="relative">
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => imageInputRef.current?.click()}
-                  className="h-9 w-9 rounded-full hover:bg-muted"
-                  title="Attach"
-                >
-                  <Plus className="w-5 h-5 text-muted-foreground" />
-                </Button>
-                
-                {/* Hidden inputs */}
-                <input
-                  ref={imageInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  className="hidden"
-                />
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf,.doc,.docx,.txt"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </div>
+            <div className="flex-1 flex items-center bg-background border border-border rounded-full shadow-sm">
+              {/* Emoji Button */}
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-10 w-10 rounded-full hover:bg-transparent"
+                title="Emoji"
+              >
+                <span className="text-xl">😊</span>
+              </Button>
               
               {/* Text Input */}
-              <textarea
+              <input
+                type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
                 onKeyDown={(e) => {
@@ -724,24 +706,48 @@ export function ModernAIChatInterface() {
                   }
                 }}
                 placeholder="Type a message"
-                className="flex-1 min-h-[36px] max-h-[100px] px-3 py-2 bg-transparent resize-none focus:outline-none placeholder:text-muted-foreground text-sm"
-                style={{ 
-                  scrollbarWidth: 'none',
-                  lineHeight: '1.3'
-                }}
-                rows={1}
+                className="flex-1 bg-transparent px-2 py-2.5 focus:outline-none placeholder:text-muted-foreground text-sm"
               />
+              
+              {/* Attachment Button */}
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => imageInputRef.current?.click()}
+                className="h-10 w-10 rounded-full hover:bg-transparent"
+                title="Attach file"
+              >
+                <svg className="w-5 h-5 text-muted-foreground" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M11.5 22C10.1193 22 8.81451 21.4504 7.87513 20.5096C6.93576 19.5688 6.38571 18.3459 6.38571 16.9583V7.04167C6.38571 6.13748 6.73959 5.26815 7.3751 4.63179C8.01061 3.99544 8.87971 3.64583 9.78571 3.64583C10.6917 3.64583 11.5608 3.99544 12.1963 4.63179C12.8318 5.26815 13.1857 6.13748 13.1857 7.04167V15.7917C13.1857 16.2612 13.0086 16.7116 12.6906 17.0304C12.3727 17.3492 11.9382 17.5208 11.5 17.5208C11.0618 17.5208 10.6273 17.3492 10.3094 17.0304C9.99143 16.7116 9.81429 16.2612 9.81429 15.7917V7.91667H11.5V15.7917H13.1857V7.04167C13.1857 6.13748 12.8318 5.26815 12.1963 4.63179C11.5608 3.99544 10.6917 3.64583 9.78571 3.64583" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </Button>
               
               {/* Camera Button */}
               <Button
                 size="icon"
                 variant="ghost"
                 onClick={handleCameraCapture}
-                className="h-9 w-9 rounded-full hover:bg-muted"
+                className="h-10 w-10 rounded-full hover:bg-transparent"
                 title="Camera"
               >
                 <Camera className="w-5 h-5 text-muted-foreground" />
               </Button>
+              
+              {/* Hidden inputs */}
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageUpload}
+                className="hidden"
+              />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.txt"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
             </div>
             
             {/* Send/Voice Button - WhatsApp style */}
@@ -750,27 +756,28 @@ export function ModernAIChatInterface() {
                 onClick={sendMessage}
                 disabled={isLoading}
                 size="icon"
-                className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90 shadow-sm"
+                className="h-10 w-10 rounded-full bg-green-500 hover:bg-green-600 shadow-sm transition-colors"
               >
                 {isLoading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <Loader2 className="w-5 h-5 text-white animate-spin" />
                 ) : (
-                  <Send className="w-5 h-5" />
+                  <Send className="w-5 h-5 text-white" />
                 )}
               </Button>
             ) : (
               <Button
                 size="icon"
-                variant={isListening ? "destructive" : "default"}
+                variant="ghost"
                 onClick={toggleListening}
                 className={cn(
-                  "h-10 w-10 rounded-full shadow-sm",
-                  isListening && "animate-pulse",
-                  !isListening && "bg-primary hover:bg-primary/90"
+                  "h-10 w-10 rounded-full transition-colors",
+                  isListening 
+                    ? "bg-red-500 hover:bg-red-600 animate-pulse" 
+                    : "bg-green-500 hover:bg-green-600"
                 )}
                 title={isListening ? "Stop Recording" : "Hold to record"}
               >
-                {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                <Mic className="w-5 h-5 text-white" />
               </Button>
             )}
           </div>
