@@ -173,31 +173,49 @@ export function ModernAIChatInterface() {
     try {
       if (!user?.id) return;
       
-      const landsQuery = supabase
-        .from('lands')
-        .select('*')
-        .eq('farmer_id', user.id)
-        .eq('is_deleted', false)
-        .order('created_at', { ascending: false });
-      
-      const { data, error } = await landsQuery;
+      // Use fetch API to avoid TypeScript depth issues
+      const fetchLands = async () => {
+        const result = await fetch(
+          `${import.meta.env.VITE_SUPABASE_URL || 'https://qfklkkzxemsbeniyugiz.supabase.co'}/rest/v1/lands?farmer_id=eq.${user.id}&is_deleted=eq.false&order=created_at.desc`,
+          {
+            headers: {
+              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbwYom1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4',
+              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbwYom1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4'}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        if (result.ok) {
+          return await result.json();
+        }
+        return null;
+      };
 
-      if (error) throw error;
+      const landsData = await fetchLands();
       
-      // Add mock data for demo
-      const enhancedLands = (data || []).map(land => ({
-        ...land,
-        health_score: Math.floor(Math.random() * 40) + 60,
-        ndvi: Math.random() * 0.4 + 0.6,
-        weather_alerts: Math.floor(Math.random() * 3),
-        pest_alerts: Math.floor(Math.random() * 2)
-      }));
-      
-      setLands(enhancedLands);
-      
-  // Cache for offline
-  if (enhancedLands.length > 0) {
-    localStorage.setItem('cached_lands_ai', JSON.stringify(enhancedLands));
+      if (landsData && Array.isArray(landsData)) {
+        // Add mock data for demo
+        const enhancedLands = landsData.map((land: any) => ({
+          id: land.id,
+          name: land.name,
+          area_acres: land.area_acres,
+          primary_crop: land.primary_crop,
+          soil_type: land.soil_type,
+          location: land.location,
+          irrigation_type: land.irrigation_type,
+          health_score: Math.floor(Math.random() * 40) + 60,
+          ndvi: Math.random() * 0.4 + 0.6,
+          weather_alerts: Math.floor(Math.random() * 3),
+          pest_alerts: Math.floor(Math.random() * 2)
+        }));
+        
+        setLands(enhancedLands);
+        
+        // Cache for offline
+        if (enhancedLands.length > 0) {
+          localStorage.setItem('cached_lands_ai', JSON.stringify(enhancedLands));
+        }
       }
     } catch (error) {
       console.error('Error loading lands:', error);
