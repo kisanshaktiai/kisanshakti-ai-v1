@@ -1,7 +1,6 @@
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { Droplets } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Bar, BarChart } from 'recharts';
+import { cn } from '@/lib/utils';
 
 interface RainfallData {
   date: string;
@@ -16,59 +15,80 @@ interface RainfallChartProps {
 
 export const RainfallChart: React.FC<RainfallChartProps> = ({ data, className }) => {
   return (
-    <Card className={`bg-background/60 backdrop-blur-xl border-border/50 ${className}`}>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Droplets className="h-5 w-5 text-blue-500" />
-            Rainfall Tracking (7 Days)
-          </CardTitle>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <ResponsiveContainer width="100%" height={200}>
-          <AreaChart data={data} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
-            <defs>
-              <linearGradient id="rainfallGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-            <XAxis 
-              dataKey="date" 
-              stroke="hsl(var(--muted-foreground))"
-              fontSize={12}
-              tickFormatter={(value) => {
-                const date = new Date(value);
-                return `${date.getDate()}/${date.getMonth() + 1}`;
-              }}
-            />
-            <YAxis 
-              stroke="hsl(var(--muted-foreground))"
-              fontSize={12}
-              label={{ value: 'mm', angle: -90, position: 'insideLeft' }}
-            />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: 'hsl(var(--background))',
-                border: '1px solid hsl(var(--border))',
-                borderRadius: '8px',
-                boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-              }}
-              labelStyle={{ color: 'hsl(var(--foreground))' }}
-            />
-            <Area
-              type="monotone"
-              dataKey="rainfall"
-              stroke="hsl(var(--primary))"
-              strokeWidth={2}
-              fill="url(#rainfallGradient)"
-              animationDuration={1000}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
+    <div className={cn("w-full", className)}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart 
+          data={data}
+          margin={{ top: 10, right: 15, left: -10, bottom: 0 }}
+        >
+          <defs>
+            <linearGradient id="rainfallGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#60A5FA" stopOpacity={0.5}/>
+              <stop offset="30%" stopColor="#93C5FD" stopOpacity={0.3}/>
+              <stop offset="100%" stopColor="#DBEAFE" stopOpacity={0.05}/>
+            </linearGradient>
+            <linearGradient id="rainfallStroke" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="#2563EB" />
+              <stop offset="100%" stopColor="#60A5FA" />
+            </linearGradient>
+          </defs>
+          <CartesianGrid 
+            strokeDasharray="3 3" 
+            stroke="hsl(var(--border))" 
+            opacity={0.15} 
+            vertical={false}
+          />
+          <XAxis 
+            dataKey="date" 
+            stroke="hsl(var(--muted-foreground))"
+            fontSize={10}
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+          />
+          <YAxis 
+            stroke="hsl(var(--muted-foreground))"
+            fontSize={10}
+            tickLine={false}
+            axisLine={false}
+            width={25}
+            tickFormatter={(value) => `${value}`}
+          />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: 'hsla(var(--background), 0.98)',
+              border: '1px solid hsl(var(--border) / 0.2)',
+              borderRadius: '12px',
+              backdropFilter: 'blur(10px)',
+              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.15)',
+              padding: '10px 14px'
+            }}
+            labelStyle={{ 
+              color: 'hsl(var(--foreground))',
+              fontSize: '12px',
+              fontWeight: '600',
+              marginBottom: '4px'
+            }}
+            itemStyle={{
+              color: '#3B82F6',
+              fontSize: '11px'
+            }}
+            formatter={(value: number) => [`${value.toFixed(1)} mm`, 'Rainfall']}
+            cursor={{ fill: 'hsl(var(--primary) / 0.05)' }}
+          />
+          <Area 
+            type="monotone" 
+            dataKey="rainfall" 
+            stroke="url(#rainfallStroke)" 
+            strokeWidth={2.5}
+            fillOpacity={1} 
+            fill="url(#rainfallGradient)"
+            animationBegin={0}
+            animationDuration={1500}
+            animationEasing="ease-out"
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
   );
 };
