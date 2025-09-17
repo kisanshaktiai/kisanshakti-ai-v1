@@ -680,73 +680,40 @@ export function ModernAIChatInterface() {
           </div>
         )}
         
-        <div className="p-3 max-w-4xl mx-auto">
-          <div className="flex items-end gap-2">
-            {/* Input Controls on the Left */}
-            <div className="flex items-center gap-1">
-              {/* Camera Button */}
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={handleCameraCapture}
-                className="h-8 w-8"
-                title="Take Photo"
-              >
-                <Camera className="w-4 h-4" />
-              </Button>
-              
-              {/* Image Upload */}
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-              />
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => imageInputRef.current?.click()}
-                className="h-8 w-8"
-                title="Upload Image"
-              >
-                <ImageIcon className="w-4 h-4" />
-              </Button>
-              
-              {/* File Upload */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf,.doc,.docx,.txt"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => fileInputRef.current?.click()}
-                className="h-8 w-8"
-                title="Upload File"
-              >
-                <FileUp className="w-4 h-4" />
-              </Button>
-              
-              {/* Voice Input */}
-              {isSpeechSupported && (
+        <div className="p-2 max-w-4xl mx-auto">
+          <div className="flex items-center gap-2">
+            {/* WhatsApp-style input container */}
+            <div className="flex-1 flex items-end bg-muted/30 rounded-full px-2 py-1">
+              {/* Attachment Button (Replaces multiple buttons) */}
+              <div className="relative">
                 <Button
                   size="icon"
                   variant="ghost"
-                  onClick={toggleListening}
-                  className={cn("h-8 w-8", isListening && "text-destructive animate-pulse")}
-                  title={isListening ? "Stop Recording" : "Start Recording"}
+                  onClick={() => imageInputRef.current?.click()}
+                  className="h-9 w-9 rounded-full hover:bg-muted"
+                  title="Attach"
                 >
-                  {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                  <Plus className="w-5 h-5 text-muted-foreground" />
                 </Button>
-              )}
-            </div>
-            
-            {/* Text Input */}
-            <div className="flex-1 relative">
+                
+                {/* Hidden inputs */}
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.doc,.docx,.txt"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+              </div>
+              
+              {/* Text Input */}
               <textarea
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
@@ -756,36 +723,56 @@ export function ModernAIChatInterface() {
                     sendMessage();
                   }
                 }}
-                placeholder={selectedLand 
-                  ? `Ask about ${selectedLand.name}...` 
-                  : "Ask me anything about farming..."
-                }
-                className="w-full min-h-[44px] max-h-[100px] px-3 py-2.5 rounded-xl border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 placeholder:text-muted-foreground text-sm"
+                placeholder="Type a message"
+                className="flex-1 min-h-[36px] max-h-[100px] px-3 py-2 bg-transparent resize-none focus:outline-none placeholder:text-muted-foreground text-sm"
                 style={{ 
-                  scrollbarWidth: 'thin',
-                  lineHeight: '1.5'
+                  scrollbarWidth: 'none',
+                  lineHeight: '1.3'
                 }}
+                rows={1}
               />
               
-              {/* Recording Indicator */}
-              {isListening && (
-                <div className="absolute inset-0 rounded-xl border-2 border-destructive animate-pulse pointer-events-none" />
-              )}
+              {/* Camera Button */}
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={handleCameraCapture}
+                className="h-9 w-9 rounded-full hover:bg-muted"
+                title="Camera"
+              >
+                <Camera className="w-5 h-5 text-muted-foreground" />
+              </Button>
             </div>
             
-            {/* Send Button */}
-            <Button
-              onClick={sendMessage}
-              disabled={(!inputMessage.trim() && !uploadedImage && !uploadedFile) || isLoading}
-              size="icon"
-              className="h-10 w-10 rounded-xl bg-primary hover:bg-primary/90 shadow-lg"
-            >
-              {isLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </Button>
+            {/* Send/Voice Button - WhatsApp style */}
+            {inputMessage.trim() || uploadedImage || uploadedFile ? (
+              <Button
+                onClick={sendMessage}
+                disabled={isLoading}
+                size="icon"
+                className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90 shadow-sm"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Send className="w-5 h-5" />
+                )}
+              </Button>
+            ) : (
+              <Button
+                size="icon"
+                variant={isListening ? "destructive" : "default"}
+                onClick={toggleListening}
+                className={cn(
+                  "h-10 w-10 rounded-full shadow-sm",
+                  isListening && "animate-pulse",
+                  !isListening && "bg-primary hover:bg-primary/90"
+                )}
+                title={isListening ? "Stop Recording" : "Hold to record"}
+              >
+                {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+              </Button>
+            )}
           </div>
         </div>
       </div>
