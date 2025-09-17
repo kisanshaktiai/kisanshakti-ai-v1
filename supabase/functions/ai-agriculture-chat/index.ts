@@ -59,22 +59,40 @@ serve(async (req) => {
 
     // Get or create chat session
     let currentSessionId = sessionId;
-    if (!currentSessionId) {
+    let currentSession = null;
+    
+    if (currentSessionId) {
+      // Load existing session
+      const { data: existingSession } = await supabase
+        .from('ai_chat_sessions')
+        .select('*')
+        .eq('id', currentSessionId)
+        .single();
+      
+      currentSession = existingSession;
+    }
+    
+    if (!currentSessionId || !currentSession) {
       const { data: newSession, error: sessionError } = await supabase
         .from('ai_chat_sessions')
         .insert({
           tenant_id: finalTenantId,
           farmer_id: finalFarmerId,
-          land_id: landId,
+          land_id: landId || null,
           session_type: landId ? 'land_specific' : 'general',
           session_title: `Chat - ${new Date().toLocaleDateString()}`,
-          metadata: { language }
+          metadata: { 
+            language,
+            created_at: new Date().toISOString(),
+            total_messages: 0
+          }
         })
         .select()
         .single();
 
       if (sessionError) throw sessionError;
       currentSessionId = newSession.id;
+      currentSession = newSession;
     }
 
     // Get land context if landId is provided
@@ -179,9 +197,22 @@ INSTRUCTIONS:
     const lastUserMessage = messages[messages.length - 1];
     const responseTime = Date.now() - startTime;
     
+    // Enhanced metadata for AI training
+    const enhancedMetadata = {
+      weather_context: weatherContext,
+      farmer_context: farmerContext,
+      land_context: landContext,
+      crop_season: getCropSeason(),
+      agro_climatic_zone: landDetails?.agro_climatic_zone || farmerDetails?.agro_climatic_zone,
+      soil_zone: landDetails?.soil_type,
+      rainfall_zone: farmerDetails?.rainfall_zone,
+      language,
+      timestamp: new Date().toISOString()
+    };
+    
     if (lastUserMessage) {
-      // Save user message
-      await supabase
+      // Save user message with enhanced metadata for training
+      const { error: userMsgError } = await supabase
         .from('ai_chat_messages')
         .insert({
           session_id: currentSessionId,
@@ -190,13 +221,29 @@ INSTRUCTIONS:
           role: 'user',
           content: lastUserMessage.content,
           land_context: landContext,
+          weather_context: weatherContext,
+          crop_context: landContext?.crops,
+          location_context: {
+            village: farmerDetails?.village,
+            district: farmerDetails?.district,
+            state: farmerDetails?.state
+          },
           crop_season: getCropSeason(),
-          image_urls: imageUrl ? [imageUrl] : null
+          agro_climatic_zone: landDetails?.agro_climatic_zone || farmerDetails?.agro_climatic_zone,
+          soil_zone: landDetails?.soil_type,
+          rainfall_zone: farmerDetails?.rainfall_zone,
+          image_urls: imageUrl ? [imageUrl] : null,
+          attachments: fileContent ? [{ type: 'file', content: fileContent }] : null,
+          metadata: enhancedMetadata
         });
+        
+      if (userMsgError) {
+        console.error('Error saving user message:', userMsgError);
+      }
     }
 
-    // Save AI response
-    await supabase
+    // Save AI response with enhanced metadata for training
+    const { error: aiMsgError } = await supabase
       .from('ai_chat_messages')
       .insert({
         session_id: currentSessionId,
@@ -205,11 +252,44 @@ INSTRUCTIONS:
         role: 'assistant',
         content: aiMessage,
         land_context: landContext,
+        weather_context: weatherContext,
+        crop_context: landContext?.crops,
+        location_context: {
+          village: farmerDetails?.village,
+          district: farmerDetails?.district,
+          state: farmerDetails?.state
+        },
         crop_season: getCropSeason(),
+        agro_climatic_zone: landDetails?.agro_climatic_zone || farmerDetails?.agro_climatic_zone,
+        soil_zone: landDetails?.soil_type,
+        rainfall_zone: farmerDetails?.rainfall_zone,
         ai_model: 'gpt-4o-mini',
         response_time_ms: responseTime,
-        tokens_used: tokensUsed
+        tokens_used: tokensUsed,
+        metadata: {
+          ...enhancedMetadata,
+          prompt_tokens: aiData.usage?.prompt_tokens,
+          completion_tokens: aiData.usage?.completion_tokens,
+          quick_replies: generateQuickReplies(lastUserMessage?.content || '')
+        }
       });
+      
+    if (aiMsgError) {
+      console.error('Error saving AI response:', aiMsgError);
+    }
+    
+    // Update session activity
+    await supabase
+      .from('ai_chat_sessions')
+      .update({
+        updated_at: new Date().toISOString(),
+        metadata: {
+          last_activity: new Date().toISOString(),
+          total_messages: (currentSession?.metadata?.total_messages || 0) + 2,
+          last_land_id: landId
+        }
+      })
+      .eq('id', currentSessionId);
 
     // Generate quick replies
     const quickReplies = generateQuickReplies(lastUserMessage?.content || '');

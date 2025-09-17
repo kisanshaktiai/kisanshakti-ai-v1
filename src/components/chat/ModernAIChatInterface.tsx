@@ -106,30 +106,71 @@ export function ModernAIChatInterface() {
   const loadChatSession = async (landId: string | null) => {
     try {
       const { session } = useAuthStore.getState();
-      if (!session?.farmerId || !session?.tenantId) return;
+      if (!session?.farmerId || !session?.tenantId) {
+        console.error('Missing session context:', session);
+        return;
+      }
 
+      console.log('Loading chat session for land:', landId, 'Session:', session);
+      
+      // Use null for general chat, actual land_id for land-specific
+      const searchLandId = landId || null;
+      
       // Try to find existing session
-      const { data: existingSession } = await supabase
-        .from('ai_chat_sessions')
-        .select('*')
-        .eq('tenant_id', session.tenantId)
-        .eq('farmer_id', session.farmerId)
-        .eq('land_id', landId || '00000000-0000-0000-0000-000000000000')
-        .eq('is_active', true)
-        .single();
+      let existingSession = null;
+      if (searchLandId) {
+        const { data, error } = await supabase
+          .from('ai_chat_sessions')
+          .select('*')
+          .eq('tenant_id', session.tenantId)
+          .eq('farmer_id', session.farmerId)
+          .eq('land_id', searchLandId)
+          .eq('is_active', true)
+          .maybeSingle();
+          
+        if (error) {
+          console.error('Error loading session:', error);
+        }
+        existingSession = data;
+      } else {
+        // For general chat, check for null land_id
+        const { data, error } = await supabase
+          .from('ai_chat_sessions')
+          .select('*')
+          .eq('tenant_id', session.tenantId)
+          .eq('farmer_id', session.farmerId)
+          .is('land_id', null)
+          .eq('is_active', true)
+          .maybeSingle();
+          
+        if (error) {
+          console.error('Error loading general session:', error);
+        }
+        existingSession = data;
+      }
 
       if (existingSession) {
+        console.log('Found existing session:', existingSession.id);
         setSessionId(existingSession.id);
+        
         // Load messages for this session
-        const { data: sessionMessages } = await supabase
+        const { data: sessionMessages, error: messagesError } = await supabase
           .from('ai_chat_messages')
           .select('*')
           .eq('session_id', existingSession.id)
+          .eq('tenant_id', session.tenantId)
+          .eq('farmer_id', session.farmerId)
           .order('created_at', { ascending: true });
 
-        if (sessionMessages) {
+        if (messagesError) {
+          console.error('Error loading messages:', messagesError);
+        }
+
+        if (sessionMessages && sessionMessages.length > 0) {
+          console.log('Loaded messages:', sessionMessages.length);
           setMessages(sessionMessages.map(msg => {
             const landContext = msg.land_context as any;
+            const attachmentsData = msg.attachments as any;
             return {
               id: msg.id,
               role: msg.role as 'user' | 'assistant' | 'system',
@@ -137,20 +178,50 @@ export function ModernAIChatInterface() {
               timestamp: new Date(msg.created_at),
               landId: landContext?.land_id,
               landName: landContext?.land_name,
-              suggestions: landContext?.quick_replies
+              suggestions: Array.isArray(landContext?.quick_replies) ? landContext.quick_replies : undefined,
+              attachments: attachmentsData
             };
           }));
+        } else {
+          // No messages in database, check local cache
+          const cachedMessages = JSON.parse(localStorage.getItem(`chat_messages_${landId || 'general'}`) || '[]');
+          if (cachedMessages.length > 0) {
+            setMessages(cachedMessages);
+          } else {
+            showWelcomeCard(landId);
+          }
         }
       } else {
         // Create new session
         const newSessionId = crypto.randomUUID();
-        setSessionId(newSessionId);
+        console.log('Creating new session:', newSessionId);
+        
+        const { error: insertError } = await supabase
+          .from('ai_chat_sessions')
+          .insert({
+            id: newSessionId,
+            tenant_id: session.tenantId,
+            farmer_id: session.farmerId,
+            land_id: searchLandId,
+            session_type: searchLandId ? 'land_specific' : 'general',
+            session_title: searchLandId ? `Chat about ${lands.find(l => l.id === searchLandId)?.name || 'Land'}` : 'General farming chat',
+            metadata: {
+              language: i18n.language,
+              created_from: 'web_app'
+            }
+          });
+          
+        if (insertError) {
+          console.error('Error creating session:', insertError);
+        } else {
+          setSessionId(newSessionId);
+        }
         
         // Show welcome card for this land
         showWelcomeCard(landId);
       }
     } catch (error) {
-      console.error('Error loading chat session:', error);
+      console.error('Error in loadChatSession:', error);
       showWelcomeCard(landId);
     }
   };
@@ -276,24 +347,42 @@ export function ModernAIChatInterface() {
     setUploadedFile(null);
     setIsLoading(true);
     setIsTyping(true);
+    
+    // Cache message locally for offline support
+    const cachedMessages = JSON.parse(localStorage.getItem(`chat_messages_${selectedLand?.id || 'general'}`) || '[]');
+    cachedMessages.push(userMessage);
+    localStorage.setItem(`chat_messages_${selectedLand?.id || 'general'}`, JSON.stringify(cachedMessages));
 
     try {
       const { session } = useAuthStore.getState();
       
-      // Create session if needed
-      if (!sessionId || sessionId === crypto.randomUUID()) {
+      // Ensure we have a valid session ID
+      let currentSessionId = sessionId;
+      if (!currentSessionId || currentSessionId === crypto.randomUUID()) {
         const newSessionId = crypto.randomUUID();
-        setSessionId(newSessionId);
+        console.log('Creating new session for message:', newSessionId);
         
         // Create session in database
-        await supabase.from('ai_chat_sessions').insert({
+        const { error: sessionError } = await supabase.from('ai_chat_sessions').insert({
           id: newSessionId,
           tenant_id: session?.tenantId,
           farmer_id: session?.farmerId,
-          land_id: selectedLand?.id,
+          land_id: selectedLand?.id || null,
           session_type: selectedLand ? 'land_specific' : 'general',
-          session_title: selectedLand ? `Chat about ${selectedLand.name}` : 'General farming chat'
+          session_title: selectedLand ? `Chat about ${selectedLand.name}` : 'General farming chat',
+          metadata: {
+            language: i18n.language,
+            initial_message: inputMessage
+          }
         });
+        
+        if (sessionError) {
+          console.error('Error creating session:', sessionError);
+          throw sessionError;
+        }
+        
+        currentSessionId = newSessionId;
+        setSessionId(newSessionId);
       }
 
       const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
@@ -308,9 +397,10 @@ export function ModernAIChatInterface() {
           landId: selectedLand?.id,
           imageUrl: uploadedImage,
           fileContent: uploadedFile ? await uploadedFile.text() : undefined,
-          sessionId: sessionId,
+          sessionId: currentSessionId,  // Use currentSessionId here
           tenantId: session?.tenantId,
-          farmerId: session?.farmerId
+          farmerId: session?.farmerId,
+          language: i18n.language
         }
       });
 
@@ -327,6 +417,44 @@ export function ModernAIChatInterface() {
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      
+      // Cache AI response locally
+      const cachedMessages = JSON.parse(localStorage.getItem(`chat_messages_${selectedLand?.id || 'general'}`) || '[]');
+      cachedMessages.push(assistantMessage);
+      localStorage.setItem(`chat_messages_${selectedLand?.id || 'general'}`, JSON.stringify(cachedMessages));
+      
+      // Update session's last activity
+      await supabase
+        .from('ai_chat_sessions')
+        .update({ 
+          updated_at: new Date().toISOString(),
+          metadata: {
+            last_message_at: new Date().toISOString(),
+            message_count: messages.length + 2,
+            language: i18n.language
+          }
+        })
+        .eq('id', currentSessionId);
+      
+      // Save analytics data
+      const today = new Date().toISOString().split('T')[0];
+      await supabase
+        .from('ai_chat_analytics')
+        .upsert({
+          tenant_id: session?.tenantId,
+          farmer_id: session?.farmerId,
+          date: today,
+          total_messages: messages.length + 2,
+          total_sessions: 1,
+          avg_response_time_ms: data.responseTime || 0,
+          topics: {
+            land_specific: selectedLand ? 1 : 0,
+            general: selectedLand ? 0 : 1
+          }
+        }, {
+          onConflict: 'tenant_id,farmer_id,date',
+          ignoreDuplicates: false
+        });
 
       // Auto-speak response if enabled
       if (voiceEnabled && isTTSSupported) {
