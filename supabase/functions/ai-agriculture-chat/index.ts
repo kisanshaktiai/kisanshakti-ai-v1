@@ -174,15 +174,6 @@ You are speaking with ${farmer.name || 'a farmer'}:
 - Provide season-specific advice
 - Consider typical weather patterns for this time
 - Suggest appropriate crops and activities for this season`;
-        district: farmer.district,
-        state: farmer.state,
-        language: farmer.language || language
-      };
-      systemPrompt += `\n\nFARMER CONTEXT:
-- Name: ${farmer.name || 'Farmer'}
-- Location: ${farmer.district || 'Unknown'}, ${farmer.state || 'India'}
-- Total Land: ${farmer.total_land_size || 'Unknown'} acres`;
-    }
 
     // Prepare messages for OpenAI - simple format
     const openAIMessages = [
