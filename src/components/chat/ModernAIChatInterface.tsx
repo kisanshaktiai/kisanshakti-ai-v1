@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -529,80 +529,81 @@ export function ModernAIChatInterface() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      {/* Header with AI Title and Land Cards */}
-      <div className="bg-background/95 backdrop-blur-lg border-b shadow-sm">
-        <div className="px-3 py-2">
-          {/* AI Assistant Title */}
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <Bot className="w-4 h-4 text-primary" />
-              <h2 className="text-sm font-semibold">AI Farming Assistant</h2>
-            </div>
-            <Badge variant={isOnline ? 'default' : 'secondary'} className="text-xs">
-              {isOnline ? 'Online' : 'Offline'}
-            </Badge>
+    <div className="flex flex-col h-screen bg-[#e8ddd4]">
+      {/* WhatsApp-style Header */}
+      <div className="bg-[#075e54] text-white shadow-md">
+        <div className="flex items-center gap-3 px-3 py-2">
+          {/* Back Button */}
+          <button 
+            onClick={() => window.history.back()} 
+            className="p-1.5 hover:bg-white/10 rounded-full transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          
+          {/* AI Avatar */}
+          <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+            <Bot className="w-6 h-6" />
           </div>
           
-          {/* Land Selection - Tiny Cards */}
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
-            {/* General/All Lands Option */}
-            <button
-              onClick={() => selectLand(null)}
-              className={cn(
-                "shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
-                !selectedLand 
-                  ? "bg-primary text-primary-foreground shadow-sm" 
-                  : "bg-card hover:bg-muted border"
-              )}
-            >
-              <div className="flex items-center gap-1.5">
-                <Layers className="w-3 h-3" />
-                <span>General</span>
-              </div>
-            </button>
-
-            {/* Individual Land Cards - Tiny */}
-            {lands && lands.length > 0 ? (
-              lands.map((land) => (
+          {/* Title */}
+          <div className="flex-1">
+            <h2 className="font-semibold text-base">AI Farming Assistant</h2>
+            <p className="text-xs opacity-90">{isOnline ? 'Online' : 'Offline'}</p>
+          </div>
+          
+          {/* Menu */}
+          <button className="p-2 hover:bg-white/10 rounded-full transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+            </svg>
+          </button>
+        </div>
+        
+        {/* Land Selection with horizontal scroll */}
+        {lands.length > 0 && (
+          <div className="px-3 pb-2">
+            <ScrollArea className="w-full">
+              <div className="flex gap-2 pb-1">
                 <button
-                  key={land.id}
-                  onClick={() => selectLand(land)}
+                  onClick={() => selectLand(null)}
                   className={cn(
-                    "shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
-                    selectedLand?.id === land.id
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "bg-card hover:bg-muted border"
+                    "flex items-center gap-1.5 px-3 py-1 rounded-full transition-all whitespace-nowrap text-xs font-medium",
+                    !selectedLand 
+                      ? "bg-white text-[#075e54]" 
+                      : "bg-white/20 text-white hover:bg-white/30"
                   )}
                 >
-                  <div className="flex items-center gap-1.5">
-                    <Sprout className="w-3 h-3" />
-                    <span className="max-w-[80px] truncate">{land.name}</span>
-                    {land.area_acres && (
-                      <span className="text-[10px] opacity-70">
-                        {land.area_acres}ac
-                      </span>
-                    )}
-                  </div>
+                  <Home className="w-3 h-3" />
+                  <span>General</span>
                 </button>
-              ))
-            ) : (
-              <button
-                onClick={() => window.location.href = '/lands/add'}
-                className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all bg-card hover:bg-muted border border-dashed"
-              >
-                <div className="flex items-center gap-1.5">
-                  <Plus className="w-3 h-3" />
-                  <span>Add Land</span>
-                </div>
-              </button>
-            )}
+                
+                {lands.map((land) => (
+                  <button
+                    key={land.id}
+                    onClick={() => selectLand(land)}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1 rounded-full transition-all whitespace-nowrap text-xs font-medium",
+                      selectedLand?.id === land.id
+                        ? "bg-white text-[#075e54]"
+                        : "bg-white/20 text-white hover:bg-white/30"
+                    )}
+                  >
+                    <MapPin className="w-3 h-3" />
+                    <span>{land.name || `${land.area_acres || 0} acres`}</span>
+                  </button>
+                ))}
+              </div>
+              <ScrollBar orientation="horizontal" className="hidden" />
+            </ScrollArea>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Full Screen Chat Messages Area */}
-      <ScrollArea className="flex-1 px-4" ref={scrollAreaRef}>
+      {/* Messages area */}
+      <ScrollArea className="flex-1 px-2" ref={scrollAreaRef}>
         <div className="py-4 space-y-4 max-w-4xl mx-auto">
           <AnimatePresence mode="popLayout">
             {messages.map((message) => (
@@ -808,21 +809,21 @@ export function ModernAIChatInterface() {
           </div>
         )}
         
-        <div className="p-3">
-          <div className="flex items-center gap-2 max-w-4xl mx-auto">
-            {/* WhatsApp-style input container */}
-            <div className="flex-1 flex items-center bg-background border border-border rounded-full shadow-sm">
-              {/* Emoji Button */}
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-10 w-10 rounded-full hover:bg-transparent"
-                title="Emoji"
-              >
-                <span className="text-xl">😊</span>
-              </Button>
-              
-              {/* Text Input */}
+        {/* WhatsApp-style Input Area */}
+        <div className="bg-[#f0f2f5] px-3 py-2">
+          <div className="flex items-center gap-2">
+            {/* Emoji Button */}
+            <button className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+              <svg className="w-5 h-5 text-[#54656f]" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5"/>
+                <path d="M8 14s1.5 2 4 2 4-2 4-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                <circle cx="9" cy="9" r="1" fill="currentColor"/>
+                <circle cx="15" cy="9" r="1" fill="currentColor"/>
+              </svg>
+            </button>
+            
+            {/* Input Container */}
+            <div className="flex-1 flex items-center bg-white rounded-3xl shadow-sm">
               <input
                 type="text"
                 value={inputMessage}
@@ -834,80 +835,65 @@ export function ModernAIChatInterface() {
                   }
                 }}
                 placeholder="Type a message"
-                className="flex-1 bg-transparent px-2 py-2.5 focus:outline-none placeholder:text-muted-foreground text-sm"
+                className="flex-1 px-4 py-2 bg-transparent focus:outline-none text-sm"
               />
               
               {/* Attachment Button */}
-              <Button
-                size="icon"
-                variant="ghost"
+              <button 
                 onClick={() => imageInputRef.current?.click()}
-                className="h-10 w-10 rounded-full hover:bg-transparent"
-                title="Attach file"
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors mr-1"
               >
-                <svg className="w-5 h-5 text-muted-foreground" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M11.5 22C10.1193 22 8.81451 21.4504 7.87513 20.5096C6.93576 19.5688 6.38571 18.3459 6.38571 16.9583V7.04167C6.38571 6.13748 6.73959 5.26815 7.3751 4.63179C8.01061 3.99544 8.87971 3.64583 9.78571 3.64583C10.6917 3.64583 11.5608 3.99544 12.1963 4.63179C12.8318 5.26815 13.1857 6.13748 13.1857 7.04167V15.7917C13.1857 16.2612 13.0086 16.7116 12.6906 17.0304C12.3727 17.3492 11.9382 17.5208 11.5 17.5208C11.0618 17.5208 10.6273 17.3492 10.3094 17.0304C9.99143 16.7116 9.81429 16.2612 9.81429 15.7917V7.91667H11.5V15.7917H13.1857V7.04167C13.1857 6.13748 12.8318 5.26815 12.1963 4.63179C11.5608 3.99544 10.6917 3.64583 9.78571 3.64583" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                <svg className="w-4 h-4 text-[#54656f] transform rotate-45" viewBox="0 0 24 24" fill="none">
+                  <path d="M11.5 22C10.12 22 8.82 21.45 7.88 20.51C6.94 19.57 6.39 18.35 6.39 16.96V7.04C6.39 6.14 6.74 5.27 7.38 4.63C8.01 4 8.88 3.65 9.79 3.65C10.69 3.65 11.56 4 12.2 4.63C12.83 5.27 13.19 6.14 13.19 7.04V15.79C13.19 16.26 13.01 16.71 12.69 17.03C12.37 17.35 11.94 17.52 11.5 17.52C11.06 17.52 10.63 17.35 10.31 17.03C9.99 16.71 9.81 16.26 9.81 15.79V7.92H11.5V15.79H13.19V7.04C13.19 6.14 12.83 5.27 12.2 4.63C11.56 4 10.69 3.65 9.79 3.65" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
-              </Button>
+              </button>
               
               {/* Camera Button */}
-              <Button
-                size="icon"
-                variant="ghost"
+              <button 
                 onClick={handleCameraCapture}
-                className="h-10 w-10 rounded-full hover:bg-transparent"
-                title="Camera"
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors mr-2"
               >
-                <Camera className="w-5 h-5 text-muted-foreground" />
-              </Button>
-              
-              {/* Hidden inputs */}
-              <input
-                ref={imageInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                className="hidden"
-              />
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf,.doc,.docx,.txt"
-                onChange={handleFileUpload}
-                className="hidden"
-              />
+                <Camera className="w-4 h-4 text-[#54656f]" />
+              </button>
             </div>
             
-            {/* Send/Voice Button - WhatsApp style */}
-            {inputMessage.trim() || uploadedImage || uploadedFile ? (
-              <Button
-                onClick={sendMessage}
-                disabled={isLoading}
-                size="icon"
-                className="h-10 w-10 rounded-full bg-green-500 hover:bg-green-600 shadow-sm transition-colors"
-              >
-                {isLoading ? (
-                  <Loader2 className="w-5 h-5 text-white animate-spin" />
-                ) : (
-                  <Send className="w-5 h-5 text-white" />
-                )}
-              </Button>
-            ) : (
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={toggleListening}
-                className={cn(
-                  "h-10 w-10 rounded-full transition-colors",
-                  isListening 
-                    ? "bg-red-500 hover:bg-red-600 animate-pulse" 
-                    : "bg-green-500 hover:bg-green-600"
-                )}
-                title={isListening ? "Stop Recording" : "Hold to record"}
-              >
+            {/* Send/Voice Button */}
+            <button
+              onClick={inputMessage.trim() ? sendMessage : toggleListening}
+              disabled={isLoading}
+              className={cn(
+                "p-2.5 rounded-full transition-all shadow-sm",
+                inputMessage.trim() 
+                  ? "bg-[#25d366] hover:bg-[#128c7e]" 
+                  : isListening 
+                    ? "bg-red-500 hover:bg-red-600 animate-pulse"
+                    : "bg-[#008069] hover:bg-[#017561]"
+              )}
+            >
+              {isLoading ? (
+                <Loader2 className="w-5 h-5 text-white animate-spin" />
+              ) : inputMessage.trim() ? (
+                <Send className="w-5 h-5 text-white" />
+              ) : (
                 <Mic className="w-5 h-5 text-white" />
-              </Button>
-            )}
+              )}
+            </button>
+            
+            {/* Hidden inputs */}
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.doc,.docx,.txt"
+              onChange={handleFileUpload}
+              className="hidden"
+            />
           </div>
         </div>
       </div>

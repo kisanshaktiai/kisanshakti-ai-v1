@@ -118,11 +118,14 @@ INSTRUCTIONS:
         .single();
 
       if (land) {
+        landDetails = land;
         landContext = {
           name: land.name,
-          size: land.size,
+          size: land.size || land.area_gunta,
           soil_type: land.soil_type,
-          location: land.location
+          location: land.location,
+          crops: land.crops,
+          water_source: land.water_source
         };
         
         systemPrompt += `\n\nLAND DETAILS:
@@ -136,12 +139,20 @@ INSTRUCTIONS:
     // Get farmer context
     const { data: farmer } = await supabase
       .from('farmers')
-      .select('name, district, state, total_land_size')
+      .select('*')
       .eq('id', finalFarmerId)
       .eq('tenant_id', finalTenantId)
       .single();
 
     if (farmer) {
+      farmerDetails = farmer;
+      farmerContext = {
+        name: farmer.name,
+        village: farmer.village,
+        district: farmer.district,
+        state: farmer.state,
+        language: farmer.language || language
+      };
       systemPrompt += `\n\nFARMER CONTEXT:
 - Name: ${farmer.name || 'Farmer'}
 - Location: ${farmer.district || 'Unknown'}, ${farmer.state || 'India'}
