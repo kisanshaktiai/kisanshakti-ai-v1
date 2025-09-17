@@ -17,7 +17,9 @@ import { landsApi } from '@/services/landsApi';
 import { 
   Send, Mic, MicOff, ImageIcon, Volume2, VolumeX, Camera, FileUp,
   Bot, User, Loader2, X, Sprout, Layers, MapPin, Check, ScanLine, Plus,
-  Wheat, CloudRain, TreePine, Home
+  Wheat, CloudRain, TreePine, Home, MessageSquare, Sparkles, ChevronLeft,
+  Paperclip, Smile, MoreVertical, Phone, Video, Search, Settings, Copy,
+  ThumbsUp, ThumbsDown, RefreshCw, Download, Share2, Maximize2
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -35,6 +37,9 @@ interface Message {
   }[];
   suggestions?: string[];
   metadata?: any;
+  isTyping?: boolean;
+  status?: 'sending' | 'sent' | 'error';
+  feedback?: 'positive' | 'negative';
 }
 
 interface Land {
@@ -46,6 +51,61 @@ interface Land {
   location?: string;
   [key: string]: any;
 }
+
+// Quick Actions Component
+const QuickActions = ({ onActionClick }: { onActionClick: (action: string) => void }) => {
+  const quickActions = [
+    { icon: CloudRain, label: 'Weather', query: 'What\'s the weather forecast for my area?' },
+    { icon: Wheat, label: 'Crop Care', query: 'How should I care for my crops this week?' },
+    { icon: TreePine, label: 'Pest Control', query: 'How to identify and control common pests?' },
+    { icon: Sparkles, label: 'Fertilizer', query: 'What fertilizer should I use now?' },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 gap-2 p-3">
+      {quickActions.map((action, idx) => (
+        <button
+          key={idx}
+          onClick={() => onActionClick(action.query)}
+          className="flex items-center gap-3 p-3 rounded-2xl bg-gradient-to-r from-white/80 to-white/60 backdrop-blur-sm border border-white/50 shadow-sm hover:shadow-md hover:scale-105 transition-all duration-200"
+        >
+          <div className="p-2 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10">
+            <action.icon className="w-4 h-4 text-primary" />
+          </div>
+          <span className="text-xs font-medium text-gray-700">{action.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+};
+
+// Typing Indicator Component
+const TypingIndicator = () => (
+  <div className="flex items-center gap-2 p-3">
+    <Avatar className="w-8 h-8">
+      <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80">
+        <Bot className="w-4 h-4 text-white" />
+      </AvatarFallback>
+    </Avatar>
+    <div className="flex gap-1 p-3 rounded-2xl bg-gray-100">
+      <motion.div
+        className="w-2 h-2 rounded-full bg-gray-400"
+        animate={{ y: [0, -5, 0] }}
+        transition={{ duration: 0.5, repeat: Infinity, delay: 0 }}
+      />
+      <motion.div
+        className="w-2 h-2 rounded-full bg-gray-400"
+        animate={{ y: [0, -5, 0] }}
+        transition={{ duration: 0.5, repeat: Infinity, delay: 0.1 }}
+      />
+      <motion.div
+        className="w-2 h-2 rounded-full bg-gray-400"
+        animate={{ y: [0, -5, 0] }}
+        transition={{ duration: 0.5, repeat: Infinity, delay: 0.2 }}
+      />
+    </div>
+  </div>
+);
 
 export function ModernAIChatInterface() {
   const { t, i18n } = useTranslation();
@@ -64,6 +124,8 @@ export function ModernAIChatInterface() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [sessionId, setSessionId] = useState<string>(crypto.randomUUID());
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
+  const [showQuickActions, setShowQuickActions] = useState(true);
+  const [expandedView, setExpandedView] = useState(false);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -97,7 +159,6 @@ export function ModernAIChatInterface() {
     if (selectedLand) {
       loadChatSession(selectedLand.id);
     } else {
-      // Load general chat session
       loadChatSession(null);
     }
   }, [selectedLand]);
@@ -113,7 +174,6 @@ export function ModernAIChatInterface() {
 
       console.log('Loading chat session for land:', landId, 'Session:', session);
       
-      // Use null for general chat, actual land_id for land-specific
       const searchLandId = landId || null;
       
       // Try to find existing session
@@ -133,7 +193,6 @@ export function ModernAIChatInterface() {
         }
         existingSession = data;
       } else {
-        // For general chat, check for null land_id
         const { data, error } = await supabase
           .from('ai_chat_sessions')
           .select('*')
@@ -179,17 +238,14 @@ export function ModernAIChatInterface() {
               landId: landContext?.land_id,
               landName: landContext?.land_name,
               suggestions: Array.isArray(landContext?.quick_replies) ? landContext.quick_replies : undefined,
-              attachments: attachmentsData
+              attachments: attachmentsData,
+              status: 'sent'
             };
           }));
+          setShowQuickActions(false);
         } else {
-          // No messages in database, check local cache
-          const cachedMessages = JSON.parse(localStorage.getItem(`chat_messages_${landId || 'general'}`) || '[]');
-          if (cachedMessages.length > 0) {
-            setMessages(cachedMessages);
-          } else {
-            showWelcomeCard(landId);
-          }
+          // No messages, show welcome
+          showWelcomeMessage(landId);
         }
       } else {
         // Create new session
@@ -217,17 +273,16 @@ export function ModernAIChatInterface() {
           setSessionId(newSessionId);
         }
         
-        // Show welcome card for this land
-        showWelcomeCard(landId);
+        showWelcomeMessage(landId);
       }
     } catch (error) {
       console.error('Error in loadChatSession:', error);
-      showWelcomeCard(landId);
+      showWelcomeMessage(landId);
     }
   };
 
-  // Show welcome card when switching lands
-  const showWelcomeCard = (landId: string | null) => {
+  // Show welcome message
+  const showWelcomeMessage = (landId: string | null) => {
     const land = lands.find(l => l.id === landId);
     
     const welcomeMessage: Message = {
@@ -239,10 +294,12 @@ export function ModernAIChatInterface() {
       timestamp: new Date(),
       suggestions: land 
         ? ['Check weather', 'Irrigation schedule', 'Pest control', 'Fertilizer advice']
-        : ['Weather forecast', 'Pest control', 'Fertilizer guide', 'Crop calendar']
+        : ['Weather forecast', 'Pest control', 'Fertilizer guide', 'Crop calendar'],
+      status: 'sent'
     };
     
     setMessages([welcomeMessage]);
+    setShowQuickActions(true);
   };
 
   // Auto-scroll to bottom
@@ -250,14 +307,13 @@ export function ModernAIChatInterface() {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Load user's lands using lands-api for proper tenant isolation
+  // Load user's lands
   const loadLands = async () => {
     try {
       console.log('Loading lands using lands-api...');
       const landsData = await landsApi.fetchLands();
       console.log('Lands data received:', landsData);
       
-      // Filter and map lands data
       const validLands = (landsData || []).filter(land => land.id).map(land => ({
         id: land.id!,
         name: land.name || 'Unnamed Land',
@@ -270,11 +326,9 @@ export function ModernAIChatInterface() {
       console.log('Valid lands processed:', validLands);
       setLands(validLands);
       
-      // Cache for offline
       if (validLands.length > 0) {
         localStorage.setItem('cached_lands_ai', JSON.stringify(validLands));
       } else {
-        // If no lands, check if we have cached lands
         const cachedLands = localStorage.getItem('cached_lands_ai');
         if (cachedLands) {
           const parsed = JSON.parse(cachedLands);
@@ -284,7 +338,6 @@ export function ModernAIChatInterface() {
       }
     } catch (error) {
       console.error('Error loading lands:', error);
-      // Load from cache if offline or error
       const cachedLands = localStorage.getItem('cached_lands_ai');
       if (cachedLands) {
         setLands(JSON.parse(cachedLands));
@@ -295,7 +348,6 @@ export function ModernAIChatInterface() {
   // Handle land selection
   const selectLand = (land: Land | null) => {
     setSelectedLand(land);
-    // Session loading will trigger from useEffect
   };
 
   // Handle TTS for individual messages
@@ -310,9 +362,34 @@ export function ModernAIChatInterface() {
     }
   };
 
+  // Copy message
+  const copyMessage = (content: string) => {
+    navigator.clipboard.writeText(content);
+    toast({
+      description: 'Message copied to clipboard',
+      duration: 2000
+    });
+  };
+
+  // Regenerate response
+  const regenerateResponse = async () => {
+    if (messages.length < 2) return;
+    
+    const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+    if (lastUserMessage) {
+      // Remove last assistant message
+      setMessages(prev => prev.filter(m => m.id !== messages[messages.length - 1].id));
+      // Resend the user message
+      await sendMessage(lastUserMessage.content);
+    }
+  };
+
   // Send message
-  const sendMessage = async () => {
-    if (!inputMessage.trim() && !uploadedImage && !uploadedFile) return;
+  const sendMessage = async (messageText?: string) => {
+    const textToSend = messageText || inputMessage;
+    if (!textToSend.trim() && !uploadedImage && !uploadedFile) return;
+
+    setShowQuickActions(false);
 
     // Prepare attachments
     const attachments: Message['attachments'] = [];
@@ -334,11 +411,12 @@ export function ModernAIChatInterface() {
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: inputMessage,
+      content: textToSend,
       timestamp: new Date(),
       landId: selectedLand?.id,
       landName: selectedLand?.name,
-      attachments: attachments.length > 0 ? attachments : undefined
+      attachments: attachments.length > 0 ? attachments : undefined,
+      status: 'sending'
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -348,7 +426,14 @@ export function ModernAIChatInterface() {
     setIsLoading(true);
     setIsTyping(true);
     
-    // Cache message locally for offline support
+    // Update message status
+    setTimeout(() => {
+      setMessages(prev => prev.map(m => 
+        m.id === userMessage.id ? { ...m, status: 'sent' } : m
+      ));
+    }, 500);
+    
+    // Cache message locally
     const cachedMessages = JSON.parse(localStorage.getItem(`chat_messages_${selectedLand?.id || 'general'}`) || '[]');
     cachedMessages.push(userMessage);
     localStorage.setItem(`chat_messages_${selectedLand?.id || 'general'}`, JSON.stringify(cachedMessages));
@@ -362,7 +447,6 @@ export function ModernAIChatInterface() {
         const newSessionId = crypto.randomUUID();
         console.log('Creating new session for message:', newSessionId);
         
-        // Create session in database
         const { error: sessionError } = await supabase.from('ai_chat_sessions').insert({
           id: newSessionId,
           tenant_id: session?.tenantId,
@@ -372,7 +456,7 @@ export function ModernAIChatInterface() {
           session_title: selectedLand ? `Chat about ${selectedLand.name}` : 'General farming chat',
           metadata: {
             language: i18n.language,
-            initial_message: inputMessage
+            initial_message: textToSend
           }
         });
         
@@ -392,12 +476,12 @@ export function ModernAIChatInterface() {
             content: msg.content
           })).concat({
             role: 'user',
-            content: inputMessage
+            content: textToSend
           }),
           landId: selectedLand?.id,
           imageUrl: uploadedImage,
           fileContent: uploadedFile ? await uploadedFile.text() : undefined,
-          sessionId: currentSessionId,  // Use currentSessionId here
+          sessionId: currentSessionId,
           tenantId: session?.tenantId,
           farmerId: session?.farmerId,
           language: i18n.language
@@ -413,15 +497,16 @@ export function ModernAIChatInterface() {
         timestamp: new Date(),
         landId: selectedLand?.id,
         landName: selectedLand?.name,
-        suggestions: data.quickReplies
+        suggestions: data.quickReplies,
+        status: 'sent'
       };
 
       setMessages(prev => [...prev, assistantMessage]);
       
-      // Cache AI response locally
-      const cachedMessages = JSON.parse(localStorage.getItem(`chat_messages_${selectedLand?.id || 'general'}`) || '[]');
-      cachedMessages.push(assistantMessage);
-      localStorage.setItem(`chat_messages_${selectedLand?.id || 'general'}`, JSON.stringify(cachedMessages));
+      // Cache AI response
+      const updatedCache = JSON.parse(localStorage.getItem(`chat_messages_${selectedLand?.id || 'general'}`) || '[]');
+      updatedCache.push(assistantMessage);
+      localStorage.setItem(`chat_messages_${selectedLand?.id || 'general'}`, JSON.stringify(updatedCache));
       
       // Update session's last activity
       await supabase
@@ -436,7 +521,7 @@ export function ModernAIChatInterface() {
         })
         .eq('id', currentSessionId);
       
-      // Save analytics data
+      // Save analytics
       const today = new Date().toISOString().split('T')[0];
       await supabase
         .from('ai_chat_analytics')
@@ -470,7 +555,8 @@ export function ModernAIChatInterface() {
         content: isOnline 
           ? 'I apologize, but I encountered an error. Please try again.'
           : 'You are offline. Some features may be limited.',
-        timestamp: new Date()
+        timestamp: new Date(),
+        status: 'error'
       };
       setMessages(prev => [...prev, errorMessage]);
       
@@ -528,56 +614,89 @@ export function ModernAIChatInterface() {
     input.click();
   };
 
+  // Handle quick action
+  const handleQuickAction = (query: string) => {
+    setInputMessage(query);
+    sendMessage(query);
+  };
+
+  // Handle message feedback
+  const handleFeedback = (messageId: string, feedback: 'positive' | 'negative') => {
+    setMessages(prev => prev.map(m => 
+      m.id === messageId ? { ...m, feedback } : m
+    ));
+    
+    toast({
+      description: 'Thank you for your feedback!',
+      duration: 2000
+    });
+  };
+
   return (
-    <div className="flex flex-col h-screen bg-[#e8ddd4]">
-      {/* WhatsApp-style Header */}
-      <div className="bg-[#075e54] text-white shadow-md">
-        <div className="flex items-center gap-3 px-3 py-2">
-          {/* Back Button */}
-          <button 
-            onClick={() => window.history.back()} 
-            className="p-1.5 hover:bg-white/10 rounded-full transition-colors"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-          
-          {/* AI Avatar */}
-          <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-            <Bot className="w-6 h-6" />
+    <div className={cn(
+      "flex flex-col h-screen bg-gradient-to-b from-[#e5f4e3] via-[#f0f8ef] to-white",
+      expandedView && "fixed inset-0 z-50"
+    )}>
+      {/* Modern Header with Glass Effect */}
+      <div className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 shadow-sm">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => window.history.back()} 
+              className="p-2 hover:bg-gray-100 rounded-full transition-all"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            
+            <div className="relative">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center shadow-md">
+                <Bot className="w-6 h-6 text-white" />
+              </div>
+              <div className={cn(
+                "absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-white",
+                isOnline ? "bg-green-500" : "bg-gray-400"
+              )} />
+            </div>
+            
+            <div>
+              <h2 className="font-semibold text-gray-900">AI Farm Assistant</h2>
+              <p className="text-xs text-gray-500">{isOnline ? 'Online' : 'Offline'} • {isTyping ? 'Typing...' : 'Active now'}</p>
+            </div>
           </div>
           
-          {/* Title */}
-          <div className="flex-1">
-            <h2 className="font-semibold text-base">AI Farming Assistant</h2>
-            <p className="text-xs opacity-90">{isOnline ? 'Online' : 'Offline'}</p>
+          <div className="flex items-center gap-2">
+            <button className="p-2 hover:bg-gray-100 rounded-full transition-all">
+              <Search className="w-5 h-5 text-gray-600" />
+            </button>
+            <button 
+              onClick={() => setExpandedView(!expandedView)}
+              className="p-2 hover:bg-gray-100 rounded-full transition-all"
+            >
+              <Maximize2 className="w-5 h-5 text-gray-600" />
+            </button>
+            <button className="p-2 hover:bg-gray-100 rounded-full transition-all">
+              <MoreVertical className="w-5 h-5 text-gray-600" />
+            </button>
           </div>
-          
-          {/* Menu */}
-          <button className="p-2 hover:bg-white/10 rounded-full transition-colors">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
-            </svg>
-          </button>
         </div>
         
-        {/* Land Selection with horizontal scroll */}
+        {/* Land Selection Pills */}
         {lands.length > 0 && (
-          <div className="px-3 pb-2">
+          <div className="px-4 pb-3">
             <ScrollArea className="w-full">
-              <div className="flex gap-2 pb-1">
+              <div className="flex gap-2">
                 <button
                   onClick={() => selectLand(null)}
                   className={cn(
-                    "flex items-center gap-1.5 px-3 py-1 rounded-full transition-all whitespace-nowrap text-xs font-medium",
+                    "px-4 py-2 rounded-full text-xs font-medium transition-all whitespace-nowrap",
+                    "hover:scale-105 transform",
                     !selectedLand 
-                      ? "bg-white text-[#075e54]" 
-                      : "bg-white/20 text-white hover:bg-white/30"
+                      ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md" 
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                   )}
                 >
-                  <Home className="w-3 h-3" />
-                  <span>General</span>
+                  <Home className="w-3 h-3 inline mr-1" />
+                  General
                 </button>
                 
                 {lands.map((land) => (
@@ -585,14 +704,15 @@ export function ModernAIChatInterface() {
                     key={land.id}
                     onClick={() => selectLand(land)}
                     className={cn(
-                      "flex items-center gap-1.5 px-3 py-1 rounded-full transition-all whitespace-nowrap text-xs font-medium",
+                      "px-4 py-2 rounded-full text-xs font-medium transition-all whitespace-nowrap",
+                      "hover:scale-105 transform",
                       selectedLand?.id === land.id
-                        ? "bg-white text-[#075e54]"
-                        : "bg-white/20 text-white hover:bg-white/30"
+                        ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                     )}
                   >
-                    <MapPin className="w-3 h-3" />
-                    <span>{land.name || `${land.area_acres || 0} acres`}</span>
+                    <MapPin className="w-3 h-3 inline mr-1" />
+                    {land.name || `${land.area_acres || 0} acres`}
                   </button>
                 ))}
               </div>
@@ -602,151 +722,210 @@ export function ModernAIChatInterface() {
         )}
       </div>
 
-      {/* Messages area */}
-      <ScrollArea className="flex-1 px-2" ref={scrollAreaRef}>
-        <div className="py-4 space-y-4 max-w-4xl mx-auto">
+      {/* Messages Area with Enhanced Styling */}
+      <ScrollArea className="flex-1 px-3 py-4" ref={scrollAreaRef}>
+        <div className="max-w-4xl mx-auto space-y-4">
+          {/* Show Quick Actions when no messages */}
+          {showQuickActions && messages.length <= 1 && (
+            <QuickActions onActionClick={handleQuickAction} />
+          )}
+          
           <AnimatePresence mode="popLayout">
-            {messages.map((message) => (
+            {messages.map((message, index) => (
               <motion.div
                 key={message.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3 }}
+                initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
                 className={cn(
                   "flex gap-3",
                   message.role === 'user' ? 'justify-end' : 'justify-start'
                 )}
               >
                 {message.role === 'assistant' && (
-                  <Avatar className="w-8 h-8 shrink-0">
-                    <AvatarFallback className="bg-primary text-primary-foreground">
-                      <Bot className="w-4 h-4" />
+                  <Avatar className="w-8 h-8 shadow-sm">
+                    <AvatarFallback className="bg-gradient-to-br from-green-400 to-green-600">
+                      <Bot className="w-4 h-4 text-white" />
                     </AvatarFallback>
                   </Avatar>
                 )}
                 
                 <div className={cn(
-                  "max-w-[85%] space-y-2",
+                  "max-w-[85%] md:max-w-[70%] space-y-2",
                   message.role === 'user' ? 'items-end' : 'items-start'
                 )}>
-                {message.role === 'system' ? (
-                    <div className="text-xs text-center text-muted-foreground py-1">
+                  {message.role === 'system' ? (
+                    <div className="text-xs text-center text-gray-500 py-1">
                       {message.content}
                     </div>
                   ) : message.id.startsWith('welcome') ? (
-                    // Welcome Card with enhanced styling
-                    <Card className="p-4 bg-gradient-to-br from-primary/10 to-primary/5 border-primary/20">
-                      <div className="flex items-start gap-3">
-                        <div className="p-2 rounded-lg bg-primary/10">
-                          {selectedLand ? <Wheat className="w-4 h-4 text-primary" /> : <Home className="w-4 h-4 text-primary" />}
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-sm font-medium mb-2 whitespace-pre-wrap">{message.content}</p>
-                          {message.suggestions && (
-                            <div className="flex flex-wrap gap-2 mt-3">
-                              {message.suggestions.map((suggestion, idx) => (
-                                <Button
-                                  key={idx}
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => setInputMessage(suggestion)}
-                                  className="text-xs"
-                                >
-                                  {suggestion}
-                                </Button>
-                              ))}
-                            </div>
-                          )}
+                    // Enhanced Welcome Card
+                    <motion.div
+                      initial={{ scale: 0.9 }}
+                      animate={{ scale: 1 }}
+                      className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-green-50 to-blue-50 p-5 shadow-lg border border-green-200/50"
+                    >
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-green-200/30 to-blue-200/30 rounded-full blur-3xl" />
+                      <div className="relative">
+                        <div className="flex items-start gap-3">
+                          <div className="p-2 rounded-xl bg-white/80 shadow-sm">
+                            {selectedLand ? <Wheat className="w-5 h-5 text-green-600" /> : <Home className="w-5 h-5 text-green-600" />}
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-gray-800 mb-3 whitespace-pre-wrap">{message.content}</p>
+                            {message.suggestions && (
+                              <div className="flex flex-wrap gap-2">
+                                {message.suggestions.map((suggestion, idx) => (
+                                  <button
+                                    key={idx}
+                                    onClick={() => {
+                                      setInputMessage(suggestion);
+                                      sendMessage(suggestion);
+                                    }}
+                                    className="px-3 py-1.5 text-xs font-medium bg-white/80 hover:bg-white text-green-700 rounded-full border border-green-200 shadow-sm hover:shadow-md transition-all hover:scale-105"
+                                  >
+                                    {suggestion}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </Card>
+                    </motion.div>
                   ) : (
-                    <Card className={cn(
-                      "p-3 shadow-sm",
-                      message.role === 'user' 
-                        ? 'bg-primary text-primary-foreground ml-auto' 
-                        : 'bg-card'
+                    <div className={cn(
+                      "relative group",
+                      message.role === 'user' ? 'ml-auto' : ''
                     )}>
-                      {message.landName && (
-                        <div className="flex items-center gap-1 mb-2 text-xs opacity-70">
-                          <MapPin className="w-3 h-3" />
-                          {message.landName}
-                        </div>
-                      )}
-                      
-                      <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                      
-                      {message.attachments && message.attachments.length > 0 && (
-                        <div className="mt-2 space-y-2">
-                          {message.attachments.map((attachment, idx) => (
-                            attachment.type === 'image' ? (
-                              <img 
+                      <div className={cn(
+                        "rounded-2xl px-4 py-3 shadow-sm",
+                        message.role === 'user' 
+                          ? 'bg-gradient-to-r from-green-500 to-green-600 text-white' 
+                          : 'bg-white border border-gray-200',
+                        message.status === 'error' && 'border-red-300 bg-red-50'
+                      )}>
+                        {message.landName && (
+                          <div className="flex items-center gap-1 mb-2 text-xs opacity-80">
+                            <MapPin className="w-3 h-3" />
+                            {message.landName}
+                          </div>
+                        )}
+                        
+                        <p className={cn(
+                          "text-sm whitespace-pre-wrap",
+                          message.role === 'assistant' && 'text-gray-800'
+                        )}>{message.content}</p>
+                        
+                        {message.attachments && message.attachments.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            {message.attachments.map((attachment, idx) => (
+                              attachment.type === 'image' ? (
+                                <img 
+                                  key={idx}
+                                  src={attachment.url} 
+                                  alt={attachment.name}
+                                  className="rounded-xl max-h-48 object-cover shadow-md"
+                                />
+                              ) : (
+                                <div key={idx} className="flex items-center gap-2 p-2 rounded-lg bg-white/20">
+                                  <FileUp className="w-4 h-4" />
+                                  <span className="text-xs">{attachment.name}</span>
+                                </div>
+                              )
+                            ))}
+                          </div>
+                        )}
+                        
+                        {message.suggestions && (
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {message.suggestions.map((suggestion, idx) => (
+                              <button
                                 key={idx}
-                                src={attachment.url} 
-                                alt={attachment.name}
-                                className="rounded-lg max-h-48 object-cover"
-                              />
-                            ) : (
-                              <div key={idx} className="flex items-center gap-2 p-2 rounded bg-muted/50">
-                                <FileUp className="w-4 h-4" />
-                                <span className="text-xs">{attachment.name}</span>
-                              </div>
-                            )
-                          ))}
-                        </div>
-                      )}
-                      
-                      {message.suggestions && (
-                        <div className="flex flex-wrap gap-2 mt-3">
-                          {message.suggestions.map((suggestion, idx) => (
-                            <Button
-                              key={idx}
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setInputMessage(suggestion)}
-                              className="text-xs"
+                                onClick={() => {
+                                  setInputMessage(suggestion);
+                                  sendMessage(suggestion);
+                                }}
+                                className="px-3 py-1 text-xs bg-white/20 hover:bg-white/30 rounded-full transition-all"
+                              >
+                                {suggestion}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {/* Message Actions */}
+                        {message.role === 'assistant' && (
+                          <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => handleSpeakMessage(message)}
+                              className="p-1 hover:bg-gray-100 rounded transition-all"
+                              title="Read aloud"
                             >
-                              {suggestion}
-                            </Button>
-                          ))}
-                        </div>
-                      )}
-                      
-                      {/* TTS Button for Assistant Messages */}
-                      {message.role === 'assistant' && isTTSSupported && (
-                        <div className="flex justify-end mt-2">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => handleSpeakMessage(message)}
-                            className="h-6 w-6"
-                          >
-                            {speakingMessageId === message.id ? (
-                              <VolumeX className="w-3 h-3" />
-                            ) : (
-                              <Volume2 className="w-3 h-3" />
+                              {speakingMessageId === message.id ? (
+                                <VolumeX className="w-3 h-3 text-gray-500" />
+                              ) : (
+                                <Volume2 className="w-3 h-3 text-gray-500" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => copyMessage(message.content)}
+                              className="p-1 hover:bg-gray-100 rounded transition-all"
+                              title="Copy"
+                            >
+                              <Copy className="w-3 h-3 text-gray-500" />
+                            </button>
+                            {index === messages.length - 1 && (
+                              <button
+                                onClick={regenerateResponse}
+                                className="p-1 hover:bg-gray-100 rounded transition-all"
+                                title="Regenerate"
+                              >
+                                <RefreshCw className="w-3 h-3 text-gray-500" />
+                              </button>
                             )}
-                          </Button>
+                            <button
+                              onClick={() => handleFeedback(message.id, 'positive')}
+                              className={cn(
+                                "p-1 hover:bg-gray-100 rounded transition-all",
+                                message.feedback === 'positive' && "bg-green-100"
+                              )}
+                              title="Good response"
+                            >
+                              <ThumbsUp className="w-3 h-3 text-gray-500" />
+                            </button>
+                            <button
+                              onClick={() => handleFeedback(message.id, 'negative')}
+                              className={cn(
+                                "p-1 hover:bg-gray-100 rounded transition-all",
+                                message.feedback === 'negative' && "bg-red-100"
+                              )}
+                              title="Poor response"
+                            >
+                              <ThumbsDown className="w-3 h-3 text-gray-500" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Status indicator */}
+                      {message.status && (
+                        <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
+                          {message.status === 'sending' && <Loader2 className="w-3 h-3 animate-spin" />}
+                          {message.status === 'sent' && <Check className="w-3 h-3" />}
+                          {message.status === 'error' && <X className="w-3 h-3 text-red-500" />}
+                          <span>{format(message.timestamp, 'HH:mm')}</span>
                         </div>
-                      )}
-                    </Card>
-                  )}
-                  
-                  {message.role !== 'system' && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground px-1">
-                      <span>{format(message.timestamp, 'HH:mm')}</span>
-                      {message.role === 'assistant' && (
-                        <Check className="w-3 h-3 text-success" />
                       )}
                     </div>
                   )}
                 </div>
                 
                 {message.role === 'user' && (
-                  <Avatar className="w-8 h-8 shrink-0">
-                    <AvatarFallback>
-                      <User className="w-4 h-4" />
+                  <Avatar className="w-8 h-8 shadow-sm">
+                    <AvatarFallback className="bg-gradient-to-br from-blue-400 to-blue-600">
+                      <User className="w-4 h-4 text-white" />
                     </AvatarFallback>
                   </Avatar>
                 )}
@@ -754,125 +933,107 @@ export function ModernAIChatInterface() {
             ))}
           </AnimatePresence>
           
-          {isTyping && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex items-center gap-2 text-muted-foreground"
-            >
-              <Bot className="w-4 h-4" />
-              <span className="text-sm">AI is thinking</span>
-              <Loader2 className="w-3 h-3 animate-spin" />
-            </motion.div>
-          )}
+          {/* Typing Indicator */}
+          {isTyping && <TypingIndicator />}
           
           <div ref={messageEndRef} />
         </div>
       </ScrollArea>
 
-      {/* WhatsApp Style Input Area */}
-      <div className="border-t bg-muted/5">
+      {/* Modern Input Area */}
+      <div className="bg-white border-t border-gray-200">
         {/* Upload Previews */}
         {(uploadedImage || uploadedFile) && (
-          <div className="px-4 pt-2 flex items-center gap-2">
+          <div className="px-4 pt-3 flex items-center gap-2">
             {uploadedImage && (
-              <div className="relative inline-block">
+              <div className="relative group">
                 <img 
                   src={uploadedImage} 
                   alt="Upload preview" 
-                  className="h-16 rounded-lg object-cover"
+                  className="h-16 w-16 rounded-lg object-cover shadow-sm"
                 />
-                <Button
-                  size="icon"
-                  variant="destructive"
+                <button
                   onClick={() => setUploadedImage(null)}
-                  className="absolute -top-2 -right-2 h-5 w-5"
+                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <X className="w-3 h-3" />
-                </Button>
+                </button>
               </div>
             )}
             {uploadedFile && (
-              <div className="relative inline-flex items-center gap-2 px-3 py-2 bg-muted rounded-lg">
-                <FileUp className="w-4 h-4" />
-                <span className="text-xs">{uploadedFile.name}</span>
-                <Button
-                  size="icon"
-                  variant="ghost"
+              <div className="relative group flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg">
+                <FileUp className="w-4 h-4 text-gray-600" />
+                <span className="text-xs text-gray-600">{uploadedFile.name}</span>
+                <button
                   onClick={() => setUploadedFile(null)}
-                  className="h-5 w-5"
+                  className="ml-2 text-red-500 hover:text-red-600"
                 >
                   <X className="w-3 h-3" />
-                </Button>
+                </button>
               </div>
             )}
           </div>
         )}
         
-        {/* WhatsApp-style Input Area */}
-        <div className="bg-[#f0f2f5] px-3 py-2">
+        {/* Input Container */}
+        <div className="p-3">
           <div className="flex items-center gap-2">
             {/* Emoji Button */}
-            <button className="p-2 hover:bg-gray-200 rounded-full transition-colors">
-              <svg className="w-5 h-5 text-[#54656f]" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="1.5"/>
-                <path d="M8 14s1.5 2 4 2 4-2 4-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                <circle cx="9" cy="9" r="1" fill="currentColor"/>
-                <circle cx="15" cy="9" r="1" fill="currentColor"/>
-              </svg>
+            <button className="p-2.5 hover:bg-gray-100 rounded-full transition-all">
+              <Smile className="w-5 h-5 text-gray-500" />
             </button>
             
-            {/* Input Container */}
-            <div className="flex-1 flex items-center bg-white rounded-3xl shadow-sm">
-              <input
-                type="text"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    sendMessage();
-                  }
-                }}
-                placeholder="Type a message"
-                className="flex-1 px-4 py-2 bg-transparent focus:outline-none text-sm"
-              />
-              
-              {/* Attachment Button */}
-              <button 
-                onClick={() => imageInputRef.current?.click()}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors mr-1"
-              >
-                <svg className="w-4 h-4 text-[#54656f] transform rotate-45" viewBox="0 0 24 24" fill="none">
-                  <path d="M11.5 22C10.12 22 8.82 21.45 7.88 20.51C6.94 19.57 6.39 18.35 6.39 16.96V7.04C6.39 6.14 6.74 5.27 7.38 4.63C8.01 4 8.88 3.65 9.79 3.65C10.69 3.65 11.56 4 12.2 4.63C12.83 5.27 13.19 6.14 13.19 7.04V15.79C13.19 16.26 13.01 16.71 12.69 17.03C12.37 17.35 11.94 17.52 11.5 17.52C11.06 17.52 10.63 17.35 10.31 17.03C9.99 16.71 9.81 16.26 9.81 15.79V7.92H11.5V15.79H13.19V7.04C13.19 6.14 12.83 5.27 12.2 4.63C11.56 4 10.69 3.65 9.79 3.65" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </button>
-              
-              {/* Camera Button */}
-              <button 
-                onClick={handleCameraCapture}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors mr-2"
-              >
-                <Camera className="w-4 h-4 text-[#54656f]" />
-              </button>
+            {/* Input Field */}
+            <div className="flex-1 relative">
+              <div className="flex items-center bg-gray-100 rounded-full">
+                <input
+                  type="text"
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      sendMessage();
+                    }
+                  }}
+                  placeholder="Type your message..."
+                  className="flex-1 px-4 py-3 bg-transparent focus:outline-none text-sm"
+                  disabled={isLoading}
+                />
+                
+                {/* Attachment Options */}
+                <button 
+                  onClick={() => imageInputRef.current?.click()}
+                  className="p-2 hover:bg-gray-200 rounded-full transition-all mr-1"
+                >
+                  <Paperclip className="w-4 h-4 text-gray-500" />
+                </button>
+                
+                <button 
+                  onClick={handleCameraCapture}
+                  className="p-2 hover:bg-gray-200 rounded-full transition-all mr-2"
+                >
+                  <Camera className="w-4 h-4 text-gray-500" />
+                </button>
+              </div>
             </div>
             
             {/* Send/Voice Button */}
             <button
-              onClick={inputMessage.trim() ? sendMessage : toggleListening}
+              onClick={inputMessage.trim() || uploadedImage || uploadedFile ? () => sendMessage() : toggleListening}
               disabled={isLoading}
               className={cn(
-                "p-2.5 rounded-full transition-all shadow-sm",
-                inputMessage.trim() 
-                  ? "bg-[#25d366] hover:bg-[#128c7e]" 
+                "p-3 rounded-full transition-all shadow-lg hover:scale-110 transform",
+                inputMessage.trim() || uploadedImage || uploadedFile
+                  ? "bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700" 
                   : isListening 
                     ? "bg-red-500 hover:bg-red-600 animate-pulse"
-                    : "bg-[#008069] hover:bg-[#017561]"
+                    : "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
               )}
             >
               {isLoading ? (
                 <Loader2 className="w-5 h-5 text-white animate-spin" />
-              ) : inputMessage.trim() ? (
+              ) : inputMessage.trim() || uploadedImage || uploadedFile ? (
                 <Send className="w-5 h-5 text-white" />
               ) : (
                 <Mic className="w-5 h-5 text-white" />

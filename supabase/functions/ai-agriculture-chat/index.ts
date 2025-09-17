@@ -136,7 +136,7 @@ INSTRUCTIONS:
       }
     }
 
-    // Get farmer context
+    // Get farmer context with enhanced details
     const { data: farmer } = await supabase
       .from('farmers')
       .select('*')
@@ -149,6 +149,31 @@ INSTRUCTIONS:
       farmerContext = {
         name: farmer.name,
         village: farmer.village,
+        district: farmer.district,
+        state: farmer.state,
+        language: farmer.language || language,
+        experience: farmer.farming_experience,
+        education: farmer.education_level
+      };
+      
+      systemPrompt += `\n\nFARMER PROFILE:
+You are speaking with ${farmer.name || 'a farmer'}:
+- Location: ${farmer.village || 'Unknown village'}, ${farmer.district || 'Unknown district'}, ${farmer.state || 'India'}
+- Total Land: ${farmer.total_land_size || 'Unknown'} acres
+- Experience: ${farmer.farming_experience || 'Not specified'} years
+- Preferred Language: ${farmer.language || language}
+- Adjust your advice based on their experience level and location`;
+    }
+    
+    // Add seasonal context
+    const currentMonth = new Date().getMonth() + 1;
+    const season = currentMonth >= 6 && currentMonth <= 10 ? 'Kharif' : 
+                   currentMonth >= 10 || currentMonth <= 3 ? 'Rabi' : 'Zaid';
+    
+    systemPrompt += `\n\nCURRENT SEASON: ${season} season
+- Provide season-specific advice
+- Consider typical weather patterns for this time
+- Suggest appropriate crops and activities for this season`;
         district: farmer.district,
         state: farmer.state,
         language: farmer.language || language
@@ -187,10 +212,11 @@ INSTRUCTIONS:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'claude-3-5-sonnet-20241022', // Using Claude for better natural language
         messages: openAIMessages,
-        max_tokens: 800,
-        temperature: 0.7,
+        max_tokens: 1000,
+        temperature: 0.8, // Slightly higher for more natural responses
+        stream: false
       }),
     });
 
