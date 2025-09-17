@@ -106,6 +106,17 @@ export default function Schedule() {
     try {
       setGenerating(true);
 
+      // First, deactivate any existing active schedules for this land
+      const { error: deactivateError } = await supabase
+        .from('crop_schedules')
+        .update({ is_active: false })
+        .eq('land_id', selectedLand.id)
+        .eq('is_active', true);
+
+      if (deactivateError) {
+        console.error('Error deactivating old schedules:', deactivateError);
+      }
+
       // Fetch weather data if available
       const weatherData = null; // Can be integrated with weather API later
 
@@ -135,8 +146,9 @@ export default function Schedule() {
         if (retryCount < 2) {
           setRetryCount(prev => prev + 1);
           toast({
-            title: 'Retrying...',
-            description: `Attempting again (${retryCount + 1}/2)`,
+            title: '🔄 Retrying...',
+            description: `Generating AI schedule (Attempt ${retryCount + 1}/2)`,
+            className: 'bg-accent/10 border-accent/20',
           });
           // Retry after 2 seconds
           setTimeout(() => {
@@ -151,36 +163,33 @@ export default function Schedule() {
       setRetryCount(0);
       
       toast({
-        title: '✅ Schedule Generated',
-        description: `AI crop schedule created for ${cropName}`,
+        title: '✅ AI Schedule Generated!',
+        description: `Smart farming schedule created for ${cropName}`,
         className: 'bg-success/10 border-success/20',
       });
 
+      // Move directly to schedule view
       setFlowStep('schedule-view');
     } catch (error) {
       console.error('Error generating schedule:', error);
       
       // Show user-friendly error with retry option
       toast({
-        title: 'Generation Failed',
-        description: (
-          <div className="space-y-2">
-            <p>{error instanceof Error ? error.message : 'Failed to generate schedule'}</p>
-            <Button 
-              size="sm" 
-              variant="outline" 
-              onClick={() => {
-                setRetryCount(0);
-                handleCropDateSubmit(cropName, cropVariety, sowingDate);
-              }}
-              className="mt-2"
-            >
-              Try Again
-            </Button>
-          </div>
-        ) as any,
+        title: '❌ Generation Failed',
+        description: error instanceof Error ? error.message : 'Failed to generate schedule',
         variant: 'destructive',
-        duration: 10000,
+        action: (
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={() => {
+              setRetryCount(0);
+              handleCropDateSubmit(cropName, cropVariety, sowingDate);
+            }}
+          >
+            Try Again
+          </Button>
+        ),
       });
     } finally {
       setGenerating(false);
