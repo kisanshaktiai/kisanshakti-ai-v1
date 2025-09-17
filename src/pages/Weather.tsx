@@ -279,8 +279,20 @@ export default function Weather() {
           transition={{ duration: 0.5 }}
           className={`relative bg-gradient-to-br ${getWeatherGradient()} overflow-hidden`}
         >
-          {/* Animated weather particles */}
-          <WeatherAnimation condition={getWeatherCondition()} className="opacity-20" />
+          {/* Animated weather particles - Full Width */}
+          <motion.div 
+            className="absolute inset-0 w-full h-full"
+            animate={{ 
+              opacity: [0.1, 0.3, 0.1],
+            }}
+            transition={{ 
+              duration: 4,
+              repeat: Infinity,
+              ease: "easeInOut"
+            }}
+          >
+            <WeatherAnimation condition={getWeatherCondition()} className="w-full h-full" />
+          </motion.div>
           
           <div className="relative z-10 px-4 pt-4 pb-6">
             {/* Location and Sync Row */}
@@ -327,36 +339,63 @@ export default function Weather() {
               className="flex justify-between items-center"
             >
               <div className="flex-1">
-                <div className="flex items-baseline gap-1">
+                <motion.div 
+                  className="flex items-baseline gap-1"
+                  animate={{ opacity: [0.8, 1, 0.8] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                >
                   <span className="text-6xl font-bold text-foreground">
                     {Math.round(currentWeather.temp)}
                   </span>
                   <span className="text-2xl text-muted-foreground">°C</span>
-                </div>
+                </motion.div>
                 
-                <p className="text-base font-medium capitalize text-foreground/90 mt-1">
+                <motion.p 
+                  className="text-base font-medium capitalize text-foreground/90 mt-1"
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.3 }}
+                >
                   {currentWeather.description}
-                </p>
-                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                </motion.p>
+                <motion.p 
+                  className="text-xs text-muted-foreground flex items-center gap-1 mt-1"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                >
                   <Thermometer className="h-3 w-3" />
                   Feels like {Math.round(currentWeather.feels_like)}°C
-                </p>
+                </motion.p>
               </div>
 
-              {/* Animated Weather Icon */}
+              {/* Animated Weather Icon - Modern AccuWeather Style */}
               <motion.div 
+                initial={{ scale: 0, rotate: -180 }}
                 animate={{ 
-                  rotate: [0, 5, -5, 0],
-                  scale: [1, 1.05, 1]
+                  scale: 1,
+                  rotate: 0,
                 }}
                 transition={{ 
-                  duration: 3,
-                  repeat: Infinity,
-                  repeatType: "reverse"
+                  type: "spring",
+                  stiffness: 200,
+                  damping: 15
                 }}
-                className="p-4 rounded-2xl bg-white/10 backdrop-blur-sm"
               >
-                {getWeatherIcon(currentWeather.main, 'large')}
+                <motion.div
+                  animate={{ 
+                    y: [0, -3, 0],
+                    rotate: [0, 2, -2, 0],
+                  }}
+                  transition={{ 
+                    duration: 4,
+                    repeat: Infinity,
+                    ease: "easeInOut"
+                  }}
+                  className="p-4 rounded-2xl bg-white/10 backdrop-blur-sm"
+                >
+                  {getWeatherIcon(currentWeather.main, 'large')}
+                </motion.div>
               </motion.div>
             </motion.div>
           </div>
