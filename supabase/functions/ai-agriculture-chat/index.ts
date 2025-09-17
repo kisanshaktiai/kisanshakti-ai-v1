@@ -15,37 +15,47 @@ serve(async (req) => {
   try {
     const startTime = Date.now();
     
-    // Get request headers for farmer context
-    const tenantId = req.headers.get('x-tenant-id');
-    const farmerId = req.headers.get('x-farmer-id');
-    const sessionToken = req.headers.get('x-session-token');
-    
-    if (!tenantId || !farmerId) {
-      throw new Error('Missing tenant or farmer context');
-    }
-
     const requestBody = await req.json();
     const { 
       messages = [], 
       landId, 
       sessionId,
       imageUrl,
-      language = 'en'
+      language = 'en',
+      tenantId,
+      farmerId,
+      fileContent
     } = requestBody;
 
-    console.log('AI Chat Request:', { tenantId, farmerId, landId, sessionId, language });
+    // Get request headers for farmer context (fallback)
+    const headerTenantId = req.headers.get('x-tenant-id');
+    const headerFarmerId = req.headers.get('x-farmer-id');
+    const sessionToken = req.headers.get('x-session-token');
+    
+    // Use body values first, then headers as fallback
+    const finalTenantId = tenantId || headerTenantId;
+    const finalFarmerId = farmerId || headerFarmerId;
+    
+    if (!finalTenantId || !finalFarmerId) {
+      console.error('Missing context:', { tenantId: finalTenantId, farmerId: finalFarmerId, requestBody });
+      throw new Error('Missing tenant or farmer context');
+    }
+
+    console.log('AI Chat Request:', { tenantId: finalTenantId, farmerId: finalFarmerId, landId, sessionId, language });
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Set app session for RLS
-    await supabase.rpc('set_app_session', {
-      p_tenant_id: tenantId,
-      p_farmer_id: farmerId,
-      p_session_token: sessionToken
-    });
+    // Set app session for RLS (if we have session token)
+    if (sessionToken) {
+      await supabase.rpc('set_app_session', {
+        p_tenant_id: finalTenantId,
+        p_farmer_id: finalFarmerId,
+        p_session_token: sessionToken
+      });
+    }
 
     // Get or create chat session
     let currentSessionId = sessionId;
@@ -53,8 +63,8 @@ serve(async (req) => {
       const { data: newSession, error: sessionError } = await supabase
         .from('ai_chat_sessions')
         .insert({
-          tenant_id: tenantId,
-          farmer_id: farmerId,
+          tenant_id: finalTenantId,
+          farmer_id: finalFarmerId,
           land_id: landId,
           session_type: landId ? 'land_specific' : 'general',
           session_title: `Chat - ${new Date().toLocaleDateString()}`,
@@ -86,7 +96,7 @@ INSTRUCTIONS:
         .from('lands')
         .select('*')
         .eq('id', landId)
-        .eq('tenant_id', tenantId)
+        .eq('tenant_id', finalTenantId)
         .single();
 
       if (land) {
@@ -109,8 +119,8 @@ INSTRUCTIONS:
     const { data: farmer } = await supabase
       .from('farmers')
       .select('name, district, state, total_land_size')
-      .eq('id', farmerId)
-      .eq('tenant_id', tenantId)
+      .eq('id', finalFarmerId)
+      .eq('tenant_id', finalTenantId)
       .single();
 
     if (farmer) {
@@ -175,8 +185,8 @@ INSTRUCTIONS:
         .from('ai_chat_messages')
         .insert({
           session_id: currentSessionId,
-          tenant_id: tenantId,
-          farmer_id: farmerId,
+          tenant_id: finalTenantId,
+          farmer_id: finalFarmerId,
           role: 'user',
           content: lastUserMessage.content,
           land_context: landContext,
@@ -190,8 +200,8 @@ INSTRUCTIONS:
       .from('ai_chat_messages')
       .insert({
         session_id: currentSessionId,
-        tenant_id: tenantId,
-        farmer_id: farmerId,
+        tenant_id: finalTenantId,
+        farmer_id: finalFarmerId,
         role: 'assistant',
         content: aiMessage,
         land_context: landContext,
