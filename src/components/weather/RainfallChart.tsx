@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 interface RainfallData {
   date: string;
   rainfall: number;
-  cumulative: number;
+  cumulative?: number;
 }
 
 interface RainfallChartProps {

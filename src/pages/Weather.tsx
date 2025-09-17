@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence, useAnimation } from 'framer-motion';
 import { 
   Cloud, CloudRain, Sun, Wind, Droplets, Eye, Gauge, 
   Thermometer, CloudSnow, CloudDrizzle, CloudLightning,
@@ -28,10 +28,9 @@ import { useWeather } from '@/hooks/useWeather';
 import { useWeatherSync } from '@/hooks/useWeatherSync';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { motion } from 'framer-motion';
+import { toast } from 'sonner';
 
 export default function Weather() {
-  const navigate = useNavigate();
   const { currentWeather, forecast, hourlyForecast, loading, error, refetch } = useWeather();
   const { 
     lastSyncTime, 
@@ -45,25 +44,71 @@ export default function Weather() {
 
   const [activeTab, setActiveTab] = useState('today');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [showAlerts, setShowAlerts] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // Pull-to-refresh implementation
+  const controls = useAnimation();
+  
+  // Pull-to-refresh state
+  const [startY, setStartY] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
-  const [isPulling, setIsPulling] = useState(false);
 
   useEffect(() => {
-    if (currentWeather) {
-      const rainfallMm = forecast?.[0]?.rain || 0;
+    if (currentWeather && forecast) {
+      const rainfallMm = forecast[0]?.rain || 0;
       saveWeatherObservation(currentWeather, rainfallMm);
     }
-  }, [currentWeather]);
+  }, [currentWeather, forecast]);
 
-  const handleRefresh = async () => {
+  // Manual sync function
+  const handleManualSync = async () => {
     setIsRefreshing(true);
-    await Promise.all([refetch(), triggerManualSync()]);
-    setTimeout(() => setIsRefreshing(false), 1000);
+    try {
+      await Promise.all([refetch(), triggerManualSync()]);
+      toast.success('Weather data synced successfully');
+    } catch (err) {
+      toast.error('Failed to sync weather data');
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
   };
+
+  // Pull-to-refresh implementation
+  useEffect(() => {
+    const handleTouchStart = (e: TouchEvent) => {
+      setStartY(e.touches[0].clientY);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      const currentY = e.touches[0].clientY;
+      const diff = currentY - startY;
+      
+      if (diff > 0 && containerRef.current?.scrollTop === 0) {
+        e.preventDefault();
+        setPullDistance(Math.min(diff, 100));
+      }
+    };
+
+    const handleTouchEnd = async () => {
+      if (pullDistance > 60) {
+        await handleManualSync();
+      }
+      setPullDistance(0);
+    };
+
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('touchstart', handleTouchStart, { passive: true });
+      container.addEventListener('touchmove', handleTouchMove, { passive: false });
+      container.addEventListener('touchend', handleTouchEnd);
+    }
+
+    return () => {
+      if (container) {
+        container.removeEventListener('touchstart', handleTouchStart);
+        container.removeEventListener('touchmove', handleTouchMove);
+        container.removeEventListener('touchend', handleTouchEnd);
+      }
+    };
+  }, [startY, pullDistance]);
 
   const getWeatherCondition = (): 'sun' | 'rain' | 'clouds' | 'storm' | 'snow' | 'fog' | 'night' => {
     if (!currentWeather) return 'clouds';
@@ -81,9 +126,9 @@ export default function Weather() {
 
   const getWeatherIcon = (condition: string, size: 'small' | 'medium' | 'large' = 'medium') => {
     const sizeClass = {
-      small: 'h-5 w-5',
-      medium: 'h-8 w-8',
-      large: 'h-12 w-12'
+      small: 'h-4 w-4',
+      medium: 'h-6 w-6',
+      large: 'h-10 w-10'
     }[size];
 
     const iconMap: { [key: string]: React.ReactNode } = {
@@ -97,12 +142,6 @@ export default function Weather() {
       'Fog': <Cloud className={sizeClass} />,
     };
     return iconMap[condition] || <Cloud className={sizeClass} />;
-  };
-
-  const getWindDirection = (deg: number) => {
-    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-    const index = Math.round(deg / 45) % 8;
-    return directions[index];
   };
 
   const getWeatherGradient = () => {
@@ -167,7 +206,7 @@ export default function Weather() {
               <p className="text-muted-foreground">
                 {error || 'Unable to load weather information. Please check your connection and try again.'}
               </p>
-              <Button onClick={handleRefresh} className="w-full" size="lg">
+              <Button onClick={handleManualSync} className="w-full" size="lg">
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Retry
               </Button>
@@ -178,108 +217,159 @@ export default function Weather() {
     );
   }
 
-  // Prepare rainfall chart data
+  // Prepare accurate rainfall chart data
   const rainfallData = forecast.slice(0, 7).map((day, index) => ({
     date: format(new Date(day.dt * 1000), 'EEE'),
     rainfall: day.rain || 0,
     cumulative: forecast.slice(0, index + 1).reduce((sum, d) => sum + (d.rain || 0), 0)
   }));
 
+  // Animation variants for modern AccuWeather-style animations
+  const fadeInUp = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0 }
+  };
+
+  const scaleIn = {
+    hidden: { opacity: 0, scale: 0.8 },
+    visible: { opacity: 1, scale: 1 }
+  };
+
+  const slideIn = {
+    hidden: { opacity: 0, x: -20 },
+    visible: { opacity: 1, x: 0 }
+  };
+
   return (
-    <div className="min-h-screen relative bg-gradient-to-br from-background to-background/95" ref={containerRef}>
+    <div 
+      className="min-h-screen relative bg-gradient-to-br from-background to-background/95 overflow-y-auto" 
+      ref={containerRef}
+      style={{ transform: `translateY(${pullDistance}px)` }}
+    >
       <AnimatedWeatherBackground condition={currentWeather.main || 'clear'} className="opacity-30" />
+      
+      {/* Pull-to-refresh indicator */}
+      <AnimatePresence>
+        {pullDistance > 0 && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: pullDistance / 100 }}
+            exit={{ opacity: 0 }}
+            className="absolute top-4 left-1/2 -translate-x-1/2 z-50"
+          >
+            <div className={cn(
+              "p-2 rounded-full bg-primary/20 backdrop-blur-sm",
+              pullDistance > 60 && "bg-primary/30"
+            )}>
+              <RefreshCw className={cn(
+                "h-5 w-5 text-primary",
+                pullDistance > 60 && "animate-spin"
+              )} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
       
       <div className="relative z-10">
         {/* Hero Section with Weather Info */}
         <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+          variants={fadeInUp}
+          initial="hidden"
+          animate="visible"
+          transition={{ duration: 0.5 }}
           className={`relative bg-gradient-to-br ${getWeatherGradient()} overflow-hidden`}
         >
           {/* Animated weather particles */}
           <WeatherAnimation condition={getWeatherCondition()} className="opacity-20" />
           
-          <div className="relative z-10 px-4 pt-6 pb-8">
+          <div className="relative z-10 px-4 pt-4 pb-6">
             {/* Location and Sync Row */}
-            <div className="flex justify-between items-start mb-6">
+            <div className="flex justify-between items-start mb-4">
               <div>
-                <h1 className="text-lg font-semibold text-foreground/90 flex items-center gap-2">
-                  <MapPin className="h-4 w-4" />
+                <h1 className="text-base font-semibold text-foreground flex items-center gap-2">
+                  <MapPin className="h-3.5 w-3.5" />
                   {currentWeather.location || 'Current Location'}
                 </h1>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  {format(new Date(), 'EEE, MMM d')}
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {format(new Date(), 'EEEE, MMM d, yyyy')}
                 </p>
               </div>
               
-              {/* Sync Button with Animation */}
+              {/* Sync Button */}
               <motion.button
+                whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                onClick={handleRefresh}
-                className="relative p-2 rounded-full bg-background/20 backdrop-blur-sm border border-white/10"
+                onClick={handleManualSync}
+                className="relative p-2 rounded-lg bg-background/20 backdrop-blur-sm border border-white/10 hover:bg-background/30 transition-all"
               >
                 <RefreshCw className={cn(
-                  "h-4 w-4 text-white",
+                  "h-4 w-4 text-foreground",
                   (isSyncing || isRefreshing) && "animate-spin"
                 )} />
                 {lastSyncTime && (
-                  <span className="absolute -bottom-5 right-0 text-[10px] text-muted-foreground whitespace-nowrap">
+                  <motion.span 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="absolute -bottom-6 right-0 text-[10px] text-muted-foreground whitespace-nowrap bg-background/80 px-1 py-0.5 rounded"
+                  >
                     {format(new Date(lastSyncTime), 'h:mm a')}
-                  </span>
+                  </motion.span>
                 )}
               </motion.button>
             </div>
 
             {/* Main Weather Display */}
-            <div className="flex justify-between items-center">
+            <motion.div 
+              variants={scaleIn}
+              initial="hidden"
+              animate="visible"
+              transition={{ delay: 0.2, type: "spring", stiffness: 100 }}
+              className="flex justify-between items-center"
+            >
               <div className="flex-1">
-                <motion.div 
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: 0.1 }}
-                  className="flex items-baseline gap-2"
-                >
-                  <span className="text-7xl font-bold text-foreground">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-6xl font-bold text-foreground">
                     {Math.round(currentWeather.temp)}
                   </span>
-                  <span className="text-3xl text-muted-foreground">°C</span>
-                </motion.div>
+                  <span className="text-2xl text-muted-foreground">°C</span>
+                </div>
                 
-                <motion.div
-                  initial={{ y: 10, opacity: 0 }}
-                  animate={{ y: 0, opacity: 1 }}
-                  transition={{ delay: 0.2 }}
-                >
-                  <p className="text-xl font-medium capitalize text-foreground/90 mt-2">
-                    {currentWeather.description}
-                  </p>
-                  <p className="text-sm text-muted-foreground flex items-center gap-1 mt-1">
-                    <Thermometer className="h-3 w-3" />
-                    Feels like {Math.round(currentWeather.feels_like)}°C
-                  </p>
-                </motion.div>
+                <p className="text-base font-medium capitalize text-foreground/90 mt-1">
+                  {currentWeather.description}
+                </p>
+                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                  <Thermometer className="h-3 w-3" />
+                  Feels like {Math.round(currentWeather.feels_like)}°C
+                </p>
               </div>
 
               {/* Animated Weather Icon */}
               <motion.div 
-                initial={{ scale: 0, rotate: -180 }}
-                animate={{ scale: 1, rotate: 0 }}
-                transition={{ type: "spring", stiffness: 200, delay: 0.3 }}
-                className="p-6 rounded-full bg-white/10 backdrop-blur-sm"
+                animate={{ 
+                  rotate: [0, 5, -5, 0],
+                  scale: [1, 1.05, 1]
+                }}
+                transition={{ 
+                  duration: 3,
+                  repeat: Infinity,
+                  repeatType: "reverse"
+                }}
+                className="p-4 rounded-2xl bg-white/10 backdrop-blur-sm"
               >
                 {getWeatherIcon(currentWeather.main, 'large')}
               </motion.div>
-            </div>
+            </motion.div>
           </div>
         </motion.div>
 
         {/* Quick Stats Grid */}
-        <div className="px-4 -mt-4 relative z-20">
+        <div className="px-3 -mt-3 relative z-20">
           <motion.div 
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.4 }}
-            className="grid grid-cols-2 gap-3"
+            variants={fadeInUp}
+            initial="hidden"
+            animate="visible"
+            transition={{ delay: 0.3 }}
+            className="grid grid-cols-2 gap-2"
           >
             {[
               { icon: Wind, label: 'Wind', value: Math.round(currentWeather.wind_speed * 3.6), unit: 'km/h', type: 'wind' },
@@ -289,27 +379,29 @@ export default function Weather() {
             ].map((stat, index) => (
               <motion.div
                 key={stat.label}
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 0.5 + index * 0.1 }}
+                variants={scaleIn}
+                initial="hidden"
+                animate="visible"
+                transition={{ delay: 0.4 + index * 0.05 }}
+                whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                className="bg-card/90 backdrop-blur-xl rounded-2xl p-4 border border-border/50 shadow-lg"
+                className="bg-card/90 backdrop-blur-xl rounded-xl p-3 border border-border/50 shadow-sm"
               >
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <stat.icon className={cn("h-4 w-4", getStatColor(stat.type, Number(stat.value)))} />
-                      <span className="text-xs text-muted-foreground">{stat.label}</span>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <stat.icon className={cn("h-3.5 w-3.5", getStatColor(stat.type, Number(stat.value)))} />
+                      <span className="text-[10px] text-muted-foreground">{stat.label}</span>
                     </div>
                     <div className="flex items-baseline gap-1">
-                      <span className={cn("text-2xl font-bold", getStatColor(stat.type, Number(stat.value)))}>
+                      <span className={cn("text-xl font-bold", getStatColor(stat.type, Number(stat.value)))}>
                         {stat.value}
                       </span>
-                      <span className="text-sm text-muted-foreground">{stat.unit}</span>
+                      <span className="text-xs text-muted-foreground">{stat.unit}</span>
                     </div>
                   </div>
                   <div className={cn(
-                    "h-8 w-1 rounded-full",
+                    "h-6 w-0.5 rounded-full",
                     stat.type === 'humidity' && "bg-gradient-to-b from-blue-500 to-cyan-500",
                     stat.type === 'wind' && "bg-gradient-to-b from-orange-500 to-yellow-500",
                     stat.type === 'visibility' && "bg-gradient-to-b from-green-500 to-emerald-500",
@@ -323,264 +415,280 @@ export default function Weather() {
 
         {/* Rainfall Summary & Chart */}
         <motion.div 
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.7 }}
-          className="px-4 mt-6"
+          variants={fadeInUp}
+          initial="hidden"
+          animate="visible"
+          transition={{ delay: 0.5 }}
+          className="px-3 mt-4"
         >
-          <Card className="bg-gradient-to-br from-blue-500/10 to-cyan-500/5 border-blue-200/20 backdrop-blur-xl shadow-xl rounded-2xl overflow-hidden">
-            <CardHeader className="pb-3">
+          <Card className="bg-gradient-to-br from-blue-500/10 to-cyan-500/5 border-blue-200/20 backdrop-blur-xl shadow-sm rounded-xl overflow-hidden">
+            <CardHeader className="pb-2 pt-3">
               <div className="flex justify-between items-center">
-                <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                  <Droplets className="h-5 w-5 text-blue-500" />
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Droplets className="h-4 w-4 text-blue-500" />
                   Rainfall Summary
                 </CardTitle>
-                <div className="flex gap-4">
+                <div className="flex gap-3">
                   <div className="text-right">
-                    <p className="text-xs text-muted-foreground">Today</p>
-                    <p className="text-xl font-bold text-blue-600">{todayRainfall.toFixed(1)}mm</p>
+                    <p className="text-[10px] text-muted-foreground">Today</p>
+                    <p className="text-lg font-bold text-blue-600">{todayRainfall.toFixed(1)}mm</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-muted-foreground">Week</p>
-                    <p className="text-xl font-bold text-cyan-600">{weeklyRainfall.toFixed(1)}mm</p>
+                    <p className="text-[10px] text-muted-foreground">Week</p>
+                    <p className="text-lg font-bold text-cyan-600">{weeklyRainfall.toFixed(1)}mm</p>
                   </div>
                 </div>
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <RainfallChart data={rainfallData} className="h-32" />
+              <RainfallChart data={rainfallData} className="h-28" />
             </CardContent>
           </Card>
         </motion.div>
 
-        {/* Forecast Tabs with Pill Style */}
+        {/* Forecast Tabs */}
         <motion.div 
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.8 }}
-          className="px-4 mt-6"
+          variants={fadeInUp}
+          initial="hidden"
+          animate="visible"
+          transition={{ delay: 0.6 }}
+          className="px-3 mt-4"
         >
-          <Card className="bg-card/90 backdrop-blur-xl border-border/50 shadow-xl rounded-2xl">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-semibold">Weather Forecast</CardTitle>
+          <Card className="bg-card/90 backdrop-blur-xl border-border/50 shadow-sm rounded-xl">
+            <CardHeader className="pb-2 pt-3">
+              <CardTitle className="text-base font-semibold">Weather Forecast</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pb-3">
               <Tabs value={activeTab} onValueChange={setActiveTab}>
-                <TabsList className="grid grid-cols-3 w-full bg-muted/50 rounded-full p-1">
+                <TabsList className="grid grid-cols-3 w-full bg-muted/50 rounded-lg p-0.5 h-8">
                   <TabsTrigger 
                     value="today" 
-                    className="rounded-full data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                    className="rounded-md text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
                   >
                     Today
                   </TabsTrigger>
                   <TabsTrigger 
                     value="tomorrow"
-                    className="rounded-full data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                    className="rounded-md text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
                   >
                     Tomorrow
                   </TabsTrigger>
                   <TabsTrigger 
                     value="week"
-                    className="rounded-full data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                    className="rounded-md text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
                   >
                     7 Days
                   </TabsTrigger>
                 </TabsList>
 
-                <TabsContent value="today" className="mt-4">
-                  <ScrollArea className="w-full">
-                    <div className="flex gap-3 pb-2">
-                      {hourlyForecast.slice(0, 12).map((hour, index) => (
+                <AnimatePresence mode="wait">
+                  <TabsContent value="today" className="mt-3">
+                    <ScrollArea className="w-full">
+                      <motion.div 
+                        variants={slideIn}
+                        initial="hidden"
+                        animate="visible"
+                        className="flex gap-2 pb-1"
+                      >
+                        {hourlyForecast.slice(0, 12).map((hour, index) => (
+                          <motion.div
+                            key={index}
+                            variants={scaleIn}
+                            initial="hidden"
+                            animate="visible"
+                            transition={{ delay: index * 0.03 }}
+                            className="min-w-[80px]"
+                          >
+                            <Card className="bg-gradient-to-br from-background/60 to-background/40 border-border/30 rounded-lg">
+                              <CardContent className="p-2 text-center">
+                                <p className="text-[10px] text-muted-foreground mb-1">
+                                  {format(new Date(hour.dt * 1000), 'h:mm a')}
+                                </p>
+                                <div className="my-1 flex justify-center">
+                                  {getWeatherIcon(hour.weather[0].main, 'small')}
+                                </div>
+                                <p className="text-sm font-bold">
+                                  {Math.round(hour.temp)}°
+                                </p>
+                                {hour.pop > 0 && (
+                                  <div className="flex items-center justify-center gap-0.5 mt-1">
+                                    <Droplets className="h-2.5 w-2.5 text-blue-500" />
+                                    <span className="text-[10px] font-medium">{Math.round(hour.pop * 100)}%</span>
+                                  </div>
+                                )}
+                              </CardContent>
+                            </Card>
+                          </motion.div>
+                        ))}
+                      </motion.div>
+                    </ScrollArea>
+                  </TabsContent>
+
+                  <TabsContent value="tomorrow" className="mt-3">
+                    {forecast[1] && (
+                      <motion.div 
+                        variants={fadeInUp}
+                        initial="hidden"
+                        animate="visible"
+                        className="space-y-3"
+                      >
+                        <Card className="bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20 rounded-lg">
+                          <CardContent className="p-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-background/50">
+                                  {getWeatherIcon(forecast[1].weather[0].main, 'medium')}
+                                </div>
+                                <div>
+                                  <p className="font-semibold text-sm capitalize">
+                                    {forecast[1].weather[0].description}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {format(new Date(forecast[1].dt * 1000), 'EEEE, MMM d')}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="flex items-baseline gap-1">
+                                  <span className="text-2xl font-bold">{Math.round(forecast[1].temp.max)}°</span>
+                                  <span className="text-base text-muted-foreground">/{Math.round(forecast[1].temp.min)}°</span>
+                                </div>
+                                {forecast[1].pop > 0 && (
+                                  <Badge variant="secondary" className="mt-1 text-[10px] h-5">
+                                    <Droplets className="h-2.5 w-2.5 mr-0.5" />
+                                    {Math.round(forecast[1].pop * 100)}%
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Farming Suitability Badges */}
+                            <div className="mt-3 flex gap-1.5 flex-wrap">
+                              <Badge className="bg-green-500/10 text-green-600 border-green-200 text-[10px] h-5">
+                                <Sprout className="h-2.5 w-2.5 mr-0.5" />
+                                Good for Planting
+                              </Badge>
+                              <Badge className="bg-blue-500/10 text-blue-600 border-blue-200 text-[10px] h-5">
+                                <Umbrella className="h-2.5 w-2.5 mr-0.5" />
+                                Light Irrigation
+                              </Badge>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </motion.div>
+                    )}
+                  </TabsContent>
+
+                  <TabsContent value="week" className="mt-3">
+                    <div className="space-y-1.5">
+                      {forecast.slice(0, 7).map((day, index) => (
                         <motion.div
                           key={index}
-                          initial={{ scale: 0.9, opacity: 0 }}
-                          animate={{ scale: 1, opacity: 1 }}
-                          transition={{ delay: index * 0.05 }}
-                          className="min-w-[100px]"
+                          variants={slideIn}
+                          initial="hidden"
+                          animate="visible"
+                          transition={{ delay: index * 0.03 }}
+                          whileTap={{ scale: 0.98 }}
                         >
-                          <Card className="bg-gradient-to-br from-background/60 to-background/40 border-border/30 rounded-xl">
-                            <CardContent className="p-3 text-center">
-                              <p className="text-xs text-muted-foreground mb-2">
-                                {format(new Date(hour.dt * 1000), 'h:mm a')}
-                              </p>
-                              <div className="my-2 flex justify-center">
-                                {getWeatherIcon(hour.weather[0].main, 'small')}
-                              </div>
-                              <p className="text-lg font-bold">
-                                {Math.round(hour.temp)}°
-                              </p>
-                              {hour.pop > 0 && (
-                                <div className="flex items-center justify-center gap-1 mt-2">
-                                  <Droplets className="h-3 w-3 text-blue-500" />
-                                  <span className="text-xs font-medium">{Math.round(hour.pop * 100)}%</span>
+                          <Card className="bg-background/60 border-border/30 rounded-lg hover:bg-muted/30 transition-all">
+                            <CardContent className="p-2.5">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div className="p-1.5 rounded-md bg-muted/50">
+                                    {getWeatherIcon(day.weather[0].main, 'small')}
+                                  </div>
+                                  <div>
+                                    <p className="font-medium text-xs">
+                                      {format(new Date(day.dt * 1000), 'EEE, MMM d')}
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground capitalize">
+                                      {day.weather[0].description}
+                                    </p>
+                                  </div>
                                 </div>
-                              )}
+                                
+                                <div className="flex items-center gap-2">
+                                  {day.pop > 0 && (
+                                    <Badge variant="outline" className="text-[10px] h-4 px-1">
+                                      <Droplets className="h-2.5 w-2.5 mr-0.5" />
+                                      {Math.round(day.pop * 100)}%
+                                    </Badge>
+                                  )}
+                                  <div className="text-right">
+                                    <span className="text-base font-bold">{Math.round(day.temp.max)}°</span>
+                                    <span className="text-sm text-muted-foreground ml-0.5">
+                                      {Math.round(day.temp.min)}°
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
                             </CardContent>
                           </Card>
                         </motion.div>
                       ))}
                     </div>
-                  </ScrollArea>
-                </TabsContent>
-
-                <TabsContent value="tomorrow" className="mt-4">
-                  {forecast[1] && (
-                    <motion.div 
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="space-y-4"
-                    >
-                      <Card className="bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20 rounded-xl">
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                              <div className="p-3 rounded-xl bg-background/50">
-                                {getWeatherIcon(forecast[1].weather[0].main)}
-                              </div>
-                              <div>
-                                <p className="font-semibold text-lg capitalize">
-                                  {forecast[1].weather[0].description}
-                                </p>
-                                <p className="text-sm text-muted-foreground">
-                                  {format(new Date(forecast[1].dt * 1000), 'EEEE, MMM d')}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="flex items-baseline gap-1">
-                                <span className="text-3xl font-bold">{Math.round(forecast[1].temp.max)}°</span>
-                                <span className="text-xl text-muted-foreground">/{Math.round(forecast[1].temp.min)}°</span>
-                              </div>
-                              {forecast[1].pop > 0 && (
-                                <Badge variant="secondary" className="mt-2">
-                                  <Droplets className="h-3 w-3 mr-1" />
-                                  {Math.round(forecast[1].pop * 100)}%
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                          
-                          {/* Farming Suitability Badge */}
-                          <div className="mt-4 flex gap-2">
-                            <Badge className="bg-green-500/10 text-green-600 border-green-200">
-                              <Sprout className="h-3 w-3 mr-1" />
-                              Good for Planting
-                            </Badge>
-                            <Badge className="bg-blue-500/10 text-blue-600 border-blue-200">
-                              <Umbrella className="h-3 w-3 mr-1" />
-                              Light Irrigation
-                            </Badge>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  )}
-                </TabsContent>
-
-                <TabsContent value="week" className="mt-4">
-                  <div className="space-y-2">
-                    {forecast.slice(0, 7).map((day, index) => (
-                      <motion.div
-                        key={index}
-                        initial={{ x: -20, opacity: 0 }}
-                        animate={{ x: 0, opacity: 1 }}
-                        transition={{ delay: index * 0.05 }}
-                        whileTap={{ scale: 0.98 }}
-                      >
-                        <Card className="bg-background/60 border-border/30 rounded-xl hover:bg-muted/30 transition-all">
-                          <CardContent className="p-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <div className="p-2 rounded-lg bg-muted/50">
-                                  {getWeatherIcon(day.weather[0].main, 'small')}
-                                </div>
-                                <div>
-                                  <p className="font-semibold">
-                                    {format(new Date(day.dt * 1000), 'EEE, MMM d')}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground capitalize">
-                                    {day.weather[0].description}
-                                  </p>
-                                </div>
-                              </div>
-                              
-                              <div className="flex items-center gap-3">
-                                {day.pop > 0 && (
-                                  <Badge variant="outline" className="text-xs">
-                                    <Droplets className="h-3 w-3 mr-1" />
-                                    {Math.round(day.pop * 100)}%
-                                  </Badge>
-                                )}
-                                <div className="text-right">
-                                  <span className="text-xl font-bold">{Math.round(day.temp.max)}°</span>
-                                  <span className="text-base text-muted-foreground ml-1">
-                                    {Math.round(day.temp.min)}°
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      </motion.div>
-                    ))}
-                  </div>
-                </TabsContent>
+                  </TabsContent>
+                </AnimatePresence>
               </Tabs>
             </CardContent>
           </Card>
         </motion.div>
 
-        {/* Agricultural Insights - Redesigned */}
+        {/* Agricultural Insights */}
         <motion.div 
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.9 }}
-          className="px-4 mt-6"
+          variants={fadeInUp}
+          initial="hidden"
+          animate="visible"
+          transition={{ delay: 0.7 }}
+          className="px-3 mt-4"
         >
-          <Card className="bg-gradient-to-br from-green-500/10 to-emerald-500/5 border-green-200/20 backdrop-blur-xl shadow-xl rounded-2xl">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-green-500" />
+          <Card className="bg-gradient-to-br from-green-500/10 to-emerald-500/5 border-green-200/20 backdrop-blur-xl shadow-sm rounded-xl">
+            <CardHeader className="pb-2 pt-3">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-green-500" />
                 Agricultural Insights
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-3 pb-3">
               {/* Recommendation Cards */}
               <div className="grid grid-cols-3 gap-2">
                 <motion.div 
+                  whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className="bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl p-3 text-white text-center"
+                  className="bg-gradient-to-br from-blue-500 to-cyan-500 rounded-lg p-2.5 text-white text-center"
                 >
-                  <Droplets className="h-6 w-6 mx-auto mb-1" />
-                  <p className="text-xs font-semibold">Irrigation</p>
-                  <p className="text-[10px] opacity-90">Recommended</p>
+                  <Droplets className="h-5 w-5 mx-auto mb-1" />
+                  <p className="text-[10px] font-semibold">Irrigation</p>
+                  <p className="text-[9px] opacity-90">Moderate</p>
                 </motion.div>
                 
                 <motion.div 
+                  whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl p-3 text-white text-center"
+                  className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-lg p-2.5 text-white text-center"
                 >
-                  <Activity className="h-6 w-6 mx-auto mb-1" />
-                  <p className="text-xs font-semibold">Spraying</p>
-                  <p className="text-[10px] opacity-90">Good Time</p>
+                  <Activity className="h-5 w-5 mx-auto mb-1" />
+                  <p className="text-[10px] font-semibold">Spraying</p>
+                  <p className="text-[9px] opacity-90">Good Time</p>
                 </motion.div>
                 
                 <motion.div 
+                  whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className="bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl p-3 text-white text-center"
+                  className="bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg p-2.5 text-white text-center"
                 >
-                  <Sprout className="h-6 w-6 mx-auto mb-1" />
-                  <p className="text-xs font-semibold">Planting</p>
-                  <p className="text-[10px] opacity-90">Suitable</p>
+                  <Sprout className="h-5 w-5 mx-auto mb-1" />
+                  <p className="text-[10px] font-semibold">Planting</p>
+                  <p className="text-[9px] opacity-90">Suitable</p>
                 </motion.div>
               </div>
 
               {/* Crop Recommendations */}
-              <div className="flex flex-wrap gap-2 mt-3">
+              <div className="flex flex-wrap gap-1.5">
                 {['Rice', 'Wheat', 'Cotton', 'Sugarcane'].map((crop) => (
                   <Badge 
                     key={crop}
-                    className="bg-green-100 text-green-700 border-green-200 rounded-full px-3 py-1"
+                    className="bg-green-100 text-green-700 border-green-200 rounded-full px-2 py-0.5 text-[10px]"
                   >
                     {crop}
                   </Badge>
@@ -592,18 +700,19 @@ export default function Weather() {
 
         {/* Weather Map Section */}
         <motion.div 
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 1 }}
-          className="px-4 mt-6 pb-24"
+          variants={fadeInUp}
+          initial="hidden"
+          animate="visible"
+          transition={{ delay: 0.8 }}
+          className="px-3 mt-4 pb-20"
         >
           <WeatherMap />
         </motion.div>
 
         {/* Data Provider Attribution */}
-        <div className="text-center py-4 px-4">
-          <p className="text-xs text-muted-foreground">
-            Weather data provided by OpenWeatherMap
+        <div className="text-center py-3 px-4">
+          <p className="text-[10px] text-muted-foreground">
+            Weather data provided by OpenWeatherMap • Last updated {lastSyncTime ? format(new Date(lastSyncTime), 'h:mm a') : 'Never'}
           </p>
         </div>
       </div>
