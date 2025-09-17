@@ -187,17 +187,17 @@ export function ChatInterface() {
       const {
         data: sessionsData,
         error: sessionsError
-      } = await supabase.from('chat_sessions').select('*, chat_messages(*)').eq('user_id', user?.id).order('updated_at', {
+      } = await supabase.from('ai_chat_sessions').select('*, ai_chat_messages(*)').eq('farmer_id', user?.id).order('updated_at', {
         ascending: false
       });
       if (sessionsError) throw sessionsError;
       const formattedSessions = sessionsData?.map(session => ({
         id: session.id,
-        title: session.title,
+        title: session.session_title || 'Chat Session',
         landId: session.land_id,
-        type: session.type as 'general' | 'land_specific',
-        isFavorite: session.is_favorite,
-        messages: session.chat_messages.map((msg: any) => ({
+        type: (session.session_type || 'general') as 'general' | 'land_specific',
+        isFavorite: false,
+        messages: (session.ai_chat_messages || []).map((msg: any) => ({
           id: msg.id,
           role: msg.role,
           content: msg.content,
@@ -250,13 +250,13 @@ export function ChatInterface() {
         const {
           data,
           error
-        } = await supabase.from('chat_sessions').insert({
+        } = await supabase.from('ai_chat_sessions').insert({
           id: newSession.id,
-          user_id: user.id,
+          tenant_id: useAuthStore.getState().session?.tenantId || '00000000-0000-0000-0000-000000000000',
+          farmer_id: user.id,
           land_id: newSession.landId,
-          title: newSession.title,
-          type: newSession.type,
-          is_favorite: false
+          session_title: newSession.title,
+          session_type: newSession.type
         }).select().single();
         if (error) throw error;
       } catch (error) {
@@ -277,8 +277,10 @@ export function ChatInterface() {
     if (!currentSession || !user?.id) return;
     for (const msg of pendingMessages) {
       try {
-        await supabase.from('chat_messages').insert({
+        await supabase.from('ai_chat_messages').insert({
           session_id: currentSession.id,
+          tenant_id: useAuthStore.getState().session?.tenantId || '00000000-0000-0000-0000-000000000000',
+          farmer_id: user?.id || '00000000-0000-0000-0000-000000000000',
           role: msg.role,
           content: msg.content,
           attachments: msg.attachments,
@@ -331,8 +333,10 @@ export function ChatInterface() {
     try {
       // Save user message to database
       if (navigator.onLine && currentSession && user?.id) {
-        await supabase.from('chat_messages').insert({
+        await supabase.from('ai_chat_messages').insert({
           session_id: currentSession.id,
+          tenant_id: useAuthStore.getState().session?.tenantId || '00000000-0000-0000-0000-000000000000',
+          farmer_id: user?.id || '00000000-0000-0000-0000-000000000000',
           role: 'user',
           content: userMessage.content,
           attachments: userMessage.attachments,
@@ -385,15 +389,17 @@ export function ChatInterface() {
 
       // Save assistant message to database
       if (navigator.onLine && currentSession && user?.id) {
-        await supabase.from('chat_messages').insert({
+        await supabase.from('ai_chat_messages').insert({
           session_id: currentSession.id,
+          tenant_id: useAuthStore.getState().session?.tenantId || '00000000-0000-0000-0000-000000000000',
+          farmer_id: user?.id || '00000000-0000-0000-0000-000000000000',
           role: 'assistant',
           content: assistantMessage.content,
           metadata: assistantMessage.metadata
         });
 
         // Update session
-        await supabase.from('chat_sessions').update({
+        await supabase.from('ai_chat_sessions').update({
           updated_at: new Date().toISOString()
         }).eq('id', currentSession.id);
       } else {
@@ -442,8 +448,8 @@ export function ChatInterface() {
     // Update in database
     if (navigator.onLine && user?.id) {
       try {
-        await supabase.from('chat_sessions').update({
-          is_favorite: newFavoriteStatus
+        await supabase.from('ai_chat_sessions').update({
+          metadata: { is_favorite: newFavoriteStatus }
         }).eq('id', sessionId);
       } catch (error) {
         console.error('Error updating favorite:', error);
@@ -461,7 +467,7 @@ export function ChatInterface() {
     // Delete from database
     if (navigator.onLine && user?.id) {
       try {
-        await supabase.from('chat_sessions').delete().eq('id', sessionId);
+        await supabase.from('ai_chat_sessions').delete().eq('id', sessionId);
       } catch (error) {
         console.error('Error deleting session:', error);
       }
