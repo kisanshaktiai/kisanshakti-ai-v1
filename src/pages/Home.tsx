@@ -270,23 +270,23 @@ export default function Home() {
         </div>
         
         <div className="relative z-10">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <Leaf className="w-3 h-3" />
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-4 text-base text-white">
+              <div className="flex items-center gap-1.5">
+                <Leaf className="w-4 h-4" />
                 {currentTime.toLocaleDateString('en-IN', {
                   weekday: 'short',
                   month: 'short',
                   day: 'numeric',
+                  year: 'numeric'
                 })}
-              </p>
-              {/* Very small sync info */}
-              <p className="text-[10px] text-muted-foreground/60 mt-0.5">
+              </div>
+              <div className="text-white">
                 Last sync: {currentTime.toLocaleTimeString('en-IN', { 
                   hour: '2-digit', 
                   minute: '2-digit' 
                 })}
-              </p>
+              </div>
             </div>
           </div>
 
