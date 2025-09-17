@@ -398,7 +398,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
             ) : (
               <div className="space-y-3">
                 {viewMode === 'week' || viewMode === 'month' ? (
-                  <TaskTimeline tasks={filteredTasks} onTaskClick={(task) => setSelectedTask(task)} />
+                  <TaskTimeline tasks={filteredTasks} onTaskClick={(task: any) => setSelectedTask(task as ScheduleTask)} />
                 ) : (
                   <div className="grid gap-3">
                     {filteredTasks.map((task) => {
