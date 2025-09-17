@@ -13,14 +13,10 @@ import { useTranslation } from 'react-i18next';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import { landsApi } from '@/services/landsApi';
 import { 
-  Send, Mic, MicOff, Camera, ImageIcon, Volume2, VolumeX,
-  Bot, User, Loader2, X, Plus, ChevronLeft, ChevronRight,
-  Wheat, Trees, Flower2, Sprout, Leaf, TreePine,
-  CloudRain, Sun, Wind, Thermometer, Droplets,
-  Bug, Pill, BarChart, Calendar, MapPin, AlertCircle,
-  Check, Sparkles, Zap, MessageSquare, ScanLine,
-  Layers, Target, Activity, TrendingUp
+  Send, Mic, MicOff, ImageIcon, Volume2, VolumeX,
+  Bot, User, Loader2, X, Sprout, Layers, MapPin, Check, ScanLine
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -37,11 +33,6 @@ interface Message {
     name: string;
   }[];
   suggestions?: string[];
-  actionButtons?: {
-    label: string;
-    action: string;
-    icon?: any;
-  }[];
   metadata?: any;
 }
 
@@ -52,54 +43,8 @@ interface Land {
   primary_crop?: string;
   soil_type?: string;
   location?: string;
-  irrigation_type?: string;
-  health_score?: number;
-  ndvi?: number;
-  weather_alerts?: number;
-  pest_alerts?: number;
   [key: string]: any;
 }
-
-interface QuickPrompt {
-  icon: any;
-  label: string;
-  prompt: string;
-  category: string;
-  color: string;
-}
-
-const cropIcons: Record<string, any> = {
-  wheat: Wheat,
-  rice: Sprout,
-  cotton: Flower2,
-  sugarcane: TreePine,
-  vegetables: Leaf,
-  fruits: Trees,
-  default: Sprout
-};
-
-const getCropIcon = (cropType?: string) => {
-  if (!cropType) return cropIcons.default;
-  const crop = cropType.toLowerCase();
-  for (const [key, icon] of Object.entries(cropIcons)) {
-    if (crop.includes(key)) return icon;
-  }
-  return cropIcons.default;
-};
-
-const getHealthColor = (score?: number) => {
-  if (!score) return 'text-muted-foreground';
-  if (score >= 80) return 'text-success';
-  if (score >= 60) return 'text-warning';
-  return 'text-destructive';
-};
-
-const getHealthBadge = (score?: number) => {
-  if (!score) return { label: 'Unknown', color: 'secondary' };
-  if (score >= 80) return { label: 'Excellent', color: 'default' };
-  if (score >= 60) return { label: 'Good', color: 'secondary' };
-  return { label: 'Needs Attention', color: 'destructive' };
-};
 
 export function ModernAIChatInterface() {
   const { t, i18n } = useTranslation();
@@ -115,22 +60,10 @@ export function ModernAIChatInterface() {
   const [lands, setLands] = useState<Land[]>([]);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
-  const [showQuickPrompts, setShowQuickPrompts] = useState(true);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-  const landScrollRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
-
-  // Quick prompts organized by category
-  const quickPrompts: QuickPrompt[] = [
-    { icon: CloudRain, label: 'Weather Forecast', prompt: 'What is the weather forecast for the next 7 days for my farm?', category: 'weather', color: 'bg-blue-500/10 text-blue-600' },
-    { icon: Bug, label: 'Pest Control', prompt: 'How can I control pests in my crops?', category: 'pest', color: 'bg-red-500/10 text-red-600' },
-    { icon: Pill, label: 'Fertilizer Guide', prompt: 'What fertilizers should I use and when?', category: 'fertilizer', color: 'bg-green-500/10 text-green-600' },
-    { icon: Droplets, label: 'Irrigation Schedule', prompt: 'When and how much should I irrigate my crops?', category: 'water', color: 'bg-cyan-500/10 text-cyan-600' },
-    { icon: BarChart, label: 'Yield Prediction', prompt: 'What is the expected yield for my crops?', category: 'analytics', color: 'bg-purple-500/10 text-purple-600' },
-    { icon: Calendar, label: 'Crop Calendar', prompt: 'Show me the complete crop calendar and activities', category: 'schedule', color: 'bg-orange-500/10 text-orange-600' }
-  ];
 
   // Speech recognition
   const { isListening, toggleListening, isSupported: isSpeechSupported } = useSpeechRecognition({
@@ -155,9 +88,9 @@ export function ModernAIChatInterface() {
       const welcomeMessage: Message = {
         id: 'welcome',
         role: 'assistant',
-        content: t('chat.welcome', `Hello! I'm your AI farming assistant. I can help you with weather forecasts, pest control, fertilizer recommendations, and much more. Select a land above to get specific advice, or ask me anything about farming!`),
+        content: t('chat.welcome', `Hello! I'm your AI farming assistant. How can I help you today?`),
         timestamp: new Date(),
-        suggestions: ['Check weather', 'Pest control tips', 'Fertilizer guide', 'Crop calendar']
+        suggestions: ['Weather forecast', 'Pest control', 'Fertilizer guide', 'Crop calendar']
       };
       setMessages([welcomeMessage]);
     }
@@ -168,54 +101,24 @@ export function ModernAIChatInterface() {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Load user's lands
+  // Load user's lands using lands-api for proper tenant isolation
   const loadLands = async () => {
     try {
-      if (!user?.id) return;
+      const landsData = await landsApi.fetchLands();
+      // Filter and map lands data
+      const validLands = (landsData || []).filter(land => land.id).map(land => ({
+        id: land.id!,
+        name: land.name || 'Unnamed Land',
+        area_acres: land.area_acres,
+        primary_crop: (land as any).crop_type || (land as any).primary_crop,
+        soil_type: land.soil_type,
+        location: (land as any).village || (land as any).location
+      }));
+      setLands(validLands);
       
-      // Use fetch API to avoid TypeScript depth issues
-      const fetchLands = async () => {
-        const result = await fetch(
-          `${import.meta.env.VITE_SUPABASE_URL || 'https://qfklkkzxemsbeniyugiz.supabase.co'}/rest/v1/lands?farmer_id=eq.${user.id}&is_deleted=eq.false&order=created_at.desc`,
-          {
-            headers: {
-              'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbwYom1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4',
-              'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbwYom1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4'}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
-        
-        if (result.ok) {
-          return await result.json();
-        }
-        return null;
-      };
-
-      const landsData = await fetchLands();
-      
-      if (landsData && Array.isArray(landsData)) {
-        // Add mock data for demo
-        const enhancedLands = landsData.map((land: any) => ({
-          id: land.id,
-          name: land.name,
-          area_acres: land.area_acres,
-          primary_crop: land.primary_crop,
-          soil_type: land.soil_type,
-          location: land.location,
-          irrigation_type: land.irrigation_type,
-          health_score: Math.floor(Math.random() * 40) + 60,
-          ndvi: Math.random() * 0.4 + 0.6,
-          weather_alerts: Math.floor(Math.random() * 3),
-          pest_alerts: Math.floor(Math.random() * 2)
-        }));
-        
-        setLands(enhancedLands);
-        
-        // Cache for offline
-        if (enhancedLands.length > 0) {
-          localStorage.setItem('cached_lands_ai', JSON.stringify(enhancedLands));
-        }
+      // Cache for offline
+      if (validLands.length > 0) {
+        localStorage.setItem('cached_lands_ai', JSON.stringify(validLands));
       }
     } catch (error) {
       console.error('Error loading lands:', error);
@@ -230,32 +133,16 @@ export function ModernAIChatInterface() {
   // Handle land selection
   const selectLand = (land: Land | null) => {
     setSelectedLand(land);
-    setShowQuickPrompts(false);
     
     if (land) {
       const contextMessage: Message = {
         id: crypto.randomUUID(),
         role: 'system',
-        content: `Context switched to ${land.name}`,
+        content: `Switched to ${land.name}`,
         timestamp: new Date()
       };
       
-      const assistantMessage: Message = {
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        content: `I'm now focused on your ${land.name} farm. This is a ${land.area || 'N/A'} acre ${land.crop_type || 'mixed crop'} farm with ${land.soil_type || 'unspecified'} soil. How can I help you optimize this land?`,
-        timestamp: new Date(),
-        landId: land.id,
-        landName: land.name,
-        actionButtons: [
-          { label: 'Check Health', action: 'health', icon: Activity },
-          { label: 'Weather Alert', action: 'weather', icon: CloudRain },
-          { label: 'Pest Status', action: 'pest', icon: Bug },
-          { label: 'Recommendations', action: 'recommend', icon: Sparkles }
-        ]
-      };
-      
-      setMessages(prev => [...prev, contextMessage, assistantMessage]);
+      setMessages(prev => [...prev, contextMessage]);
     }
   };
 
@@ -282,7 +169,6 @@ export function ModernAIChatInterface() {
     setUploadedImage(null);
     setIsLoading(true);
     setIsTyping(true);
-    setShowQuickPrompts(false);
 
     try {
       const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
@@ -342,27 +228,6 @@ export function ModernAIChatInterface() {
     }
   };
 
-  // Handle quick prompt selection
-  const handleQuickPrompt = (prompt: string) => {
-    setInputMessage(prompt);
-    setShowQuickPrompts(false);
-  };
-
-  // Handle action button clicks
-  const handleActionButton = (action: string) => {
-    const actionPrompts: Record<string, string> = {
-      health: `Analyze the health status of my ${selectedLand?.name} farm and provide recommendations`,
-      weather: `What are the weather conditions and alerts for my ${selectedLand?.name} farm?`,
-      pest: `Check for pest risks and provide prevention measures for my ${selectedLand?.crop_type} crops`,
-      recommend: `Give me personalized recommendations for my ${selectedLand?.name} farm based on current conditions`
-    };
-    
-    setInputMessage(actionPrompts[action] || '');
-    if (actionPrompts[action]) {
-      sendMessage();
-    }
-  };
-
   // Handle image upload
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -375,179 +240,59 @@ export function ModernAIChatInterface() {
     }
   };
 
-  // Scroll lands horizontally
-  const scrollLands = (direction: 'left' | 'right') => {
-    if (landScrollRef.current) {
-      const scrollAmount = 200;
-      landScrollRef.current.scrollBy({
-        left: direction === 'left' ? -scrollAmount : scrollAmount,
-        behavior: 'smooth'
-      });
-    }
-  };
-
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      {/* Modern Header with Land Selection */}
-      <div className="bg-background/95 backdrop-blur-lg border-b shadow-sm">
-        {/* AI Assistant Header */}
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center">
-                <Bot className="w-6 h-6 text-primary-foreground" />
+      {/* Minimal Header with Tiny Land Cards */}
+      <div className="bg-background/95 backdrop-blur-lg border-b">
+        <div className="px-3 py-2">
+          {/* Land Selection - Tiny Cards */}
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+            {/* General/All Lands Option */}
+            <button
+              onClick={() => selectLand(null)}
+              className={cn(
+                "shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+                !selectedLand 
+                  ? "bg-primary text-primary-foreground shadow-sm" 
+                  : "bg-card hover:bg-muted border"
+              )}
+            >
+              <div className="flex items-center gap-1.5">
+                <Layers className="w-3 h-3" />
+                <span>General</span>
               </div>
-              <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-success rounded-full border-2 border-background" />
-            </div>
-            <div>
-              <h1 className="text-lg font-semibold">AI Farm Assistant</h1>
-              <p className="text-xs text-muted-foreground">
-                {selectedLand ? `Analyzing ${selectedLand.name}` : 'Select a land for specific advice'}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {voiceEnabled && isTTSSupported && (
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => setVoiceEnabled(!voiceEnabled)}
-                className="h-8 w-8"
-              >
-                {isSpeaking ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-              </Button>
-            )}
-            <Badge variant={isOnline ? 'default' : 'secondary'} className="text-xs">
-              {isOnline ? 'Online' : 'Offline'}
-            </Badge>
-          </div>
-        </div>
+            </button>
 
-        {/* Land Selection Carousel */}
-        <div className="relative px-2 pb-3">
-          <div className="flex items-center gap-2">
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => scrollLands('left')}
-              className="h-8 w-8 shrink-0"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            
-            <div 
-              ref={landScrollRef}
-              className="flex gap-2 overflow-x-auto scrollbar-hide scroll-smooth flex-1"
-              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-            >
-              {/* All Lands Option */}
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={() => selectLand(null)}
+            {/* Individual Land Cards - Tiny */}
+            {lands.map((land) => (
+              <button
+                key={land.id}
+                onClick={() => selectLand(land)}
                 className={cn(
-                  "shrink-0 px-4 py-2 rounded-xl border-2 transition-all",
-                  !selectedLand 
-                    ? "bg-primary text-primary-foreground border-primary shadow-lg" 
-                    : "bg-card border-border hover:border-primary/50"
+                  "shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+                  selectedLand?.id === land.id
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-card hover:bg-muted border"
                 )}
               >
-                <div className="flex items-center gap-2">
-                  <Layers className="w-4 h-4" />
-                  <span className="font-medium text-sm">All Lands</span>
+                <div className="flex items-center gap-1.5">
+                  <Sprout className="w-3 h-3" />
+                  <span className="max-w-[80px] truncate">{land.name}</span>
+                  {land.area_acres && (
+                    <span className="text-[10px] opacity-70">
+                      {land.area_acres}ac
+                    </span>
+                  )}
                 </div>
-              </motion.button>
-
-              {/* Individual Land Cards */}
-              {lands.map((land) => {
-                const Icon = getCropIcon(land.crop_type);
-                const healthBadge = getHealthBadge(land.health_score);
-                const isSelected = selectedLand?.id === land.id;
-                
-                return (
-                  <motion.button
-                    key={land.id}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => selectLand(land)}
-                    className={cn(
-                      "shrink-0 min-w-[180px] p-3 rounded-xl border-2 transition-all",
-                      isSelected
-                        ? "bg-primary text-primary-foreground border-primary shadow-lg"
-                        : "bg-card border-border hover:border-primary/50"
-                    )}
-                  >
-                    <div className="space-y-2">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-2">
-                          <Icon className="w-4 h-4" />
-                          <span className="font-semibold text-sm truncate max-w-[100px]">
-                            {land.name}
-                          </span>
-                        </div>
-                        <Badge 
-                          variant={isSelected ? 'secondary' : healthBadge.color as any}
-                          className="text-xs px-1.5 py-0"
-                        >
-                          {land.health_score}%
-                        </Badge>
-                      </div>
-                      
-                      <div className="flex items-center gap-3 text-xs">
-                        <span className={cn("flex items-center gap-1", isSelected ? 'text-primary-foreground/80' : 'text-muted-foreground')}>
-                          <MapPin className="w-3 h-3" />
-                          {land.area || 'N/A'} acres
-                        </span>
-                        {land.weather_alerts && land.weather_alerts > 0 && (
-                          <span className="flex items-center gap-1 text-warning">
-                            <AlertCircle className="w-3 h-3" />
-                            {land.weather_alerts}
-                          </span>
-                        )}
-                        {land.pest_alerts && land.pest_alerts > 0 && (
-                          <span className="flex items-center gap-1 text-destructive">
-                            <Bug className="w-3 h-3" />
-                            {land.pest_alerts}
-                          </span>
-                        )}
-                      </div>
-                      
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className={cn("truncate", isSelected ? 'text-primary-foreground/70' : 'text-muted-foreground')}>
-                          {land.crop_type || 'No crop'} • {land.soil_type || 'Unknown soil'}
-                        </span>
-                      </div>
-                    </div>
-                  </motion.button>
-                );
-              })}
-
-              {/* Add New Land */}
-              <motion.button
-                whileTap={{ scale: 0.95 }}
-                onClick={() => window.location.href = '/lands/add'}
-                className="shrink-0 min-w-[120px] p-3 rounded-xl border-2 border-dashed border-border hover:border-primary/50 bg-card/50"
-              >
-                <div className="flex flex-col items-center justify-center gap-1 py-2">
-                  <Plus className="w-5 h-5 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">Add Land</span>
-                </div>
-              </motion.button>
-            </div>
-
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => scrollLands('right')}
-              className="h-8 w-8 shrink-0"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* Chat Messages Area */}
+      {/* Full Screen Chat Messages Area */}
       <ScrollArea className="flex-1 px-4" ref={scrollAreaRef}>
-        <div className="py-4 space-y-4 max-w-3xl mx-auto">
+        <div className="py-4 space-y-4 max-w-4xl mx-auto">
           <AnimatePresence mode="popLayout">
             {messages.map((message) => (
               <motion.div
@@ -606,26 +351,6 @@ export function ModernAIChatInterface() {
                         </div>
                       )}
                       
-                      {message.actionButtons && (
-                        <div className="flex flex-wrap gap-2 mt-3">
-                          {message.actionButtons.map((button, idx) => {
-                            const Icon = button.icon;
-                            return (
-                              <Button
-                                key={idx}
-                                size="sm"
-                                variant={message.role === 'user' ? 'secondary' : 'outline'}
-                                onClick={() => handleActionButton(button.action)}
-                                className="text-xs"
-                              >
-                                {Icon && <Icon className="w-3 h-3 mr-1" />}
-                                {button.label}
-                              </Button>
-                            );
-                          })}
-                        </div>
-                      )}
-                      
                       {message.suggestions && (
                         <div className="flex flex-wrap gap-2 mt-3">
                           {message.suggestions.map((suggestion, idx) => (
@@ -681,39 +406,7 @@ export function ModernAIChatInterface() {
         </div>
       </ScrollArea>
 
-      {/* Quick Prompts */}
-      <AnimatePresence>
-        {showQuickPrompts && messages.length <= 1 && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="px-4 pb-2"
-          >
-            <div className="grid grid-cols-2 gap-2 max-w-3xl mx-auto">
-              {quickPrompts.slice(0, 4).map((prompt, idx) => {
-                const Icon = prompt.icon;
-                return (
-                  <Button
-                    key={idx}
-                    variant="outline"
-                    onClick={() => handleQuickPrompt(prompt.prompt)}
-                    className={cn(
-                      "h-auto p-3 justify-start text-left",
-                      prompt.color
-                    )}
-                  >
-                    <Icon className="w-4 h-4 mr-2 shrink-0" />
-                    <span className="text-xs line-clamp-2">{prompt.label}</span>
-                  </Button>
-                );
-              })}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Modern Input Area */}
+      {/* Compact Input Area */}
       <div className="border-t bg-background/95 backdrop-blur-lg">
         {uploadedImage && (
           <div className="px-4 pt-2">
@@ -721,13 +414,13 @@ export function ModernAIChatInterface() {
               <img 
                 src={uploadedImage} 
                 alt="Upload preview" 
-                className="h-20 rounded-lg object-cover"
+                className="h-16 rounded-lg object-cover"
               />
               <Button
                 size="icon"
                 variant="destructive"
                 onClick={() => setUploadedImage(null)}
-                className="absolute -top-2 -right-2 h-6 w-6"
+                className="absolute -top-2 -right-2 h-5 w-5"
               >
                 <X className="w-3 h-3" />
               </Button>
@@ -735,7 +428,7 @@ export function ModernAIChatInterface() {
           </div>
         )}
         
-        <div className="p-4 max-w-3xl mx-auto">
+        <div className="p-3 max-w-4xl mx-auto">
           <div className="flex items-end gap-2">
             <div className="flex-1 relative">
               <textarea
@@ -751,7 +444,7 @@ export function ModernAIChatInterface() {
                   ? `Ask about ${selectedLand.name}...` 
                   : "Ask me anything about farming..."
                 }
-                className="w-full min-h-[44px] max-h-[120px] px-4 py-2.5 pr-24 rounded-2xl border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 placeholder:text-muted-foreground text-sm"
+                className="w-full min-h-[40px] max-h-[100px] px-3 py-2 pr-20 rounded-xl border bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary/50 placeholder:text-muted-foreground text-sm"
                 style={{ 
                   scrollbarWidth: 'thin',
                   lineHeight: '1.5'
@@ -771,18 +464,18 @@ export function ModernAIChatInterface() {
                   size="icon"
                   variant="ghost"
                   onClick={() => imageInputRef.current?.click()}
-                  className="h-7 w-7"
+                  className="h-6 w-6"
                 >
-                  <ImageIcon className="w-4 h-4" />
+                  <ImageIcon className="w-3.5 h-3.5" />
                 </Button>
                 
                 <Button
                   size="icon"
                   variant="ghost"
                   onClick={() => window.location.href = '/app/insta-scan'}
-                  className="h-7 w-7"
+                  className="h-6 w-6"
                 >
-                  <ScanLine className="w-4 h-4" />
+                  <ScanLine className="w-3.5 h-3.5" />
                 </Button>
                 
                 {isSpeechSupported && (
@@ -790,9 +483,9 @@ export function ModernAIChatInterface() {
                     size="icon"
                     variant="ghost"
                     onClick={toggleListening}
-                    className={cn("h-7 w-7", isListening && "text-destructive")}
+                    className={cn("h-6 w-6", isListening && "text-destructive")}
                   >
-                    {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                    {isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
                   </Button>
                 )}
               </div>
@@ -802,12 +495,12 @@ export function ModernAIChatInterface() {
               onClick={sendMessage}
               disabled={(!inputMessage.trim() && !uploadedImage) || isLoading}
               size="icon"
-              className="h-11 w-11 rounded-xl bg-primary hover:bg-primary/90 shadow-lg"
+              className="h-9 w-9 rounded-xl bg-primary hover:bg-primary/90 shadow-lg"
             >
               {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <Send className="w-5 h-5" />
+                <Send className="w-4 h-4" />
               )}
             </Button>
           </div>
