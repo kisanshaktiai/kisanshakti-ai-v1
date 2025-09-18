@@ -1,6 +1,6 @@
 import React from 'react';
-import { ModernAIChatInterface } from '@/components/chat/ModernAIChatInterface';
+import { EnhancedAIChatInterface } from '@/components/chat/EnhancedAIChatInterface';
 
 export default function AIChat() {
-  return <ModernAIChatInterface />;
+  return <EnhancedAIChatInterface />;
 }
