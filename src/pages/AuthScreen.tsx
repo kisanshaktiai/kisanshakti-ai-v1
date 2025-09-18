@@ -93,8 +93,8 @@ export default function AuthScreen() {
         const farmerCode = `${tenantPrefix}${timestamp}`;
         
         // Create new farmer with tenant_id (REQUIRED for multi-tenancy)
+        // Note: We don't set mobile_number initially to avoid pin_hash constraint
         const farmerData = {
-          mobile_number: cleanMobile, // Use the cleaned mobile number
           tenant_id: tenant.id, // REQUIRED: Ensures farmer belongs to correct tenant
           farmer_code: farmerCode,
           language_preference: localStorage.getItem('i18nextLng') || 'hi',
@@ -102,7 +102,11 @@ export default function AuthScreen() {
           app_install_date: new Date().toISOString(),
           total_app_opens: 0,
           login_attempts: 0,
-          failed_login_attempts: 0
+          failed_login_attempts: 0,
+          // Temporarily store mobile in metadata to avoid constraint
+          metadata: {
+            temp_mobile: cleanMobile
+          }
         };
         
         const { data: newFarmer, error: insertError } = await supabase

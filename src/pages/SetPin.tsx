@@ -48,14 +48,27 @@ export default function SetPin() {
 
       try {
         // MULTI-TENANT UPDATE: Ensure we update the correct farmer in the correct tenant
+        // First, get the temp mobile from metadata
+        const { data: farmerData } = await supabase
+          .from('farmers')
+          .select('metadata')
+          .eq('id', farmerId)
+          .eq('tenant_id', tenantId)
+          .single();
+        
+        const tempMobile = (farmerData?.metadata as any)?.temp_mobile || mobile;
+        
+        // Now update with both mobile and PIN together to satisfy constraint
         const { data: farmer, error: updateError } = await supabase
           .from('farmers')
           .update({
+            mobile_number: tempMobile, // Set mobile number now with PIN
             pin: pin, // In production, store hashed PIN
             pin_hash: pin, // This should be properly hashed
             pin_updated_at: new Date().toISOString(),
             last_login_at: new Date().toISOString(),
-            total_app_opens: 1
+            total_app_opens: 1,
+            metadata: {} // Clear temp mobile from metadata
           })
           .eq('id', farmerId)
           .eq('tenant_id', tenantId) // CRITICAL: Ensure tenant isolation
