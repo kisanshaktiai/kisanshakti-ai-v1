@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { toast } from '@/hooks/use-toast';
 import { 
   Send, Mic, MicOff, Volume2, VolumeX, Loader2, Bot, User, 
   RefreshCw, Wifi, WifiOff, MessageSquare, Mountain, 
-  Paperclip, Camera, Smile, ArrowLeft
+  Paperclip, Camera, Image, ArrowLeft, ChevronDown
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -60,18 +60,92 @@ export function EnhancedAIChatInterface() {
   const [isLoading, setIsLoading] = useState(false);
   const [sessionIds, setSessionIds] = useState<Record<string, string>>({});
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   
   const [transcript, setTranscript] = useState('');
-  const { isListening, startListening, stopListening } = useSpeechRecognition({
+  const { isListening, startListening: originalStartListening, stopListening } = useSpeechRecognition({
     onTranscript: (text) => setTranscript(text)
   });
   
   const { speak, stop: stopSpeaking, isSpeaking } = useTextToSpeech({
     language: language === 'hi' ? 'hi-IN' : language === 'pa' ? 'pa-IN' : language === 'mr' ? 'mr-IN' : language === 'ta' ? 'ta-IN' : 'en-IN'
   });
+
+  // Request microphone permission
+  const startListening = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      originalStartListening();
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: t('chat.microphonePermissionRequired'),
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Request camera permission
+  const requestCameraPermission = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ video: true });
+      return true;
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: t('chat.cameraPermissionRequired'),
+        variant: 'destructive'
+      });
+      return false;
+    }
+  };
+
+  // Pull to refresh handler
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) return;
+    
+    setIsRefreshing(true);
+    try {
+      await fetchLands();
+      toast({
+        title: t('common.success'),
+        description: t('chat.refreshed')
+      });
+    } catch (error) {
+      console.error('Error refreshing:', error);
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 1000);
+    }
+  }, [isRefreshing]);
+
+  // Touch event handlers for pull-to-refresh
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchEnd, setTouchEnd] = useState(0);
+  
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStart(e.targetTouches[0].clientY);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientY);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchEnd - touchStart;
+    const isDownSwipe = distance > 50;
+    const isAtTop = scrollAreaRef.current?.scrollTop === 0;
+    
+    if (isDownSwipe && isAtTop) {
+      handleRefresh();
+    }
+  };
 
   useEffect(() => {
     fetchLands();
@@ -118,11 +192,29 @@ export function EnhancedAIChatInterface() {
     return sessionIds[activeTab];
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      setAttachedFiles(prev => [...prev, ...files]);
+      toast({
+        title: t('common.success'),
+        description: `${files.length} ${t('chat.filesAttached')}`
+      });
+    }
+  };
+
+  const handleCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const hasPermission = await requestCameraPermission();
+    if (hasPermission) {
+      handleFileSelect(e);
+    }
+  };
+
   const sendMessage = async (text?: string, quickAction?: string) => {
     const messageText = text || inputValue.trim();
     const finalMessage = quickAction ? `${quickAction}: ${messageText}` : messageText;
     
-    if (!finalMessage && !quickAction) return;
+    if (!finalMessage && !quickAction && attachedFiles.length === 0) return;
     
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -137,6 +229,7 @@ export function EnhancedAIChatInterface() {
     }));
     
     setInputValue('');
+    setAttachedFiles([]);
     setIsLoading(true);
     
     try {
@@ -280,14 +373,6 @@ export function EnhancedAIChatInterface() {
     sendMessage(prompts[action] || action, action);
   };
 
-  const retryLastMessage = () => {
-    const tabMessages = messages[activeTab] || [];
-    const lastUserMessage = [...tabMessages].reverse().find(m => m.role === 'user');
-    if (lastUserMessage) {
-      sendMessage(lastUserMessage.content);
-    }
-  };
-
   const getSuggestionChips = () => {
     const suggestions = activeTab === 'general' 
       ? [t('chat.weatherToday'), t('chat.cropSuggestion'), t('chat.marketPrices')]
@@ -359,24 +444,40 @@ export function EnhancedAIChatInterface() {
       </div>
     </div>
 
-    {/* Messages Area with integrated land context */}
-    <ScrollArea className="flex-1 px-3 py-4" ref={scrollAreaRef}>
-      <AnimatePresence mode="popLayout">
-        {/* Show Land Context as first message for land-specific chats */}
-        {activeTab !== 'general' && messages[activeTab]?.length === 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-4"
-          >
-            <LandContextCard 
-              land={lands.find(l => l.id === activeTab)}
-              onQuickAction={handleQuickAction}
-            />
-          </motion.div>
-        )}
-        
-        {(messages[activeTab] || []).map((message) => (
+    {/* Messages Area with integrated land context and pull-to-refresh */}
+    <div 
+      className="flex-1 relative overflow-hidden"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
+      {/* Pull to refresh indicator */}
+      {isRefreshing && (
+        <div className="absolute top-0 left-0 right-0 flex justify-center p-3 z-20">
+          <div className="flex items-center gap-2 bg-primary/10 px-3 py-1.5 rounded-full">
+            <RefreshCw className="w-4 h-4 animate-spin text-primary" />
+            <span className="text-xs text-primary">{t('common.refreshing')}</span>
+          </div>
+        </div>
+      )}
+      
+      <ScrollArea className="h-full px-3 py-4" ref={scrollAreaRef}>
+        <AnimatePresence mode="popLayout">
+          {/* Show Land Context as first message for land-specific chats */}
+          {activeTab !== 'general' && messages[activeTab]?.length === 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4"
+            >
+              <LandContextCard 
+                land={lands.find(l => l.id === activeTab)}
+                onQuickAction={handleQuickAction}
+              />
+            </motion.div>
+          )}
+          
+          {(messages[activeTab] || []).map((message) => (
             <motion.div
               key={message.id}
               initial={{ opacity: 0, y: 10 }}
@@ -487,6 +588,7 @@ export function EnhancedAIChatInterface() {
           </motion.div>
         )}
       </ScrollArea>
+    </div>
 
       {/* Suggestion Chips */}
       {messages[activeTab]?.length === 0 && (
