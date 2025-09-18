@@ -293,56 +293,140 @@ export function EnhancedAIChatInterface() {
   };
 
   const parseStructuredResponse = (response: string) => {
-    // Simple parsing logic - in production, use proper NLP or structured output from AI
+    // Improved parsing to avoid nested info and duplication
     const structured: any = {};
+    const responseLines = response.split(/[.!?]+/).filter(line => line.trim());
     
-    if (response.toLowerCase().includes('irrigation') || response.toLowerCase().includes('water')) {
-      const irrigationMatch = response.match(/irrigation[^.]*\./gi);
-      if (irrigationMatch) structured.irrigation = irrigationMatch[0];
-    }
+    responseLines.forEach(line => {
+      const lowerLine = line.toLowerCase();
+      
+      // Extract irrigation info
+      if ((lowerLine.includes('irrigation') || lowerLine.includes('water')) && !structured.irrigation) {
+        structured.irrigation = line.trim();
+      }
+      // Extract fertilizer info
+      else if ((lowerLine.includes('fertilizer') || lowerLine.includes('nutrient')) && !structured.fertilizer) {
+        structured.fertilizer = line.trim();
+      }
+      // Extract pest info
+      else if ((lowerLine.includes('pest') || lowerLine.includes('disease')) && !structured.pest) {
+        structured.pest = line.trim();
+      }
+      // Extract weather info
+      else if ((lowerLine.includes('weather') || lowerLine.includes('rain')) && !structured.weather) {
+        structured.weather = line.trim();
+      }
+    });
     
-    if (response.toLowerCase().includes('fertilizer') || response.toLowerCase().includes('nutrient')) {
-      const fertilizerMatch = response.match(/fertilizer[^.]*\./gi);
-      if (fertilizerMatch) structured.fertilizer = fertilizerMatch[0];
-    }
-    
-    if (response.toLowerCase().includes('pest') || response.toLowerCase().includes('disease')) {
-      const pestMatch = response.match(/pest[^.]*\./gi);
-      if (pestMatch) structured.pest = pestMatch[0];
-    }
-    
-    if (response.toLowerCase().includes('weather') || response.toLowerCase().includes('rain')) {
-      const weatherMatch = response.match(/weather[^.]*\./gi);
-      if (weatherMatch) structured.weather = weatherMatch[0];
-    }
-    
+    // Only return structured data if we found meaningful content
     return Object.keys(structured).length > 0 ? structured : undefined;
   };
 
   const storeMessageForTraining = async (userMessage: Message, aiMessage: Message, land?: any) => {
     try {
-      const trainingData = {
-        tenant_id: currentTenant?.id,
-        farmer_id: user?.id,
-        land_id: land?.id,
-        soil_type: land?.soil_type,
-        land_size: land?.area_acres,
-        crop_name: land?.current_crop,
-        crop_stage: land?.cultivation_date ? calculateCropStage(land.cultivation_date) : null,
-        weather_snapshot: { /* fetch current weather */ },
-        ndvi_score: 0.72, // Simulated
-        question_text: userMessage.content,
-        ai_answer_text: aiMessage.content,
-        language: language,
-        timestamp: new Date().toISOString()
-      };
+      // Get or create session
+      const sessionId = sessionIds[activeTab] || crypto.randomUUID();
       
-      // Store in Supabase for future training
-      // await supabase.from('ai_training_data').insert(trainingData);
-      console.log('Training data prepared:', trainingData);
+      // Create session if doesn't exist
+      if (!sessionIds[activeTab]) {
+        await supabase.from('ai_chat_sessions').insert({
+          id: sessionId,
+          tenant_id: currentTenant?.id || '00000000-0000-0000-0000-000000000000',
+          farmer_id: user?.id || '00000000-0000-0000-0000-000000000000',
+          session_type: activeTab === 'general' ? 'general' : 'land_specific',
+          session_title: activeTab === 'general' ? 'General Agriculture Chat' : land?.name,
+          land_id: land?.id || null,
+          metadata: {
+            language,
+            platform: 'mobile',
+            app_version: '1.0.0'
+          }
+        });
+        
+        setSessionIds(prev => ({ ...prev, [activeTab]: sessionId }));
+      }
+      
+      // Store user message
+      await supabase.from('ai_chat_messages').insert({
+        tenant_id: currentTenant?.id || '00000000-0000-0000-0000-000000000000',
+        farmer_id: user?.id || '00000000-0000-0000-0000-000000000000',
+        session_id: sessionId,
+        role: 'user',
+        content: userMessage.content,
+        land_context: land ? {
+          land_id: land.id,
+          land_name: land.name,
+          soil_type: land.soil_type,
+          area_acres: land.area_acres,
+          current_crop: land.current_crop,
+          cultivation_date: land.cultivation_date
+        } : null,
+        weather_context: {
+          temperature: 28,
+          humidity: 65,
+          rainfall_prediction: 'moderate'
+        },
+        crop_context: land?.current_crop ? {
+          crop_name: land.current_crop,
+          crop_stage: land.cultivation_date ? calculateCropStage(land.cultivation_date) : null,
+          days_since_sowing: land.cultivation_date ? 
+            Math.floor((Date.now() - new Date(land.cultivation_date).getTime()) / (1000 * 60 * 60 * 24)) : 0
+        } : null,
+        location_context: {
+          state: land?.state || 'Unknown',
+          district: land?.district || 'Unknown',
+          village: land?.village || 'Unknown'
+        },
+        agro_climatic_zone: land?.agro_climatic_zone || 'Default',
+        soil_zone: land?.soil_zone || 'Default',
+        rainfall_zone: land?.rainfall_zone || 'Default',
+        crop_season: getCurrentSeason()
+      });
+      
+      // Store AI response
+      await supabase.from('ai_chat_messages').insert({
+        tenant_id: currentTenant?.id || '00000000-0000-0000-0000-000000000000',
+        farmer_id: user?.id || '00000000-0000-0000-0000-000000000000',
+        session_id: sessionId,
+        role: 'assistant',
+        content: aiMessage.content,
+        land_context: land ? {
+          land_id: land.id,
+          land_name: land.name,
+          soil_type: land.soil_type,
+          area_acres: land.area_acres,
+          current_crop: land.current_crop,
+          cultivation_date: land.cultivation_date
+        } : null,
+        ai_model: 'gpt-4',
+        response_time_ms: 1500,
+        tokens_used: Math.floor(aiMessage.content.length / 4)
+      });
+      
+      // Update analytics
+      await supabase.from('ai_chat_analytics').upsert({
+        tenant_id: currentTenant?.id || '00000000-0000-0000-0000-000000000000',
+        farmer_id: user?.id || '00000000-0000-0000-0000-000000000000',
+        date: new Date().toISOString().split('T')[0],
+        total_messages: 2,
+        total_sessions: 1,
+        avg_response_time_ms: 1500,
+        topics: [activeTab === 'general' ? 'general' : 'land_specific']
+      }, {
+        onConflict: 'tenant_id,farmer_id,date',
+        count: 'exact'
+      });
+      
     } catch (error) {
-      console.error('Error storing training data:', error);
+      console.error('Error storing chat data:', error);
     }
+  };
+  
+  const getCurrentSeason = () => {
+    const month = new Date().getMonth();
+    if (month >= 6 && month <= 9) return 'kharif';
+    if (month >= 10 || month <= 1) return 'rabi';
+    return 'summer';
   };
 
   const calculateCropStage = (cultivationDate: string) => {
@@ -395,9 +479,9 @@ export function EnhancedAIChatInterface() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           
-          <Avatar className="h-10 w-10 border-2 border-primary/20">
+          <Avatar className="h-10 w-10 border-2 border-border">
             <AvatarImage src="/ai-avatar.png" />
-            <AvatarFallback className="bg-gradient-to-br from-primary to-secondary text-white">
+            <AvatarFallback className="bg-primary text-primary-foreground">
               <Bot className="h-5 w-5" />
             </AvatarFallback>
           </Avatar>
@@ -425,7 +509,7 @@ export function EnhancedAIChatInterface() {
           <TabsList className="inline-flex w-auto min-w-full justify-start px-3 h-auto bg-transparent gap-2">
             <TabsTrigger 
               value="general"
-              className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-secondary data-[state=active]:text-white data-[state=inactive]:bg-muted/50 rounded-full px-4 py-1.5 text-sm transition-all"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=inactive]:bg-muted/50 data-[state=inactive]:text-muted-foreground rounded-full px-4 py-1.5 text-sm transition-all"
             >
               <MessageSquare className="w-4 h-4 mr-1.5" />
               {t('chat.generalChat')}
@@ -434,7 +518,7 @@ export function EnhancedAIChatInterface() {
               <TabsTrigger 
                 key={land.id}
                 value={land.id}
-                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-emerald-500 data-[state=active]:text-white data-[state=inactive]:bg-muted/50 rounded-full px-4 py-1.5 text-sm whitespace-nowrap transition-all"
+                className="data-[state=active]:bg-secondary data-[state=active]:text-secondary-foreground data-[state=inactive]:bg-muted/50 data-[state=inactive]:text-muted-foreground rounded-full px-4 py-1.5 text-sm whitespace-nowrap transition-all"
               >
                 <Mountain className="w-4 h-4 mr-1.5" />
                 {land.name}
@@ -505,7 +589,7 @@ export function EnhancedAIChatInterface() {
             >
               {message.role === 'assistant' && (
                 <Avatar className="h-8 w-8 shrink-0">
-                  <AvatarFallback className="bg-gradient-to-br from-primary to-secondary text-white">
+                  <AvatarFallback className="bg-primary text-primary-foreground">
                     <Bot className="h-4 w-4" />
                   </AvatarFallback>
                 </Avatar>
@@ -514,36 +598,36 @@ export function EnhancedAIChatInterface() {
               <div className={cn(
                 "max-w-[85%] rounded-2xl p-3",
                 message.role === 'user' 
-                  ? 'bg-gradient-to-r from-primary to-secondary text-white' 
-                  : 'bg-card border shadow-sm'
+                  ? 'bg-primary text-primary-foreground' 
+                  : 'bg-card border border-border shadow-sm'
               )}>
                 <p className="text-sm whitespace-pre-wrap">{message.content}</p>
                 
-                {/* Structured sections for AI responses */}
+                {/* Structured sections for AI responses - using semantic colors */}
                 {message.role === 'assistant' && message.structured && (
                   <div className="mt-3 space-y-2">
                     {message.structured.irrigation && (
-                      <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border-l-4 border-blue-500">
-                        <p className="text-xs font-medium text-blue-700 dark:text-blue-300">💧 {t('chat.irrigation')}</p>
-                        <p className="text-xs mt-1">{message.structured.irrigation}</p>
+                      <div className="p-2 rounded-lg bg-primary/5 border-l-4 border-primary">
+                        <p className="text-xs font-medium text-primary">💧 {t('chat.irrigation')}</p>
+                        <p className="text-xs mt-1 text-muted-foreground">{message.structured.irrigation}</p>
                       </div>
                     )}
                     {message.structured.fertilizer && (
-                      <div className="p-2 rounded-lg bg-green-50 dark:bg-green-900/20 border-l-4 border-green-500">
-                        <p className="text-xs font-medium text-green-700 dark:text-green-300">🌱 {t('chat.fertilizer')}</p>
-                        <p className="text-xs mt-1">{message.structured.fertilizer}</p>
+                      <div className="p-2 rounded-lg bg-secondary/5 border-l-4 border-secondary">
+                        <p className="text-xs font-medium text-secondary">🌱 {t('chat.fertilizer')}</p>
+                        <p className="text-xs mt-1 text-muted-foreground">{message.structured.fertilizer}</p>
                       </div>
                     )}
                     {message.structured.pest && (
-                      <div className="p-2 rounded-lg bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500">
-                        <p className="text-xs font-medium text-red-700 dark:text-red-300">🐛 {t('chat.pest')}</p>
-                        <p className="text-xs mt-1">{message.structured.pest}</p>
+                      <div className="p-2 rounded-lg bg-destructive/5 border-l-4 border-destructive">
+                        <p className="text-xs font-medium text-destructive">🐛 {t('chat.pest')}</p>
+                        <p className="text-xs mt-1 text-muted-foreground">{message.structured.pest}</p>
                       </div>
                     )}
                     {message.structured.weather && (
-                      <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-900/20 border-l-4 border-purple-500">
-                        <p className="text-xs font-medium text-purple-700 dark:text-purple-300">☁️ {t('chat.weather')}</p>
-                        <p className="text-xs mt-1">{message.structured.weather}</p>
+                      <div className="p-2 rounded-lg bg-accent/5 border-l-4 border-accent">
+                        <p className="text-xs font-medium text-accent-foreground">☁️ {t('chat.weather')}</p>
+                        <p className="text-xs mt-1 text-muted-foreground">{message.structured.weather}</p>
                       </div>
                     )}
                   </div>

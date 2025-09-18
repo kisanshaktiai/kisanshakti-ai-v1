@@ -1,8 +1,12 @@
 import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { MessageSquare, Sprout, Cloud, TrendingUp, Bug, HelpCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { MessageSquare, Sprout, Cloud, TrendingUp, Bug, HelpCircle, Volume2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { useLanguageStore } from '@/stores/languageStore';
+import { cn } from '@/lib/utils';
 
 interface GeneralChatWelcomeCardProps {
   onQuickAction?: (action: string) => void;
@@ -10,6 +14,21 @@ interface GeneralChatWelcomeCardProps {
 
 export function GeneralChatWelcomeCard({ onQuickAction }: GeneralChatWelcomeCardProps) {
   const { t } = useTranslation();
+  const langStore = useLanguageStore();
+  const language = (langStore as any).selectedLanguage || 'en';
+  
+  const { speak, isSpeaking, stop } = useTextToSpeech({
+    language: language === 'hi' ? 'hi-IN' : language === 'pa' ? 'pa-IN' : language === 'mr' ? 'mr-IN' : language === 'ta' ? 'ta-IN' : 'en-IN'
+  });
+
+  const handleReadAloud = () => {
+    if (isSpeaking) {
+      stop();
+    } else {
+      const welcomeText = `${t('chat.welcomeTitle')}. ${t('chat.askAgricultureQueries')}. ${t('chat.importantNote')}. ${t('chat.agricultureOnlyMessage')}`;
+      speak(welcomeText);
+    }
+  };
   
   const quickTopics = [
     { icon: Cloud, label: t('chat.weatherForecast'), action: 'weather' },
@@ -19,16 +38,26 @@ export function GeneralChatWelcomeCard({ onQuickAction }: GeneralChatWelcomeCard
   ];
   
   return (
-    <Card className="p-4 bg-gradient-to-br from-primary/5 via-secondary/5 to-accent/5 border-primary/20 backdrop-blur-sm">
-      {/* Welcome Header */}
-      <div className="flex items-center gap-3 mb-3">
-        <div className="p-2 rounded-full bg-gradient-to-r from-primary to-secondary">
-          <MessageSquare className="w-5 h-5 text-white" />
+    <Card className="p-4 bg-card border-border">
+      {/* Welcome Header with Read Aloud */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-full bg-primary/10">
+            <MessageSquare className="w-5 h-5 text-primary" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-base font-semibold text-foreground">{t('chat.welcomeTitle')}</h3>
+            <p className="text-xs text-muted-foreground">{t('chat.askAgricultureQueries')}</p>
+          </div>
         </div>
-        <div>
-          <h3 className="text-base font-semibold text-foreground">{t('chat.welcomeTitle')}</h3>
-          <p className="text-xs text-muted-foreground">{t('chat.askAgricultureQueries')}</p>
-        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={handleReadAloud}
+          className="h-8 w-8"
+        >
+          <Volume2 className={cn("h-4 w-4", isSpeaking && "text-primary animate-pulse")} />
+        </Button>
       </div>
 
       {/* Instructions */}
