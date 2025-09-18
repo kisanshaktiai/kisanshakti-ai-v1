@@ -14937,13 +14937,11 @@ export type Database = {
         Returns: string
       }
       set_app_session: {
-        Args:
-          | { p_farmer: string; p_tenant: string }
-          | {
-              p_farmer_id: string
-              p_session_token?: string
-              p_tenant_id: string
-            }
+        Args: {
+          p_farmer_id: string
+          p_session_token?: string
+          p_tenant_id: string
+        }
         Returns: undefined
       }
       set_limit: {

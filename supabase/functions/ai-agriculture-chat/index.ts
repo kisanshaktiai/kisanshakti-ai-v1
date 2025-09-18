@@ -15,56 +15,84 @@ serve(async (req) => {
   try {
     const startTime = Date.now();
     
-    // Get request headers for farmer context
-    const tenantId = req.headers.get('x-tenant-id');
-    const farmerId = req.headers.get('x-farmer-id');
-    const sessionToken = req.headers.get('x-session-token');
-    
-    if (!tenantId || !farmerId) {
-      throw new Error('Missing tenant or farmer context');
-    }
-
     const requestBody = await req.json();
     const { 
       messages = [], 
       landId, 
       sessionId,
       imageUrl,
-      language = 'en'
+      language = 'en',
+      tenantId,
+      farmerId,
+      fileContent
     } = requestBody;
 
-    console.log('AI Chat Request:', { tenantId, farmerId, landId, sessionId, language });
+    // Get request headers for farmer context (fallback)
+    const headerTenantId = req.headers.get('x-tenant-id');
+    const headerFarmerId = req.headers.get('x-farmer-id');
+    const sessionToken = req.headers.get('x-session-token');
+    
+    // Use body values first, then headers as fallback
+    const finalTenantId = tenantId || headerTenantId;
+    const finalFarmerId = farmerId || headerFarmerId;
+    
+    if (!finalTenantId || !finalFarmerId) {
+      console.error('Missing context:', { tenantId: finalTenantId, farmerId: finalFarmerId, requestBody });
+      throw new Error('Missing tenant or farmer context');
+    }
+
+    console.log('AI Chat Request:', { tenantId: finalTenantId, farmerId: finalFarmerId, landId, sessionId, language });
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Set app session for RLS
-    await supabase.rpc('set_app_session', {
-      p_tenant_id: tenantId,
-      p_farmer_id: farmerId,
-      p_session_token: sessionToken
-    });
+    // Set app session for RLS (if we have session token)
+    if (sessionToken) {
+      await supabase.rpc('set_app_session', {
+        p_tenant_id: finalTenantId,
+        p_farmer_id: finalFarmerId,
+        p_session_token: sessionToken
+      });
+    }
 
     // Get or create chat session
     let currentSessionId = sessionId;
-    if (!currentSessionId) {
+    let currentSession = null;
+    
+    if (currentSessionId) {
+      // Load existing session
+      const { data: existingSession } = await supabase
+        .from('ai_chat_sessions')
+        .select('*')
+        .eq('id', currentSessionId)
+        .single();
+      
+      currentSession = existingSession;
+    }
+    
+    if (!currentSessionId || !currentSession) {
       const { data: newSession, error: sessionError } = await supabase
         .from('ai_chat_sessions')
         .insert({
-          tenant_id: tenantId,
-          farmer_id: farmerId,
-          land_id: landId,
+          tenant_id: finalTenantId,
+          farmer_id: finalFarmerId,
+          land_id: landId || null,
           session_type: landId ? 'land_specific' : 'general',
           session_title: `Chat - ${new Date().toLocaleDateString()}`,
-          metadata: { language }
+          metadata: { 
+            language,
+            created_at: new Date().toISOString(),
+            total_messages: 0
+          }
         })
         .select()
         .single();
 
       if (sessionError) throw sessionError;
       currentSessionId = newSession.id;
+      currentSession = newSession;
     }
 
     // Get land context if landId is provided
@@ -86,15 +114,18 @@ INSTRUCTIONS:
         .from('lands')
         .select('*')
         .eq('id', landId)
-        .eq('tenant_id', tenantId)
+        .eq('tenant_id', finalTenantId)
         .single();
 
       if (land) {
+        landDetails = land;
         landContext = {
           name: land.name,
-          size: land.size,
+          size: land.size || land.area_gunta,
           soil_type: land.soil_type,
-          location: land.location
+          location: land.location,
+          crops: land.crops,
+          water_source: land.water_source
         };
         
         systemPrompt += `\n\nLAND DETAILS:
@@ -105,20 +136,44 @@ INSTRUCTIONS:
       }
     }
 
-    // Get farmer context
+    // Get farmer context with enhanced details
     const { data: farmer } = await supabase
       .from('farmers')
-      .select('name, district, state, total_land_size')
-      .eq('id', farmerId)
-      .eq('tenant_id', tenantId)
+      .select('*')
+      .eq('id', finalFarmerId)
+      .eq('tenant_id', finalTenantId)
       .single();
 
     if (farmer) {
-      systemPrompt += `\n\nFARMER CONTEXT:
-- Name: ${farmer.name || 'Farmer'}
-- Location: ${farmer.district || 'Unknown'}, ${farmer.state || 'India'}
-- Total Land: ${farmer.total_land_size || 'Unknown'} acres`;
+      farmerDetails = farmer;
+      farmerContext = {
+        name: farmer.name,
+        village: farmer.village,
+        district: farmer.district,
+        state: farmer.state,
+        language: farmer.language || language,
+        experience: farmer.farming_experience,
+        education: farmer.education_level
+      };
+      
+      systemPrompt += `\n\nFARMER PROFILE:
+You are speaking with ${farmer.name || 'a farmer'}:
+- Location: ${farmer.village || 'Unknown village'}, ${farmer.district || 'Unknown district'}, ${farmer.state || 'India'}
+- Total Land: ${farmer.total_land_size || 'Unknown'} acres
+- Experience: ${farmer.farming_experience || 'Not specified'} years
+- Preferred Language: ${farmer.language || language}
+- Adjust your advice based on their experience level and location`;
     }
+    
+    // Add seasonal context
+    const currentMonth = new Date().getMonth() + 1;
+    const season = currentMonth >= 6 && currentMonth <= 10 ? 'Kharif' : 
+                   currentMonth >= 10 || currentMonth <= 3 ? 'Rabi' : 'Zaid';
+    
+    systemPrompt += `\n\nCURRENT SEASON: ${season} season
+- Provide season-specific advice
+- Consider typical weather patterns for this time
+- Suggest appropriate crops and activities for this season`;
 
     // Prepare messages for OpenAI - simple format
     const openAIMessages = [
@@ -148,10 +203,11 @@ INSTRUCTIONS:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'claude-3-5-sonnet-20241022', // Using Claude for better natural language
         messages: openAIMessages,
-        max_tokens: 800,
-        temperature: 0.7,
+        max_tokens: 1000,
+        temperature: 0.8, // Slightly higher for more natural responses
+        stream: false
       }),
     });
 
@@ -169,37 +225,99 @@ INSTRUCTIONS:
     const lastUserMessage = messages[messages.length - 1];
     const responseTime = Date.now() - startTime;
     
+    // Enhanced metadata for AI training
+    const enhancedMetadata = {
+      weather_context: weatherContext,
+      farmer_context: farmerContext,
+      land_context: landContext,
+      crop_season: getCropSeason(),
+      agro_climatic_zone: landDetails?.agro_climatic_zone || farmerDetails?.agro_climatic_zone,
+      soil_zone: landDetails?.soil_type,
+      rainfall_zone: farmerDetails?.rainfall_zone,
+      language,
+      timestamp: new Date().toISOString()
+    };
+    
     if (lastUserMessage) {
-      // Save user message
-      await supabase
+      // Save user message with enhanced metadata for training
+      const { error: userMsgError } = await supabase
         .from('ai_chat_messages')
         .insert({
           session_id: currentSessionId,
-          tenant_id: tenantId,
-          farmer_id: farmerId,
+          tenant_id: finalTenantId,
+          farmer_id: finalFarmerId,
           role: 'user',
           content: lastUserMessage.content,
           land_context: landContext,
+          weather_context: weatherContext,
+          crop_context: landContext?.crops,
+          location_context: {
+            village: farmerDetails?.village,
+            district: farmerDetails?.district,
+            state: farmerDetails?.state
+          },
           crop_season: getCropSeason(),
-          image_urls: imageUrl ? [imageUrl] : null
+          agro_climatic_zone: landDetails?.agro_climatic_zone || farmerDetails?.agro_climatic_zone,
+          soil_zone: landDetails?.soil_type,
+          rainfall_zone: farmerDetails?.rainfall_zone,
+          image_urls: imageUrl ? [imageUrl] : null,
+          attachments: fileContent ? [{ type: 'file', content: fileContent }] : null,
+          metadata: enhancedMetadata
         });
+        
+      if (userMsgError) {
+        console.error('Error saving user message:', userMsgError);
+      }
     }
 
-    // Save AI response
-    await supabase
+    // Save AI response with enhanced metadata for training
+    const { error: aiMsgError } = await supabase
       .from('ai_chat_messages')
       .insert({
         session_id: currentSessionId,
-        tenant_id: tenantId,
-        farmer_id: farmerId,
+        tenant_id: finalTenantId,
+        farmer_id: finalFarmerId,
         role: 'assistant',
         content: aiMessage,
         land_context: landContext,
+        weather_context: weatherContext,
+        crop_context: landContext?.crops,
+        location_context: {
+          village: farmerDetails?.village,
+          district: farmerDetails?.district,
+          state: farmerDetails?.state
+        },
         crop_season: getCropSeason(),
+        agro_climatic_zone: landDetails?.agro_climatic_zone || farmerDetails?.agro_climatic_zone,
+        soil_zone: landDetails?.soil_type,
+        rainfall_zone: farmerDetails?.rainfall_zone,
         ai_model: 'gpt-4o-mini',
         response_time_ms: responseTime,
-        tokens_used: tokensUsed
+        tokens_used: tokensUsed,
+        metadata: {
+          ...enhancedMetadata,
+          prompt_tokens: aiData.usage?.prompt_tokens,
+          completion_tokens: aiData.usage?.completion_tokens,
+          quick_replies: generateQuickReplies(lastUserMessage?.content || '')
+        }
       });
+      
+    if (aiMsgError) {
+      console.error('Error saving AI response:', aiMsgError);
+    }
+    
+    // Update session activity
+    await supabase
+      .from('ai_chat_sessions')
+      .update({
+        updated_at: new Date().toISOString(),
+        metadata: {
+          last_activity: new Date().toISOString(),
+          total_messages: (currentSession?.metadata?.total_messages || 0) + 2,
+          last_land_id: landId
+        }
+      })
+      .eq('id', currentSessionId);
 
     // Generate quick replies
     const quickReplies = generateQuickReplies(lastUserMessage?.content || '');
