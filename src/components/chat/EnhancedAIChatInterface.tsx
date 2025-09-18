@@ -21,6 +21,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTenantStore } from '@/stores/tenantStore';
 import { landsApi } from '@/services/landsApi';
 import { LandContextCard } from './LandContextCard';
+import { GeneralChatWelcomeCard } from './GeneralChatWelcomeCard';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
@@ -463,6 +464,19 @@ export function EnhancedAIChatInterface() {
       
       <ScrollArea className="h-full px-3 py-4" ref={scrollAreaRef}>
         <AnimatePresence mode="popLayout">
+          {/* Show Welcome Card for general chat when no messages */}
+          {activeTab === 'general' && messages[activeTab]?.length === 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4"
+            >
+              <GeneralChatWelcomeCard 
+                onQuickAction={handleQuickAction}
+              />
+            </motion.div>
+          )}
+          
           {/* Show Land Context as first message for land-specific chats */}
           {activeTab !== 'general' && messages[activeTab]?.length === 0 && (
             <motion.div
