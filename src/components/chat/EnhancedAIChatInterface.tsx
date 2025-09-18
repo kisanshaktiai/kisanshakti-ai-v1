@@ -715,7 +715,6 @@ export function EnhancedAIChatInterface() {
           </div>
         </div>
       </div>
-      </div>
     </div>
   );
 }
