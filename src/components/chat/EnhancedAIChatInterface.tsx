@@ -616,30 +616,57 @@ export function EnhancedAIChatInterface() {
           </div>
         )}
         
+        {/* Attached files preview */}
+        {attachedFiles.length > 0 && (
+          <div className="flex gap-2 mb-2 overflow-x-auto">
+            {attachedFiles.map((file, index) => (
+              <div key={index} className="flex items-center gap-1 px-2 py-1 bg-secondary/20 rounded-full text-xs">
+                <Image className="w-3 h-3" />
+                {file.name}
+                <button 
+                  onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))}
+                  className="ml-1"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        
         <div className="flex items-center gap-2">
           <div className="flex-1 relative">
             <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept="image/*,.pdf,.doc,.docx"
+                className="hidden"
+                onChange={handleFileSelect}
+              />
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6"
-                onClick={() => {/* emoji picker */}}
-              >
-                <Smile className="h-4 w-4 text-muted-foreground" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => {/* file upload */}}
+                onClick={() => fileInputRef.current?.click()}
               >
                 <Paperclip className="h-4 w-4 text-muted-foreground" />
               </Button>
+              
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={handleCameraCapture}
+              />
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6"
-                onClick={() => {/* camera */}}
+                onClick={() => cameraInputRef.current?.click()}
               >
                 <Camera className="h-4 w-4 text-muted-foreground" />
               </Button>
@@ -651,12 +678,12 @@ export function EnhancedAIChatInterface() {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
               placeholder={t('chat.typeMessage')}
-              className="pl-28 pr-12 py-6 rounded-full bg-secondary/10 border-0 focus-visible:ring-2 focus-visible:ring-primary"
+              className="pl-20 pr-12 py-6 rounded-full bg-secondary/10 border-0 focus-visible:ring-2 focus-visible:ring-primary"
               disabled={isLoading || !isOnline}
             />
             
             <div className="absolute right-1 top-1/2 -translate-y-1/2">
-              {inputValue.trim() ? (
+              {inputValue.trim() || attachedFiles.length > 0 ? (
                 <Button
                   onClick={() => sendMessage()}
                   disabled={isLoading || !isOnline}
@@ -687,19 +714,7 @@ export function EnhancedAIChatInterface() {
             </div>
           </div>
         </div>
-        
-        {/* Retry button for errors */}
-        {messages[activeTab]?.length > 0 && !isLoading && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={retryLastMessage}
-            className="mt-2 text-xs"
-          >
-            <RefreshCw className="h-3 w-3 mr-1" />
-            {t('common.retry')}
-          </Button>
-        )}
+      </div>
       </div>
     </div>
   );
