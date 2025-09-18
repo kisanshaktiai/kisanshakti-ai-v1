@@ -659,22 +659,34 @@ export type Database = {
           created_at: string
           crop_context: Json | null
           crop_season: string | null
+          edited_at: string | null
+          error_details: Json | null
           farmer_id: string
           feedback_rating: number | null
           feedback_text: string | null
           id: string
           image_urls: string[] | null
+          ip_address: unknown | null
+          is_edited: boolean | null
           land_context: Json | null
+          language: string | null
           location_context: Json | null
+          message_type: string | null
+          metadata: Json | null
+          parent_message_id: string | null
           partition_key: number | null
           rainfall_zone: string | null
           response_time_ms: number | null
           role: string
           session_id: string
           soil_zone: string | null
+          status: string | null
           tenant_id: string
           tokens_used: number | null
+          updated_at: string | null
+          user_agent: string | null
           weather_context: Json | null
+          word_count: number | null
         }
         Insert: {
           agro_climatic_zone?: string | null
@@ -684,22 +696,34 @@ export type Database = {
           created_at?: string
           crop_context?: Json | null
           crop_season?: string | null
+          edited_at?: string | null
+          error_details?: Json | null
           farmer_id: string
           feedback_rating?: number | null
           feedback_text?: string | null
           id?: string
           image_urls?: string[] | null
+          ip_address?: unknown | null
+          is_edited?: boolean | null
           land_context?: Json | null
+          language?: string | null
           location_context?: Json | null
+          message_type?: string | null
+          metadata?: Json | null
+          parent_message_id?: string | null
           partition_key?: number | null
           rainfall_zone?: string | null
           response_time_ms?: number | null
           role: string
           session_id: string
           soil_zone?: string | null
+          status?: string | null
           tenant_id: string
           tokens_used?: number | null
+          updated_at?: string | null
+          user_agent?: string | null
           weather_context?: Json | null
+          word_count?: number | null
         }
         Update: {
           agro_climatic_zone?: string | null
@@ -709,24 +733,43 @@ export type Database = {
           created_at?: string
           crop_context?: Json | null
           crop_season?: string | null
+          edited_at?: string | null
+          error_details?: Json | null
           farmer_id?: string
           feedback_rating?: number | null
           feedback_text?: string | null
           id?: string
           image_urls?: string[] | null
+          ip_address?: unknown | null
+          is_edited?: boolean | null
           land_context?: Json | null
+          language?: string | null
           location_context?: Json | null
+          message_type?: string | null
+          metadata?: Json | null
+          parent_message_id?: string | null
           partition_key?: number | null
           rainfall_zone?: string | null
           response_time_ms?: number | null
           role?: string
           session_id?: string
           soil_zone?: string | null
+          status?: string | null
           tenant_id?: string
           tokens_used?: number | null
+          updated_at?: string | null
+          user_agent?: string | null
           weather_context?: Json | null
+          word_count?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ai_chat_messages_parent_message_id_fkey"
+            columns: ["parent_message_id"]
+            isOneToOne: false
+            referencedRelation: "ai_chat_messages"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ai_chat_messages_session_id_fkey"
             columns: ["session_id"]

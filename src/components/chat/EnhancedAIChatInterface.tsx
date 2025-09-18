@@ -221,8 +221,9 @@ export function EnhancedAIChatInterface() {
     
     if (!finalMessage && !quickAction && attachedFiles.length === 0) return;
     
+    const userMessageId = crypto.randomUUID();
     const userMessage: Message = {
-      id: crypto.randomUUID(),
+      id: userMessageId,
       role: 'user',
       content: finalMessage,
       timestamp: new Date()
@@ -242,34 +243,84 @@ export function EnhancedAIChatInterface() {
       const landId = activeTab !== 'general' ? activeTab : undefined;
       const land = landId ? lands.find(l => l.id === landId) : null;
       
-      // Prepare metadata with all required fields
-      const metadata = {
-        tenantId: currentTenant?.id || 'default-tenant',
-        farmerId: user?.id || 'default-farmer',
+      const tenantId = currentTenant?.id || '00000000-0000-0000-0000-000000000000';
+      const farmerId = user?.id || '00000000-0000-0000-0000-000000000000';
+      
+      // Create or get session
+      if (!sessionIds[activeTab]) {
+        const { error: sessionError } = await supabase.from('ai_chat_sessions').insert({
+          id: sessionId,
+          tenant_id: tenantId,
+          farmer_id: farmerId,
+          session_type: activeTab === 'general' ? 'general' : 'land_specific',
+          session_title: activeTab === 'general' ? 'General Agriculture Chat' : land?.name,
+          land_id: land?.id || null,
+          metadata: {
+            language,
+            platform: 'mobile',
+            app_version: '1.0.0'
+          }
+        });
+        
+        if (sessionError) console.error('Session creation error:', sessionError);
+      }
+      
+      // Save user message immediately with status 'sending'
+      const { error: msgError } = await supabase.from('ai_chat_messages').insert({
+        id: userMessageId,
+        session_id: sessionId,
+        tenant_id: tenantId,
+        farmer_id: farmerId,
+        role: 'user',
+        content: finalMessage,
+        status: 'sending',
         language: language,
-        landContext: land ? {
-          id: land.id,
-          name: land.name,
+        message_type: attachedFiles.length > 0 ? 'multimedia' : 'text',
+        word_count: finalMessage.split(/\s+/).length,
+        metadata: {
+          tab: activeTab,
+          landId: land?.id,
+          quickAction: quickAction,
+          attachments: attachedFiles.length
+        },
+        land_context: land ? {
+          land_id: land.id,
+          land_name: land.name,
           soil_type: land.soil_type,
           area_acres: land.area_acres,
           current_crop: land.current_crop
-        } : null
-      };
+        } : null,
+        crop_season: getCurrentSeason()
+      });
       
+      if (msgError) console.error('Error saving user message:', msgError);
+      
+      // Call AI function
       const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
         body: {
           messages: [{ role: 'user', content: finalMessage }],
           sessionId,
           landId,
           language,
-          metadata
+          metadata: {
+            tenantId,
+            farmerId,
+            language,
+            landContext: land
+          }
         }
       });
       
       if (error) throw error;
       
+      // Update user message status to 'sent'
+      await supabase.from('ai_chat_messages')
+        .update({ status: 'sent' })
+        .eq('id', userMessageId);
+      
+      const aiMessageId = crypto.randomUUID();
       const aiMessage: Message = {
-        id: crypto.randomUUID(),
+        id: aiMessageId,
         role: 'assistant',
         content: data.response || t('chat.errorOccurred'),
         timestamp: new Date(),
@@ -281,11 +332,19 @@ export function EnhancedAIChatInterface() {
         [activeTab]: [...(prev[activeTab] || []), aiMessage]
       }));
       
-      // Store in database for training
-      await storeMessageForTraining(userMessage, aiMessage, land);
+      // Save AI response - No need to save separately as edge function already does this
       
     } catch (error) {
       console.error('Error sending message:', error);
+      
+      // Update message status to 'error' if failed
+      await supabase.from('ai_chat_messages')
+        .update({ 
+          status: 'error',
+          error_details: { error: error instanceof Error ? error.message : 'Unknown error' }
+        })
+        .eq('id', userMessageId);
+      
       toast({
         title: t('common.error'),
         description: isOnline ? t('chat.errorOccurred') : t('chat.offlineMessage'),

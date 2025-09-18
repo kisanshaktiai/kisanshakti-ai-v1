@@ -299,6 +299,7 @@ You are speaking with ${farmer.name || 'a farmer'}:
     
     if (lastUserMessage) {
       // Save user message with enhanced metadata for training
+      const userMessageContent = typeof lastUserMessage === 'string' ? lastUserMessage : lastUserMessage.content;
       const { error: userMsgError } = await supabase
         .from('ai_chat_messages')
         .insert({
@@ -306,7 +307,11 @@ You are speaking with ${farmer.name || 'a farmer'}:
           tenant_id: finalTenantId,
           farmer_id: finalFarmerId,
           role: 'user',
-          content: lastUserMessage.content,
+          content: userMessageContent,
+          status: 'sent',
+          language: language || 'en',
+          message_type: imageUrl || fileContent ? 'multimedia' : 'text',
+          word_count: userMessageContent ? userMessageContent.split(/\s+/).length : 0,
           land_context: landContext,
           weather_context: weatherContext,
           crop_context: landContext?.crops,
@@ -321,7 +326,9 @@ You are speaking with ${farmer.name || 'a farmer'}:
           rainfall_zone: farmerDetails?.rainfall_zone,
           image_urls: imageUrl ? [imageUrl] : null,
           attachments: fileContent ? [{ type: 'file', content: fileContent }] : null,
-          metadata: enhancedMetadata
+          metadata: enhancedMetadata,
+          user_agent: req.headers.get('user-agent') || null,
+          ip_address: req.headers.get('x-forwarded-for')?.split(',')[0] || req.headers.get('cf-connecting-ip') || null
         });
         
       if (userMsgError) {
@@ -338,6 +345,10 @@ You are speaking with ${farmer.name || 'a farmer'}:
         farmer_id: finalFarmerId,
         role: 'assistant',
         content: aiMessage,
+        status: 'sent',
+        language: language || 'en',
+        message_type: 'text',
+        word_count: aiMessage ? aiMessage.split(/\s+/).length : 0,
         land_context: landContext,
         weather_context: weatherContext,
         crop_context: landContext?.crops,
@@ -422,6 +433,14 @@ function getCropSeason(): string {
   if (month >= 6 && month <= 10) return 'Kharif';
   if (month >= 10 || month <= 3) return 'Rabi';
   return 'Zaid';
+}
+
+function getCropStage(cultivationDate: string): string {
+  const daysElapsed = Math.floor((Date.now() - new Date(cultivationDate).getTime()) / (1000 * 60 * 60 * 24));
+  if (daysElapsed < 30) return 'seedling';
+  if (daysElapsed < 60) return 'vegetative';
+  if (daysElapsed < 90) return 'flowering';
+  return 'harvest';
 }
 
 function generateQuickReplies(lastMessage: string): string[] {
