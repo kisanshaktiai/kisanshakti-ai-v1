@@ -128,6 +128,11 @@ serve(async (req) => {
 
     // Get land context if landId is provided
     let landContext = null;
+    let landDetails: any = null;
+    let farmerDetails: any = null;
+    let farmerContext: any = null;
+    let weatherContext: any = null;
+    
     let systemPrompt = `You are an expert agricultural advisor providing personalized farming advice in simple, natural language.
     
 INSTRUCTIONS:

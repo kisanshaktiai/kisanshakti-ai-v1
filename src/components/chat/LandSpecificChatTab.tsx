@@ -56,100 +56,97 @@ export function LandSpecificChatTab({ landId, onQuickAction }: LandSpecificChatT
 
   if (loading) {
     return (
-      <Card className="mx-2 mt-2 p-4 bg-gradient-to-r from-primary/5 to-secondary/5 border-primary/20">
-        <div className="space-y-3">
-          <Skeleton className="h-6 w-32" />
-          <div className="grid grid-cols-2 gap-3">
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
+      <div className="mx-2 mt-2 mb-2">
+        <Card className="p-3 bg-gradient-to-r from-primary/5 to-secondary/5 border-primary/20">
+          <div className="space-y-2">
+            <Skeleton className="h-5 w-28" />
+            <div className="grid grid-cols-3 gap-2">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
           </div>
-          <Skeleton className="h-20 w-full" />
-        </div>
-      </Card>
+        </Card>
+      </div>
     );
   }
 
   if (!landData) return null;
 
   return (
-    <Card className="mx-2 mt-2 p-4 bg-gradient-to-br from-primary/5 via-secondary/5 to-accent/5 border-primary/20 backdrop-blur-sm">
-      {/* Land Header */}
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <h3 className="text-lg font-semibold text-foreground">{landData.name}</h3>
-          <p className="text-sm text-muted-foreground">
-            {landData.area_acres} {t('common.acres')} • {landData.soil_type || t('common.unknown')} {t('common.soil')}
-          </p>
-        </div>
-        <Badge className={`${ndviStatus.color} text-white`}>
-          <Leaf className="w-3 h-3 mr-1" />
-          {ndviStatus.label}
-        </Badge>
-      </div>
-
-      {/* Current Crop Info */}
-      {landData.current_crop && (
-        <div className="mb-3 p-3 rounded-lg bg-secondary/10">
-          <div className="flex items-center gap-2 mb-1">
-            <Sprout className="w-4 h-4 text-green-600" />
-            <span className="text-sm font-medium">{t('common.currentCrop')}</span>
+    <div className="mx-2 mt-2 mb-2 max-h-32 overflow-y-auto">
+      <Card className="p-3 bg-gradient-to-br from-primary/5 via-secondary/5 to-accent/5 border-primary/20 backdrop-blur-sm">
+        {/* Compact Land Header */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-foreground">{landData.name}</h3>
+            <span className="text-xs text-muted-foreground">
+              {landData.area_acres} {t('common.acres')}
+            </span>
+            {landData.soil_type && (
+              <span className="text-xs text-muted-foreground">• {landData.soil_type}</span>
+            )}
           </div>
-          <p className="text-sm text-foreground ml-6">{landData.current_crop}</p>
-          {landData.cultivation_date && (
-            <p className="text-xs text-muted-foreground ml-6 mt-1">
-              {t('common.plantedOn')}: {new Date(landData.cultivation_date).toLocaleDateString()}
-            </p>
+          <Badge className={`${ndviStatus.color} text-white text-xs px-2 py-0.5`}>
+            <Leaf className="w-3 h-3 mr-0.5" />
+            {ndviStatus.label}
+          </Badge>
+        </div>
+
+        {/* Compact Info Grid */}
+        <div className="grid grid-cols-4 gap-1.5 mb-2">
+          {landData.current_crop && (
+            <div className="flex items-center gap-1 p-1.5 rounded bg-green-100/50 dark:bg-green-900/20">
+              <Sprout className="w-3 h-3 text-green-600" />
+              <span className="text-xs truncate">{landData.current_crop}</span>
+            </div>
           )}
+          <div className="flex items-center gap-1 p-1.5 rounded bg-orange-100/50 dark:bg-orange-900/20">
+            <Thermometer className="w-3 h-3 text-orange-600" />
+            <span className="text-xs">{weather.temperature}°C</span>
+          </div>
+          <div className="flex items-center gap-1 p-1.5 rounded bg-blue-100/50 dark:bg-blue-900/20">
+            <Droplets className="w-3 h-3 text-blue-600" />
+            <span className="text-xs">{weather.humidity}%</span>
+          </div>
+          <div className="flex items-center gap-1 p-1.5 rounded bg-cyan-100/50 dark:bg-cyan-900/20">
+            <Cloud className="w-3 h-3 text-cyan-600" />
+            <span className="text-xs">{weather.rainfall}mm</span>
+          </div>
         </div>
-      )}
 
-      {/* Weather Summary */}
-      <div className="grid grid-cols-3 gap-2 mb-3">
-        <div className="flex items-center gap-1 p-2 rounded-lg bg-orange-100/50 dark:bg-orange-900/20">
-          <Thermometer className="w-4 h-4 text-orange-600" />
-          <span className="text-xs font-medium">{weather.temperature}°C</span>
+        {/* Compact Quick Actions */}
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          <button
+            onClick={() => onQuickAction('irrigation')}
+            className="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors whitespace-nowrap"
+          >
+            <Droplets className="w-3 h-3" />
+            {t('chat.irrigationTip')}
+          </button>
+          <button
+            onClick={() => onQuickAction('fertilizer')}
+            className="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors whitespace-nowrap"
+          >
+            <CircleCheckBig className="w-3 h-3" />
+            {t('chat.fertilizerAdvice')}
+          </button>
+          <button
+            onClick={() => onQuickAction('pest')}
+            className="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors whitespace-nowrap"
+          >
+            <Bug className="w-3 h-3" />
+            {t('chat.pestRisk')}
+          </button>
+          <button
+            onClick={() => onQuickAction('weather')}
+            className="flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors whitespace-nowrap"
+          >
+            <AlertCircle className="w-3 h-3" />
+            {t('chat.weatherAlert')}
+          </button>
         </div>
-        <div className="flex items-center gap-1 p-2 rounded-lg bg-blue-100/50 dark:bg-blue-900/20">
-          <Droplets className="w-4 h-4 text-blue-600" />
-          <span className="text-xs font-medium">{weather.humidity}%</span>
-        </div>
-        <div className="flex items-center gap-1 p-2 rounded-lg bg-cyan-100/50 dark:bg-cyan-900/20">
-          <Cloud className="w-4 h-4 text-cyan-600" />
-          <span className="text-xs font-medium">{weather.rainfall}mm</span>
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={() => onQuickAction('irrigation')}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
-        >
-          <Droplets className="w-3 h-3" />
-          {t('chat.irrigationTip')}
-        </button>
-        <button
-          onClick={() => onQuickAction('fertilizer')}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
-        >
-          <CircleCheckBig className="w-3 h-3" />
-          {t('chat.fertilizerAdvice')}
-        </button>
-        <button
-          onClick={() => onQuickAction('pest')}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
-        >
-          <Bug className="w-3 h-3" />
-          {t('chat.pestRisk')}
-        </button>
-        <button
-          onClick={() => onQuickAction('weather')}
-          className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200 dark:hover:bg-purple-900/50 transition-colors"
-        >
-          <AlertCircle className="w-3 h-3" />
-          {t('chat.weatherAlert')}
-        </button>
-      </div>
-    </Card>
+      </Card>
+    </div>
   );
 }
