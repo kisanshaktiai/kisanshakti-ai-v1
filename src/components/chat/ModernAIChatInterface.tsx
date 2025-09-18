@@ -19,7 +19,8 @@ import {
   Bot, User, Loader2, X, Sprout, Layers, MapPin, Check, ScanLine, Plus,
   Wheat, CloudRain, TreePine, Home, MessageSquare, Sparkles, ChevronLeft,
   Paperclip, Smile, MoreVertical, Phone, Video, Search, Settings, Copy,
-  ThumbsUp, ThumbsDown, RefreshCw, Download, Share2, Maximize2
+  ThumbsUp, ThumbsDown, RefreshCw, Download, Share2, Maximize2, Zap,
+  Shield, Heart, Star, TrendingUp, Clock, Calendar, ArrowUp, Sun, Moon
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -52,60 +53,294 @@ interface Land {
   [key: string]: any;
 }
 
-// Quick Actions Component
+// Modern Quick Actions Component with Glassmorphism
 const QuickActions = ({ onActionClick }: { onActionClick: (action: string) => void }) => {
   const quickActions = [
-    { icon: CloudRain, label: 'Weather', query: 'What\'s the weather forecast for my area?' },
-    { icon: Wheat, label: 'Crop Care', query: 'How should I care for my crops this week?' },
-    { icon: TreePine, label: 'Pest Control', query: 'How to identify and control common pests?' },
-    { icon: Sparkles, label: 'Fertilizer', query: 'What fertilizer should I use now?' },
+    { icon: CloudRain, label: 'Weather', query: 'What\'s the weather forecast for my area?', gradient: 'from-blue-400 to-cyan-400' },
+    { icon: Wheat, label: 'Crop Care', query: 'How should I care for my crops this week?', gradient: 'from-amber-400 to-orange-400' },
+    { icon: TreePine, label: 'Pest Control', query: 'How to identify and control common pests?', gradient: 'from-green-400 to-emerald-400' },
+    { icon: Sparkles, label: 'Fertilizer', query: 'What fertilizer should I use now?', gradient: 'from-purple-400 to-pink-400' },
+    { icon: Shield, label: 'Disease', query: 'How to prevent crop diseases?', gradient: 'from-red-400 to-rose-400' },
+    { icon: TrendingUp, label: 'Market', query: 'Current market prices for my crops?', gradient: 'from-indigo-400 to-blue-400' },
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-2 p-3">
-      {quickActions.map((action, idx) => (
-        <button
-          key={idx}
-          onClick={() => onActionClick(action.query)}
-          className="flex items-center gap-3 p-3 rounded-2xl bg-gradient-to-r from-white/80 to-white/60 backdrop-blur-sm border border-white/50 shadow-sm hover:shadow-md hover:scale-105 transition-all duration-200"
-        >
-          <div className="p-2 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10">
-            <action.icon className="w-4 h-4 text-primary" />
-          </div>
-          <span className="text-xs font-medium text-gray-700">{action.label}</span>
-        </button>
-      ))}
-    </div>
+    <ScrollArea className="w-full">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex gap-3 p-4 pb-2"
+      >
+        {quickActions.map((action, idx) => (
+          <motion.button
+            key={idx}
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: idx * 0.05, type: "spring", stiffness: 260, damping: 20 }}
+            whileHover={{ scale: 1.05, y: -2 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => onActionClick(action.query)}
+            className="min-w-[120px] p-4 rounded-3xl bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl border border-white/30 dark:border-gray-700/30 shadow-xl hover:shadow-2xl transition-all duration-300 group"
+          >
+            <div className={cn(
+              "w-12 h-12 rounded-2xl bg-gradient-to-br flex items-center justify-center mb-3 mx-auto",
+              "shadow-lg group-hover:shadow-xl transition-all duration-300",
+              action.gradient
+            )}>
+              <action.icon className="w-6 h-6 text-white" />
+            </div>
+            <span className="text-sm font-medium text-gray-800 dark:text-gray-200 block">{action.label}</span>
+          </motion.button>
+        ))}
+      </motion.div>
+      <ScrollBar orientation="horizontal" />
+    </ScrollArea>
   );
 };
 
-// Typing Indicator Component
+// Modern Typing Indicator with Wave Animation
 const TypingIndicator = () => (
-  <div className="flex items-center gap-2 p-3">
-    <Avatar className="w-8 h-8">
-      <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80">
-        <Bot className="w-4 h-4 text-white" />
-      </AvatarFallback>
-    </Avatar>
-    <div className="flex gap-1 p-3 rounded-2xl bg-gray-100">
-      <motion.div
-        className="w-2 h-2 rounded-full bg-gray-400"
-        animate={{ y: [0, -5, 0] }}
-        transition={{ duration: 0.5, repeat: Infinity, delay: 0 }}
-      />
-      <motion.div
-        className="w-2 h-2 rounded-full bg-gray-400"
-        animate={{ y: [0, -5, 0] }}
-        transition={{ duration: 0.5, repeat: Infinity, delay: 0.1 }}
-      />
-      <motion.div
-        className="w-2 h-2 rounded-full bg-gray-400"
-        animate={{ y: [0, -5, 0] }}
-        transition={{ duration: 0.5, repeat: Infinity, delay: 0.2 }}
+  <motion.div 
+    initial={{ opacity: 0, x: -20 }}
+    animate={{ opacity: 1, x: 0 }}
+    exit={{ opacity: 0, x: -20 }}
+    className="flex items-start gap-3 px-4 py-2"
+  >
+    <div className="relative">
+      <Avatar className="w-10 h-10 ring-2 ring-primary/20 ring-offset-2">
+        <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80">
+          <Bot className="w-5 h-5 text-white" />
+        </AvatarFallback>
+      </Avatar>
+      <motion.div 
+        className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full"
+        animate={{ scale: [1, 1.2, 1] }}
+        transition={{ duration: 2, repeat: Infinity }}
       />
     </div>
-  </div>
+    <div className="max-w-[200px] relative">
+      <div className="px-4 py-3 rounded-3xl rounded-tl-lg bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border border-gray-200/50 dark:border-gray-700/50 shadow-lg">
+        <div className="flex items-center gap-1">
+          {[0, 0.2, 0.4].map((delay, i) => (
+            <motion.div
+              key={i}
+              className="w-2.5 h-2.5 rounded-full bg-gradient-to-br from-primary to-primary/60"
+              animate={{
+                y: [0, -8, 0],
+                scale: [1, 1.2, 1],
+              }}
+              transition={{
+                duration: 0.8,
+                repeat: Infinity,
+                delay,
+                ease: "easeInOut"
+              }}
+            />
+          ))}
+        </div>
+      </div>
+      {/* Chat bubble tail */}
+      <div className="absolute -left-2 top-3 w-4 h-4 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border-l border-t border-gray-200/50 dark:border-gray-700/50 rotate-45 -z-10" />
+    </div>
+  </motion.div>
 );
+
+// Message Bubble Component with Modern Design
+const MessageBubble = ({ 
+  message, 
+  onFeedback, 
+  onSpeak,
+  isSpeaking 
+}: { 
+  message: Message; 
+  onFeedback: (id: string, feedback: 'positive' | 'negative') => void;
+  onSpeak: (content: string) => void;
+  isSpeaking: boolean;
+}) => {
+  const isUser = message.role === 'user';
+  const [expanded, setExpanded] = useState(false);
+  const shouldTruncate = message.content.length > 500;
+  const displayContent = shouldTruncate && !expanded 
+    ? message.content.slice(0, 500) + '...' 
+    : message.content;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20, scale: 0.9 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ type: "spring", stiffness: 260, damping: 20 }}
+      className={cn(
+        "flex gap-3 px-4 py-2 group",
+        isUser ? "flex-row-reverse" : "flex-row"
+      )}
+    >
+      {/* Avatar */}
+      {!isUser && (
+        <div className="relative">
+          <Avatar className="w-10 h-10 ring-2 ring-primary/20 ring-offset-2">
+            <AvatarFallback className="bg-gradient-to-br from-primary to-primary/80">
+              <Bot className="w-5 h-5 text-white" />
+            </AvatarFallback>
+          </Avatar>
+          <motion.div 
+            className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full"
+            animate={{ scale: [1, 1.2, 1] }}
+            transition={{ duration: 2, repeat: Infinity }}
+          />
+        </div>
+      )}
+
+      {/* Message Content */}
+      <div className={cn(
+        "max-w-[75%] relative",
+        isUser && "items-end"
+      )}>
+        <motion.div
+          whileHover={{ scale: 1.01 }}
+          className={cn(
+            "relative px-4 py-3 rounded-3xl shadow-lg backdrop-blur-xl",
+            "border transition-all duration-300",
+            isUser ? [
+              "rounded-tr-lg bg-gradient-to-br from-primary/90 to-primary text-white",
+              "border-primary/30 shadow-primary/20"
+            ] : [
+              "rounded-tl-lg bg-white/80 dark:bg-gray-800/80",
+              "border-gray-200/50 dark:border-gray-700/50",
+              "hover:shadow-xl"
+            ]
+          )}
+        >
+          {/* Message text */}
+          <div className="text-sm leading-relaxed">
+            {displayContent}
+          </div>
+
+          {/* Read more button */}
+          {shouldTruncate && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className={cn(
+                "mt-2 text-xs font-medium underline",
+                isUser ? "text-white/90" : "text-primary"
+              )}
+            >
+              {expanded ? 'Show less' : 'Read more'}
+            </button>
+          )}
+
+          {/* Attachments */}
+          {message.attachments && message.attachments.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {message.attachments.map((attachment, idx) => (
+                <motion.div
+                  key={idx}
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  whileHover={{ scale: 1.05 }}
+                  className="relative group"
+                >
+                  {attachment.type === 'image' ? (
+                    <img 
+                      src={attachment.url} 
+                      alt={attachment.name}
+                      className="rounded-2xl max-w-full max-h-48 object-cover shadow-md"
+                    />
+                  ) : (
+                    <div className="flex items-center gap-2 p-2 rounded-xl bg-white/50 dark:bg-black/20">
+                      <FileUp className="w-4 h-4" />
+                      <span className="text-xs truncate">{attachment.name}</span>
+                    </div>
+                  )}
+                </motion.div>
+              ))}
+            </div>
+          )}
+
+          {/* Timestamp and status */}
+          <div className={cn(
+            "flex items-center gap-2 mt-2 text-xs",
+            isUser ? "text-white/70" : "text-gray-500 dark:text-gray-400"
+          )}>
+            <Clock className="w-3 h-3" />
+            {format(message.timestamp, 'h:mm a')}
+            {message.status === 'sending' && <Loader2 className="w-3 h-3 animate-spin" />}
+            {message.status === 'sent' && <Check className="w-3 h-3" />}
+          </div>
+
+          {/* Chat bubble tail */}
+          <div className={cn(
+            "absolute top-3 w-4 h-4 rotate-45 -z-10",
+            isUser ? [
+              "-right-2 bg-gradient-to-br from-primary/90 to-primary",
+              "border-r border-t border-primary/30"
+            ] : [
+              "-left-2 bg-white/80 dark:bg-gray-800/80",
+              "border-l border-t border-gray-200/50 dark:border-gray-700/50"
+            ]
+          )} />
+        </motion.div>
+
+        {/* Message Actions - Floating micro-buttons */}
+        {!isUser && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => onSpeak(message.content)}
+              className="p-1.5 rounded-full bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border border-gray-200/50 dark:border-gray-700/50 shadow-md hover:shadow-lg transition-all"
+            >
+              {isSpeaking ? <VolumeX className="w-3.5 h-3.5 text-gray-600" /> : <Volume2 className="w-3.5 h-3.5 text-gray-600" />}
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => navigator.clipboard.writeText(message.content)}
+              className="p-1.5 rounded-full bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border border-gray-200/50 dark:border-gray-700/50 shadow-md hover:shadow-lg transition-all"
+            >
+              <Copy className="w-3.5 h-3.5 text-gray-600" />
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => onFeedback(message.id, 'positive')}
+              className={cn(
+                "p-1.5 rounded-full backdrop-blur-xl border shadow-md hover:shadow-lg transition-all",
+                message.feedback === 'positive' 
+                  ? "bg-green-100 border-green-300" 
+                  : "bg-white/80 dark:bg-gray-800/80 border-gray-200/50 dark:border-gray-700/50"
+              )}
+            >
+              <ThumbsUp className={cn(
+                "w-3.5 h-3.5",
+                message.feedback === 'positive' ? "text-green-600" : "text-gray-600"
+              )} />
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => onFeedback(message.id, 'negative')}
+              className={cn(
+                "p-1.5 rounded-full backdrop-blur-xl border shadow-md hover:shadow-lg transition-all",
+                message.feedback === 'negative' 
+                  ? "bg-red-100 border-red-300" 
+                  : "bg-white/80 dark:bg-gray-800/80 border-gray-200/50 dark:border-gray-700/50"
+              )}
+            >
+              <ThumbsDown className={cn(
+                "w-3.5 h-3.5",
+                message.feedback === 'negative' ? "text-red-600" : "text-gray-600"
+              )} />
+            </motion.button>
+          </motion.div>
+        )}
+      </div>
+    </motion.div>
+  );
+};
 
 export function ModernAIChatInterface() {
   const { t, i18n } = useTranslation();
@@ -126,11 +361,14 @@ export function ModernAIChatInterface() {
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [showQuickActions, setShowQuickActions] = useState(true);
   const [expandedView, setExpandedView] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [isFirstMessage, setIsFirstMessage] = useState(true);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Speech recognition
   const { isListening, toggleListening, isSupported: isSpeechSupported } = useSpeechRecognition({
@@ -162,6 +400,34 @@ export function ModernAIChatInterface() {
       loadChatSession(null);
     }
   }, [selectedLand]);
+
+  // Auto-scroll to bottom on new messages
+  useEffect(() => {
+    messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Trigger celebration effect on first message
+  useEffect(() => {
+    if (messages.length === 1 && isFirstMessage) {
+      // Simple celebration effect instead of confetti
+      toast({
+        description: "🎉 Welcome! Let's start farming smart!",
+        duration: 3000
+      });
+      setIsFirstMessage(false);
+    }
+  }, [messages, isFirstMessage, toast]);
+
+  // Load lands from API
+  const loadLands = async () => {
+    try {
+      const { data, error } = await landsApi.getLands();
+      if (error) throw error;
+      setLands(data || []);
+    } catch (error) {
+      console.error('Error loading lands:', error);
+    }
+  };
 
   // Load chat session for specific land
   const loadChatSession = async (landId: string | null) => {
@@ -203,55 +469,30 @@ export function ModernAIChatInterface() {
           .maybeSingle();
           
         if (error) {
-          console.error('Error loading general session:', error);
+          console.error('Error loading session:', error);
         }
         existingSession = data;
       }
 
       if (existingSession) {
-        console.log('Found existing session:', existingSession.id);
         setSessionId(existingSession.id);
         
-        // Load messages for this session
-        const { data: sessionMessages, error: messagesError } = await supabase
-          .from('ai_chat_messages')
-          .select('*')
-          .eq('session_id', existingSession.id)
-          .eq('tenant_id', session.tenantId)
-          .eq('farmer_id', session.farmerId)
-          .order('created_at', { ascending: true });
-
-        if (messagesError) {
-          console.error('Error loading messages:', messagesError);
-        }
-
-        if (sessionMessages && sessionMessages.length > 0) {
-          console.log('Loaded messages:', sessionMessages.length);
-          setMessages(sessionMessages.map(msg => {
-            const landContext = msg.land_context as any;
-            const attachmentsData = msg.attachments as any;
-            return {
-              id: msg.id,
-              role: msg.role as 'user' | 'assistant' | 'system',
-              content: msg.content,
-              timestamp: new Date(msg.created_at),
-              landId: landContext?.land_id,
-              landName: landContext?.land_name,
-              suggestions: Array.isArray(landContext?.quick_replies) ? landContext.quick_replies : undefined,
-              attachments: attachmentsData,
-              status: 'sent'
-            };
-          }));
-          setShowQuickActions(false);
+        // Load cached messages
+        const cachedMessages = localStorage.getItem(`chat_messages_${landId || 'general'}`);
+        if (cachedMessages) {
+          try {
+            const parsed = JSON.parse(cachedMessages);
+            setMessages(parsed);
+          } catch (e) {
+            console.error('Error parsing cached messages:', e);
+            setMessages([]);
+          }
         } else {
-          // No messages, show welcome
-          showWelcomeMessage(landId);
+          setMessages([]);
         }
       } else {
         // Create new session
         const newSessionId = crypto.randomUUID();
-        console.log('Creating new session:', newSessionId);
-        
         const { error: insertError } = await supabase
           .from('ai_chat_sessions')
           .insert({
@@ -259,11 +500,10 @@ export function ModernAIChatInterface() {
             tenant_id: session.tenantId,
             farmer_id: session.farmerId,
             land_id: searchLandId,
-            session_type: searchLandId ? 'land_specific' : 'general',
-            session_title: searchLandId ? `Chat about ${lands.find(l => l.id === searchLandId)?.name || 'Land'}` : 'General farming chat',
+            is_active: true,
             metadata: {
               language: i18n.language,
-              created_from: 'web_app'
+              created_from: 'modern_chat_ui'
             }
           });
           
@@ -273,140 +513,28 @@ export function ModernAIChatInterface() {
           setSessionId(newSessionId);
         }
         
-        showWelcomeMessage(landId);
+        setMessages([]);
+        localStorage.removeItem(`chat_messages_${landId || 'general'}`);
       }
+      
+      setShowQuickActions(true);
     } catch (error) {
       console.error('Error in loadChatSession:', error);
-      showWelcomeMessage(landId);
+      setMessages([]);
     }
   };
 
-  // Show welcome message
-  const showWelcomeMessage = (landId: string | null) => {
-    const land = lands.find(l => l.id === landId);
-    
-    const welcomeMessage: Message = {
-      id: 'welcome-' + (landId || 'general'),
-      role: 'assistant',
-      content: land 
-        ? `🌾 Welcome to ${land.name}!\n\nArea: ${land.area_acres || 'N/A'} acres\nCrop: ${land.primary_crop || 'Not specified'}\nSoil: ${land.soil_type || 'Unknown'}\n\nHow can I help you with this land today?`
-        : `👋 Hello! I'm your AI farming assistant.\n\n${lands.length > 0 ? 'Select a land above for specific advice, or ask me any general farming questions!' : 'I notice you haven\'t added any lands yet. Click "Add Land" to register your farm, or ask me any general farming questions!'}`,
-      timestamp: new Date(),
-      suggestions: land 
-        ? ['Check weather', 'Irrigation schedule', 'Pest control', 'Fertilizer advice']
-        : ['Weather forecast', 'Pest control', 'Fertilizer guide', 'Crop calendar'],
-      status: 'sent'
-    };
-    
-    setMessages([welcomeMessage]);
+  // Select a land
+  const selectLand = (land: Land | null) => {
+    setSelectedLand(land);
+    setMessages([]);
     setShowQuickActions(true);
   };
 
-  // Auto-scroll to bottom
-  useEffect(() => {
-    messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  // Load user's lands
-  const loadLands = async () => {
-    try {
-      console.log('Loading lands using lands-api...');
-      const landsData = await landsApi.fetchLands();
-      console.log('Lands data received:', landsData);
-      
-      const validLands = (landsData || []).filter(land => land.id).map(land => ({
-        id: land.id!,
-        name: land.name || 'Unnamed Land',
-        area_acres: land.area_acres,
-        primary_crop: (land as any).crop_type || (land as any).primary_crop,
-        soil_type: land.soil_type,
-        location: (land as any).village || (land as any).location
-      }));
-      
-      console.log('Valid lands processed:', validLands);
-      setLands(validLands);
-      
-      if (validLands.length > 0) {
-        localStorage.setItem('cached_lands_ai', JSON.stringify(validLands));
-      } else {
-        const cachedLands = localStorage.getItem('cached_lands_ai');
-        if (cachedLands) {
-          const parsed = JSON.parse(cachedLands);
-          console.log('Using cached lands:', parsed);
-          setLands(parsed);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading lands:', error);
-      const cachedLands = localStorage.getItem('cached_lands_ai');
-      if (cachedLands) {
-        setLands(JSON.parse(cachedLands));
-      }
-    }
-  };
-
-  // Handle land selection
-  const selectLand = (land: Land | null) => {
-    setSelectedLand(land);
-  };
-
-  // Handle TTS for individual messages
-  const handleSpeakMessage = (message: Message) => {
-    if (speakingMessageId === message.id) {
-      stop();
-      setSpeakingMessageId(null);
-    } else {
-      stop();
-      speak(message.content);
-      setSpeakingMessageId(message.id);
-    }
-  };
-
-  // Copy message
-  const copyMessage = (content: string) => {
-    navigator.clipboard.writeText(content);
-    toast({
-      description: 'Message copied to clipboard',
-      duration: 2000
-    });
-  };
-
-  // Regenerate response
-  const regenerateResponse = async () => {
-    if (messages.length < 2) return;
-    
-    const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
-    if (lastUserMessage) {
-      // Remove last assistant message
-      setMessages(prev => prev.filter(m => m.id !== messages[messages.length - 1].id));
-      // Resend the user message
-      await sendMessage(lastUserMessage.content);
-    }
-  };
-
-  // Send message
+  // Handle sending messages
   const sendMessage = async (messageText?: string) => {
-    const textToSend = messageText || inputMessage;
-    if (!textToSend.trim() && !uploadedImage && !uploadedFile) return;
-
-    setShowQuickActions(false);
-
-    // Prepare attachments
-    const attachments: Message['attachments'] = [];
-    if (uploadedImage) {
-      attachments.push({
-        type: 'image',
-        url: uploadedImage,
-        name: 'uploaded-image.jpg'
-      });
-    }
-    if (uploadedFile) {
-      attachments.push({
-        type: 'file',
-        url: URL.createObjectURL(uploadedFile),
-        name: uploadedFile.name
-      });
-    }
+    const textToSend = messageText || inputMessage.trim();
+    if (!textToSend && !uploadedImage && !uploadedFile) return;
 
     const userMessage: Message = {
       id: crypto.randomUUID(),
@@ -415,9 +543,25 @@ export function ModernAIChatInterface() {
       timestamp: new Date(),
       landId: selectedLand?.id,
       landName: selectedLand?.name,
-      attachments: attachments.length > 0 ? attachments : undefined,
+      attachments: [],
       status: 'sending'
     };
+
+    if (uploadedImage) {
+      userMessage.attachments!.push({
+        type: 'image',
+        url: uploadedImage,
+        name: 'Uploaded Image'
+      });
+    }
+
+    if (uploadedFile) {
+      userMessage.attachments!.push({
+        type: 'file',
+        url: URL.createObjectURL(uploadedFile),
+        name: uploadedFile.name
+      });
+    }
 
     setMessages(prev => [...prev, userMessage]);
     setInputMessage('');
@@ -425,75 +569,70 @@ export function ModernAIChatInterface() {
     setUploadedFile(null);
     setIsLoading(true);
     setIsTyping(true);
-    
-    // Update message status
-    setTimeout(() => {
-      setMessages(prev => prev.map(m => 
-        m.id === userMessage.id ? { ...m, status: 'sent' } : m
-      ));
-    }, 500);
-    
-    // Cache message locally
+    setShowQuickActions(false);
+
+    // Cache user message
     const cachedMessages = JSON.parse(localStorage.getItem(`chat_messages_${selectedLand?.id || 'general'}`) || '[]');
     cachedMessages.push(userMessage);
     localStorage.setItem(`chat_messages_${selectedLand?.id || 'general'}`, JSON.stringify(cachedMessages));
 
     try {
       const { session } = useAuthStore.getState();
+      const currentSessionId = sessionId;
       
-      // Ensure we have a valid session ID
-      let currentSessionId = sessionId;
-      if (!currentSessionId || currentSessionId === crypto.randomUUID()) {
-        const newSessionId = crypto.randomUUID();
-        console.log('Creating new session for message:', newSessionId);
-        
-        const { error: sessionError } = await supabase.from('ai_chat_sessions').insert({
-          id: newSessionId,
-          tenant_id: session?.tenantId,
-          farmer_id: session?.farmerId,
-          land_id: selectedLand?.id || null,
-          session_type: selectedLand ? 'land_specific' : 'general',
-          session_title: selectedLand ? `Chat about ${selectedLand.name}` : 'General farming chat',
-          metadata: {
-            language: i18n.language,
-            initial_message: textToSend
-          }
-        });
-        
-        if (sessionError) {
-          console.error('Error creating session:', sessionError);
-          throw sessionError;
-        }
-        
-        currentSessionId = newSessionId;
-        setSessionId(newSessionId);
-      }
-
-      const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
-        body: {
-          messages: messages.slice(-10).map(msg => ({
-            role: msg.role,
-            content: msg.content
-          })).concat({
-            role: 'user',
-            content: textToSend
-          }),
-          landId: selectedLand?.id,
-          imageUrl: uploadedImage,
-          fileContent: uploadedFile ? await uploadedFile.text() : undefined,
-          sessionId: currentSessionId,
-          tenantId: session?.tenantId,
+      // Prepare request body
+      const requestBody = {
+        message: textToSend,
+        sessionId: currentSessionId,
+        landId: selectedLand?.id,
+        language: i18n.language,
+        context: {
+          isOnline,
+          hasImage: !!uploadedImage,
+          hasFile: !!uploadedFile,
+          selectedLand: selectedLand ? {
+            id: selectedLand.id,
+            name: selectedLand.name,
+            area: selectedLand.area_acres,
+            crop: selectedLand.primary_crop,
+            soil: selectedLand.soil_type,
+            location: selectedLand.location
+          } : null
+        },
+        metadata: {
+          userId: user?.id,
           farmerId: session?.farmerId,
-          language: i18n.language
+          tenantId: session?.tenantId,
+          timestamp: new Date().toISOString()
         }
+      };
+
+      console.log('Sending message with context:', requestBody);
+
+      // Call the edge function
+      const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
+        body: requestBody
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Edge function error:', error);
+        throw error;
+      }
 
+      if (!data || !data.response) {
+        throw new Error('Invalid response from AI service');
+      }
+
+      // Update user message status
+      setMessages(prev => prev.map(m => 
+        m.id === userMessage.id ? { ...m, status: 'sent' } : m
+      ));
+
+      // Add AI response
       const assistantMessage: Message = {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: data.message || 'I apologize, but I could not process your request. Please try again.',
+        content: data.response,
         timestamp: new Date(),
         landId: selectedLand?.id,
         landName: selectedLand?.name,
@@ -632,432 +771,503 @@ export function ModernAIChatInterface() {
     });
   };
 
+  // Handle emoji selection
+  const handleEmojiSelect = (emoji: string) => {
+    setInputMessage(prev => prev + emoji);
+    setShowEmojiPicker(false);
+    inputRef.current?.focus();
+  };
+
+  const commonEmojis = ['😊', '👍', '❤️', '🌱', '🌾', '🌧️', '☀️', '🚜', '🌽', '🍅'];
+
   return (
     <div className={cn(
-      "flex flex-col h-screen bg-gradient-to-b from-[#e5f4e3] via-[#f0f8ef] to-white",
+      "flex flex-col h-screen bg-gradient-to-b from-background via-background/95 to-background",
       expandedView && "fixed inset-0 z-50"
     )}>
-      {/* Modern Header with Glass Effect */}
-      <div className="bg-white/80 backdrop-blur-xl border-b border-gray-200/50 shadow-sm">
+      {/* Modern Sticky Header with Glassmorphism */}
+      <motion.div 
+        initial={{ y: -100 }}
+        animate={{ y: 0 }}
+        className="sticky top-0 z-40 bg-white/70 dark:bg-gray-900/70 backdrop-blur-2xl border-b border-gray-200/20 dark:border-gray-700/20 shadow-xl"
+      >
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
-            <button 
+            <motion.button 
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
               onClick={() => window.history.back()} 
-              className="p-2 hover:bg-gray-100 rounded-full transition-all"
+              className="p-2.5 hover:bg-gray-100/50 dark:hover:bg-gray-800/50 rounded-2xl transition-all backdrop-blur-xl"
             >
               <ChevronLeft className="w-5 h-5" />
-            </button>
+            </motion.button>
             
+            {/* Animated AI Avatar */}
             <div className="relative">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center shadow-md">
-                <Bot className="w-6 h-6 text-white" />
-              </div>
-              <div className={cn(
-                "absolute -bottom-1 -right-1 w-3 h-3 rounded-full border-2 border-white",
-                isOnline ? "bg-green-500" : "bg-gray-400"
-              )} />
+              <motion.div 
+                animate={{ 
+                  scale: [1, 1.05, 1],
+                }}
+                transition={{ 
+                  duration: 3, 
+                  repeat: Infinity,
+                  ease: "easeInOut"
+                }}
+                className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary via-primary/80 to-primary/60 flex items-center justify-center shadow-xl"
+              >
+                <Bot className="w-7 h-7 text-white" />
+              </motion.div>
+              <motion.div 
+                animate={{ scale: [1, 1.3, 1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className={cn(
+                  "absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white dark:border-gray-900",
+                  isOnline ? "bg-gradient-to-br from-green-400 to-green-600" : "bg-gray-400"
+                )} 
+              />
             </div>
             
             <div>
-              <h2 className="font-semibold text-gray-900">AI Farm Assistant</h2>
-              <p className="text-xs text-gray-500">{isOnline ? 'Online' : 'Offline'} • {isTyping ? 'Typing...' : 'Active now'}</p>
+              <h2 className="font-bold text-lg bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
+                AI Farm Assistant
+              </h2>
+              <div className="flex items-center gap-2">
+                <span className={cn(
+                  "text-xs font-medium px-2 py-0.5 rounded-full",
+                  isOnline 
+                    ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" 
+                    : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
+                )}>
+                  {isOnline ? '● Online' : '○ Offline'}
+                </span>
+                {isTyping && (
+                  <span className="text-xs text-primary animate-pulse">
+                    AI is typing...
+                  </span>
+                )}
+              </div>
             </div>
           </div>
           
           <div className="flex items-center gap-2">
-            <button className="p-2 hover:bg-gray-100 rounded-full transition-all">
-              <Search className="w-5 h-5 text-gray-600" />
-            </button>
-            <button 
-              onClick={() => setExpandedView(!expandedView)}
-              className="p-2 hover:bg-gray-100 rounded-full transition-all"
+            <motion.button 
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              className="p-2.5 hover:bg-gray-100/50 dark:hover:bg-gray-800/50 rounded-2xl transition-all backdrop-blur-xl"
             >
-              <Maximize2 className="w-5 h-5 text-gray-600" />
-            </button>
-            <button className="p-2 hover:bg-gray-100 rounded-full transition-all">
-              <MoreVertical className="w-5 h-5 text-gray-600" />
-            </button>
+              <Phone className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+            </motion.button>
+            <motion.button 
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              className="p-2.5 hover:bg-gray-100/50 dark:hover:bg-gray-800/50 rounded-2xl transition-all backdrop-blur-xl"
+            >
+              <Video className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+            </motion.button>
+            <motion.button 
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setExpandedView(!expandedView)}
+              className="p-2.5 hover:bg-gray-100/50 dark:hover:bg-gray-800/50 rounded-2xl transition-all backdrop-blur-xl"
+            >
+              <Maximize2 className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+            </motion.button>
           </div>
         </div>
         
-        {/* Land Selection Pills */}
+        {/* Land Context Pills */}
         {lands.length > 0 && (
           <div className="px-4 pb-3">
             <ScrollArea className="w-full">
               <div className="flex gap-2">
-                <button
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => selectLand(null)}
                   className={cn(
-                    "px-4 py-2 rounded-full text-xs font-medium transition-all whitespace-nowrap",
-                    "hover:scale-105 transform",
+                    "px-4 py-2 rounded-2xl text-xs font-semibold transition-all whitespace-nowrap",
+                    "backdrop-blur-xl border shadow-md",
                     !selectedLand 
-                      ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md" 
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      ? "bg-gradient-to-r from-primary to-primary/80 text-white border-primary/30 shadow-primary/20" 
+                      : "bg-white/70 dark:bg-gray-800/70 text-gray-700 dark:text-gray-300 border-gray-200/50 dark:border-gray-700/50 hover:shadow-lg"
                   )}
                 >
-                  <Home className="w-3 h-3 inline mr-1" />
-                  General
-                </button>
+                  <Home className="w-3.5 h-3.5 inline mr-1.5" />
+                  General Chat
+                </motion.button>
                 
                 {lands.map((land) => (
-                  <button
+                  <motion.button
                     key={land.id}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => selectLand(land)}
                     className={cn(
-                      "px-4 py-2 rounded-full text-xs font-medium transition-all whitespace-nowrap",
-                      "hover:scale-105 transform",
-                      selectedLand?.id === land.id
-                        ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-md"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      "px-4 py-2 rounded-2xl text-xs font-semibold transition-all whitespace-nowrap",
+                      "backdrop-blur-xl border shadow-md flex items-center gap-1.5",
+                      selectedLand?.id === land.id 
+                        ? "bg-gradient-to-r from-primary to-primary/80 text-white border-primary/30 shadow-primary/20" 
+                        : "bg-white/70 dark:bg-gray-800/70 text-gray-700 dark:text-gray-300 border-gray-200/50 dark:border-gray-700/50 hover:shadow-lg"
                     )}
                   >
-                    <MapPin className="w-3 h-3 inline mr-1" />
-                    {land.name || `${land.area_acres || 0} acres`}
-                  </button>
+                    <Layers className="w-3.5 h-3.5" />
+                    {land.name}
+                    {land.area_acres && (
+                      <span className="opacity-80">({land.area_acres} acres)</span>
+                    )}
+                  </motion.button>
                 ))}
               </div>
-              <ScrollBar orientation="horizontal" className="hidden" />
+              <ScrollBar orientation="horizontal" />
             </ScrollArea>
           </div>
         )}
-      </div>
+      </motion.div>
 
-      {/* Messages Area with Enhanced Styling */}
-      <ScrollArea className="flex-1 px-3 py-4" ref={scrollAreaRef}>
-        <div className="max-w-4xl mx-auto space-y-4">
-          {/* Show Quick Actions when no messages */}
-          {showQuickActions && messages.length <= 1 && (
-            <QuickActions onActionClick={handleQuickAction} />
+      {/* Messages Area with New Message Pulse */}
+      <ScrollArea className="flex-1 px-2" ref={scrollAreaRef}>
+        <div className="py-4 space-y-2">
+          {/* Show quick actions when no messages */}
+          {messages.length === 0 && showQuickActions && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center py-8"
+            >
+              <Sparkles className="w-12 h-12 text-primary mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">How can I help you today?</h3>
+              <p className="text-sm text-muted-foreground mb-6">
+                {selectedLand 
+                  ? `Ask me anything about ${selectedLand.name}`
+                  : 'Select a topic or ask me anything about farming'}
+              </p>
+              <QuickActions onActionClick={handleQuickAction} />
+            </motion.div>
           )}
-          
+
+          {/* Messages */}
           <AnimatePresence mode="popLayout">
             {messages.map((message, index) => (
               <motion.div
                 key={message.id}
-                initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -20, scale: 0.95 }}
-                transition={{ duration: 0.3, ease: "easeOut" }}
+                layout
                 className={cn(
-                  "flex gap-3",
-                  message.role === 'user' ? 'justify-end' : 'justify-start'
+                  index === messages.length - 1 && message.role === 'assistant' && 
+                  "animate-pulse-border"
                 )}
               >
-                {message.role === 'assistant' && (
-                  <Avatar className="w-8 h-8 shadow-sm">
-                    <AvatarFallback className="bg-gradient-to-br from-green-400 to-green-600">
-                      <Bot className="w-4 h-4 text-white" />
-                    </AvatarFallback>
-                  </Avatar>
-                )}
-                
-                <div className={cn(
-                  "max-w-[85%] md:max-w-[70%] space-y-2",
-                  message.role === 'user' ? 'items-end' : 'items-start'
-                )}>
-                  {message.role === 'system' ? (
-                    <div className="text-xs text-center text-gray-500 py-1">
-                      {message.content}
-                    </div>
-                  ) : message.id.startsWith('welcome') ? (
-                    // Enhanced Welcome Card
-                    <motion.div
-                      initial={{ scale: 0.9 }}
-                      animate={{ scale: 1 }}
-                      className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-green-50 to-blue-50 p-5 shadow-lg border border-green-200/50"
-                    >
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-green-200/30 to-blue-200/30 rounded-full blur-3xl" />
-                      <div className="relative">
-                        <div className="flex items-start gap-3">
-                          <div className="p-2 rounded-xl bg-white/80 shadow-sm">
-                            {selectedLand ? <Wheat className="w-5 h-5 text-green-600" /> : <Home className="w-5 h-5 text-green-600" />}
-                          </div>
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-gray-800 mb-3 whitespace-pre-wrap">{message.content}</p>
-                            {message.suggestions && (
-                              <div className="flex flex-wrap gap-2">
-                                {message.suggestions.map((suggestion, idx) => (
-                                  <button
-                                    key={idx}
-                                    onClick={() => {
-                                      setInputMessage(suggestion);
-                                      sendMessage(suggestion);
-                                    }}
-                                    className="px-3 py-1.5 text-xs font-medium bg-white/80 hover:bg-white text-green-700 rounded-full border border-green-200 shadow-sm hover:shadow-md transition-all hover:scale-105"
-                                  >
-                                    {suggestion}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ) : (
-                    <div className={cn(
-                      "relative group",
-                      message.role === 'user' ? 'ml-auto' : ''
-                    )}>
-                      <div className={cn(
-                        "rounded-2xl px-4 py-3 shadow-sm",
-                        message.role === 'user' 
-                          ? 'bg-gradient-to-r from-green-500 to-green-600 text-white' 
-                          : 'bg-white border border-gray-200',
-                        message.status === 'error' && 'border-red-300 bg-red-50'
-                      )}>
-                        {message.landName && (
-                          <div className="flex items-center gap-1 mb-2 text-xs opacity-80">
-                            <MapPin className="w-3 h-3" />
-                            {message.landName}
-                          </div>
-                        )}
-                        
-                        <p className={cn(
-                          "text-sm whitespace-pre-wrap",
-                          message.role === 'assistant' && 'text-gray-800'
-                        )}>{message.content}</p>
-                        
-                        {message.attachments && message.attachments.length > 0 && (
-                          <div className="mt-3 space-y-2">
-                            {message.attachments.map((attachment, idx) => (
-                              attachment.type === 'image' ? (
-                                <img 
-                                  key={idx}
-                                  src={attachment.url} 
-                                  alt={attachment.name}
-                                  className="rounded-xl max-h-48 object-cover shadow-md"
-                                />
-                              ) : (
-                                <div key={idx} className="flex items-center gap-2 p-2 rounded-lg bg-white/20">
-                                  <FileUp className="w-4 h-4" />
-                                  <span className="text-xs">{attachment.name}</span>
-                                </div>
-                              )
-                            ))}
-                          </div>
-                        )}
-                        
-                        {message.suggestions && (
-                          <div className="flex flex-wrap gap-2 mt-3">
-                            {message.suggestions.map((suggestion, idx) => (
-                              <button
-                                key={idx}
-                                onClick={() => {
-                                  setInputMessage(suggestion);
-                                  sendMessage(suggestion);
-                                }}
-                                className="px-3 py-1 text-xs bg-white/20 hover:bg-white/30 rounded-full transition-all"
-                              >
-                                {suggestion}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        
-                        {/* Message Actions */}
-                        {message.role === 'assistant' && (
-                          <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => handleSpeakMessage(message)}
-                              className="p-1 hover:bg-gray-100 rounded transition-all"
-                              title="Read aloud"
-                            >
-                              {speakingMessageId === message.id ? (
-                                <VolumeX className="w-3 h-3 text-gray-500" />
-                              ) : (
-                                <Volume2 className="w-3 h-3 text-gray-500" />
-                              )}
-                            </button>
-                            <button
-                              onClick={() => copyMessage(message.content)}
-                              className="p-1 hover:bg-gray-100 rounded transition-all"
-                              title="Copy"
-                            >
-                              <Copy className="w-3 h-3 text-gray-500" />
-                            </button>
-                            {index === messages.length - 1 && (
-                              <button
-                                onClick={regenerateResponse}
-                                className="p-1 hover:bg-gray-100 rounded transition-all"
-                                title="Regenerate"
-                              >
-                                <RefreshCw className="w-3 h-3 text-gray-500" />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => handleFeedback(message.id, 'positive')}
-                              className={cn(
-                                "p-1 hover:bg-gray-100 rounded transition-all",
-                                message.feedback === 'positive' && "bg-green-100"
-                              )}
-                              title="Good response"
-                            >
-                              <ThumbsUp className="w-3 h-3 text-gray-500" />
-                            </button>
-                            <button
-                              onClick={() => handleFeedback(message.id, 'negative')}
-                              className={cn(
-                                "p-1 hover:bg-gray-100 rounded transition-all",
-                                message.feedback === 'negative' && "bg-red-100"
-                              )}
-                              title="Poor response"
-                            >
-                              <ThumbsDown className="w-3 h-3 text-gray-500" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      
-                      {/* Status indicator */}
-                      {message.status && (
-                        <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
-                          {message.status === 'sending' && <Loader2 className="w-3 h-3 animate-spin" />}
-                          {message.status === 'sent' && <Check className="w-3 h-3" />}
-                          {message.status === 'error' && <X className="w-3 h-3 text-red-500" />}
-                          <span>{format(message.timestamp, 'HH:mm')}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                
-                {message.role === 'user' && (
-                  <Avatar className="w-8 h-8 shadow-sm">
-                    <AvatarFallback className="bg-gradient-to-br from-blue-400 to-blue-600">
-                      <User className="w-4 h-4 text-white" />
-                    </AvatarFallback>
-                  </Avatar>
-                )}
+                <MessageBubble 
+                  message={message}
+                  onFeedback={handleFeedback}
+                  onSpeak={(content) => {
+                    if (isSpeaking && speakingMessageId === message.id) {
+                      stop();
+                      setSpeakingMessageId(null);
+                    } else {
+                      speak(content);
+                      setSpeakingMessageId(message.id);
+                    }
+                  }}
+                  isSpeaking={isSpeaking && speakingMessageId === message.id}
+                />
               </motion.div>
             ))}
           </AnimatePresence>
-          
+
           {/* Typing Indicator */}
-          {isTyping && <TypingIndicator />}
-          
+          <AnimatePresence>
+            {isTyping && <TypingIndicator />}
+          </AnimatePresence>
+
+          {/* Suggested Replies Carousel */}
+          {messages.length > 0 && messages[messages.length - 1].suggestions && (
+            <ScrollArea className="w-full mt-4">
+              <motion.div 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex gap-2 px-4 pb-2"
+              >
+                {messages[messages.length - 1].suggestions!.map((suggestion, idx) => (
+                  <motion.button
+                    key={idx}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: idx * 0.05 }}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={() => handleQuickAction(suggestion)}
+                    className="px-4 py-2 rounded-2xl bg-white/70 dark:bg-gray-800/70 backdrop-blur-xl border border-primary/30 text-sm font-medium text-primary hover:bg-primary/10 transition-all whitespace-nowrap shadow-md hover:shadow-lg"
+                  >
+                    {suggestion}
+                  </motion.button>
+                ))}
+              </motion.div>
+              <ScrollBar orientation="horizontal" />
+            </ScrollArea>
+          )}
+
           <div ref={messageEndRef} />
         </div>
       </ScrollArea>
 
-      {/* Modern Input Area */}
-      <div className="bg-white border-t border-gray-200">
-        {/* Upload Previews */}
+      {/* Attachments Preview */}
+      <AnimatePresence>
         {(uploadedImage || uploadedFile) && (
-          <div className="px-4 pt-3 flex items-center gap-2">
-            {uploadedImage && (
-              <div className="relative group">
-                <img 
-                  src={uploadedImage} 
-                  alt="Upload preview" 
-                  className="h-16 w-16 rounded-lg object-cover shadow-sm"
-                />
-                <button
-                  onClick={() => setUploadedImage(null)}
-                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="px-4 py-2 bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl"
+          >
+            <div className="flex gap-2 overflow-x-auto">
+              {uploadedImage && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  exit={{ scale: 0, x: -100 }}
+                  whileHover={{ scale: 1.05 }}
+                  className="relative group"
                 >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            )}
-            {uploadedFile && (
-              <div className="relative group flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg">
-                <FileUp className="w-4 h-4 text-gray-600" />
-                <span className="text-xs text-gray-600">{uploadedFile.name}</span>
-                <button
-                  onClick={() => setUploadedFile(null)}
-                  className="ml-2 text-red-500 hover:text-red-600"
+                  <img 
+                    src={uploadedImage} 
+                    alt="Upload preview"
+                    className="h-20 w-20 object-cover rounded-2xl shadow-lg"
+                  />
+                  <motion.button
+                    whileHover={{ scale: 1.2 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => setUploadedImage(null)}
+                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-3 h-3" />
+                  </motion.button>
+                </motion.div>
+              )}
+              {uploadedFile && (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  exit={{ scale: 0, x: -100 }}
+                  whileHover={{ scale: 1.05 }}
+                  className="relative group flex items-center gap-2 px-3 py-2 bg-white/80 dark:bg-gray-800/80 rounded-2xl shadow-lg backdrop-blur-xl"
                 >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-        
-        {/* Input Container */}
-        <div className="p-3">
-          <div className="flex items-center gap-2">
-            {/* Emoji Button */}
-            <button className="p-2.5 hover:bg-gray-100 rounded-full transition-all">
-              <Smile className="w-5 h-5 text-gray-500" />
-            </button>
-            
-            {/* Input Field */}
-            <div className="flex-1 relative">
-              <div className="flex items-center bg-gray-100 rounded-full">
-                <input
-                  type="text"
-                  value={inputMessage}
-                  onChange={(e) => setInputMessage(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      sendMessage();
-                    }
-                  }}
-                  placeholder="Type your message..."
-                  className="flex-1 px-4 py-3 bg-transparent focus:outline-none text-sm"
-                  disabled={isLoading}
-                />
-                
-                {/* Attachment Options */}
-                <button 
-                  onClick={() => imageInputRef.current?.click()}
-                  className="p-2 hover:bg-gray-200 rounded-full transition-all mr-1"
-                >
-                  <Paperclip className="w-4 h-4 text-gray-500" />
-                </button>
-                
-                <button 
-                  onClick={handleCameraCapture}
-                  className="p-2 hover:bg-gray-200 rounded-full transition-all mr-2"
-                >
-                  <Camera className="w-4 h-4 text-gray-500" />
-                </button>
-              </div>
+                  <FileUp className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-medium truncate max-w-[150px]">
+                    {uploadedFile.name}
+                  </span>
+                  <motion.button
+                    whileHover={{ scale: 1.2 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => setUploadedFile(null)}
+                    className="ml-2"
+                  >
+                    <X className="w-4 h-4 text-red-500" />
+                  </motion.button>
+                </motion.div>
+              )}
             </div>
-            
-            {/* Send/Voice Button */}
-            <button
-              onClick={inputMessage.trim() || uploadedImage || uploadedFile ? () => sendMessage() : toggleListening}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Glass Input Dock */}
+      <motion.div 
+        initial={{ y: 100 }}
+        animate={{ y: 0 }}
+        className="sticky bottom-0 bg-white/70 dark:bg-gray-900/70 backdrop-blur-2xl border-t border-gray-200/20 dark:border-gray-700/20 shadow-2xl"
+      >
+        <div className="p-4 space-y-3">
+          {/* Emoji Picker */}
+          <AnimatePresence>
+            {showEmojiPicker && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="flex gap-2 p-3 bg-white/80 dark:bg-gray-800/80 rounded-3xl backdrop-blur-xl shadow-lg"
+              >
+                {commonEmojis.map((emoji, idx) => (
+                  <motion.button
+                    key={idx}
+                    whileHover={{ scale: 1.2 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => handleEmojiSelect(emoji)}
+                    className="text-2xl hover:bg-gray-100/50 dark:hover:bg-gray-700/50 rounded-xl p-1"
+                  >
+                    {emoji}
+                  </motion.button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="flex gap-2 items-end">
+            {/* Floating Micro Action Buttons */}
+            <div className="flex gap-1">
+              <motion.button
+                whileHover={{ scale: 1.1, rotate: 15 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                className="p-3 rounded-2xl bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border border-gray-200/50 dark:border-gray-700/50 shadow-lg hover:shadow-xl transition-all"
+              >
+                <Smile className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              </motion.button>
+              
+              <motion.button
+                whileHover={{ scale: 1.1, rotate: -15 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => imageInputRef.current?.click()}
+                className="p-3 rounded-2xl bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border border-gray-200/50 dark:border-gray-700/50 shadow-lg hover:shadow-xl transition-all"
+              >
+                <ImageIcon className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              </motion.button>
+              
+              <motion.button
+                whileHover={{ scale: 1.1, rotate: 15 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={handleCameraCapture}
+                className="p-3 rounded-2xl bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border border-gray-200/50 dark:border-gray-700/50 shadow-lg hover:shadow-xl transition-all"
+              >
+                <Camera className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              </motion.button>
+              
+              <motion.button
+                whileHover={{ scale: 1.1, rotate: -15 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => fileInputRef.current?.click()}
+                className="p-3 rounded-2xl bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border border-gray-200/50 dark:border-gray-700/50 shadow-lg hover:shadow-xl transition-all"
+              >
+                <Paperclip className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+              </motion.button>
+            </div>
+
+            {/* Input Field with Expansion Animation */}
+            <motion.div 
+              animate={{ 
+                scale: inputMessage ? 1.02 : 1,
+              }}
+              className="flex-1 relative"
+            >
+              <textarea
+                ref={inputRef}
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                }}
+                placeholder={selectedLand 
+                  ? `Ask about ${selectedLand.name}...` 
+                  : "Type your message..."}
+                className="w-full px-5 py-3 pr-12 rounded-3xl bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl border border-gray-200/50 dark:border-gray-700/50 shadow-lg focus:shadow-xl focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none transition-all"
+                rows={1}
+                style={{
+                  minHeight: '48px',
+                  maxHeight: '120px',
+                  height: inputMessage.split('\n').length > 1 ? 'auto' : '48px'
+                }}
+              />
+            </motion.div>
+
+            {/* Morphing Send/Mic FAB */}
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => {
+                if (inputMessage.trim()) {
+                  sendMessage();
+                } else if (isSpeechSupported) {
+                  toggleListening();
+                }
+              }}
               disabled={isLoading}
               className={cn(
-                "p-3 rounded-full transition-all shadow-lg hover:scale-110 transform",
-                inputMessage.trim() || uploadedImage || uploadedFile
-                  ? "bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700" 
-                  : isListening 
-                    ? "bg-red-500 hover:bg-red-600 animate-pulse"
-                    : "bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700"
+                "p-3 rounded-full shadow-xl transition-all",
+                "backdrop-blur-xl border",
+                inputMessage.trim() || isListening
+                  ? "bg-gradient-to-br from-primary to-primary/80 border-primary/30 shadow-primary/30"
+                  : "bg-white/80 dark:bg-gray-800/80 border-gray-200/50 dark:border-gray-700/50",
+                isLoading && "opacity-50 cursor-not-allowed"
               )}
             >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 text-white animate-spin" />
-              ) : inputMessage.trim() || uploadedImage || uploadedFile ? (
-                <Send className="w-5 h-5 text-white" />
-              ) : (
-                <Mic className="w-5 h-5 text-white" />
-              )}
-            </button>
-            
-            {/* Hidden inputs */}
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleImageUpload}
-              className="hidden"
-            />
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.doc,.docx,.txt"
-              onChange={handleFileUpload}
-              className="hidden"
-            />
+              <AnimatePresence mode="wait">
+                {isLoading ? (
+                  <motion.div
+                    key="loading"
+                    initial={{ scale: 0, rotate: -180 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    exit={{ scale: 0, rotate: 180 }}
+                  >
+                    <Loader2 className="w-5 h-5 text-white animate-spin" />
+                  </motion.div>
+                ) : inputMessage.trim() ? (
+                  <motion.div
+                    key="send"
+                    initial={{ scale: 0, rotate: -180 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    exit={{ scale: 0, rotate: 180 }}
+                  >
+                    <Send className="w-5 h-5 text-white" />
+                  </motion.div>
+                ) : isListening ? (
+                  <motion.div
+                    key="mic-off"
+                    initial={{ scale: 0 }}
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 1, repeat: Infinity }}
+                  >
+                    <MicOff className="w-5 h-5 text-white" />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="mic"
+                    initial={{ scale: 0, rotate: -180 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    exit={{ scale: 0, rotate: 180 }}
+                  >
+                    <Mic className={cn(
+                      "w-5 h-5",
+                      inputMessage.trim() || isListening ? "text-white" : "text-gray-600 dark:text-gray-400"
+                    )} />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.button>
           </div>
         </div>
-      </div>
+      </motion.div>
+
+      {/* Hidden inputs */}
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleImageUpload}
+        className="hidden"
+      />
+      <input
+        ref={fileInputRef}
+        type="file"
+        onChange={handleFileUpload}
+        className="hidden"
+      />
+
+      {/* Custom styles for pulse animation */}
+      <style jsx>{`
+        @keyframes pulse-border {
+          0%, 100% {
+            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+          }
+          50% {
+            box-shadow: 0 0 0 8px rgba(34, 197, 94, 0);
+          }
+        }
+        .animate-pulse-border {
+          animation: pulse-border 2s ease-in-out;
+        }
+      `}</style>
     </div>
   );
 }
