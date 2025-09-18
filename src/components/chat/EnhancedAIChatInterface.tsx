@@ -10,7 +10,8 @@ import { toast } from '@/hooks/use-toast';
 import { 
   Send, Mic, MicOff, Volume2, VolumeX, Loader2, Bot, User, 
   RefreshCw, Wifi, WifiOff, MessageSquare, Mountain, 
-  Paperclip, Camera, Image, ArrowLeft, ChevronDown
+  Paperclip, Camera, Image, ArrowLeft, ChevronDown,
+  ThumbsUp, ThumbsDown, Copy, Share2, Check
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -40,6 +41,8 @@ interface Message {
     pest?: string;
     weather?: string;
   };
+  feedback?: 'like' | 'dislike' | null;
+  isCopied?: boolean;
 }
 
 export function EnhancedAIChatInterface() {
@@ -63,6 +66,7 @@ export function EnhancedAIChatInterface() {
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -447,6 +451,75 @@ export function EnhancedAIChatInterface() {
       setPlayingMessageId(messageId);
     }
   };
+  
+  const handleLike = async (messageId: string, isLike: boolean) => {
+    const feedback = isLike ? 'like' : 'dislike';
+    
+    // Update local state
+    setMessages(prev => ({
+      ...prev,
+      [activeTab]: prev[activeTab].map(msg => 
+        msg.id === messageId 
+          ? { ...msg, feedback: msg.feedback === feedback ? null : feedback }
+          : msg
+      )
+    }));
+    
+    // Update in database
+    try {
+      const message = messages[activeTab].find(m => m.id === messageId);
+      if (message) {
+        await supabase.from('ai_chat_messages')
+          .update({ 
+            feedback_rating: message.feedback === feedback ? null : (isLike ? 5 : 1),
+            feedback_text: message.feedback === feedback ? null : feedback
+          })
+          .eq('id', messageId);
+      }
+    } catch (error) {
+      console.error('Error updating feedback:', error);
+    }
+  };
+  
+  const handleCopy = async (messageId: string, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageId(messageId);
+      toast({
+        title: t('common.copied'),
+        description: t('chat.messageCopied'),
+      });
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: t('chat.copyFailed'),
+        variant: 'destructive'
+      });
+    }
+  };
+  
+  const handleShare = async (content: string) => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: t('chat.shareTitle'),
+          text: content,
+        });
+      } catch (error) {
+        if ((error as any).name !== 'AbortError') {
+          console.error('Error sharing:', error);
+        }
+      }
+    } else {
+      // Fallback to copy
+      await navigator.clipboard.writeText(content);
+      toast({
+        title: t('common.copied'),
+        description: t('chat.shareViaCopy'),
+      });
+    }
+  };
 
   const handleQuickAction = (action: string) => {
     const prompts: Record<string, string> = {
@@ -596,61 +669,128 @@ export function EnhancedAIChatInterface() {
               )}
               
               <div className={cn(
-                "max-w-[85%] rounded-2xl p-3",
-                message.role === 'user' 
-                  ? 'bg-primary text-primary-foreground' 
-                  : 'bg-card border border-border shadow-sm'
+                "relative max-w-[85%]",
+                message.role === 'user' && 'order-1'
               )}>
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                
-                {/* Structured sections for AI responses - using semantic colors */}
-                {message.role === 'assistant' && message.structured && (
-                  <div className="mt-3 space-y-2">
-                    {message.structured.irrigation && (
-                      <div className="p-2 rounded-lg bg-primary/5 border-l-4 border-primary">
-                        <p className="text-xs font-medium text-primary">💧 {t('chat.irrigation')}</p>
-                        <p className="text-xs mt-1 text-muted-foreground">{message.structured.irrigation}</p>
-                      </div>
+                {/* Action buttons in top corner */}
+                <div className={cn(
+                  "absolute -top-1 flex items-center gap-1 z-10",
+                  message.role === 'user' ? '-left-1' : '-right-1'
+                )}>
+                  {/* Read aloud button */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted"
+                    onClick={() => handlePlayMessage(message.id, message.content)}
+                  >
+                    {playingMessageId === message.id && isSpeaking ? (
+                      <VolumeX className="h-3.5 w-3.5" />
+                    ) : (
+                      <Volume2 className="h-3.5 w-3.5" />
                     )}
-                    {message.structured.fertilizer && (
-                      <div className="p-2 rounded-lg bg-secondary/5 border-l-4 border-secondary">
-                        <p className="text-xs font-medium text-secondary">🌱 {t('chat.fertilizer')}</p>
-                        <p className="text-xs mt-1 text-muted-foreground">{message.structured.fertilizer}</p>
-                      </div>
-                    )}
-                    {message.structured.pest && (
-                      <div className="p-2 rounded-lg bg-destructive/5 border-l-4 border-destructive">
-                        <p className="text-xs font-medium text-destructive">🐛 {t('chat.pest')}</p>
-                        <p className="text-xs mt-1 text-muted-foreground">{message.structured.pest}</p>
-                      </div>
-                    )}
-                    {message.structured.weather && (
-                      <div className="p-2 rounded-lg bg-accent/5 border-l-4 border-accent">
-                        <p className="text-xs font-medium text-accent-foreground">☁️ {t('chat.weather')}</p>
-                        <p className="text-xs mt-1 text-muted-foreground">{message.structured.weather}</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-                
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="text-xs opacity-70">
-                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+                  </Button>
+                  
+                  {/* Like button */}
                   {message.role === 'assistant' && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => handlePlayMessage(message.id, message.content)}
-                    >
-                      {playingMessageId === message.id && isSpeaking ? (
-                        <VolumeX className="h-3 w-3" />
-                      ) : (
-                        <Volume2 className="h-3 w-3" />
-                      )}
-                    </Button>
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted",
+                          message.feedback === 'like' && "text-primary"
+                        )}
+                        onClick={() => handleLike(message.id, true)}
+                      >
+                        <ThumbsUp className="h-3.5 w-3.5" />
+                      </Button>
+                      
+                      {/* Dislike button */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted",
+                          message.feedback === 'dislike' && "text-destructive"
+                        )}
+                        onClick={() => handleLike(message.id, false)}
+                      >
+                        <ThumbsDown className="h-3.5 w-3.5" />
+                      </Button>
+                    </>
                   )}
+                  
+                  {/* Copy button */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted"
+                    onClick={() => handleCopy(message.id, message.content)}
+                  >
+                    {copiedMessageId === message.id ? (
+                      <Check className="h-3.5 w-3.5 text-primary" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                  
+                  {/* Share button */}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted"
+                    onClick={() => handleShare(message.content)}
+                  >
+                    <Share2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                
+                {/* Message content */}
+                <div className={cn(
+                  "rounded-2xl p-3",
+                  message.role === 'user' 
+                    ? 'bg-primary text-primary-foreground' 
+                    : 'bg-card border border-border shadow-sm'
+                )}>
+                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  
+                  {/* Structured sections for AI responses - using semantic colors */}
+                  {message.role === 'assistant' && message.structured && (
+                    <div className="mt-3 space-y-2">
+                      {message.structured.irrigation && (
+                        <div className="p-2 rounded-lg bg-primary/5 border-l-4 border-primary">
+                          <p className="text-xs font-medium text-primary">💧 {t('chat.irrigation')}</p>
+                          <p className="text-xs mt-1 text-muted-foreground">{message.structured.irrigation}</p>
+                        </div>
+                      )}
+                      {message.structured.fertilizer && (
+                        <div className="p-2 rounded-lg bg-secondary/5 border-l-4 border-secondary">
+                          <p className="text-xs font-medium text-secondary">🌱 {t('chat.fertilizer')}</p>
+                          <p className="text-xs mt-1 text-muted-foreground">{message.structured.fertilizer}</p>
+                        </div>
+                      )}
+                      {message.structured.pest && (
+                        <div className="p-2 rounded-lg bg-destructive/5 border-l-4 border-destructive">
+                          <p className="text-xs font-medium text-destructive">🐛 {t('chat.pest')}</p>
+                          <p className="text-xs mt-1 text-muted-foreground">{message.structured.pest}</p>
+                        </div>
+                      )}
+                      {message.structured.weather && (
+                        <div className="p-2 rounded-lg bg-accent/5 border-l-4 border-accent">
+                          <p className="text-xs font-medium text-accent-foreground">☁️ {t('chat.weather')}</p>
+                          <p className="text-xs mt-1 text-muted-foreground">{message.structured.weather}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Timestamp */}
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-xs opacity-70">
+                      {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
                 </div>
               </div>
               

@@ -71,6 +71,7 @@
     "search": "Search",
     "filter": "Filter",
     "online": "Online",
+    "copied": "Copied!",
     "offline": "Offline",
     "comingSoon": "Coming Soon"
   },
@@ -178,6 +179,10 @@
     "soilHealth": "Soil Health",
     "marketPrices": "Market Prices",
     "microphonePermissionRequired": "Microphone permission is required for voice input",
+    "messageCopied": "Message copied to clipboard",
+    "copyFailed": "Failed to copy message",
+    "shareTitle": "Agriculture Chat Message",
+    "shareViaCopy": "Link copied to clipboard",
     "cameraPermissionRequired": "Camera permission is required to capture photos",
     "filesAttached": "file(s) attached",
     "refreshed": "Chat refreshed successfully"
