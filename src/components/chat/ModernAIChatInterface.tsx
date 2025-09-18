@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -18,9 +18,10 @@ import {
   Send, Mic, MicOff, ImageIcon, Volume2, VolumeX, Camera,
   Bot, User, Loader2, X, Sprout, Layers, MapPin, Check,
   Wheat, CloudRain, TreePine, Home, MessageSquare, Sparkles, ChevronLeft,
-  Paperclip, Smile, MoreVertical, Phone, Video, Search, Settings, Copy,
+  Paperclip, Smile, MoreVertical, Copy, Type, Trees,
   ThumbsUp, ThumbsDown, RefreshCw, Download, Share2, Maximize2, Zap,
-  Shield, Heart, Star, TrendingUp, Clock, Calendar, ArrowUp, Plus
+  Shield, Heart, Star, TrendingUp, Clock, Calendar, ArrowUp, Plus,
+  Bug, Droplets, Info, PlayCircle, PauseCircle, ChevronRight, Minus
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -41,6 +42,7 @@ interface Message {
   isTyping?: boolean;
   status?: 'sending' | 'sent' | 'error';
   feedback?: 'positive' | 'negative';
+  isReading?: boolean;
 }
 
 interface Land {
@@ -53,64 +55,131 @@ interface Land {
   [key: string]: any;
 }
 
-// Quick Actions Component
-const QuickActions = ({ onActionClick }: { onActionClick: (action: string) => void }) => {
+// Enhanced Quick Actions Component
+const QuickActions = ({ onActionClick, collapsed = false }: { onActionClick: (action: string) => void; collapsed?: boolean }) => {
   const quickActions = [
-    { icon: CloudRain, label: 'Weather', query: 'What\'s the weather forecast?' },
-    { icon: Wheat, label: 'Crop Care', query: 'How to care for my crops?' },
-    { icon: TreePine, label: 'Pest Control', query: 'How to control pests?' },
-    { icon: Sparkles, label: 'Fertilizer', query: 'Which fertilizer to use?' },
+    { 
+      icon: CloudRain, 
+      label: 'Weather', 
+      query: 'What\'s the weather forecast?',
+      gradient: 'from-blue-400 to-blue-600',
+      description: 'Get weather updates'
+    },
+    { 
+      icon: Wheat, 
+      label: 'Crop Care', 
+      query: 'How to care for my crops?',
+      gradient: 'from-green-400 to-green-600',
+      description: 'Crop management tips'
+    },
+    { 
+      icon: Bug, 
+      label: 'Pest Control', 
+      query: 'How to control pests?',
+      gradient: 'from-orange-400 to-orange-600',
+      description: 'Pest solutions'
+    },
+    { 
+      icon: Droplets, 
+      label: 'Fertilizer', 
+      query: 'Which fertilizer to use?',
+      gradient: 'from-purple-400 to-purple-600',
+      description: 'Fertilizer guidance'
+    },
   ];
 
+  if (collapsed) {
+    return (
+      <div className="flex gap-2 p-3 overflow-x-auto no-scrollbar">
+        {quickActions.map((action, idx) => (
+          <motion.button
+            key={idx}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: idx * 0.05, type: "spring", stiffness: 300 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => onActionClick(action.query)}
+            className="p-2 rounded-full bg-gradient-to-r shadow-lg hover:shadow-xl transition-all backdrop-blur-sm"
+            style={{
+              background: `linear-gradient(135deg, ${action.gradient.split(' ')[1]}, ${action.gradient.split(' ')[3]})`
+            }}
+          >
+            <action.icon className="w-4 h-4 text-white" />
+          </motion.button>
+        ))}
+      </div>
+    );
+  }
+
   return (
-    <div className="grid grid-cols-2 gap-2 p-3">
+    <div className="grid grid-cols-2 gap-3 p-4">
       {quickActions.map((action, idx) => (
         <motion.button
           key={idx}
-          initial={{ opacity: 0, scale: 0.9 }}
+          initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: idx * 0.05 }}
-          whileHover={{ scale: 1.02 }}
+          transition={{ 
+            delay: idx * 0.05, 
+            type: "spring", 
+            stiffness: 300,
+            damping: 20 
+          }}
+          whileHover={{ scale: 1.02, y: -2 }}
           whileTap={{ scale: 0.98 }}
           onClick={() => onActionClick(action.query)}
-          className="flex flex-col items-center gap-2 p-3 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-all"
+          className={cn(
+            "relative overflow-hidden rounded-2xl p-4",
+            "bg-gradient-to-br backdrop-blur-md",
+            "border border-white/20 shadow-lg hover:shadow-xl",
+            "transition-all duration-300"
+          )}
         >
-          <div className="p-2 rounded-lg bg-primary/10">
-            <action.icon className="w-5 h-5 text-primary" />
+          <div className={cn(
+            "absolute inset-0 bg-gradient-to-br opacity-90",
+            action.gradient
+          )} />
+          <div className="relative z-10 flex flex-col items-center gap-2">
+            <div className="p-3 rounded-full bg-white/20 backdrop-blur-sm">
+              <action.icon className="w-6 h-6 text-white" />
+            </div>
+            <span className="text-sm font-semibold text-white">{action.label}</span>
+            <span className="text-xs text-white/80 text-center">{action.description}</span>
           </div>
-          <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{action.label}</span>
         </motion.button>
       ))}
     </div>
   );
 };
 
-// Typing Indicator Component
+// Enhanced Typing Indicator with Wave Animation
 const TypingIndicator = () => (
   <motion.div 
     initial={{ opacity: 0, x: -20 }}
     animate={{ opacity: 1, x: 0 }}
     exit={{ opacity: 0, x: -20 }}
-    className="flex items-start gap-2 px-4 py-2"
+    className="flex items-start gap-3 px-4 py-2"
   >
-    <Avatar className="w-8 h-8">
-      <AvatarFallback className="bg-primary">
+    <Avatar className="w-8 h-8 ring-2 ring-primary/20">
+      <AvatarFallback className="bg-gradient-to-br from-primary to-primary-600">
         <Bot className="w-4 h-4 text-white" />
       </AvatarFallback>
     </Avatar>
-    <div className="px-3 py-2 rounded-2xl rounded-tl-sm bg-gray-100 dark:bg-gray-800">
-      <div className="flex items-center gap-1">
-        {[0, 0.15, 0.3].map((delay, i) => (
+    <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border border-gray-200/50 dark:border-gray-700/50">
+      <div className="flex items-center gap-1.5">
+        {[0, 0.2, 0.4].map((delay, i) => (
           <motion.div
             key={i}
-            className="w-2 h-2 rounded-full bg-gray-500"
+            className="w-2 h-2 rounded-full bg-gradient-to-br from-primary to-primary-600"
             animate={{
-              y: [0, -5, 0],
+              scale: [1, 1.5, 1],
+              opacity: [0.5, 1, 0.5],
             }}
             transition={{
-              duration: 0.6,
+              duration: 1,
               repeat: Infinity,
               delay,
+              ease: "easeInOut"
             }}
           />
         ))}
@@ -119,61 +188,145 @@ const TypingIndicator = () => (
   </motion.div>
 );
 
-// Message Bubble Component
+// Land Welcome Card
+const LandWelcomeCard = ({ land }: { land: Land }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    className="mx-4 mt-4 p-4 rounded-2xl bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border border-green-200 dark:border-green-800"
+  >
+    <div className="flex items-start gap-3">
+      <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/50">
+        <Trees className="w-5 h-5 text-green-600 dark:text-green-400" />
+      </div>
+      <div className="flex-1">
+        <h3 className="font-semibold text-green-900 dark:text-green-100">{land.name}</h3>
+        <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+          {land.area_acres && (
+            <div className="flex items-center gap-1 text-green-700 dark:text-green-300">
+              <Layers className="w-3 h-3" />
+              <span>{land.area_acres} acres</span>
+            </div>
+          )}
+          {land.primary_crop && (
+            <div className="flex items-center gap-1 text-green-700 dark:text-green-300">
+              <Wheat className="w-3 h-3" />
+              <span>{land.primary_crop}</span>
+            </div>
+          )}
+          {land.soil_type && (
+            <div className="flex items-center gap-1 text-green-700 dark:text-green-300">
+              <Sprout className="w-3 h-3" />
+              <span>{land.soil_type}</span>
+            </div>
+          )}
+          {land.location && (
+            <div className="flex items-center gap-1 text-green-700 dark:text-green-300">
+              <MapPin className="w-3 h-3" />
+              <span>{land.location}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  </motion.div>
+);
+
+// Enhanced Message Bubble Component
 const MessageBubble = ({ 
   message, 
   onFeedback, 
   onSpeak,
-  isSpeaking 
+  isSpeaking,
+  fontSize 
 }: { 
   message: Message; 
   onFeedback: (id: string, feedback: 'positive' | 'negative') => void;
-  onSpeak: (content: string) => void;
+  onSpeak: (id: string, content: string) => void;
   isSpeaking: boolean;
+  fontSize: number;
 }) => {
   const isUser = message.role === 'user';
-  const [showActions, setShowActions] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const shouldTruncate = message.content.length > 300;
+  const displayContent = expanded || !shouldTruncate 
+    ? message.content 
+    : message.content.slice(0, 300) + '...';
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
+      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ type: "spring", stiffness: 300, damping: 25 }}
       className={cn(
-        "flex gap-2 px-4 py-1 group",
+        "flex gap-3 px-4 py-2 group",
         isUser ? "flex-row-reverse" : "flex-row"
       )}
     >
       {/* Avatar */}
       {!isUser && (
-        <Avatar className="w-8 h-8 mt-1">
-          <AvatarFallback className="bg-primary">
-            <Bot className="w-4 h-4 text-white" />
-          </AvatarFallback>
-        </Avatar>
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ delay: 0.1, type: "spring" }}
+        >
+          <Avatar className="w-8 h-8 ring-2 ring-primary/20">
+            <AvatarFallback className="bg-gradient-to-br from-primary to-primary-600">
+              <Bot className="w-4 h-4 text-white" />
+            </AvatarFallback>
+          </Avatar>
+        </motion.div>
       )}
 
       {/* Message Content */}
       <div className={cn(
-        "max-w-[75%] space-y-1",
+        "max-w-[75%] space-y-2",
         isUser && "items-end"
       )}>
-        <div
+        <motion.div
+          whileHover={{ scale: 1.01 }}
           className={cn(
-            "px-3 py-2 rounded-2xl text-sm",
+            "relative px-4 py-3 rounded-2xl",
+            "shadow-md hover:shadow-lg transition-all duration-300",
             isUser ? [
-              "rounded-tr-sm bg-primary text-white",
+              "rounded-tr-sm bg-gradient-to-br from-primary to-primary-600 text-white",
             ] : [
-              "rounded-tl-sm bg-gray-100 dark:bg-gray-800",
+              "rounded-tl-sm bg-white/90 dark:bg-gray-800/90 backdrop-blur-md",
+              "border border-gray-200/50 dark:border-gray-700/50",
+              message.status === 'sent' && "ring-2 ring-primary/20 animate-pulse-once"
             ]
           )}
+          style={{ fontSize: `${fontSize}px` }}
         >
-          {message.content}
+          <div className={cn(
+            "break-words",
+            !isUser && "text-gray-800 dark:text-gray-200"
+          )}>
+            {displayContent}
+          </div>
+
+          {shouldTruncate && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className={cn(
+                "mt-2 text-xs font-medium",
+                isUser ? "text-white/80 hover:text-white" : "text-primary hover:text-primary-600"
+              )}
+            >
+              {expanded ? 'Show less' : 'Read more'}
+            </button>
+          )}
 
           {/* Attachments */}
           {message.attachments && message.attachments.length > 0 && (
-            <div className="mt-2 space-y-1">
+            <div className="mt-3 space-y-2">
               {message.attachments.map((attachment, idx) => (
-                <div key={idx} className="rounded-lg overflow-hidden">
+                <motion.div 
+                  key={idx} 
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="rounded-lg overflow-hidden"
+                >
                   {attachment.type === 'image' ? (
                     <img 
                       src={attachment.url} 
@@ -186,11 +339,11 @@ const MessageBubble = ({
                       <span className="text-xs">{attachment.name}</span>
                     </div>
                   )}
-                </div>
+                </motion.div>
               ))}
             </div>
           )}
-        </div>
+        </motion.div>
 
         {/* Timestamp and Actions */}
         <div className={cn(
@@ -204,46 +357,96 @@ const MessageBubble = ({
             <Check className="w-3 h-3 text-gray-500" />
           )}
           
-          {/* Message Actions for Assistant */}
+          {/* Enhanced Message Actions for Assistant */}
           {!isUser && (
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button
-                onClick={() => onSpeak(message.content)}
-                className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
-              >
-                {isSpeaking ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
-              </button>
-              <button
-                onClick={() => navigator.clipboard.writeText(message.content)}
-                className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
-              >
-                <Copy className="w-3 h-3" />
-              </button>
-              <button
-                onClick={() => onFeedback(message.id, 'positive')}
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="flex items-center gap-1 ml-2"
+            >
+              {/* Read Aloud Button - Always Visible */}
+              <motion.button
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => onSpeak(message.id, message.content)}
                 className={cn(
-                  "p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded",
-                  message.feedback === 'positive' && "text-green-600"
+                  "p-1.5 rounded-full transition-all",
+                  isSpeaking 
+                    ? "bg-primary text-white" 
+                    : "bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
                 )}
               >
-                <ThumbsUp className="w-3 h-3" />
-              </button>
-              <button
-                onClick={() => onFeedback(message.id, 'negative')}
-                className={cn(
-                  "p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded",
-                  message.feedback === 'negative' && "text-red-600"
+                {isSpeaking ? (
+                  <PauseCircle className="w-4 h-4" />
+                ) : (
+                  <PlayCircle className="w-4 h-4" />
                 )}
-              >
-                <ThumbsDown className="w-3 h-3" />
-              </button>
-            </div>
+              </motion.button>
+
+              {/* Other actions */}
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => navigator.clipboard.writeText(message.content)}
+                  className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <Copy className="w-3 h-3" />
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => onFeedback(message.id, 'positive')}
+                  className={cn(
+                    "p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700",
+                    message.feedback === 'positive' && "text-green-600"
+                  )}
+                >
+                  <ThumbsUp className="w-3 h-3" />
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => onFeedback(message.id, 'negative')}
+                  className={cn(
+                    "p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700",
+                    message.feedback === 'negative' && "text-red-600"
+                  )}
+                >
+                  <ThumbsDown className="w-3 h-3" />
+                </motion.button>
+              </div>
+            </motion.div>
           )}
         </div>
       </div>
     </motion.div>
   );
 };
+
+// Font Size Control Component
+const FontSizeControl = ({ fontSize, onChange }: { fontSize: number; onChange: (size: number) => void }) => (
+  <motion.div
+    initial={{ scale: 0 }}
+    animate={{ scale: 1 }}
+    className="fixed bottom-24 right-4 z-50 bg-white dark:bg-gray-800 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 p-2 flex items-center gap-2"
+  >
+    <button
+      onClick={() => onChange(Math.max(12, fontSize - 2))}
+      className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+    >
+      <Minus className="w-4 h-4" />
+    </button>
+    <span className="px-2 text-sm font-medium min-w-[3rem] text-center">{fontSize}px</span>
+    <button
+      onClick={() => onChange(Math.min(24, fontSize + 2))}
+      className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+    >
+      <Plus className="w-4 h-4" />
+    </button>
+  </motion.div>
+);
 
 export function ModernAIChatInterface() {
   const { t, i18n } = useTranslation();
@@ -261,10 +464,17 @@ export function ModernAIChatInterface() {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [sessionId, setSessionId] = useState<string>(crypto.randomUUID());
   const [speakingMessageId, setSpeakingMessageId] = useState<string | null>(null);
   const [showQuickActions, setShowQuickActions] = useState(true);
-  const [isFirstMessage, setIsFirstMessage] = useState(true);
+  const [fontSize, setFontSize] = useState(14);
+  const [showFontControl, setShowFontControl] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  
+  // Persistent session ID management
+  const [sessionId, setSessionId] = useState<string>(() => {
+    const stored = localStorage.getItem('current_chat_session_id');
+    return stored || crypto.randomUUID();
+  });
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -287,6 +497,11 @@ export function ModernAIChatInterface() {
     pitch: 1.0
   });
 
+  // Persist session ID
+  useEffect(() => {
+    localStorage.setItem('current_chat_session_id', sessionId);
+  }, [sessionId]);
+
   // Load lands on mount
   useEffect(() => {
     if (user?.id) {
@@ -308,22 +523,10 @@ export function ModernAIChatInterface() {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Welcome message on first load
-  useEffect(() => {
-    if (messages.length === 1 && isFirstMessage) {
-      toast({
-        description: "🌱 Welcome! How can I help you with farming today?",
-        duration: 3000
-      });
-      setIsFirstMessage(false);
-    }
-  }, [messages, isFirstMessage, toast]);
-
   // Load lands from API
   const loadLands = async () => {
     try {
       const lands = await landsApi.fetchLands();
-      // Filter out lands without id and ensure type compatibility
       const validLands = lands.filter(land => land.id) as Land[];
       setLands(validLands);
     } catch (error) {
@@ -331,7 +534,7 @@ export function ModernAIChatInterface() {
     }
   };
 
-  // Load chat session for specific land
+  // Load chat session for specific land with proper session ID management
   const loadChatSession = async (landId: string | null) => {
     try {
       const { session } = useAuthStore.getState();
@@ -377,14 +580,19 @@ export function ModernAIChatInterface() {
       }
 
       if (existingSession) {
+        // Use existing session ID
         setSessionId(existingSession.id);
+        localStorage.setItem(`chat_session_${landId || 'general'}`, existingSession.id);
         
         // Load cached messages
         const cachedMessages = localStorage.getItem(`chat_messages_${landId || 'general'}`);
         if (cachedMessages) {
           try {
             const parsed = JSON.parse(cachedMessages);
-            setMessages(parsed);
+            setMessages(parsed.map((m: any) => ({
+              ...m,
+              timestamp: new Date(m.timestamp)
+            })));
           } catch (e) {
             console.error('Error parsing cached messages:', e);
             setMessages([]);
@@ -393,8 +601,11 @@ export function ModernAIChatInterface() {
           setMessages([]);
         }
       } else {
-        // Create new session
-        const newSessionId = crypto.randomUUID();
+        // Check if we have a stored session ID for this land
+        const storedSessionId = localStorage.getItem(`chat_session_${landId || 'general'}`);
+        const newSessionId = storedSessionId || crypto.randomUUID();
+        
+        // Create new session only if needed
         const { error: insertError } = await supabase
           .from('ai_chat_sessions')
           .insert({
@@ -409,10 +620,11 @@ export function ModernAIChatInterface() {
             }
           });
           
-        if (insertError) {
+        if (insertError && insertError.code !== '23505') { // Ignore duplicate key errors
           console.error('Error creating session:', insertError);
         } else {
           setSessionId(newSessionId);
+          localStorage.setItem(`chat_session_${landId || 'general'}`, newSessionId);
         }
         
         setMessages([]);
@@ -433,7 +645,19 @@ export function ModernAIChatInterface() {
     setShowQuickActions(true);
   };
 
-  // Handle sending messages
+  // Handle text-to-speech
+  const handleSpeak = (messageId: string, content: string) => {
+    if (isSpeaking && speakingMessageId === messageId) {
+      stop();
+      setSpeakingMessageId(null);
+    } else {
+      stop(); // Stop any ongoing speech
+      speak(content);
+      setSpeakingMessageId(messageId);
+    }
+  };
+
+  // Handle sending messages with proper session ID persistence
   const sendMessage = async (messageText?: string) => {
     const textToSend = messageText || inputMessage.trim();
     if (!textToSend && !uploadedImage && !uploadedFile) return;
@@ -480,6 +704,8 @@ export function ModernAIChatInterface() {
 
     try {
       const { session } = useAuthStore.getState();
+      
+      // Use the persistent session ID
       const currentSessionId = sessionId;
       
       // Prepare request body
@@ -509,7 +735,7 @@ export function ModernAIChatInterface() {
         }
       };
 
-      console.log('Sending message with context:', requestBody);
+      console.log('Sending message with session ID:', currentSessionId);
 
       // Call the edge function
       const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
@@ -549,39 +775,6 @@ export function ModernAIChatInterface() {
       updatedCache.push(assistantMessage);
       localStorage.setItem(`chat_messages_${selectedLand?.id || 'general'}`, JSON.stringify(updatedCache));
       
-      // Update session's last activity
-      await supabase
-        .from('ai_chat_sessions')
-        .update({ 
-          updated_at: new Date().toISOString(),
-          metadata: {
-            last_message_at: new Date().toISOString(),
-            message_count: messages.length + 2,
-            language: i18n.language
-          }
-        })
-        .eq('id', currentSessionId);
-      
-      // Save analytics
-      const today = new Date().toISOString().split('T')[0];
-      await supabase
-        .from('ai_chat_analytics')
-        .upsert({
-          tenant_id: session?.tenantId,
-          farmer_id: session?.farmerId,
-          date: today,
-          total_messages: messages.length + 2,
-          total_sessions: 1,
-          avg_response_time_ms: data.responseTime || 0,
-          topics: {
-            land_specific: selectedLand ? 1 : 0,
-            general: selectedLand ? 0 : 1
-          }
-        }, {
-          onConflict: 'tenant_id,farmer_id,date',
-          ignoreDuplicates: false
-        });
-
       // Auto-speak response if enabled
       if (voiceEnabled && isTTSSupported) {
         speak(assistantMessage.content);
@@ -590,21 +783,33 @@ export function ModernAIChatInterface() {
 
     } catch (error) {
       console.error('Error sending message:', error);
+      
+      // Add error message with retry option
       const errorMessage: Message = {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: isOnline 
-          ? 'I apologize, but I encountered an error. Please try again.'
-          : 'You are offline. Some features may be limited.',
+          ? '❌ I apologize, but I encountered an error. Please try again.'
+          : '📵 You are offline. Some features may be limited.',
         timestamp: new Date(),
         status: 'error'
       };
+      
       setMessages(prev => [...prev, errorMessage]);
       
       toast({
         title: t('common.error'),
-        description: 'Failed to get AI response',
-        variant: 'destructive'
+        description: 'Failed to get AI response. Please retry.',
+        variant: 'destructive',
+        action: (
+          <Button 
+            size="sm" 
+            onClick={() => sendMessage(textToSend)}
+            className="bg-white text-red-600"
+          >
+            Retry
+          </Button>
+        )
       });
     } finally {
       setIsLoading(false);
@@ -668,157 +873,235 @@ export function ModernAIChatInterface() {
     ));
     
     toast({
-      description: 'Thank you for your feedback!',
+      description: '✅ Thank you for your feedback!',
       duration: 2000
     });
   };
 
+  // Common emojis for farmers
+  const farmerEmojis = ['🌾', '🌱', '🌿', '🌻', '🌽', '🍅', '🥬', '☀️', '🌧️', '🚜', '👨‍🌾', '👩‍🌾'];
+
   return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
-      {/* Compact Header */}
-      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-2 py-2">
+    <div className="flex flex-col h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950">
+      {/* Enhanced Sticky Header */}
+      <motion.div 
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border-b border-gray-200/50 dark:border-gray-700/50 px-3 py-2 sticky top-0 z-40"
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <button 
+            <motion.button 
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={() => navigate('/app')} 
-              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all"
             >
               <ChevronLeft className="w-5 h-5" />
-            </button>
+            </motion.button>
             
             <div className="flex items-center gap-2">
-              <Avatar className="w-8 h-8">
-                <AvatarFallback className="bg-primary">
-                  <Bot className="w-4 h-4 text-white" />
+              <Avatar className="w-9 h-9 ring-2 ring-primary/20">
+                <AvatarFallback className="bg-gradient-to-br from-primary to-primary-600">
+                  <Bot className="w-5 h-5 text-white" />
                 </AvatarFallback>
               </Avatar>
               
               <div>
-                <h2 className="font-semibold text-sm">AI Assistant</h2>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {isOnline ? 'Online' : 'Offline'} {isTyping && '• Typing...'}
-                </p>
+                <h2 className="font-semibold text-sm">AI Farm Assistant</h2>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className={cn(
+                    "w-2 h-2 rounded-full",
+                    isOnline ? "bg-green-500" : "bg-gray-400"
+                  )} />
+                  <span className="text-gray-500 dark:text-gray-400">
+                    {isOnline ? 'Online' : 'Offline'} {isTyping && '• Typing...'}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
           
           <div className="flex items-center gap-1">
-            <button className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-              <Phone className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-            </button>
-            <button className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-              <Video className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-            </button>
-            <button className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+            <motion.button 
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setShowFontControl(!showFontControl)}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all"
+            >
+              <Type className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+            </motion.button>
+            <motion.button 
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all"
+            >
               <MoreVertical className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-            </button>
+            </motion.button>
           </div>
         </div>
         
-        {/* Land Selection - Horizontal Scroll */}
+        {/* Enhanced Land Selection - Horizontal Scroll with Gradients */}
         {lands.length > 0 && (
-          <div className="mt-2 -mx-2 px-2">
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="mt-2 -mx-3 px-3"
+          >
             <ScrollArea className="w-full">
               <div className="flex gap-2 pb-1">
-                <button
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                   onClick={() => selectLand(null)}
                   className={cn(
-                    "px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all",
+                    "px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all",
+                    "shadow-sm hover:shadow-md",
                     !selectedLand 
-                      ? "bg-primary text-white" 
-                      : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+                      ? "bg-gradient-to-r from-primary to-primary-600 text-white" 
+                      : "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600"
                   )}
                 >
-                  General
-                </button>
+                  <span className="flex items-center gap-1">
+                    <Home className="w-3 h-3" />
+                    General
+                  </span>
+                </motion.button>
                 
-                {lands.map((land) => (
-                  <button
+                {lands.map((land, idx) => (
+                  <motion.button
                     key={land.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: idx * 0.05 }}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => selectLand(land)}
                     className={cn(
-                      "px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all",
+                      "px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all",
+                      "shadow-sm hover:shadow-md",
                       selectedLand?.id === land.id 
-                        ? "bg-primary text-white" 
-                        : "bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300"
+                        ? "bg-gradient-to-r from-green-500 to-emerald-600 text-white" 
+                        : "bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600"
                     )}
                   >
-                    {land.name}
-                  </button>
+                    <span className="flex items-center gap-1">
+                      <Trees className="w-3 h-3" />
+                      {land.name}
+                    </span>
+                  </motion.button>
                 ))}
               </div>
             </ScrollArea>
-          </div>
+          </motion.div>
         )}
-      </div>
+      </motion.div>
 
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto" ref={scrollAreaRef}>
+      {/* Land Welcome Card */}
+      {selectedLand && messages.length === 0 && (
+        <LandWelcomeCard land={selectedLand} />
+      )}
+
+      {/* Messages Area with Better Scrolling */}
+      <div className="flex-1 overflow-y-auto relative" ref={scrollAreaRef}>
         <div className="pb-2">
-          {/* Show quick actions when no messages */}
+          {/* Enhanced Quick Actions */}
           {messages.length === 0 && showQuickActions && (
-            <div className="p-4">
-              <div className="text-center mb-4">
-                <Sparkles className="w-10 h-10 text-primary mx-auto mb-2" />
-                <h3 className="text-base font-semibold">How can I help you today?</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-4"
+            >
+              <div className="text-center mb-6">
+                <motion.div
+                  animate={{ 
+                    rotate: [0, 10, -10, 10, 0],
+                    scale: [1, 1.1, 1]
+                  }}
+                  transition={{ 
+                    duration: 2,
+                    repeat: Infinity,
+                    repeatDelay: 3
+                  }}
+                >
+                  <Sparkles className="w-12 h-12 text-primary mx-auto mb-3" />
+                </motion.div>
+                <h3 className="text-lg font-bold bg-gradient-to-r from-primary to-primary-600 bg-clip-text text-transparent">
+                  How can I help you today?
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                   {selectedLand 
-                    ? `Ask about ${selectedLand.name}`
+                    ? `Ask about ${selectedLand.name} - ${selectedLand.primary_crop || 'your farm'}`
                     : 'Ask me anything about farming'}
                 </p>
               </div>
               <QuickActions onActionClick={handleQuickAction} />
-            </div>
+            </motion.div>
           )}
 
-          {/* Messages */}
-          <AnimatePresence>
-            {messages.map((message) => (
+          {/* Messages with Enhanced Animations */}
+          <AnimatePresence mode="popLayout">
+            {messages.map((message, idx) => (
               <MessageBubble 
                 key={message.id}
                 message={message}
                 onFeedback={handleFeedback}
-                onSpeak={(content) => {
-                  if (isSpeaking && speakingMessageId === message.id) {
-                    stop();
-                    setSpeakingMessageId(null);
-                  } else {
-                    speak(content);
-                    setSpeakingMessageId(message.id);
-                  }
-                }}
+                onSpeak={handleSpeak}
                 isSpeaking={isSpeaking && speakingMessageId === message.id}
+                fontSize={fontSize}
               />
             ))}
           </AnimatePresence>
 
-          {/* Typing Indicator */}
+          {/* Enhanced Typing Indicator */}
           <AnimatePresence>
             {isTyping && <TypingIndicator />}
           </AnimatePresence>
 
-          {/* Suggested Replies */}
+          {/* Suggested Replies with Swipeable Carousel */}
           {messages.length > 0 && messages[messages.length - 1].suggestions && (
-            <div className="px-4 py-2">
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="px-4 py-3"
+            >
               <ScrollArea className="w-full">
                 <div className="flex gap-2">
                   {messages[messages.length - 1].suggestions!.map((suggestion, idx) => (
-                    <button
+                    <motion.button
                       key={idx}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: idx * 0.05 }}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
                       onClick={() => handleQuickAction(suggestion)}
-                      className="px-3 py-1.5 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors whitespace-nowrap"
+                      className="px-4 py-2 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all whitespace-nowrap shadow-sm hover:shadow-md"
                     >
                       {suggestion}
-                    </button>
+                    </motion.button>
                   ))}
                 </div>
               </ScrollArea>
-            </div>
+            </motion.div>
           )}
 
           <div ref={messageEndRef} />
         </div>
       </div>
+
+      {/* Collapsed Quick Actions Bar */}
+      {messages.length > 0 && showQuickActions && (
+        <QuickActions onActionClick={handleQuickAction} collapsed />
+      )}
+
+      {/* Font Size Control */}
+      <AnimatePresence>
+        {showFontControl && (
+          <FontSizeControl fontSize={fontSize} onChange={setFontSize} />
+        )}
+      </AnimatePresence>
 
       {/* Attachments Preview */}
       <AnimatePresence>
@@ -827,26 +1110,38 @@ export function ModernAIChatInterface() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
-            className="px-4 py-2 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700"
+            className="px-4 py-3 bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border-t border-gray-200/50 dark:border-gray-700/50"
           >
             <div className="flex gap-2">
               {uploadedImage && (
-                <div className="relative">
+                <motion.div 
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="relative group"
+                >
                   <img 
                     src={uploadedImage} 
                     alt="Upload preview"
-                    className="h-16 w-16 object-cover rounded-lg"
+                    className="h-20 w-20 object-cover rounded-xl"
                   />
-                  <button
+                  <motion.button
+                    whileHover={{ scale: 1.2 }}
+                    whileTap={{ scale: 0.9 }}
                     onClick={() => setUploadedImage(null)}
-                    className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center"
+                    className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg"
                   >
                     <X className="w-3 h-3" />
-                  </button>
-                </div>
+                  </motion.button>
+                </motion.div>
               )}
               {uploadedFile && (
-                <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
+                <motion.div 
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  whileTap={{ x: -100, opacity: 0 }}
+                  onAnimationComplete={() => uploadedFile && setUploadedFile(null)}
+                  className="flex items-center gap-2 px-3 py-2 bg-gray-100 dark:bg-gray-700 rounded-xl"
+                >
                   <Paperclip className="w-4 h-4" />
                   <span className="text-xs truncate max-w-[100px]">{uploadedFile.name}</span>
                   <button
@@ -855,26 +1150,80 @@ export function ModernAIChatInterface() {
                   >
                     <X className="w-3 h-3" />
                   </button>
-                </div>
+                </motion.div>
               )}
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* WhatsApp-style Input Bar */}
-      <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-2 py-2">
-        <div className="flex items-end gap-1">
-          {/* Attachment Button */}
-          <button
-            onClick={() => imageInputRef.current?.click()}
-            className="p-2.5 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+      {/* Emoji Picker */}
+      <AnimatePresence>
+        {showEmojiPicker && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="absolute bottom-20 left-4 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-3 z-50"
           >
-            <Plus className="w-5 h-5" />
-          </button>
+            <div className="grid grid-cols-6 gap-2">
+              {farmerEmojis.map((emoji, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    setInputMessage(prev => prev + emoji);
+                    setShowEmojiPicker(false);
+                  }}
+                  className="text-2xl hover:scale-125 transition-transform"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-          {/* Input Field */}
-          <div className="flex-1 bg-gray-100 dark:bg-gray-700 rounded-full">
+      {/* Enhanced WhatsApp-style Floating Input Dock */}
+      <motion.div 
+        initial={{ y: 20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border-t border-gray-200/50 dark:border-gray-700/50 px-3 py-3"
+      >
+        <div className="flex items-end gap-2">
+          {/* Left Side Actions */}
+          <div className="flex gap-1">
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+              className="p-2.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            >
+              <Smile className="w-5 h-5" />
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={() => imageInputRef.current?.click()}
+              className="p-2.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            >
+              <Paperclip className="w-5 h-5" />
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+              onClick={handleCameraCapture}
+              className="p-2.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+            >
+              <Camera className="w-5 h-5" />
+            </motion.button>
+          </div>
+
+          {/* Floating Glass Input Field */}
+          <motion.div 
+            whileFocus={{ scale: 1.02 }}
+            className="flex-1 bg-gray-100/80 dark:bg-gray-700/80 backdrop-blur-sm rounded-3xl border border-gray-200/50 dark:border-gray-600/50"
+          >
             <textarea
               ref={inputRef}
               value={inputMessage}
@@ -885,17 +1234,21 @@ export function ModernAIChatInterface() {
                   sendMessage();
                 }
               }}
-              placeholder="Type a message"
-              className="w-full px-4 py-2.5 bg-transparent resize-none focus:outline-none text-sm"
+              placeholder={isListening ? "Listening..." : "Type a message"}
+              className="w-full px-4 py-3 bg-transparent resize-none focus:outline-none text-sm"
               rows={1}
               style={{
                 maxHeight: '100px',
+                fontSize: `${fontSize}px`
               }}
+              dir={i18n.language === 'ar' || i18n.language === 'ur' ? 'rtl' : 'ltr'}
             />
-          </div>
+          </motion.div>
 
-          {/* Send/Mic Button */}
-          <button
+          {/* Morphing Send/Mic Button */}
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
             onClick={() => {
               if (inputMessage.trim()) {
                 sendMessage();
@@ -905,24 +1258,71 @@ export function ModernAIChatInterface() {
             }}
             disabled={isLoading}
             className={cn(
-              "p-2.5 rounded-full transition-colors",
+              "p-3 rounded-full transition-all shadow-lg",
               inputMessage.trim() || isListening
-                ? "bg-primary text-white"
-                : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                ? "bg-gradient-to-r from-primary to-primary-600 text-white"
+                : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400"
             )}
           >
-            {isLoading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : inputMessage.trim() ? (
-              <Send className="w-5 h-5" />
-            ) : isListening ? (
-              <MicOff className="w-5 h-5" />
-            ) : (
-              <Mic className="w-5 h-5" />
-            )}
-          </button>
+            <AnimatePresence mode="wait">
+              {isLoading ? (
+                <motion.div
+                  key="loading"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1, rotate: 360 }}
+                  exit={{ scale: 0 }}
+                  transition={{ rotate: { duration: 1, repeat: Infinity, ease: "linear" } }}
+                >
+                  <Loader2 className="w-5 h-5" />
+                </motion.div>
+              ) : inputMessage.trim() ? (
+                <motion.div
+                  key="send"
+                  initial={{ scale: 0, rotate: -180 }}
+                  animate={{ scale: 1, rotate: 0 }}
+                  exit={{ scale: 0, rotate: 180 }}
+                >
+                  <Send className="w-5 h-5" />
+                </motion.div>
+              ) : isListening ? (
+                <motion.div
+                  key="mic-off"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ repeat: Infinity, duration: 1 }}
+                >
+                  <MicOff className="w-5 h-5" />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="mic"
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  exit={{ scale: 0 }}
+                >
+                  <Mic className="w-5 h-5" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.button>
         </div>
-      </div>
+
+        {/* Offline Status Bar */}
+        <AnimatePresence>
+          {!isOnline && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mt-2 px-3 py-1.5 bg-orange-100 dark:bg-orange-900/30 rounded-lg"
+            >
+              <p className="text-xs text-orange-800 dark:text-orange-200 text-center">
+                📵 You're offline. Messages will be sent when connection is restored.
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
 
       {/* Hidden inputs */}
       <input
@@ -938,6 +1338,24 @@ export function ModernAIChatInterface() {
         onChange={handleFileUpload}
         className="hidden"
       />
+
+      {/* Custom Styles for Animations */}
+      <style>{`
+        @keyframes pulse-once {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.8; }
+        }
+        .animate-pulse-once {
+          animation: pulse-once 2s ease-in-out;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+          display: none;
+        }
+        .no-scrollbar {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
     </div>
   );
 }
