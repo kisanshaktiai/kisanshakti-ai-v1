@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { Loader2, Shield, ArrowLeft } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
+import CryptoJS from 'crypto-js';
 
 export default function SetPin() {
   const { t } = useTranslation();
@@ -37,6 +38,11 @@ export default function SetPin() {
     }
   }, [mobile, farmerId, tenantId, isNewRegistration, navigate]);
 
+  const hashPin = (pin: string): string => {
+    const SALT = 'kisan_shakti_2024';
+    return CryptoJS.SHA256(pin + SALT).toString();
+  };
+
   const handlePinComplete = async () => {
     if (step === 'set') {
       if (pin.length !== 4) {
@@ -62,14 +68,41 @@ export default function SetPin() {
       let farmer;
       
       if (isNewRegistration) {
-        // NEW REGISTRATION: Create farmer with both mobile and PIN together
+        // Get the last farmer code for sequential generation
+        const { data: lastFarmer } = await supabase
+          .from('farmers')
+          .select('farmer_code')
+          .eq('tenant_id', tenantId!)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        // Generate sequential farmer code
+        let farmerCode: string;
         const tenantPrefix = localStorage.getItem('tenantPrefix') || 'KIS';
-        const timestamp = Date.now().toString().slice(-6);
-        const farmerCode = `${tenantPrefix}${timestamp}`;
+        
+        if (lastFarmer?.farmer_code) {
+          // Extract number from last code and increment
+          const match = lastFarmer.farmer_code.match(/(\D+)(\d+)/);
+          if (match) {
+            const prefix = match[1];
+            const number = parseInt(match[2], 10) + 1;
+            farmerCode = `${prefix}${number.toString().padStart(6, '0')}`;
+          } else {
+            farmerCode = `${tenantPrefix}000001`;
+          }
+        } else {
+          // First farmer for this tenant
+          farmerCode = `${tenantPrefix}000001`;
+        }
+
+        // Hash the PIN for secure storage
+        const pinHash = hashPin(pin);
         
         const farmerData = {
-          mobile_number: mobile!, // Now we can set mobile with PIN
-          pin_hash: pin, // Should be hashed in production
+          mobile_number: mobile!,
+          pin_hash: pinHash, // Store hashed PIN
+          pin: pin, // Store plain PIN for development/debugging (remove in production)
           tenant_id: tenantId!,
           farmer_code: farmerCode,
           language_preference: localStorage.getItem('i18nextLng') || 'hi',
@@ -90,7 +123,7 @@ export default function SetPin() {
         
         if (insertError) {
           // Handle duplicate mobile number
-          if (insertError.code === '23505') {
+          if (insertError.code === '23505' || insertError.message?.includes('duplicate')) {
             setError(t('auth.mobileAlreadyRegistered') || 'This mobile number is already registered');
             setTimeout(() => navigate('/auth'), 2000);
             return;
@@ -100,7 +133,7 @@ export default function SetPin() {
         
         farmer = newFarmer;
         
-        // Create user profile
+        // Create user profile with mobile and farmer_code
         await supabase
           .from('user_profiles')
           .insert({
@@ -108,6 +141,7 @@ export default function SetPin() {
             farmer_id: farmer.id,
             tenant_id: farmer.tenant_id,
             mobile_number: farmer.mobile_number,
+            farmer_code: farmerCode,
             preferred_language: farmer.language_preference as any,
             is_profile_complete: false
           });
@@ -116,11 +150,14 @@ export default function SetPin() {
         localStorage.setItem('farmerId', farmer.id);
         
       } else {
-        // EXISTING FARMER: Update PIN
+        // EXISTING FARMER: Update PIN with hash
+        const pinHash = hashPin(pin);
+        
         const { data: updatedFarmer, error: updateError } = await supabase
           .from('farmers')
           .update({
-            pin_hash: pin, // Should be hashed in production
+            pin_hash: pinHash, // Store hashed PIN
+            pin: pin, // Store plain PIN for development/debugging (remove in production)
             pin_updated_at: new Date().toISOString(),
             last_login_at: new Date().toISOString(),
             total_app_opens: 1
@@ -135,6 +172,15 @@ export default function SetPin() {
         }
         
         farmer = updatedFarmer;
+        
+        // Update user profile with mobile and farmer_code if needed
+        await supabase
+          .from('user_profiles')
+          .update({
+            mobile_number: farmer.mobile_number,
+            farmer_code: farmer.farmer_code
+          })
+          .eq('farmer_id', farmer.id);
       }
 
       // Create authenticated session

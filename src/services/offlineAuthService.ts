@@ -57,7 +57,7 @@ class OfflineAuthService {
   }
 
   // Hash PIN for secure storage
-  private hashPin(pin: string): string {
+  hashPin(pin: string): string {
     return CryptoJS.SHA256(pin + this.SALT).toString();
   }
 
@@ -220,7 +220,10 @@ class OfflineAuthService {
       throw fetchError;
     }
 
-    // Validate PIN
+    // Validate PIN - compare hashed versions
+    const pinHash = this.hashPin(pin);
+    
+    // Try using the RPC function first if it exists
     const { data: isValid, error: validationError } = await supabase
       .rpc('validate_farmer_pin', {
         p_farmer_id: farmerId,
@@ -229,13 +232,16 @@ class OfflineAuthService {
       });
 
     if (validationError || !isValid) {
-      // Fallback to direct comparison
-      if (farmer.pin !== pin) {
-        return {
-          success: false,
-          isOffline: false,
-          error: 'Incorrect PIN'
-        };
+      // Fallback to direct comparison of hashed PINs
+      if (farmer.pin_hash !== pinHash) {
+        // Also check plain PIN for backward compatibility during migration
+        if (farmer.pin !== pin) {
+          return {
+            success: false,
+            isOffline: false,
+            error: 'Incorrect PIN'
+          };
+        }
       }
     }
 
