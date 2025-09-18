@@ -3557,6 +3557,7 @@ export type Database = {
           created_at: string
           credit_limit: number | null
           dealer_code: string
+          dealer_name: string | null
           email: string
           gst_number: string | null
           id: string
@@ -3587,6 +3588,7 @@ export type Database = {
           created_at?: string
           credit_limit?: number | null
           dealer_code: string
+          dealer_name?: string | null
           email: string
           gst_number?: string | null
           id?: string
@@ -3617,6 +3619,7 @@ export type Database = {
           created_at?: string
           credit_limit?: number | null
           dealer_code?: string
+          dealer_name?: string | null
           email?: string
           gst_number?: string | null
           id?: string
