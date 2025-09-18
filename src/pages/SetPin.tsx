@@ -19,16 +19,23 @@ export default function SetPin() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  const mobile = localStorage.getItem('authMobile');
+  // Check if this is a new registration or existing farmer setting PIN
+  const isNewRegistration = localStorage.getItem('isNewRegistration') === 'true';
+  const registerMobile = localStorage.getItem('registerMobile');
+  const mobile = registerMobile || localStorage.getItem('authMobile');
   const farmerId = localStorage.getItem('farmerId');
   const tenantId = localStorage.getItem('tenantId');
   
-  // Ensure we have all required data
+  // Ensure we have required data
   useEffect(() => {
-    if (!mobile || !farmerId || !tenantId) {
+    if (!mobile || !tenantId) {
       navigate('/auth');
     }
-  }, [mobile, farmerId, tenantId, navigate]);
+    // For existing farmers, we need farmerId
+    if (!isNewRegistration && !farmerId) {
+      navigate('/auth');
+    }
+  }, [mobile, farmerId, tenantId, isNewRegistration, navigate]);
 
   const handlePinComplete = async () => {
     if (step === 'set') {
@@ -47,36 +54,76 @@ export default function SetPin() {
       setError(null);
 
       try {
-        // MULTI-TENANT UPDATE: Ensure we update the correct farmer in the correct tenant
-        // First, get the temp mobile from metadata
-        const { data: farmerData } = await supabase
-          .from('farmers')
-          .select('metadata')
-          .eq('id', farmerId)
-          .eq('tenant_id', tenantId)
-          .single();
+        let farmer;
         
-        const tempMobile = (farmerData?.metadata as any)?.temp_mobile || mobile;
-        
-        // Now update with both mobile and PIN together to satisfy constraint
-        const { data: farmer, error: updateError } = await supabase
-          .from('farmers')
-          .update({
-            mobile_number: tempMobile, // Set mobile number now with PIN
-            pin: pin, // In production, store hashed PIN
-            pin_hash: pin, // This should be properly hashed
-            pin_updated_at: new Date().toISOString(),
-            last_login_at: new Date().toISOString(),
+        if (isNewRegistration) {
+          // NEW REGISTRATION: Create farmer with both mobile and PIN together
+          const tenantPrefix = localStorage.getItem('tenantPrefix') || 'KIS';
+          const timestamp = Date.now().toString().slice(-6);
+          const farmerCode = `${tenantPrefix}${timestamp}`;
+          
+          const farmerData = {
+            mobile_number: mobile!, // Now we can set mobile with PIN
+            pin_hash: pin, // Should be hashed in production
+            tenant_id: tenantId!,
+            farmer_code: farmerCode,
+            language_preference: localStorage.getItem('i18nextLng') || 'hi',
+            is_active: true,
+            app_install_date: new Date().toISOString(),
             total_app_opens: 1,
-            metadata: {} // Clear temp mobile from metadata
-          })
-          .eq('id', farmerId)
-          .eq('tenant_id', tenantId) // CRITICAL: Ensure tenant isolation
-          .select()
-          .single();
+            login_attempts: 0,
+            failed_login_attempts: 0,
+            last_login_at: new Date().toISOString(),
+            pin_updated_at: new Date().toISOString()
+          };
+          
+          const { data: newFarmer, error: insertError } = await supabase
+            .from('farmers')
+            .insert(farmerData)
+            .select()
+            .single();
+          
+          if (insertError) {
+            throw insertError;
+          }
+          
+          farmer = newFarmer;
+          
+          // Create user profile
+          await supabase
+            .from('user_profiles')
+            .insert({
+              id: farmer.id,
+              farmer_id: farmer.id,
+              tenant_id: farmer.tenant_id,
+              mobile_number: farmer.mobile_number,
+              preferred_language: farmer.language_preference as any,
+              is_profile_complete: false
+            });
+          
+          // Store farmer ID for session
+          localStorage.setItem('farmerId', farmer.id);
+          
+        } else {
+          // EXISTING FARMER: Update PIN
+          const { data: updatedFarmer, error: updateError } = await supabase
+            .from('farmers')
+            .update({
+              pin_hash: pin, // Should be hashed in production
+              pin_updated_at: new Date().toISOString(),
+              last_login_at: new Date().toISOString(),
+              total_app_opens: 1
+            })
+            .eq('id', farmerId)
+            .eq('tenant_id', tenantId)
+            .select()
+            .single();
 
-        if (updateError) {
-          throw updateError;
+          if (updateError) {
+            throw updateError;
+          }
+          
+          farmer = updatedFarmer;
         }
 
         // Create authenticated session
@@ -104,6 +151,8 @@ export default function SetPin() {
         // Clear temp storage
         localStorage.removeItem('authMobile');
         localStorage.removeItem('farmerId');
+        localStorage.removeItem('isNewRegistration');
+        localStorage.removeItem('registerMobile');
         
         navigate('/app');
       } catch (err: any) {
@@ -128,7 +177,7 @@ export default function SetPin() {
                 setStep('set');
                 setConfirmPin('');
               } else {
-                navigate('/mobile-auth');
+                navigate('/auth');
               }
             }}
             className="mb-2"
@@ -142,7 +191,7 @@ export default function SetPin() {
               <Shield className="w-10 h-10 text-primary" />
             </div>
             <h1 className="text-2xl font-bold text-foreground">
-              {step === 'set' ? 'Set Your PIN' : 'Confirm Your PIN'}
+              {isNewRegistration && step === 'set' ? 'Create Your PIN' : step === 'set' ? 'Set Your PIN' : 'Confirm Your PIN'}
             </h1>
             <p className="text-sm text-muted-foreground">
               {step === 'set' 
@@ -193,7 +242,7 @@ export default function SetPin() {
           {isLoading && (
             <div className="flex items-center justify-center space-x-2 text-muted-foreground">
               <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-sm">Setting up your account...</span>
+              <span className="text-sm">{isNewRegistration ? 'Creating your account...' : 'Setting up your PIN...'}</span>
             </div>
           )}
 

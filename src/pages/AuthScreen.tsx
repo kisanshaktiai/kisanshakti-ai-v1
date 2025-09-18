@@ -87,62 +87,11 @@ export default function AuthScreen() {
         setStep('pin');
         navigate('/pin');
       } else if (mode === 'register') {
-        // Generate farmer code with tenant prefix
-        const tenantPrefix = tenant.name?.substring(0, 3).toUpperCase() || 'KIS';
-        const timestamp = Date.now().toString().slice(-6);
-        const farmerCode = `${tenantPrefix}${timestamp}`;
-        
-        // Create new farmer with tenant_id (REQUIRED for multi-tenancy)
-        // Note: We don't set mobile_number initially to avoid pin_hash constraint
-        const farmerData = {
-          tenant_id: tenant.id, // REQUIRED: Ensures farmer belongs to correct tenant
-          farmer_code: farmerCode,
-          language_preference: localStorage.getItem('i18nextLng') || 'hi',
-          is_active: true,
-          app_install_date: new Date().toISOString(),
-          total_app_opens: 0,
-          login_attempts: 0,
-          failed_login_attempts: 0,
-          // Temporarily store mobile in metadata to avoid constraint
-          metadata: {
-            temp_mobile: cleanMobile
-          }
-        };
-        
-        const { data: newFarmer, error: insertError } = await supabase
-          .from('farmers')
-          .insert(farmerData)
-          .select()
-          .single();
-
-        if (insertError) {
-          // Handle unique constraint violation for mobile+tenant
-          if (insertError.code === '23505') {
-            setError(t('auth.mobileAlreadyExists') || 'This mobile number is already registered.');
-            setMode('check');
-            return;
-          }
-          console.error('Error creating farmer:', insertError);
-          throw insertError;
-        }
-        
-        // Create user profile with tenant_id (REQUIRED)
-        const profileData = {
-          id: newFarmer.id,
-          farmer_id: newFarmer.id,
-          tenant_id: tenant.id, // REQUIRED: Link profile to tenant
-          mobile_number: cleanMobile, // Use cleaned mobile
-          preferred_language: localStorage.getItem('i18nextLng') as any || 'hi',
-          is_profile_complete: false
-        };
-        
-        await supabase
-          .from('user_profiles')
-          .insert(profileData);
-
-        localStorage.setItem('authMobile', cleanMobile); // Store cleaned mobile
-        localStorage.setItem('farmerId', newFarmer.id);
+        // Store registration data and navigate to PIN setup
+        // Don't create farmer record yet - wait until PIN is set
+        localStorage.setItem('registerMobile', cleanMobile);
         localStorage.setItem('tenantId', tenant.id);
+        localStorage.setItem('isNewRegistration', 'true');
         setStep('setpin');
         navigate('/set-pin');
       } else {
