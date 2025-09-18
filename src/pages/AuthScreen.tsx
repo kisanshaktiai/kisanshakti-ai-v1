@@ -201,7 +201,7 @@ export default function AuthScreen() {
               </>
             ) : (
               <>
-                {mode === 'register' ? t('auth.createAccount') : t('common.continue')}
+                {mode === 'register' ? t('common.next') : t('common.continue')}
                 <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
               </>
             )}
