@@ -2641,6 +2641,13 @@ export type Database = {
             foreignKeyName: "crop_health_assessments_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_health_assessments_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
           },
@@ -2703,6 +2710,13 @@ export type Database = {
           yield_kg_per_acre?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "crop_history_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
           {
             foreignKeyName: "crop_history_land_id_fkey"
             columns: ["land_id"]
@@ -2781,6 +2795,13 @@ export type Database = {
           weather_data?: Json | null
         }
         Relationships: [
+          {
+            foreignKeyName: "crop_schedules_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
           {
             foreignKeyName: "crop_schedules_land_id_fkey"
             columns: ["land_id"]
@@ -5702,6 +5723,13 @@ export type Database = {
             foreignKeyName: "land_activities_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_activities_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
           },
@@ -6977,6 +7005,13 @@ export type Database = {
             foreignKeyName: "marketplace_products_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "marketplace_products_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
           },
@@ -7724,6 +7759,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ndvi_data_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "ndvi_data_land_id_fkey"
@@ -9026,6 +9068,13 @@ export type Database = {
             foreignKeyName: "prescription_maps_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "prescription_maps_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
           },
@@ -9792,6 +9841,13 @@ export type Database = {
             foreignKeyName: "satellite_alerts_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "satellite_alerts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
           },
@@ -9859,6 +9915,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_imagery_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "satellite_imagery_land_id_fkey"
@@ -10342,6 +10405,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "soil_health_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "soil_health_land_id_fkey"
@@ -12526,6 +12596,13 @@ export type Database = {
             foreignKeyName: "weather_activity_recommendations_land_id_fkey"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "weather_activity_recommendations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
           },
@@ -12614,6 +12691,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "farmers"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_aggregates_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "weather_aggregates_land_id_fkey"
@@ -13045,6 +13129,13 @@ export type Database = {
             foreignKeyName: "fk_weather_land"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "fk_weather_land"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
           },
@@ -13054,6 +13145,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "farmers"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "weather_observations_land_id_fkey"
@@ -13527,6 +13625,44 @@ export type Database = {
         }
         Relationships: []
       }
+      land_agent_context: {
+        Row: {
+          area_acres: number | null
+          area_guntas: number | null
+          boundary_polygon_old: Json | null
+          center_point_old: Json | null
+          cultivation_date: string | null
+          current_crop: string | null
+          district: string | null
+          farmer_id: string | null
+          farmer_language: string | null
+          farmer_location: string | null
+          farmer_name: string | null
+          farmer_phone: string | null
+          irrigation_type: string | null
+          land_id: string | null
+          land_name: string | null
+          last_harvest_date: string | null
+          previous_crop: string | null
+          soil_type: string | null
+          state: string | null
+          survey_number: string | null
+          taluka: string | null
+          tenant_id: string | null
+          village: string | null
+          water_source: string | null
+          weather_data: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lands_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       weather_with_location: {
         Row: {
           area_acres: number | null
@@ -13563,6 +13699,13 @@ export type Database = {
             foreignKeyName: "fk_weather_land"
             columns: ["land_id"]
             isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "fk_weather_land"
+            columns: ["land_id"]
+            isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
           },
@@ -13572,6 +13715,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "farmers"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "weather_observations_land_id_fkey"
