@@ -705,12 +705,26 @@ export function ModernAIChatInterface() {
     try {
       const { session } = useAuthStore.getState();
       
+      // Validate session data
+      if (!session?.farmerId || !session?.tenantId) {
+        console.error('Missing session data:', session);
+        toast({ title: t('chat.errors.sessionMissing'), variant: 'destructive' });
+        setIsLoading(false);
+        setIsTyping(false);
+        return;
+      }
+      
       // Use the persistent session ID
       const currentSessionId = sessionId;
       
-      // Prepare request body
+      // Prepare request body with messages array format
       const requestBody = {
-        message: textToSend,
+        messages: [
+          {
+            role: 'user',
+            content: textToSend
+          }
+        ],
         sessionId: currentSessionId,
         landId: selectedLand?.id,
         language: i18n.language,
@@ -729,13 +743,13 @@ export function ModernAIChatInterface() {
         },
         metadata: {
           userId: user?.id,
-          farmerId: session?.farmerId,
-          tenantId: session?.tenantId,
+          farmerId: session.farmerId,
+          tenantId: session.tenantId,
           timestamp: new Date().toISOString()
         }
       };
 
-      console.log('Sending message with session ID:', currentSessionId);
+      console.log('Sending message with session ID:', currentSessionId, 'and metadata:', requestBody.metadata);
 
       // Call the edge function
       const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {

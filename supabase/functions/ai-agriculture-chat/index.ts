@@ -22,23 +22,54 @@ serve(async (req) => {
       sessionId,
       imageUrl,
       language = 'en',
-      tenantId,
-      farmerId,
+      metadata = {},
       fileContent
     } = requestBody;
 
-    // Get request headers for farmer context (fallback)
+    // Extract tenantId and farmerId from metadata or headers
     const headerTenantId = req.headers.get('x-tenant-id');
     const headerFarmerId = req.headers.get('x-farmer-id');
     const sessionToken = req.headers.get('x-session-token');
     
-    // Use body values first, then headers as fallback
-    const finalTenantId = tenantId || headerTenantId;
-    const finalFarmerId = farmerId || headerFarmerId;
+    // Use metadata values first, then headers as fallback
+    const finalTenantId = metadata.tenantId || headerTenantId;
+    const finalFarmerId = metadata.farmerId || headerFarmerId;
     
+    // Validate required fields
     if (!finalTenantId || !finalFarmerId) {
-      console.error('Missing context:', { tenantId: finalTenantId, farmerId: finalFarmerId, requestBody });
-      throw new Error('Missing tenant or farmer context');
+      console.error('Missing context:', { 
+        tenantId: finalTenantId, 
+        farmerId: finalFarmerId, 
+        metadata,
+        headers: {
+          'x-tenant-id': headerTenantId,
+          'x-farmer-id': headerFarmerId
+        }
+      });
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing required fields: tenantId and farmerId must be provided in metadata',
+          required: ['tenantId', 'farmerId'],
+          received: { tenantId: finalTenantId, farmerId: finalFarmerId }
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (!sessionId) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing required field: sessionId',
+          required: ['sessionId']
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
     console.log('AI Chat Request:', { tenantId: finalTenantId, farmerId: finalFarmerId, landId, sessionId, language });
@@ -175,17 +206,40 @@ You are speaking with ${farmer.name || 'a farmer'}:
 - Consider typical weather patterns for this time
 - Suggest appropriate crops and activities for this season`;
 
-    // Prepare messages for OpenAI - simple format
+    // Prepare messages for OpenAI
     const openAIMessages = [
       { role: 'system', content: systemPrompt }
     ];
 
-    // Add conversation history
-    for (const msg of messages) {
-      openAIMessages.push({
-        role: msg.role,
+    // Get conversation history from database
+    const { data: messageHistory } = await supabase
+      .from('ai_chat_messages')
+      .select('role, content')
+      .eq('session_id', currentSessionId)
+      .order('created_at', { ascending: true })
+      .limit(10);
+
+    if (messageHistory && messageHistory.length > 0) {
+      openAIMessages.push(...messageHistory.map(msg => ({
+        role: msg.role === 'user' ? 'user' : 'assistant',
         content: msg.content
-      });
+      })));
+    }
+
+    // Add current messages - handle both old and new format
+    if (messages && messages.length > 0) {
+      for (const msg of messages) {
+        if (typeof msg === 'string') {
+          // Old format - just a string
+          openAIMessages.push({ role: 'user', content: msg });
+        } else if (msg && typeof msg === 'object') {
+          // New format - object with role and content
+          openAIMessages.push({
+            role: msg.role || 'user',
+            content: msg.content || ''
+          });
+        }
+      }
     }
 
     // Call OpenAI API
@@ -194,7 +248,7 @@ You are speaking with ${farmer.name || 'a farmer'}:
       throw new Error('OpenAI API key not configured');
     }
 
-    console.log('Calling OpenAI API...');
+    console.log('Calling OpenAI API with messages:', openAIMessages.length);
 
     const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -203,10 +257,10 @@ You are speaking with ${farmer.name || 'a farmer'}:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022', // Using Claude for better natural language
+        model: 'gpt-4o-mini', // Fixed model name
         messages: openAIMessages,
         max_tokens: 1000,
-        temperature: 0.8, // Slightly higher for more natural responses
+        temperature: 0.8,
         stream: false
       }),
     });
@@ -324,7 +378,7 @@ You are speaking with ${farmer.name || 'a farmer'}:
 
     return new Response(
       JSON.stringify({ 
-        message: aiMessage, 
+        response: aiMessage, // Changed from 'message' to 'response' to match frontend
         sessionId: currentSessionId,
         quickReplies,
         responseTime
@@ -335,12 +389,23 @@ You are speaking with ${farmer.name || 'a farmer'}:
   } catch (error) {
     console.error('Error in AI chat function:', error);
     const errorMessage = error instanceof Error ? error.message : 'An error occurred';
+    
+    // Determine appropriate status code
+    let statusCode = 500;
+    if (errorMessage.includes('Missing') || errorMessage.includes('Invalid')) {
+      statusCode = 400;
+    } else if (errorMessage.includes('unauthorized') || errorMessage.includes('Unauthorized')) {
+      statusCode = 401;
+    }
+    
     return new Response(
       JSON.stringify({ 
-        error: errorMessage
+        error: errorMessage,
+        details: error instanceof Error ? error.stack : undefined,
+        timestamp: new Date().toISOString()
       }),
       { 
-        status: 500, 
+        status: statusCode, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
