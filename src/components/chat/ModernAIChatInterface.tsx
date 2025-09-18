@@ -421,9 +421,10 @@ export function ModernAIChatInterface() {
   // Load lands from API
   const loadLands = async () => {
     try {
-      const { data, error } = await landsApi.getLands();
-      if (error) throw error;
-      setLands(data || []);
+      const lands = await landsApi.fetchLands();
+      // Filter out lands without id and ensure type compatibility
+      const validLands = lands.filter(land => land.id) as Land[];
+      setLands(validLands);
     } catch (error) {
       console.error('Error loading lands:', error);
     }
@@ -1255,7 +1256,7 @@ export function ModernAIChatInterface() {
       />
 
       {/* Custom styles for pulse animation */}
-      <style jsx>{`
+      <style>{`
         @keyframes pulse-border {
           0%, 100% {
             box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
