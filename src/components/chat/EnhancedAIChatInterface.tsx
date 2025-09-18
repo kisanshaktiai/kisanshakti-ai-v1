@@ -20,7 +20,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenantStore } from '@/stores/tenantStore';
 import { landsApi } from '@/services/landsApi';
-import { LandSpecificChatTab } from './LandSpecificChatTab';
+import { LandContextCard } from './LandContextCard';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
@@ -333,12 +333,13 @@ export function EnhancedAIChatInterface() {
           </div>
         </div>
         
-        {/* Tabs */}
+      {/* Tabs - Mobile optimized horizontal scroll */}
+      <div className="w-full overflow-x-auto scrollbar-hide">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="w-full justify-start px-3 h-auto bg-transparent gap-2 overflow-x-auto flex-nowrap">
+          <TabsList className="inline-flex w-auto min-w-full justify-start px-3 h-auto bg-transparent gap-2">
             <TabsTrigger 
               value="general"
-              className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-secondary data-[state=active]:text-white rounded-full px-4 py-1.5 text-sm"
+              className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-secondary data-[state=active]:text-white data-[state=inactive]:bg-muted/50 rounded-full px-4 py-1.5 text-sm transition-all"
             >
               <MessageSquare className="w-4 h-4 mr-1.5" />
               {t('chat.generalChat')}
@@ -347,7 +348,7 @@ export function EnhancedAIChatInterface() {
               <TabsTrigger 
                 key={land.id}
                 value={land.id}
-                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-emerald-500 data-[state=active]:text-white rounded-full px-4 py-1.5 text-sm whitespace-nowrap"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-green-500 data-[state=active]:to-emerald-500 data-[state=active]:text-white data-[state=inactive]:bg-muted/50 rounded-full px-4 py-1.5 text-sm whitespace-nowrap transition-all"
               >
                 <Mountain className="w-4 h-4 mr-1.5" />
                 {land.name}
@@ -356,19 +357,26 @@ export function EnhancedAIChatInterface() {
           </TabsList>
         </Tabs>
       </div>
+    </div>
 
-      {/* Land Context Card (for land-specific tabs) */}
-      {activeTab !== 'general' && (
-        <LandSpecificChatTab 
-          landId={activeTab} 
-          onQuickAction={handleQuickAction}
-        />
-      )}
-
-      {/* Messages Area */}
-      <ScrollArea className="flex-1 px-3 py-4" ref={scrollAreaRef}>
-        <AnimatePresence mode="popLayout">
-          {(messages[activeTab] || []).map((message) => (
+    {/* Messages Area with integrated land context */}
+    <ScrollArea className="flex-1 px-3 py-4" ref={scrollAreaRef}>
+      <AnimatePresence mode="popLayout">
+        {/* Show Land Context as first message for land-specific chats */}
+        {activeTab !== 'general' && messages[activeTab]?.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4"
+          >
+            <LandContextCard 
+              land={lands.find(l => l.id === activeTab)}
+              onQuickAction={handleQuickAction}
+            />
+          </motion.div>
+        )}
+        
+        {(messages[activeTab] || []).map((message) => (
             <motion.div
               key={message.id}
               initial={{ opacity: 0, y: 10 }}

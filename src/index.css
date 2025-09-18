@@ -4,6 +4,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Hide scrollbar for mobile-first design */
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;  /* Chrome, Safari and Opera */
+  }
+}
+
 /* KisanShakti Design System - Farmer-friendly colors inspired by Indian agriculture */
 
 @layer base {
@@ -229,8 +240,17 @@
     100% {
       transform: scale(3);
       opacity: 0;
-    }
   }
+}
+
+/* Hide scrollbar for mobile-first design */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
 
   .animate-scale-out {
     animation: scale-out 0.6s ease-out forwards;
