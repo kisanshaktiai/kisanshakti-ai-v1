@@ -3,30 +3,41 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useAuthFlowStore } from '@/stores/authFlowStore';
 import { Loader2 } from 'lucide-react';
+import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated, isPinRequired, isLoading, validateSession, session } = useAuthStore();
+  const { isAuthenticated, isPinRequired, isLoading, validateSession, session, checkAuth } = useAuthStore();
   const { hasSelectedLanguage } = useAuthFlowStore();
   const location = useLocation();
+  const isOnline = useOfflineStatus();
+
+  // Check for existing auth on mount
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      // Try to restore auth from storage
+      checkAuth();
+    }
+  }, [checkAuth, isLoading, isAuthenticated]);
 
   // Validate session on mount and when session changes
   useEffect(() => {
     // Only validate if we have auth state loaded
-    if (!isLoading) {
+    if (!isLoading && isAuthenticated) {
       console.log('ProtectedRoute: Validating session', { 
         session, 
         isAuthenticated, 
         isPinRequired,
-        sessionPinVerified: session?.isPinVerified 
+        sessionPinVerified: session?.isPinVerified,
+        isOnline
       });
       const isValid = validateSession();
       console.log('Session validation result:', isValid);
     }
-  }, [validateSession, session, isLoading]);
+  }, [validateSession, session, isLoading, isAuthenticated, isOnline]);
 
   // Debug logs
   useEffect(() => {
@@ -35,9 +46,10 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
       isPinRequired, 
       hasSelectedLanguage, 
       session,
-      location: location.pathname 
+      location: location.pathname,
+      isOnline
     });
-  }, [isAuthenticated, isPinRequired, hasSelectedLanguage, session, location]);
+  }, [isAuthenticated, isPinRequired, hasSelectedLanguage, session, location, isOnline]);
 
   if (isLoading) {
     return (
@@ -53,8 +65,21 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/pin" state={{ from: location }} replace />;
   }
 
-  // If not authenticated, check language selection
+  // If not authenticated, check if we're offline with cached data
   if (!isAuthenticated) {
+    // Check if there's cached auth data for offline mode
+    const cachedAuth = localStorage.getItem('auth-storage');
+    const offlineAuth = localStorage.getItem('offline_auth_data');
+    
+    // If offline and has cached auth, allow access temporarily
+    if (!isOnline && (cachedAuth || offlineAuth)) {
+      console.log('ProtectedRoute: Offline mode with cached auth, allowing access');
+      // Try to restore auth once more
+      checkAuth();
+      // Allow rendering while auth is being restored
+      return <>{children}</>;
+    }
+    
     console.log('ProtectedRoute: Not authenticated, checking language');
     if (!hasSelectedLanguage) {
       return <Navigate to="/language-selection" state={{ from: location }} replace />;

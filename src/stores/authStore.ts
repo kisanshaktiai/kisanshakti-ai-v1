@@ -203,7 +203,31 @@ export const useAuthStore = create<AuthState>()(
 
       checkAuth: () => {
         // Validate existing session on app load
-        const { session } = get();
+        const { session, user } = get();
+        
+        // Try to restore from persisted storage
+        const storedAuth = localStorage.getItem('auth-storage');
+        if (storedAuth) {
+          try {
+            const parsedAuth = JSON.parse(storedAuth);
+            if (parsedAuth?.state?.session && parsedAuth?.state?.user) {
+              set({
+                session: parsedAuth.state.session,
+                user: parsedAuth.state.user,
+                isAuthenticated: parsedAuth.state.isAuthenticated || false,
+                isPinRequired: false
+              });
+              
+              // Validate the restored session
+              const { validateSession } = get();
+              validateSession();
+              return;
+            }
+          } catch (error) {
+            console.error('Error restoring auth from storage:', error);
+          }
+        }
+        
         // Only validate if we have a session that claims to be PIN verified
         // Otherwise let the user go through normal auth flow
         if (session && session.isPinVerified) {
