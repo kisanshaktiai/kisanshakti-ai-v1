@@ -25,6 +25,7 @@ export default function PinAuth() {
   const [error, setError] = useState<string | null>(null);
   const [attempts, setAttempts] = useState(0);
   const isOnline = useOfflineStatus();
+  const [isOffline, setIsOffline] = useState(false);
   
   const mobile = localStorage.getItem('authMobile');
   const farmerId = localStorage.getItem('farmerId');
@@ -46,6 +47,7 @@ export default function PinAuth() {
 
     try {
       // Use offline-first authentication
+      console.log('Attempting authentication with offline fallback...');
       const authResult = await offlineAuthService.authenticateWithFallback(
         mobile!,
         value,

@@ -12,6 +12,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { LocationPermissionDialog } from "@/components/LocationPermissionDialog";
+import { OfflineIndicator } from "@/components/OfflineIndicator";
 
 // Pages
 import Home from "./pages/Home";
@@ -38,6 +39,7 @@ import { CommunityPage } from "./components/social/CommunityPage";
 import { ModernCommunityChatRoom } from "./components/social/ModernCommunityChatRoom";
 import CropSelectionTest from "./pages/CropSelectionTest";
 import Schedule from "./pages/Schedule";
+import MobileAuth from "./pages/MobileAuth";
 
 // Stores and Services
 import { useTenantStore } from "@/stores/tenantStore";
@@ -47,6 +49,8 @@ import LocationService from "@/services/LocationService";
 import { useLocationPermission } from "@/hooks/useLocationPermission";
 import { WhiteLabelService } from "@/services/WhiteLabelService";
 import { useLocationPreloader } from "@/hooks/useLocationPreloader";
+import { syncService } from "@/services/syncService";
+import { localDB } from "@/services/localDB";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -73,6 +77,9 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Initialize app with performance optimization
     const initializeApp = async () => {
+      // Initialize local database
+      await localDB.initialize();
+      
       // Start fetching tenant data
       const tenantPromise = fetchTenant();
       
@@ -97,255 +104,151 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       
       // Start listening for tenant and theme changes
       listenForTenantChanges();
+      
+      // Initialize sync service
+      if (session?.farmerId && tenant?.id) {
+        syncService.performSync(false).catch(console.error);
+      }
     };
-    
-    initializeApp();
-    
-    // Listen for online/offline events
-    const handleOnline = () => {
-      console.log('App is online - refreshing white-label config');
-      const whiteLabelService = WhiteLabelService.getInstance();
-      whiteLabelService.forceRefresh();
-    };
-    
-    const handleOffline = () => {
-      console.log('App is offline - using cached data');
-    };
-    
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, [fetchTenant, checkAuth, requirePin]);
 
-  // Apply theme whenever tenant changes
+    initializeApp();
+  }, []);
+
+  // Apply white label theme whenever tenant changes
   useEffect(() => {
-    if (tenant?.whiteLabel) {
-      applyWhiteLabelTheme(tenant.whiteLabel);
+    if (tenant) {
+      const whiteLabelConfig = (tenant as any).white_label_config || {};
+      applyWhiteLabelTheme(whiteLabelConfig);
     }
   }, [tenant, applyWhiteLabelTheme]);
 
+  // Apply language changes
   useEffect(() => {
-    // Apply language
-    i18n.changeLanguage(currentLanguage);
+    if (currentLanguage && i18n.language !== currentLanguage) {
+      i18n.changeLanguage(currentLanguage);
+    }
   }, [currentLanguage]);
 
-  // Handle location permission on app initialization
+  // Check and request location permission after auth
   useEffect(() => {
-    const initializeLocation = async () => {
-      // Check if we've already requested permission in this session
-      const hasRequested = sessionStorage.getItem('location_permission_requested');
-      if (hasRequested) {
-        setHasRequestedPermission(true);
-        return;
-      }
-
-      // Check if user is authenticated
-      if (!session) return;
-
-      // Check current permission status
-      const isGranted = await LocationService.isLocationPermissionGranted();
+    const checkPermissions = async () => {
+      const storedSession = localStorage.getItem('auth-storage');
       
-      if (!isGranted && permissionStatus === 'prompt') {
-        // Show custom dialog for first-time users
-        setShowLocationDialog(true);
-      } else if (isGranted) {
-        // Start location tracking if permission is already granted
-        LocationService.startLocationTracking();
+      if (storedSession) {
+        try {
+          const sessionData = JSON.parse(storedSession);
+          if (sessionData?.state?.session?.farmerId && 
+              sessionData?.state?.session?.isPinVerified &&
+              !hasRequestedPermission) {
+            
+            // Wait a bit to ensure app is loaded
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            // Check if we need to show location permission dialog
+            if (permissionStatus === 'prompt' || permissionStatus === 'denied') {
+              setShowLocationDialog(true);
+              setHasRequestedPermission(true);
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing session:', error);
+        }
       }
     };
 
-    // Wait a bit after app loads to show location dialog
-    const timer = setTimeout(() => {
-      initializeLocation();
-    }, 2000);
+    checkPermissions();
+  }, [permissionStatus, hasRequestedPermission]);
 
-    return () => clearTimeout(timer);
-  }, [session, permissionStatus]);
-
-  const handleLocationAllow = async () => {
+  const handleLocationPermissionRequest = async () => {
+    const result = await requestPermission();
     setShowLocationDialog(false);
-    sessionStorage.setItem('location_permission_requested', 'true');
-    setHasRequestedPermission(true);
-    
-    const status = await requestPermission();
-    if (status === 'granted') {
-      // Start location tracking
-      LocationService.startLocationTracking();
-      // Get initial location
-      await LocationService.getCurrentLocation(true);
-    }
-  };
-
-  const handleLocationDeny = () => {
-    setShowLocationDialog(false);
-    sessionStorage.setItem('location_permission_requested', 'true');
-    setHasRequestedPermission(true);
   };
 
   return (
     <>
+      <OfflineIndicator />
       {children}
-      <LocationPermissionDialog
+      <LocationPermissionDialog 
         open={showLocationDialog}
         onOpenChange={setShowLocationDialog}
-        onAllow={handleLocationAllow}
-        onDeny={handleLocationDeny}
+        onAllow={handleLocationPermissionRequest}
+        onDeny={() => setShowLocationDialog(false)}
       />
     </>
   );
 }
 
-// Create router with future flags to resolve React Router v7 warnings
-const router = createBrowserRouter(
-  [
-    {
-      path: "/",
-      element: <AppInitializer><SplashScreen /></AppInitializer>,
-    },
-    {
-      path: "/splash",
-      element: <AppInitializer><SplashScreen /></AppInitializer>,
-    },
-    {
-      path: "/language-selection",
-      element: <AppInitializer><LanguageSelection /></AppInitializer>,
-    },
-    {
-      path: "/auth",
-      element: <AppInitializer><AuthScreen /></AppInitializer>,
-    },
-    {
-      path: "/pin",
-      element: <AppInitializer><PinAuth /></AppInitializer>,
-    },
-    {
-      path: "/set-pin",
-      element: <AppInitializer><SetPin /></AppInitializer>,
-    },
-    {
-      path: "/crop-test",
-      element: <AppInitializer><CropSelectionTest /></AppInitializer>,
-    },
-    {
-      path: "/app",
-      element: (
-        <AppInitializer>
-          <ProtectedRoute>
-            <AppLayout />
-          </ProtectedRoute>
-        </AppInitializer>
-      ),
-      children: [
-        {
-          index: true,
-          element: <Home />,
-        },
-        {
-          path: "weather",
-          element: <Weather />,
-        },
-        {
-          path: "market",
-          element: <Market />,
-        },
-        {
-          path: "advisory",
-          element: <Advisory />,
-        },
-        {
-          path: "schemes",
-          element: <Schemes />,
-        },
-        {
-          path: "profile",
-          element: <Profile />,
-        },
-        {
-          path: "profile/edit",
-          element: <ProfileEdit />,
-        },
-        {
-          path: "lands",
-          element: <LandManagement />,
-        },
-        {
-          path: "schedule",
-          element: <Schedule />,
-        },
-        {
-          path: "lands/add",
-          element: <AddLand />,
-        },
-        {
-          path: "lands/:id/edit",
-          element: <EditLand />,
-        },
-        {
-          path: "lands/:id",
-          element: <LandDetails />,
-        },
-        {
-          path: "lands/:id/gallery",
-          element: <div>Gallery Page - Coming Soon</div>,
-        },
-        {
-          path: "lands/:id/activities",
-          element: <div>Activities Page - Coming Soon</div>,
-        },
-        {
-          path: "chat",
-          element: <AIChat />,
-        },
-        {
-          path: "social",
-          element: <Social />,
-        },
-        {
-          path: "analytics",
-          element: <Analytics />,
-        },
-        {
-          path: "community/:id",
-          element: <CommunityPage />,
-        },
-        {
-          path: "community/:id/chat",
-          element: <ModernCommunityChatRoom />,
-        },
-      ],
-    },
-    {
-      path: "*",
-      element: <AppInitializer><NotFound /></AppInitializer>,
-    },
-  ],
+// Update router with all routes
+const router = createBrowserRouter([
   {
-    future: {
-      v7_relativeSplatPath: true,
-      v7_fetcherPersist: true,
-      v7_normalizeFormMethod: true,
-      v7_partialHydration: true,
-      v7_skipActionErrorRevalidation: true,
-    },
-  }
-);
+    path: "/splash",
+    element: <SplashScreen />,
+  },
+  {
+    path: "/language-selection",
+    element: <LanguageSelection />,
+  },
+  {
+    path: "/auth",
+    element: <AuthScreen />,
+  },
+  {
+    path: "/mobile-auth",
+    element: <MobileAuth />,
+  },
+  {
+    path: "/pin-auth",
+    element: <PinAuth />,
+  },
+  {
+    path: "/set-pin",
+    element: <SetPin />,
+  },
+  {
+    path: "/",
+    element: (
+      <ProtectedRoute>
+        <AppLayout />
+      </ProtectedRoute>
+    ),
+    errorElement: <NotFound />,
+    children: [
+      { index: true, element: <Home /> },
+      { path: "weather", element: <Weather /> },
+      { path: "market", element: <Market /> },
+      { path: "advisory", element: <Advisory /> },
+      { path: "schemes", element: <Schemes /> },
+      { path: "profile", element: <Profile /> },
+      { path: "profile/edit", element: <ProfileEdit /> },
+      { path: "land", element: <LandManagement /> },
+      { path: "land/add", element: <AddLand /> },
+      { path: "land/edit/:id", element: <EditLand /> },
+      { path: "land/:id", element: <LandDetails /> },
+      { path: "ai-chat", element: <AIChat /> },
+      { path: "social", element: <Social /> },
+      { path: "social/community/:communityId", element: <CommunityPage /> },
+      { path: "social/community/:communityId/chat/:channelId", element: <ModernCommunityChatRoom /> },
+      { path: "analytics", element: <Analytics /> },
+      { path: "test/crop-selection", element: <CropSelectionTest /> },
+      { path: "schedule", element: <Schedule /> },
+    ],
+  },
+]);
 
-const App = () => (
-  <ErrorBoundary>
+export default function App() {
+  return (
     <I18nextProvider i18n={i18n}>
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <RouterProvider router={router} />
-        </TooltipProvider>
-      </QueryClientProvider>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <TooltipProvider>
+            <AppInitializer>
+              <RouterProvider router={router} />
+            </AppInitializer>
+            <Toaster />
+            <Sonner />
+          </TooltipProvider>
+        </QueryClientProvider>
+      </ErrorBoundary>
     </I18nextProvider>
-  </ErrorBoundary>
-);
-
-export default App;
+  );
+}

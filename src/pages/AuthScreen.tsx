@@ -8,8 +8,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { useTenantStore } from '@/stores/tenantStore';
 import { useAuthFlowStore } from '@/stores/authFlowStore';
 import { useAuthStore } from '@/stores/authStore';
-import { Loader2, Phone, ArrowLeft, ChevronRight } from 'lucide-react';
+import { Loader2, Phone, ArrowLeft, ChevronRight, WifiOff } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useOfflineStatus } from '@/hooks/useOfflineStatus';
+import { offlineAuthService } from '@/services/offlineAuthService';
 
 export default function AuthScreen() {
   const { t } = useTranslation();
@@ -21,6 +23,7 @@ export default function AuthScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<'check' | 'register'>('check');
+  const isOnline = useOfflineStatus();
 
   useEffect(() => {
     setStep('mobile');
