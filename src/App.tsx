@@ -40,6 +40,7 @@ import { ModernCommunityChatRoom } from "./components/social/ModernCommunityChat
 import CropSelectionTest from "./pages/CropSelectionTest";
 import Schedule from "./pages/Schedule";
 import MobileAuth from "./pages/MobileAuth";
+import NDVIAnalysis from "./pages/NDVIAnalysis";
 
 // Stores and Services
 import { useTenantStore } from "@/stores/tenantStore";
@@ -230,6 +231,7 @@ const router = createBrowserRouter([
       { path: "analytics", element: <Analytics /> },
       { path: "test/crop-selection", element: <CropSelectionTest /> },
       { path: "schedule", element: <Schedule /> },
+      { path: "ndvi", element: <NDVIAnalysis /> },
     ],
   },
 ]);
