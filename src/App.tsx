@@ -177,7 +177,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
 // Update router with all routes
 const router = createBrowserRouter([
   {
-    path: "/splash",
+    path: "/",
     element: <SplashScreen />,
   },
   {
@@ -205,7 +205,7 @@ const router = createBrowserRouter([
     element: <SetPin />,
   },
   {
-    path: "/",
+    path: "/app",
     element: (
       <ProtectedRoute>
         <AppLayout />

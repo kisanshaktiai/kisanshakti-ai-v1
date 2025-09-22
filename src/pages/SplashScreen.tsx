@@ -38,7 +38,7 @@ export default function SplashScreen() {
     
     // Check if user is fully authenticated (session exists and PIN is verified)
     if (isAuthenticated) {
-      navigate('/');
+      navigate('/app');
     } else if (hasSelectedLanguage) {
       navigate('/auth');
     } else {

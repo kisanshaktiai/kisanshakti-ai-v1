@@ -11,7 +11,7 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const { isAuthenticated, isPinRequired, isLoading, validateSession, session, checkAuth } = useAuthStore();
-  const { hasSelectedLanguage } = useAuthFlowStore();
+  const { hasSelectedLanguage, hasCompletedSplash } = useAuthFlowStore();
   const location = useLocation();
   const isOnline = useOfflineStatus();
 
@@ -80,11 +80,9 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
       return <>{children}</>;
     }
     
-    console.log('ProtectedRoute: Not authenticated, checking language');
-    if (!hasSelectedLanguage) {
-      return <Navigate to="/language-selection" state={{ from: location }} replace />;
-    }
-    return <Navigate to="/auth" state={{ from: location }} replace />;
+    // Redirect to splash screen to start proper auth flow
+    console.log('ProtectedRoute: Not authenticated, redirecting to splash');
+    return <Navigate to="/" state={{ from: location }} replace />;
   }
 
   console.log('ProtectedRoute: User authenticated, showing protected content');

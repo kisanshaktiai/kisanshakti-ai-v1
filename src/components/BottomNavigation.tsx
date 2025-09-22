@@ -12,11 +12,11 @@ interface BottomNavigationProps {
 }
 
 const navItems = [
-  { path: '/', icon: Home, labelKey: 'nav.home' },
-  { path: '/social', icon: Users, labelKey: 'nav.community' },
+  { path: '/app', icon: Home, labelKey: 'nav.home' },
+  { path: '/app/social', icon: Users, labelKey: 'nav.community' },
   { path: null, icon: Scan, labelKey: 'nav.scan', isAction: true },
-  { path: '/analytics', icon: TrendingUp, labelKey: 'nav.analytics' },
-  { path: '/profile', icon: User, labelKey: 'nav.profile' },
+  { path: '/app/analytics', icon: TrendingUp, labelKey: 'nav.analytics' },
+  { path: '/app/profile', icon: User, labelKey: 'nav.profile' },
 ];
 
 export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = false }: BottomNavigationProps) {
