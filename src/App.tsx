@@ -201,6 +201,10 @@ const router = createBrowserRouter([
     element: <PinAuth />,
   },
   {
+    path: "/pin",
+    element: <PinAuth />,
+  },
+  {
     path: "/set-pin",
     element: <SetPin />,
   },
