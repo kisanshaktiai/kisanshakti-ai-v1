@@ -203,8 +203,13 @@ export const useAuthStore = create<AuthState>()(
 
       checkAuth: () => {
         // Validate existing session on app load
-        const { validateSession } = get();
-        validateSession();
+        const { session } = get();
+        // Only validate if we have a session that claims to be PIN verified
+        // Otherwise let the user go through normal auth flow
+        if (session && session.isPinVerified) {
+          const { validateSession } = get();
+          validateSession();
+        }
       },
 
       clearError: () => set({ error: null }),
@@ -212,10 +217,11 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'auth-storage',
       partialize: (state) => ({ 
-        user: state.user,
-        session: state.session,
+        // Only persist if session is fully verified
+        user: state.isAuthenticated ? state.user : null,
+        session: state.session?.isPinVerified ? state.session : null,
         isAuthenticated: state.isAuthenticated,
-        isPinRequired: state.isPinRequired
+        isPinRequired: false // Never persist PIN requirement
       }),
     }
   )

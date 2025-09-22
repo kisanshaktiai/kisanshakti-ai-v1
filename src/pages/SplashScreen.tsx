@@ -36,8 +36,9 @@ export default function SplashScreen() {
   const handleContinue = () => {
     markSplashCompleted();
     
+    // Check if user is fully authenticated (session exists and PIN is verified)
     if (isAuthenticated) {
-      navigate('/app');
+      navigate('/');
     } else if (hasSelectedLanguage) {
       navigate('/auth');
     } else {

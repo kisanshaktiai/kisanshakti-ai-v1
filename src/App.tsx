@@ -97,11 +97,6 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       // Wait for critical tasks
       await Promise.all([tenantPromise, authPromise, locationPromise]);
       
-      // If there's an existing session, require PIN verification
-      if (session && session.isPinVerified) {
-        requirePin();
-      }
-      
       // Start listening for tenant and theme changes
       listenForTenantChanges();
       
