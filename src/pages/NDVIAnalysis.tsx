@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
+import { landsApi } from '@/services/landsApi';
 import { NDVIMapView } from '@/components/land/NDVIMapView';
 import { NDVITrendChart } from '@/components/land/NDVITrendChart';
 import { ArrowLeft, Map, TrendingUp, Info } from 'lucide-react';
@@ -19,20 +20,18 @@ const NDVIAnalysis = () => {
   const { tenant } = useTenantStore();
   const [selectedLandId, setSelectedLandId] = useState<string | null>(null);
 
-  // Fetch lands for the farmer
+  // Fetch lands for the farmer using the lands API service
   const { data: lands, isLoading: landsLoading } = useQuery({
     queryKey: ['lands', session?.farmerId, tenant?.id],
     queryFn: async () => {
-      if (!session?.farmerId || !tenant?.id) return [];
-      
-      const { data, error } = await supabase
-        .from('lands')
-        .select('*')
-        .eq('farmer_id', session.farmerId)
-        .eq('tenant_id', tenant.id);
-      
-      if (error) throw error;
-      return data || [];
+      try {
+        const landsData = await landsApi.fetchLands();
+        // The API already filters by farmer_id and tenant_id through headers
+        return landsData || [];
+      } catch (error) {
+        console.error('Error fetching lands:', error);
+        return [];
+      }
     },
     enabled: !!session?.farmerId && !!tenant?.id,
   });
@@ -146,7 +145,7 @@ const NDVIAnalysis = () => {
               <TabsContent value="map" className="mt-4">
                 <NDVIMapView 
                   landId={selectedLandId}
-                  boundary={lands?.find(l => l.id === selectedLandId)?.boundary as any || []}
+                  boundary={lands?.find(l => l.id === selectedLandId)?.boundary_polygon_old || []}
                 />
               </TabsContent>
 
