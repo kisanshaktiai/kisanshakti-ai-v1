@@ -9,6 +9,7 @@ import i18n from "@/i18n/config";
 
 // Components
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { LocationPermissionDialog } from "@/components/LocationPermissionDialog";
@@ -179,30 +180,37 @@ const router = createBrowserRouter([
   {
     path: "/",
     element: <SplashScreen />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: "/language-selection",
     element: <LanguageSelection />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: "/auth",
     element: <AuthScreen />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: "/mobile-auth",
     element: <MobileAuth />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: "/pin-auth",
     element: <PinAuth />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: "/pin",
     element: <PinAuth />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: "/set-pin",
     element: <SetPin />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: "/app",
@@ -211,7 +219,7 @@ const router = createBrowserRouter([
         <AppLayout />
       </ProtectedRoute>
     ),
-    errorElement: <NotFound />,
+    errorElement: <RouteErrorBoundary />,
     children: [
       { index: true, element: <Home /> },
       { path: "weather", element: <Weather /> },
@@ -234,6 +242,10 @@ const router = createBrowserRouter([
       { path: "ndvi", element: <NDVIAnalysis /> },
     ],
   },
+  {
+    path: "*",
+    element: <NotFound />,
+  }
 ]);
 
 export default function App() {

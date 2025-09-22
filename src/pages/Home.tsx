@@ -154,7 +154,7 @@ export default function Home() {
     {
       title: 'NDVI & Satellite',
       icon: Satellite,
-      path: '/ndvi',
+      path: '/app/ndvi',
       description: 'Crop health monitoring',
       stats: avgNdvi > 0 ? `Score: ${avgNdvi}` : 'No data',
       color: 'bg-primary/10',
