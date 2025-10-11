@@ -42,7 +42,7 @@ import CropSelectionTest from "./pages/CropSelectionTest";
 import Schedule from "./pages/Schedule";
 import MobileAuth from "./pages/MobileAuth";
 import NDVIAnalysis from "./pages/NDVIAnalysis";
-import SoilReport from "./pages/SoilReport";
+import SoilReportPage from "./pages/SoilReportPage";
 
 // Stores and Services
 import { useTenantStore } from "@/stores/tenantStore";
@@ -238,7 +238,7 @@ const router = createBrowserRouter([
       { path: "lands/add", element: <AddLand /> },
       { path: "lands/edit/:id", element: <EditLand /> },
       { path: "lands/:id", element: <LandDetails /> },
-      { path: "lands/:id/soil", element: <SoilReport /> },
+      { path: "lands/:id/soil", element: <SoilReportPage /> },
       { path: "lands/:id/ndvi", element: <NDVIAnalysis /> },
       { path: "ai-chat", element: <AIChat /> },
       { path: "chat", element: <AIChat /> }, // Alias for ai-chat
