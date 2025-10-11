@@ -77,6 +77,33 @@ export default function SoilReport() {
     fetchLandAndSoilData();
   }, [id]);
 
+  // Calculate centroid from polygon coordinates
+  const calculateCentroid = (coordinates: number[][][]) => {
+    if (!coordinates || !coordinates[0] || coordinates[0].length === 0) {
+      return null;
+    }
+    
+    const points = coordinates[0];
+    let totalLat = 0;
+    let totalLng = 0;
+    let count = 0;
+    
+    for (const point of points) {
+      if (point && point.length >= 2) {
+        totalLng += point[0];
+        totalLat += point[1];
+        count++;
+      }
+    }
+    
+    if (count === 0) return null;
+    
+    return {
+      lat: totalLat / count,
+      lng: totalLng / count
+    };
+  };
+
   const fetchLandAndSoilData = async () => {
     try {
       setLoading(true);
@@ -97,14 +124,26 @@ export default function SoilReport() {
       
       setLand(landData);
       
-      // Extract coordinates from center_point_old
+      // Extract coordinates - prioritize boundary polygon centroid for accuracy
       let lat, lng;
-      if (landData.center_point_old?.coordinates) {
-        lng = landData.center_point_old.coordinates[0];
-        lat = landData.center_point_old.coordinates[1];
-      } else if (landData.boundary_polygon_old?.coordinates?.[0]?.[0]) {
-        lng = landData.boundary_polygon_old.coordinates[0][0][0];
-        lat = landData.boundary_polygon_old.coordinates[0][0][1];
+      
+      if (landData.boundary_polygon_old?.coordinates) {
+        // Calculate centroid from boundary polygon for more accurate soil data
+        const centroid = calculateCentroid(landData.boundary_polygon_old.coordinates);
+        if (centroid) {
+          lat = centroid.lat;
+          lng = centroid.lng;
+          console.log('Using boundary polygon centroid:', { lat, lng });
+        }
+      }
+      
+      // Fallback to center point if boundary polygon not available
+      if (!lat || !lng) {
+        if (landData.center_point_old?.coordinates) {
+          lng = landData.center_point_old.coordinates[0];
+          lat = landData.center_point_old.coordinates[1];
+          console.log('Using center point:', { lat, lng });
+        }
       }
       
       if (!lat || !lng) {
@@ -116,7 +155,8 @@ export default function SoilReport() {
         return;
       }
       
-      // Fetch soil data from KisanShakti API
+      // Fetch soil data from KisanShakti API with calculated coordinates
+      console.log('Fetching soil data for coordinates:', { lat, lng });
       const response = await fetch(
         `https://kisanshakti-api.onrender.com/soil?latitude=${lat}&longitude=${lng}&depth=0-5cm`
       );
