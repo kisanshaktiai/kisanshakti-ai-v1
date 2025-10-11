@@ -126,9 +126,13 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
     }
   }, [currentLanguage]);
 
-  // Check and request location permission after auth
+  // Check and request location permission after auth (only once per session)
   useEffect(() => {
     const checkPermissions = async () => {
+      // Check if we've already shown the dialog in this browser session
+      const hasShownDialog = sessionStorage.getItem('location-dialog-shown');
+      if (hasShownDialog) return;
+
       const storedSession = localStorage.getItem('auth-storage');
       
       if (storedSession) {
@@ -145,6 +149,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
             if (permissionStatus === 'prompt' || permissionStatus === 'denied') {
               setShowLocationDialog(true);
               setHasRequestedPermission(true);
+              sessionStorage.setItem('location-dialog-shown', 'true');
             }
           }
         } catch (error) {
@@ -233,6 +238,7 @@ const router = createBrowserRouter([
       { path: "lands/edit/:id", element: <EditLand /> },
       { path: "lands/:id", element: <LandDetails /> },
       { path: "ai-chat", element: <AIChat /> },
+      { path: "chat", element: <AIChat /> }, // Alias for ai-chat
       { path: "social", element: <Social /> },
       { path: "social/community/:communityId", element: <CommunityPage /> },
       { path: "social/community/:communityId/chat/:channelId", element: <ModernCommunityChatRoom /> },

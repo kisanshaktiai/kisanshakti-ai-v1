@@ -88,8 +88,6 @@ export function SyncButton() {
       setTimeout(() => setSyncError(false), 2000);
     } finally {
       setSyncing(false);
-      // Force a final UI refresh
-      window.location.reload();
     }
   };
 
