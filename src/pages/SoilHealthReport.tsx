@@ -21,25 +21,47 @@ export default function SoilHealthReport() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const { data: result, error } = await supabase
+      
+      // Fetch soil health data
+      const { data: soilData, error: soilError } = await supabase
         .from('soil_health')
-        .select(`
-          *,
-          user_profiles!inner(full_name, farmer_code),
-          lands!inner(name)
-        `)
+        .select('*')
         .eq('land_id', id)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
-      if (error) throw error;
-      if (!result) {
+      if (soilError) throw soilError;
+      if (!soilData) {
         toast({ title: 'No Data', description: 'No soil health data available', variant: 'destructive' });
         navigate(-1);
         return;
       }
-      setData(result);
+
+      // Fetch user profile data
+      const { data: profileData, error: profileError } = await supabase
+        .from('user_profiles')
+        .select('full_name, farmer_code')
+        .eq('farmer_id', soilData.farmer_id)
+        .maybeSingle();
+
+      if (profileError) throw profileError;
+
+      // Fetch land data
+      const { data: landData, error: landError } = await supabase
+        .from('lands')
+        .select('name')
+        .eq('id', soilData.land_id)
+        .maybeSingle();
+
+      if (landError) throw landError;
+
+      // Combine the data
+      setData({
+        ...soilData,
+        user_profiles: profileData,
+        lands: landData
+      });
     } catch (error) {
       console.error('Error:', error);
       toast({ title: 'Error', description: 'Failed to load data', variant: 'destructive' });
