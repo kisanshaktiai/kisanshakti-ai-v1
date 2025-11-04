@@ -26,6 +26,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTranslation } from 'react-i18next';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { cn } from '@/lib/utils';
+import { CropSelectorModal } from '@/components/crops/CropSelectorModal';
 
 interface LandFormData {
   // Basic Info
@@ -116,6 +117,12 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
   const [districts, setDistricts] = useState<any[]>([]);
   const [talukas, setTalukas] = useState<any[]>([]);
   const [villages, setVillages] = useState<any[]>([]);
+  
+  // Crop selector modals
+  const [showCurrentCropModal, setShowCurrentCropModal] = useState(false);
+  const [showPreviousCropModal, setShowPreviousCropModal] = useState(false);
+  const [currentCropId, setCurrentCropId] = useState('');
+  const [previousCropId, setPreviousCropId] = useState('');
 
   // Auto-save draft to localStorage
   useEffect(() => {
@@ -217,6 +224,18 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
     if (currentStep > 1) setCurrentStep(currentStep - 1);
   };
 
+  const handleCurrentCropSelect = (cropId: string, cropName: string) => {
+    setCurrentCropId(cropId);
+    handleInputChange('current_crop', cropName);
+    setShowCurrentCropModal(false);
+  };
+
+  const handlePreviousCropSelect = (cropId: string, cropName: string) => {
+    setPreviousCropId(cropId);
+    handleInputChange('previous_crop', cropName);
+    setShowPreviousCropModal(false);
+  };
+
   const handleSave = async () => {
     setIsSaving(true);
     
@@ -283,17 +302,6 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
     { value: 'furrow', label: 'Furrow' },
     { value: 'manual', label: 'Manual' },
     { value: 'none', label: 'None' },
-  ];
-
-  const commonCrops = [
-    { value: 'wheat', label: 'Wheat', icon: '🌾' },
-    { value: 'rice', label: 'Rice', icon: '🌾' },
-    { value: 'cotton', label: 'Cotton', icon: '🏵️' },
-    { value: 'sugarcane', label: 'Sugarcane', icon: '🎋' },
-    { value: 'maize', label: 'Maize', icon: '🌽' },
-    { value: 'pulses', label: 'Pulses', icon: '🫘' },
-    { value: 'vegetables', label: 'Vegetables', icon: '🥬' },
-    { value: 'fruits', label: 'Fruits', icon: '🍊' },
   ];
 
   return (
@@ -629,46 +637,40 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
 
                     <div>
                       <Label className="text-base mb-2 block">Current Crop</Label>
-                      <Select
-                        value={formData.current_crop}
-                        onValueChange={(value) => handleInputChange('current_crop', value)}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setShowCurrentCropModal(true)}
+                        className="w-full h-12 text-base justify-start text-left font-normal"
                       >
-                        <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select Current Crop" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {commonCrops.map((crop) => (
-                            <SelectItem key={crop.value} value={crop.value}>
-                              <span className="flex items-center gap-2">
-                                <span>{crop.icon}</span>
-                                <span>{crop.label}</span>
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        {formData.current_crop ? (
+                          <span className="flex items-center gap-2">
+                            <Wheat className="w-4 h-4 text-primary" />
+                            <span>{formData.current_crop}</span>
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">Select Current Crop</span>
+                        )}
+                      </Button>
                     </div>
 
                     <div>
                       <Label className="text-base mb-2 block">Previous Crop</Label>
-                      <Select
-                        value={formData.previous_crop}
-                        onValueChange={(value) => handleInputChange('previous_crop', value)}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => setShowPreviousCropModal(true)}
+                        className="w-full h-12 text-base justify-start text-left font-normal"
                       >
-                        <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select Previous Crop" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {commonCrops.map((crop) => (
-                            <SelectItem key={crop.value} value={crop.value}>
-                              <span className="flex items-center gap-2">
-                                <span>{crop.icon}</span>
-                                <span>{crop.label}</span>
-                              </span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                        {formData.previous_crop ? (
+                          <span className="flex items-center gap-2">
+                            <TreePine className="w-4 h-4 text-muted-foreground" />
+                            <span>{formData.previous_crop}</span>
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">Select Previous Crop</span>
+                        )}
+                      </Button>
                     </div>
 
                     <div>
@@ -861,6 +863,25 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
           </div>
         </Card>
       </div>
+
+      {/* Crop Selector Modals */}
+      <CropSelectorModal
+        open={showCurrentCropModal}
+        onClose={() => setShowCurrentCropModal(false)}
+        onSelect={handleCurrentCropSelect}
+        selectedCropId={currentCropId}
+        title="Select Current Crop"
+        description="Choose the crop currently growing on this land"
+      />
+
+      <CropSelectorModal
+        open={showPreviousCropModal}
+        onClose={() => setShowPreviousCropModal(false)}
+        onSelect={handlePreviousCropSelect}
+        selectedCropId={previousCropId}
+        title="Select Previous Crop"
+        description="Choose the crop that was previously grown on this land"
+      />
     </div>
   );
 }
