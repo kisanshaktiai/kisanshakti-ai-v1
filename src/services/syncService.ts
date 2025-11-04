@@ -77,6 +77,16 @@ class SyncService {
       return { success: false, message: 'Device is offline' };
     }
 
+    // Get tenant context from auth store
+    const authState = useAuthStore.getState();
+    const tenantId = authState.user?.tenantId;
+    
+    // Don't sync if user is not authenticated yet
+    if (!tenantId) {
+      console.log('Skipping sync: User not authenticated');
+      return { success: false, message: 'User not authenticated' };
+    }
+
     this.syncInProgress = true;
     await localDB.updateSyncMetadata({ syncInProgress: true });
 
@@ -87,14 +97,6 @@ class SyncService {
         conflicts: [],
         errors: [],
       };
-
-      // Get tenant context from auth store
-      const authState = useAuthStore.getState();
-      const tenantId = authState.user?.tenantId;
-      
-      if (!tenantId) {
-        throw new Error('No tenant context available');
-      }
 
       // 1. Upload pending local changes
       const pendingChanges = await localDB.getPendingChanges();
