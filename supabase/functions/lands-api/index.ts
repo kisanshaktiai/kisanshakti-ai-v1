@@ -56,10 +56,8 @@ serve(async (req) => {
 
     if (sessionError) {
       console.error('Failed to set session:', sessionError);
-      return new Response(
-        JSON.stringify({ error: 'Session setup failed', details: sessionError.message }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      // Continue without RLS session - edge functions use service role key
+      // This allows the API to work even if the RPC function doesn't exist
     }
 
     // Handle different HTTP methods

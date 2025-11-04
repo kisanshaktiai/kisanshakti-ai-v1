@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { checkRateLimit } from '../_shared/rateLimiter.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -34,6 +35,23 @@ serve(async (req) => {
     // Use metadata values first, then headers as fallback
     const finalTenantId = metadata.tenantId || headerTenantId;
     const finalFarmerId = metadata.farmerId || headerFarmerId;
+
+    // Rate limiting check (20 requests per minute per farmer)
+    const rateLimitKey = `ai-chat:${finalTenantId}:${finalFarmerId}`;
+    const rateLimit = checkRateLimit(rateLimitKey, { maxRequests: 20, windowMs: 60000 });
+    
+    if (!rateLimit.allowed) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Rate limit exceeded. Please try again later.',
+          resetTime: new Date(rateLimit.resetTime).toISOString()
+        }),
+        { 
+          status: 429, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
     
     // Validate required fields
     if (!finalTenantId || !finalFarmerId) {
@@ -81,11 +99,16 @@ serve(async (req) => {
 
     // Set app session for RLS (if we have session token)
     if (sessionToken) {
-      await supabase.rpc('set_app_session', {
+      const { error: sessionError } = await supabase.rpc('set_app_session', {
         p_tenant_id: finalTenantId,
         p_farmer_id: finalFarmerId,
         p_session_token: sessionToken
       });
+      
+      if (sessionError) {
+        console.error('Failed to set session:', sessionError);
+        // Continue without RLS session - edge functions use service role key
+      }
     }
 
     // Get or create chat session

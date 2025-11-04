@@ -22,6 +22,12 @@ export function useSpeechRecognition({ onTranscript, language = 'hi-IN' }: UseSp
       recognition.interimResults = true;
       recognition.lang = language;
       
+      // iOS Safari has limited support - log warning
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (isIOS) {
+        console.warn('iOS Safari has limited speech recognition support. Feature may not work reliably.');
+      }
+      
       recognition.onresult = (event: any) => {
         const transcript = Array.from(event.results)
           .map((result: any) => result[0])
@@ -36,6 +42,13 @@ export function useSpeechRecognition({ onTranscript, language = 'hi-IN' }: UseSp
       recognition.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
         setIsListening(false);
+        
+        // Provide user-friendly error messages for iOS
+        if (event.error === 'not-allowed') {
+          console.warn('Microphone access denied. Please enable in Settings > Safari > Microphone');
+        } else if (event.error === 'no-speech') {
+          console.warn('No speech detected. Please try again.');
+        }
       };
       
       recognition.onend = () => {

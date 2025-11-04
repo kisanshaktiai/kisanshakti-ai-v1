@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { checkRateLimit } from '../_shared/rateLimiter.ts';
 
 const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -26,6 +27,24 @@ serve(async (req) => {
     
     if (!tenantId || !farmerId || !sessionToken) {
       throw new Error('Missing authentication headers');
+    }
+
+    // Rate limiting check (5 schedule generations per hour per farmer)
+    const rateLimitKey = `crop-schedule:${tenantId}:${farmerId}`;
+    const rateLimit = checkRateLimit(rateLimitKey, { maxRequests: 5, windowMs: 3600000 });
+    
+    if (!rateLimit.allowed) {
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: 'Rate limit exceeded. You can generate up to 5 schedules per hour.',
+          resetTime: new Date(rateLimit.resetTime).toISOString()
+        }),
+        { 
+          status: 429, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
     const { 
