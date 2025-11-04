@@ -47,6 +47,9 @@ export function GoogleMapBoundaryDrawer({
   const [locationSource, setLocationSource] = useState<string>('gps');
   const [locationAccuracy, setLocationAccuracy] = useState<number>(0);
   const watchIdRef = useRef<number | null>(null);
+  const [isMapInitialized, setIsMapInitialized] = useState(false);
+  const [userHasInteracted, setUserHasInteracted] = useState(false);
+  const initialZoomSet = useRef(false);
 
   // Map options - enable rotation and tilt with street labels
   const mapOptions: google.maps.MapOptions = {
@@ -119,14 +122,9 @@ export function GoogleMapBoundaryDrawer({
           setLocationAccuracy(location.accuracy);
           setLocationSource(location.source || 'gps');
           
-          if (map) {
+          // Only pan if map is not yet initialized, never change zoom after init
+          if (map && !isMapInitialized) {
             map.panTo(newCenter);
-            // Adjust zoom based on location source
-            const zoom = location.source === 'gps' ? 18 : 
-                        location.source === 'village' ? 16 :
-                        location.source === 'taluka' ? 14 :
-                        location.source === 'district' ? 12 : 10;
-            map.setZoom(zoom);
           }
           
           // Show location source to user
@@ -148,7 +146,7 @@ export function GoogleMapBoundaryDrawer({
     };
     
     fetchLocation();
-  }, [map, toast]);
+  }, [map, toast, isMapInitialized]);
 
   // Calculate area whenever boundary changes
   useEffect(() => {
@@ -184,17 +182,17 @@ export function GoogleMapBoundaryDrawer({
     // Set initial map type to hybrid
     mapInstance.setMapTypeId('hybrid');
     
-    // Pan to current position if available
-    if (currentPosition) {
+    // Only set zoom on the very first load
+    if (!initialZoomSet.current && currentPosition) {
       mapInstance.panTo(currentPosition);
-      // Adjust zoom based on location accuracy
       const zoom = locationSource === 'gps' ? 18 : 
                   locationSource === 'village' ? 16 :
                   locationSource === 'taluka' ? 14 :
                   locationSource === 'district' ? 12 : 10;
       mapInstance.setZoom(zoom);
-    } else {
-      // If no position, try to get location again
+      initialZoomSet.current = true;
+    } else if (!initialZoomSet.current) {
+      // If no position, try to get location again (only on first load)
       LocationService.getCurrentLocation().then(location => {
         if (location) {
           const newCenter = {
@@ -202,7 +200,12 @@ export function GoogleMapBoundaryDrawer({
             lng: location.lon,
           };
           mapInstance.panTo(newCenter);
-          mapInstance.setZoom(18);
+          const zoom = location.source === 'gps' ? 18 : 
+                      location.source === 'village' ? 16 :
+                      location.source === 'taluka' ? 14 :
+                      location.source === 'district' ? 12 : 10;
+          mapInstance.setZoom(zoom);
+          initialZoomSet.current = true;
           setCurrentPosition(newCenter);
           setCenter(newCenter);
         }
@@ -210,10 +213,17 @@ export function GoogleMapBoundaryDrawer({
         console.error('Error getting location on map load:', error);
       });
     }
-  }, [currentPosition]);
+    
+    setIsMapInitialized(true);
+  }, [currentPosition, locationSource]);
 
   const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
     if (mode !== 'draw' || !e.latLng) return;
+    
+    // Mark that user has started interacting
+    if (boundary.length === 0) {
+      setUserHasInteracted(true);
+    }
     
     const newPoint: LatLng = {
       lat: e.latLng.lat(),
@@ -221,7 +231,7 @@ export function GoogleMapBoundaryDrawer({
     };
     
     setBoundary(prev => [...prev, newPoint]);
-  }, [mode]);
+  }, [mode, boundary.length]);
 
   const handleUndo = useCallback(() => {
     setBoundary(prev => prev.slice(0, -1));
@@ -502,8 +512,10 @@ export function GoogleMapBoundaryDrawer({
       <GoogleMap
         mapContainerStyle={mapContainerStyle}
         center={center}
-        zoom={18}
-        options={mapOptions}
+        options={{
+          ...mapOptions,
+          zoom: 18, // Initial zoom only - won't reset on re-renders
+        }}
         onClick={handleMapClick}
         onLoad={handleMapLoad}
         onMapTypeIdChanged={() => {
