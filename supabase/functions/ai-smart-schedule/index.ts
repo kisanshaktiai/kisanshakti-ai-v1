@@ -338,7 +338,7 @@ Generate a JSON schedule with this EXACT structure:
         crop_name: cropName,
         crop_variety: cropVariety,
         sowing_date: sowingDate,
-        harvest_date: new Date(new Date(sowingDate).getTime() + scheduleData.total_duration_days * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        expected_harvest_date: new Date(new Date(sowingDate).getTime() + scheduleData.total_duration_days * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         schedule_data: scheduleData,
         is_active: true,
       })
