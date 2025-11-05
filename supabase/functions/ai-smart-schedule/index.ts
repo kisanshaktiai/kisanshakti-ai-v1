@@ -82,11 +82,11 @@ Provide explainable reasoning for each decision and ensure all recommendations a
 - Sowing Date: ${sowingDate}
 
 **LAND DETAILS:**
-- Location: ${land.location || 'Not specified'}
-- Area: ${land.area} ${land.area_unit}
+- Location: ${land.village || land.taluka || land.district || 'Not specified'}, ${land.district || ''}, ${land.state || ''}
+- Area: ${land.area_acres || 'N/A'} acres${land.area_guntas ? ` (${land.area_guntas} guntas)` : ''}
 - Soil Type: ${land.soil_type || 'Not specified'}
 - Soil pH: ${land.soil_ph || 'Not specified'}
-- NPK Levels: N=${land.nitrogen || '?'}, P=${land.phosphorus || '?'}, K=${land.potassium || '?'}
+- NPK Levels: N=${land.nitrogen_kg_per_ha || '?'} kg/ha, P=${land.phosphorus_kg_per_ha || '?'} kg/ha, K=${land.potassium_kg_per_ha || '?'} kg/ha
 - Irrigation: ${land.irrigation_type || 'Not specified'}
 - Water Source: ${land.water_source || 'Not specified'}
 
@@ -128,18 +128,34 @@ Generate a JSON schedule with this EXACT structure:
   ]
 }`;
 
-    // 5. Call OpenAI GPT-5-mini
+    // 5. Validate critical data before calling OpenAI
+    console.log('Validating land data:', {
+      hasArea: !!land.area_acres,
+      hasSoilType: !!land.soil_type,
+      hasNPK: !!(land.nitrogen_kg_per_ha || land.phosphorus_kg_per_ha || land.potassium_kg_per_ha),
+      hasLocation: !!(land.village || land.taluka || land.district)
+    });
+    
+    if (!land.area_acres) {
+      console.warn('Missing area_acres - this may affect AI quality');
+    }
+
+    // 6. Call OpenAI GPT-5-mini with explicit JSON instructions
+    const enhancedUserPrompt = userPrompt + '\n\nIMPORTANT: Return ONLY valid JSON in the exact structure specified above. Do not include any explanatory text before or after the JSON.';
+    
     const requestBody = {
       model: 'gpt-5-mini-2025-08-07',
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
+        { role: 'user', content: enhancedUserPrompt }
       ],
       response_format: { type: 'json_object' },
       max_completion_tokens: 4096,
     };
     
     console.log('Calling OpenAI API with model:', requestBody.model);
+    console.log('Prompt stats - System:', systemPrompt.length, 'chars, User:', enhancedUserPrompt.length, 'chars');
+    console.log('Estimated tokens:', Math.ceil((systemPrompt.length + enhancedUserPrompt.length) / 4));
     
     const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -166,13 +182,15 @@ Generate a JSON schedule with this EXACT structure:
       throw new Error(`OpenAI API error: ${aiResponse.status} - ${errorText}`);
     }
 
-    // Parse OpenAI response with error handling
+    // Parse OpenAI response with comprehensive error handling
     let aiData;
     let responseText;
     try {
       responseText = await aiResponse.text();
+      console.log('Full response length:', responseText.length);
+      console.log('OpenAI response (first 500 chars):', responseText.substring(0, 500));
+      
       aiData = JSON.parse(responseText);
-      console.log('OpenAI response received:', responseText.substring(0, 200));
     } catch (parseError) {
       console.error('Failed to parse OpenAI response as JSON:', parseError);
       console.error('Raw response text:', responseText || 'Unable to read response');
@@ -185,20 +203,33 @@ Generate a JSON schedule with this EXACT structure:
       throw new Error('OpenAI API returned invalid response structure');
     }
 
+    // Log full message object for debugging
+    console.log('Message object:', JSON.stringify(aiData.choices[0].message));
+
     const messageContent = aiData.choices[0].message.content;
-    if (!messageContent) {
+    if (!messageContent || messageContent.trim() === '') {
       console.error('Empty content in OpenAI response');
-      throw new Error('OpenAI API returned empty content');
+      console.error('Full message object:', JSON.stringify(aiData.choices[0].message));
+      console.error('Was refusal present?:', aiData.choices[0].message.refusal);
+      console.error('Finish reason:', aiData.choices[0].finish_reason);
+      throw new Error('OpenAI API returned empty content. This may indicate the prompt was too complex or the model refused to generate.');
     }
+
+    console.log('Message content length:', messageContent.length);
+    console.log('Message content (first 1000 chars):', messageContent.substring(0, 1000));
 
     // Parse the schedule data from the AI response
     let scheduleData;
     try {
       scheduleData = JSON.parse(messageContent);
-      console.log('Schedule data parsed successfully. Tasks count:', scheduleData.tasks?.length || 0);
+      console.log('✓ Schedule data parsed successfully');
+      console.log('✓ Tasks count:', scheduleData.tasks?.length || 0);
+      console.log('✓ Crop:', scheduleData.crop_name);
+      console.log('✓ Duration:', scheduleData.total_duration_days, 'days');
+      console.log('✓ Confidence:', scheduleData.confidence_score);
     } catch (contentParseError) {
       console.error('Failed to parse AI message content as JSON:', contentParseError);
-      console.error('Content was:', messageContent.substring(0, 500));
+      console.error('Full content was:', messageContent);
       throw new Error('AI returned invalid JSON format for schedule');
     }
 
@@ -263,7 +294,15 @@ Generate a JSON schedule with this EXACT structure:
       execution_time_ms: executionTime,
       weather_data: weather,
       ndvi_data: ndviData,
-      soil_data: { soil_type: land.soil_type, soil_ph: land.soil_ph, npk: { n: land.nitrogen, p: land.phosphorus, k: land.potassium } },
+      soil_data: { 
+        soil_type: land.soil_type, 
+        soil_ph: land.soil_ph, 
+        npk: { 
+          n: land.nitrogen_kg_per_ha, 
+          p: land.phosphorus_kg_per_ha, 
+          k: land.potassium_kg_per_ha 
+        } 
+      },
       success: true,
     });
 
