@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Check, Clock, X, Mic, Volume2, Sparkles, RefreshCw, ChevronRight, MapPin } from 'lucide-react';
+import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Clock, Volume2, Sparkles, RefreshCw, MapPin, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -57,9 +57,10 @@ interface CropScheduleViewProps {
   landId: string;
   landName: string;
   currentCrop?: string;
+  onBack?: () => void;
 }
 
-const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, currentCrop }) => {
+const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, currentCrop, onBack }) => {
   const { toast } = useToast();
   const { user } = useAuthStore();
   const { i18n } = useTranslation();
@@ -76,6 +77,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const [selectedTask, setSelectedTask] = useState<ScheduleTask | null>(null);
   const [viewMode, setViewMode] = useState<'today' | 'week' | 'month' | 'all'>('today');
   const [climateData, setClimateData] = useState<any>(null);
+  const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
 
   // Task type icons and colors
   const taskTypeConfig = {
@@ -141,51 +143,17 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
     }
   };
 
-  const handleTaskAction = async (taskId: string, action: 'completed' | 'skipped' | 'rescheduled', notes?: string) => {
-    try {
-      // Update task status
-      const { error: updateError } = await supabase
-        .from('schedule_tasks')
-        .update({
-          status: action,
-          completed_at: action === 'completed' ? new Date().toISOString() : null,
-          completed_by: user?.id,
-          completion_notes: notes,
-        })
-        .eq('id', taskId);
-
-      if (updateError) throw updateError;
-
-      // Create completion record - using custom auth farmer_id
-      const { error: completionError } = await supabase
-        .from('task_completions')
-        .insert({
-          task_id: taskId,
-          farmer_id: user?.id || '',
-          action: action,
-          notes: notes,
-        });
-
-      if (completionError) {
-        console.error('Completion insert error:', completionError);
-        throw completionError;
-      }
-
-      toast({
-        title: '✅ पूरा हुआ / Done',
-        description: action === 'completed' ? 'काम पूरा हुआ!' : `Task ${action}`,
-      });
-
-      // Close dialog and refresh
-      setSelectedTask(null);
-      fetchSchedule();
-    } catch (error) {
-      console.error('Error updating task:', error);
-      toast({
-        title: '❌ त्रुटि / Error',
-        description: 'Failed to update task. Please try again.',
-        variant: 'destructive',
-      });
+  const speakTask = (task: ScheduleTask) => {
+    const text = `${task.task_name}. ${task.task_description || ''}. 
+      ${task.instructions ? 'Instructions: ' + task.instructions.join('. ') : ''}
+      ${task.precautions ? 'Precautions: ' + task.precautions.join('. ') : ''}`;
+    
+    if (isSpeaking && speakingTaskId === task.id) {
+      stop();
+      setSpeakingTaskId(null);
+    } else {
+      speak(text);
+      setSpeakingTaskId(task.id);
     }
   };
 
@@ -213,17 +181,6 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
     }
   };
 
-  const speakTask = (task: ScheduleTask) => {
-    const text = `${task.task_name}. ${task.task_description || ''}. 
-      ${task.instructions ? 'Instructions: ' + task.instructions.join('. ') : ''}
-      ${task.precautions ? 'Precautions: ' + task.precautions.join('. ') : ''}`;
-    
-    if (isSpeaking) {
-      stop();
-    } else {
-      speak(text);
-    }
-  };
 
   if (loading) {
     return (
@@ -259,15 +216,27 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-2xl border-b border-border/50">
         <div className="px-4 py-3">
           <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-primary animate-pulse" />
-                {schedule.crop_name}
-              </h2>
-              <p className="text-xs text-muted-foreground font-medium">
-                <MapPin className="h-3 w-3 inline mr-1" />
-                {landName} • {schedule.crop_variety || 'Standard Variety'}
-              </p>
+            <div className="flex items-center gap-3 flex-1">
+              {onBack && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onBack}
+                  className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              )}
+              <div>
+                <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+                  {schedule.crop_name}
+                </h2>
+                <p className="text-xs text-muted-foreground font-medium">
+                  <MapPin className="h-3 w-3 inline mr-1" />
+                  {landName} • {schedule.crop_variety || 'Standard Variety'}
+                </p>
+              </div>
             </div>
             <Badge className="bg-primary/10 text-primary border-primary/20">
               AI Schedule
@@ -331,7 +300,11 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                   const config = taskTypeConfig[task.task_type as keyof typeof taskTypeConfig] || taskTypeConfig.other;
                   const Icon = config.icon;
                   return (
-                    <div key={task.id} className={`p-3 rounded-lg ${config.bg} border border-border/50`}>
+                    <div 
+                      key={task.id} 
+                      className={`p-3 rounded-lg ${config.bg} border border-border/50 cursor-pointer hover:shadow-md transition-shadow`}
+                      onClick={() => setSelectedTask(task)}
+                    >
                       <div className="flex items-start gap-3">
                         <div className={`p-2 rounded-full bg-background/80 ${config.color}`}>
                           <Icon className="h-4 w-4" />
@@ -339,25 +312,18 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                         <div className="flex-1">
                           <p className="font-semibold text-sm text-foreground">{task.task_name}</p>
                           <p className="text-xs text-muted-foreground mt-1">{task.task_description}</p>
-                          <div className="flex gap-2 mt-2">
-                            <Button
-                              size="sm"
-                              variant="secondary"
-                              className="h-7 text-xs"
-                              onClick={() => handleTaskAction(task.id, 'completed')}
-                            >
-                              <Check className="h-3 w-3 mr-1" />
-                              Done
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 text-xs"
-                              onClick={() => speakTask(task)}
-                            >
-                              <Volume2 className="h-3 w-3" />
-                            </Button>
-                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 text-xs mt-2"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              speakTask(task);
+                            }}
+                          >
+                            <Volume2 className="h-3 w-3 mr-1" />
+                            Listen
+                          </Button>
                         </div>
                       </div>
                     </div>
@@ -433,10 +399,11 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                         <div key={task.id} onClick={() => setSelectedTask(task)}>
                           <ModernTaskCard
                             task={task}
-                            onAction={handleTaskAction}
                             onSpeak={() => speakTask(task)}
+                            isSpeaking={isSpeaking && speakingTaskId === task.id}
                             isOverdue={isOverdue}
                             daysUntil={daysUntil}
+                            readOnly={true}
                           />
                         </div>
                       );
@@ -449,13 +416,14 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
         </Tabs>
       </div>
 
-      {/* Task Action Dialog */}
+      {/* Task Details Dialog - Read Only */}
       {selectedTask && (
         <TaskActionDialog
           task={selectedTask}
           isOpen={!!selectedTask}
           onClose={() => setSelectedTask(null)}
-          onAction={handleTaskAction}
+          onSpeak={() => speakTask(selectedTask)}
+          readOnly={true}
         />
       )}
     </div>

@@ -344,6 +344,7 @@ export default function Schedule() {
                   landId={selectedLand.id}
                   landName={selectedLand.name}
                   currentCrop={scheduleData?.cropName || selectedLand.current_crop || ''}
+                  onBack={handleBack}
                 />
               </div>
             )}

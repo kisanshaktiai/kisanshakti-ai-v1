@@ -16,10 +16,12 @@ interface TaskActionDialogProps {
   task: any;
   isOpen: boolean;
   onClose: () => void;
-  onAction: (taskId: string, action: 'completed' | 'skipped' | 'rescheduled', notes?: string) => void;
+  onAction?: (taskId: string, action: 'completed' | 'skipped' | 'rescheduled', notes?: string) => void;
+  onSpeak?: () => void;
+  readOnly?: boolean;
 }
 
-const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClose, onAction }) => {
+const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClose, onAction, onSpeak, readOnly = false }) => {
   const [notes, setNotes] = useState('');
   const [selectedAction, setSelectedAction] = useState<'completed' | 'skipped' | null>(null);
 
@@ -36,7 +38,7 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
   const Icon = config.icon;
 
   const handleSubmit = () => {
-    if (selectedAction) {
+    if (selectedAction && onAction) {
       onAction(task.id, selectedAction, notes || undefined);
       setNotes('');
       setSelectedAction(null);
@@ -86,64 +88,92 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
             </div>
           )}
 
-          {/* Action Buttons */}
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              variant={selectedAction === 'completed' ? 'default' : 'outline'}
-              className={`h-auto py-4 flex-col gap-2 ${
-                selectedAction === 'completed' ? 'bg-success text-success-foreground' : ''
-              }`}
-              onClick={() => setSelectedAction('completed')}
-            >
-              <Check className="h-5 w-5" />
-              <span className="text-sm font-semibold">पूरा हुआ<br/>Done</span>
-            </Button>
-            
-            <Button
-              variant={selectedAction === 'skipped' ? 'default' : 'outline'}
-              className={`h-auto py-4 flex-col gap-2 ${
-                selectedAction === 'skipped' ? 'bg-destructive text-destructive-foreground' : ''
-              }`}
-              onClick={() => setSelectedAction('skipped')}
-            >
-              <X className="h-5 w-5" />
-              <span className="text-sm font-semibold">छोड़ा<br/>Skip</span>
-            </Button>
-          </div>
+          {/* Action Buttons - Only show if not read-only */}
+          {!readOnly && onAction && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  variant={selectedAction === 'completed' ? 'default' : 'outline'}
+                  className={`h-auto py-4 flex-col gap-2 ${
+                    selectedAction === 'completed' ? 'bg-success text-success-foreground' : ''
+                  }`}
+                  onClick={() => setSelectedAction('completed')}
+                >
+                  <Check className="h-5 w-5" />
+                  <span className="text-sm font-semibold">पूरा हुआ<br/>Done</span>
+                </Button>
+                
+                <Button
+                  variant={selectedAction === 'skipped' ? 'default' : 'outline'}
+                  className={`h-auto py-4 flex-col gap-2 ${
+                    selectedAction === 'skipped' ? 'bg-destructive text-destructive-foreground' : ''
+                  }`}
+                  onClick={() => setSelectedAction('skipped')}
+                >
+                  <X className="h-5 w-5" />
+                  <span className="text-sm font-semibold">छोड़ा<br/>Skip</span>
+                </Button>
+              </div>
 
-          {/* Notes */}
-          {selectedAction && (
-            <div className="space-y-2 animate-in slide-in-from-top-2">
-              <label className="text-sm font-medium text-foreground">
-                नोट्स / Notes <span className="text-muted-foreground">(Optional)</span>
-              </label>
-              <Textarea
-                placeholder="Add any notes about this task..."
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="resize-none bg-background/60 border-border/50"
-                rows={3}
-              />
-            </div>
+              {/* Notes */}
+              {selectedAction && (
+                <div className="space-y-2 animate-in slide-in-from-top-2">
+                  <label className="text-sm font-medium text-foreground">
+                    नोट्स / Notes <span className="text-muted-foreground">(Optional)</span>
+                  </label>
+                  <Textarea
+                    placeholder="Add any notes about this task..."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className="resize-none bg-background/60 border-border/50"
+                    rows={3}
+                  />
+                </div>
+              )}
+
+              {/* Submit Button */}
+              <div className="flex gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  onClick={onClose}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={!selectedAction}
+                  className="flex-1 bg-primary hover:bg-primary/90"
+                >
+                  Save & Update
+                </Button>
+              </div>
+            </>
           )}
 
-          {/* Submit Button */}
-          <div className="flex gap-2 pt-2">
-            <Button
-              variant="outline"
-              onClick={onClose}
-              className="flex-1"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={!selectedAction}
-              className="flex-1 bg-primary hover:bg-primary/90"
-            >
-              Save & Update
-            </Button>
-          </div>
+          {/* Read-only mode - Just show close and listen buttons */}
+          {readOnly && (
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="outline"
+                onClick={onClose}
+                className="flex-1"
+              >
+                Close
+              </Button>
+              {onSpeak && (
+                <Button
+                  onClick={() => {
+                    onSpeak();
+                    onClose();
+                  }}
+                  className="flex-1 bg-primary hover:bg-primary/90"
+                >
+                  Listen / सुनें
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

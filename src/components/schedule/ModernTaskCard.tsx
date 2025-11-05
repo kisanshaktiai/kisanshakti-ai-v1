@@ -40,9 +40,9 @@ interface TaskCardProps {
   task: any;
   isOverdue: boolean;
   daysUntil: number;
-  onAction: (taskId: string, action: 'completed' | 'skipped' | 'rescheduled', notes?: string) => void;
   onSpeak: () => void;
   isSpeaking?: boolean;
+  readOnly?: boolean;
 }
 
 const taskTypeConfig = {
@@ -88,14 +88,11 @@ export default function ModernTaskCard({
   task, 
   isOverdue, 
   daysUntil, 
-  onAction, 
   onSpeak,
-  isSpeaking = false 
+  isSpeaking = false,
+  readOnly = false
 }: TaskCardProps) {
   const [showDetails, setShowDetails] = useState(false);
-  const [showActionDialog, setShowActionDialog] = useState(false);
-  const [selectedAction, setSelectedAction] = useState<'completed' | 'skipped' | 'rescheduled' | null>(null);
-  const [actionNotes, setActionNotes] = useState('');
 
   const config = taskTypeConfig[task.task_type as keyof typeof taskTypeConfig] || taskTypeConfig.other;
   const TaskIcon = config.icon;
@@ -113,21 +110,6 @@ export default function ModernTaskCard({
   };
 
   const dateLabel = getDateLabel();
-
-  const handleActionClick = (action: 'completed' | 'skipped' | 'rescheduled') => {
-    setSelectedAction(action);
-    setShowActionDialog(true);
-    setActionNotes('');
-  };
-
-  const confirmAction = () => {
-    if (selectedAction) {
-      onAction(task.id, selectedAction, actionNotes);
-      setShowActionDialog(false);
-      setSelectedAction(null);
-      setActionNotes('');
-    }
-  };
 
   return (
     <>
@@ -239,46 +221,6 @@ export default function ModernTaskCard({
               )}
             </div>
 
-            {/* Action Buttons - Only for pending tasks */}
-            {isPending && (
-              <div className="flex gap-2 pt-2">
-                <Button
-                  variant="default"
-                  size="sm"
-                  className="flex-1 h-8 bg-success hover:bg-success/90"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleActionClick('completed');
-                  }}
-                >
-                  <Check className="h-3.5 w-3.5 mr-1" />
-                  Done
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 h-8"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleActionClick('skipped');
-                  }}
-                >
-                  <SkipForward className="h-3.5 w-3.5 mr-1" />
-                  Skip
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 px-3"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleActionClick('rescheduled');
-                  }}
-                >
-                  <Calendar className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            )}
 
             {/* Completed Status */}
             {isCompleted && (
@@ -393,62 +335,24 @@ export default function ModernTaskCard({
             )}
           </div>
 
-          <DialogFooter>
-            <Button
-              variant="default"
-              onClick={() => {
-                onSpeak();
-                setShowDetails(false);
-              }}
-              className="w-full"
-            >
-              <Volume2 className="h-4 w-4 mr-2" />
-              Read Aloud
-            </Button>
-          </DialogFooter>
+          {!readOnly && (
+            <DialogFooter>
+              <Button
+                variant="default"
+                onClick={() => {
+                  onSpeak();
+                  setShowDetails(false);
+                }}
+                className="w-full"
+              >
+                <Volume2 className="h-4 w-4 mr-2" />
+                Read Aloud
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
 
-      {/* Action Confirmation Dialog */}
-      <Dialog open={showActionDialog} onOpenChange={setShowActionDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {selectedAction === 'completed' && 'Mark as Completed'}
-              {selectedAction === 'skipped' && 'Skip Task'}
-              {selectedAction === 'rescheduled' && 'Reschedule Task'}
-            </DialogTitle>
-            <DialogDescription>
-              {selectedAction === 'completed' && 'Confirm that you have completed this task.'}
-              {selectedAction === 'skipped' && 'This task will be marked as skipped.'}
-              {selectedAction === 'rescheduled' && 'This task will be rescheduled for a later date.'}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="notes">Notes (Optional)</Label>
-              <Textarea
-                id="notes"
-                placeholder="Add any notes..."
-                value={actionNotes}
-                onChange={(e) => setActionNotes(e.target.value)}
-                className="mt-2"
-                rows={3}
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowActionDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={confirmAction}>
-              Confirm
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
