@@ -339,7 +339,17 @@ Generate a JSON schedule with this EXACT structure:
         crop_variety: cropVariety,
         sowing_date: sowingDate,
         expected_harvest_date: new Date(new Date(sowingDate).getTime() + scheduleData.total_duration_days * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        schedule_data: scheduleData,
+        ai_model: 'gpt-4o-mini',
+        generation_params: {
+          scheduleData,
+          weather: weatherData,
+          land: {
+            area_acres: land.area_acres,
+            soil_type: land.soil_type,
+            irrigation_type: land.irrigation_type
+          },
+          generated_at: new Date().toISOString()
+        },
         is_active: true,
       })
       .select()
@@ -350,16 +360,20 @@ Generate a JSON schedule with this EXACT structure:
     // 8. Save individual tasks
     const tasks = scheduleData.tasks.map((task: any) => ({
       schedule_id: savedSchedule.id,
-      tenant_id: tenantId,
-      farmer_id: farmerId,
-      land_id: landId,
       task_name: task.task_name,
-      task_category: task.category,
-      description: task.description,
-      due_date: new Date(new Date(sowingDate).getTime() + task.days_from_sowing * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      priority: task.priority,
+      task_type: task.category || 'general',
+      task_description: task.description,
+      task_date: new Date(new Date(sowingDate).getTime() + task.days_from_sowing * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      priority: task.priority || 'medium',
       status: 'pending',
-      task_data: task,
+      duration_hours: task.duration_hours || null,
+      weather_dependent: task.weather_dependent || false,
+      resources: task.resources || null,
+      estimated_cost: task.estimated_cost || null,
+      instructions: task.instructions || [],
+      precautions: task.precautions || [],
+      ideal_weather: task.ideal_weather || null,
+      weather_risk_level: task.weather_risk_level || 'safe',
     }));
 
     await supabase.from('schedule_tasks').insert(tasks);
