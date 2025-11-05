@@ -56,7 +56,9 @@ export default function Home() {
       if (!user?.id) return;
       
       try {
-        const data = await landsApi.fetchLands();
+        // Use offline data service for automatic offline fallback
+        const { offlineDataService } = await import('@/services/offlineDataService');
+        const data = await offlineDataService.fetchLands();
         setLands(data || []);
       } catch (error) {
         console.error('Error fetching lands:', error);

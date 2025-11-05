@@ -62,8 +62,9 @@ export default function Schedule() {
     if (!user?.id) return;
     
     try {
-      // Use lands API service which properly fetches from the edge function
-      const data = await landsApi.fetchLands();
+      // Use offline data service for automatic offline fallback
+      const { offlineDataService } = await import('@/services/offlineDataService');
+      const data = await offlineDataService.fetchLands();
       
       if (data && data.length > 0) {
         // Map the API response to our Land interface

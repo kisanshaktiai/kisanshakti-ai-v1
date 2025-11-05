@@ -109,8 +109,8 @@ class SyncService {
         await this.syncLands(pendingChanges.lands, result, tenantId);
       }
 
-      if (pendingChanges.schedules.length > 0) {
-        await this.syncSchedules(pendingChanges.schedules, result);
+      if (pendingChanges.chatMessages.length > 0) {
+        await this.syncChatMessages(pendingChanges.chatMessages, result);
       }
 
       // 2. Download latest data from server
@@ -125,7 +125,7 @@ class SyncService {
       if (showToast) {
         toast({
           title: 'Sync Complete',
-          description: `${pendingChanges.farmers.length + pendingChanges.lands.length + pendingChanges.schedules.length} changes synced`,
+          description: `${pendingChanges.farmers.length + pendingChanges.lands.length + pendingChanges.schedules.length + pendingChanges.chatMessages.length} changes synced`,
         });
       }
 
@@ -337,6 +337,15 @@ class SyncService {
 
     if (syncedIds.length > 0) {
       await localDB.markAsSynced('schedules', syncedIds);
+    }
+  }
+
+  private async syncChatMessages(messages: any[], result: SyncResult): Promise<void> {
+    // Chat messages are stored locally only for now
+    // Mark them as synced since there's no server table yet
+    const syncedIds = messages.map(m => m.id);
+    if (syncedIds.length > 0) {
+      await localDB.markAsSynced('chatMessages', syncedIds);
     }
   }
 

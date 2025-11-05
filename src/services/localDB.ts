@@ -32,6 +32,16 @@ interface ScheduleData {
   syncStatus: 'synced' | 'pending' | 'conflict';
 }
 
+interface ChatMessage {
+  id: string;
+  land_id: string | null;
+  user_message: string;
+  ai_response: string;
+  timestamp: number;
+  lastModified: number;
+  syncStatus: 'synced' | 'pending' | 'conflict';
+}
+
 interface SyncMetadata {
   id?: string;
   lastSyncTime: number | null;
@@ -55,6 +65,11 @@ interface KisanDB extends DBSchema {
     value: ScheduleData;
     indexes: { 'by-land': string; 'by-sync-status': string };
   };
+  chatMessages: {
+    key: string;
+    value: ChatMessage;
+    indexes: { 'by-land': string | null; 'by-sync-status': string; 'by-timestamp': number };
+  };
   syncMetadata: {
     key: string;
     value: SyncMetadata;
@@ -64,7 +79,7 @@ interface KisanDB extends DBSchema {
 class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;
   private readonly DB_NAME = 'kisan-shakti-db';
-  private readonly DB_VERSION = 1;
+  private readonly DB_VERSION = 2;
 
   async initialize(): Promise<void> {
     if (this.db) return;
@@ -89,6 +104,14 @@ class LocalDatabase {
           const scheduleStore = db.createObjectStore('schedules', { keyPath: 'id' });
           scheduleStore.createIndex('by-land', 'land_id');
           scheduleStore.createIndex('by-sync-status', 'syncStatus');
+        }
+
+        // Create chat messages store
+        if (!db.objectStoreNames.contains('chatMessages')) {
+          const chatStore = db.createObjectStore('chatMessages', { keyPath: 'id' });
+          chatStore.createIndex('by-land', 'land_id');
+          chatStore.createIndex('by-sync-status', 'syncStatus');
+          chatStore.createIndex('by-timestamp', 'timestamp');
         }
 
         // Create sync metadata store
@@ -173,25 +196,54 @@ class LocalDatabase {
     return await this.db!.getAllFromIndex('schedules', 'by-land', landId);
   }
 
+  async getAllSchedules(): Promise<ScheduleData[]> {
+    if (!this.db) await this.initialize();
+    return await this.db!.getAll('schedules');
+  }
+
+  // Chat message operations
+  async saveChatMessage(message: Omit<ChatMessage, 'lastModified' | 'syncStatus'>): Promise<void> {
+    if (!this.db) await this.initialize();
+    const data: ChatMessage = {
+      ...message,
+      lastModified: Date.now(),
+      syncStatus: 'pending',
+    };
+    await this.db!.put('chatMessages', data);
+    await this.updatePendingCount();
+  }
+
+  async getChatMessages(landId?: string | null): Promise<ChatMessage[]> {
+    if (!this.db) await this.initialize();
+    if (landId) {
+      return await this.db!.getAllFromIndex('chatMessages', 'by-land', landId);
+    }
+    // Get all messages sorted by timestamp
+    const allMessages = await this.db!.getAll('chatMessages');
+    return allMessages.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
   // Get all pending changes
   async getPendingChanges(): Promise<{
     farmers: FarmerData[];
     lands: LandData[];
     schedules: ScheduleData[];
+    chatMessages: ChatMessage[];
   }> {
     if (!this.db) await this.initialize();
     
-    const [farmers, lands, schedules] = await Promise.all([
+    const [farmers, lands, schedules, chatMessages] = await Promise.all([
       this.db!.getAllFromIndex('farmers', 'by-sync-status', 'pending'),
       this.db!.getAllFromIndex('lands', 'by-sync-status', 'pending'),
       this.db!.getAllFromIndex('schedules', 'by-sync-status', 'pending'),
+      this.db!.getAllFromIndex('chatMessages', 'by-sync-status', 'pending'),
     ]);
 
-    return { farmers, lands, schedules };
+    return { farmers, lands, schedules, chatMessages };
   }
 
   // Mark items as synced
-  async markAsSynced(type: 'farmers' | 'lands' | 'schedules', ids: string[]): Promise<void> {
+  async markAsSynced(type: 'farmers' | 'lands' | 'schedules' | 'chatMessages', ids: string[]): Promise<void> {
     if (!this.db) await this.initialize();
     
     const tx = this.db!.transaction(type, 'readwrite');
@@ -233,7 +285,7 @@ class LocalDatabase {
 
   private async updatePendingCount(): Promise<void> {
     const pending = await this.getPendingChanges();
-    const count = pending.farmers.length + pending.lands.length + pending.schedules.length;
+    const count = pending.farmers.length + pending.lands.length + pending.schedules.length + pending.chatMessages.length;
     await this.updateSyncMetadata({ pendingChanges: count });
   }
 
@@ -241,11 +293,12 @@ class LocalDatabase {
   async clearAll(): Promise<void> {
     if (!this.db) await this.initialize();
     
-    const tx = this.db!.transaction(['farmers', 'lands', 'schedules'], 'readwrite');
+    const tx = this.db!.transaction(['farmers', 'lands', 'schedules', 'chatMessages'], 'readwrite');
     await Promise.all([
       tx.objectStore('farmers').clear(),
       tx.objectStore('lands').clear(),
       tx.objectStore('schedules').clear(),
+      tx.objectStore('chatMessages').clear(),
     ]);
     await tx.done;
     
@@ -261,10 +314,11 @@ class LocalDatabase {
     farmers?: FarmerData[];
     lands?: LandData[];
     schedules?: ScheduleData[];
+    chatMessages?: ChatMessage[];
   }): Promise<void> {
     if (!this.db) await this.initialize();
 
-    const tx = this.db!.transaction(['farmers', 'lands', 'schedules'], 'readwrite');
+    const tx = this.db!.transaction(['farmers', 'lands', 'schedules', 'chatMessages'], 'readwrite');
 
     if (data.farmers) {
       const farmerStore = tx.objectStore('farmers');
@@ -296,10 +350,20 @@ class LocalDatabase {
       }
     }
 
+    if (data.chatMessages) {
+      const chatStore = tx.objectStore('chatMessages');
+      for (const message of data.chatMessages) {
+        await chatStore.put({
+          ...message,
+          syncStatus: 'synced',
+        });
+      }
+    }
+
     await tx.done;
     await this.updatePendingCount();
   }
 }
 
 export const localDB = new LocalDatabase();
-export type { FarmerData, LandData, ScheduleData, SyncMetadata };
+export type { FarmerData, LandData, ScheduleData, ChatMessage, SyncMetadata };

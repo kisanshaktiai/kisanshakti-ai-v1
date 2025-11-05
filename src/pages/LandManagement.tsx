@@ -75,8 +75,8 @@ export default function LandManagement() {
     
     try {
       setLoading(true);
-      const { landsApi } = await import('@/services/landsApi');
-      const data = await landsApi.fetchLands();
+      const { offlineDataService } = await import('@/services/offlineDataService');
+      const data = await offlineDataService.fetchLands();
       const validLands = (data || []).filter(land => land.id) as Land[];
       setLands(validLands);
       
