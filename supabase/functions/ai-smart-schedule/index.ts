@@ -150,7 +150,7 @@ Generate a JSON schedule with this EXACT structure:
         { role: 'user', content: enhancedUserPrompt }
       ],
       response_format: { type: 'json_object' },
-      max_completion_tokens: 4096,
+      max_completion_tokens: 8192,  // Increased to allow full JSON response generation
     };
     
     console.log('Calling OpenAI API with model:', requestBody.model);
@@ -217,6 +217,27 @@ Generate a JSON schedule with this EXACT structure:
 
     console.log('Message content length:', messageContent.length);
     console.log('Message content (first 1000 chars):', messageContent.substring(0, 1000));
+
+    // Log token usage for monitoring
+    if (aiData.usage) {
+      console.log('Token Usage:', {
+        prompt_tokens: aiData.usage.prompt_tokens,
+        completion_tokens: aiData.usage.completion_tokens,
+        total_tokens: aiData.usage.total_tokens,
+        finish_reason: aiData.choices[0].finish_reason
+      });
+      
+      // Warn if approaching limit
+      if (aiData.usage.completion_tokens > 7000) {
+        console.warn('⚠️ Response approaching token limit. Consider simplifying prompt.');
+      }
+      
+      // Critical: Check if response was truncated
+      if (aiData.choices[0].finish_reason === 'length') {
+        console.error('❌ Response truncated due to token limit!');
+        throw new Error('OpenAI response was truncated. The schedule may be incomplete. Please try again or contact support.');
+      }
+    }
 
     // Parse the schedule data from the AI response
     let scheduleData;
