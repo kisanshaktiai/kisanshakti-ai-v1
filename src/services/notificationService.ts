@@ -97,31 +97,35 @@ class NotificationService {
   }
 
   private async saveSubscription(userId: string, subscription: any) {
-    const { error } = await supabase
-      .from('push_subscriptions')
-      .upsert({
-        user_id: userId,
-        endpoint: subscription.endpoint,
-        p256dh: subscription.keys.p256dh,
-        auth: subscription.keys.auth,
-        updated_at: new Date().toISOString(),
-      }, {
-        onConflict: 'user_id,endpoint',
-      });
-
-    if (error) {
-      console.error('Failed to save subscription:', error);
-    }
+    // Store in localStorage as primary storage
+    const subscriptions = this.getStoredSubscriptions();
+    subscriptions[userId] = {
+      endpoint: subscription.endpoint,
+      keys: subscription.keys,
+      updatedAt: new Date().toISOString(),
+    };
+    localStorage.setItem('pushSubscriptions', JSON.stringify(subscriptions));
+    
+    // TODO: Save to database when push_subscriptions table is created
+    console.log('Subscription saved to localStorage for user:', userId);
   }
 
   private async removeSubscription(userId: string) {
-    const { error } = await supabase
-      .from('push_subscriptions')
-      .delete()
-      .eq('user_id', userId);
+    // Remove from localStorage
+    const subscriptions = this.getStoredSubscriptions();
+    delete subscriptions[userId];
+    localStorage.setItem('pushSubscriptions', JSON.stringify(subscriptions));
+    
+    // TODO: Remove from database when push_subscriptions table is created
+    console.log('Subscription removed from localStorage for user:', userId);
+  }
 
-    if (error) {
-      console.error('Failed to remove subscription:', error);
+  private getStoredSubscriptions(): Record<string, any> {
+    try {
+      const stored = localStorage.getItem('pushSubscriptions');
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
     }
   }
 
@@ -183,7 +187,7 @@ class NotificationService {
     }
   }
 
-  private urlBase64ToUint8Array(base64String: string): Uint8Array {
+  private urlBase64ToUint8Array(base64String: string) {
     const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
     const base64 = (base64String + padding)
       .replace(/\-/g, '+')
@@ -195,7 +199,7 @@ class NotificationService {
     for (let i = 0; i < rawData.length; ++i) {
       outputArray[i] = rawData.charCodeAt(i);
     }
-    return outputArray;
+    return outputArray as unknown as BufferSource;
   }
 }
 
