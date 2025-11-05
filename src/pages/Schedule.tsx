@@ -13,6 +13,7 @@ import LandSelector from '@/components/schedule/LandSelector';
 import CropDateInput from '@/components/schedule/CropDateInput';
 import CropScheduleView from '@/components/schedule/CropScheduleView';
 import { format } from 'date-fns';
+import { useNotifications } from '@/hooks/useNotifications';
 
 interface Land {
   id: string;
@@ -51,6 +52,7 @@ export default function Schedule() {
   } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const { scheduleTaskReminder } = useNotifications();
 
   useEffect(() => {
     fetchLands();
@@ -183,6 +185,18 @@ export default function Schedule() {
 
       // Reset retry count on success
       setRetryCount(0);
+      
+      // Schedule notification for upcoming task (if schedule data contains tasks)
+      if (data.schedule && data.schedule.length > 0) {
+        const nextTask = data.schedule[0];
+        if (nextTask?.date) {
+          await scheduleTaskReminder(
+            nextTask.id || `task-${Date.now()}`,
+            nextTask.task || nextTask.activity || 'Farming Task',
+            new Date(nextTask.date)
+          );
+        }
+      }
       
       toast({
         title: '✅ AI Schedule Generated!',
