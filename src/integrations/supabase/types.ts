@@ -13619,6 +13619,53 @@ export type Database = {
           },
         ]
       }
+      schedule_climate_monitoring: {
+        Row: {
+          adjustment_reason: string | null
+          adjustment_triggered: boolean | null
+          created_at: string | null
+          id: string
+          monitoring_date: string
+          ndvi_value: number | null
+          rainfall_24h: number | null
+          schedule_id: string
+          tasks_rescheduled: number | null
+          temperature_avg: number | null
+        }
+        Insert: {
+          adjustment_reason?: string | null
+          adjustment_triggered?: boolean | null
+          created_at?: string | null
+          id?: string
+          monitoring_date: string
+          ndvi_value?: number | null
+          rainfall_24h?: number | null
+          schedule_id: string
+          tasks_rescheduled?: number | null
+          temperature_avg?: number | null
+        }
+        Update: {
+          adjustment_reason?: string | null
+          adjustment_triggered?: boolean | null
+          created_at?: string | null
+          id?: string
+          monitoring_date?: string
+          ndvi_value?: number | null
+          rainfall_24h?: number | null
+          schedule_id?: string
+          tasks_rescheduled?: number | null
+          temperature_avg?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_climate_monitoring_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "crop_schedules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       schedule_monitoring: {
         Row: {
           alerts_generated: number | null
@@ -13682,6 +13729,8 @@ export type Database = {
       schedule_tasks: {
         Row: {
           auto_rescheduled: boolean | null
+          climate_adjusted: boolean | null
+          climate_adjustment_reason: string | null
           completed_at: string | null
           completed_by: string | null
           completion_notes: string | null
@@ -13694,6 +13743,7 @@ export type Database = {
           instructions: string[] | null
           language: string | null
           original_date: string | null
+          original_date_before_climate_adjust: string | null
           precautions: string[] | null
           priority: string | null
           reschedule_reason: string | null
@@ -13710,6 +13760,8 @@ export type Database = {
         }
         Insert: {
           auto_rescheduled?: boolean | null
+          climate_adjusted?: boolean | null
+          climate_adjustment_reason?: string | null
           completed_at?: string | null
           completed_by?: string | null
           completion_notes?: string | null
@@ -13722,6 +13774,7 @@ export type Database = {
           instructions?: string[] | null
           language?: string | null
           original_date?: string | null
+          original_date_before_climate_adjust?: string | null
           precautions?: string[] | null
           priority?: string | null
           reschedule_reason?: string | null
@@ -13738,6 +13791,8 @@ export type Database = {
         }
         Update: {
           auto_rescheduled?: boolean | null
+          climate_adjusted?: boolean | null
+          climate_adjustment_reason?: string | null
           completed_at?: string | null
           completed_by?: string | null
           completion_notes?: string | null
@@ -13750,6 +13805,7 @@ export type Database = {
           instructions?: string[] | null
           language?: string | null
           original_date?: string | null
+          original_date_before_climate_adjust?: string | null
           precautions?: string[] | null
           priority?: string | null
           reschedule_reason?: string | null

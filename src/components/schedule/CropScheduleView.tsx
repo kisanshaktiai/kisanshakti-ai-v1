@@ -15,6 +15,8 @@ import { format, addDays, isToday, isTomorrow, isPast, differenceInDays } from '
 import { motion, AnimatePresence } from 'framer-motion';
 import TaskTimeline from './TaskTimeline';
 import ModernTaskCard from './ModernTaskCard';
+import TaskActionDialog from './TaskActionDialog';
+import ClimateAlertBanner from './ClimateAlertBanner';
 
 interface CropSchedule {
   id: string;
@@ -73,6 +75,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const [tasks, setTasks] = useState<ScheduleTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<ScheduleTask | null>(null);
   const [viewMode, setViewMode] = useState<'today' | 'week' | 'month' | 'all'>('today');
+  const [climateData, setClimateData] = useState<any>(null);
 
   // Task type icons and colors
   const taskTypeConfig = {
@@ -114,6 +117,17 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
         if (tasksError) throw tasksError;
         setTasks(tasksData || []);
+
+        // Fetch latest climate monitoring data
+        const { data: climateMonitoring } = await supabase
+          .from('schedule_climate_monitoring')
+          .select('*')
+          .eq('schedule_id', scheduleData.id)
+          .order('monitoring_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        setClimateData(climateMonitoring);
       }
     } catch (error) {
       console.error('Error fetching schedule:', error);
@@ -142,30 +156,34 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
       if (updateError) throw updateError;
 
-      // Create completion record
+      // Create completion record - using custom auth farmer_id
       const { error: completionError } = await supabase
         .from('task_completions')
         .insert({
           task_id: taskId,
-          farmer_id: user?.id,
+          farmer_id: user?.id || '',
           action: action,
           notes: notes,
         });
 
-      if (completionError) throw completionError;
+      if (completionError) {
+        console.error('Completion insert error:', completionError);
+        throw completionError;
+      }
 
       toast({
-        title: 'Success',
-        description: `Task marked as ${action}`,
+        title: '✅ पूरा हुआ / Done',
+        description: action === 'completed' ? 'काम पूरा हुआ!' : `Task ${action}`,
       });
 
-      // Refresh tasks
+      // Close dialog and refresh
+      setSelectedTask(null);
       fetchSchedule();
     } catch (error) {
       console.error('Error updating task:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to update task',
+        title: '❌ त्रुटि / Error',
+        description: 'Failed to update task. Please try again.',
         variant: 'destructive',
       });
     }
@@ -292,6 +310,9 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
           </Card>
         </div>
 
+        {/* Climate Alert Banner */}
+        <ClimateAlertBanner data={climateData} />
+
         {/* Today's Priority Tasks - Big & Clear for Farmers */}
         {todayTasks.length > 0 && (
           <Card className="mb-3 bg-gradient-to-r from-primary/10 to-accent/10 border-primary/30 shadow-lg">
@@ -409,14 +430,15 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                       const daysUntil = differenceInDays(taskDate, new Date());
                       
                       return (
-                        <ModernTaskCard
-                          key={task.id}
-                          task={task}
-                          onAction={handleTaskAction}
-                          onSpeak={() => speakTask(task)}
-                          isOverdue={isOverdue}
-                          daysUntil={daysUntil}
-                        />
+                        <div key={task.id} onClick={() => setSelectedTask(task)}>
+                          <ModernTaskCard
+                            task={task}
+                            onAction={handleTaskAction}
+                            onSpeak={() => speakTask(task)}
+                            isOverdue={isOverdue}
+                            daysUntil={daysUntil}
+                          />
+                        </div>
                       );
                     })}
                   </div>
@@ -426,6 +448,16 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Task Action Dialog */}
+      {selectedTask && (
+        <TaskActionDialog
+          task={selectedTask}
+          isOpen={!!selectedTask}
+          onClose={() => setSelectedTask(null)}
+          onAction={handleTaskAction}
+        />
+      )}
     </div>
   );
 };
