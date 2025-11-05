@@ -226,7 +226,9 @@ export default function ModernTaskCard({
               {task.estimated_cost && (
                 <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-background/80 border border-border/50">
                   <DollarSign className="h-3 w-3 text-muted-foreground" />
-                  <span className="text-[10px] text-muted-foreground">₹{task.estimated_cost}</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {task.currency === 'INR' ? '₹' : '$'}{task.estimated_cost}
+                  </span>
                 </div>
               )}
               {task.weather_dependent && (

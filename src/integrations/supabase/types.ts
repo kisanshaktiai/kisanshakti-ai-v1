@@ -3654,12 +3654,14 @@ export type Database = {
         Row: {
           ai_model: string | null
           completed_at: string | null
+          country: string | null
           created_at: string | null
           crop_name: string
           crop_variety: string | null
           expected_harvest_date: string | null
           farmer_id: string
           generated_at: string | null
+          generation_language: string | null
           generation_params: Json | null
           id: string
           is_active: boolean | null
@@ -3674,12 +3676,14 @@ export type Database = {
         Insert: {
           ai_model?: string | null
           completed_at?: string | null
+          country?: string | null
           created_at?: string | null
           crop_name: string
           crop_variety?: string | null
           expected_harvest_date?: string | null
           farmer_id: string
           generated_at?: string | null
+          generation_language?: string | null
           generation_params?: Json | null
           id?: string
           is_active?: boolean | null
@@ -3694,12 +3698,14 @@ export type Database = {
         Update: {
           ai_model?: string | null
           completed_at?: string | null
+          country?: string | null
           created_at?: string | null
           crop_name?: string
           crop_variety?: string | null
           expected_harvest_date?: string | null
           farmer_id?: string
           generated_at?: string | null
+          generation_language?: string | null
           generation_params?: Json | null
           id?: string
           is_active?: boolean | null
@@ -13680,11 +13686,13 @@ export type Database = {
           completed_by: string | null
           completion_notes: string | null
           created_at: string | null
+          currency: string | null
           duration_hours: number | null
           estimated_cost: number | null
           id: string
           ideal_weather: Json | null
           instructions: string[] | null
+          language: string | null
           original_date: string | null
           precautions: string[] | null
           priority: string | null
@@ -13706,11 +13714,13 @@ export type Database = {
           completed_by?: string | null
           completion_notes?: string | null
           created_at?: string | null
+          currency?: string | null
           duration_hours?: number | null
           estimated_cost?: number | null
           id?: string
           ideal_weather?: Json | null
           instructions?: string[] | null
+          language?: string | null
           original_date?: string | null
           precautions?: string[] | null
           priority?: string | null
@@ -13732,11 +13742,13 @@ export type Database = {
           completed_by?: string | null
           completion_notes?: string | null
           created_at?: string | null
+          currency?: string | null
           duration_hours?: number | null
           estimated_cost?: number | null
           id?: string
           ideal_weather?: Json | null
           instructions?: string[] | null
+          language?: string | null
           original_date?: string | null
           precautions?: string[] | null
           priority?: string | null

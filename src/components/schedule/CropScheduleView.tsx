@@ -47,6 +47,8 @@ interface ScheduleTask {
   status: string;
   completed_at?: string;
   completion_notes?: string;
+  language?: string;
+  currency?: string;
 }
 
 interface CropScheduleViewProps {

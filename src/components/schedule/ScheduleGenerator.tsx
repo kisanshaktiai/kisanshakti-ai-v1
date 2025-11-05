@@ -13,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { useWeather } from '@/hooks/useWeather';
+import { useLanguageStore } from '@/stores/languageStore';
 
 interface ScheduleGeneratorProps {
   landId: string;
@@ -47,6 +48,7 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
   const { toast } = useToast();
   const { user, session } = useAuthStore();
   const { currentWeather, forecast, loading: weatherLoading } = useWeather();
+  const { currentLanguage } = useLanguageStore();
   
   const [cropName, setCropName] = useState(currentCrop || '');
   const [cropVariety, setCropVariety] = useState('');
@@ -82,6 +84,8 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
           weatherData,
           regenerate: false,
+          language: currentLanguage,
+          country: 'India',
         },
         headers: {
           'x-tenant-id': user?.tenantId || '',

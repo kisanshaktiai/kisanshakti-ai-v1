@@ -7,6 +7,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenantStore } from '@/stores/tenantStore';
+import { useLanguageStore } from '@/stores/languageStore';
 import { landsApi } from '@/services/landsApi';
 import LandSelector from '@/components/schedule/LandSelector';
 import CropDateInput from '@/components/schedule/CropDateInput';
@@ -38,6 +39,7 @@ export default function Schedule() {
   const { toast } = useToast();
   const { user, session } = useAuthStore();
   const { tenant } = useTenantStore();
+  const { currentLanguage } = useLanguageStore();
   const [lands, setLands] = useState<Land[]>([]);
   const [selectedLand, setSelectedLand] = useState<Land | null>(null);
   const [loading, setLoading] = useState(true);
@@ -136,6 +138,8 @@ export default function Schedule() {
           regenerate: true,
           tenantId: tenant?.id || user?.tenantId || '',
           farmerId: user?.id || '',
+          language: currentLanguage,
+          country: 'India',
         },
       });
 
