@@ -599,6 +599,66 @@ export type Database = {
         }
         Relationships: []
       }
+      agri_marketing_insights: {
+        Row: {
+          affected_farmers_count: number | null
+          affected_lands_count: number | null
+          ai_reasoning: string
+          confidence_score: number | null
+          created_at: string | null
+          crop_type: string | null
+          id: string
+          insight_type: string
+          predicted_demand_quantity: number | null
+          predicted_demand_unit: string | null
+          recommendations: string | null
+          region: string | null
+          supporting_data: Json
+          tenant_id: string
+          time_window_end: string
+          time_window_start: string
+          total_area_hectares: number | null
+        }
+        Insert: {
+          affected_farmers_count?: number | null
+          affected_lands_count?: number | null
+          ai_reasoning: string
+          confidence_score?: number | null
+          created_at?: string | null
+          crop_type?: string | null
+          id?: string
+          insight_type: string
+          predicted_demand_quantity?: number | null
+          predicted_demand_unit?: string | null
+          recommendations?: string | null
+          region?: string | null
+          supporting_data: Json
+          tenant_id: string
+          time_window_end: string
+          time_window_start: string
+          total_area_hectares?: number | null
+        }
+        Update: {
+          affected_farmers_count?: number | null
+          affected_lands_count?: number | null
+          ai_reasoning?: string
+          confidence_score?: number | null
+          created_at?: string | null
+          crop_type?: string | null
+          id?: string
+          insight_type?: string
+          predicted_demand_quantity?: number | null
+          predicted_demand_unit?: string | null
+          recommendations?: string | null
+          region?: string | null
+          supporting_data?: Json
+          tenant_id?: string
+          time_window_end?: string
+          time_window_start?: string
+          total_area_hectares?: number | null
+        }
+        Relationships: []
+      }
       agro_climatic_zones: {
         Row: {
           country_id: string | null
@@ -839,6 +899,75 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_decision_log: {
+        Row: {
+          confidence_score: number | null
+          created_at: string | null
+          decision_type: string
+          error_message: string | null
+          execution_time_ms: number | null
+          farmer_id: string | null
+          feedback_comment: string | null
+          feedback_score: number | null
+          id: string
+          input_data: Json
+          land_id: string | null
+          model_version: string | null
+          ndvi_data: Json | null
+          output_data: Json
+          reasoning: string
+          schedule_id: string | null
+          soil_data: Json | null
+          success: boolean | null
+          tenant_id: string
+          weather_data: Json | null
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string | null
+          decision_type: string
+          error_message?: string | null
+          execution_time_ms?: number | null
+          farmer_id?: string | null
+          feedback_comment?: string | null
+          feedback_score?: number | null
+          id?: string
+          input_data: Json
+          land_id?: string | null
+          model_version?: string | null
+          ndvi_data?: Json | null
+          output_data: Json
+          reasoning: string
+          schedule_id?: string | null
+          soil_data?: Json | null
+          success?: boolean | null
+          tenant_id: string
+          weather_data?: Json | null
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string | null
+          decision_type?: string
+          error_message?: string | null
+          execution_time_ms?: number | null
+          farmer_id?: string | null
+          feedback_comment?: string | null
+          feedback_score?: number | null
+          id?: string
+          input_data?: Json
+          land_id?: string | null
+          model_version?: string | null
+          ndvi_data?: Json | null
+          output_data?: Json
+          reasoning?: string
+          schedule_id?: string | null
+          soil_data?: Json | null
+          success?: boolean | null
+          tenant_id?: string
+          weather_data?: Json | null
+        }
+        Relationships: []
+      }
       ai_insights: {
         Row: {
           created_at: string
@@ -950,6 +1079,63 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ai_schedule_refinements: {
+        Row: {
+          ai_reasoning: string
+          applied_at: string | null
+          created_at: string | null
+          farmer_id: string
+          id: string
+          land_id: string
+          new_date: string | null
+          original_date: string | null
+          recommended_action: string
+          refinement_type: string
+          schedule_id: string
+          severity: string | null
+          status: string | null
+          task_id: string | null
+          tenant_id: string
+          trigger_data: Json
+        }
+        Insert: {
+          ai_reasoning: string
+          applied_at?: string | null
+          created_at?: string | null
+          farmer_id: string
+          id?: string
+          land_id: string
+          new_date?: string | null
+          original_date?: string | null
+          recommended_action: string
+          refinement_type: string
+          schedule_id: string
+          severity?: string | null
+          status?: string | null
+          task_id?: string | null
+          tenant_id: string
+          trigger_data: Json
+        }
+        Update: {
+          ai_reasoning?: string
+          applied_at?: string | null
+          created_at?: string | null
+          farmer_id?: string
+          id?: string
+          land_id?: string
+          new_date?: string | null
+          original_date?: string | null
+          recommended_action?: string
+          refinement_type?: string
+          schedule_id?: string
+          severity?: string | null
+          status?: string | null
+          task_id?: string | null
+          tenant_id?: string
+          trigger_data?: Json
+        }
+        Relationships: []
       }
       ai_training_context: {
         Row: {
@@ -3159,6 +3345,75 @@ export type Database = {
           },
         ]
       }
+      crop_baseline_guidelines: {
+        Row: {
+          best_practices: string | null
+          climate_zone: string | null
+          common_diseases: Json | null
+          common_pests: Json | null
+          confidence_level: string | null
+          created_at: string | null
+          crop_name: string
+          crop_variety: string | null
+          fertilizer_schedule: Json | null
+          growth_duration_days: number
+          id: string
+          is_active: boolean | null
+          optimal_temp_max: number | null
+          optimal_temp_min: number | null
+          region: string | null
+          soil_type: string | null
+          source: string | null
+          stages: Json
+          updated_at: string | null
+          water_requirement_mm: number | null
+        }
+        Insert: {
+          best_practices?: string | null
+          climate_zone?: string | null
+          common_diseases?: Json | null
+          common_pests?: Json | null
+          confidence_level?: string | null
+          created_at?: string | null
+          crop_name: string
+          crop_variety?: string | null
+          fertilizer_schedule?: Json | null
+          growth_duration_days: number
+          id?: string
+          is_active?: boolean | null
+          optimal_temp_max?: number | null
+          optimal_temp_min?: number | null
+          region?: string | null
+          soil_type?: string | null
+          source?: string | null
+          stages: Json
+          updated_at?: string | null
+          water_requirement_mm?: number | null
+        }
+        Update: {
+          best_practices?: string | null
+          climate_zone?: string | null
+          common_diseases?: Json | null
+          common_pests?: Json | null
+          confidence_level?: string | null
+          created_at?: string | null
+          crop_name?: string
+          crop_variety?: string | null
+          fertilizer_schedule?: Json | null
+          growth_duration_days?: number
+          id?: string
+          is_active?: boolean | null
+          optimal_temp_max?: number | null
+          optimal_temp_min?: number | null
+          region?: string | null
+          soil_type?: string | null
+          source?: string | null
+          stages?: Json
+          updated_at?: string | null
+          water_requirement_mm?: number | null
+        }
+        Relationships: []
+      }
       crop_groups: {
         Row: {
           created_at: string
@@ -4925,6 +5180,66 @@ export type Database = {
             referencedColumns: ["farmer_id"]
           },
         ]
+      }
+      farmer_alerts: {
+        Row: {
+          action_required: string | null
+          actioned_at: string | null
+          ai_reasoning: string | null
+          alert_type: string
+          created_at: string | null
+          data_source: Json | null
+          expires_at: string | null
+          farmer_id: string
+          id: string
+          is_actioned: boolean | null
+          is_read: boolean | null
+          land_id: string
+          message: string
+          priority: string
+          schedule_id: string | null
+          tenant_id: string
+          title: string
+        }
+        Insert: {
+          action_required?: string | null
+          actioned_at?: string | null
+          ai_reasoning?: string | null
+          alert_type: string
+          created_at?: string | null
+          data_source?: Json | null
+          expires_at?: string | null
+          farmer_id: string
+          id?: string
+          is_actioned?: boolean | null
+          is_read?: boolean | null
+          land_id: string
+          message: string
+          priority: string
+          schedule_id?: string | null
+          tenant_id: string
+          title: string
+        }
+        Update: {
+          action_required?: string | null
+          actioned_at?: string | null
+          ai_reasoning?: string | null
+          alert_type?: string
+          created_at?: string | null
+          data_source?: Json | null
+          expires_at?: string | null
+          farmer_id?: string
+          id?: string
+          is_actioned?: boolean | null
+          is_read?: boolean | null
+          land_id?: string
+          message?: string
+          priority?: string
+          schedule_id?: string | null
+          tenant_id?: string
+          title?: string
+        }
+        Relationships: []
       }
       farmer_analytics: {
         Row: {
@@ -13297,6 +13612,66 @@ export type Database = {
             referencedColumns: ["tile_id", "country_id"]
           },
         ]
+      }
+      schedule_monitoring: {
+        Row: {
+          alerts_generated: number | null
+          check_date: string
+          created_at: string | null
+          disease_detected: boolean | null
+          farmer_id: string
+          health_score: number | null
+          id: string
+          land_id: string
+          ndvi_value: number | null
+          npk_levels: Json | null
+          pest_detected: boolean | null
+          refinements_applied: number | null
+          schedule_id: string
+          soil_moisture: number | null
+          soil_ph: number | null
+          tenant_id: string
+          weather_conditions: Json | null
+        }
+        Insert: {
+          alerts_generated?: number | null
+          check_date: string
+          created_at?: string | null
+          disease_detected?: boolean | null
+          farmer_id: string
+          health_score?: number | null
+          id?: string
+          land_id: string
+          ndvi_value?: number | null
+          npk_levels?: Json | null
+          pest_detected?: boolean | null
+          refinements_applied?: number | null
+          schedule_id: string
+          soil_moisture?: number | null
+          soil_ph?: number | null
+          tenant_id: string
+          weather_conditions?: Json | null
+        }
+        Update: {
+          alerts_generated?: number | null
+          check_date?: string
+          created_at?: string | null
+          disease_detected?: boolean | null
+          farmer_id?: string
+          health_score?: number | null
+          id?: string
+          land_id?: string
+          ndvi_value?: number | null
+          npk_levels?: Json | null
+          pest_detected?: boolean | null
+          refinements_applied?: number | null
+          schedule_id?: string
+          soil_moisture?: number | null
+          soil_ph?: number | null
+          tenant_id?: string
+          weather_conditions?: Json | null
+        }
+        Relationships: []
       }
       schedule_tasks: {
         Row: {

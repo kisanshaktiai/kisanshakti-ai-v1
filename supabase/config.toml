@@ -20,3 +20,12 @@ verify_jwt = true
 
 [functions.lands-api]
 verify_jwt = false
+
+[functions.ai-smart-schedule]
+verify_jwt = true
+
+[functions.ai-schedule-monitor]
+verify_jwt = true
+
+[functions.ai-marketing-insights]
+verify_jwt = true

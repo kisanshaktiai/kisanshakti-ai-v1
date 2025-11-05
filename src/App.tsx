@@ -43,6 +43,7 @@ import Schedule from "./pages/Schedule";
 import MobileAuth from "./pages/MobileAuth";
 import NDVIAnalysis from "./pages/NDVIAnalysis";
 import SoilHealthReport from "./pages/SoilHealthReport";
+import AIScheduleDashboard from "./pages/AIScheduleDashboard";
 
 // Stores and Services
 import { useTenantStore } from "@/stores/tenantStore";
@@ -248,6 +249,7 @@ const router = createBrowserRouter([
       { path: "analytics", element: <Analytics /> },
       { path: "test/crop-selection", element: <CropSelectionTest /> },
       { path: "schedule", element: <Schedule /> },
+      { path: "ai-dashboard", element: <AIScheduleDashboard /> },
       { path: "ndvi", element: <NDVIAnalysis /> },
     ],
   },
