@@ -307,7 +307,7 @@ Create 8-12 critical tasks covering: soil preparation, sowing, irrigation schedu
         ai_model: 'gpt-4o-mini',
         generation_params: {
           scheduleData,
-          weather: weatherData,
+          weather: weather,
           land: {
             area_acres: land.area_acres,
             soil_type: land.soil_type,
