@@ -17,7 +17,8 @@ serve(async (req) => {
   try {
     const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     if (!OPENAI_API_KEY) {
-      throw new Error('OPENAI_API_KEY not configured');
+      console.error('OPENAI_API_KEY is not configured in Supabase secrets');
+      throw new Error('OpenAI API key not configured. Please set OPENAI_API_KEY in Supabase secrets.');
     }
     
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -128,22 +129,28 @@ Generate a JSON schedule with this EXACT structure:
 }`;
 
     // 5. Call OpenAI GPT-5-mini
+    const requestBody = {
+      model: 'gpt-5-mini-2025-08-07',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ],
+      response_format: { type: 'json_object' },
+      max_completion_tokens: 4096,
+    };
+    
+    console.log('Calling OpenAI API with model:', requestBody.model);
+    
     const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: 'gpt-5-mini-2025-08-07',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        response_format: { type: 'json_object' },
-        max_completion_tokens: 4096,
-      }),
+      body: JSON.stringify(requestBody),
     });
+    
+    console.log('OpenAI API response status:', aiResponse.status);
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
@@ -156,11 +163,44 @@ Generate a JSON schedule with this EXACT structure:
         throw new Error('Invalid OpenAI API key. Please check your configuration.');
       }
       
-      throw new Error(`OpenAI API error: ${aiResponse.status}`);
+      throw new Error(`OpenAI API error: ${aiResponse.status} - ${errorText}`);
     }
 
-    const aiData = await aiResponse.json();
-    const scheduleData = JSON.parse(aiData.choices[0].message.content);
+    // Parse OpenAI response with error handling
+    let aiData;
+    let responseText;
+    try {
+      responseText = await aiResponse.text();
+      aiData = JSON.parse(responseText);
+      console.log('OpenAI response received:', responseText.substring(0, 200));
+    } catch (parseError) {
+      console.error('Failed to parse OpenAI response as JSON:', parseError);
+      console.error('Raw response text:', responseText || 'Unable to read response');
+      throw new Error('Invalid JSON response from OpenAI API');
+    }
+
+    // Validate response structure
+    if (!aiData.choices || !aiData.choices[0] || !aiData.choices[0].message) {
+      console.error('Invalid OpenAI response structure:', JSON.stringify(aiData));
+      throw new Error('OpenAI API returned invalid response structure');
+    }
+
+    const messageContent = aiData.choices[0].message.content;
+    if (!messageContent) {
+      console.error('Empty content in OpenAI response');
+      throw new Error('OpenAI API returned empty content');
+    }
+
+    // Parse the schedule data from the AI response
+    let scheduleData;
+    try {
+      scheduleData = JSON.parse(messageContent);
+      console.log('Schedule data parsed successfully. Tasks count:', scheduleData.tasks?.length || 0);
+    } catch (contentParseError) {
+      console.error('Failed to parse AI message content as JSON:', contentParseError);
+      console.error('Content was:', messageContent.substring(0, 500));
+      throw new Error('AI returned invalid JSON format for schedule');
+    }
 
     // 6. Deactivate old schedules if regenerating
     if (regenerate) {
