@@ -102,6 +102,14 @@ export default function Schedule() {
     setFlowStep('crop-input');
   };
 
+  const handleViewSchedule = (landId: string) => {
+    const land = lands.find(l => l.id === landId);
+    if (land) {
+      setSelectedLand(land);
+      setFlowStep('schedule-view');
+    }
+  };
+
   const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date) => {
     if (!selectedLand) return;
 
@@ -314,6 +322,7 @@ export default function Schedule() {
                 <LandSelector 
                   lands={lands}
                   onSelectLand={handleLandSelect}
+                  onViewSchedule={handleViewSchedule}
                 />
               </div>
             )}
@@ -329,12 +338,12 @@ export default function Schedule() {
               </div>
             )}
 
-            {flowStep === 'schedule-view' && selectedLand && scheduleData && (
+            {flowStep === 'schedule-view' && selectedLand && (
               <div className="animate-slide-in-right">
                 <CropScheduleView
                   landId={selectedLand.id}
                   landName={selectedLand.name}
-                  currentCrop={scheduleData.cropName}
+                  currentCrop={scheduleData?.cropName || selectedLand.current_crop || ''}
                 />
               </div>
             )}

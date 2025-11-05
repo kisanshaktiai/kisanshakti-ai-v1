@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { 
   MapPin, 
   Droplets, 
@@ -14,10 +15,15 @@ import {
   TreePine,
   ChevronRight,
   Waves,
-  Grid3x3
+  Grid3x3,
+  Sparkles,
+  CalendarCheck,
+  Calendar,
+  Zap
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Land {
   id: string;
@@ -40,6 +46,14 @@ interface Land {
 interface LandSelectorProps {
   lands: Land[];
   onSelectLand: (land: Land) => void;
+  onViewSchedule?: (landId: string) => void;
+}
+
+interface LandScheduleStatus {
+  landId: string;
+  hasSchedule: boolean;
+  cropName?: string;
+  scheduleId?: string;
 }
 
 const getSoilIcon = (soilType?: string) => {
@@ -66,8 +80,54 @@ const getCropIcon = (crop?: string) => {
   return Sprout;
 };
 
-export default function LandSelector({ lands, onSelectLand }: LandSelectorProps) {
+export default function LandSelector({ lands, onSelectLand, onViewSchedule }: LandSelectorProps) {
   const navigate = useNavigate();
+  const [scheduleStatuses, setScheduleStatuses] = useState<LandScheduleStatus[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchScheduleStatuses();
+  }, [lands]);
+
+  const fetchScheduleStatuses = async () => {
+    try {
+      const landIds = lands.map(l => l.id);
+      
+      const { data, error } = await supabase
+        .from('crop_schedules')
+        .select('id, land_id, crop_name')
+        .in('land_id', landIds)
+        .eq('is_active', true);
+
+      if (error) throw error;
+
+      const statuses: LandScheduleStatus[] = lands.map(land => {
+        const schedule = data?.find(s => s.land_id === land.id);
+        return {
+          landId: land.id,
+          hasSchedule: !!schedule,
+          cropName: schedule?.crop_name,
+          scheduleId: schedule?.id
+        };
+      });
+
+      setScheduleStatuses(statuses);
+    } catch (error) {
+      console.error('Error fetching schedule statuses:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLandClick = (land: Land) => {
+    const status = scheduleStatuses.find(s => s.landId === land.id);
+    
+    if (status?.hasSchedule && onViewSchedule) {
+      onViewSchedule(land.id);
+    } else {
+      onSelectLand(land);
+    }
+  };
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -103,6 +163,8 @@ export default function LandSelector({ lands, onSelectLand }: LandSelectorProps)
           const SoilIcon = getSoilIcon(land.soil_type);
           const WaterIcon = getWaterIcon(land.water_source);
           const CropIcon = getCropIcon(land.current_crop);
+          const status = scheduleStatuses.find(s => s.landId === land.id);
+          const hasSchedule = status?.hasSchedule || false;
           
           return (
             <motion.div key={land.id} variants={itemVariants}>
@@ -110,51 +172,129 @@ export default function LandSelector({ lands, onSelectLand }: LandSelectorProps)
                 className={cn(
                   "group relative overflow-hidden cursor-pointer",
                   "bg-card/80 backdrop-blur-md",
-                  "border border-border/50",
-                  "hover:border-primary/50",
+                  "border",
+                  hasSchedule 
+                    ? "border-primary/70 bg-gradient-to-br from-primary/5 to-accent/5" 
+                    : "border-border/50",
+                  "hover:border-primary/70",
                   "shadow-lg hover:shadow-xl",
                   "transition-all duration-300 ease-out",
                   "hover:scale-[1.02]"
                 )}
-                onClick={() => onSelectLand(land)}
+                onClick={() => handleLandClick(land)}
               >
                 {/* Gradient overlay on hover */}
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className={cn(
+                  "absolute inset-0 transition-opacity duration-300",
+                  hasSchedule 
+                    ? "bg-gradient-to-br from-primary/10 via-accent/5 to-success/10 opacity-50 group-hover:opacity-70"
+                    : "bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100"
+                )} />
+                
+                {/* AI Generated Badge */}
+                {hasSchedule && (
+                  <motion.div
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                    className="absolute top-2 right-2 z-10"
+                  >
+                    <Badge className="bg-gradient-to-r from-primary to-accent text-primary-foreground border-0 shadow-lg flex items-center gap-1.5 px-2.5 py-1">
+                      <Sparkles className="h-3 w-3 animate-pulse" />
+                      <span className="text-xs font-semibold">AI Schedule Ready</span>
+                    </Badge>
+                  </motion.div>
+                )}
+                
+                {/* Pending Generation Badge */}
+                {!hasSchedule && (
+                  <div className="absolute top-2 right-2 z-10">
+                    <Badge variant="outline" className="bg-background/80 backdrop-blur-sm border-muted-foreground/30 flex items-center gap-1.5 px-2.5 py-1">
+                      <Calendar className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-xs font-medium text-muted-foreground">Generate Schedule</span>
+                    </Badge>
+                  </div>
+                )}
                 
                 {/* Content */}
                 <div className="relative p-4 space-y-3">
                   {/* Header */}
                   <div className="flex items-start justify-between">
-                    <div className="space-y-0.5">
-                      <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-colors">
+                    <div className="space-y-0.5 flex-1">
+                      <h3 className={cn(
+                        "text-lg font-bold transition-colors",
+                        hasSchedule 
+                          ? "text-foreground group-hover:text-primary" 
+                          : "text-foreground group-hover:text-primary"
+                      )}>
                         {land.name}
                       </h3>
-                      {land.survey_number && (
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Grid3x3 className="h-3 w-3" />
-                          Survey #{land.survey_number}
-                        </p>
-                      )}
-                    </div>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors group-hover:translate-x-1 duration-300" />
-                  </div>
-
-                  {/* Area Display */}
-                  <div className="bg-gradient-to-r from-primary/10 to-accent/10 rounded-lg p-3">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-background/80 rounded-md">
-                        <Trees className="h-4 w-4 text-primary" />
-                      </div>
-                      <div>
-                        <p className="text-xl font-bold text-foreground">
-                          {land.area_acres} <span className="text-sm font-medium text-muted-foreground">acres</span>
-                        </p>
-                        {land.area_guntas && land.area_guntas > 0 && (
-                          <p className="text-xs text-muted-foreground">
-                            {land.area_guntas} guntas
+                      <div className="flex items-center gap-2">
+                        {land.survey_number && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Grid3x3 className="h-3 w-3" />
+                            Survey #{land.survey_number}
                           </p>
                         )}
+                        {hasSchedule && status?.cropName && (
+                          <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                            <Wheat className="h-2.5 w-2.5 mr-1" />
+                            {status.cropName}
+                          </Badge>
+                        )}
                       </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      {hasSchedule ? (
+                        <div className="flex items-center gap-1 text-primary">
+                          <CalendarCheck className="h-4 w-4" />
+                          <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform duration-300" />
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-muted-foreground group-hover:text-primary transition-colors">
+                          <Zap className="h-4 w-4" />
+                          <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform duration-300" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Area Display with Status */}
+                  <div className={cn(
+                    "rounded-lg p-3",
+                    hasSchedule 
+                      ? "bg-gradient-to-r from-primary/15 to-accent/15 border border-primary/20" 
+                      : "bg-gradient-to-r from-primary/10 to-accent/10"
+                  )}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className={cn(
+                          "p-1.5 rounded-md",
+                          hasSchedule ? "bg-primary/20" : "bg-background/80"
+                        )}>
+                          <Trees className={cn(
+                            "h-4 w-4",
+                            hasSchedule ? "text-primary" : "text-primary"
+                          )} />
+                        </div>
+                        <div>
+                          <p className="text-xl font-bold text-foreground">
+                            {land.area_acres} <span className="text-sm font-medium text-muted-foreground">acres</span>
+                          </p>
+                          {land.area_guntas && land.area_guntas > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              {land.area_guntas} guntas
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {hasSchedule && (
+                        <div className="text-right">
+                          <p className="text-xs text-primary font-semibold">Active</p>
+                          <p className="text-[10px] text-muted-foreground">Click to view</p>
+                        </div>
+                      )}
                     </div>
                   </div>
 
