@@ -1,3 +1,4 @@
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -14,7 +15,11 @@ serve(async (req) => {
   const startTime = Date.now();
   
   try {
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+    if (!OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY not configured');
+    }
+    
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
@@ -122,28 +127,36 @@ Generate a JSON schedule with this EXACT structure:
   ]
 }`;
 
-    // 5. Call Lovable AI
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // 5. Call OpenAI GPT-5-mini
+    const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'gpt-5-mini-2025-08-07',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
         response_format: { type: 'json_object' },
-        temperature: 0.7,
+        max_completion_tokens: 4096,
       }),
     });
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
-      console.error('AI Gateway error:', aiResponse.status, errorText);
-      throw new Error(`AI Gateway error: ${aiResponse.status}`);
+      console.error('OpenAI API error:', aiResponse.status, errorText);
+      
+      if (aiResponse.status === 429) {
+        throw new Error('OpenAI rate limit exceeded. Please try again later.');
+      }
+      if (aiResponse.status === 401) {
+        throw new Error('Invalid OpenAI API key. Please check your configuration.');
+      }
+      
+      throw new Error(`OpenAI API error: ${aiResponse.status}`);
     }
 
     const aiData = await aiResponse.json();
@@ -202,7 +215,7 @@ Generate a JSON schedule with this EXACT structure:
       land_id: landId,
       schedule_id: savedSchedule.id,
       decision_type: 'schedule_generation',
-      model_version: 'google/gemini-2.5-flash',
+      model_version: 'openai/gpt-5-mini-2025-08-07',
       input_data: { landId, cropName, cropVariety, sowingDate },
       output_data: scheduleData,
       reasoning: scheduleData.ai_reasoning,

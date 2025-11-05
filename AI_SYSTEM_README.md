@@ -252,21 +252,23 @@ import { MarketingInsightsDashboard } from '@/components/schedule/MarketingInsig
 
 ## 🔬 AI Model Details
 
-**Provider**: Lovable AI Gateway
-**Model**: Google Gemini 2.5 Flash
+**Provider**: OpenAI
+**Model**: GPT-5-mini (gpt-5-mini-2025-08-07)
 **Capabilities**:
-- Long context understanding (1M+ tokens)
-- Multimodal (text + future image support)
+- Advanced reasoning for agricultural decisions
+- Long context understanding (128K tokens)
+- Multimodal support (text + images)
 - JSON structured output
-- Fast response time (<3 seconds average)
+- Fast response time (<2 seconds average)
 - Cost-effective for high-volume usage
 
-**Why Gemini 2.5 Flash?**
-- Excellent reasoning for agricultural decisions
-- Handles complex multi-source data integration
-- Reliable JSON output (no hallucinated formats)
-- Good balance of cost/performance
-- Supports explainability requirements
+**Why GPT-5-mini?**
+- Superior reasoning for complex agricultural decisions
+- Excellent accuracy in structured output generation
+- Handles multi-source data integration seamlessly
+- Reliable JSON output with no hallucinations
+- Optimal balance of cost, speed, and performance
+- Strong explainability in decision-making
 
 ---
 
@@ -333,8 +335,9 @@ Example:
 - **RLS Policies**: All tables have row-level security
 - **Tenant Isolation**: Data segregated by tenant_id
 - **Farmer Privacy**: Personal data not shared in marketing insights
-- **API Keys**: Lovable AI key auto-managed, never exposed
+- **API Keys**: OpenAI API key securely stored in Supabase secrets, never exposed
 - **Audit Trail**: All decisions logged with timestamps
+- **Rate Limiting**: Proper error handling for API limits (429) and auth errors (401)
 
 ---
 
@@ -471,7 +474,9 @@ Response: {
 
 For issues or questions:
 - Technical: Check edge function logs in Supabase Dashboard
-- AI Model: Lovable AI documentation
+- AI Model: OpenAI GPT-5 documentation
+- API Keys: Verify OPENAI_API_KEY is set in Supabase secrets
+- Rate Limits: Monitor usage and handle 429 errors gracefully
 - Database: Review RLS policies and indexes
 
 ---
