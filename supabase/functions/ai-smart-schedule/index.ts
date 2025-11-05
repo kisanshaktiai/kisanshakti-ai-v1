@@ -173,8 +173,8 @@ Create 8-12 critical tasks covering: soil preparation, sowing, irrigation schedu
     };
     
     console.log('Calling OpenAI API with model:', requestBody.model);
-    console.log('Prompt stats - System:', systemPrompt.length, 'chars, User:', enhancedUserPrompt.length, 'chars');
-    console.log('Estimated tokens:', Math.ceil((systemPrompt.length + enhancedUserPrompt.length) / 4));
+    console.log('Prompt stats - System:', systemPrompt.length, 'chars, User:', userPrompt.length, 'chars');
+    console.log('Estimated tokens:', Math.ceil((systemPrompt.length + userPrompt.length) / 4));
     
     const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
