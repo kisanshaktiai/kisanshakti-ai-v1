@@ -19,11 +19,24 @@ import {
   Sparkles,
   CalendarCheck,
   Calendar,
-  Zap
+  Zap,
+  Edit,
+  Trash2
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useToast } from '@/hooks/use-toast';
 
 interface Land {
   id: string;
@@ -47,6 +60,7 @@ interface LandSelectorProps {
   lands: Land[];
   onSelectLand: (land: Land) => void;
   onViewSchedule?: (landId: string) => void;
+  onEditSchedule?: (landId: string) => void;
 }
 
 interface LandScheduleStatus {
@@ -80,10 +94,13 @@ const getCropIcon = (crop?: string) => {
   return Sprout;
 };
 
-export default function LandSelector({ lands, onSelectLand, onViewSchedule }: LandSelectorProps) {
+export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEditSchedule }: LandSelectorProps) {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [scheduleStatuses, setScheduleStatuses] = useState<LandScheduleStatus[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [scheduleToDelete, setScheduleToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     fetchScheduleStatuses();
@@ -148,6 +165,65 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule }: La
         type: "spring" as const,
         stiffness: 100
       }
+    }
+  };
+
+  const handleDeleteSchedule = async (landId: string) => {
+    setScheduleToDelete(landId);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteSchedule = async () => {
+    if (!scheduleToDelete) return;
+
+    try {
+      const status = scheduleStatuses.find(s => s.landId === scheduleToDelete);
+      if (!status?.scheduleId) return;
+
+      // Delete all tasks for this schedule
+      const { error: tasksError } = await supabase
+        .from('schedule_tasks')
+        .delete()
+        .eq('schedule_id', status.scheduleId);
+
+      if (tasksError) throw tasksError;
+
+      // Delete the schedule
+      const { error: scheduleError } = await supabase
+        .from('crop_schedules')
+        .delete()
+        .eq('id', status.scheduleId);
+
+      if (scheduleError) throw scheduleError;
+
+      toast({
+        title: '✅ Schedule Deleted',
+        description: 'AI crop schedule has been removed',
+        className: 'bg-success/10 border-success/20',
+      });
+
+      // Refresh schedule statuses
+      fetchScheduleStatuses();
+    } catch (error) {
+      console.error('Error deleting schedule:', error);
+      toast({
+        title: '❌ Delete Failed',
+        description: 'Failed to delete schedule',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleteDialogOpen(false);
+      setScheduleToDelete(null);
+    }
+  };
+
+  const handleCreateSchedule = (land: Land) => {
+    onSelectLand(land);
+  };
+
+  const handleEditSchedule = (landId: string) => {
+    if (onEditSchedule) {
+      onEditSchedule(landId);
     }
   };
 
@@ -353,13 +429,69 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule }: La
                         </span>
                       </div>
                     )}
-                  </div>
-                </div>
-              </Card>
-            </motion.div>
-          );
-        })}
-      </motion.div>
+                   </div>
+
+                   {/* Schedule Actions */}
+                   {hasSchedule && (
+                     <div className="flex gap-2 mt-3 pt-3 border-t border-border/50">
+                       <Button
+                         variant="outline"
+                         size="sm"
+                         className="flex-1 gap-2"
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           onViewSchedule?.(land.id);
+                         }}
+                       >
+                         <Calendar className="h-3.5 w-3.5" />
+                         View
+                       </Button>
+                       <Button
+                         variant="outline"
+                         size="sm"
+                         className="flex-1 gap-2"
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           handleEditSchedule(land.id);
+                         }}
+                       >
+                         <Edit className="h-3.5 w-3.5" />
+                         Edit
+                       </Button>
+                       <Button
+                         variant="outline"
+                         size="sm"
+                         className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           handleDeleteSchedule(land.id);
+                         }}
+                       >
+                         <Trash2 className="h-3.5 w-3.5" />
+                       </Button>
+                     </div>
+                   )}
+
+                   {!hasSchedule && (
+                     <Button
+                       variant="outline"
+                       size="sm"
+                       className="w-full mt-3 gap-2"
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         handleCreateSchedule(land);
+                       }}
+                     >
+                       <Plus className="h-3.5 w-3.5" />
+                       Create Schedule
+                     </Button>
+                   )}
+                 </div>
+               </Card>
+             </motion.div>
+           );
+         })}
+       </motion.div>
 
       {/* Add Land Button - Centered Below Last Card */}
       <motion.div
@@ -382,6 +514,27 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule }: La
           <span className="font-medium">Add Land</span>
         </Button>
       </motion.div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete AI Schedule?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the AI-generated crop schedule and all its tasks. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteSchedule}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -110,6 +110,14 @@ export default function Schedule() {
     }
   };
 
+  const handleEditSchedule = (landId: string) => {
+    const land = lands.find(l => l.id === landId);
+    if (land) {
+      setSelectedLand(land);
+      setFlowStep('crop-input');
+    }
+  };
+
   const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date) => {
     if (!selectedLand) return;
 
@@ -323,6 +331,7 @@ export default function Schedule() {
                   lands={lands}
                   onSelectLand={handleLandSelect}
                   onViewSchedule={handleViewSchedule}
+                  onEditSchedule={handleEditSchedule}
                 />
               </div>
             )}
