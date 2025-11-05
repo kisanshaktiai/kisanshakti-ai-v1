@@ -13,5 +13,32 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
+  },
+  global: {
+    headers: {}
   }
 });
+
+/**
+ * Update Supabase client headers with custom authentication context
+ * This enables RLS policies to work with custom auth system
+ */
+export const updateSupabaseHeaders = (farmerId?: string, tenantId?: string) => {
+  const headers: Record<string, string> = {};
+  
+  if (farmerId) {
+    headers['x-farmer-id'] = farmerId;
+  }
+  
+  if (tenantId) {
+    headers['x-tenant-id'] = tenantId;
+  }
+  
+  // Update the global headers on the supabase client
+  (supabase as any).rest.headers = {
+    ...(supabase as any).rest.headers,
+    ...headers
+  };
+  
+  console.log('Updated Supabase headers:', headers);
+};

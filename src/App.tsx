@@ -113,6 +113,21 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
     initializeApp();
   }, []);
 
+  // Update Supabase headers when user auth is restored
+  useEffect(() => {
+    const updateHeaders = async () => {
+      const { user } = useAuthStore.getState();
+      if (user?.id && user?.tenantId) {
+        const { updateSupabaseHeaders } = await import('@/integrations/supabase/client');
+        updateSupabaseHeaders(user.id, user.tenantId);
+        console.log('Supabase headers updated on app initialization');
+      }
+    };
+    
+    // Small delay to ensure auth is restored
+    setTimeout(updateHeaders, 100);
+  }, []);
+
   // Apply white label theme whenever tenant changes
   useEffect(() => {
     if (tenant) {

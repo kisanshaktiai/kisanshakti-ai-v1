@@ -148,6 +148,10 @@ export default function PinAuth() {
           annualIncomeRange: farmer.annual_income_range || profileData?.annual_income_range || ''
         });
 
+      // Update Supabase client headers for RLS to work with custom auth
+      const { updateSupabaseHeaders } = await import('@/integrations/supabase/client');
+      updateSupabaseHeaders(farmer.id, farmer.tenant_id);
+
       // Clear temp storage but keep session data
       localStorage.removeItem('authMobile');
       localStorage.removeItem('farmerId');
