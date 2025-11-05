@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Check, X, Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle } from 'lucide-react';
 import { format } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 
 interface TaskActionDialogProps {
   task: any;
@@ -22,6 +23,7 @@ interface TaskActionDialogProps {
 }
 
 const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClose, onAction, onSpeak, readOnly = false }) => {
+  const { t } = useTranslation();
   const [notes, setNotes] = useState('');
   const [selectedAction, setSelectedAction] = useState<'completed' | 'skipped' | null>(null);
 
@@ -55,7 +57,7 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
             <div className={`p-3 rounded-xl ${config.bg}`}>
               <Icon className={`h-6 w-6 ${config.color}`} />
             </div>
-            <span className="text-foreground">Task Details</span>
+            <span className="text-foreground">{t('schedule.taskDetails')}</span>
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
             Update task status and add notes
@@ -72,10 +74,10 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
               <Calendar className="h-3 w-3" />
               <span>{format(new Date(task.task_date), 'dd MMM yyyy')}</span>
               <Badge variant={task.priority === 'high' ? 'destructive' : 'secondary'} className="text-xs">
-                {task.priority}
+                {t(`schedule.${task.priority}`)}
               </Badge>
               {task.weather_dependent && (
-                <Badge variant="outline" className="text-xs">Weather Dep.</Badge>
+                <Badge variant="outline" className="text-xs">{t('schedule.weather')}</Badge>
               )}
             </div>
           </div>
@@ -100,7 +102,7 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
                   onClick={() => setSelectedAction('completed')}
                 >
                   <Check className="h-5 w-5" />
-                  <span className="text-sm font-semibold">पूरा हुआ<br/>Done</span>
+                  <span className="text-sm font-semibold">{t('schedule.done')}</span>
                 </Button>
                 
                 <Button
@@ -111,7 +113,7 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
                   onClick={() => setSelectedAction('skipped')}
                 >
                   <X className="h-5 w-5" />
-                  <span className="text-sm font-semibold">छोड़ा<br/>Skip</span>
+                  <span className="text-sm font-semibold">{t('schedule.skipped')}</span>
                 </Button>
               </div>
 
@@ -119,7 +121,7 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
               {selectedAction && (
                 <div className="space-y-2 animate-in slide-in-from-top-2">
                   <label className="text-sm font-medium text-foreground">
-                    नोट्स / Notes <span className="text-muted-foreground">(Optional)</span>
+                    Notes <span className="text-muted-foreground">(Optional)</span>
                   </label>
                   <Textarea
                     placeholder="Add any notes about this task..."
@@ -138,14 +140,14 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
                   onClick={onClose}
                   className="flex-1"
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </Button>
                 <Button
                   onClick={handleSubmit}
                   disabled={!selectedAction}
                   className="flex-1 bg-primary hover:bg-primary/90"
                 >
-                  Save & Update
+                  {t('common.save')}
                 </Button>
               </div>
             </>
@@ -159,7 +161,7 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
                 onClick={onClose}
                 className="flex-1"
               >
-                Close
+                {t('schedule.close')}
               </Button>
               {onSpeak && (
                 <Button
@@ -169,7 +171,7 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
                   }}
                   className="flex-1 bg-primary hover:bg-primary/90"
                 >
-                  Listen / सुनें
+                  {t('schedule.listen')}
                 </Button>
               )}
             </div>

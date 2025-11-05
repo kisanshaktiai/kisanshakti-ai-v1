@@ -223,7 +223,8 @@ export default function Schedule() {
       setFlowStep('land-selection');
       setSelectedLand(null);
     } else if (flowStep === 'schedule-view') {
-      setFlowStep('crop-input');
+      setFlowStep('land-selection');
+      setSelectedLand(null);
     }
   };
 

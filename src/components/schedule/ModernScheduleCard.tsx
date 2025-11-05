@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Sparkles, Calendar, TrendingUp, Volume2, IndianRupee } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 
 interface ModernScheduleCardProps {
   schedule: {
@@ -32,6 +33,7 @@ const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
   onViewSchedule,
   onSpeak,
 }) => {
+  const { t } = useTranslation();
   const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
   const daysToHarvest = schedule.expected_harvest_date 
     ? differenceInDays(new Date(schedule.expected_harvest_date), new Date())
@@ -91,7 +93,7 @@ const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
               <div className="flex items-center gap-2 mb-1">
                 <Calendar className="h-3 w-3 text-green-600" />
                 <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                  बुवाई / Sown
+                  {t('schedule.sowing')}
                 </span>
               </div>
               <p className="text-sm font-bold text-foreground">
@@ -104,7 +106,7 @@ const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
               <div className="flex items-center gap-2 mb-1">
                 <TrendingUp className="h-3 w-3 text-amber-600" />
                 <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                  कटाई / Harvest
+                  {t('schedule.harvest')}
                 </span>
               </div>
               <p className="text-sm font-bold text-foreground">
@@ -114,7 +116,7 @@ const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
               </p>
               {daysToHarvest !== null && daysToHarvest > 0 && (
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {daysToHarvest} days left
+                  {daysToHarvest} {t('schedule.daysRemaining')}
                 </p>
               )}
             </div>
@@ -125,7 +127,7 @@ const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
                 <div className="flex items-center gap-2 mb-1">
                   <TrendingUp className="h-3 w-3 text-green-600" />
                   <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                    उपज / Yield
+                    Yield
                   </span>
                 </div>
                 <p className="text-sm font-bold text-foreground">
@@ -140,7 +142,7 @@ const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
                 <div className="flex items-center gap-2 mb-1">
                   <IndianRupee className="h-3 w-3 text-orange-600" />
                   <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                    खर्च / Cost
+                    Cost
                   </span>
                 </div>
                 <p className="text-sm font-bold text-foreground">

@@ -24,18 +24,18 @@ interface ScheduleGeneratorProps {
 }
 
 const popularCrops = [
-  { value: 'rice', label: 'Rice (धान)', season: 'Kharif' },
-  { value: 'wheat', label: 'Wheat (गेहूं)', season: 'Rabi' },
-  { value: 'cotton', label: 'Cotton (कपास)', season: 'Kharif' },
-  { value: 'sugarcane', label: 'Sugarcane (गन्ना)', season: 'All' },
-  { value: 'maize', label: 'Maize (मक्का)', season: 'Kharif' },
-  { value: 'soybean', label: 'Soybean (सोयाबीन)', season: 'Kharif' },
-  { value: 'groundnut', label: 'Groundnut (मूंगफली)', season: 'Kharif' },
-  { value: 'pulses', label: 'Pulses (दाल)', season: 'Both' },
-  { value: 'potato', label: 'Potato (आलू)', season: 'Rabi' },
-  { value: 'onion', label: 'Onion (प्याज)', season: 'Both' },
-  { value: 'tomato', label: 'Tomato (टमाटर)', season: 'All' },
-  { value: 'chilli', label: 'Chilli (मिर्च)', season: 'Both' },
+  { value: 'rice', label: 'Rice', season: 'Kharif' },
+  { value: 'wheat', label: 'Wheat', season: 'Rabi' },
+  { value: 'cotton', label: 'Cotton', season: 'Kharif' },
+  { value: 'sugarcane', label: 'Sugarcane', season: 'All' },
+  { value: 'maize', label: 'Maize', season: 'Kharif' },
+  { value: 'soybean', label: 'Soybean', season: 'Kharif' },
+  { value: 'groundnut', label: 'Groundnut', season: 'Kharif' },
+  { value: 'pulses', label: 'Pulses', season: 'Both' },
+  { value: 'potato', label: 'Potato', season: 'Rabi' },
+  { value: 'onion', label: 'Onion', season: 'Both' },
+  { value: 'tomato', label: 'Tomato', season: 'All' },
+  { value: 'chilli', label: 'Chilli', season: 'Both' },
 ];
 
 const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({ 

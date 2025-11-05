@@ -289,10 +289,10 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                   <Clock className="h-4 w-4 text-primary" />
-                  आज के काम / Today's Tasks
+                  {i18n.t('schedule.todaysTasks')}
                 </h3>
                 <Badge variant="destructive" className="text-[10px]">
-                  {todayTasks.length} Pending
+                  {todayTasks.length} {i18n.t('schedule.pending')}
                 </Badge>
               </div>
               <div className="space-y-2">
@@ -340,17 +340,17 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
             <div className="grid grid-cols-3 gap-2 text-center">
               <div className="bg-primary/10 rounded-lg p-3">
                 <p className="text-2xl font-bold text-primary">{upcomingCount}</p>
-                <p className="text-[10px] text-muted-foreground font-medium">Upcoming</p>
+                <p className="text-[10px] text-muted-foreground font-medium">{i18n.t('schedule.upcoming')}</p>
               </div>
               <div className="bg-success/10 rounded-lg p-3">
                 <p className="text-2xl font-bold text-success">{completedTasks.length}</p>
-                <p className="text-[10px] text-muted-foreground font-medium">Complete</p>
+                <p className="text-[10px] text-muted-foreground font-medium">{i18n.t('schedule.complete')}</p>
               </div>
               <div className="bg-destructive/10 rounded-lg p-3">
                 <p className="text-2xl font-bold text-destructive">
                   {pendingTasks.filter(t => isPast(new Date(t.task_date))).length}
                 </p>
-                <p className="text-[10px] text-muted-foreground font-medium">Overdue</p>
+                <p className="text-[10px] text-muted-foreground font-medium">{i18n.t('schedule.overdue')}</p>
               </div>
             </div>
 
@@ -362,7 +362,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               className="w-full mt-3 bg-background/60 backdrop-blur-sm border-primary/20 hover:bg-primary/10"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh Schedule
+              {i18n.t('schedule.refreshSchedule')}
             </Button>
           </div>
         </Card>
@@ -372,21 +372,21 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       <div className="px-4 pb-20">
         <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as any)} className="mt-4">
           <TabsList className="grid w-full grid-cols-4 bg-background/60 backdrop-blur-sm">
-            <TabsTrigger value="today" className="text-xs">Today</TabsTrigger>
-            <TabsTrigger value="week" className="text-xs">Week</TabsTrigger>
-            <TabsTrigger value="month" className="text-xs">Month</TabsTrigger>
-            <TabsTrigger value="all" className="text-xs">All</TabsTrigger>
+            <TabsTrigger value="today" className="text-xs">{i18n.t('schedule.today')}</TabsTrigger>
+            <TabsTrigger value="week" className="text-xs">{i18n.t('schedule.week')}</TabsTrigger>
+            <TabsTrigger value="month" className="text-xs">{i18n.t('schedule.month')}</TabsTrigger>
+            <TabsTrigger value="all" className="text-xs">{i18n.t('schedule.all')}</TabsTrigger>
           </TabsList>
 
           <TabsContent value={viewMode} className="mt-3 space-y-3">
             {filteredTasks.length === 0 ? (
               <Card className="p-8 text-center">
                 <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-                <p className="text-sm text-muted-foreground">No tasks for this period</p>
+                <p className="text-sm text-muted-foreground">{i18n.t('schedule.noTasks')}</p>
               </Card>
             ) : (
               <div className="space-y-3">
-                {viewMode === 'week' || viewMode === 'month' ? (
+                {viewMode === 'week' || viewMode === 'month' || viewMode === 'all' ? (
                   <TaskTimeline tasks={filteredTasks} onTaskClick={(task: any) => setSelectedTask(task as ScheduleTask)} />
                 ) : (
                   <div className="grid gap-3">
