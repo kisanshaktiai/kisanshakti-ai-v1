@@ -77,56 +77,23 @@ Provide explainable reasoning for each decision and ensure all recommendations a
 
     const userPrompt = `Generate a comprehensive crop schedule for:
 
-**CROP DETAILS:**
-- Crop: ${cropName}${cropVariety ? ` (Variety: ${cropVariety})` : ''}
-- Sowing Date: ${sowingDate}
+**CROP:** ${cropName}${cropVariety ? ` (${cropVariety})` : ''}
+**SOWING DATE:** ${sowingDate}
 
-**LAND DETAILS:**
-- Location: ${land.village || land.taluka || land.district || 'Not specified'}, ${land.district || ''}, ${land.state || ''}
-- Area: ${land.area_acres || 'N/A'} acres${land.area_guntas ? ` (${land.area_guntas} guntas)` : ''}
-- Soil Type: ${land.soil_type || 'Not specified'}
-- Soil pH: ${land.soil_ph || 'Not specified'}
-- NPK Levels: N=${land.nitrogen_kg_per_ha || '?'} kg/ha, P=${land.phosphorus_kg_per_ha || '?'} kg/ha, K=${land.potassium_kg_per_ha || '?'} kg/ha
-- Irrigation: ${land.irrigation_type || 'Not specified'}
-- Water Source: ${land.water_source || 'Not specified'}
+**LAND:**
+- Location: ${land.village || land.taluka || land.district}, ${land.district}, ${land.state}
+- Area: ${land.area_acres} acres
+- Soil: ${land.soil_type}, pH ${land.soil_ph || 'unknown'}
+- NPK: N=${land.nitrogen_kg_per_ha || '?'}, P=${land.phosphorus_kg_per_ha || '?'}, K=${land.potassium_kg_per_ha || '?'} kg/ha
+- Irrigation: ${land.irrigation_type}
 
-**WEATHER FORECAST:**
-${JSON.stringify(weather || {}, null, 2)}
+${weather ? `**WEATHER:** ${weather.current?.description || 'N/A'}, ${weather.current?.temp || '?'}°C` : ''}
 
-${guidelines ? `**EXPERT GUIDELINES:**
-- Growth Duration: ${guidelines.growth_duration_days} days
-- Optimal Temperature: ${guidelines.optimal_temp_min}°C - ${guidelines.optimal_temp_max}°C
-- Water Requirement: ${guidelines.water_requirement_mm}mm
-- Best Practices: ${guidelines.best_practices}
-- Common Pests: ${JSON.stringify(guidelines.common_pests)}
-- Common Diseases: ${JSON.stringify(guidelines.common_diseases)}` : ''}
+${guidelines ? `**GUIDELINES:** ${guidelines.growth_duration_days} days, ${guidelines.optimal_temp_min}-${guidelines.optimal_temp_max}°C, ${guidelines.water_requirement_mm}mm water` : ''}
 
-${ndviData && ndviData.length > 0 ? `**RECENT NDVI DATA:**
-${ndviData.map((n: any) => `- Date: ${n.cached_at}, NDVI: ${n.ndvi_value}`).join('\n')}` : ''}
+${ndviData && ndviData.length > 0 ? `**RECENT NDVI:** ${ndviData.map((n: any) => `${n.ndvi_value}`).join(', ')}` : ''}
 
-Generate a JSON schedule with this EXACT structure:
-{
-  "crop_name": "string",
-  "total_duration_days": number,
-  "confidence_score": 0-1,
-  "ai_reasoning": "detailed explanation of all decisions made",
-  "risk_factors": ["list of potential risks"],
-  "optimization_notes": "notes on how this schedule is optimized",
-  "tasks": [
-    {
-      "task_name": "string",
-      "category": "irrigation|fertilizer|pest_control|disease_control|weed_management|harvesting|soil_preparation",
-      "days_from_sowing": number,
-      "priority": "low|medium|high|critical",
-      "description": "detailed instructions in simple language",
-      "reason": "why this task at this time",
-      "inputs_needed": ["list of materials/inputs"],
-      "estimated_cost": number,
-      "weather_dependency": "how weather affects this task",
-      "success_indicators": ["what to look for"]
-    }
-  ]
-}`;
+Create 8-12 critical tasks covering: soil preparation, sowing, irrigation schedule, fertilization, pest control, disease management, weed control, and harvesting. Be specific and practical for Indian farming conditions.`;
 
     // 5. Validate critical data before calling OpenAI
     console.log('Validating land data:', {
@@ -140,14 +107,12 @@ Generate a JSON schedule with this EXACT structure:
       console.warn('Missing area_acres - this may affect AI quality');
     }
 
-    // 6. Call OpenAI GPT-5-mini with explicit JSON instructions
-    const enhancedUserPrompt = userPrompt + '\n\nIMPORTANT: Return ONLY valid JSON in the exact structure specified above. Do not include any explanatory text before or after the JSON.';
-    
+    // 6. Call OpenAI GPT-5-mini with tool calling
     const requestBody = {
       model: 'gpt-5-mini-2025-08-07',
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: enhancedUserPrompt }
+        { role: 'user', content: userPrompt }
       ],
       tools: [{
         type: "function",
