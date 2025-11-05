@@ -33,22 +33,27 @@ class OfflineDataService {
         
         // Save to local DB for offline access
         if (data && data.length > 0) {
+          // Get tenant_id from auth store
+          const { user } = await import('@/stores/authStore').then(m => m.useAuthStore.getState());
+          const tenantId = user?.tenantId || '';
+          const farmerId = user?.id || '';
+          
           await localDB.bulkSave({
             lands: data.map(l => ({
               id: l.id!,
-              farmer_id: l.id!, // Using land id as farmer reference for now
+              tenant_id: tenantId,
+              farmer_id: farmerId,
               name: l.name,
               area_acres: l.area_acres,
               ownership_type: l.ownership_type,
+              state: l.state,
+              district: l.district,
+              village: l.village,
+              soil_type: l.soil_type,
+              water_source: l.water_source,
               crops: l.current_crop ? [l.current_crop] : [],
               boundary: l.boundary_polygon_old,
-              metadata: {
-                state: l.state,
-                district: l.district,
-                village: l.village,
-                soil_type: l.soil_type,
-                water_source: l.water_source,
-              },
+              metadata: {},
               lastModified: Date.now(),
               syncStatus: 'synced' as const,
             })),
@@ -92,9 +97,13 @@ class OfflineDataService {
           await localDB.bulkSave({
             schedules: data.map(s => ({
               id: s.id,
+              tenant_id: s.tenant_id || '',
+              farmer_id: s.farmer_id || '',
               land_id: s.land_id,
-              crop_id: s.crop_name,
+              crop_name: s.crop_name,
+              sowing_date: s.sowing_date || new Date().toISOString(),
               tasks: (s.generation_params as any)?.tasks || [],
+              generation_params: s.generation_params,
               lastModified: new Date(s.updated_at || s.created_at).getTime(),
               syncStatus: 'synced',
             })),

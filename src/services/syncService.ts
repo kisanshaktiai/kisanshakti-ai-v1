@@ -362,6 +362,7 @@ class SyncService {
         await localDB.bulkSave({
           farmers: farmers.map(f => ({
             id: f.id,
+            tenant_id: tenantId,
             name: f.farmer_name || '',
             phone: f.mobile_number || '',
             address: f.location,
@@ -383,10 +384,16 @@ class SyncService {
         await localDB.bulkSave({
           lands: lands.map(l => ({
             id: l.id,
+            tenant_id: tenantId,
             farmer_id: l.farmer_id,
             name: l.name,
             area_acres: l.area_acres,
             ownership_type: l.ownership_type,
+            state: l.state,
+            district: l.district,
+            village: l.village,
+            soil_type: l.soil_type,
+            water_source: l.water_source,
             crops: l.current_crop ? [l.current_crop] : [],
             boundary: l.boundary,
             metadata: {},
@@ -407,9 +414,13 @@ class SyncService {
         await localDB.bulkSave({
           schedules: schedules.map(s => ({
             id: s.id,
+            tenant_id: tenantId,
+            farmer_id: s.farmer_id,
             land_id: s.land_id,
-            crop_id: s.crop_name,
+            crop_name: s.crop_name,
+            sowing_date: s.sowing_date || new Date().toISOString(),
             tasks: (s.generation_params as any)?.tasks || [],
+            generation_params: s.generation_params,
             lastModified: new Date(s.updated_at || s.created_at).getTime(),
             syncStatus: 'synced' as const,
           })),
