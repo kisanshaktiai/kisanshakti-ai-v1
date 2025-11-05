@@ -6,6 +6,7 @@ import { ArrowLeft, Calendar, Plus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
+import { useTenantStore } from '@/stores/tenantStore';
 import { landsApi } from '@/services/landsApi';
 import LandSelector from '@/components/schedule/LandSelector';
 import CropDateInput from '@/components/schedule/CropDateInput';
@@ -36,6 +37,7 @@ export default function Schedule() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, session } = useAuthStore();
+  const { tenant } = useTenantStore();
   const [lands, setLands] = useState<Land[]>([]);
   const [selectedLand, setSelectedLand] = useState<Land | null>(null);
   const [loading, setLoading] = useState(true);
@@ -117,23 +119,23 @@ export default function Schedule() {
         console.error('Error deactivating old schedules:', deactivateError);
       }
 
-      // Fetch weather data if available
-      const weatherData = null; // Can be integrated with weather API later
+      // Fetch weather data if available (placeholder for now)
+      const weatherData = {
+        current: { temp: 25, humidity: 60, conditions: 'Clear' },
+        forecast: []
+      };
 
-      // Call edge function to generate schedule
-      const response = await supabase.functions.invoke('generate-crop-schedule', {
+      // Call the updated ai-smart-schedule edge function
+      const response = await supabase.functions.invoke('ai-smart-schedule', {
         body: {
           landId: selectedLand.id,
           cropName,
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
-          weatherData,
-          regenerate: false,
-        },
-        headers: {
-          'x-tenant-id': user?.tenantId || '',
-          'x-farmer-id': user?.id || '',
-          'x-session-token': session?.token || '',
+          weather: weatherData,
+          regenerate: true,
+          tenantId: tenant?.id || user?.tenantId || '',
+          farmerId: user?.id || '',
         },
       });
 
