@@ -149,8 +149,62 @@ Generate a JSON schedule with this EXACT structure:
         { role: 'system', content: systemPrompt },
         { role: 'user', content: enhancedUserPrompt }
       ],
-      response_format: { type: 'json_object' },
-      max_completion_tokens: 8192,  // Increased to allow full JSON response generation
+      tools: [{
+        type: "function",
+        function: {
+          name: "create_crop_schedule",
+          description: "Generate a comprehensive agricultural crop schedule with tasks and recommendations",
+          parameters: {
+            type: "object",
+            properties: {
+              crop_name: { type: "string", description: "Name of the crop" },
+              total_duration_days: { type: "integer", description: "Total growing duration in days" },
+              confidence_score: { type: "number", minimum: 0, maximum: 1, description: "Confidence in recommendations (0-1)" },
+              ai_reasoning: { type: "string", description: "Brief explanation of key decisions" },
+              risk_factors: { 
+                type: "array", 
+                items: { type: "string" },
+                description: "List of potential risks"
+              },
+              optimization_notes: { type: "string", description: "Notes on schedule optimization" },
+              tasks: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    task_name: { type: "string" },
+                    category: { 
+                      type: "string",
+                      enum: ["irrigation", "fertilizer", "pest_control", "disease_control", "weed_management", "harvesting", "soil_preparation"]
+                    },
+                    days_from_sowing: { type: "integer" },
+                    priority: { 
+                      type: "string",
+                      enum: ["low", "medium", "high", "critical"]
+                    },
+                    description: { type: "string" },
+                    reason: { type: "string" },
+                    inputs_needed: { 
+                      type: "array",
+                      items: { type: "string" }
+                    },
+                    estimated_cost: { type: "number" },
+                    weather_dependency: { type: "string" },
+                    success_indicators: {
+                      type: "array",
+                      items: { type: "string" }
+                    }
+                  },
+                  required: ["task_name", "category", "days_from_sowing", "priority", "description"]
+                }
+              }
+            },
+            required: ["crop_name", "total_duration_days", "tasks", "confidence_score"]
+          }
+        }
+      }],
+      tool_choice: { type: "function", function: { name: "create_crop_schedule" } },
+      max_completion_tokens: 8192,
     };
     
     console.log('Calling OpenAI API with model:', requestBody.model);
@@ -203,20 +257,20 @@ Generate a JSON schedule with this EXACT structure:
       throw new Error('OpenAI API returned invalid response structure');
     }
 
-    // Log full message object for debugging
-    console.log('Message object:', JSON.stringify(aiData.choices[0].message));
+    // Extract from tool call instead of message content
+    const message = aiData.choices[0].message;
 
-    const messageContent = aiData.choices[0].message.content;
-    if (!messageContent || messageContent.trim() === '') {
-      console.error('Empty content in OpenAI response');
-      console.error('Full message object:', JSON.stringify(aiData.choices[0].message));
-      console.error('Was refusal present?:', aiData.choices[0].message.refusal);
+    // Check if tool call exists
+    if (!message.tool_calls || message.tool_calls.length === 0) {
+      console.error('No tool call in OpenAI response');
+      console.error('Full message:', JSON.stringify(message));
       console.error('Finish reason:', aiData.choices[0].finish_reason);
-      throw new Error('OpenAI API returned empty content. This may indicate the prompt was too complex or the model refused to generate.');
+      throw new Error('OpenAI did not return a tool call. The model may not support function calling.');
     }
 
-    console.log('Message content length:', messageContent.length);
-    console.log('Message content (first 1000 chars):', messageContent.substring(0, 1000));
+    const toolCall = message.tool_calls[0];
+    console.log('✓ Tool call received:', toolCall.function.name);
+    console.log('✓ Arguments length:', toolCall.function.arguments.length);
 
     // Log token usage for monitoring
     if (aiData.usage) {
@@ -224,7 +278,8 @@ Generate a JSON schedule with this EXACT structure:
         prompt_tokens: aiData.usage.prompt_tokens,
         completion_tokens: aiData.usage.completion_tokens,
         total_tokens: aiData.usage.total_tokens,
-        finish_reason: aiData.choices[0].finish_reason
+        finish_reason: aiData.choices[0].finish_reason,
+        used_tool_call: true
       });
       
       // Warn if approaching limit
@@ -239,19 +294,29 @@ Generate a JSON schedule with this EXACT structure:
       }
     }
 
-    // Parse the schedule data from the AI response
+    // Parse the schedule data from tool call arguments
     let scheduleData;
     try {
-      scheduleData = JSON.parse(messageContent);
-      console.log('✓ Schedule data parsed successfully');
-      console.log('✓ Tasks count:', scheduleData.tasks?.length || 0);
+      scheduleData = JSON.parse(toolCall.function.arguments);
+      console.log('✓ Schedule data parsed successfully from tool call');
       console.log('✓ Crop:', scheduleData.crop_name);
       console.log('✓ Duration:', scheduleData.total_duration_days, 'days');
+      console.log('✓ Tasks count:', scheduleData.tasks?.length || 0);
       console.log('✓ Confidence:', scheduleData.confidence_score);
-    } catch (contentParseError) {
-      console.error('Failed to parse AI message content as JSON:', contentParseError);
-      console.error('Full content was:', messageContent);
+    } catch (parseError) {
+      console.error('Failed to parse tool call arguments as JSON:', parseError);
+      console.error('Raw arguments:', toolCall.function.arguments);
       throw new Error('AI returned invalid JSON format for schedule');
+    }
+
+    // Validate required fields
+    if (!scheduleData.crop_name || !scheduleData.tasks || scheduleData.tasks.length === 0) {
+      console.error('Invalid schedule structure:', {
+        hasCropName: !!scheduleData.crop_name,
+        hasTasks: !!scheduleData.tasks,
+        taskCount: scheduleData.tasks?.length || 0
+      });
+      throw new Error('AI returned incomplete schedule data');
     }
 
     // 6. Deactivate old schedules if regenerating
