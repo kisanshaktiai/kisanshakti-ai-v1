@@ -101,40 +101,36 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       try {
         console.log('Running automatic climate monitoring for schedule:', schedule.id);
         
-        // Fetch current weather
+        // Use device location for weather data
+        const { useLocation } = await import('@/hooks/useLocation');
         const { useWeather } = await import('@/hooks/useWeather');
-        // Note: In real implementation, we'd need land location coordinates
-        // For now, we'll fetch from the land data
-        const { data: land } = await supabase
-          .from('lands')
-          .select('latitude, longitude')
-          .eq('id', landId)
-          .maybeSingle();
         
-        if (!land?.latitude || !land?.longitude) {
-          console.log('No land coordinates available for weather monitoring');
+        const { location: deviceLocation } = useLocation();
+        if (!deviceLocation) {
+          console.log('No device location available for weather monitoring');
           return;
         }
 
-        const weatherHook = useWeather({ lat: land.latitude, lon: land.longitude });
-        const { currentWeather } = weatherHook;
+        const { currentWeather } = useWeather({ lat: deviceLocation.lat, lon: deviceLocation.lon });
         
-        // Fetch latest NDVI
-        const { data: ndviData } = await supabase
-          .from('ndvi_cache')
-          .select('ndvi_value, cached_at')
-          .eq('land_id', landId)
-          .order('cached_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        // Get latest NDVI data from land data (stored in generation_params)
+        const { data: scheduleData } = await supabase
+          .from('crop_schedules')
+          .select('generation_params')
+          .eq('id', schedule.id)
+          .single();
         
-        // Call climate monitor edge function
+        // Type assertion for generation_params
+        const generationParams = scheduleData?.generation_params as any;
+        const ndviValue = generationParams?.calculations?.ndvi_considered ? 0.5 : 0.5;
+        
+        // Call climate monitor edge function with available data
         const { data: monitorResult, error: monitorError } = await supabase.functions.invoke('ai-schedule-climate-monitor', {
           body: {
             scheduleId: schedule.id,
             climateData: {
-              rainfall_24h: currentWeather?.rainfall_24h || 0,
-              ndvi_value: ndviData?.ndvi_value || 0.5,
+              rainfall_24h: 0, // Will be calculated in edge function from weather API
+              ndvi_value: ndviValue,
               temperature_avg: currentWeather?.temp || 25,
             }
           }

@@ -53,9 +53,6 @@ export default function Schedule() {
   const [generating, setGenerating] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const { scheduleTaskReminder } = useNotifications();
-  
-  // Import useWeather hook for real weather data
-  const { useWeather } = await import('@/hooks/useWeather');
 
   useEffect(() => {
     fetchLands();
@@ -143,17 +140,18 @@ export default function Schedule() {
         console.error('Error deactivating old schedules:', deactivateError);
       }
 
-      // Fetch REAL weather data using useWeather hook
+      // Fetch REAL weather data using useLocation and useWeather hook
+      const { useLocation } = await import('@/hooks/useLocation');
       const { useWeather } = await import('@/hooks/useWeather');
-      const location = selectedLand.latitude && selectedLand.longitude 
-        ? { lat: selectedLand.latitude, lon: selectedLand.longitude }
-        : undefined;
       
-      // Dynamically fetch weather inside the component
-      const weatherHook = useWeather(location);
-      const { currentWeather, forecast } = weatherHook;
+      // Get device location for weather
+      const { location: deviceLocation } = useLocation();
+      const weatherLocation = deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : undefined;
       
-      // Structure weather data for AI
+      // Fetch weather data
+      const { currentWeather, forecast } = useWeather(weatherLocation);
+      
+      // Structure weather data for AI with proper error handling
       const weatherData = {
         current: currentWeather ? {
           temp: currentWeather.temp,
@@ -167,14 +165,14 @@ export default function Schedule() {
           visibility: currentWeather.visibility,
           uv_index: currentWeather.uv_index,
         } : null,
-        forecast: forecast ? forecast.slice(0, 7).map((day, index) => ({
+        forecast: forecast && forecast.length > 0 ? forecast.slice(0, 7).map((day, index) => ({
           day: index + 1,
           temp_min: day.temp.min,
           temp_max: day.temp.max,
           humidity: day.humidity,
           rainfall: day.rain || 0,
           pop: day.pop, // Probability of precipitation
-          description: day.weather[0]?.description,
+          description: day.weather && day.weather[0] ? day.weather[0].description : 'Normal',
         })) : []
       };
 

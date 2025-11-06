@@ -3653,6 +3653,7 @@ export type Database = {
       crop_schedules: {
         Row: {
           ai_model: string | null
+          calculated_for_area_acres: number | null
           completed_at: string | null
           country: string | null
           created_at: string | null
@@ -3660,6 +3661,9 @@ export type Database = {
           crop_variety: string | null
           expected_harvest_date: string | null
           farmer_id: string
+          fertilizer_k_kg: number | null
+          fertilizer_n_kg: number | null
+          fertilizer_p_kg: number | null
           generated_at: string | null
           generation_language: string | null
           generation_params: Json | null
@@ -3668,13 +3672,16 @@ export type Database = {
           land_id: string
           last_weather_update: string | null
           schedule_version: number | null
+          seed_quantity_kg: number | null
           sowing_date: string
           tenant_id: string
+          total_water_requirement_liters: number | null
           updated_at: string | null
           weather_data: Json | null
         }
         Insert: {
           ai_model?: string | null
+          calculated_for_area_acres?: number | null
           completed_at?: string | null
           country?: string | null
           created_at?: string | null
@@ -3682,6 +3689,9 @@ export type Database = {
           crop_variety?: string | null
           expected_harvest_date?: string | null
           farmer_id: string
+          fertilizer_k_kg?: number | null
+          fertilizer_n_kg?: number | null
+          fertilizer_p_kg?: number | null
           generated_at?: string | null
           generation_language?: string | null
           generation_params?: Json | null
@@ -3690,13 +3700,16 @@ export type Database = {
           land_id: string
           last_weather_update?: string | null
           schedule_version?: number | null
+          seed_quantity_kg?: number | null
           sowing_date: string
           tenant_id: string
+          total_water_requirement_liters?: number | null
           updated_at?: string | null
           weather_data?: Json | null
         }
         Update: {
           ai_model?: string | null
+          calculated_for_area_acres?: number | null
           completed_at?: string | null
           country?: string | null
           created_at?: string | null
@@ -3704,6 +3717,9 @@ export type Database = {
           crop_variety?: string | null
           expected_harvest_date?: string | null
           farmer_id?: string
+          fertilizer_k_kg?: number | null
+          fertilizer_n_kg?: number | null
+          fertilizer_p_kg?: number | null
           generated_at?: string | null
           generation_language?: string | null
           generation_params?: Json | null
@@ -3712,8 +3728,10 @@ export type Database = {
           land_id?: string
           last_weather_update?: string | null
           schedule_version?: number | null
+          seed_quantity_kg?: number | null
           sowing_date?: string
           tenant_id?: string
+          total_water_requirement_liters?: number | null
           updated_at?: string | null
           weather_data?: Json | null
         }
