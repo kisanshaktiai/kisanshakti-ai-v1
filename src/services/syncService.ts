@@ -109,8 +109,8 @@ class SyncService {
         await this.syncLands(pendingChanges.lands, result, tenantId);
       }
 
-      if (pendingChanges.chatMessages.length > 0) {
-        await this.syncChatMessages(pendingChanges.chatMessages, result);
+      if (pendingChanges.messages.length > 0) {
+        await this.syncChatMessages(pendingChanges.messages, result);
       }
 
       // 2. Download latest data from server
@@ -125,7 +125,7 @@ class SyncService {
       if (showToast) {
         toast({
           title: 'Sync Complete',
-          description: `${pendingChanges.farmers.length + pendingChanges.lands.length + pendingChanges.schedules.length + pendingChanges.chatMessages.length} changes synced`,
+          description: `${pendingChanges.farmers.length + pendingChanges.lands.length + pendingChanges.schedules.length + pendingChanges.messages.length} changes synced`,
         });
       }
 
@@ -213,8 +213,8 @@ class SyncService {
     }
 
     // Mark synced items
-    if (syncedIds.length > 0) {
-      await localDB.markAsSynced('farmers', syncedIds);
+    for (const id of syncedIds) {
+      await localDB.markAsSynced('farmer', id);
     }
   }
 
@@ -274,8 +274,8 @@ class SyncService {
       }
     }
 
-    if (syncedIds.length > 0) {
-      await localDB.markAsSynced('lands', syncedIds);
+    for (const id of syncedIds) {
+      await localDB.markAsSynced('land', id);
     }
   }
 
@@ -335,17 +335,16 @@ class SyncService {
       }
     }
 
-    if (syncedIds.length > 0) {
-      await localDB.markAsSynced('schedules', syncedIds);
+    for (const id of syncedIds) {
+      await localDB.markAsSynced('schedule', id);
     }
   }
 
   private async syncChatMessages(messages: any[], result: SyncResult): Promise<void> {
     // Chat messages are stored locally only for now
     // Mark them as synced since there's no server table yet
-    const syncedIds = messages.map(m => m.id);
-    if (syncedIds.length > 0) {
-      await localDB.markAsSynced('chatMessages', syncedIds);
+    for (const message of messages) {
+      await localDB.markAsSynced('message', message.id);
     }
   }
 
@@ -363,10 +362,58 @@ class SyncService {
           farmers: farmers.map(f => ({
             id: f.id,
             tenant_id: tenantId,
-            name: f.farmer_name || '',
-            phone: f.mobile_number || '',
-            address: f.location,
+            farmer_name: f.farmer_name,
+            farmer_code: f.farmer_code,
+            mobile_number: f.mobile_number,
+            aadhaar_number: f.aadhaar_number,
+            shc_id: f.shc_id,
+            location: f.location,
+            pin: f.pin,
+            pin_hash: f.pin_hash,
+            pin_updated_at: f.pin_updated_at,
+            failed_login_attempts: f.failed_login_attempts,
+            last_failed_login: f.last_failed_login,
+            last_login_at: f.last_login_at,
+            login_attempts: f.login_attempts,
+            farming_experience_years: f.farming_experience_years,
+            farm_type: f.farm_type,
+            total_land_acres: f.total_land_acres,
+            primary_crops: f.primary_crops,
+            annual_income_range: f.annual_income_range,
+            has_loan: f.has_loan,
+            loan_amount: f.loan_amount,
+            has_tractor: f.has_tractor,
+            has_irrigation: f.has_irrigation,
+            irrigation_type: f.irrigation_type,
+            has_storage: f.has_storage,
+            associated_tenants: f.associated_tenants,
+            preferred_dealer_id: f.preferred_dealer_id,
+            is_verified: f.is_verified,
+            verified_at: f.verified_at,
+            verified_by: f.verified_by,
+            verification_documents: f.verification_documents,
+            app_install_date: f.app_install_date,
+            last_app_open: f.last_app_open,
+            total_app_opens: f.total_app_opens,
+            total_queries: f.total_queries,
+            language_preference: f.language_preference,
+            preferred_contact_method: f.preferred_contact_method,
+            notes: f.notes,
             metadata: f.metadata,
+            seller_profile: f.seller_profile,
+            seller_rating: f.seller_rating,
+            seller_verified: f.seller_verified,
+            total_sales: f.total_sales,
+            store_name: f.store_name,
+            store_description: f.store_description,
+            current_subscription_id: f.current_subscription_id,
+            subscription_status: f.subscription_status,
+            subscription_expires_at: f.subscription_expires_at,
+            is_active: f.is_active,
+            archived: f.archived,
+            user_profile_id: f.user_profile_id,
+            created_at: f.created_at,
+            updated_at: f.updated_at,
             lastModified: new Date(f.updated_at || f.created_at).getTime(),
             syncStatus: 'synced' as const,
           })),
@@ -388,15 +435,70 @@ class SyncService {
             farmer_id: l.farmer_id,
             name: l.name,
             area_acres: l.area_acres,
-            ownership_type: l.ownership_type,
+            area_guntas: l.area_guntas,
+            area_sqft: l.area_sqft,
             state: l.state,
+            state_id: l.state_id,
             district: l.district,
+            district_id: l.district_id,
+            taluka: l.taluka,
+            taluka_id: l.taluka_id,
             village: l.village,
-            soil_type: l.soil_type,
-            water_source: l.water_source,
-            crops: l.current_crop ? [l.current_crop] : [],
+            village_id: l.village_id,
+            survey_number: l.survey_number,
             boundary: l.boundary,
-            metadata: {},
+            boundary_geom: l.boundary_geom,
+            boundary_polygon_old: l.boundary_polygon_old,
+            boundary_method: l.boundary_method,
+            center_lat: l.center_lat,
+            center_lon: l.center_lon,
+            center_point_old: l.center_point_old,
+            location_coords: l.location_coords,
+            location_context: l.location_context,
+            gps_accuracy_meters: l.gps_accuracy_meters,
+            gps_recorded_at: l.gps_recorded_at,
+            elevation_meters: l.elevation_meters,
+            slope_percentage: l.slope_percentage,
+            ownership_type: l.ownership_type,
+            land_type: l.land_type,
+            soil_type: l.soil_type,
+            soil_tested: l.soil_tested,
+            last_soil_test_date: l.last_soil_test_date,
+            soil_ph: l.soil_ph,
+            organic_carbon_percent: l.organic_carbon_percent,
+            nitrogen_kg_per_ha: l.nitrogen_kg_per_ha,
+            phosphorus_kg_per_ha: l.phosphorus_kg_per_ha,
+            potassium_kg_per_ha: l.potassium_kg_per_ha,
+            water_source: l.water_source,
+            irrigation_source: l.irrigation_source,
+            irrigation_type: l.irrigation_type,
+            current_crop: l.current_crop,
+            current_crop_id: l.current_crop_id,
+            crop_stage: l.crop_stage,
+            planting_date: l.planting_date,
+            cultivation_date: l.cultivation_date,
+            last_sowing_date: l.last_sowing_date,
+            harvest_date: l.harvest_date,
+            expected_harvest_date: l.expected_harvest_date,
+            previous_crop: l.previous_crop,
+            previous_crop_id: l.previous_crop_id,
+            last_crop: l.last_crop,
+            last_harvest_date: l.last_harvest_date,
+            ndvi_tested: l.ndvi_tested,
+            last_ndvi_calculation: l.last_ndvi_calculation,
+            last_ndvi_value: l.last_ndvi_value,
+            ndvi_thumbnail_url: l.ndvi_thumbnail_url,
+            last_processed_at: l.last_processed_at,
+            tile_id: l.tile_id,
+            tile_ids: l.tile_ids,
+            mgrs_tile_id: l.mgrs_tile_id,
+            land_documents: l.land_documents,
+            notes: l.notes,
+            marketplace_enabled: l.marketplace_enabled,
+            is_active: l.is_active,
+            deleted_at: l.deleted_at,
+            created_at: l.created_at,
+            updated_at: l.updated_at,
             lastModified: new Date(l.updated_at || l.created_at).getTime(),
             syncStatus: 'synced' as const,
           })),
@@ -418,11 +520,21 @@ class SyncService {
             farmer_id: s.farmer_id,
             land_id: s.land_id,
             crop_name: s.crop_name,
+            crop_variety: s.crop_variety,
             sowing_date: s.sowing_date || new Date().toISOString(),
-            tasks: (s.generation_params as any)?.tasks || [],
-            generation_params: s.generation_params,
+            expected_harvest_date: s.expected_harvest_date,
+            schedule_version: s.schedule_version,
+            generated_at: s.generated_at,
             generation_language: s.generation_language,
+            generation_params: s.generation_params,
             country: s.country,
+            last_weather_update: s.last_weather_update,
+            weather_data: s.weather_data,
+            ai_model: s.ai_model,
+            is_active: s.is_active,
+            completed_at: s.completed_at,
+            created_at: s.created_at,
+            updated_at: s.updated_at,
             lastModified: new Date(s.updated_at || s.created_at).getTime(),
             syncStatus: 'synced' as const,
           })),
