@@ -17,6 +17,7 @@ import TaskTimeline from './TaskTimeline';
 import ModernTaskCard from './ModernTaskCard';
 import TaskActionDialog from './TaskActionDialog';
 import ClimateAlertBanner from './ClimateAlertBanner';
+import { TaskStatisticsWidget } from './TaskStatisticsWidget';
 
 interface CropSchedule {
   id: string;
@@ -389,6 +390,9 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
         {/* Climate Alert Banner */}
         <ClimateAlertBanner data={climateData} />
+
+        {/* Task Statistics Widget */}
+        <TaskStatisticsWidget scheduleId={schedule.id} className="mb-3" />
 
         {/* Today's Priority Tasks - Big & Clear for Farmers */}
         {todayTasks.length > 0 && (
