@@ -242,9 +242,6 @@ READY-MADE PLANT SPECIFIC ADJUSTMENTS:
 5. Weather-adaptive: If rain >10mm predicted, postpone irrigation by 2-3 days
 6. NDVI-adaptive: If crop stress detected (NDVI <0.4), advance and increase nitrogen dose
 7. Include: Land prep, sowing, irrigation (6-8 times), fertilizer (2-3 splits), pest control (2-3 times), weeding (2 times), harvest
-`}
-10. ALL content in pure ${languageName} language - task names, descriptions, instructions in ${languageName} ONLY
-
 **CRITICAL: COMPREHENSIVE INPUT CALCULATIONS REQUIRED**
 
 A. YIELD & ECONOMICS:
@@ -254,58 +251,29 @@ A. YIELD & ECONOMICS:
 - Calculate: expected_net_profit = revenue - total_costs
 - Include profit margin percentage
 
-B. ORGANIC INPUTS (REQUIRED FOR SUSTAINABLE FARMING):
-- FYM/Compost: 5-10 tonnes/acre as basal application
-- Vermicompost: 1-2 tonnes/acre for soil health
-- Bio-fertilizers: Rhizobium/Azotobacter/PSB packets (200-250g/acre)
-- Green manure: If applicable (Dhaincha, Sesbania)
-- Organic amendments: Neem cake (100-200 kg/acre), bone meal
-- Application timing: Basal, pre-flowering, fruiting stages
-- Benefits: Soil health, microbial activity, long-term fertility
+B. ORGANIC INPUTS (provide simple totals):
+- organic_fertilizer_kg: Total FYM/Compost in kg for entire season
+- bio_fertilizer_units: Number of bio-fertilizer packets (Rhizobium/Azotobacter/PSB)
+- vermicompost_kg: Total vermicompost in kg
+- Application: Basal + top-dressing stages
 
-C. INTEGRATED PEST MANAGEMENT (IPM):
-Research common pests/diseases for ${cropName} in ${land.state}:
+C. PEST MANAGEMENT (provide season totals):
+- insecticide_ml: Total insecticide needed (ml) - for aphids, stem borer, etc.
+- fungicide_gm: Total fungicide needed (grams) - for blast, blight, etc.
+- herbicide_ml: Total herbicide needed (ml) - pre/post-emergence
+- bio_pesticide_ml: Total bio-pesticide (Neem oil, etc.) in ml
+Research common pests/diseases for ${cropName} in ${land.state}
 
-1. **Preventive (Bio-pesticides - ALWAYS RECOMMEND FIRST)**:
-   - Neem oil: 3-5 ml/liter, spray every 10-15 days
-   - Pongamia oil: 3 ml/liter for sucking pests
-   - Beauveria bassiana: For white grubs, cutworms
-   - Trichoderma: For soil-borne diseases
-   - NPV (Nuclear Polyhedrosis Virus): For caterpillars
-   
-2. **Chemical (ONLY IF NEEDED - based on pest threshold)**:
-   - **Insecticides**: Specify for aphids, stem borer, bollworm, etc.
-     Examples: Imidacloprid 200ml/acre, Chlorpyriphos 500ml/acre
-   - **Fungicides**: For blast, blight, wilt
-     Examples: Mancozeb 400g/acre, Carbendazim 200g/acre
-   - **Herbicides**: Pre-emergence/post-emergence
-     Examples: Pendimethalin 1L/acre, 2,4-D 500ml/acre
-   
-3. Calculate total quantities for entire season (multiple applications)
+D. GROWTH ENHANCEMENT (if beneficial):
+- pgr_hormone_ml: Total plant growth regulator (GA3, NAA, etc.) in ml
+- Use for: Flowering induction, fruit setting, root development
+- Timing: Critical growth stages
 
-D. GROWTH ENHANCEMENT:
-For ${cropName}, recommend if beneficial:
-- **Gibberellic Acid (GA3)**: For flowering/fruiting (10-50 ppm)
-- **NAA (Naphthalene Acetic Acid)**: For fruit setting, root growth
-- **Cytokinins**: For cell division, branching
-- **Brassinosteroids**: For stress tolerance
-- **Seaweed extract**: Natural bio-stimulant
-- Timing: Critical growth stages (flowering, fruiting)
-- Benefits: Increased yield, uniform flowering, better fruit set
+E. CHEMICAL FERTILIZERS (NPK):
+- Based on soil test deficit calculated above
+- Split into 2-3 applications
 
-E. PRODUCT CATEGORIES (for marketplace integration):
-Map each input to product category:
-- Seeds → "seeds"
-- Chemical fertilizers → "fertilizers-chemical"
-- Organic fertilizers → "fertilizers-organic"  
-- Bio-fertilizers → "bio-fertilizers"
-- Insecticides → "pesticides-insecticide"
-- Fungicides → "pesticides-fungicide"
-- Herbicides → "pesticides-herbicide"
-- Bio-pesticides → "bio-pesticides"
-- Growth regulators → "plant-growth-regulators"
-
-Generate 10-15 specific, actionable tasks with exact quantities.`;
+Generate 10-15 specific, actionable tasks with exact quantities in ${languageName} language.`;
 
 
     // 5. Validate critical data before calling OpenAI
@@ -361,71 +329,42 @@ Generate 10-15 specific, actionable tasks with exact quantities.`;
                 }
               },
               
-              // Organic Inputs
-              organic_inputs: {
-                type: "object",
-                properties: {
-                  organic_fertilizer_kg: { type: "number", description: "Organic fertilizer (FYM, compost) in kg" },
-                  bio_fertilizer_units: { type: "number", description: "Bio-fertilizer packets/bottles" },
-                  vermicompost_kg: { type: "number", description: "Vermicompost in kg" },
-                  details: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", description: "Type of organic input (FYM, Vermicompost, etc.)" },
-                        quantity: { type: "string", description: "Quantity with unit" },
-                        application_stage: { type: "string", description: "When to apply (basal, flowering, etc.)" },
-                        benefits: { type: "string", description: "Why use this organic input" }
-                      }
-                    }
-                  }
-                }
+              // Organic Inputs (simplified for model compatibility)
+              organic_fertilizer_kg: { 
+                type: "number", 
+                description: "Total organic fertilizer (FYM, compost) in kg" 
+              },
+              bio_fertilizer_units: { 
+                type: "number", 
+                description: "Bio-fertilizer packets needed" 
+              },
+              vermicompost_kg: { 
+                type: "number", 
+                description: "Vermicompost in kg" 
               },
               
-              // Pest Management
-              pest_management: {
-                type: "object",
-                properties: {
-                  insecticide_ml: { type: "number", description: "Total insecticide in ml" },
-                  fungicide_gm: { type: "number", description: "Total fungicide in grams" },
-                  herbicide_ml: { type: "number", description: "Total herbicide in ml" },
-                  bio_pesticide_ml: { type: "number", description: "Bio-pesticide (Neem oil, etc.) in ml" },
-                  requirements: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        pest_type: { type: "string", description: "Target pest/disease" },
-                        product_category: { type: "string", description: "Category: insecticide, fungicide, herbicide, bio-pesticide" },
-                        generic_name: { type: "string", description: "Generic chemical name or bio name" },
-                        quantity: { type: "string", description: "Quantity per application" },
-                        applications: { type: "number", description: "Number of applications needed" },
-                        timing: { type: "string", description: "When to apply" }
-                      }
-                    }
-                  }
-                }
+              // Pest Management (simplified)
+              insecticide_ml: { 
+                type: "number", 
+                description: "Total insecticide in ml for entire season" 
+              },
+              fungicide_gm: { 
+                type: "number", 
+                description: "Total fungicide in grams" 
+              },
+              herbicide_ml: { 
+                type: "number", 
+                description: "Total herbicide in ml" 
+              },
+              bio_pesticide_ml: { 
+                type: "number", 
+                description: "Bio-pesticide (Neem oil) in ml" 
               },
               
-              // Growth Regulators
-              growth_enhancement: {
-                type: "object",
-                properties: {
-                  pgr_hormone_ml: { type: "number", description: "Total plant growth regulator in ml" },
-                  regulators: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        type: { type: "string", description: "Type: gibberellic acid, cytokinin, auxin, etc." },
-                        purpose: { type: "string", description: "Purpose: flowering, fruiting, rooting, etc." },
-                        quantity: { type: "string", description: "Quantity per application" },
-                        timing: { type: "string", description: "Growth stage to apply" }
-                      }
-                    }
-                  }
-                }
+              // Growth Regulators (simplified)
+              pgr_hormone_ml: { 
+                type: "number", 
+                description: "Plant growth regulator in ml (GA3, NAA, etc.)" 
               },
               tasks: {
                 type: "array",
@@ -517,12 +456,23 @@ Generate 10-15 specific, actionable tasks with exact quantities.`;
     // Extract from tool call instead of message content
     const message = aiData.choices[0].message;
 
-    // Check if tool call exists
+    // Check if tool call exists with detailed debugging
     if (!message.tool_calls || message.tool_calls.length === 0) {
-      console.error('No tool call in OpenAI response');
-      console.error('Full message:', JSON.stringify(message));
+      console.error('❌ No tool call in OpenAI response');
+      console.error('Full message object:', JSON.stringify(message, null, 2));
+      console.error('Message content:', message.content);
       console.error('Finish reason:', aiData.choices[0].finish_reason);
-      throw new Error('OpenAI did not return a tool call. The model may not support function calling.');
+      console.error('Model used:', requestBody.model);
+      console.error('Has content?', !!message.content);
+      console.error('Content type:', typeof message.content);
+      
+      // If model returned text content instead of tool call, log it
+      if (message.content) {
+        console.error('Model returned text instead of tool call. First 1000 chars:', 
+          message.content.substring(0, 1000));
+      }
+      
+      throw new Error(`OpenAI did not return a tool call. Model: ${requestBody.model}, Finish reason: ${aiData.choices[0].finish_reason}. The schema may be too complex or the model doesn't support function calling.`);
     }
 
     const toolCall = message.tool_calls[0];
@@ -630,23 +580,34 @@ Generate 10-15 specific, actionable tasks with exact quantities.`;
         expected_net_profit: scheduleData.expected_net_profit || null,
         total_estimated_cost: scheduleData.total_estimated_cost || null,
         
-        // Organic Inputs
-        organic_fertilizer_kg: scheduleData.organic_inputs?.organic_fertilizer_kg || null,
-        bio_fertilizer_units: scheduleData.organic_inputs?.bio_fertilizer_units || null,
-        organic_manure_kg: scheduleData.organic_inputs?.organic_fertilizer_kg || null, // FYM/compost
-        vermicompost_kg: scheduleData.organic_inputs?.vermicompost_kg || null,
-        organic_input_details: scheduleData.organic_inputs?.details || null,
+        // Organic Inputs (now top-level fields)
+        organic_fertilizer_kg: scheduleData.organic_fertilizer_kg || null,
+        bio_fertilizer_units: scheduleData.bio_fertilizer_units || null,
+        organic_manure_kg: scheduleData.organic_fertilizer_kg || null, // FYM/compost
+        vermicompost_kg: scheduleData.vermicompost_kg || null,
+        organic_input_details: {
+          organic_fertilizer_kg: scheduleData.organic_fertilizer_kg,
+          bio_fertilizer_units: scheduleData.bio_fertilizer_units,
+          vermicompost_kg: scheduleData.vermicompost_kg
+        },
         
-        // Pest Management
-        pesticide_requirements: scheduleData.pest_management?.requirements || null,
-        insecticide_ml: scheduleData.pest_management?.insecticide_ml || null,
-        fungicide_gm: scheduleData.pest_management?.fungicide_gm || null,
-        herbicide_ml: scheduleData.pest_management?.herbicide_ml || null,
-        bio_pesticide_ml: scheduleData.pest_management?.bio_pesticide_ml || null,
+        // Pest Management (simplified structure)
+        pesticide_requirements: {
+          insecticide_ml: scheduleData.insecticide_ml,
+          fungicide_gm: scheduleData.fungicide_gm,
+          herbicide_ml: scheduleData.herbicide_ml,
+          bio_pesticide_ml: scheduleData.bio_pesticide_ml
+        },
+        insecticide_ml: scheduleData.insecticide_ml || null,
+        fungicide_gm: scheduleData.fungicide_gm || null,
+        herbicide_ml: scheduleData.herbicide_ml || null,
+        bio_pesticide_ml: scheduleData.bio_pesticide_ml || null,
         
-        // Growth Regulators
-        growth_regulators: scheduleData.growth_enhancement?.regulators || null,
-        pgr_hormone_ml: scheduleData.growth_enhancement?.pgr_hormone_ml || null,
+        // Growth Regulators (simplified)
+        growth_regulators: scheduleData.pgr_hormone_ml ? {
+          pgr_hormone_ml: scheduleData.pgr_hormone_ml
+        } : null,
+        pgr_hormone_ml: scheduleData.pgr_hormone_ml || null,
         
         // Product recommendations (to be populated from product_categories)
         recommended_products: {
@@ -660,14 +621,21 @@ Generate 10-15 specific, actionable tasks with exact quantities.`;
             potassium_kg: scheduleData.fertilizer_plan.potassium_kg,
             category: 'fertilizers-chemical'
           } : null,
-          organic_fertilizers: scheduleData.organic_inputs ? {
-            organic_fertilizer_kg: scheduleData.organic_inputs.organic_fertilizer_kg,
-            bio_fertilizer_units: scheduleData.organic_inputs.bio_fertilizer_units,
-            vermicompost_kg: scheduleData.organic_inputs.vermicompost_kg,
+          organic_fertilizers: (scheduleData.organic_fertilizer_kg || scheduleData.bio_fertilizer_units || scheduleData.vermicompost_kg) ? {
+            organic_fertilizer_kg: scheduleData.organic_fertilizer_kg,
+            bio_fertilizer_units: scheduleData.bio_fertilizer_units,
+            vermicompost_kg: scheduleData.vermicompost_kg,
             category: 'fertilizers-organic'
           } : null,
-          pesticides: scheduleData.pest_management?.requirements || null,
-          growth_regulators: scheduleData.growth_enhancement?.regulators || null
+          pesticides: (scheduleData.insecticide_ml || scheduleData.fungicide_gm || scheduleData.herbicide_ml || scheduleData.bio_pesticide_ml) ? {
+            insecticide_ml: scheduleData.insecticide_ml,
+            fungicide_gm: scheduleData.fungicide_gm,
+            herbicide_ml: scheduleData.herbicide_ml,
+            bio_pesticide_ml: scheduleData.bio_pesticide_ml
+          } : null,
+          growth_regulators: scheduleData.pgr_hormone_ml ? {
+            pgr_hormone_ml: scheduleData.pgr_hormone_ml
+          } : null
         },
         
         ai_model: 'gpt-5-mini-2025-08-07',
@@ -681,9 +649,20 @@ Generate 10-15 specific, actionable tasks with exact quantities.`;
             seed_kg: scheduleData.seed_quantity_kg,
             water_liters: scheduleData.total_water_requirement_liters,
             fertilizer: scheduleData.fertilizer_plan,
-            organic_inputs: scheduleData.organic_inputs,
-            pest_management: scheduleData.pest_management,
-            growth_enhancement: scheduleData.growth_enhancement,
+            organic_inputs: {
+              organic_fertilizer_kg: scheduleData.organic_fertilizer_kg,
+              bio_fertilizer_units: scheduleData.bio_fertilizer_units,
+              vermicompost_kg: scheduleData.vermicompost_kg
+            },
+            pest_management: {
+              insecticide_ml: scheduleData.insecticide_ml,
+              fungicide_gm: scheduleData.fungicide_gm,
+              herbicide_ml: scheduleData.herbicide_ml,
+              bio_pesticide_ml: scheduleData.bio_pesticide_ml
+            },
+            growth_enhancement: {
+              pgr_hormone_ml: scheduleData.pgr_hormone_ml
+            },
             land_area_ha: landAreaHa,
             ndvi_considered: !!ndviData?.length,
             weather_forecast_used: !!weather?.forecast?.length,
