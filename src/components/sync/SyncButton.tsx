@@ -124,58 +124,26 @@ export function SyncButton() {
           syncError && "bg-destructive hover:bg-destructive/90"
         )}
       >
-        <AnimatePresence mode="wait">
-          {syncing ? (
-            <motion.div
-              key="syncing"
-              initial={{ scale: 0, rotate: 0 }}
-              animate={{ scale: 1, rotate: 360 }}
-              exit={{ scale: 0, rotate: 0 }}
-              transition={{
-                rotate: {
-                  duration: 1,
-                  repeat: Infinity,
-                  ease: "linear"
-                },
-                scale: {
-                  duration: 0.2
-                }
-              }}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </motion.div>
-          ) : syncSuccess ? (
-            <motion.div
-              key="success"
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0 }}
-              transition={{ duration: 0.3, type: "spring" }}
-            >
-              <CheckCircle2 className="h-4 w-4 text-white" />
-            </motion.div>
-          ) : syncError ? (
-            <motion.div
-              key="error"
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0 }}
-              transition={{ duration: 0.3, type: "spring" }}
-            >
-              <AlertCircle className="h-4 w-4 text-white" />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="idle"
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              exit={{ scale: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </motion.div>
+        {/* Simplified icon with CSS transitions - no AnimatePresence */}
+        <div className="relative w-4 h-4">
+          <RefreshCw 
+            className={cn(
+              "h-4 w-4 absolute inset-0 transition-all duration-300",
+              syncing && "animate-spin opacity-100",
+              !syncing && "opacity-100"
+            )}
+          />
+          {syncSuccess && (
+            <CheckCircle2 
+              className="h-4 w-4 text-white absolute inset-0 animate-in zoom-in-50 duration-200" 
+            />
           )}
-        </AnimatePresence>
+          {syncError && (
+            <AlertCircle 
+              className="h-4 w-4 text-white absolute inset-0 animate-in zoom-in-50 duration-200" 
+            />
+          )}
+        </div>
         <span className="sr-only">Sync data</span>
       </Button>
       

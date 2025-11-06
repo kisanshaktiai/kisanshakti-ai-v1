@@ -97,34 +97,57 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
     try {
       setLoading(true);
       
-      // Fetch active schedule for this land
-      const { data: scheduleData, error: scheduleError } = await supabase
-        .from('crop_schedules')
-        .select('*')
-        .eq('land_id', landId)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (scheduleError) throw scheduleError;
-
-      if (scheduleData) {
-        setSchedule(scheduleData);
+      // Use offline data service for automatic fallback and proper data isolation
+      const { offlineDataService } = await import('@/services/offlineDataService');
+      const schedules = await offlineDataService.fetchSchedules(landId);
+      
+      // Find active schedule for this land
+      const activeSchedule = schedules.find((s: any) => s.land_id === landId && s.is_active);
+      
+      if (activeSchedule) {
+        setSchedule(activeSchedule);
         
-        // Fetch tasks for this schedule
-        const { data: tasksData, error: tasksError } = await supabase
+        // Fetch tasks for this schedule (online with fallback)
+        const { supabaseWithAuth } = await import('@/integrations/supabase/client');
+        const client = supabaseWithAuth();
+        
+        const { data: tasksData, error: tasksError } = await client
           .from('schedule_tasks')
           .select('*')
-          .eq('schedule_id', scheduleData.id)
+          .eq('schedule_id', activeSchedule.id)
           .order('task_date', { ascending: true });
 
-        if (tasksError) throw tasksError;
-        setTasks(tasksData || []);
+        if (tasksError) {
+          console.warn('Failed to fetch tasks online:', tasksError);
+          // Fallback to local DB and map fields
+          const { localDB } = await import('@/services/localDB');
+          const localTasks = await localDB.getTasksBySchedule(activeSchedule.id);
+          // Map local DB fields to component expected fields
+          const mappedTasks = (localTasks || []).map((t: any) => ({
+            id: t.id,
+            schedule_id: t.schedule_id,
+            task_date: t.scheduled_date || t.task_date,
+            task_type: t.task_type,
+            task_name: t.task_name,
+            task_description: t.description || t.task_description,
+            priority: t.priority || 'medium',
+            status: t.status,
+            weather_dependent: t.weather_dependent || false,
+            instructions: t.instructions,
+            precautions: t.precautions,
+            language: t.language,
+            currency: t.currency,
+          }));
+          setTasks(mappedTasks);
+        } else {
+          setTasks(tasksData || []);
+        }
 
         // Fetch latest climate monitoring data
-        const { data: climateMonitoring } = await supabase
+        const { data: climateMonitoring } = await client
           .from('schedule_climate_monitoring')
           .select('*')
-          .eq('schedule_id', scheduleData.id)
+          .eq('schedule_id', activeSchedule.id)
           .order('monitoring_date', { ascending: false })
           .limit(1)
           .maybeSingle();

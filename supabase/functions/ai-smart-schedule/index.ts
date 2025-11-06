@@ -59,17 +59,17 @@ serve(async (req) => {
       .order('cached_at', { ascending: false })
       .limit(5);
 
-    // 4. Regional & Language Context
+    // 4. Regional & Language Context - Pure Languages Only
     const languageMap: Record<string, string> = {
-      hi: 'Hindi-English mix (Hinglish)',
-      mr: 'Marathi-English mix', 
-      pa: 'Punjabi-English mix',
-      ta: 'Tamil-English mix',
-      te: 'Telugu-English mix',
-      bn: 'Bengali-English mix',
-      gu: 'Gujarati-English mix',
-      kn: 'Kannada-English mix',
-      en: 'Simple English'
+      hi: 'Hindi',
+      mr: 'Marathi', 
+      pa: 'Punjabi',
+      ta: 'Tamil',
+      te: 'Telugu',
+      bn: 'Bengali',
+      gu: 'Gujarati',
+      kn: 'Kannada',
+      en: 'English'
     };
 
     const regionalData: Record<string, any> = {
@@ -89,10 +89,10 @@ serve(async (req) => {
 
     const region = regionalData[land.state] || { season: 'Monsoon', crop: 'Mixed', zone: 'Local' };
     const currency = country === 'India' ? '₹' : '$';
-    const languageName = languageMap[language] || 'Hindi-English mix';
+    const languageName = languageMap[language] || 'Hindi';
 
-    // 5. Simplified Farmer-Friendly Prompt (60% token reduction)
-    const systemPrompt = `You are a farming helper for rural Indian farmers. Use simple ${languageName}. Avoid technical terms. Focus on practical actions. Show costs in ${currency}.`;
+    // 5. Pure Language Prompts - No Mixed Languages
+    const systemPrompt = `You are a farming expert for Indian farmers. Generate ALL content in ${languageName} language ONLY. Use simple, clear ${languageName} words that farmers understand. Do NOT mix languages. Show costs in ${currency}. Focus on practical farming actions.`;
 
     const userPrompt = `Crop: ${cropName}${cropVariety ? ` (${cropVariety})` : ''}
 Sow Date: ${sowingDate}
@@ -104,8 +104,10 @@ Location: ${land.district}, ${land.state} (${region.zone})
 Season: ${region.season}
 Weather: ${weather?.current?.temp || '?'}°C, ${weather?.current?.description || 'Normal'}
 
-Create 8-12 simple tasks: prepare land, sow seeds, water, fertilize, pest control, weed, harvest.
-Use local language mix. Keep it practical for ${region.crop} farming area. All costs in ${currency}.`;
+IMPORTANT: Write ALL task names, descriptions, and instructions in ${languageName} language ONLY. No English mixing.
+
+Create 8-12 farming tasks: land preparation, sowing, irrigation, fertilizer, pest control, weeding, harvest.
+Keep practical for ${region.crop} farming. All costs in ${currency}.`;
 
     // 5. Validate critical data before calling OpenAI
     console.log('Validating land data:', {

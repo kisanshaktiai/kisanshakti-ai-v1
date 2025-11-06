@@ -42,6 +42,8 @@ interface ScheduleData {
   sowing_date: string;
   tasks: any[];
   generation_params?: any;
+  generation_language?: string;
+  country?: string;
   lastModified: number;
   syncStatus: 'synced' | 'pending' | 'conflict';
 }
@@ -56,6 +58,8 @@ interface ScheduleTask {
   status: string;
   description?: string;
   metadata?: any;
+  language?: string;
+  currency?: string;
   lastModified: number;
   syncStatus: 'synced' | 'pending' | 'conflict';
 }
@@ -231,8 +235,8 @@ interface KisanDB extends DBSchema {
 class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;
   private readonly DB_NAME = 'kisan-shakti-db';
-  private readonly DB_VERSION = 3;
-  private readonly SCHEMA_VERSION = 1;
+  private readonly DB_VERSION = 4; // Incremented for schema changes
+  private readonly SCHEMA_VERSION = 2;
 
   async initialize(): Promise<void> {
     if (this.db) return;

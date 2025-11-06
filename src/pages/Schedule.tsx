@@ -146,7 +146,7 @@ export default function Schedule() {
         forecast: []
       };
 
-      // Call the updated ai-smart-schedule edge function
+      // Call the updated ai-smart-schedule edge function with user's preferred language
       const response = await supabase.functions.invoke('ai-smart-schedule', {
         body: {
           landId: selectedLand.id,
@@ -157,7 +157,7 @@ export default function Schedule() {
           regenerate: true,
           tenantId: tenant?.id || user?.tenantId || '',
           farmerId: user?.id || '',
-          language: currentLanguage,
+          language: user?.preferredLanguage || currentLanguage || 'en',
           country: 'India',
         },
       });

@@ -421,6 +421,8 @@ class SyncService {
             sowing_date: s.sowing_date || new Date().toISOString(),
             tasks: (s.generation_params as any)?.tasks || [],
             generation_params: s.generation_params,
+            generation_language: s.generation_language,
+            country: s.country,
             lastModified: new Date(s.updated_at || s.created_at).getTime(),
             syncStatus: 'synced' as const,
           })),

@@ -42,3 +42,26 @@ export const updateSupabaseHeaders = (farmerId?: string, tenantId?: string) => {
   
   console.log('Updated Supabase headers:', headers);
 };
+
+/**
+ * Get Supabase client with auth headers automatically set
+ * Always use this wrapper for authenticated requests
+ */
+export const supabaseWithAuth = () => {
+  // Import auth store dynamically to avoid circular dependencies
+  const getAuthState = () => {
+    try {
+      const { useAuthStore } = require('@/stores/authStore');
+      return useAuthStore.getState();
+    } catch {
+      return null;
+    }
+  };
+
+  const authState = getAuthState();
+  if (authState?.user?.id && authState?.user?.tenantId) {
+    updateSupabaseHeaders(authState.user.id, authState.user.tenantId);
+  }
+  
+  return supabase;
+};
