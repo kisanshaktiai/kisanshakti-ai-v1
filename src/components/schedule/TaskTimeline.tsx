@@ -42,9 +42,10 @@ interface TaskTimelineProps {
   tasks: Task[];
   onTaskClick?: (task: Task) => void;
   onTaskComplete?: () => void;
+  onTaskUpdate?: (taskId: string, updates: Partial<Task>) => void;
 }
 
-const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskComplete }) => {
+const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskComplete, onTaskUpdate }) => {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
   const { currentLanguage } = useLanguageStore();
@@ -72,8 +73,24 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
   });
 
   const handleTaskComplete = async (taskId: string) => {
+    const completedAt = new Date().toISOString();
+    
+    // OPTIMISTIC UPDATE: Update UI immediately
+    if (onTaskUpdate) {
+      onTaskUpdate(taskId, { 
+        status: 'completed', 
+        completed_at: completedAt 
+      });
+    }
+
+    // Show immediate feedback
+    toast.success('✅ Task completed!', {
+      description: 'Great work! Syncing...',
+      duration: 2000,
+    });
+
     try {
-      // Use authenticated supabase client from integrations
+      // Background database update
       const { supabaseWithAuth } = await import('@/integrations/supabase/client');
       const authenticatedClient = supabaseWithAuth();
       
@@ -81,7 +98,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
         .from('schedule_tasks')
         .update({
           status: 'completed',
-          completed_at: new Date().toISOString(),
+          completed_at: completedAt,
         })
         .eq('id', taskId);
 
@@ -90,18 +107,26 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
         throw error;
       }
 
-      toast.success('✅ Task marked as completed', {
-        description: 'Great work!'
-      });
+      // Confirm sync success
+      console.log('Task completion synced to database');
       
-      // Notify parent to refresh data without page reload
+      // Refresh to get any server-side updates
       if (onTaskComplete) {
         onTaskComplete();
       }
     } catch (error) {
       console.error('Error completing task:', error);
-      toast.error('Failed to mark task as completed', {
-        description: error instanceof Error ? error.message : 'Unknown error'
+      
+      // ROLLBACK: Revert optimistic update on error
+      if (onTaskUpdate) {
+        onTaskUpdate(taskId, { 
+          status: 'pending', 
+          completed_at: undefined 
+        });
+      }
+      
+      toast.error('❌ Failed to sync completion', {
+        description: 'Rolled back. Try again.',
       });
     }
   };

@@ -22,8 +22,14 @@ export function TaskCompletionSection({
   isCompacting = false 
 }: TaskCompletionSectionProps) {
   const [isCompleting, setIsCompleting] = React.useState(false);
-  const isCompleted = status === 'completed';
-  const isPending = status === 'pending';
+  const [optimisticStatus, setOptimisticStatus] = React.useState(status);
+  const isCompleted = optimisticStatus === 'completed';
+  const isPending = optimisticStatus === 'pending';
+
+  // Sync optimistic state with prop changes
+  React.useEffect(() => {
+    setOptimisticStatus(status);
+  }, [status]);
 
   const handleComplete = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
@@ -32,9 +38,15 @@ export function TaskCompletionSection({
     
     if (isCompleting) return;
     
+    // Optimistically set to completed
+    setOptimisticStatus('completed');
     setIsCompleting(true);
+    
     try {
       await onComplete(taskId);
+    } catch (error) {
+      // Rollback on error
+      setOptimisticStatus(status);
     } finally {
       setIsCompleting(false);
     }
@@ -50,7 +62,11 @@ export function TaskCompletionSection({
     >
       <div className="flex items-center justify-between gap-4">
         {/* Status Line */}
-        <div className="flex items-center gap-2 flex-1">
+        <motion.div 
+          className="flex items-center gap-2 flex-1"
+          animate={isCompleted ? { scale: [1, 1.05, 1] } : {}}
+          transition={{ duration: 0.3 }}
+        >
           {isPending ? (
             <>
               <Clock className="h-4 w-4 text-muted-foreground" />
@@ -60,52 +76,72 @@ export function TaskCompletionSection({
             </>
           ) : isCompleted ? (
             <>
-              <Check className="h-4 w-4 text-success" />
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 300 }}
+              >
+                <Check className="h-4 w-4 text-success" />
+              </motion.div>
               <span className="text-sm text-success">
-                Completed on {completedAt ? format(new Date(completedAt), 'dd MMM, h:mm a') : 'Unknown'}
+                Completed on {completedAt ? format(new Date(completedAt), 'dd MMM, h:mm a') : 'just now'}
               </span>
             </>
           ) : (
             <span className="text-sm text-muted-foreground">
-              Status: {status}
+              Status: {optimisticStatus}
             </span>
           )}
-        </div>
+        </motion.div>
 
         {/* Flag Button */}
-        <Button
-          type="button"
-          variant={isCompleted ? "default" : "outline"}
-          size="sm"
-          onClick={handleComplete}
-          disabled={isCompleting}
-          className={cn(
-            "gap-2 transition-all duration-300 pointer-events-auto",
-            isCompleted && "bg-success hover:bg-success/90 text-white border-success"
-          )}
+        <motion.div
+          whileTap={{ scale: 0.95 }}
+          animate={isCompleted ? { 
+            scale: [1, 1.1, 1],
+          } : {}}
+          transition={{ duration: 0.4 }}
         >
-          {isCompleting ? (
-            <>
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-              >
-                <Clock className="h-4 w-4" />
-              </motion.div>
-              <span>Processing...</span>
-            </>
-          ) : isCompleted ? (
-            <>
-              <Flag className="h-4 w-4 fill-current" />
-              <span>Completed</span>
-            </>
-          ) : (
-            <>
-              <Flag className="h-4 w-4" />
-              <span>Mark Done</span>
-            </>
-          )}
-        </Button>
+          <Button
+            type="button"
+            variant={isCompleted ? "default" : "outline"}
+            size="sm"
+            onClick={handleComplete}
+            disabled={isCompleting || isCompleted}
+            className={cn(
+              "gap-2 transition-all duration-300 pointer-events-auto",
+              isCompleted && "bg-success hover:bg-success/90 text-white border-success"
+            )}
+          >
+            {isCompleting ? (
+              <>
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                >
+                  <Clock className="h-4 w-4" />
+                </motion.div>
+                <span>Syncing...</span>
+              </>
+            ) : isCompleted ? (
+              <>
+                <motion.div
+                  initial={{ rotate: -180, scale: 0 }}
+                  animate={{ rotate: 0, scale: 1 }}
+                  transition={{ type: "spring", stiffness: 200 }}
+                >
+                  <Flag className="h-4 w-4 fill-current" />
+                </motion.div>
+                <span>Completed</span>
+              </>
+            ) : (
+              <>
+                <Flag className="h-4 w-4" />
+                <span>Mark Done</span>
+              </>
+            )}
+          </Button>
+        </motion.div>
       </div>
 
       {/* Additional Status Badge */}

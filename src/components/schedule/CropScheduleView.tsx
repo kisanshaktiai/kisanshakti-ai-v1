@@ -241,6 +241,16 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
     }
   };
 
+  const handleTaskUpdate = (taskId: string, updates: Partial<ScheduleTask>) => {
+    setTasks(prevTasks => 
+      prevTasks.map(task => 
+        task.id === taskId 
+          ? { ...task, ...updates }
+          : task
+      )
+    );
+  };
+
   const speakTask = (task: ScheduleTask) => {
     const text = `${task.task_name}. ${task.task_description || ''}. 
       ${task.instructions ? 'Instructions: ' + task.instructions.join('. ') : ''}
@@ -489,6 +499,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                     tasks={filteredTasks} 
                     onTaskClick={(task: any) => setSelectedTask(task as ScheduleTask)}
                     onTaskComplete={fetchSchedule}
+                    onTaskUpdate={handleTaskUpdate}
                   />
                 ) : (
                   <div className="grid gap-3">
