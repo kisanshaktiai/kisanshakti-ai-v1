@@ -95,7 +95,7 @@ export function TaskCompletionSection({
           {isPending ? (
             <>
               <Clock className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">
+              <span className="text-sm font-medium text-muted-foreground">
                 Mark as done when completed
               </span>
             </>
@@ -108,12 +108,12 @@ export function TaskCompletionSection({
               >
                 <Check className="h-4 w-4 text-success" />
               </motion.div>
-              <span className="text-sm text-success">
+              <span className="text-sm font-medium text-success">
                 Completed on {completedAt ? format(new Date(completedAt), 'dd MMM, h:mm a') : 'just now'}
               </span>
             </>
           ) : (
-            <span className="text-sm text-muted-foreground">
+            <span className="text-sm font-medium text-muted-foreground">
               Status: {optimisticStatus}
             </span>
           )}
@@ -124,29 +124,29 @@ export function TaskCompletionSection({
           {isCompleted ? (
             <>
               {/* Completed Badge */}
-              <Badge className="gap-2 bg-success/10 text-success border-success/20 px-3 py-2">
+              <Badge className="gap-2 bg-success/10 text-success border-success/20 px-3 py-2 font-medium">
                 <Flag className="h-4 w-4 fill-current" />
-                <span>Completed</span>
+                <span className="text-sm">Completed</span>
               </Badge>
               
-              {/* Unmark Button */}
+              {/* Unmark Button - Prominent and visible */}
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 size="sm"
                 onClick={handleUnmark}
                 disabled={isCompleting || !onUnmark}
-                className="gap-2 pointer-events-auto border-muted hover:border-destructive hover:text-destructive"
+                className="gap-2 pointer-events-auto bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive border border-border hover:border-destructive transition-all duration-200"
               >
                 {isCompleting ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Undoing...</span>
+                    <span className="text-sm font-medium">Undoing...</span>
                   </>
                 ) : (
                   <>
                     <RotateCcw className="h-4 w-4" />
-                    <span>Unmark</span>
+                    <span className="text-sm font-medium">Unmark</span>
                   </>
                 )}
               </Button>
@@ -163,7 +163,7 @@ export function TaskCompletionSection({
                 size="sm"
                 onClick={handleComplete}
                 disabled={isCompleting}
-                className="gap-2 transition-all duration-300 pointer-events-auto"
+                className="gap-2 transition-all duration-300 pointer-events-auto border-primary/30 hover:bg-primary/5 hover:border-primary text-foreground hover:text-primary"
               >
                 {isCompleting ? (
                   <>
@@ -173,12 +173,12 @@ export function TaskCompletionSection({
                     >
                       <Clock className="h-4 w-4" />
                     </motion.div>
-                    <span>Syncing...</span>
+                    <span className="text-sm font-medium">Syncing...</span>
                   </>
                 ) : (
                   <>
                     <Flag className="h-4 w-4" />
-                    <span>Mark Done</span>
+                    <span className="text-sm font-medium">Mark Done</span>
                   </>
                 )}
               </Button>
@@ -190,9 +190,9 @@ export function TaskCompletionSection({
       {/* Additional Status Badge */}
       {isCompleted && !isCompacting && (
         <div className="mt-3 flex items-center gap-2">
-          <Badge className="bg-success/10 text-success border-success/20">
+          <Badge className="bg-success/10 text-success border-success/20 font-medium">
             <Check className="h-3 w-3 mr-1" />
-            Task Completed
+            <span className="text-xs">Task Completed</span>
           </Badge>
         </div>
       )}
