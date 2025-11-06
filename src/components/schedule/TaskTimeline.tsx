@@ -72,7 +72,11 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick }) => {
 
   const handleTaskComplete = async (taskId: string) => {
     try {
-      const { error } = await supabase
+      // Use authenticated supabase client from integrations
+      const { supabaseWithAuth } = await import('@/integrations/supabase/client');
+      const authenticatedClient = supabaseWithAuth();
+      
+      const { error } = await authenticatedClient
         .from('schedule_tasks')
         .update({
           status: 'completed',
@@ -80,12 +84,25 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick }) => {
         })
         .eq('id', taskId);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
 
-      toast.success('Task marked as completed');
+      toast.success('✅ Task marked as completed', {
+        description: 'Great work!'
+      });
+      
+      // Trigger re-render by updating task list if available
+      if (onTaskClick) {
+        // Parent will handle re-fetch
+        setTimeout(() => window.location.reload(), 500);
+      }
     } catch (error) {
       console.error('Error completing task:', error);
-      toast.error('Failed to mark task as completed');
+      toast.error('Failed to mark task as completed', {
+        description: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   };
 

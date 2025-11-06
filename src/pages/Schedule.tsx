@@ -52,6 +52,7 @@ export default function Schedule() {
     cropName: string;
     cropVariety: string;
     sowingDate: Date;
+    isReadyMadePlant?: boolean;
   } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -135,10 +136,10 @@ export default function Schedule() {
     }
   };
 
-  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date) => {
+  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant?: boolean) => {
     if (!selectedLand) return;
 
-    setScheduleData({ cropName, cropVariety, sowingDate });
+    setScheduleData({ cropName, cropVariety, sowingDate, isReadyMadePlant });
     
     try {
       setGenerating(true);
@@ -188,6 +189,7 @@ export default function Schedule() {
           cropName,
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
+          isReadyMadePlant: isReadyMadePlant || false,
           weather: weatherData,
           regenerate: true,
           tenantId: tenant?.id || user?.tenantId || '',
@@ -212,7 +214,7 @@ export default function Schedule() {
           });
           // Retry after 2 seconds
           setTimeout(() => {
-            handleCropDateSubmit(cropName, cropVariety, sowingDate);
+            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant);
           }, 2000);
           return;
         }
@@ -256,7 +258,7 @@ export default function Schedule() {
             variant="outline"
             onClick={() => {
               setRetryCount(0);
-              handleCropDateSubmit(cropName, cropVariety, sowingDate);
+              handleCropDateSubmit(cropName, cropVariety, sowingDate, scheduleData?.isReadyMadePlant);
             }}
           >
             Try Again

@@ -53,6 +53,7 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
   const [cropName, setCropName] = useState(currentCrop || '');
   const [cropVariety, setCropVariety] = useState('');
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
+  const [isReadyMadePlant, setIsReadyMadePlant] = useState<boolean>(false);
   const [generating, setGenerating] = useState(false);
   const [step, setStep] = useState(1);
 
@@ -82,6 +83,7 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
           cropName,
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
+          isReadyMadePlant,
           weatherData,
           regenerate: false,
           language: currentLanguage,
@@ -181,9 +183,31 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
               />
             </div>
 
-            {/* Sowing Date */}
+            {/* Ready-made Plant Option */}
+            <div className="space-y-3 p-4 bg-accent/20 rounded-lg border border-border/50">
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="ready-made"
+                  checked={isReadyMadePlant}
+                  onChange={(e) => setIsReadyMadePlant(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-gray-300"
+                />
+                <div className="flex-1">
+                  <Label htmlFor="ready-made" className="text-sm font-medium cursor-pointer">
+                    Using ready-made nursery plants/transplants
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Check this if you're planting ready-made seedlings from nursery instead of sowing seeds 
+                    (applicable for vegetables, sugarcane sets, etc.)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Sowing/Planting Date */}
             <div className="space-y-2">
-              <Label>Sowing Date *</Label>
+              <Label>{isReadyMadePlant ? 'Planting Date *' : 'Sowing Date *'}</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button

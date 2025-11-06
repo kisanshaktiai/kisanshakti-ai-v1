@@ -24,7 +24,7 @@ interface CropDateInputProps {
     soil_type?: string;
     water_source?: string;
   };
-  onSubmit: (cropName: string, cropVariety: string, sowingDate: Date) => void;
+  onSubmit: (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant?: boolean) => void;
   onBack: () => void;
   loading?: boolean;
 }
@@ -40,6 +40,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   const [cropName, setCropName] = useState('');
   const [cropVariety, setCropVariety] = useState('');
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
+  const [isReadyMadePlant, setIsReadyMadePlant] = useState(false);
 
   const handleSubmit = () => {
     if (!cropName) {
@@ -60,7 +61,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
       return;
     }
 
-    onSubmit(cropName, cropVariety, sowingDate);
+    onSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant);
   };
 
   const handleCropSelect = (id: string, name: string) => {
@@ -150,11 +151,32 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
               />
             </div>
 
+            {/* Ready-made Plant Checkbox */}
+            <div className="flex items-start gap-3 p-3 bg-accent/20 rounded-lg border border-border/50">
+              <input
+                type="checkbox"
+                id="ready-made-plant"
+                checked={isReadyMadePlant}
+                onChange={(e) => setIsReadyMadePlant(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-gray-300"
+              />
+              <div className="flex-1">
+                <Label htmlFor="ready-made-plant" className="text-xs font-medium cursor-pointer">
+                  Using ready-made nursery plants
+                </Label>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Check if planting seedlings/transplants instead of sowing seeds
+                </p>
+              </div>
+            </div>
+
             {/* Date Selection */}
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <CalendarIcon className="h-4 w-4 text-primary" />
-                <span className="text-xs font-medium">Expected Sowing Date</span>
+                <span className="text-xs font-medium">
+                  {isReadyMadePlant ? 'Planting Date' : 'Sowing Date'}
+                </span>
               </div>
               
               <Popover>
