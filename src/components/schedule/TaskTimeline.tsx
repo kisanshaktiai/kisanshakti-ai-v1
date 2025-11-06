@@ -41,9 +41,10 @@ interface Task {
 interface TaskTimelineProps {
   tasks: Task[];
   onTaskClick?: (task: Task) => void;
+  onTaskComplete?: () => void;
 }
 
-const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick }) => {
+const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskComplete }) => {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
   const { currentLanguage } = useLanguageStore();
@@ -93,10 +94,9 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick }) => {
         description: 'Great work!'
       });
       
-      // Trigger re-render by updating task list if available
-      if (onTaskClick) {
-        // Parent will handle re-fetch
-        setTimeout(() => window.location.reload(), 500);
+      // Notify parent to refresh data without page reload
+      if (onTaskComplete) {
+        onTaskComplete();
       }
     } catch (error) {
       console.error('Error completing task:', error);
