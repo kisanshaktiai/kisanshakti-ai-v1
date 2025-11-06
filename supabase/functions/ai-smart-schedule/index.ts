@@ -96,15 +96,24 @@ serve(async (req) => {
     const languageName = languageMap[language] || 'Hindi';
 
     // 5. Build Comprehensive Context-Aware Prompt with NDVI, Guidelines, NPK
-    const systemPrompt = `You are an expert agricultural advisor for Indian farmers. Generate ALL content in ${languageName} language ONLY. 
+    const systemPrompt = `You are an expert agricultural advisor AND agronomist for Indian farmers with deep knowledge of:
+- Integrated Nutrient Management (chemical + organic)
+- Integrated Pest Management (IPM)
+- Plant Growth Regulators and bio-stimulants
+- Regional market prices and crop economics
+
+Generate ALL content in ${languageName} language ONLY. 
 
 CRITICAL REQUIREMENTS:
-1. Calculate EXACT seed, fertilizer, and water quantities scaled to the land size (${land.area_acres} acres = ${(land.area_acres * 0.404686).toFixed(2)} hectares)
-2. Base fertilizer recommendations on CURRENT soil NPK levels to reach optimal levels for ${cropName}
-3. Consider vegetation health (NDVI) if provided - adjust nitrogen and irrigation accordingly
-4. Integrate weather forecast - postpone irrigation/spraying if rain is expected
-5. Use simple, clear ${languageName} language that farmers understand
-6. All costs in ${currency}, all quantities specific to THIS land size`;
+1. Calculate EXACT quantities scaled to land size: ${land.area_acres} acres = ${(land.area_acres * 0.404686).toFixed(2)} hectares
+2. Provide BOTH chemical AND organic input recommendations
+3. Include pest management plan (chemical + bio-pesticides) based on crop-specific pests
+4. Recommend growth regulators where beneficial (flowering, fruiting, rooting)
+5. Calculate yield & revenue projections based on regional market prices
+6. Base fertilizer recommendations on CURRENT soil NPK levels
+7. Consider NDVI health data and weather forecasts
+8. Use simple ${languageName} language
+9. All costs in ${currency}, quantities specific to THIS land`;
 
     // Build crop baseline context
     const guidelineContext = guidelines ? `
@@ -236,6 +245,66 @@ READY-MADE PLANT SPECIFIC ADJUSTMENTS:
 `}
 10. ALL content in pure ${languageName} language - task names, descriptions, instructions in ${languageName} ONLY
 
+**CRITICAL: COMPREHENSIVE INPUT CALCULATIONS REQUIRED**
+
+A. YIELD & ECONOMICS:
+- Research typical yield for ${cropName} in ${land.state} (quintals/acre)
+- Find current market price or MSP for ${cropName} in ${region.zone}
+- Calculate: expected_gross_revenue = yield × price
+- Calculate: expected_net_profit = revenue - total_costs
+- Include profit margin percentage
+
+B. ORGANIC INPUTS (REQUIRED FOR SUSTAINABLE FARMING):
+- FYM/Compost: 5-10 tonnes/acre as basal application
+- Vermicompost: 1-2 tonnes/acre for soil health
+- Bio-fertilizers: Rhizobium/Azotobacter/PSB packets (200-250g/acre)
+- Green manure: If applicable (Dhaincha, Sesbania)
+- Organic amendments: Neem cake (100-200 kg/acre), bone meal
+- Application timing: Basal, pre-flowering, fruiting stages
+- Benefits: Soil health, microbial activity, long-term fertility
+
+C. INTEGRATED PEST MANAGEMENT (IPM):
+Research common pests/diseases for ${cropName} in ${land.state}:
+
+1. **Preventive (Bio-pesticides - ALWAYS RECOMMEND FIRST)**:
+   - Neem oil: 3-5 ml/liter, spray every 10-15 days
+   - Pongamia oil: 3 ml/liter for sucking pests
+   - Beauveria bassiana: For white grubs, cutworms
+   - Trichoderma: For soil-borne diseases
+   - NPV (Nuclear Polyhedrosis Virus): For caterpillars
+   
+2. **Chemical (ONLY IF NEEDED - based on pest threshold)**:
+   - **Insecticides**: Specify for aphids, stem borer, bollworm, etc.
+     Examples: Imidacloprid 200ml/acre, Chlorpyriphos 500ml/acre
+   - **Fungicides**: For blast, blight, wilt
+     Examples: Mancozeb 400g/acre, Carbendazim 200g/acre
+   - **Herbicides**: Pre-emergence/post-emergence
+     Examples: Pendimethalin 1L/acre, 2,4-D 500ml/acre
+   
+3. Calculate total quantities for entire season (multiple applications)
+
+D. GROWTH ENHANCEMENT:
+For ${cropName}, recommend if beneficial:
+- **Gibberellic Acid (GA3)**: For flowering/fruiting (10-50 ppm)
+- **NAA (Naphthalene Acetic Acid)**: For fruit setting, root growth
+- **Cytokinins**: For cell division, branching
+- **Brassinosteroids**: For stress tolerance
+- **Seaweed extract**: Natural bio-stimulant
+- Timing: Critical growth stages (flowering, fruiting)
+- Benefits: Increased yield, uniform flowering, better fruit set
+
+E. PRODUCT CATEGORIES (for marketplace integration):
+Map each input to product category:
+- Seeds → "seeds"
+- Chemical fertilizers → "fertilizers-chemical"
+- Organic fertilizers → "fertilizers-organic"  
+- Bio-fertilizers → "bio-fertilizers"
+- Insecticides → "pesticides-insecticide"
+- Fungicides → "pesticides-fungicide"
+- Herbicides → "pesticides-herbicide"
+- Bio-pesticides → "bio-pesticides"
+- Growth regulators → "plant-growth-regulators"
+
 Generate 10-15 specific, actionable tasks with exact quantities.`;
 
 
@@ -269,22 +338,93 @@ Generate 10-15 specific, actionable tasks with exact quantities.`;
               crop_name: { type: "string" },
               crop_season: { type: "string", description: "Kharif, Rabi, or Zaid" },
               total_duration_days: { type: "integer" },
-              expected_yield: { type: "string", description: "Expected harvest amount" },
+              
+              // Yield & Revenue
+              expected_yield_quintals: { type: "number", description: "Total harvest in quintals (100kg) for entire land" },
+              expected_yield_per_acre: { type: "number", description: "Yield per acre in quintals" },
+              expected_market_price_per_quintal: { type: "number", description: "Market price per quintal in INR" },
+              expected_gross_revenue: { type: "number", description: "Total revenue = yield × price" },
+              expected_net_profit: { type: "number", description: "Net profit = revenue - costs" },
               total_estimated_cost: { type: "number", description: "Total cost in local currency" },
-              seed_quantity_kg: { 
-                type: "number", 
-                description: "Exact seed quantity in kg for this specific land size" 
-              },
-              total_water_requirement_liters: { 
-                type: "number", 
-                description: "Total water needed for entire season in liters" 
-              },
+              
+              // Seeds & Water
+              seed_quantity_kg: { type: "number", description: "Exact seed quantity in kg for this land size" },
+              total_water_requirement_liters: { type: "number", description: "Total water for entire season in liters" },
+              
+              // Chemical Fertilizers
               fertilizer_plan: {
                 type: "object",
                 properties: {
-                  nitrogen_kg: { type: "number", description: "Total N to apply in kg" },
-                  phosphorus_kg: { type: "number", description: "Total P to apply in kg" },
-                  potassium_kg: { type: "number", description: "Total K to apply in kg" }
+                  nitrogen_kg: { type: "number", description: "Total N (chemical) in kg" },
+                  phosphorus_kg: { type: "number", description: "Total P (chemical) in kg" },
+                  potassium_kg: { type: "number", description: "Total K (chemical) in kg" }
+                }
+              },
+              
+              // Organic Inputs
+              organic_inputs: {
+                type: "object",
+                properties: {
+                  organic_fertilizer_kg: { type: "number", description: "Organic fertilizer (FYM, compost) in kg" },
+                  bio_fertilizer_units: { type: "number", description: "Bio-fertilizer packets/bottles" },
+                  vermicompost_kg: { type: "number", description: "Vermicompost in kg" },
+                  details: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        type: { type: "string", description: "Type of organic input (FYM, Vermicompost, etc.)" },
+                        quantity: { type: "string", description: "Quantity with unit" },
+                        application_stage: { type: "string", description: "When to apply (basal, flowering, etc.)" },
+                        benefits: { type: "string", description: "Why use this organic input" }
+                      }
+                    }
+                  }
+                }
+              },
+              
+              // Pest Management
+              pest_management: {
+                type: "object",
+                properties: {
+                  insecticide_ml: { type: "number", description: "Total insecticide in ml" },
+                  fungicide_gm: { type: "number", description: "Total fungicide in grams" },
+                  herbicide_ml: { type: "number", description: "Total herbicide in ml" },
+                  bio_pesticide_ml: { type: "number", description: "Bio-pesticide (Neem oil, etc.) in ml" },
+                  requirements: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        pest_type: { type: "string", description: "Target pest/disease" },
+                        product_category: { type: "string", description: "Category: insecticide, fungicide, herbicide, bio-pesticide" },
+                        generic_name: { type: "string", description: "Generic chemical name or bio name" },
+                        quantity: { type: "string", description: "Quantity per application" },
+                        applications: { type: "number", description: "Number of applications needed" },
+                        timing: { type: "string", description: "When to apply" }
+                      }
+                    }
+                  }
+                }
+              },
+              
+              // Growth Regulators
+              growth_enhancement: {
+                type: "object",
+                properties: {
+                  pgr_hormone_ml: { type: "number", description: "Total plant growth regulator in ml" },
+                  regulators: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        type: { type: "string", description: "Type: gibberellic acid, cytokinin, auxin, etc." },
+                        purpose: { type: "string", description: "Purpose: flowering, fruiting, rooting, etc." },
+                        quantity: { type: "string", description: "Quantity per application" },
+                        timing: { type: "string", description: "Growth stage to apply" }
+                      }
+                    }
+                  }
                 }
               },
               tasks: {
@@ -460,7 +600,7 @@ Generate 10-15 specific, actionable tasks with exact quantities.`;
       console.warn('⚠️ AI did not provide complete quantity calculations');
     }
 
-    // 8. Save main schedule with calculated quantities
+    // 8. Save main schedule with ALL calculated quantities to database columns
     const { data: savedSchedule, error: scheduleError } = await supabase
       .from('crop_schedules')
       .insert({
@@ -471,6 +611,65 @@ Generate 10-15 specific, actionable tasks with exact quantities.`;
         crop_variety: cropVariety,
         sowing_date: sowingDate,
         expected_harvest_date: new Date(new Date(sowingDate).getTime() + scheduleData.total_duration_days * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        
+        // ✅ FIX: Save ALL quantities to dedicated columns (not just JSON)
+        seed_quantity_kg: scheduleData.seed_quantity_kg || null,
+        total_water_requirement_liters: scheduleData.total_water_requirement_liters || null,
+        calculated_for_area_acres: land.area_acres,
+        
+        // Chemical Fertilizers
+        fertilizer_n_kg: scheduleData.fertilizer_plan?.nitrogen_kg || null,
+        fertilizer_p_kg: scheduleData.fertilizer_plan?.phosphorus_kg || null,
+        fertilizer_k_kg: scheduleData.fertilizer_plan?.potassium_kg || null,
+        
+        // Yield & Revenue
+        expected_yield_quintals: scheduleData.expected_yield_quintals || null,
+        expected_yield_per_acre: scheduleData.expected_yield_per_acre || null,
+        expected_market_price_per_quintal: scheduleData.expected_market_price_per_quintal || null,
+        expected_gross_revenue: scheduleData.expected_gross_revenue || null,
+        expected_net_profit: scheduleData.expected_net_profit || null,
+        total_estimated_cost: scheduleData.total_estimated_cost || null,
+        
+        // Organic Inputs
+        organic_fertilizer_kg: scheduleData.organic_inputs?.organic_fertilizer_kg || null,
+        bio_fertilizer_units: scheduleData.organic_inputs?.bio_fertilizer_units || null,
+        organic_manure_kg: scheduleData.organic_inputs?.organic_fertilizer_kg || null, // FYM/compost
+        vermicompost_kg: scheduleData.organic_inputs?.vermicompost_kg || null,
+        organic_input_details: scheduleData.organic_inputs?.details || null,
+        
+        // Pest Management
+        pesticide_requirements: scheduleData.pest_management?.requirements || null,
+        insecticide_ml: scheduleData.pest_management?.insecticide_ml || null,
+        fungicide_gm: scheduleData.pest_management?.fungicide_gm || null,
+        herbicide_ml: scheduleData.pest_management?.herbicide_ml || null,
+        bio_pesticide_ml: scheduleData.pest_management?.bio_pesticide_ml || null,
+        
+        // Growth Regulators
+        growth_regulators: scheduleData.growth_enhancement?.regulators || null,
+        pgr_hormone_ml: scheduleData.growth_enhancement?.pgr_hormone_ml || null,
+        
+        // Product recommendations (to be populated from product_categories)
+        recommended_products: {
+          seeds: scheduleData.seed_quantity_kg ? {
+            quantity_kg: scheduleData.seed_quantity_kg,
+            category: 'seeds'
+          } : null,
+          chemical_fertilizers: scheduleData.fertilizer_plan ? {
+            nitrogen_kg: scheduleData.fertilizer_plan.nitrogen_kg,
+            phosphorus_kg: scheduleData.fertilizer_plan.phosphorus_kg,
+            potassium_kg: scheduleData.fertilizer_plan.potassium_kg,
+            category: 'fertilizers-chemical'
+          } : null,
+          organic_fertilizers: scheduleData.organic_inputs ? {
+            organic_fertilizer_kg: scheduleData.organic_inputs.organic_fertilizer_kg,
+            bio_fertilizer_units: scheduleData.organic_inputs.bio_fertilizer_units,
+            vermicompost_kg: scheduleData.organic_inputs.vermicompost_kg,
+            category: 'fertilizers-organic'
+          } : null,
+          pesticides: scheduleData.pest_management?.requirements || null,
+          growth_regulators: scheduleData.growth_enhancement?.regulators || null
+        },
+        
         ai_model: 'gpt-5-mini-2025-08-07',
         generation_language: language,
         country: country,
@@ -482,9 +681,16 @@ Generate 10-15 specific, actionable tasks with exact quantities.`;
             seed_kg: scheduleData.seed_quantity_kg,
             water_liters: scheduleData.total_water_requirement_liters,
             fertilizer: scheduleData.fertilizer_plan,
+            organic_inputs: scheduleData.organic_inputs,
+            pest_management: scheduleData.pest_management,
+            growth_enhancement: scheduleData.growth_enhancement,
             land_area_ha: landAreaHa,
             ndvi_considered: !!ndviData?.length,
-            weather_forecast_used: !!weather?.forecast?.length
+            weather_forecast_used: !!weather?.forecast?.length,
+            yield_quintals: scheduleData.expected_yield_quintals,
+            market_price: scheduleData.expected_market_price_per_quintal,
+            revenue: scheduleData.expected_gross_revenue,
+            profit: scheduleData.expected_net_profit
           }
         },
         is_active: true,
