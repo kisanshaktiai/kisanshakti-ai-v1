@@ -51,6 +51,8 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
+    console.log('Crop guidelines found:', guidelines ? 'Yes' : 'No');
+
     // 3. Fetch recent NDVI data if available
     const { data: ndviData } = await supabase
       .from('ndvi_cache')
@@ -58,6 +60,8 @@ serve(async (req) => {
       .eq('land_id', landId)
       .order('cached_at', { ascending: false })
       .limit(5);
+
+    console.log('NDVI data points found:', ndviData?.length || 0);
 
     // 4. Regional & Language Context - Pure Languages Only
     const languageMap: Record<string, string> = {
@@ -91,23 +95,127 @@ serve(async (req) => {
     const currency = country === 'India' ? '₹' : '$';
     const languageName = languageMap[language] || 'Hindi';
 
-    // 5. Pure Language Prompts - No Mixed Languages
-    const systemPrompt = `You are a farming expert for Indian farmers. Generate ALL content in ${languageName} language ONLY. Use simple, clear ${languageName} words that farmers understand. Do NOT mix languages. Show costs in ${currency}. Focus on practical farming actions.`;
+    // 5. Build Comprehensive Context-Aware Prompt with NDVI, Guidelines, NPK
+    const systemPrompt = `You are an expert agricultural advisor for Indian farmers. Generate ALL content in ${languageName} language ONLY. 
 
-    const userPrompt = `Crop: ${cropName}${cropVariety ? ` (${cropVariety})` : ''}
-Sow Date: ${sowingDate}
-Area: ${land.area_acres}ac
-Soil: ${land.soil_type}${land.soil_ph ? `, pH ${land.soil_ph}` : ''}
-NPK: N=${land.nitrogen_kg_per_ha || '?'} P=${land.phosphorus_kg_per_ha || '?'} K=${land.potassium_kg_per_ha || '?'}
-Water: ${land.irrigation_type}
-Location: ${land.district}, ${land.state} (${region.zone})
-Season: ${region.season}
-Weather: ${weather?.current?.temp || '?'}°C, ${weather?.current?.description || 'Normal'}
+CRITICAL REQUIREMENTS:
+1. Calculate EXACT seed, fertilizer, and water quantities scaled to the land size (${land.area_acres} acres = ${(land.area_acres * 0.404686).toFixed(2)} hectares)
+2. Base fertilizer recommendations on CURRENT soil NPK levels to reach optimal levels for ${cropName}
+3. Consider vegetation health (NDVI) if provided - adjust nitrogen and irrigation accordingly
+4. Integrate weather forecast - postpone irrigation/spraying if rain is expected
+5. Use simple, clear ${languageName} language that farmers understand
+6. All costs in ${currency}, all quantities specific to THIS land size`;
 
-IMPORTANT: Write ALL task names, descriptions, and instructions in ${languageName} language ONLY. No English mixing.
+    // Build crop baseline context
+    const guidelineContext = guidelines ? `
+STANDARD CROP GUIDELINES FOR ${cropName}:
+- Seed Rate: ${guidelines.seed_rate_kg_per_ha || '?'} kg/ha (Standard)
+- Expected Yield: ${guidelines.expected_yield_kg_per_ha || '?'} kg/ha
+- Water Requirement: ${guidelines.water_requirement_mm || '?'} mm total
+- Duration: ${guidelines.duration_days || '?'} days
+- Fertilizer NPK Recommendation: ${guidelines.npk_recommendation || 'N/A'}
+- Spacing: ${guidelines.plant_spacing_cm || 'Standard spacing'}
 
-Create 8-12 farming tasks: land preparation, sowing, irrigation, fertilizer, pest control, weeding, harvest.
-Keep practical for ${region.crop} farming. All costs in ${currency}.`;
+IMPORTANT: Scale these quantities to ${land.area_acres} acres (${(land.area_acres * 0.404686).toFixed(2)} hectares)` : '';
+
+    // Build NDVI health context
+    const ndviContext = ndviData && ndviData.length > 0 ? `
+VEGETATION HEALTH (NDVI - Satellite Data):
+- Latest Reading: ${ndviData[0].ndvi_value} on ${new Date(ndviData[0].cached_at).toLocaleDateString()}
+- Historical Trend: ${ndviData.slice(0, 3).map(d => `${new Date(d.cached_at).toLocaleDateString()}: ${d.ndvi_value}`).join(', ')}
+- Health Status: ${
+  ndviData[0].ndvi_value > 0.6 ? 'HEALTHY - Crop is thriving, reduce nitrogen slightly' : 
+  ndviData[0].ndvi_value > 0.4 ? 'MODERATE - Normal growth, follow standard fertilizer plan' :
+  ndviData[0].ndvi_value > 0.2 ? 'STRESSED - Low vigor, INCREASE nitrogen by 20-30%, check for water stress' :
+  'CRITICAL - Severe stress, immediate nitrogen boost needed, investigate pest/disease'
+}
+
+ACTION: ${ndviData[0].ndvi_value < 0.4 ? 'Advance first nitrogen application by 3-5 days and increase dose by 25%' : 'Follow standard schedule'}` : 'NDVI data not available - use baseline guidelines';
+
+    // Build NPK deficit calculation
+    const landAreaHa = land.area_acres * 0.404686;
+    const currentN = land.nitrogen_kg_per_ha || 0;
+    const currentP = land.phosphorus_kg_per_ha || 0;
+    const currentK = land.potassium_kg_per_ha || 0;
+    
+    // Target NPK for common crops (these should ideally come from guidelines)
+    const targetNPK: Record<string, {n: number, p: number, k: number}> = {
+      'Wheat': {n: 120, p: 60, k: 40},
+      'Rice': {n: 120, p: 60, k: 40},
+      'Cotton': {n: 120, p: 60, k: 50},
+      'Maize': {n: 150, p: 75, k: 50},
+      'Sugarcane': {n: 250, p: 115, k: 115},
+      'Soybean': {n: 30, p: 60, k: 40}, // Legume, fixes nitrogen
+      'Default': {n: 100, p: 50, k: 40}
+    };
+    
+    const target = targetNPK[cropName] || targetNPK['Default'];
+    const nDeficit = Math.max(0, target.n - currentN);
+    const pDeficit = Math.max(0, target.p - currentP);
+    const kDeficit = Math.max(0, target.k - currentK);
+
+    const npkContext = `
+SOIL NUTRIENT STATUS (Current vs Target for ${cropName}):
+- Soil Type: ${land.soil_type || 'Unknown'}
+- pH: ${land.soil_ph || 'Unknown'}
+- Current NPK: N=${currentN} P=${currentP} K=${currentK} kg/ha
+- Target NPK: N=${target.n} P=${target.p} K=${target.k} kg/ha
+- DEFICIT TO APPLY: N=${nDeficit.toFixed(0)} P=${pDeficit.toFixed(0)} K=${kDeficit.toFixed(0)} kg/ha
+- Total for ${land.area_acres} acres (${landAreaHa.toFixed(2)} ha):
+  * Nitrogen needed: ${(nDeficit * landAreaHa).toFixed(1)} kg
+  * Phosphorus needed: ${(pDeficit * landAreaHa).toFixed(1)} kg
+  * Potassium needed: ${(kDeficit * landAreaHa).toFixed(1)} kg
+
+FERTILIZER STRATEGY: Apply deficit amount in 2-3 split doses. Adjust based on NDVI if available.`;
+
+    // Build weather context
+    const weatherContext = weather?.current && weather?.forecast ? `
+CURRENT WEATHER & 7-DAY FORECAST:
+- Now: ${weather.current.temp}°C, ${weather.current.humidity}% humidity, ${weather.current.conditions}
+- Wind: ${weather.current.wind_speed} m/s
+- Cloud Cover: ${weather.current.clouds}%
+${weather.current.uv_index ? `- UV Index: ${weather.current.uv_index}` : ''}
+
+RAINFALL FORECAST (Next 7 Days):
+${weather.forecast.map((f: any) => `Day ${f.day}: ${f.temp_min}°-${f.temp_max}°C, ${f.rainfall}mm rain (${(f.pop * 100).toFixed(0)}% chance), ${f.description}`).join('\n')}
+
+WEATHER-BASED ACTIONS:
+${weather.forecast.some((f: any) => f.rainfall > 10) ? 
+  `- SKIP irrigation on days with >10mm predicted rain: ${weather.forecast.filter((f: any) => f.rainfall > 10).map((f: any) => `Day ${f.day}`).join(', ')}
+- POSTPONE pesticide/fungicide application if heavy rain expected within 24 hours` : 
+  '- No significant rain forecasted, schedule irrigation normally'}
+${weather.current.temp > 35 ? '- HIGH TEMPERATURE ALERT: Increase irrigation frequency, water in early morning/evening' : ''}
+${weather.current.temp < 10 ? '- LOW TEMPERATURE ALERT: Delay sowing if below minimum germination temp' : ''}` : 'Weather data not available';
+
+    const userPrompt = `Generate a precise crop schedule for:
+
+CROP & LAND DETAILS:
+- Crop: ${cropName}${cropVariety ? ` (Variety: ${cropVariety})` : ''}
+- Sowing Date: ${sowingDate}
+- Land Size: ${land.area_acres} acres (${landAreaHa.toFixed(2)} hectares) = ${(land.area_acres * 4046.86).toFixed(0)} square meters
+- Location: ${land.village || ''} ${land.taluka || ''}, ${land.district}, ${land.state} (${region.zone})
+- Season: ${region.season}
+- Irrigation: ${land.irrigation_type || 'Not specified'}, Source: ${land.water_source || 'Unknown'}
+
+${guidelineContext}
+
+${npkContext}
+
+${ndviContext}
+
+${weatherContext}
+
+TASK GENERATION INSTRUCTIONS:
+1. Calculate EXACT seed quantity: Use standard seed rate (${guidelines?.seed_rate_kg_per_ha || 'typical rate'} kg/ha) × ${landAreaHa.toFixed(2)} ha = X kg
+2. Split fertilizer applications: Apply the calculated NPK deficit in 2-3 splits (e.g., basal, 30 DAS, 60 DAS)
+3. Irrigation schedule: Based on ${land.irrigation_type}, crop water needs (${guidelines?.water_requirement_mm || 'standard'} mm total), and rainfall forecast
+4. Weather-adaptive: If rain >10mm predicted, postpone irrigation by 2-3 days
+5. NDVI-adaptive: If crop stress detected (NDVI <0.4), advance and increase nitrogen dose
+6. Include: Land prep, sowing, irrigation (6-8 times), fertilizer (2-3 splits), pest control (2-3 times), weeding (2 times), harvest
+7. ALL content in pure ${languageName} language - task names, descriptions, instructions in ${languageName} ONLY
+
+Generate 10-15 specific, actionable tasks with exact quantities.`;
+
 
     // 5. Validate critical data before calling OpenAI
     console.log('Validating land data:', {
@@ -141,6 +249,22 @@ Keep practical for ${region.crop} farming. All costs in ${currency}.`;
               total_duration_days: { type: "integer" },
               expected_yield: { type: "string", description: "Expected harvest amount" },
               total_estimated_cost: { type: "number", description: "Total cost in local currency" },
+              seed_quantity_kg: { 
+                type: "number", 
+                description: "Exact seed quantity in kg for this specific land size" 
+              },
+              total_water_requirement_liters: { 
+                type: "number", 
+                description: "Total water needed for entire season in liters" 
+              },
+              fertilizer_plan: {
+                type: "object",
+                properties: {
+                  nitrogen_kg: { type: "number", description: "Total N to apply in kg" },
+                  phosphorus_kg: { type: "number", description: "Total P to apply in kg" },
+                  potassium_kg: { type: "number", description: "Total K to apply in kg" }
+                }
+              },
               tasks: {
                 type: "array",
                 items: {
@@ -157,12 +281,14 @@ Keep practical for ${region.crop} farming. All costs in ${currency}.`;
                       enum: ["low", "medium", "high"]
                     },
                     description: { type: "string", description: "What to do in simple words" },
+                    quantity: { type: "string", description: "Specific quantity for this task (e.g., '50 kg urea', '2000 liters water')" },
                     estimated_cost: { type: "number", description: "Cost in local currency" },
                     instructions: {
                       type: "array",
                       items: { type: "string" },
                       description: "Step-by-step simple instructions"
-                    }
+                    },
+                    weather_dependent: { type: "boolean", description: "Should this task be rescheduled based on weather?" }
                   },
                   required: ["task_name", "category", "days_from_sowing", "priority", "description"]
                 }
@@ -297,7 +423,22 @@ Keep practical for ${region.crop} farming. All costs in ${currency}.`;
         .eq('is_active', true);
     }
 
-    // 7. Save main schedule
+    // 7. Validate AI output for land-specific calculations
+    const validation = {
+      has_seed_qty: !!scheduleData.seed_quantity_kg,
+      has_fertilizer_plan: !!scheduleData.fertilizer_plan,
+      has_water_req: !!scheduleData.total_water_requirement_liters,
+      tasks_with_quantities: scheduleData.tasks.filter((t: any) => t.quantity).length,
+      total_tasks: scheduleData.tasks.length
+    };
+    
+    console.log('AI Output Validation:', validation);
+    
+    if (!validation.has_seed_qty || !validation.has_fertilizer_plan) {
+      console.warn('⚠️ AI did not provide complete quantity calculations');
+    }
+
+    // 8. Save main schedule with calculated quantities
     const { data: savedSchedule, error: scheduleError } = await supabase
       .from('crop_schedules')
       .insert({
@@ -314,7 +455,15 @@ Keep practical for ${region.crop} farming. All costs in ${currency}.`;
         generation_params: {
           scheduleData,
           region: region,
-          generated_at: new Date().toISOString()
+          generated_at: new Date().toISOString(),
+          calculations: {
+            seed_kg: scheduleData.seed_quantity_kg,
+            water_liters: scheduleData.total_water_requirement_liters,
+            fertilizer: scheduleData.fertilizer_plan,
+            land_area_ha: landAreaHa,
+            ndvi_considered: !!ndviData?.length,
+            weather_forecast_used: !!weather?.forecast?.length
+          }
         },
         is_active: true,
       })
@@ -323,7 +472,7 @@ Keep practical for ${region.crop} farming. All costs in ${currency}.`;
 
     if (scheduleError) throw scheduleError;
 
-    // 8. Save individual tasks
+    // 9. Save individual tasks with quantities and weather dependency
     const tasks = scheduleData.tasks.map((task: any) => ({
       schedule_id: savedSchedule.id,
       task_name: task.task_name,
@@ -336,11 +485,13 @@ Keep practical for ${region.crop} farming. All costs in ${currency}.`;
       instructions: task.instructions || [],
       language: language,
       currency: country === 'India' ? 'INR' : 'USD',
+      resources: task.quantity ? { quantity: task.quantity } : null,
+      weather_dependent: task.weather_dependent || (task.category === 'irrigation' || task.category === 'pest_control'),
     }));
 
     await supabase.from('schedule_tasks').insert(tasks);
 
-    // 9. Log AI decision
+    // 10. Log AI decision with comprehensive metadata
     const executionTime = Date.now() - startTime;
     await supabase.from('ai_decision_log').insert({
       tenant_id: tenantId,

@@ -93,6 +93,85 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
     fetchSchedule();
   }, [landId]);
 
+  // Dynamic Climate Monitoring - Auto-adjust schedule based on weather & NDVI
+  useEffect(() => {
+    if (!schedule?.id) return;
+
+    const monitorClimate = async () => {
+      try {
+        console.log('Running automatic climate monitoring for schedule:', schedule.id);
+        
+        // Fetch current weather
+        const { useWeather } = await import('@/hooks/useWeather');
+        // Note: In real implementation, we'd need land location coordinates
+        // For now, we'll fetch from the land data
+        const { data: land } = await supabase
+          .from('lands')
+          .select('latitude, longitude')
+          .eq('id', landId)
+          .maybeSingle();
+        
+        if (!land?.latitude || !land?.longitude) {
+          console.log('No land coordinates available for weather monitoring');
+          return;
+        }
+
+        const weatherHook = useWeather({ lat: land.latitude, lon: land.longitude });
+        const { currentWeather } = weatherHook;
+        
+        // Fetch latest NDVI
+        const { data: ndviData } = await supabase
+          .from('ndvi_cache')
+          .select('ndvi_value, cached_at')
+          .eq('land_id', landId)
+          .order('cached_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        // Call climate monitor edge function
+        const { data: monitorResult, error: monitorError } = await supabase.functions.invoke('ai-schedule-climate-monitor', {
+          body: {
+            scheduleId: schedule.id,
+            climateData: {
+              rainfall_24h: currentWeather?.rainfall_24h || 0,
+              ndvi_value: ndviData?.ndvi_value || 0.5,
+              temperature_avg: currentWeather?.temp || 25,
+            }
+          }
+        });
+        
+        if (monitorError) {
+          console.error('Climate monitoring error:', monitorError);
+        } else {
+          console.log('Climate monitoring result:', monitorResult);
+          
+          // If adjustments were made, refresh the schedule
+          if (monitorResult?.adjustments_triggered) {
+            toast({
+              title: '🌦️ Schedule Auto-Adjusted',
+              description: `${monitorResult.adjustments_made || 0} tasks rescheduled based on weather & crop health`,
+              className: 'bg-blue-50 border-blue-200',
+            });
+            fetchSchedule(); // Reload to show adjusted tasks
+          }
+        }
+      } catch (error) {
+        console.error('Error in climate monitoring:', error);
+      }
+    };
+
+    // Run monitoring every 6 hours
+    const interval = setInterval(monitorClimate, 6 * 60 * 60 * 1000);
+    
+    // Run once immediately after 30 seconds (allow schedule to settle)
+    const initialTimer = setTimeout(monitorClimate, 30000);
+    
+    return () => {
+      clearInterval(interval);
+      clearTimeout(initialTimer);
+    };
+  }, [schedule?.id, landId]);
+
   const fetchSchedule = async () => {
     try {
       setLoading(true);

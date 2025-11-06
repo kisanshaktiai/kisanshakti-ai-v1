@@ -53,6 +53,9 @@ export default function Schedule() {
   const [generating, setGenerating] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const { scheduleTaskReminder } = useNotifications();
+  
+  // Import useWeather hook for real weather data
+  const { useWeather } = await import('@/hooks/useWeather');
 
   useEffect(() => {
     fetchLands();
@@ -140,11 +143,42 @@ export default function Schedule() {
         console.error('Error deactivating old schedules:', deactivateError);
       }
 
-      // Fetch weather data if available (placeholder for now)
+      // Fetch REAL weather data using useWeather hook
+      const { useWeather } = await import('@/hooks/useWeather');
+      const location = selectedLand.latitude && selectedLand.longitude 
+        ? { lat: selectedLand.latitude, lon: selectedLand.longitude }
+        : undefined;
+      
+      // Dynamically fetch weather inside the component
+      const weatherHook = useWeather(location);
+      const { currentWeather, forecast } = weatherHook;
+      
+      // Structure weather data for AI
       const weatherData = {
-        current: { temp: 25, humidity: 60, conditions: 'Clear' },
-        forecast: []
+        current: currentWeather ? {
+          temp: currentWeather.temp,
+          feels_like: currentWeather.feels_like,
+          humidity: currentWeather.humidity,
+          pressure: currentWeather.pressure,
+          wind_speed: currentWeather.wind_speed,
+          conditions: currentWeather.description,
+          main: currentWeather.main,
+          clouds: currentWeather.clouds,
+          visibility: currentWeather.visibility,
+          uv_index: currentWeather.uv_index,
+        } : null,
+        forecast: forecast ? forecast.slice(0, 7).map((day, index) => ({
+          day: index + 1,
+          temp_min: day.temp.min,
+          temp_max: day.temp.max,
+          humidity: day.humidity,
+          rainfall: day.rain || 0,
+          pop: day.pop, // Probability of precipitation
+          description: day.weather[0]?.description,
+        })) : []
       };
+
+      console.log('Fetched real weather data for AI:', weatherData);
 
       // Call the updated ai-smart-schedule edge function with user's preferred language
       const response = await supabase.functions.invoke('ai-smart-schedule', {
