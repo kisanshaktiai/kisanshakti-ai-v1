@@ -1,27 +1,85 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Droplets, Leaf, Bug, Scissors, Package, AlertCircle, CheckCircle2, Clock, Zap } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Droplets, Leaf, Bug, Scissors, Package, AlertCircle, CheckCircle2, Clock, Zap, ChevronDown, Volume2, VolumeX, Calendar, DollarSign, CloudRain, Thermometer } from 'lucide-react';
 import { format, isToday, isTomorrow, isPast, differenceInDays } from 'date-fns';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { TaskCompletionSection } from './TaskCompletionSection';
+import { cn } from '@/lib/utils';
+import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { supabase } from '@/utils/supabase';
+import { toast } from 'sonner';
 
 interface Task {
   id: string;
   task_date: string;
   task_type: string;
   task_name: string;
+  task_description?: string;
   status: string;
   priority: string;
   weather_dependent: boolean;
   climate_adjusted?: boolean;
   climate_adjustment_reason?: string;
+  instructions?: string[];
+  precautions?: string[];
+  resources?: Record<string, any>;
+  ideal_weather?: {
+    temperature?: string;
+    humidity?: string;
+    conditions?: string;
+  };
+  duration_hours?: number;
+  estimated_cost?: number;
+  currency?: string;
+  completed_at?: string;
 }
 
 interface TaskTimelineProps {
   tasks: Task[];
-  onTaskClick: (task: Task) => void;
+  onTaskClick?: (task: Task) => void;
 }
 
 const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick }) => {
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
+  const { speak, stop, isSpeaking } = useTextToSpeech({ language: 'hi-IN', rate: 0.9 });
+
+  const handleTaskComplete = async (taskId: string) => {
+    try {
+      const { error } = await supabase
+        .from('schedule_tasks')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', taskId);
+
+      if (error) throw error;
+
+      toast.success('Task marked as completed');
+    } catch (error) {
+      console.error('Error completing task:', error);
+      toast.error('Failed to mark task as completed');
+    }
+  };
+
+  const handleSpeak = (task: Task) => {
+    if (isSpeaking && speakingTaskId === task.id) {
+      stop();
+      setSpeakingTaskId(null);
+    } else {
+      const textToSpeak = `
+        ${task.task_name}. 
+        ${task.task_description || ''}. 
+        ${task.instructions ? `Instructions: ${task.instructions.join('. ')}` : ''}
+        ${task.precautions ? `Precautions: ${task.precautions.join('. ')}` : ''}
+      `.trim();
+      speak(textToSpeak);
+      setSpeakingTaskId(task.id);
+    }
+  };
   const taskTypeConfig = {
     irrigation: { 
       icon: Droplets, 
@@ -174,91 +232,266 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick }) => {
                   const isCompleted = task.status === 'completed';
                   const isOverdue = isPastDate && task.status === 'pending';
                   
+                  const isExpanded = expandedTaskId === task.id;
+                  
                   return (
-                    <motion.div
+                    <Collapsible
                       key={task.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: (groupIndex * 0.1) + (taskIndex * 0.05) }}
-                      className={`group relative overflow-hidden rounded-xl border-2 transition-all duration-300 cursor-pointer
-                        ${isCompleted 
-                          ? 'bg-success/5 border-success/20 hover:border-success/40 hover:bg-success/10' 
-                          : isOverdue
-                          ? 'bg-destructive/5 border-destructive/30 hover:border-destructive/50 hover:bg-destructive/10'
-                          : `${config.lightBg} ${config.border} hover:shadow-lg hover:shadow-primary/10 hover:-translate-y-0.5`
-                        }`}
-                      onClick={() => onTaskClick(task)}
+                      open={isExpanded}
+                      onOpenChange={(open) => setExpandedTaskId(open ? task.id : null)}
                     >
-                      {/* Gradient Overlay */}
-                      <div className={`absolute inset-0 bg-gradient-to-r ${config.color} opacity-0 group-hover:opacity-5 transition-opacity`} />
-                      
-                      <div className="relative p-4">
-                        <div className="flex items-start gap-4">
-                          {/* Icon */}
-                          <div className={`shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br ${config.color} shadow-lg flex items-center justify-center ${
-                            isCompleted ? 'opacity-50' : 'group-hover:scale-110 transition-transform'
-                          }`}>
-                            <TaskIcon className="h-5 w-5 text-white" />
-                          </div>
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: (groupIndex * 0.1) + (taskIndex * 0.05) }}
+                        className={cn(
+                          "group relative overflow-hidden rounded-xl border-2 transition-all duration-300",
+                          isCompleted && "bg-success/5 border-success/20 opacity-70",
+                          isOverdue && !isCompleted && "bg-destructive/5 border-destructive/30",
+                          !isCompleted && !isOverdue && `${config.lightBg} ${config.border}`,
+                          isExpanded && "shadow-lg shadow-primary/20 scale-[1.02]"
+                        )}
+                      >
+                        {/* Gradient Overlay */}
+                        <div className={cn(
+                          "absolute inset-0 bg-gradient-to-r opacity-0 group-hover:opacity-5 transition-opacity",
+                          config.color
+                        )} />
+                        
+                        <CollapsibleTrigger asChild>
+                          <div className="relative p-4 cursor-pointer">
+                            <div className="flex items-start gap-4">
+                              {/* Icon */}
+                              <div className={cn(
+                                "shrink-0 w-12 h-12 rounded-xl bg-gradient-to-br shadow-lg flex items-center justify-center transition-transform",
+                                config.color,
+                                isCompleted ? "opacity-50" : "group-hover:scale-110",
+                                isExpanded && "scale-110"
+                              )}>
+                                <TaskIcon className="h-5 w-5 text-white" />
+                              </div>
 
-                          {/* Content */}
-                          <div className="flex-1 min-w-0">
-                            <h4 className={`font-semibold text-sm mb-2 ${
-                              isCompleted ? 'line-through text-muted-foreground' : 'text-foreground'
-                            }`}>
-                              {task.task_name}
-                            </h4>
+                              {/* Content */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start justify-between gap-2">
+                                  <h4 className={cn(
+                                    "font-semibold text-sm mb-2",
+                                    isCompleted ? "line-through text-muted-foreground" : "text-foreground"
+                                  )}>
+                                    {task.task_name}
+                                  </h4>
+                                  
+                                  {/* Chevron */}
+                                  <motion.div
+                                    animate={{ rotate: isExpanded ? 180 : 0 }}
+                                    transition={{ duration: 0.3 }}
+                                  >
+                                    <ChevronDown className="h-5 w-5 text-muted-foreground" />
+                                  </motion.div>
+                                </div>
 
-                            {/* Badges */}
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Badge 
-                                variant={task.priority === 'high' ? 'destructive' : task.priority === 'medium' ? 'default' : 'secondary'}
-                                className="text-[10px] h-5 font-medium"
-                              >
-                                {task.priority}
-                              </Badge>
+                                {/* Description (collapsed) */}
+                                {!isExpanded && task.task_description && (
+                                  <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
+                                    {task.task_description}
+                                  </p>
+                                )}
 
-                              {task.weather_dependent && (
-                                <Badge variant="outline" className="text-[10px] h-5 gap-1">
-                                  <Droplets className="h-2.5 w-2.5" />
-                                  Weather
-                                </Badge>
-                              )}
+                                {/* Badges */}
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge 
+                                    variant={task.priority === 'high' ? 'destructive' : task.priority === 'medium' ? 'default' : 'secondary'}
+                                    className="text-[10px] h-5 font-medium"
+                                  >
+                                    {task.priority}
+                                  </Badge>
 
-                              {task.climate_adjusted && (
-                                <Badge className="bg-accent/10 text-accent border-accent/30 text-[10px] h-5 gap-1">
-                                  <Zap className="h-2.5 w-2.5" />
-                                  AI Adjusted
-                                </Badge>
-                              )}
+                                  {task.weather_dependent && (
+                                    <Badge variant="outline" className="text-[10px] h-5 gap-1">
+                                      <Droplets className="h-2.5 w-2.5" />
+                                      Weather
+                                    </Badge>
+                                  )}
 
-                              {isCompleted && (
-                                <Badge className="bg-success/20 text-success border-success/30 text-[10px] h-5 gap-1">
-                                  <CheckCircle2 className="h-2.5 w-2.5" />
-                                  Done
-                                </Badge>
-                              )}
+                                  {task.climate_adjusted && (
+                                    <Badge className="bg-accent/10 text-accent border-accent/30 text-[10px] h-5 gap-1">
+                                      <Zap className="h-2.5 w-2.5" />
+                                      AI Adjusted
+                                    </Badge>
+                                  )}
 
-                              {isOverdue && (
-                                <Badge variant="destructive" className="text-[10px] h-5">
-                                  Overdue
-                                </Badge>
-                              )}
+                                  {isCompleted && (
+                                    <Badge className="bg-success/20 text-success border-success/30 text-[10px] h-5 gap-1">
+                                      <CheckCircle2 className="h-2.5 w-2.5" />
+                                      Done
+                                    </Badge>
+                                  )}
+
+                                  {isOverdue && !isCompleted && (
+                                    <Badge variant="destructive" className="text-[10px] h-5">
+                                      Overdue
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-
-                            {/* Climate Adjustment Reason */}
-                            {task.climate_adjustment_reason && (
-                              <p className="text-xs text-muted-foreground mt-2 italic">
-                                {task.climate_adjustment_reason}
-                              </p>
-                            )}
                           </div>
-                        </div>
-                      </div>
+                        </CollapsibleTrigger>
 
-                      {/* Hover Indicator */}
-                      <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-primary to-accent transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
-                    </motion.div>
+                        {/* Expanded Content */}
+                        <CollapsibleContent>
+                          <AnimatePresence>
+                            {isExpanded && (
+                              <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                exit={{ opacity: 0, height: 0 }}
+                                transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                                className="px-4 pb-4 space-y-4"
+                              >
+                                {/* Speaker Button */}
+                                <div className="flex justify-end">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSpeak(task);
+                                    }}
+                                    className="gap-2"
+                                  >
+                                    {isSpeaking && speakingTaskId === task.id ? (
+                                      <>
+                                        <VolumeX className="h-4 w-4" />
+                                        <span>Stop</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Volume2 className="h-4 w-4" />
+                                        <span>Listen</span>
+                                      </>
+                                    )}
+                                  </Button>
+                                </div>
+
+                                {/* Full Description */}
+                                {task.task_description && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2">Description</h5>
+                                    <p className="text-sm text-muted-foreground">{task.task_description}</p>
+                                  </div>
+                                )}
+
+                                {/* Instructions */}
+                                {task.instructions && task.instructions.length > 0 && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2">Instructions</h5>
+                                    <ol className="list-decimal list-inside space-y-1">
+                                      {task.instructions.map((instruction, idx) => (
+                                        <li key={idx} className="text-sm text-muted-foreground">{instruction}</li>
+                                      ))}
+                                    </ol>
+                                  </div>
+                                )}
+
+                                {/* Precautions */}
+                                {task.precautions && task.precautions.length > 0 && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2 text-warning flex items-center gap-2">
+                                      <AlertCircle className="h-4 w-4" />
+                                      Precautions
+                                    </h5>
+                                    <ul className="list-disc list-inside space-y-1">
+                                      {task.precautions.map((precaution, idx) => (
+                                        <li key={idx} className="text-sm text-muted-foreground">{precaution}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+
+                                {/* Resources */}
+                                {task.resources && Object.keys(task.resources).length > 0 && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2">Required Resources</h5>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      {Object.entries(task.resources).map(([key, value]) => (
+                                        <div key={key} className="flex justify-between text-sm">
+                                          <span className="text-muted-foreground capitalize">{key.replace('_', ' ')}:</span>
+                                          <span className="font-medium">{String(value)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Quick Info Pills */}
+                                <div className="flex flex-wrap gap-2">
+                                  {task.duration_hours && (
+                                    <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-background/80 border border-border/50">
+                                      <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                                      <span className="text-xs text-muted-foreground">{task.duration_hours}h</span>
+                                    </div>
+                                  )}
+                                  {task.estimated_cost && (
+                                    <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-background/80 border border-border/50">
+                                      <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+                                      <span className="text-xs text-muted-foreground">
+                                        {task.currency === 'INR' ? '₹' : '$'}{task.estimated_cost}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Ideal Weather */}
+                                {task.ideal_weather && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
+                                      <Thermometer className="h-4 w-4 text-info" />
+                                      Ideal Weather
+                                    </h5>
+                                    <div className="grid grid-cols-2 gap-2 text-sm">
+                                      {task.ideal_weather.temperature && (
+                                        <div className="flex justify-between">
+                                          <span className="text-muted-foreground">Temperature:</span>
+                                          <span>{task.ideal_weather.temperature}°C</span>
+                                        </div>
+                                      )}
+                                      {task.ideal_weather.humidity && (
+                                        <div className="flex justify-between">
+                                          <span className="text-muted-foreground">Humidity:</span>
+                                          <span>{task.ideal_weather.humidity}%</span>
+                                        </div>
+                                      )}
+                                      {task.ideal_weather.conditions && (
+                                        <div className="col-span-2">
+                                          <span className="text-muted-foreground">Conditions:</span> {task.ideal_weather.conditions}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Task Completion Section */}
+                                <TaskCompletionSection
+                                  taskId={task.id}
+                                  status={task.status}
+                                  completedAt={task.completed_at}
+                                  onComplete={handleTaskComplete}
+                                />
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </CollapsibleContent>
+
+                        {/* Status Indicator Line */}
+                        <div className={cn(
+                          "absolute bottom-0 left-0 right-0 h-1 transition-all",
+                          isCompleted && "bg-success",
+                          isOverdue && !isCompleted && "bg-destructive",
+                          !isCompleted && !isOverdue && "bg-gradient-to-r from-primary to-accent transform scale-x-0 group-hover:scale-x-100 origin-left"
+                        )} />
+                      </motion.div>
+                    </Collapsible>
                   );
                 })}
               </div>

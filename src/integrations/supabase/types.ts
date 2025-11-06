@@ -2279,33 +2279,49 @@ export type Database = {
       }
       cart_items: {
         Row: {
-          added_at: string | null
-          farmer_id: string | null
+          added_at: string
+          cart_id: string
+          farmer_id: string
           id: string
-          product_id: string | null
+          notes: string | null
+          product_id: string
           quantity: number
-          tenant_id: string | null
-          user_id: string
+          tenant_id: string
+          unit_price: number
+          updated_at: string
         }
         Insert: {
-          added_at?: string | null
-          farmer_id?: string | null
+          added_at?: string
+          cart_id: string
+          farmer_id: string
           id?: string
-          product_id?: string | null
-          quantity?: number
-          tenant_id?: string | null
-          user_id: string
+          notes?: string | null
+          product_id: string
+          quantity: number
+          tenant_id: string
+          unit_price: number
+          updated_at?: string
         }
         Update: {
-          added_at?: string | null
-          farmer_id?: string | null
+          added_at?: string
+          cart_id?: string
+          farmer_id?: string
           id?: string
-          product_id?: string | null
+          notes?: string | null
+          product_id?: string
           quantity?: number
-          tenant_id?: string | null
-          user_id?: string
+          tenant_id?: string
+          unit_price?: number
+          updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "cart_items_cart_id_fkey"
+            columns: ["cart_id"]
+            isOneToOne: false
+            referencedRelation: "shopping_carts"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "cart_items_farmer_id_fkey"
             columns: ["farmer_id"]
@@ -2324,7 +2340,7 @@ export type Database = {
             foreignKeyName: "cart_items_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
-            referencedRelation: "marketplace_products"
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
           {
@@ -4272,62 +4288,69 @@ export type Database = {
       dealer_commissions: {
         Row: {
           base_amount: number
-          calculation_details: Json | null
           commission_amount: number
           commission_rate: number
-          commission_type: string
+          commission_status: string
           created_at: string
           dealer_id: string
           id: string
-          notes: string | null
+          order_id: string
           payment_date: string | null
           payment_reference: string | null
-          payment_status: string | null
-          period_end: string
-          period_start: string
           tenant_id: string
-          transaction_id: string | null
           updated_at: string
         }
         Insert: {
           base_amount: number
-          calculation_details?: Json | null
           commission_amount: number
           commission_rate: number
-          commission_type: string
+          commission_status?: string
           created_at?: string
           dealer_id: string
           id?: string
-          notes?: string | null
+          order_id: string
           payment_date?: string | null
           payment_reference?: string | null
-          payment_status?: string | null
-          period_end: string
-          period_start: string
           tenant_id: string
-          transaction_id?: string | null
           updated_at?: string
         }
         Update: {
           base_amount?: number
-          calculation_details?: Json | null
           commission_amount?: number
           commission_rate?: number
-          commission_type?: string
+          commission_status?: string
           created_at?: string
           dealer_id?: string
           id?: string
-          notes?: string | null
+          order_id?: string
           payment_date?: string | null
           payment_reference?: string | null
-          payment_status?: string | null
-          period_end?: string
-          period_start?: string
           tenant_id?: string
-          transaction_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "dealer_commissions_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_commissions_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dealer_commissions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dealer_communications: {
         Row: {
@@ -7022,6 +7045,100 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      inventory_movements: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          dealer_id: string | null
+          farmer_id: string | null
+          id: string
+          movement_type: string
+          notes: string | null
+          order_id: string | null
+          product_id: string
+          quantity_change: number
+          reference_number: string | null
+          stock_after: number
+          stock_before: number
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          dealer_id?: string | null
+          farmer_id?: string | null
+          id?: string
+          movement_type: string
+          notes?: string | null
+          order_id?: string | null
+          product_id: string
+          quantity_change: number
+          reference_number?: string | null
+          stock_after: number
+          stock_before: number
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          dealer_id?: string | null
+          farmer_id?: string | null
+          id?: string
+          movement_type?: string
+          notes?: string | null
+          order_id?: string | null
+          product_id?: string
+          quantity_change?: number
+          reference_number?: string | null
+          stock_after?: number
+          stock_before?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_movements_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_movements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       invites: {
         Row: {
@@ -10666,6 +10783,169 @@ export type Database = {
           },
         ]
       }
+      order_deliveries: {
+        Row: {
+          actual_delivery_date: string | null
+          courier_name: string | null
+          created_at: string
+          dealer_id: string | null
+          delivered_to: string | null
+          delivery_method: string
+          delivery_notes: string | null
+          delivery_status: string
+          expected_delivery_date: string | null
+          farmer_id: string
+          id: string
+          order_id: string
+          signature_url: string | null
+          tenant_id: string
+          tracking_number: string | null
+          updated_at: string
+        }
+        Insert: {
+          actual_delivery_date?: string | null
+          courier_name?: string | null
+          created_at?: string
+          dealer_id?: string | null
+          delivered_to?: string | null
+          delivery_method: string
+          delivery_notes?: string | null
+          delivery_status?: string
+          expected_delivery_date?: string | null
+          farmer_id: string
+          id?: string
+          order_id: string
+          signature_url?: string | null
+          tenant_id: string
+          tracking_number?: string | null
+          updated_at?: string
+        }
+        Update: {
+          actual_delivery_date?: string | null
+          courier_name?: string | null
+          created_at?: string
+          dealer_id?: string | null
+          delivered_to?: string | null
+          delivery_method?: string
+          delivery_notes?: string | null
+          delivery_status?: string
+          expected_delivery_date?: string | null
+          farmer_id?: string
+          id?: string
+          order_id?: string
+          signature_url?: string | null
+          tenant_id?: string
+          tracking_number?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_deliveries_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_deliveries_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_deliveries_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "order_deliveries_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_deliveries_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_fulfillment: {
+        Row: {
+          assigned_to: string | null
+          created_at: string
+          dealer_id: string | null
+          delivered_at: string | null
+          fulfillment_status: string
+          id: string
+          order_id: string
+          packed_at: string | null
+          packing_notes: string | null
+          shipped_at: string | null
+          tenant_id: string
+          updated_at: string
+          warehouse_location: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_at?: string
+          dealer_id?: string | null
+          delivered_at?: string | null
+          fulfillment_status?: string
+          id?: string
+          order_id: string
+          packed_at?: string | null
+          packing_notes?: string | null
+          shipped_at?: string | null
+          tenant_id: string
+          updated_at?: string
+          warehouse_location?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          created_at?: string
+          dealer_id?: string | null
+          delivered_at?: string | null
+          fulfillment_status?: string
+          id?: string
+          order_id?: string
+          packed_at?: string | null
+          packing_notes?: string | null
+          shipped_at?: string | null
+          tenant_id?: string
+          updated_at?: string
+          warehouse_location?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_fulfillment_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_fulfillment_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_fulfillment_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_items: {
         Row: {
           created_at: string | null
@@ -13175,6 +13455,442 @@ export type Database = {
           },
         ]
       }
+      sales_analytics: {
+        Row: {
+          created_at: string
+          date: string
+          dimensions: Json | null
+          id: string
+          metric_type: string
+          metrics: Json | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          dimensions?: Json | null
+          id?: string
+          metric_type: string
+          metrics?: Json | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          dimensions?: Json | null
+          id?: string
+          metric_type?: string
+          metrics?: Json | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_analytics_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales_order_items: {
+        Row: {
+          created_at: string
+          dealer_commission_amount: number | null
+          dealer_commission_rate: number | null
+          dealer_id: string | null
+          discount_amount: number | null
+          discount_percentage: number | null
+          farmer_id: string
+          id: string
+          line_total: number
+          notes: string | null
+          order_id: string
+          product_id: string
+          product_name: string
+          product_sku: string | null
+          quantity: number
+          tax_amount: number | null
+          tax_percentage: number | null
+          tenant_id: string
+          unit_price: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dealer_commission_amount?: number | null
+          dealer_commission_rate?: number | null
+          dealer_id?: string | null
+          discount_amount?: number | null
+          discount_percentage?: number | null
+          farmer_id: string
+          id?: string
+          line_total?: number
+          notes?: string | null
+          order_id: string
+          product_id: string
+          product_name: string
+          product_sku?: string | null
+          quantity: number
+          tax_amount?: number | null
+          tax_percentage?: number | null
+          tenant_id: string
+          unit_price: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dealer_commission_amount?: number | null
+          dealer_commission_rate?: number | null
+          dealer_id?: string | null
+          discount_amount?: number | null
+          discount_percentage?: number | null
+          farmer_id?: string
+          id?: string
+          line_total?: number
+          notes?: string | null
+          order_id?: string
+          product_id?: string
+          product_name?: string
+          product_sku?: string | null
+          quantity?: number
+          tax_amount?: number | null
+          tax_percentage?: number | null
+          tenant_id?: string
+          unit_price?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_order_items_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_order_items_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_order_items_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "sales_order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_order_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales_orders: {
+        Row: {
+          billing_address: Json | null
+          confirmed_at: string | null
+          confirmed_by: string | null
+          created_at: string
+          created_by: string | null
+          dealer_id: string | null
+          delivered_at: string | null
+          delivery_address: Json | null
+          discount_amount: number
+          farmer_id: string
+          fulfillment_status: string
+          id: string
+          metadata: Json | null
+          notes: string | null
+          order_number: string
+          order_source: string
+          order_status: string
+          order_type: string
+          payment_method: string | null
+          payment_status: string
+          shipping_charges: number
+          subtotal_amount: number
+          tax_amount: number
+          tenant_id: string
+          total_amount: number
+          updated_at: string
+        }
+        Insert: {
+          billing_address?: Json | null
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          dealer_id?: string | null
+          delivered_at?: string | null
+          delivery_address?: Json | null
+          discount_amount?: number
+          farmer_id: string
+          fulfillment_status?: string
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          order_number: string
+          order_source?: string
+          order_status?: string
+          order_type?: string
+          payment_method?: string | null
+          payment_status?: string
+          shipping_charges?: number
+          subtotal_amount?: number
+          tax_amount?: number
+          tenant_id: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          billing_address?: Json | null
+          confirmed_at?: string | null
+          confirmed_by?: string | null
+          created_at?: string
+          created_by?: string | null
+          dealer_id?: string | null
+          delivered_at?: string | null
+          delivery_address?: Json | null
+          discount_amount?: number
+          farmer_id?: string
+          fulfillment_status?: string
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          order_number?: string
+          order_source?: string
+          order_status?: string
+          order_type?: string
+          payment_method?: string | null
+          payment_status?: string
+          shipping_charges?: number
+          subtotal_amount?: number
+          tax_amount?: number
+          tenant_id?: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_orders_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_orders_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_orders_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "sales_orders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales_return_items: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          order_item_id: string
+          product_id: string
+          quantity: number
+          refund_amount: number
+          return_condition: string
+          return_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          order_item_id: string
+          product_id: string
+          quantity: number
+          refund_amount?: number
+          return_condition: string
+          return_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          order_item_id?: string
+          product_id?: string
+          quantity?: number
+          refund_amount?: number
+          return_condition?: string
+          return_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_return_items_order_item_id_fkey"
+            columns: ["order_item_id"]
+            isOneToOne: false
+            referencedRelation: "sales_order_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_return_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_return_items_return_id_fkey"
+            columns: ["return_id"]
+            isOneToOne: false
+            referencedRelation: "sales_returns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_return_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sales_returns: {
+        Row: {
+          approved_at: string | null
+          created_at: string
+          dealer_id: string | null
+          farmer_id: string
+          id: string
+          notes: string | null
+          order_id: string
+          received_at: string | null
+          refund_method: string | null
+          refund_status: string | null
+          refunded_at: string | null
+          requested_at: string
+          return_amount: number
+          return_number: string
+          return_reason: string
+          return_status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          created_at?: string
+          dealer_id?: string | null
+          farmer_id: string
+          id?: string
+          notes?: string | null
+          order_id: string
+          received_at?: string | null
+          refund_method?: string | null
+          refund_status?: string | null
+          refunded_at?: string | null
+          requested_at?: string
+          return_amount?: number
+          return_number: string
+          return_reason: string
+          return_status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          created_at?: string
+          dealer_id?: string | null
+          farmer_id?: string
+          id?: string
+          notes?: string | null
+          order_id?: string
+          received_at?: string | null
+          refund_method?: string | null
+          refund_status?: string | null
+          refunded_at?: string | null
+          requested_at?: string
+          return_amount?: number
+          return_number?: string
+          return_reason?: string
+          return_status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sales_returns_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_returns_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_returns_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "sales_returns_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "sales_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sales_returns_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sas_token_cache: {
         Row: {
           created_at: string | null
@@ -14043,6 +14759,74 @@ export type Database = {
             foreignKeyName: "security_settings_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shopping_carts: {
+        Row: {
+          cart_status: string
+          created_at: string
+          dealer_id: string | null
+          farmer_id: string
+          id: string
+          last_activity_at: string
+          metadata: Json | null
+          session_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          cart_status?: string
+          created_at?: string
+          dealer_id?: string | null
+          farmer_id: string
+          id?: string
+          last_activity_at?: string
+          metadata?: Json | null
+          session_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          cart_status?: string
+          created_at?: string
+          dealer_id?: string | null
+          farmer_id?: string
+          id?: string
+          last_activity_at?: string
+          metadata?: Json | null
+          session_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shopping_carts_dealer_id_fkey"
+            columns: ["dealer_id"]
+            isOneToOne: false
+            referencedRelation: "dealers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopping_carts_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shopping_carts_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "shopping_carts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
@@ -15588,6 +16372,53 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "task_completions_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_notifications: {
+        Row: {
+          created_at: string | null
+          id: string
+          notification_type: string
+          opened_at: string | null
+          scheduled_for: string
+          sent_at: string | null
+          status: string | null
+          task_id: string | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          notification_type: string
+          opened_at?: string | null
+          scheduled_for: string
+          sent_at?: string | null
+          status?: string | null
+          task_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          notification_type?: string
+          opened_at?: string | null
+          scheduled_for?: string
+          sent_at?: string | null
+          status?: string | null
+          task_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_notifications_task_id_fkey"
             columns: ["task_id"]
             isOneToOne: false
             referencedRelation: "schedule_tasks"
@@ -19649,6 +20480,7 @@ export type Database = {
       generate_farmer_code: { Args: { p_tenant_id: string }; Returns: string }
       generate_invite_token: { Args: never; Returns: string }
       generate_invoice_number: { Args: never; Returns: string }
+      generate_order_number: { Args: { p_tenant_id: string }; Returns: string }
       generate_otp: { Args: { p_length?: number }; Returns: string }
       generate_slug_suggestions: {
         Args: { p_organization_name: string }
@@ -19835,6 +20667,7 @@ export type Database = {
       get_geometry_bbox: { Args: { geom: unknown }; Returns: number[] }
       get_header_farmer_id: { Args: never; Returns: string }
       get_header_tenant_id: { Args: never; Returns: string }
+      get_jwt_dealer_id: { Args: never; Returns: string }
       get_jwt_farmer_id: { Args: never; Returns: string }
       get_jwt_tenant_id: { Args: never; Returns: string }
       get_lands_by_tile: {
@@ -20008,7 +20841,9 @@ export type Database = {
       is_invite_valid: { Args: { invite_token: string }; Returns: boolean }
       is_moderator: { Args: never; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
-      is_tenant_admin: { Args: { _tenant_id: string }; Returns: boolean }
+      is_tenant_admin:
+        | { Args: never; Returns: boolean }
+        | { Args: { _tenant_id: string }; Returns: boolean }
       is_user_tenant_admin: {
         Args: { target_tenant_id: string }
         Returns: boolean

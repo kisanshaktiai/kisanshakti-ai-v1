@@ -136,25 +136,34 @@ class NotificationService {
   }
 
   async scheduleTaskReminder(taskId: string, taskTitle: string, dueDate: Date) {
-    // Calculate notification time (1 day before)
-    const notificationTime = new Date(dueDate);
-    notificationTime.setDate(notificationTime.getDate() - 1);
-    notificationTime.setHours(9, 0, 0, 0); // 9 AM
+    // Schedule 3 notifications: 5 days before, 1 day before, and same day
+    const notifications = [
+      { type: '5_days', daysBefore: 5, title: `Upcoming: ${taskTitle}` },
+      { type: '1_day', daysBefore: 1, title: `Tomorrow: ${taskTitle}` },
+      { type: 'same_day', daysBefore: 0, title: `Today: ${taskTitle}` },
+    ];
 
     const now = new Date();
-    if (notificationTime > now) {
-      const delay = notificationTime.getTime() - now.getTime();
-      
-      // Store in localStorage for service worker
-      const reminders = this.getScheduledReminders();
-      reminders.push({
-        id: taskId,
-        title: taskTitle,
-        time: notificationTime.toISOString(),
-        type: 'task',
-      });
-      localStorage.setItem('scheduledReminders', JSON.stringify(reminders));
-    }
+    const reminders = this.getScheduledReminders();
+
+    notifications.forEach(({ type, daysBefore, title }) => {
+      const notificationTime = new Date(dueDate);
+      notificationTime.setDate(notificationTime.getDate() - daysBefore);
+      notificationTime.setHours(9, 0, 0, 0); // 9 AM
+
+      if (notificationTime > now) {
+        reminders.push({
+          id: `${taskId}-${type}`,
+          taskId,
+          title,
+          time: notificationTime.toISOString(),
+          type: 'task',
+          notificationType: type,
+        });
+      }
+    });
+
+    localStorage.setItem('scheduledReminders', JSON.stringify(reminders));
   }
 
   async scheduleWeatherAlert(alertType: string, message: string) {

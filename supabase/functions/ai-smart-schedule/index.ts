@@ -489,7 +489,63 @@ Generate 10-15 specific, actionable tasks with exact quantities.`;
       weather_dependent: task.weather_dependent || (task.category === 'irrigation' || task.category === 'pest_control'),
     }));
 
-    await supabase.from('schedule_tasks').insert(tasks);
+    const { data: insertedTasks, error: tasksError } = await supabase
+      .from('schedule_tasks')
+      .insert(tasks)
+      .select();
+
+    if (tasksError) {
+      console.error('Error inserting tasks:', tasksError);
+    } else {
+      console.log(`✓ Inserted ${insertedTasks?.length || 0} tasks`);
+      
+      // 9.5. Auto-schedule notifications for each task (5 days, 1 day, same day)
+      if (insertedTasks && insertedTasks.length > 0) {
+        const notificationRecords = [];
+        const now = new Date();
+
+        for (const task of insertedTasks) {
+          const taskDate = new Date(task.task_date);
+          
+          // Schedule notifications: 5 days before, 1 day before, and same day
+          const notificationTypes = [
+            { type: '5_days', daysBefore: 5 },
+            { type: '1_day', daysBefore: 1 },
+            { type: 'same_day', daysBefore: 0 },
+          ];
+
+          notificationTypes.forEach(({ type, daysBefore }) => {
+            const scheduledTime = new Date(taskDate);
+            scheduledTime.setDate(scheduledTime.getDate() - daysBefore);
+            scheduledTime.setHours(9, 0, 0, 0); // 9 AM local time
+
+            // Only schedule if notification time is in the future
+            if (scheduledTime > now) {
+              notificationRecords.push({
+                task_id: task.id,
+                user_id: farmerId,
+                notification_type: type,
+                scheduled_for: scheduledTime.toISOString(),
+                status: 'pending',
+              });
+            }
+          });
+        }
+
+        // Batch insert all notifications
+        if (notificationRecords.length > 0) {
+          const { error: notifError } = await supabase
+            .from('task_notifications')
+            .insert(notificationRecords);
+
+          if (notifError) {
+            console.error('Error scheduling notifications:', notifError);
+          } else {
+            console.log(`✓ Scheduled ${notificationRecords.length} notifications for ${insertedTasks.length} tasks`);
+          }
+        }
+      }
+    }
 
     // 10. Log AI decision with comprehensive metadata
     const executionTime = Date.now() - startTime;
