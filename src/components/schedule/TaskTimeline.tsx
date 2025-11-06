@@ -2,14 +2,16 @@ import React, { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Droplets, Leaf, Bug, Scissors, Package, AlertCircle, CheckCircle2, Clock, Zap, ChevronDown, Volume2, VolumeX, Calendar, DollarSign, CloudRain, Thermometer } from 'lucide-react';
+import { Droplets, Leaf, Bug, Scissors, Package, AlertCircle, CheckCircle2, Clock, Zap, ChevronDown, Volume2, VolumeX, Calendar, DollarSign, CloudRain, Thermometer, Loader2 } from 'lucide-react';
 import { format, isToday, isTomorrow, isPast, differenceInDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TaskCompletionSection } from './TaskCompletionSection';
+import { VideoHelpButton } from './VideoHelpButton';
 import { cn } from '@/lib/utils';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { supabase } from '@/utils/supabase';
 import { toast } from 'sonner';
+import { useLanguageStore } from '@/stores/languageStore';
 
 interface Task {
   id: string;
@@ -44,7 +46,29 @@ interface TaskTimelineProps {
 const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick }) => {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
-  const { speak, stop, isSpeaking } = useTextToSpeech({ language: 'hi-IN', rate: 0.9 });
+  const { currentLanguage } = useLanguageStore();
+  
+  // Map language codes to speech synthesis language codes
+  const languageMap: Record<string, string> = {
+    'hi': 'hi-IN',
+    'en': 'en-US',
+    'pa': 'pa-IN',
+    'mr': 'mr-IN',
+    'ta': 'ta-IN',
+  };
+  
+  const speechLanguage = languageMap[currentLanguage] || 'hi-IN';
+  
+  const { speak, stop, isSpeaking, isSupported, isVoicesLoaded, error: speechError } = useTextToSpeech({ 
+    language: speechLanguage, 
+    rate: 0.9,
+    onError: (error) => {
+      toast.error(error, {
+        description: 'Try switching to English language for better support'
+      });
+      setSpeakingTaskId(null);
+    }
+  });
 
   const handleTaskComplete = async (taskId: string) => {
     try {
@@ -66,6 +90,20 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick }) => {
   };
 
   const handleSpeak = (task: Task) => {
+    if (!isSupported) {
+      toast.error('Text-to-speech is not supported in this browser', {
+        description: 'Try using Chrome, Edge, or Safari'
+      });
+      return;
+    }
+
+    if (!isVoicesLoaded) {
+      toast.error('Loading speech voices...', {
+        description: 'Please try again in a moment'
+      });
+      return;
+    }
+
     if (isSpeaking && speakingTaskId === task.id) {
       stop();
       setSpeakingTaskId(null);
@@ -76,6 +114,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick }) => {
         ${task.instructions ? `Instructions: ${task.instructions.join('. ')}` : ''}
         ${task.precautions ? `Precautions: ${task.precautions.join('. ')}` : ''}
       `.trim();
+      
       speak(textToSpeak);
       setSpeakingTaskId(task.id);
     }
@@ -349,8 +388,15 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick }) => {
                                 transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
                                 className="px-4 pb-4 space-y-4"
                               >
-                                {/* Speaker Button */}
-                                <div className="flex justify-end">
+                                {/* Action Buttons */}
+                                <div className="flex justify-end gap-2">
+                                  {/* Video Help Button */}
+                                  <VideoHelpButton
+                                    category={task.task_type}
+                                    taskType={task.task_name}
+                                  />
+
+                                  {/* Speaker Button */}
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -358,11 +404,22 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick }) => {
                                       e.stopPropagation();
                                       handleSpeak(task);
                                     }}
+                                    disabled={!isSupported || !isVoicesLoaded || (isSpeaking && speakingTaskId !== task.id)}
                                     className="gap-2"
                                   >
-                                    {isSpeaking && speakingTaskId === task.id ? (
+                                    {!isSupported ? (
                                       <>
-                                        <VolumeX className="h-4 w-4" />
+                                        <VolumeX className="h-4 w-4 opacity-50" />
+                                        <span>Not Supported</span>
+                                      </>
+                                    ) : !isVoicesLoaded ? (
+                                      <>
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        <span>Loading...</span>
+                                      </>
+                                    ) : isSpeaking && speakingTaskId === task.id ? (
+                                      <>
+                                        <VolumeX className="h-4 w-4 text-primary animate-pulse" />
                                         <span>Stop</span>
                                       </>
                                     ) : (

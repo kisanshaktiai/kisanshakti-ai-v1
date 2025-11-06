@@ -1,0 +1,53 @@
+import React, { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { PlayCircle } from 'lucide-react';
+import { VideoHelpDialog } from './VideoHelpDialog';
+import { useVideoTutorials } from '@/hooks/useVideoTutorials';
+import { cn } from '@/lib/utils';
+
+interface VideoHelpButtonProps {
+  category: string;
+  taskType?: string;
+  className?: string;
+  size?: 'sm' | 'default' | 'lg' | 'icon';
+  variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link';
+}
+
+export function VideoHelpButton({ 
+  category, 
+  taskType, 
+  className,
+  size = 'sm',
+  variant = 'ghost'
+}: VideoHelpButtonProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const { data: videos, isLoading } = useVideoTutorials({ 
+    category,
+    enabled: isOpen // Only load when dialog is opened
+  });
+
+  return (
+    <>
+      <Button
+        variant={variant}
+        size={size}
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen(true);
+        }}
+        className={cn("gap-2", className)}
+      >
+        <PlayCircle className="h-4 w-4 text-blue-500" />
+        <span>See Video</span>
+      </Button>
+      
+      <VideoHelpDialog
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        videos={videos}
+        category={category}
+        isLoading={isLoading}
+      />
+    </>
+  );
+}
