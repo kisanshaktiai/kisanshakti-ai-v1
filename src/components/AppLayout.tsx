@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { Leaf } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { SyncButton } from '@/components/sync/SyncButton';
+import { ConnectionStatusIcon } from '@/components/ConnectionStatusIcon';
 
 export function AppLayout() {
   const { tenant, applyWhiteLabelTheme } = useTenantStore();
@@ -62,6 +63,7 @@ export function AppLayout() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <ConnectionStatusIcon />
             <SyncButton />
             <LanguageSelector />
           </div>

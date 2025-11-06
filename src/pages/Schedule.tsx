@@ -14,6 +14,7 @@ import CropDateInput from '@/components/schedule/CropDateInput';
 import CropScheduleView from '@/components/schedule/CropScheduleView';
 import { format } from 'date-fns';
 import { useNotifications } from '@/hooks/useNotifications';
+import { useRealtimeData } from '@/hooks/useRealtimeData';
 
 interface Land {
   id: string;
@@ -53,6 +54,12 @@ export default function Schedule() {
   const [generating, setGenerating] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const { scheduleTaskReminder } = useNotifications();
+
+  // Enable real-time updates for schedules and tasks
+  useRealtimeData({ 
+    tables: ['crop_schedules', 'schedule_tasks', 'lands'], 
+    enabled: !!user?.id 
+  });
 
   useEffect(() => {
     fetchLands();
