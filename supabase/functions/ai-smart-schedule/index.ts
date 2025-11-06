@@ -242,6 +242,8 @@ READY-MADE PLANT SPECIFIC ADJUSTMENTS:
 5. Weather-adaptive: If rain >10mm predicted, postpone irrigation by 2-3 days
 6. NDVI-adaptive: If crop stress detected (NDVI <0.4), advance and increase nitrogen dose
 7. Include: Land prep, sowing, irrigation (6-8 times), fertilizer (2-3 splits), pest control (2-3 times), weeding (2 times), harvest
+`}
+
 **CRITICAL: COMPREHENSIVE INPUT CALCULATIONS REQUIRED**
 
 A. YIELD & ECONOMICS:
