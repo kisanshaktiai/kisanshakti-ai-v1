@@ -15,6 +15,8 @@ import CropScheduleView from '@/components/schedule/CropScheduleView';
 import { format } from 'date-fns';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useRealtimeData } from '@/hooks/useRealtimeData';
+import { useLocation } from '@/hooks/useLocation';
+import { useWeather } from '@/hooks/useWeather';
 
 interface Land {
   id: string;
@@ -60,6 +62,11 @@ export default function Schedule() {
     tables: ['crop_schedules', 'schedule_tasks', 'lands'], 
     enabled: !!user?.id 
   });
+
+  // Get device location and weather data for AI schedule generation
+  const { location: deviceLocation } = useLocation();
+  const weatherLocation = deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : undefined;
+  const { currentWeather, forecast } = useWeather(weatherLocation);
 
   useEffect(() => {
     fetchLands();
@@ -147,18 +154,7 @@ export default function Schedule() {
         console.error('Error deactivating old schedules:', deactivateError);
       }
 
-      // Fetch REAL weather data using useLocation and useWeather hook
-      const { useLocation } = await import('@/hooks/useLocation');
-      const { useWeather } = await import('@/hooks/useWeather');
-      
-      // Get device location for weather
-      const { location: deviceLocation } = useLocation();
-      const weatherLocation = deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : undefined;
-      
-      // Fetch weather data
-      const { currentWeather, forecast } = useWeather(weatherLocation);
-      
-      // Structure weather data for AI with proper error handling
+      // Structure weather data for AI with proper error handling (using hooks called at component top level)
       const weatherData = {
         current: currentWeather ? {
           temp: currentWeather.temp,
