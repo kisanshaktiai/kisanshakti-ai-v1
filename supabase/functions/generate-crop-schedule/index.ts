@@ -52,6 +52,7 @@ serve(async (req) => {
       cropName, 
       cropVariety,
       sowingDate,
+      isReadyMadePlant = false,
       weatherData,
       regenerate = false
     } = await req.json();
@@ -70,6 +71,16 @@ serve(async (req) => {
 
     // Create prompt for OpenAI
     const prompt = `Generate a comprehensive crop schedule for ${cropName} ${cropVariety ? '(' + cropVariety + ')' : ''} following FAO and ICAR best practices.
+
+PLANTING METHOD: ${isReadyMadePlant ? 'Ready-made nursery plants (transplants)' : 'Direct seed sowing'}
+${isReadyMadePlant ? `
+CRITICAL: Adjust schedule for transplants:
+- Skip germination phase (typically 10-20 days)
+- Reduce total lifecycle by 15-25 days
+- Start with transplant shock management (shade, vitamin B1 spray)
+- First irrigation within 2 hours of planting (critical!)
+- Earlier fertilizer application (7-10 days vs 15-20 days)
+` : ''}
 
 Land Details:
 - Area: ${land.area_acres} acres (${land.area_guntas} guntas)

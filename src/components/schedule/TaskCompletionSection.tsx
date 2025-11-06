@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Flag, Check, Clock } from 'lucide-react';
+import { Flag, Check, Clock, RotateCcw, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
@@ -11,6 +11,7 @@ interface TaskCompletionSectionProps {
   status: string;
   completedAt?: string;
   onComplete: (taskId: string) => void;
+  onUnmark?: (taskId: string) => void;
   isCompacting?: boolean;
 }
 
@@ -19,6 +20,7 @@ export function TaskCompletionSection({
   status, 
   completedAt, 
   onComplete,
+  onUnmark,
   isCompacting = false 
 }: TaskCompletionSectionProps) {
   const [isCompleting, setIsCompleting] = React.useState(false);
@@ -44,6 +46,29 @@ export function TaskCompletionSection({
     
     try {
       await onComplete(taskId);
+    } catch (error) {
+      // Rollback on error
+      setOptimisticStatus(status);
+    } finally {
+      setIsCompleting(false);
+    }
+  };
+
+  const handleUnmark = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+    console.log('Unmark button clicked for task:', taskId);
+    
+    if (isCompleting) return;
+    
+    // Optimistically set back to pending
+    setOptimisticStatus('pending');
+    setIsCompleting(true);
+    
+    try {
+      if (onUnmark) {
+        await onUnmark(taskId);
+      }
     } catch (error) {
       // Rollback on error
       setOptimisticStatus(status);
@@ -94,54 +119,72 @@ export function TaskCompletionSection({
           )}
         </motion.div>
 
-        {/* Flag Button */}
-        <motion.div
-          whileTap={{ scale: 0.95 }}
-          animate={isCompleted ? { 
-            scale: [1, 1.1, 1],
-          } : {}}
-          transition={{ duration: 0.4 }}
-        >
-          <Button
-            type="button"
-            variant={isCompleted ? "default" : "outline"}
-            size="sm"
-            onClick={handleComplete}
-            disabled={isCompleting || isCompleted}
-            className={cn(
-              "gap-2 transition-all duration-300 pointer-events-auto",
-              isCompleted && "bg-success hover:bg-success/90 text-white border-success"
-            )}
-          >
-            {isCompleting ? (
-              <>
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                >
-                  <Clock className="h-4 w-4" />
-                </motion.div>
-                <span>Syncing...</span>
-              </>
-            ) : isCompleted ? (
-              <>
-                <motion.div
-                  initial={{ rotate: -180, scale: 0 }}
-                  animate={{ rotate: 0, scale: 1 }}
-                  transition={{ type: "spring", stiffness: 200 }}
-                >
-                  <Flag className="h-4 w-4 fill-current" />
-                </motion.div>
+        {/* Action Buttons */}
+        <div className="flex gap-2">
+          {isCompleted ? (
+            <>
+              {/* Completed Badge */}
+              <Badge className="gap-2 bg-success/10 text-success border-success/20 px-3 py-2">
+                <Flag className="h-4 w-4 fill-current" />
                 <span>Completed</span>
-              </>
-            ) : (
-              <>
-                <Flag className="h-4 w-4" />
-                <span>Mark Done</span>
-              </>
-            )}
-          </Button>
-        </motion.div>
+              </Badge>
+              
+              {/* Unmark Button */}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleUnmark}
+                disabled={isCompleting || !onUnmark}
+                className="gap-2 pointer-events-auto border-muted hover:border-destructive hover:text-destructive"
+              >
+                {isCompleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Undoing...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="h-4 w-4" />
+                    <span>Unmark</span>
+                  </>
+                )}
+              </Button>
+            </>
+          ) : (
+            /* Mark Done Button */
+            <motion.div
+              whileTap={{ scale: 0.95 }}
+              transition={{ duration: 0.4 }}
+            >
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleComplete}
+                disabled={isCompleting}
+                className="gap-2 transition-all duration-300 pointer-events-auto"
+              >
+                {isCompleting ? (
+                  <>
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    >
+                      <Clock className="h-4 w-4" />
+                    </motion.div>
+                    <span>Syncing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Flag className="h-4 w-4" />
+                    <span>Mark Done</span>
+                  </>
+                )}
+              </Button>
+            </motion.div>
+          )}
+        </div>
       </div>
 
       {/* Additional Status Badge */}

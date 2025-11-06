@@ -131,6 +131,56 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
     }
   };
 
+  const handleTaskUnmark = async (taskId: string) => {
+    // OPTIMISTIC UPDATE: Revert to pending immediately
+    if (onTaskUpdate) {
+      onTaskUpdate(taskId, { 
+        status: 'pending', 
+        completed_at: undefined 
+      });
+    }
+
+    toast.success('↩️ Task unmarked', {
+      description: 'Reverting completion...',
+      duration: 2000,
+    });
+
+    try {
+      const { supabaseWithAuth } = await import('@/integrations/supabase/client');
+      const authenticatedClient = supabaseWithAuth();
+      
+      const { error } = await authenticatedClient
+        .from('schedule_tasks')
+        .update({
+          status: 'pending',
+          completed_at: null,
+        })
+        .eq('id', taskId);
+
+      if (error) throw error;
+
+      console.log('Task unmarked in database');
+      
+      if (onTaskComplete) {
+        onTaskComplete(); // Refresh data
+      }
+    } catch (error) {
+      console.error('Error unmarking task:', error);
+      
+      // ROLLBACK: Set back to completed on error
+      if (onTaskUpdate) {
+        onTaskUpdate(taskId, { 
+          status: 'completed', 
+          completed_at: new Date().toISOString() 
+        });
+      }
+      
+      toast.error('❌ Failed to unmark', {
+        description: 'Try again.',
+      });
+    }
+  };
+
   const handleSpeak = (task: Task) => {
     if (!isSupported) {
       toast.error('Text-to-speech is not supported in this browser', {
@@ -571,6 +621,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                               status={task.status}
                               completedAt={task.completed_at}
                               onComplete={handleTaskComplete}
+                              onUnmark={handleTaskUnmark}
                             />
                           </div>
                         </CollapsibleContent>

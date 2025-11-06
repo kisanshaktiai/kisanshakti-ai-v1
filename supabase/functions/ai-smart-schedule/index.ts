@@ -26,7 +26,7 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     
-    const { landId, cropName, cropVariety, sowingDate, weather, regenerate, tenantId, farmerId, language = 'hi', country = 'India' } = await req.json();
+    const { landId, cropName, cropVariety, sowingDate, isReadyMadePlant = false, weather, regenerate, tenantId, farmerId, language = 'hi', country = 'India' } = await req.json();
 
     console.log(`AI Schedule Generation - Land: ${landId}, Crop: ${cropName}, Farmer: ${farmerId}`);
 
@@ -192,6 +192,14 @@ ${weather.current.temp < 10 ? '- LOW TEMPERATURE ALERT: Delay sowing if below mi
 CROP & LAND DETAILS:
 - Crop: ${cropName}${cropVariety ? ` (Variety: ${cropVariety})` : ''}
 - Sowing Date: ${sowingDate}
+- **PLANTING METHOD: ${isReadyMadePlant ? 'READY-MADE NURSERY PLANTS/TRANSPLANTS' : 'DIRECT SEED SOWING'}**
+${isReadyMadePlant ? `
+- **IMPORTANT: This farmer is using ready-made nursery plants (transplants), NOT seeds**
+- **Skip germination phase (typically 10-20 days)**
+- **Reduce total crop duration by 15-25 days depending on crop**
+- **Start schedule from transplanting/planting date, not sowing date**
+- **First irrigation should be IMMEDIATE after transplanting**
+` : ''}
 - Land Size: ${land.area_acres} acres (${landAreaHa.toFixed(2)} hectares) = ${(land.area_acres * 4046.86).toFixed(0)} square meters
 - Location: ${land.village || ''} ${land.taluka || ''}, ${land.district}, ${land.state} (${region.zone})
 - Season: ${region.season}
@@ -206,13 +214,27 @@ ${ndviContext}
 ${weatherContext}
 
 TASK GENERATION INSTRUCTIONS:
+${isReadyMadePlant ? `
+READY-MADE PLANT SPECIFIC ADJUSTMENTS:
+1. **SKIP seed germination phase** - start from vegetative growth
+2. **Reduce total duration by 15-25 days** (e.g., Rice: 120→100 days, Tomato: 90→70 days, Sugarcane sets: 365→340 days)
+3. **First task: Immediate transplant irrigation** (3-5 liters per plant within 2 hours of planting)
+4. **Add transplant stress management**: Shade net for 3-5 days, vitamin B1 spray on day 1
+5. Earlier first fertilizer application (7-10 DAS instead of 15-20 DAS)
+6. Split fertilizer applications: Apply the calculated NPK deficit in 2-3 splits
+7. Irrigation schedule: Based on ${land.irrigation_type}, increased frequency for first 7-10 days
+8. Weather-adaptive: If rain >10mm predicted, postpone irrigation by 2-3 days
+9. Include: Transplanting, immediate irrigation, stress management, irrigation (8-10 times), fertilizer (2-3 splits), pest control (2-3 times), weeding (2 times), harvest
+` : `
 1. Calculate EXACT seed quantity: Use standard seed rate (${guidelines?.seed_rate_kg_per_ha || 'typical rate'} kg/ha) × ${landAreaHa.toFixed(2)} ha = X kg
-2. Split fertilizer applications: Apply the calculated NPK deficit in 2-3 splits (e.g., basal, 30 DAS, 60 DAS)
-3. Irrigation schedule: Based on ${land.irrigation_type}, crop water needs (${guidelines?.water_requirement_mm || 'standard'} mm total), and rainfall forecast
-4. Weather-adaptive: If rain >10mm predicted, postpone irrigation by 2-3 days
-5. NDVI-adaptive: If crop stress detected (NDVI <0.4), advance and increase nitrogen dose
-6. Include: Land prep, sowing, irrigation (6-8 times), fertilizer (2-3 splits), pest control (2-3 times), weeding (2 times), harvest
-7. ALL content in pure ${languageName} language - task names, descriptions, instructions in ${languageName} ONLY
+2. Include germination phase tasks (0-15 days)
+3. Split fertilizer applications: Apply the calculated NPK deficit in 2-3 splits (e.g., basal, 30 DAS, 60 DAS)
+4. Irrigation schedule: Based on ${land.irrigation_type}, crop water needs (${guidelines?.water_requirement_mm || 'standard'} mm total), and rainfall forecast
+5. Weather-adaptive: If rain >10mm predicted, postpone irrigation by 2-3 days
+6. NDVI-adaptive: If crop stress detected (NDVI <0.4), advance and increase nitrogen dose
+7. Include: Land prep, sowing, irrigation (6-8 times), fertilizer (2-3 splits), pest control (2-3 times), weeding (2 times), harvest
+`}
+10. ALL content in pure ${languageName} language - task names, descriptions, instructions in ${languageName} ONLY
 
 Generate 10-15 specific, actionable tasks with exact quantities.`;
 
