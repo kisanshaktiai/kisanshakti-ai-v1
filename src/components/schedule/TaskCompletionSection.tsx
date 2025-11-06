@@ -21,20 +21,23 @@ export function TaskCompletionSection({
   onComplete,
   isCompacting = false 
 }: TaskCompletionSectionProps) {
+  const [isCompleting, setIsCompleting] = React.useState(false);
   const isCompleted = status === 'completed';
   const isPending = status === 'pending';
 
-  const handleToggleCompletion = () => {
+  const handleComplete = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+    console.log('Mark Done button clicked for task:', taskId);
+    
     if (isCompleting) return;
-    onComplete(taskId);
-  };
-
-  const [isCompleting, setIsCompleting] = React.useState(false);
-
-  const handleComplete = async () => {
+    
     setIsCompleting(true);
-    await onComplete(taskId);
-    setIsCompleting(false);
+    try {
+      await onComplete(taskId);
+    } finally {
+      setIsCompleting(false);
+    }
   };
 
   return (
@@ -71,12 +74,13 @@ export function TaskCompletionSection({
 
         {/* Flag Button */}
         <Button
+          type="button"
           variant={isCompleted ? "default" : "outline"}
           size="sm"
           onClick={handleComplete}
           disabled={isCompleting}
           className={cn(
-            "gap-2 transition-all duration-300",
+            "gap-2 transition-all duration-300 pointer-events-auto",
             isCompleted && "bg-success hover:bg-success/90 text-white border-success"
           )}
         >

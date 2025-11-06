@@ -26,20 +26,21 @@ export function VideoHelpButton({
     enabled: isOpen // Only load when dialog is opened
   });
 
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
     e.preventDefault();
-    console.log('Video Help button clicked', category);
+    console.log('Video Help button clicked for category:', category);
     setIsOpen(true);
   };
 
   return (
     <>
       <Button
+        type="button"
         variant={variant}
         size={size}
         onClick={handleClick}
-        className={cn("gap-2", className)}
+        className={cn("gap-2 pointer-events-auto", className)}
       >
         <PlayCircle className="h-4 w-4 text-blue-500" />
         <span>See Video</span>

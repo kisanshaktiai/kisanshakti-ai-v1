@@ -378,160 +378,159 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick }) => {
                         </CollapsibleTrigger>
 
                         {/* Expanded Content */}
-                        <CollapsibleContent>
-                          {isExpanded && (
-                            <div className="px-4 pb-4 space-y-4">
-                              {/* Action Buttons */}
-                              <div className="flex justify-end gap-2">
-                                {/* Video Help Button */}
-                                <VideoHelpButton
-                                  category={task.task_type}
-                                  taskType={task.task_name}
-                                />
-
-                                {/* Speaker Button */}
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    e.preventDefault();
-                                    console.log('Listen button clicked', task.id);
-                                    handleSpeak(task);
-                                  }}
-                                  disabled={!isSupported || !isVoicesLoaded || (isSpeaking && speakingTaskId !== task.id)}
-                                  className="gap-2"
-                                >
-                                  {!isSupported ? (
-                                    <>
-                                      <VolumeX className="h-4 w-4 opacity-50" />
-                                      <span>Not Supported</span>
-                                    </>
-                                  ) : !isVoicesLoaded ? (
-                                    <>
-                                      <Loader2 className="h-4 w-4 animate-spin" />
-                                      <span>Loading...</span>
-                                    </>
-                                  ) : isSpeaking && speakingTaskId === task.id ? (
-                                    <>
-                                      <VolumeX className="h-4 w-4 text-primary animate-pulse" />
-                                      <span>Stop</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Volume2 className="h-4 w-4" />
-                                      <span>Listen</span>
-                                    </>
-                                  )}
-                                </Button>
-                              </div>
-
-                              {/* Full Description */}
-                              {task.task_description && (
-                                <div>
-                                  <h5 className="text-sm font-medium mb-2">Description</h5>
-                                  <p className="text-sm text-muted-foreground">{task.task_description}</p>
-                                </div>
-                              )}
-
-                              {/* Instructions */}
-                              {task.instructions && task.instructions.length > 0 && (
-                                <div>
-                                  <h5 className="text-sm font-medium mb-2">Instructions</h5>
-                                  <ol className="list-decimal list-inside space-y-1">
-                                    {task.instructions.map((instruction, idx) => (
-                                      <li key={idx} className="text-sm text-muted-foreground">{instruction}</li>
-                                    ))}
-                                  </ol>
-                                </div>
-                              )}
-
-                              {/* Precautions */}
-                              {task.precautions && task.precautions.length > 0 && (
-                                <div>
-                                  <h5 className="text-sm font-medium mb-2 text-warning flex items-center gap-2">
-                                    <AlertCircle className="h-4 w-4" />
-                                    Precautions
-                                  </h5>
-                                  <ul className="list-disc list-inside space-y-1">
-                                    {task.precautions.map((precaution, idx) => (
-                                      <li key={idx} className="text-sm text-muted-foreground">{precaution}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-
-                              {/* Resources */}
-                              {task.resources && Object.keys(task.resources).length > 0 && (
-                                <div>
-                                  <h5 className="text-sm font-medium mb-2">Required Resources</h5>
-                                  <div className="grid grid-cols-2 gap-2">
-                                    {Object.entries(task.resources).map(([key, value]) => (
-                                      <div key={key} className="flex justify-between text-sm">
-                                        <span className="text-muted-foreground capitalize">{key.replace('_', ' ')}:</span>
-                                        <span className="font-medium">{String(value)}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Quick Info Pills */}
-                              <div className="flex flex-wrap gap-2">
-                                {task.duration_hours && (
-                                  <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-background/80 border border-border/50">
-                                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                                    <span className="text-xs text-muted-foreground">{task.duration_hours}h</span>
-                                  </div>
-                                )}
-                                {task.estimated_cost && (
-                                  <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-background/80 border border-border/50">
-                                    <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-                                    <span className="text-xs text-muted-foreground">
-                                      {task.currency === 'INR' ? '₹' : '$'}{task.estimated_cost}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Ideal Weather */}
-                              {task.ideal_weather && (
-                                <div>
-                                  <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
-                                    <Thermometer className="h-4 w-4 text-info" />
-                                    Ideal Weather
-                                  </h5>
-                                  <div className="grid grid-cols-2 gap-2 text-sm">
-                                    {task.ideal_weather.temperature && (
-                                      <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Temperature:</span>
-                                        <span>{task.ideal_weather.temperature}°C</span>
-                                      </div>
-                                    )}
-                                    {task.ideal_weather.humidity && (
-                                      <div className="flex justify-between">
-                                        <span className="text-muted-foreground">Humidity:</span>
-                                        <span>{task.ideal_weather.humidity}%</span>
-                                      </div>
-                                    )}
-                                    {task.ideal_weather.conditions && (
-                                      <div className="col-span-2">
-                                        <span className="text-muted-foreground">Conditions:</span> {task.ideal_weather.conditions}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Task Completion Section */}
-                              <TaskCompletionSection
-                                taskId={task.id}
-                                status={task.status}
-                                completedAt={task.completed_at}
-                                onComplete={handleTaskComplete}
+                        <CollapsibleContent className="relative z-10">
+                          <div className="px-4 pb-4 space-y-4" onClick={(e) => e.stopPropagation()}>
+                            {/* Action Buttons */}
+                            <div className="flex justify-end gap-2 relative z-20">
+                              {/* Video Help Button */}
+                              <VideoHelpButton
+                                category={task.task_type}
+                                taskType={task.task_name}
                               />
+
+                              {/* Speaker Button */}
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  console.log('Listen button clicked for task:', task.id);
+                                  handleSpeak(task);
+                                }}
+                                disabled={!isSupported || !isVoicesLoaded || (isSpeaking && speakingTaskId !== task.id)}
+                                className="gap-2 pointer-events-auto"
+                              >
+                                {!isSupported ? (
+                                  <>
+                                    <VolumeX className="h-4 w-4 opacity-50" />
+                                    <span>Not Supported</span>
+                                  </>
+                                ) : !isVoicesLoaded ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    <span>Loading...</span>
+                                  </>
+                                ) : isSpeaking && speakingTaskId === task.id ? (
+                                  <>
+                                    <VolumeX className="h-4 w-4 text-primary animate-pulse" />
+                                    <span>Stop</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Volume2 className="h-4 w-4" />
+                                    <span>Listen</span>
+                                  </>
+                                )}
+                              </Button>
                             </div>
-                          )}
+
+                            {/* Full Description */}
+                            {task.task_description && (
+                              <div>
+                                <h5 className="text-sm font-medium mb-2">Description</h5>
+                                <p className="text-sm text-muted-foreground">{task.task_description}</p>
+                              </div>
+                            )}
+
+                            {/* Instructions */}
+                            {task.instructions && task.instructions.length > 0 && (
+                              <div>
+                                <h5 className="text-sm font-medium mb-2">Instructions</h5>
+                                <ol className="list-decimal list-inside space-y-1">
+                                  {task.instructions.map((instruction, idx) => (
+                                    <li key={idx} className="text-sm text-muted-foreground">{instruction}</li>
+                                  ))}
+                                </ol>
+                              </div>
+                            )}
+
+                            {/* Precautions */}
+                            {task.precautions && task.precautions.length > 0 && (
+                              <div>
+                                <h5 className="text-sm font-medium mb-2 text-warning flex items-center gap-2">
+                                  <AlertCircle className="h-4 w-4" />
+                                  Precautions
+                                </h5>
+                                <ul className="list-disc list-inside space-y-1">
+                                  {task.precautions.map((precaution, idx) => (
+                                    <li key={idx} className="text-sm text-muted-foreground">{precaution}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Resources */}
+                            {task.resources && Object.keys(task.resources).length > 0 && (
+                              <div>
+                                <h5 className="text-sm font-medium mb-2">Required Resources</h5>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {Object.entries(task.resources).map(([key, value]) => (
+                                    <div key={key} className="flex justify-between text-sm">
+                                      <span className="text-muted-foreground capitalize">{key.replace('_', ' ')}:</span>
+                                      <span className="font-medium">{String(value)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Quick Info Pills */}
+                            <div className="flex flex-wrap gap-2">
+                              {task.duration_hours && (
+                                <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-background/80 border border-border/50">
+                                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                                  <span className="text-xs text-muted-foreground">{task.duration_hours}h</span>
+                                </div>
+                              )}
+                              {task.estimated_cost && (
+                                <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-background/80 border border-border/50">
+                                  <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
+                                  <span className="text-xs text-muted-foreground">
+                                    {task.currency === 'INR' ? '₹' : '$'}{task.estimated_cost}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Ideal Weather */}
+                            {task.ideal_weather && (
+                              <div>
+                                <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
+                                  <Thermometer className="h-4 w-4 text-info" />
+                                  Ideal Weather
+                                </h5>
+                                <div className="grid grid-cols-2 gap-2 text-sm">
+                                  {task.ideal_weather.temperature && (
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">Temperature:</span>
+                                      <span>{task.ideal_weather.temperature}°C</span>
+                                    </div>
+                                  )}
+                                  {task.ideal_weather.humidity && (
+                                    <div className="flex justify-between">
+                                      <span className="text-muted-foreground">Humidity:</span>
+                                      <span>{task.ideal_weather.humidity}%</span>
+                                    </div>
+                                  )}
+                                  {task.ideal_weather.conditions && (
+                                    <div className="col-span-2">
+                                      <span className="text-muted-foreground">Conditions:</span> {task.ideal_weather.conditions}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Task Completion Section */}
+                            <TaskCompletionSection
+                              taskId={task.id}
+                              status={task.status}
+                              completedAt={task.completed_at}
+                              onComplete={handleTaskComplete}
+                            />
+                          </div>
                         </CollapsibleContent>
 
                         {/* Status Indicator Line */}
