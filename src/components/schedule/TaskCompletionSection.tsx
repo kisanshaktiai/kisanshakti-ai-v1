@@ -85,10 +85,10 @@ export function TaskCompletionSection({
       transition={{ duration: 0.3 }}
       className="mt-4 pt-4 border-t border-border/50"
     >
-      <div className="flex items-center justify-between gap-4">
+      <div className="space-y-3">
         {/* Status Line */}
         <motion.div 
-          className="flex items-center gap-2 flex-1"
+          className="flex items-center gap-2"
           animate={isCompleted ? { scale: [1, 1.05, 1] } : {}}
           transition={{ duration: 0.3 }}
         >
@@ -119,72 +119,70 @@ export function TaskCompletionSection({
           )}
         </motion.div>
 
-        {/* Action Buttons */}
-        <div className="flex gap-2">
-          {isCompleted ? (
-            <>
-              {/* Completed Badge */}
-              <Badge className="gap-2 bg-success/10 text-success border-success/20 px-3 py-2 font-medium">
-                <Flag className="h-4 w-4 fill-current" />
-                <span className="text-sm">Completed</span>
-              </Badge>
-              
-              {/* Unmark Button - Prominent and visible */}
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={handleUnmark}
-                disabled={isCompleting || !onUnmark}
-                className="gap-2 pointer-events-auto bg-muted hover:bg-destructive/10 text-muted-foreground hover:text-destructive border border-border hover:border-destructive transition-all duration-200"
-              >
-                {isCompleting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span className="text-sm font-medium">Undoing...</span>
-                  </>
-                ) : (
-                  <>
-                    <RotateCcw className="h-4 w-4" />
-                    <span className="text-sm font-medium">Unmark</span>
-                  </>
-                )}
-              </Button>
-            </>
-          ) : (
-            /* Mark Done Button */
-            <motion.div
-              whileTap={{ scale: 0.95 }}
-              transition={{ duration: 0.4 }}
+        {/* Action Section */}
+        {isCompleted ? (
+          <div className="space-y-2">
+            {/* Completed Badge */}
+            <Badge className="gap-2 bg-success/10 text-success border-success/20 px-3 py-2 font-medium w-fit">
+              <Flag className="h-4 w-4 fill-current" />
+              <span className="text-sm">Completed</span>
+            </Badge>
+            
+            {/* Unmark Button - Full width and prominent */}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleUnmark}
+              disabled={isCompleting || !onUnmark}
+              className="w-full gap-2 pointer-events-auto bg-card hover:bg-destructive/10 text-muted-foreground hover:text-destructive border-border hover:border-destructive transition-all duration-200"
             >
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleComplete}
-                disabled={isCompleting}
-                className="gap-2 transition-all duration-300 pointer-events-auto border-primary/30 hover:bg-primary/5 hover:border-primary text-foreground hover:text-primary"
-              >
-                {isCompleting ? (
-                  <>
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                    >
-                      <Clock className="h-4 w-4" />
-                    </motion.div>
-                    <span className="text-sm font-medium">Syncing...</span>
-                  </>
-                ) : (
-                  <>
-                    <Flag className="h-4 w-4" />
-                    <span className="text-sm font-medium">Mark Done</span>
-                  </>
-                )}
-              </Button>
-            </motion.div>
-          )}
-        </div>
+              {isCompleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm font-medium">Undoing...</span>
+                </>
+              ) : (
+                <>
+                  <RotateCcw className="h-4 w-4" />
+                  <span className="text-sm font-medium">Unmark as Done</span>
+                </>
+              )}
+            </Button>
+          </div>
+        ) : (
+          /* Mark Done Button */
+          <motion.div
+            whileTap={{ scale: 0.95 }}
+            transition={{ duration: 0.4 }}
+          >
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleComplete}
+              disabled={isCompleting}
+              className="w-full gap-2 transition-all duration-300 pointer-events-auto border-primary/30 hover:bg-primary/5 hover:border-primary text-foreground hover:text-primary"
+            >
+              {isCompleting ? (
+                <>
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                  >
+                    <Clock className="h-4 w-4" />
+                  </motion.div>
+                  <span className="text-sm font-medium">Syncing...</span>
+                </>
+              ) : (
+                <>
+                  <Flag className="h-4 w-4" />
+                  <span className="text-sm font-medium">Mark Done</span>
+                </>
+              )}
+            </Button>
+          </motion.div>
+        )}
       </div>
 
       {/* Additional Status Badge */}
