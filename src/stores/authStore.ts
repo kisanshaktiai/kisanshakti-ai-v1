@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { setGlobalAuthData, updateSupabaseHeaders, clearGlobalAuthData } from '@/integrations/supabase/client';
 
 interface User {
   id: string;
@@ -88,6 +89,13 @@ export const useAuthStore = create<AuthState>()(
           user, 
           isAuthenticated: user !== null 
         });
+        
+        // Update global auth data IMMEDIATELY when user is set
+        if (user?.id && user?.tenantId) {
+          setGlobalAuthData(user.id, user.tenantId);
+          updateSupabaseHeaders(user.id, user.tenantId);
+          console.log('✅ [Auth] Global auth data set IMMEDIATELY on setUser');
+        }
       },
 
       setSession: (session) => {
@@ -188,13 +196,8 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         console.log('🚪 [Auth] Logging out - clearing auth data');
         
-        // Reset headers state synchronously
-        try {
-          const { resetHeadersState } = require('@/integrations/supabase/client');
-          resetHeadersState();
-        } catch (error) {
-          console.warn('⚠️ [Auth] Could not reset headers state:', error);
-        }
+        // Reset headers state IMMEDIATELY
+        clearGlobalAuthData();
         
         // Clear all auth data
         set({ 
@@ -237,21 +240,17 @@ export const useAuthStore = create<AuthState>()(
                 isPinRequired: false
               });
               
-              // CRITICAL: Set Supabase headers SYNCHRONOUSLY to prevent race conditions
+              // CRITICAL: Set global auth data SYNCHRONOUSLY to prevent race conditions
               if (parsedAuth.state.user?.id && parsedAuth.state.user?.tenantId) {
-                console.log('🔐 [Auth] Setting headers SYNCHRONOUSLY for restored user:', {
+                console.log('🔐 [Auth] Setting global auth data for restored user:', {
                   userId: parsedAuth.state.user.id,
                   tenantId: parsedAuth.state.user.tenantId,
                 });
                 
-                // Import synchronously to avoid race condition
-                try {
-                  const { updateSupabaseHeaders } = require('@/integrations/supabase/client');
-                  updateSupabaseHeaders(parsedAuth.state.user.id, parsedAuth.state.user.tenantId);
-                  console.log('✅ [Auth] Headers set SYNCHRONOUSLY after restoration');
-                } catch (error) {
-                  console.error('❌ [Auth] Failed to set headers synchronously:', error);
-                }
+                // Set IMMEDIATELY - no async delays!
+                setGlobalAuthData(parsedAuth.state.user.id, parsedAuth.state.user.tenantId);
+                updateSupabaseHeaders(parsedAuth.state.user.id, parsedAuth.state.user.tenantId);
+                console.log('✅ [Auth] Global auth data and headers set IMMEDIATELY after restoration');
               }
               
               // Validate the restored session
