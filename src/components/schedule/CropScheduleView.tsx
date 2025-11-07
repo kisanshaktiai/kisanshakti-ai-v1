@@ -78,6 +78,14 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   // Use React Query hook for schedules - replaces offlineDataService
   const { schedules, isLoading: loadingSchedules, refetch: refetchSchedules } = useSchedules(landId);
   
+  // Debug log to see what the hook returns
+  console.log('🔍 [CropScheduleView] Hook return value:', {
+    schedules,
+    schedulesLength: schedules?.length,
+    loadingSchedules,
+    landId
+  });
+  
   const [schedule, setSchedule] = useState<CropSchedule | null>(null);
   const [tasks, setTasks] = useState<ScheduleTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<ScheduleTask | null>(null);
@@ -97,36 +105,45 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   };
 
   // Update schedule when schedules data changes from React Query
+  // Update schedule when schedules data changes from React Query
   useEffect(() => {
-    console.log('📋 [CropScheduleView] Schedules updated:', {
-      count: schedules?.length,
+    console.log('📋 [CropScheduleView] useEffect triggered:', {
+      schedulesCount: schedules?.length,
+      loadingSchedules,
       landId,
-      schedules: schedules?.map((s: any) => ({ id: s.id, crop_name: s.crop_name, is_active: s.is_active, land_id: s.land_id }))
+      schedulesData: schedules
     });
     
+    if (loadingSchedules) {
+      console.log('⏳ [CropScheduleView] Still loading schedules...');
+      return;
+    }
+    
     if (schedules && schedules.length > 0) {
-      // Since useSchedules already filters by is_active=true, just find by land_id
-      const activeSchedule = schedules.find((s: any) => s.land_id === landId);
+      console.log('✅ [CropScheduleView] Processing schedules:', schedules.length);
+      // Since useSchedules already filters by is_active=true and landId, just use first match
+      const activeSchedule = schedules[0];
       
       if (activeSchedule) {
         console.log('✅ [CropScheduleView] Found active schedule:', {
           id: activeSchedule.id,
           crop_name: activeSchedule.crop_name,
+          land_id: activeSchedule.land_id,
           is_active: activeSchedule.is_active
         });
         setSchedule(activeSchedule);
         fetchTasks(activeSchedule.id);
       } else {
-        console.log('⚠️ [CropScheduleView] No schedule found for land:', landId);
+        console.log('⚠️ [CropScheduleView] No matching schedule found');
         setSchedule(null);
         setTasks([]);
       }
     } else {
-      console.log('⚠️ [CropScheduleView] No schedules available for landId:', landId);
+      console.log('⚠️ [CropScheduleView] No schedules available - empty array or null');
       setSchedule(null);
       setTasks([]);
     }
-  }, [schedules, landId]);
+  }, [schedules, landId, loadingSchedules]);
 
   const fetchTasks = async (scheduleId: string) => {
     try {
