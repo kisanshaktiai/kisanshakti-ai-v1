@@ -19,6 +19,50 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
   }
 });
 
+// Header readiness tracking
+let headersReady = false;
+let headersReadyPromise: Promise<void> | null = null;
+let resolveHeadersReady: (() => void) | null = null;
+
+/**
+ * Wait for Supabase headers to be set before making queries
+ * This prevents race conditions where queries execute before auth headers are ready
+ */
+export function waitForHeaders(): Promise<void> {
+  if (headersReady) {
+    console.log('🟢 [Headers] Already ready');
+    return Promise.resolve();
+  }
+  
+  if (headersReadyPromise) {
+    console.log('⏳ [Headers] Waiting for existing promise');
+    return headersReadyPromise;
+  }
+  
+  console.log('🔄 [Headers] Creating wait promise');
+  headersReadyPromise = new Promise((resolve) => {
+    resolveHeadersReady = resolve;
+    
+    // Timeout after 3 seconds to prevent indefinite hanging
+    setTimeout(() => {
+      console.warn('⚠️ [Headers] Timeout after 3s, proceeding anyway');
+      headersReady = true;
+      resolve();
+    }, 3000);
+  });
+  
+  return headersReadyPromise;
+}
+
+/**
+ * Reset headers ready state (useful for testing or logout)
+ */
+export function resetHeadersState() {
+  headersReady = false;
+  headersReadyPromise = null;
+  resolveHeadersReady = null;
+}
+
 /**
  * Update Supabase client headers with custom authentication context
  * This enables RLS policies to work with custom auth system
@@ -40,7 +84,14 @@ export const updateSupabaseHeaders = (farmerId?: string, tenantId?: string) => {
     ...headers
   };
   
-  console.log('Updated Supabase headers:', headers);
+  console.log('✅ [Headers] Updated Supabase headers:', headers);
+  
+  // Mark headers as ready and resolve any waiting promises
+  headersReady = true;
+  if (resolveHeadersReady) {
+    resolveHeadersReady();
+    resolveHeadersReady = null;
+  }
 };
 
 /**

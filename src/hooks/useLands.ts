@@ -36,6 +36,11 @@ export function useLands() {
         if (navigator.onLine) {
           console.log('🌐 [useLands] Online - fetching from API');
           try {
+            // CRITICAL: Wait for headers to be set before making API calls
+            const { waitForHeaders } = await import('@/integrations/supabase/client');
+            await waitForHeaders();
+            console.log('✅ [useLands] Headers ready, proceeding with API call');
+            
             const data = await landsApi.fetchLands();
             console.log(`✅ [useLands] API returned ${data?.length || 0} lands`);
             

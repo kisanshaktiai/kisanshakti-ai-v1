@@ -37,6 +37,11 @@ export function useSchedules(landId?: string) {
         if (navigator.onLine) {
           console.log('🌐 [useSchedules] Online - fetching from API');
           try {
+            // CRITICAL: Wait for headers to be set before making API calls
+            const { waitForHeaders } = await import('@/integrations/supabase/client');
+            await waitForHeaders();
+            console.log('✅ [useSchedules] Headers ready, proceeding with API call');
+            
             let query = supabase
               .from('crop_schedules')
               .select('*')

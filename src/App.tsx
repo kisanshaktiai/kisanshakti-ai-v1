@@ -94,9 +94,11 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       // Start fetching tenant data
       const tenantPromise = fetchTenant();
       
-      // Check authentication status in parallel
-      // This will restore auth state from localStorage if it exists
-      const authPromise = checkAuth();
+      // Check authentication status synchronously
+      // This will restore auth state and set headers BEFORE queries start
+      console.log('🔐 [App] Starting auth check');
+      checkAuth();
+      console.log('✅ [App] Auth check complete, headers should be ready');
       
       // Fetch initial GPS location when app starts
       const locationPromise = LocationService.getCurrentLocation(true).then(location => {
@@ -105,8 +107,8 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         }
       }).catch(err => console.warn('Location fetch failed:', err));
       
-      // Wait for critical tasks
-      await Promise.all([tenantPromise, authPromise, locationPromise]);
+      // Wait for critical tasks (auth is now synchronous)
+      await Promise.all([tenantPromise, locationPromise]);
       console.log('✅ Critical initialization complete');
       
       // Start listening for tenant and theme changes

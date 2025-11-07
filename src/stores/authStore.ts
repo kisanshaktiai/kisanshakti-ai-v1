@@ -201,9 +201,11 @@ export const useAuthStore = create<AuthState>()(
         localStorage.removeItem('tenantId');
       },
 
-      checkAuth: async () => {
-        // Validate existing session on app load
+      checkAuth: () => {
+        // Validate existing session on app load (SYNCHRONOUS for faster header setup)
         const { session, user } = get();
+        
+        console.log('🔍 [Auth] Checking authentication on app load');
         
         // Try to restore from persisted storage
         const storedAuth = localStorage.getItem('auth-storage');
@@ -211,6 +213,11 @@ export const useAuthStore = create<AuthState>()(
           try {
             const parsedAuth = JSON.parse(storedAuth);
             if (parsedAuth?.state?.session && parsedAuth?.state?.user) {
+              console.log('📦 [Auth] Restoring from storage:', {
+                userId: parsedAuth.state.user?.id,
+                tenantId: parsedAuth.state.user?.tenantId,
+              });
+              
               set({
                 session: parsedAuth.state.session,
                 user: parsedAuth.state.user,
@@ -218,11 +225,13 @@ export const useAuthStore = create<AuthState>()(
                 isPinRequired: false
               });
               
-              // Set Supabase headers immediately after restoring auth
+              // Set Supabase headers SYNCHRONOUSLY - critical for preventing race conditions
               if (parsedAuth.state.user?.id && parsedAuth.state.user?.tenantId) {
-                const { updateSupabaseHeaders } = await import('@/integrations/supabase/client');
-                updateSupabaseHeaders(parsedAuth.state.user.id, parsedAuth.state.user.tenantId);
-                console.log('✅ Supabase headers set immediately after auth restoration');
+                // Use dynamic import to avoid circular dependency, but execute synchronously
+                import('@/integrations/supabase/client').then(({ updateSupabaseHeaders }) => {
+                  updateSupabaseHeaders(parsedAuth.state.user.id, parsedAuth.state.user.tenantId);
+                  console.log('✅ [Auth] Headers set synchronously after restoration');
+                });
               }
               
               // Validate the restored session
@@ -231,15 +240,18 @@ export const useAuthStore = create<AuthState>()(
               return;
             }
           } catch (error) {
-            console.error('Error restoring auth from storage:', error);
+            console.error('❌ [Auth] Error restoring auth from storage:', error);
           }
         }
         
         // Only validate if we have a session that claims to be PIN verified
         // Otherwise let the user go through normal auth flow
         if (session && session.isPinVerified) {
+          console.log('🔐 [Auth] Validating existing PIN-verified session');
           const { validateSession } = get();
           validateSession();
+        } else {
+          console.log('⚠️ [Auth] No valid session to restore');
         }
       },
 
