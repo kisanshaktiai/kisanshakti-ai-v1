@@ -20,118 +20,142 @@ export function useLands() {
   const query = useQuery({
     queryKey: ['lands', user?.id],
     queryFn: async () => {
-      if (!user?.id) return [];
+      console.log('🔍 [useLands] Fetching lands for user:', user?.id);
+      
+      if (!user?.id) {
+        console.log('⚠️ [useLands] No user ID, returning empty array');
+        return [];
+      }
       
       try {
-        // Try online fetch first
+        // STEP 1: Try to load from local DB immediately for instant display
+        const localData = await localDB.getLands();
+        console.log(`📦 [useLands] Local DB has ${localData?.length || 0} lands`);
+        
+        // STEP 2: If online, fetch fresh data from server
         if (navigator.onLine) {
-          const data = await landsApi.fetchLands();
-          
-          // Save to local DB for offline access
-          if (data && data.length > 0) {
-            const tenantId = user.tenantId || '';
-            const farmerId = user.id;
+          console.log('🌐 [useLands] Online - fetching from API');
+          try {
+            const data = await landsApi.fetchLands();
+            console.log(`✅ [useLands] API returned ${data?.length || 0} lands`);
             
-            await localDB.bulkSave({
-              lands: data.map(l => ({
-                id: l.id!,
-                tenant_id: tenantId,
-                farmer_id: farmerId,
-                name: l.name,
-                area_acres: l.area_acres,
-                area_guntas: null,
-                area_sqft: null,
-                ownership_type: l.ownership_type || null,
-                state: l.state || null,
-                state_id: null,
-                district: l.district || null,
-                district_id: null,
-                taluka: null,
-                taluka_id: null,
-                village: l.village || null,
-                village_id: null,
-                survey_number: null,
-                boundary: l.boundary_polygon_old,
-                boundary_geom: null,
-                boundary_polygon_old: l.boundary_polygon_old,
-                boundary_method: null,
-                center_lat: null,
-                center_lon: null,
-                center_point_old: null,
-                location_coords: null,
-                location_context: null,
-                gps_accuracy_meters: null,
-                gps_recorded_at: null,
-                elevation_meters: null,
-                slope_percentage: null,
-                land_type: null,
-                soil_type: l.soil_type || null,
-                soil_tested: null,
-                last_soil_test_date: null,
-                soil_ph: null,
-                organic_carbon_percent: null,
-                nitrogen_kg_per_ha: null,
-                phosphorus_kg_per_ha: null,
-                potassium_kg_per_ha: null,
-                water_source: l.water_source || null,
-                irrigation_source: null,
-                irrigation_type: null,
-                current_crop: l.current_crop || null,
-                current_crop_id: null,
-                crop_stage: null,
-                planting_date: null,
-                cultivation_date: null,
-                last_sowing_date: null,
-                harvest_date: null,
-                expected_harvest_date: null,
-                previous_crop: null,
-                previous_crop_id: null,
-                last_crop: null,
-                last_harvest_date: null,
-                ndvi_tested: null,
-                last_ndvi_calculation: null,
-                last_ndvi_value: null,
-                ndvi_thumbnail_url: null,
-                last_processed_at: null,
-                tile_id: null,
-                tile_ids: null,
-                mgrs_tile_id: null,
-                land_documents: null,
-                notes: null,
-                marketplace_enabled: null,
-                is_active: null,
-                deleted_at: null,
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-                lastModified: Date.now(),
-                syncStatus: 'synced' as const,
-              })),
-            });
+            // Save to local DB for offline access
+            if (data && data.length > 0) {
+              const tenantId = user.tenantId || '';
+              const farmerId = user.id;
+              
+              await localDB.bulkSave({
+                lands: data.map(l => ({
+                  id: l.id!,
+                  tenant_id: tenantId,
+                  farmer_id: farmerId,
+                  name: l.name,
+                  area_acres: l.area_acres,
+                  area_guntas: null,
+                  area_sqft: null,
+                  ownership_type: l.ownership_type || null,
+                  state: l.state || null,
+                  state_id: null,
+                  district: l.district || null,
+                  district_id: null,
+                  taluka: null,
+                  taluka_id: null,
+                  village: l.village || null,
+                  village_id: null,
+                  survey_number: null,
+                  boundary: l.boundary_polygon_old,
+                  boundary_geom: null,
+                  boundary_polygon_old: l.boundary_polygon_old,
+                  boundary_method: null,
+                  center_lat: null,
+                  center_lon: null,
+                  center_point_old: null,
+                  location_coords: null,
+                  location_context: null,
+                  gps_accuracy_meters: null,
+                  gps_recorded_at: null,
+                  elevation_meters: null,
+                  slope_percentage: null,
+                  land_type: null,
+                  soil_type: l.soil_type || null,
+                  soil_tested: null,
+                  last_soil_test_date: null,
+                  soil_ph: null,
+                  organic_carbon_percent: null,
+                  nitrogen_kg_per_ha: null,
+                  phosphorus_kg_per_ha: null,
+                  potassium_kg_per_ha: null,
+                  water_source: l.water_source || null,
+                  irrigation_source: null,
+                  irrigation_type: null,
+                  current_crop: l.current_crop || null,
+                  current_crop_id: null,
+                  crop_stage: null,
+                  planting_date: null,
+                  cultivation_date: null,
+                  last_sowing_date: null,
+                  harvest_date: null,
+                  expected_harvest_date: null,
+                  previous_crop: null,
+                  previous_crop_id: null,
+                  last_crop: null,
+                  last_harvest_date: null,
+                  ndvi_tested: null,
+                  last_ndvi_calculation: null,
+                  last_ndvi_value: null,
+                  ndvi_thumbnail_url: null,
+                  last_processed_at: null,
+                  tile_id: null,
+                  tile_ids: null,
+                  mgrs_tile_id: null,
+                  land_documents: null,
+                  notes: null,
+                  marketplace_enabled: null,
+                  is_active: null,
+                  deleted_at: null,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                  lastModified: Date.now(),
+                  syncStatus: 'synced' as const,
+                })),
+              });
+              console.log('💾 [useLands] Saved to local DB');
+            }
+            
+            return data || [];
+          } catch (apiError) {
+            console.error('❌ [useLands] API error, using local cache:', apiError);
+            // Return local data if API fails
+            return localData || [];
           }
-          
-          return data || [];
         } else {
           // Offline: Use local database
-          const localData = await localDB.getLands();
+          console.log('📴 [useLands] Offline - using local DB');
           return localData || [];
         }
       } catch (error) {
-        console.error('Error fetching lands:', error);
+        console.error('❌ [useLands] Critical error:', error);
         
-        // Fallback to local DB on error
-        const localData = await localDB.getLands();
-        if (localData && localData.length > 0) {
-          return localData;
+        // Final fallback to local DB
+        try {
+          const localData = await localDB.getLands();
+          if (localData && localData.length > 0) {
+            console.log('💾 [useLands] Recovered from local DB');
+            return localData;
+          }
+        } catch (localError) {
+          console.error('❌ [useLands] Local DB also failed:', localError);
         }
         
-        throw error;
+        return [];
       }
     },
     enabled: !!user?.id,
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
-    retry: 2,
+    retry: 1, // Reduced retry for faster fallback
+    retryDelay: 1000, // Quick retry
   });
 
   // Mutation for deleting a land

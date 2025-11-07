@@ -201,7 +201,7 @@ export const useAuthStore = create<AuthState>()(
         localStorage.removeItem('tenantId');
       },
 
-      checkAuth: () => {
+      checkAuth: async () => {
         // Validate existing session on app load
         const { session, user } = get();
         
@@ -217,6 +217,13 @@ export const useAuthStore = create<AuthState>()(
                 isAuthenticated: parsedAuth.state.isAuthenticated || false,
                 isPinRequired: false
               });
+              
+              // Set Supabase headers immediately after restoring auth
+              if (parsedAuth.state.user?.id && parsedAuth.state.user?.tenantId) {
+                const { updateSupabaseHeaders } = await import('@/integrations/supabase/client');
+                updateSupabaseHeaders(parsedAuth.state.user.id, parsedAuth.state.user.tenantId);
+                console.log('✅ Supabase headers set immediately after auth restoration');
+              }
               
               // Validate the restored session
               const { validateSession } = get();

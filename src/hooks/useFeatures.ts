@@ -6,6 +6,28 @@ export function useFeatures() {
   const { tenant } = useTenantStore();
   const [isLoading, setIsLoading] = useState(false);
 
+  // Map database feature keys to app feature IDs
+  const mapDatabaseFeaturesToAppIds = (dbFeatures: Record<string, boolean>): string[] => {
+    const featureMapping: Record<string, string[]> = {
+      'basic_analytics': ['analytics'],
+      'farmer_management': ['lands', 'profile'],
+      'communication_tools': ['chat', 'social'],
+      'crop_schedules': ['schedule'],
+      'weather_advisory': ['weather'],
+      'market_linkage': ['market'],
+      'scheme_information': ['schemes'],
+    };
+
+    const mappedIds: string[] = [];
+    Object.entries(dbFeatures).forEach(([dbKey, isEnabled]) => {
+      if (isEnabled && featureMapping[dbKey]) {
+        mappedIds.push(...featureMapping[dbKey]);
+      }
+    });
+
+    return mappedIds;
+  };
+
   // Process features based on tenant settings
   const features = useMemo(() => {
     console.log('useFeatures - Processing features with tenant:', tenant);
@@ -13,21 +35,42 @@ export function useFeatures() {
     
     let processedFeatures: FeatureItem[];
     
-    if (tenant?.settings?.features && Array.isArray(tenant.settings.features)) {
-      // Use tenant-specific feature configuration
-      const enabledFeatureIds = tenant.settings.features;
-      console.log('useFeatures - Tenant feature IDs:', enabledFeatureIds);
+    // Check if tenant has feature settings
+    if (tenant?.settings?.features) {
+      const tenantFeatures = tenant.settings.features;
       
-      processedFeatures = defaultFeatures.map(feature => ({
-        ...feature,
-        enabled: feature.comingSoon ? false : enabledFeatureIds.includes(feature.id)
-      }));
+      // Handle array format (new format)
+      if (Array.isArray(tenantFeatures)) {
+        console.log('useFeatures - Tenant features (array):', tenantFeatures);
+        processedFeatures = defaultFeatures.map(feature => ({
+          ...feature,
+          enabled: feature.comingSoon ? false : tenantFeatures.includes(feature.id)
+        }));
+      } 
+      // Handle object format (legacy format from database)
+      else if (typeof tenantFeatures === 'object') {
+        console.log('useFeatures - Tenant features (object, mapping to app IDs):', tenantFeatures);
+        const mappedFeatureIds = mapDatabaseFeaturesToAppIds(tenantFeatures);
+        console.log('useFeatures - Mapped feature IDs:', mappedFeatureIds);
+        
+        processedFeatures = defaultFeatures.map(feature => ({
+          ...feature,
+          enabled: feature.comingSoon ? false : mappedFeatureIds.includes(feature.id)
+        }));
+      } else {
+        // Unknown format - enable all features by default
+        console.log('useFeatures - Unknown tenant feature format, enabling all');
+        processedFeatures = defaultFeatures.map(feature => ({
+          ...feature,
+          enabled: !feature.comingSoon
+        }));
+      }
     } else {
       // No tenant settings - enable all features by default (except coming soon)
       console.log('useFeatures - No tenant settings, enabling all non-coming-soon features');
       processedFeatures = defaultFeatures.map(feature => ({
         ...feature,
-        enabled: !feature.comingSoon // Enable all features except coming soon ones
+        enabled: !feature.comingSoon
       }));
     }
     

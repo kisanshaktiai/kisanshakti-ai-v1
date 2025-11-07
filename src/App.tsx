@@ -122,27 +122,10 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (session?.farmerId && tenant?.id) {
       console.log('🔄 Starting sync service');
-      // Delay sync slightly to ensure all hooks are ready
-      setTimeout(() => {
-        syncService.performSync(false).catch(console.error);
-      }, 1000);
+      // Start sync immediately after auth is ready
+      syncService.performSync(false).catch(console.error);
     }
   }, [session?.farmerId, tenant?.id]);
-
-  // Update Supabase headers when user auth is restored
-  useEffect(() => {
-    const updateHeaders = async () => {
-      const { user } = useAuthStore.getState();
-      if (user?.id && user?.tenantId) {
-        const { updateSupabaseHeaders } = await import('@/integrations/supabase/client');
-        updateSupabaseHeaders(user.id, user.tenantId);
-        console.log('Supabase headers updated on app initialization');
-      }
-    };
-    
-    // Small delay to ensure auth is restored
-    setTimeout(updateHeaders, 100);
-  }, []);
 
   // Apply white label theme whenever tenant changes
   useEffect(() => {
