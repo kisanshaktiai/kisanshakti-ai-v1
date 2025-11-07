@@ -63,10 +63,12 @@ class SyncService {
 
   async performSync(showToast: boolean = false): Promise<SyncResult> {
     if (this.syncInProgress) {
+      console.log('⚠️ [Sync] Sync already in progress, skipping');
       return { success: false, message: 'Sync already in progress' };
     }
 
     if (!this.isOnline) {
+      console.log('📴 [Sync] Device offline, skipping sync');
       if (showToast) {
         toast({
           title: 'Offline',
@@ -80,13 +82,15 @@ class SyncService {
     // Get tenant context from auth store
     const authState = useAuthStore.getState();
     const tenantId = authState.user?.tenantId;
+    const userId = authState.user?.id;
     
     // Don't sync if user is not authenticated yet
-    if (!tenantId) {
-      console.log('Skipping sync: User not authenticated');
+    if (!tenantId || !userId) {
+      console.log('⚠️ [Sync] Skipping sync: User not authenticated', { tenantId, userId });
       return { success: false, message: 'User not authenticated' };
     }
 
+    console.log('🔄 [Sync] Starting sync for tenant:', tenantId, 'user:', userId);
     this.syncInProgress = true;
     await localDB.updateSyncMetadata({ syncInProgress: true });
 
@@ -98,23 +102,35 @@ class SyncService {
         errors: [],
       };
 
-      // 1. Upload pending local changes
+      // 1. ALWAYS download latest data from server FIRST
+      // This ensures localDB has data even on first app load
+      console.log('📥 [Sync] Downloading server data...');
+      await this.downloadServerData(tenantId);
+      console.log('✅ [Sync] Server data downloaded to localDB');
+
+      // 2. Upload pending local changes
       const pendingChanges = await localDB.getPendingChanges();
+      console.log('📤 [Sync] Pending changes:', {
+        farmers: pendingChanges.farmers.length,
+        lands: pendingChanges.lands.length,
+        schedules: pendingChanges.schedules.length,
+        messages: pendingChanges.messages.length,
+      });
       
       if (pendingChanges.farmers.length > 0) {
+        console.log('📤 [Sync] Uploading farmers...');
         await this.syncFarmers(pendingChanges.farmers, result, tenantId);
       }
 
       if (pendingChanges.lands.length > 0) {
+        console.log('📤 [Sync] Uploading lands...');
         await this.syncLands(pendingChanges.lands, result, tenantId);
       }
 
       if (pendingChanges.messages.length > 0) {
+        console.log('📤 [Sync] Uploading messages...');
         await this.syncChatMessages(pendingChanges.messages, result);
       }
-
-      // 2. Download latest data from server
-      await this.downloadServerData(tenantId);
 
       // Update sync metadata
       await localDB.updateSyncMetadata({
@@ -371,12 +387,19 @@ class SyncService {
 
   private async downloadServerData(tenantId: string): Promise<void> {
     try {
+      console.log('📥 [Sync] Fetching farmers from server...');
       // Download farmers data
-      const { data: farmers } = await supabase
+      const { data: farmers, error: farmersError } = await supabase
         .from('farmers')
         .select('*')
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false });
+
+      if (farmersError) {
+        console.error('❌ [Sync] Failed to fetch farmers:', farmersError);
+      } else {
+        console.log(`✅ [Sync] Fetched ${farmers?.length || 0} farmers from server`);
+      }
 
       if (farmers && farmers.length > 0) {
         await localDB.bulkSave({
@@ -442,13 +465,21 @@ class SyncService {
       }
 
       // Download lands data
-      const { data: lands } = await supabase
+      console.log('📥 [Sync] Fetching lands from server...');
+      const { data: lands, error: landsError } = await supabase
         .from('lands')
         .select('*')
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false });
 
+      if (landsError) {
+        console.error('❌ [Sync] Failed to fetch lands:', landsError);
+      } else {
+        console.log(`✅ [Sync] Fetched ${lands?.length || 0} lands from server`);
+      }
+
       if (lands && lands.length > 0) {
+        console.log('💾 [Sync] Saving lands to localDB...');
         await localDB.bulkSave({
           lands: lands.map(l => ({
             id: l.id,
@@ -527,13 +558,22 @@ class SyncService {
       }
 
       // Download schedules data
-      const { data: schedules } = await supabase
+      console.log('📥 [Sync] Fetching schedules from server...');
+      const { data: schedules, error: schedulesError } = await supabase
         .from('crop_schedules')
         .select('*')
         .eq('tenant_id', tenantId)
+        .eq('is_active', true)
         .order('created_at', { ascending: false });
 
+      if (schedulesError) {
+        console.error('❌ [Sync] Failed to fetch schedules:', schedulesError);
+      } else {
+        console.log(`✅ [Sync] Fetched ${schedules?.length || 0} schedules from server`);
+      }
+
       if (schedules && schedules.length > 0) {
+        console.log('💾 [Sync] Saving schedules to localDB...');
         await localDB.bulkSave({
           schedules: schedules.map(s => ({
             id: s.id,
@@ -560,9 +600,12 @@ class SyncService {
             syncStatus: 'synced' as const,
           })),
         });
+        console.log('✅ [Sync] Schedules saved to localDB');
       }
+      
+      console.log('✅ [Sync] Server data download complete');
     } catch (error) {
-      console.error('Failed to download server data:', error);
+      console.error('❌ [Sync] Failed to download server data:', error);
       throw error;
     }
   }

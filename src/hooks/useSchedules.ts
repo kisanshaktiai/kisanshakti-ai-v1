@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { localDB } from '@/services/localDB';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
+import { useSyncReady } from '@/hooks/useSyncReady';
 
 /**
  * Unified hook for fetching schedules with:
@@ -11,12 +12,14 @@ import { useState, useEffect } from 'react';
  * - Offline support
  * - Automatic refetching
  * - Real-time updates integration
+ * - Waits for initial sync to complete
  */
 export function useSchedules(landId?: string) {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [headersReady, setHeadersReady] = useState(false);
+  const syncReady = useSyncReady();
 
   // Check if headers are ready before enabling query
   useEffect(() => {
@@ -159,7 +162,7 @@ export function useSchedules(landId?: string) {
       console.log(`📦 [useSchedules] Local DB has ${localData?.length || 0} schedules`);
       return localData || [];
     },
-    enabled: !!user?.id && headersReady, // Only enable when BOTH user AND headers are ready
+    enabled: !!user?.id && headersReady && syncReady, // Wait for user, headers AND initial sync
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,

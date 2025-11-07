@@ -122,12 +122,40 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
 
   // Initialize sync service AFTER authentication is complete
   useEffect(() => {
-    if (session?.farmerId && tenant?.id) {
-      console.log('🔄 Starting sync service');
-      // Start sync immediately after auth is ready
-      syncService.performSync(false).catch(console.error);
-    }
-  }, [session?.farmerId, tenant?.id]);
+    const initializeSync = async () => {
+      const { user } = useAuthStore.getState();
+      console.log('🔄 [App] Sync initialization check:', { 
+        hasUser: !!user?.id, 
+        hasTenant: !!user?.tenantId,
+        userId: user?.id,
+        tenantId: user?.tenantId
+      });
+      
+      if (user?.id && user?.tenantId) {
+        console.log('🔄 [App] Starting initial sync for user:', user.id);
+        try {
+          const result = await syncService.performSync(false);
+          console.log('✅ [App] Initial sync completed:', result);
+          
+          // Verify data was downloaded
+          const lands = await localDB.getLands();
+          const schedules = await localDB.getAllSchedules();
+          console.log('📊 [App] LocalDB status after sync:', {
+            lands: lands?.length || 0,
+            schedules: schedules?.length || 0,
+          });
+        } catch (error) {
+          console.error('❌ [App] Initial sync failed:', error);
+        }
+      } else {
+        console.log('⚠️ [App] Cannot start sync - user not fully authenticated');
+      }
+    };
+    
+    // Small delay to ensure auth is fully set up
+    const timer = setTimeout(initializeSync, 500);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Apply white label theme whenever tenant changes
   useEffect(() => {
