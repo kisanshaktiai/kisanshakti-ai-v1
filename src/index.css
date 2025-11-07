@@ -15,190 +15,210 @@
   }
 }
 
-/* KisanShakti Design System - Farmer-friendly colors inspired by Indian agriculture */
+/* 2030 AI-Ready Design System - Futuristic & Intelligent */
 
 @layer base {
   :root {
-    /* Core Colors */
-    --background: 93 30% 98%;
-    --foreground: 140 25% 15%;
+    /* Core Colors - Neural Network Inspired */
+    --background: 220 25% 98%;
+    --foreground: 220 15% 12%;
     
-    /* Card & Surfaces */
+    /* Card & Surfaces - Advanced Layering */
     --card: 0 0% 100%;
-    --card-foreground: 140 25% 15%;
+    --card-foreground: 220 15% 12%;
     
     /* Popover */
     --popover: 0 0% 100%;
-    --popover-foreground: 140 25% 15%;
+    --popover-foreground: 220 15% 12%;
     
-    /* Primary - Rich green like healthy crops */
-    --primary: 142 76% 36%;
+    /* Primary - AI Electric Blue */
+    --primary: 210 100% 56%;
     --primary-foreground: 0 0% 100%;
-    --primary-hover: 142 76% 28%;
+    --primary-hover: 210 100% 48%;
+    --primary-glow: 210 100% 70%;
+    --primary-dim: 210 100% 35%;
     
-    /* Secondary - Earth brown */
-    --secondary: 30 41% 48%;
+    /* Secondary - Quantum Purple */
+    --secondary: 270 75% 60%;
     --secondary-foreground: 0 0% 100%;
     
-    /* Accent - Sky blue */
-    --accent: 199 89% 48%;
-    --accent-foreground: 0 0% 100%;
+    /* Accent - Cyber Cyan */
+    --accent: 180 100% 45%;
+    --accent-foreground: 220 15% 12%;
     
     /* Status Colors */
-    --success: 45 93% 47%;
-    --success-foreground: 45 5% 15%;
+    --success: 142 76% 45%;
+    --success-foreground: 0 0% 100%;
     
-    --warning: 38 92% 50%;
-    --warning-foreground: 38 5% 15%;
+    --warning: 38 95% 58%;
+    --warning-foreground: 38 10% 15%;
     
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 0 85% 60%;
+    --destructive-foreground: 0 0% 100%;
     
-    --info: 199 89% 48%;
+    --info: 210 100% 56%;
     --info-foreground: 0 0% 100%;
     
-    /* Glassmorphic Chat Effects */
-    --chat-bubble-blur: 12px;
-    --chat-bubble-bg: rgba(255, 255, 255, 0.85);
-    --chat-bubble-border: rgba(255, 255, 255, 0.3);
-    --chat-bubble-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
-    --info-foreground: 0 0% 100%;
+    /* Muted - Subtle Intelligence */
+    --muted: 220 15% 95%;
+    --muted-foreground: 220 10% 45%;
     
-    /* Muted */
-    --muted: 60 5% 96%;
-    --muted-foreground: 140 5% 40%;
+    /* Borders & Inputs - Neural Lines */
+    --border: 220 20% 88%;
+    --input: 220 20% 88%;
+    --ring: 210 100% 56%;
     
-    /* Borders & Inputs */
-    --border: 142 20% 90%;
-    --input: 142 20% 90%;
-    --ring: 142 76% 36%;
-    
-    /* Radius */
-    --radius: 0.75rem;
+    /* Radius - Fluid Forms */
+    --radius: 1rem;
     
     /* Semantic Colors for Agriculture */
-    --crop-stage-germination: 199 89% 48%;
-    --crop-stage-vegetative: 142 76% 36%;
-    --crop-stage-flowering: 45 93% 47%;
-    --crop-stage-fruiting: 30 85% 50%;
-    --crop-stage-harvesting: 0 84% 50%;
+    --crop-stage-germination: 180 100% 45%;
+    --crop-stage-vegetative: 142 76% 45%;
+    --crop-stage-flowering: 270 75% 60%;
+    --crop-stage-fruiting: 38 95% 58%;
+    --crop-stage-harvesting: 45 95% 55%;
     
     /* Land Health Score Colors */
-    --land-health-excellent: 142 76% 36%;
-    --land-health-good: 45 93% 47%;
-    --land-health-poor: 0 84% 50%;
+    --land-health-excellent: 142 76% 45%;
+    --land-health-good: 45 95% 55%;
+    --land-health-poor: 0 85% 60%;
     
     /* Weather Semantic Colors */
-    --weather-sunny: 45 93% 47%;
-    --weather-cloudy: 214 14% 72%;
-    --weather-rainy: 199 89% 48%;
-    --weather-stormy: 240 5% 34%;
-    --weather-night: 222 47% 11%;
+    --weather-sunny: 45 95% 55%;
+    --weather-cloudy: 220 15% 72%;
+    --weather-rainy: 210 100% 56%;
+    --weather-stormy: 240 20% 35%;
+    --weather-night: 230 40% 15%;
     
     /* UV Index Colors */
-    --uv-low: 142 76% 36%;
-    --uv-moderate: 45 93% 47%;
-    --uv-high: 30 85% 50%;
-    --uv-very-high: 0 84% 50%;
-    --uv-extreme: 280 85% 50%;
+    --uv-low: 142 76% 45%;
+    --uv-moderate: 45 95% 55%;
+    --uv-high: 38 95% 58%;
+    --uv-very-high: 0 85% 60%;
+    --uv-extreme: 280 85% 55%;
     
-    /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(142 76% 36%), hsl(142 76% 44%));
-    --gradient-earth: linear-gradient(180deg, hsl(199 89% 48%), hsl(93 30% 98%));
-    --gradient-sunrise: linear-gradient(135deg, hsl(45 93% 47%), hsl(30 41% 48%));
-    --gradient-success: linear-gradient(135deg, hsl(142 76% 36%), hsl(45 93% 47%));
-    --gradient-warning: linear-gradient(135deg, hsl(38 92% 50%), hsl(45 93% 47%));
-    --gradient-danger: linear-gradient(135deg, hsl(0 84% 50%), hsl(30 85% 50%));
+    /* AI-Inspired Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(210 100% 56%), hsl(180 100% 45%));
+    --gradient-neural: linear-gradient(135deg, hsl(210 100% 56%), hsl(270 75% 60%));
+    --gradient-earth: linear-gradient(180deg, hsl(142 76% 45%), hsl(45 95% 55%));
+    --gradient-sunrise: linear-gradient(135deg, hsl(38 95% 58%), hsl(45 95% 55%));
+    --gradient-success: linear-gradient(135deg, hsl(142 76% 45%), hsl(180 100% 45%));
+    --gradient-warning: linear-gradient(135deg, hsl(38 95% 58%), hsl(45 95% 55%));
+    --gradient-danger: linear-gradient(135deg, hsl(0 85% 60%), hsl(38 95% 58%));
+    --gradient-cyber: linear-gradient(135deg, hsl(180 100% 45%), hsl(210 100% 56%), hsl(270 75% 60%));
     
-    /* Shadows */
-    --shadow-sm: 0 1px 2px 0 hsl(142 76% 36% / 0.05);
-    --shadow-md: 0 4px 6px -1px hsl(142 76% 36% / 0.1);
-    --shadow-lg: 0 10px 15px -3px hsl(142 76% 36% / 0.1);
+    /* Advanced Shadows - Multi-layer Depth */
+    --shadow-sm: 0 1px 3px 0 hsl(220 15% 12% / 0.08), 0 1px 2px 0 hsl(220 15% 12% / 0.06);
+    --shadow-md: 0 4px 12px 0 hsl(220 15% 12% / 0.12), 0 2px 6px 0 hsl(220 15% 12% / 0.08);
+    --shadow-lg: 0 20px 40px 0 hsl(220 15% 12% / 0.15), 0 8px 16px 0 hsl(220 15% 12% / 0.1);
+    --shadow-glow: 0 0 40px hsl(210 100% 56% / 0.3), 0 0 80px hsl(210 100% 56% / 0.15);
+    --shadow-neural: 0 8px 32px hsl(210 100% 56% / 0.2), 0 0 60px hsl(270 75% 60% / 0.15);
     
-    /* Animations */
-    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    /* Animations - Smooth Intelligence */
+    --transition-smooth: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: all 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55);
     
     /* Bottom Navigation */
-    --nav-height: 4rem;
+    --nav-height: 4.5rem;
     --nav-background: 0 0% 100%;
-    --nav-border: 142 20% 90%;
-    --nav-active: 142 76% 36%;
-    --nav-inactive: 140 5% 60%;
+    --nav-border: 220 20% 88%;
+    --nav-active: 210 100% 56%;
+    --nav-inactive: 220 10% 55%;
     
-    /* Chart Colors */
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
+    /* Chart Colors - Data Visualization */
+    --chart-1: 210 100% 56%;
+    --chart-2: 180 100% 45%;
+    --chart-3: 270 75% 60%;
+    --chart-4: 142 76% 45%;
+    --chart-5: 38 95% 58%;
     
     /* Map Colors */
-    --polygon-fill: 142 76% 36%;
-    --polygon-stroke: 142 76% 28%;
-    --marker-color: 0 84% 60%;
-    --tracking-fill: 199 89% 48%;
-    --tracking-stroke: 199 89% 38%;
+    --polygon-fill: 142 76% 45%;
+    --polygon-stroke: 142 76% 35%;
+    --marker-color: 210 100% 56%;
+    --tracking-fill: 180 100% 45%;
+    --tracking-stroke: 180 100% 35%;
     
     /* Overlay Colors */
     --overlay-light: 0 0% 100%;
-    --overlay-dark: 140 25% 10%;
+    --overlay-dark: 220 15% 12%;
+    
+    /* Glass Morphism */
+    --glass-background: 0 0% 100%;
+    --glass-border: 220 20% 88%;
+    --glass-blur: 24px;
   }
 
   .dark {
-    --background: 140 25% 10%;
-    --foreground: 0 0% 95%;
+    --background: 220 25% 8%;
+    --foreground: 0 0% 98%;
     
-    --card: 140 25% 15%;
-    --card-foreground: 0 0% 95%;
+    --card: 220 20% 12%;
+    --card-foreground: 0 0% 98%;
     
-    --popover: 140 25% 15%;
-    --popover-foreground: 0 0% 95%;
+    --popover: 220 20% 12%;
+    --popover-foreground: 0 0% 98%;
     
-    --primary: 142 76% 42%;
+    --primary: 210 100% 60%;
     --primary-foreground: 0 0% 100%;
-    --primary-hover: 142 76% 50%;
+    --primary-hover: 210 100% 68%;
+    --primary-glow: 210 100% 75%;
+    --primary-dim: 210 100% 40%;
     
-    --secondary: 30 41% 58%;
+    --secondary: 270 75% 65%;
     --secondary-foreground: 0 0% 100%;
     
-    --accent: 199 89% 58%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 180 100% 50%;
+    --accent-foreground: 220 15% 12%;
     
-    --success: 45 93% 57%;
-    --success-foreground: 45 5% 15%;
+    --success: 142 76% 50%;
+    --success-foreground: 0 0% 100%;
     
-    --warning: 38 92% 60%;
-    --warning-foreground: 38 5% 15%;
+    --warning: 38 95% 62%;
+    --warning-foreground: 38 10% 15%;
     
-    --destructive: 0 84% 50%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 0 85% 65%;
+    --destructive-foreground: 0 0% 100%;
     
-    --info: 199 89% 58%;
+    --info: 210 100% 60%;
     --info-foreground: 0 0% 100%;
     
-    --muted: 140 20% 20%;
-    --muted-foreground: 140 5% 65%;
+    --muted: 220 20% 18%;
+    --muted-foreground: 220 10% 65%;
     
-    --border: 140 20% 25%;
-    --input: 140 20% 25%;
-    --ring: 142 76% 42%;
+    --border: 220 20% 22%;
+    --input: 220 20% 22%;
+    --ring: 210 100% 60%;
     
-    /* Dark mode gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(142 76% 42%), hsl(142 76% 50%));
-    --gradient-earth: linear-gradient(180deg, hsl(199 89% 38%), hsl(140 25% 10%));
-    --gradient-sunrise: linear-gradient(135deg, hsl(45 93% 57%), hsl(30 41% 58%));
-    --gradient-success: linear-gradient(135deg, hsl(142 76% 42%), hsl(45 93% 57%));
-    --gradient-warning: linear-gradient(135deg, hsl(38 92% 60%), hsl(45 93% 57%));
-    --gradient-danger: linear-gradient(135deg, hsl(0 84% 50%), hsl(30 85% 60%));
+    /* Dark mode AI gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(210 100% 60%), hsl(180 100% 50%));
+    --gradient-neural: linear-gradient(135deg, hsl(210 100% 60%), hsl(270 75% 65%));
+    --gradient-earth: linear-gradient(180deg, hsl(142 76% 50%), hsl(45 95% 60%));
+    --gradient-sunrise: linear-gradient(135deg, hsl(38 95% 62%), hsl(45 95% 60%));
+    --gradient-success: linear-gradient(135deg, hsl(142 76% 50%), hsl(180 100% 50%));
+    --gradient-warning: linear-gradient(135deg, hsl(38 95% 62%), hsl(45 95% 60%));
+    --gradient-danger: linear-gradient(135deg, hsl(0 85% 65%), hsl(38 95% 62%));
+    --gradient-cyber: linear-gradient(135deg, hsl(180 100% 50%), hsl(210 100% 60%), hsl(270 75% 65%));
     
-    --nav-background: 140 25% 12%;
-    --nav-border: 140 20% 25%;
-    --nav-active: 142 76% 42%;
-    --nav-inactive: 140 5% 50%;
+    --shadow-sm: 0 1px 3px 0 hsl(0 0% 0% / 0.3), 0 1px 2px 0 hsl(0 0% 0% / 0.2);
+    --shadow-md: 0 4px 12px 0 hsl(0 0% 0% / 0.4), 0 2px 6px 0 hsl(0 0% 0% / 0.3);
+    --shadow-lg: 0 20px 40px 0 hsl(0 0% 0% / 0.5), 0 8px 16px 0 hsl(0 0% 0% / 0.4);
+    --shadow-glow: 0 0 40px hsl(210 100% 60% / 0.4), 0 0 80px hsl(210 100% 60% / 0.2);
+    --shadow-neural: 0 8px 32px hsl(210 100% 60% / 0.3), 0 0 60px hsl(270 75% 65% / 0.2);
+    
+    --nav-background: 220 20% 10%;
+    --nav-border: 220 20% 22%;
+    --nav-active: 210 100% 60%;
+    --nav-inactive: 220 10% 55%;
     
     /* Overlay Colors Dark */
     --overlay-light: 0 0% 100%;
-    --overlay-dark: 140 25% 10%;
+    --overlay-dark: 220 25% 8%;
+    
+    /* Glass Morphism Dark */
+    --glass-background: 220 20% 12%;
+    --glass-border: 220 20% 22%;
+    --glass-blur: 24px;
   }
 }
 
@@ -213,22 +233,41 @@
 }
 
 @layer utilities {
-  /* Glassmorphism effects */
+  /* 2030 Glassmorphism - Neural Transparency */
   .glassmorphism {
-    @apply bg-background/60 backdrop-blur-md border border-border/50;
+    @apply bg-background/70 backdrop-blur-2xl border border-border/60;
+    box-shadow: var(--shadow-md), inset 0 1px 2px 0 hsl(var(--foreground) / 0.05);
   }
   
   .glassmorphism-strong {
-    @apply bg-background/80 backdrop-blur-xl border border-border/60;
+    @apply bg-background/85 backdrop-blur-3xl border border-border/70;
+    box-shadow: var(--shadow-lg), inset 0 2px 4px 0 hsl(var(--foreground) / 0.08);
   }
   
   .glassmorphism-subtle {
-    @apply bg-background/40 backdrop-blur-sm border border-border/30;
+    @apply bg-background/50 backdrop-blur-xl border border-border/40;
+    box-shadow: var(--shadow-sm), inset 0 1px 1px 0 hsl(var(--foreground) / 0.03);
   }
   
-  /* Enhanced shadows for better visibility */
+  /* Neural Glow Effects */
+  .glow-primary {
+    box-shadow: var(--shadow-glow);
+  }
+  
+  .glow-neural {
+    box-shadow: var(--shadow-neural);
+  }
+  
+  /* Enhanced shadows for depth perception */
   .shadow-3xl {
-    box-shadow: 0 35px 60px -15px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 35px 70px -20px hsl(var(--foreground) / 0.25), 
+                0 20px 40px -15px hsl(var(--foreground) / 0.15);
+  }
+  
+  .shadow-ai {
+    box-shadow: 0 8px 32px hsl(var(--primary) / 0.2), 
+                0 0 60px hsl(var(--primary) / 0.1),
+                0 2px 8px hsl(var(--foreground) / 0.1);
   }
 
   /* Custom Animations for FAB */
