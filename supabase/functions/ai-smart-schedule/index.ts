@@ -96,24 +96,9 @@ serve(async (req) => {
     const languageName = languageMap[language] || 'Hindi';
 
     // 5. Build Comprehensive Context-Aware Prompt with NDVI, Guidelines, NPK
-    const systemPrompt = `You are an expert agricultural advisor AND agronomist for Indian farmers with deep knowledge of:
-- Integrated Nutrient Management (chemical + organic)
-- Integrated Pest Management (IPM)
-- Plant Growth Regulators and bio-stimulants
-- Regional market prices and crop economics
-
-Generate ALL content in ${languageName} language ONLY. 
-
-CRITICAL REQUIREMENTS:
-1. Calculate EXACT quantities scaled to land size: ${land.area_acres} acres = ${(land.area_acres * 0.404686).toFixed(2)} hectares
-2. Provide BOTH chemical AND organic input recommendations
-3. Include pest management plan (chemical + bio-pesticides) based on crop-specific pests
-4. Recommend growth regulators where beneficial (flowering, fruiting, rooting)
-5. Calculate yield & revenue projections based on regional market prices
-6. Base fertilizer recommendations on CURRENT soil NPK levels
-7. Consider NDVI health data and weather forecasts
-8. Use simple ${languageName} language
-9. All costs in ${currency}, quantities specific to THIS land`;
+    const systemPrompt = `Expert agricultural advisor for ${land.state}, India. Generate schedule in ${languageName} language.
+Land: ${land.area_acres} acres (${(land.area_acres * 0.404686).toFixed(2)} ha).
+Scale all quantities to this land size. Use ${currency} for costs.`;
 
     // Build crop baseline context
     const guidelineContext = guidelines ? `
@@ -196,86 +181,18 @@ ${weather.forecast.some((f: any) => f.rainfall > 10) ?
 ${weather.current.temp > 35 ? '- HIGH TEMPERATURE ALERT: Increase irrigation frequency, water in early morning/evening' : ''}
 ${weather.current.temp < 10 ? '- LOW TEMPERATURE ALERT: Delay sowing if below minimum germination temp' : ''}` : 'Weather data not available';
 
-    const userPrompt = `Generate a precise crop schedule for:
+    const userPrompt = `Crop: ${cropName}${cropVariety ? ` (${cropVariety})` : ''}, Sowing: ${sowingDate}, Method: ${isReadyMadePlant ? 'Transplants (reduce duration 20 days, skip germination)' : 'Direct seed'}
+Location: ${land.district}, ${land.state}. Irrigation: ${land.irrigation_type || 'Standard'}
 
-CROP & LAND DETAILS:
-- Crop: ${cropName}${cropVariety ? ` (Variety: ${cropVariety})` : ''}
-- Sowing Date: ${sowingDate}
-- **PLANTING METHOD: ${isReadyMadePlant ? 'READY-MADE NURSERY PLANTS/TRANSPLANTS' : 'DIRECT SEED SOWING'}**
-${isReadyMadePlant ? `
-- **IMPORTANT: This farmer is using ready-made nursery plants (transplants), NOT seeds**
-- **Skip germination phase (typically 10-20 days)**
-- **Reduce total crop duration by 15-25 days depending on crop**
-- **Start schedule from transplanting/planting date, not sowing date**
-- **First irrigation should be IMMEDIATE after transplanting**
-` : ''}
-- Land Size: ${land.area_acres} acres (${landAreaHa.toFixed(2)} hectares) = ${(land.area_acres * 4046.86).toFixed(0)} square meters
-- Location: ${land.village || ''} ${land.taluka || ''}, ${land.district}, ${land.state} (${region.zone})
-- Season: ${region.season}
-- Irrigation: ${land.irrigation_type || 'Not specified'}, Source: ${land.water_source || 'Unknown'}
+Soil NPK: N=${currentN} P=${currentP} K=${currentK}, Target: N=${target.n} P=${target.p} K=${target.k}. Apply deficit: N=${nDeficit.toFixed(0)} P=${pDeficit.toFixed(0)} K=${kDeficit.toFixed(0)} kg/ha
 
-${guidelineContext}
+${ndviData && ndviData.length > 0 ? `NDVI: ${ndviData[0].ndvi_value} ${ndviData[0].ndvi_value < 0.4 ? '(STRESSED - increase N by 25%)' : '(Healthy)'}` : ''}
 
-${npkContext}
+${weather?.forecast ? `Rain forecast: ${weather.forecast.filter((f: any) => f.rainfall > 5).map((f: any) => `Day ${f.day}: ${f.rainfall}mm`).join(', ') || 'None'}` : ''}
 
-${ndviContext}
+Generate 10-12 tasks: ${isReadyMadePlant ? 'transplant irrigation, stress mgmt,' : 'land prep, sowing,'} irrigation (6-8x), fertilizer (2-3 splits based on deficit), pest control (2-3x), weeding (2x), harvest.
 
-${weatherContext}
-
-TASK GENERATION INSTRUCTIONS:
-${isReadyMadePlant ? `
-READY-MADE PLANT SPECIFIC ADJUSTMENTS:
-1. **SKIP seed germination phase** - start from vegetative growth
-2. **Reduce total duration by 15-25 days** (e.g., Rice: 120→100 days, Tomato: 90→70 days, Sugarcane sets: 365→340 days)
-3. **First task: Immediate transplant irrigation** (3-5 liters per plant within 2 hours of planting)
-4. **Add transplant stress management**: Shade net for 3-5 days, vitamin B1 spray on day 1
-5. Earlier first fertilizer application (7-10 DAS instead of 15-20 DAS)
-6. Split fertilizer applications: Apply the calculated NPK deficit in 2-3 splits
-7. Irrigation schedule: Based on ${land.irrigation_type}, increased frequency for first 7-10 days
-8. Weather-adaptive: If rain >10mm predicted, postpone irrigation by 2-3 days
-9. Include: Transplanting, immediate irrigation, stress management, irrigation (8-10 times), fertilizer (2-3 splits), pest control (2-3 times), weeding (2 times), harvest
-` : `
-1. Calculate EXACT seed quantity: Use standard seed rate (${guidelines?.seed_rate_kg_per_ha || 'typical rate'} kg/ha) × ${landAreaHa.toFixed(2)} ha = X kg
-2. Include germination phase tasks (0-15 days)
-3. Split fertilizer applications: Apply the calculated NPK deficit in 2-3 splits (e.g., basal, 30 DAS, 60 DAS)
-4. Irrigation schedule: Based on ${land.irrigation_type}, crop water needs (${guidelines?.water_requirement_mm || 'standard'} mm total), and rainfall forecast
-5. Weather-adaptive: If rain >10mm predicted, postpone irrigation by 2-3 days
-6. NDVI-adaptive: If crop stress detected (NDVI <0.4), advance and increase nitrogen dose
-7. Include: Land prep, sowing, irrigation (6-8 times), fertilizer (2-3 splits), pest control (2-3 times), weeding (2 times), harvest
-`}
-
-**CRITICAL: COMPREHENSIVE INPUT CALCULATIONS REQUIRED**
-
-A. YIELD & ECONOMICS:
-- Research typical yield for ${cropName} in ${land.state} (quintals/acre)
-- Find current market price or MSP for ${cropName} in ${region.zone}
-- Calculate: expected_gross_revenue = yield × price
-- Calculate: expected_net_profit = revenue - total_costs
-- Include profit margin percentage
-
-B. ORGANIC INPUTS (provide simple totals):
-- organic_fertilizer_kg: Total FYM/Compost in kg for entire season
-- bio_fertilizer_units: Number of bio-fertilizer packets (Rhizobium/Azotobacter/PSB)
-- vermicompost_kg: Total vermicompost in kg
-- Application: Basal + top-dressing stages
-
-C. PEST MANAGEMENT (provide season totals):
-- insecticide_ml: Total insecticide needed (ml) - for aphids, stem borer, etc.
-- fungicide_gm: Total fungicide needed (grams) - for blast, blight, etc.
-- herbicide_ml: Total herbicide needed (ml) - pre/post-emergence
-- bio_pesticide_ml: Total bio-pesticide (Neem oil, etc.) in ml
-Research common pests/diseases for ${cropName} in ${land.state}
-
-D. GROWTH ENHANCEMENT (if beneficial):
-- pgr_hormone_ml: Total plant growth regulator (GA3, NAA, etc.) in ml
-- Use for: Flowering induction, fruit setting, root development
-- Timing: Critical growth stages
-
-E. CHEMICAL FERTILIZERS (NPK):
-- Based on soil test deficit calculated above
-- Split into 2-3 applications
-
-Generate 10-15 specific, actionable tasks with exact quantities in ${languageName} language.`;
+Calculate: yield (quintals), market price, revenue, costs, profit. Include organic inputs, pest mgmt, growth regulators if beneficial.`;
 
 
     // 5. Validate critical data before calling OpenAI
@@ -293,6 +210,7 @@ Generate 10-15 specific, actionable tasks with exact quantities in ${languageNam
     // 6. Call OpenAI GPT-5-mini with tool calling
     const requestBody = {
       model: 'gpt-5-mini-2025-08-07',
+      max_completion_tokens: 4096, // Critical for GPT-5 models to complete tool calls
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
