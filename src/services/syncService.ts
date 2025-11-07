@@ -122,11 +122,26 @@ class SyncService {
         syncInProgress: false,
       });
 
+      // Check if there were any errors during sync
+      if (result.errors && result.errors.length > 0) {
+        result.success = false;
+        result.message = `Sync completed with ${result.errors.length} error(s)`;
+        console.warn('Sync completed with errors:', result.errors);
+      }
+
       if (showToast) {
-        toast({
-          title: 'Sync Complete',
-          description: `${pendingChanges.farmers.length + pendingChanges.lands.length + pendingChanges.schedules.length + pendingChanges.messages.length} changes synced`,
-        });
+        if (result.success) {
+          toast({
+            title: 'Sync Complete',
+            description: `${pendingChanges.farmers.length + pendingChanges.lands.length + pendingChanges.schedules.length + pendingChanges.messages.length} changes synced`,
+          });
+        } else {
+          toast({
+            title: 'Sync Partially Completed',
+            description: result.errors?.join(', ') || 'Some items could not be synced',
+            variant: 'destructive',
+          });
+        }
       }
 
       return result;
@@ -207,8 +222,10 @@ class SyncService {
           syncedIds.push(farmer.id);
         }
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
         console.error(`Failed to sync farmer ${farmer.id}:`, error);
-        result.errors?.push(`Failed to sync farmer ${farmer.name}`);
+        result.errors?.push(`Farmer "${farmer.name}": ${errorMsg}`);
+        result.success = false;
       }
     }
 
@@ -269,8 +286,10 @@ class SyncService {
           syncedIds.push(land.farmer_id);
         }
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
         console.error(`Failed to sync land ${land.id}:`, error);
-        result.errors?.push(`Failed to sync land ${land.name}`);
+        result.errors?.push(`Land "${land.name}": ${errorMsg}`);
+        result.success = false;
       }
     }
 
@@ -330,8 +349,10 @@ class SyncService {
           syncedIds.push(schedule.id);
         }
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
         console.error(`Failed to sync schedule ${schedule.id}:`, error);
-        result.errors?.push(`Failed to sync schedule`);
+        result.errors?.push(`Schedule for "${schedule.crop_id}": ${errorMsg}`);
+        result.success = false;
       }
     }
 
