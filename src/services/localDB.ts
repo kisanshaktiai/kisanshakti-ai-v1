@@ -621,8 +621,8 @@ interface KisanDB extends DBSchema {
 // ============================================================================
 
 const DB_NAME = 'KisanDB';
-const DB_VERSION = 5; // Incremented for schema changes to match Supabase
-const SCHEMA_VERSION = 3;
+const DB_VERSION = 6; // Incremented for schema improvements
+const SCHEMA_VERSION = 4; // Bumped for better schema validation
 
 class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;
@@ -632,7 +632,7 @@ class LocalDatabase {
 
     this.db = await openDB<KisanDB>(DB_NAME, DB_VERSION, {
       upgrade(db, oldVersion, newVersion, transaction) {
-        console.log(`📦 Upgrading LocalDB from version ${oldVersion} to ${newVersion}`);
+        console.log(`📦 [LocalDB] Upgrading from version ${oldVersion} to ${newVersion}`);
 
         // Create or update farmers store
         if (!db.objectStoreNames.contains('farmers')) {
@@ -650,7 +650,7 @@ class LocalDatabase {
           landsStore.createIndex('by-sync-status', 'syncStatus');
         }
 
-        // Create cropSchedules store (NEW NAME - maps to crop_schedules in Supabase)
+        // Create cropSchedules store (maps to crop_schedules in Supabase)
         if (!db.objectStoreNames.contains('cropSchedules')) {
           const schedulesStore = db.createObjectStore('cropSchedules', { keyPath: 'id' });
           schedulesStore.createIndex('by-tenant', 'tenant_id');
@@ -666,7 +666,7 @@ class LocalDatabase {
           tasksStore.createIndex('by-date', 'task_date');
         }
 
-        // Create aiChatSessions store (NEW NAME - maps to ai_chat_sessions in Supabase)
+        // Create aiChatSessions store (maps to ai_chat_sessions in Supabase)
         if (!db.objectStoreNames.contains('aiChatSessions')) {
           const sessionsStore = db.createObjectStore('aiChatSessions', { keyPath: 'id' });
           sessionsStore.createIndex('by-tenant', 'tenant_id');
@@ -675,7 +675,7 @@ class LocalDatabase {
           sessionsStore.createIndex('by-sync-status', 'syncStatus');
         }
 
-        // Create aiChatMessages store (NEW NAME - maps to ai_chat_messages in Supabase)
+        // Create aiChatMessages store (maps to ai_chat_messages in Supabase)
         if (!db.objectStoreNames.contains('aiChatMessages')) {
           const messagesStore = db.createObjectStore('aiChatMessages', { keyPath: 'id' });
           messagesStore.createIndex('by-session', 'session_id');
@@ -713,25 +713,67 @@ class LocalDatabase {
         if (!db.objectStoreNames.contains('syncMetadata')) {
           db.createObjectStore('syncMetadata', { keyPath: 'key' });
         }
+        
+        console.log('✅ [LocalDB] Schema upgrade complete');
       },
     });
 
-    // Initialize sync metadata
+    // Initialize or validate sync metadata and schema version
+    await this.validateSchemaVersion();
+    
+    console.log('✅ [LocalDB] Initialized with DB v', DB_VERSION, 'Schema v', SCHEMA_VERSION);
+  }
+
+  /**
+   * Validate schema version and clear DB if mismatch
+   */
+  async validateSchemaVersion(): Promise<void> {
+    if (!this.db) return;
+    
     const tx = this.db.transaction('syncMetadata', 'readwrite');
-    const existing = await tx.objectStore('syncMetadata').get('main');
+    const store = tx.objectStore('syncMetadata');
+    const existing = await store.get('main');
+    
     if (!existing) {
-      await tx.objectStore('syncMetadata').put({
+      // First time initialization
+      await store.put({
         key: 'main',
         lastSyncTime: null,
-        lastSchemaCheck: null,
+        lastSchemaCheck: Date.now(),
         pendingChanges: 0,
         syncInProgress: false,
         schemaVersion: SCHEMA_VERSION,
       });
+      console.log('✅ [LocalDB] Schema metadata initialized');
+    } else if (existing.schemaVersion !== SCHEMA_VERSION) {
+      // Schema version mismatch - clear all data
+      console.warn(`⚠️ [LocalDB] Schema version mismatch: ${existing.schemaVersion} vs ${SCHEMA_VERSION}`);
+      console.log('🗑️ [LocalDB] Clearing all data due to schema mismatch...');
+      
+      await tx.done;
+      await this.clearAll();
+      
+      // Reinitialize metadata with new schema version
+      const newTx = this.db.transaction('syncMetadata', 'readwrite');
+      await newTx.objectStore('syncMetadata').put({
+        key: 'main',
+        lastSyncTime: null,
+        lastSchemaCheck: Date.now(),
+        pendingChanges: 0,
+        syncInProgress: false,
+        schemaVersion: SCHEMA_VERSION,
+      });
+      await newTx.done;
+      
+      console.log('✅ [LocalDB] Data cleared and schema updated to v', SCHEMA_VERSION);
+    } else {
+      // Update last schema check time
+      existing.lastSchemaCheck = Date.now();
+      await store.put(existing);
+      console.log('✅ [LocalDB] Schema version validated (v', SCHEMA_VERSION, ')');
     }
+    
     await tx.done;
-
-    console.log('✅ LocalDB initialized with version', DB_VERSION);
   }
 
   // ========== FARMER OPERATIONS ==========
@@ -1105,6 +1147,8 @@ class LocalDatabase {
   async clearAll(): Promise<void> {
     if (!this.db) await this.initialize();
     
+    console.log('🗑️ [LocalDB] Clearing all data stores...');
+    
     const tx = this.db!.transaction(
       ['farmers', 'lands', 'cropSchedules', 'scheduleTasks', 'aiChatSessions', 'aiChatMessages', 'crops', 'weather', 'farmerAlerts'],
       'readwrite'
@@ -1122,7 +1166,33 @@ class LocalDatabase {
     
     await tx.done;
 
-    console.log('🗑️ Local database cleared');
+    // Reset pending changes counter
+    await this.updateSyncMetadata({ 
+      pendingChanges: 0,
+      lastSyncTime: null
+    });
+
+    console.log('✅ [LocalDB] All data cleared');
+  }
+  
+  /**
+   * Force clear and reload all data from server
+   * Used for full sync/refresh operations
+   */
+  async forceClearAndReload(): Promise<void> {
+    console.log('🔄 [LocalDB] Starting force clear and reload...');
+    
+    // Clear all local data
+    await this.clearAll();
+    
+    // Mark that a full reload is needed
+    await this.updateSyncMetadata({
+      lastSyncTime: null,
+      pendingChanges: 0,
+      syncInProgress: false,
+    });
+    
+    console.log('✅ [LocalDB] Ready for full reload from server');
   }
 }
 

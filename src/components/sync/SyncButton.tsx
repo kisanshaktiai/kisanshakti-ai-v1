@@ -1,4 +1,4 @@
-import { RefreshCw, WifiOff, CheckCircle2, AlertCircle } from 'lucide-react';
+import { RefreshCw, WifiOff, CheckCircle2, AlertCircle, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { syncService } from '@/services/syncService';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
@@ -6,8 +6,15 @@ import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { localDB } from '@/services/localDB';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 
 export function SyncButton() {
   const [syncing, setSyncing] = useState(false);
@@ -30,26 +37,35 @@ export function SyncButton() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleSync = async () => {
+  const handleSync = async (forceFull: boolean = false) => {
     setSyncing(true);
     setSyncSuccess(false);
     setSyncError(false);
     
     try {
-      // Start sync animation
+      // Show appropriate toast based on sync type
       toast({
-        title: "🔄 Syncing data...",
-        description: "Please wait while we update your data",
+        title: forceFull ? "🔄 Full sync starting..." : "🔄 Syncing data...",
+        description: forceFull 
+          ? "Clearing local data and reloading from server..." 
+          : "Please wait while we update your data",
         duration: 2000,
       });
 
-      const result = await syncService.performSync(true);
+      // If force full sync, clear local DB first
+      if (forceFull) {
+        console.log('🗑️ [SyncButton] Force full sync - clearing local DB');
+        await localDB.forceClearAndReload();
+      }
+
+      const result = await syncService.performSync(!forceFull); // Pass forceRefresh flag
       
       if (result.success) {
         // Invalidate all cached queries to force UI refresh
+        console.log('🔄 [SyncButton] Invalidating all React Query caches');
         await queryClient.invalidateQueries();
         
-        // Clear and refresh local cache
+        // Refetch all active queries
         await queryClient.refetchQueries();
         
         // Show success animation
@@ -57,7 +73,9 @@ export function SyncButton() {
         
         toast({
           title: "✅ Sync complete!",
-          description: result.message || "All data is up to date",
+          description: forceFull 
+            ? "All data reloaded from server" 
+            : (result.message || "All data is up to date"),
           duration: 3000,
         });
 
@@ -66,7 +84,7 @@ export function SyncButton() {
         
         // Update pending changes count
         const metadata = await localDB.getSyncMetadata();
-        setPendingChanges(metadata.pendingChanges);
+        setPendingChanges(metadata?.pendingChanges || 0);
       } else {
         setSyncError(true);
         toast({
@@ -79,6 +97,7 @@ export function SyncButton() {
       }
     } catch (error) {
       setSyncError(true);
+      console.error('❌ [SyncButton] Sync failed:', error);
       toast({
         title: "❌ Sync failed",
         description: "Please check your connection and try again",
@@ -112,40 +131,64 @@ export function SyncButton() {
 
   return (
     <div className="relative">
-      <Button
-        variant={syncSuccess ? "default" : syncError ? "destructive" : "outline"}
-        size="icon"
-        onClick={handleSync}
-        disabled={syncing}
-        className={cn(
-          "relative transition-all duration-300",
-          syncing && "bg-primary/10",
-          syncSuccess && "bg-green-500 hover:bg-green-600",
-          syncError && "bg-destructive hover:bg-destructive/90"
-        )}
-      >
-        {/* Simplified icon with CSS transitions - no AnimatePresence */}
-        <div className="relative w-4 h-4">
-          <RefreshCw 
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant={syncSuccess ? "default" : syncError ? "destructive" : "outline"}
+            size="icon"
+            disabled={syncing}
             className={cn(
-              "h-4 w-4 absolute inset-0 transition-all duration-300",
-              syncing && "animate-spin opacity-100",
-              !syncing && "opacity-100"
+              "relative transition-all duration-300",
+              syncing && "bg-primary/10",
+              syncSuccess && "bg-green-500 hover:bg-green-600",
+              syncError && "bg-destructive hover:bg-destructive/90"
             )}
-          />
-          {syncSuccess && (
-            <CheckCircle2 
-              className="h-4 w-4 text-white absolute inset-0 animate-in zoom-in-50 duration-200" 
-            />
-          )}
-          {syncError && (
-            <AlertCircle 
-              className="h-4 w-4 text-white absolute inset-0 animate-in zoom-in-50 duration-200" 
-            />
-          )}
-        </div>
-        <span className="sr-only">Sync data</span>
-      </Button>
+          >
+            {/* Simplified icon with CSS transitions */}
+            <div className="relative w-4 h-4">
+              <RefreshCw 
+                className={cn(
+                  "h-4 w-4 absolute inset-0 transition-all duration-300",
+                  syncing && "animate-spin opacity-100",
+                  !syncing && "opacity-100"
+                )}
+              />
+              {syncSuccess && (
+                <CheckCircle2 
+                  className="h-4 w-4 text-white absolute inset-0 animate-in zoom-in-50 duration-200" 
+                />
+              )}
+              {syncError && (
+                <AlertCircle 
+                  className="h-4 w-4 text-white absolute inset-0 animate-in zoom-in-50 duration-200" 
+                />
+              )}
+            </div>
+            <span className="sr-only">Sync data</span>
+          </Button>
+        </DropdownMenuTrigger>
+        
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuItem onClick={() => handleSync(false)}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            <span>Quick Sync</span>
+          </DropdownMenuItem>
+          
+          <DropdownMenuItem onClick={() => handleSync(true)}>
+            <Database className="mr-2 h-4 w-4" />
+            <span>Full Reload from Server</span>
+          </DropdownMenuItem>
+          
+          <DropdownMenuSeparator />
+          
+          <div className="px-2 py-1.5 text-xs text-muted-foreground">
+            {pendingChanges > 0 
+              ? `${pendingChanges} pending change${pendingChanges > 1 ? 's' : ''}`
+              : 'All data synced'
+            }
+          </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
       
       {/* Pending changes indicator */}
       {pendingChanges > 0 && !syncing && (
