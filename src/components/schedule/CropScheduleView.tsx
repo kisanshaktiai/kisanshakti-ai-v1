@@ -18,6 +18,8 @@ import ModernTaskCard from './ModernTaskCard';
 import TaskActionDialog from './TaskActionDialog';
 import ClimateAlertBanner from './ClimateAlertBanner';
 import { TaskStatisticsWidget } from './TaskStatisticsWidget';
+import { useSchedules } from '@/hooks/useSchedules';
+import { localDB } from '@/services/localDB';
 
 interface CropSchedule {
   id: string;
@@ -72,13 +74,16 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
              i18n.language === 'ta' ? 'ta-IN' : 'en-US'
   });
   
-  const [loading, setLoading] = useState(true);
+  // Use React Query hook for schedules - replaces offlineDataService
+  const { schedules, isLoading: loadingSchedules, refetch: refetchSchedules } = useSchedules(landId);
+  
   const [schedule, setSchedule] = useState<CropSchedule | null>(null);
   const [tasks, setTasks] = useState<ScheduleTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<ScheduleTask | null>(null);
   const [viewMode, setViewMode] = useState<'today' | 'week' | 'month' | 'all'>('today');
   const [climateData, setClimateData] = useState<any>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
+  const [loadingTasks, setLoadingTasks] = useState(false);
 
   // Task type icons and colors
   const taskTypeConfig = {
@@ -90,9 +95,92 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
     other: { icon: AlertCircle, color: 'text-gray-500', bg: 'bg-gray-50 dark:bg-gray-950/30' }
   };
 
+  // Update schedule when schedules data changes from React Query
   useEffect(() => {
-    fetchSchedule();
-  }, [landId]);
+    console.log('📋 [CropScheduleView] Schedules updated:', schedules?.length);
+    
+    if (schedules && schedules.length > 0) {
+      // Find active schedule for this land
+      const activeSchedule = schedules.find((s: any) => s.land_id === landId && s.is_active);
+      
+      if (activeSchedule) {
+        console.log('✅ [CropScheduleView] Found active schedule:', activeSchedule.id);
+        setSchedule(activeSchedule);
+        fetchTasks(activeSchedule.id);
+      } else {
+        console.log('⚠️ [CropScheduleView] No active schedule found for land:', landId);
+        setSchedule(null);
+        setTasks([]);
+      }
+    } else {
+      console.log('⚠️ [CropScheduleView] No schedules available');
+      setSchedule(null);
+      setTasks([]);
+    }
+  }, [schedules, landId]);
+
+  const fetchTasks = async (scheduleId: string) => {
+    try {
+      setLoadingTasks(true);
+      console.log('🔍 [CropScheduleView] Fetching tasks for schedule:', scheduleId);
+      
+      // Try to fetch from API first
+      const { supabaseWithAuth } = await import('@/integrations/supabase/client');
+      const client = supabaseWithAuth();
+      
+      const { data: tasksData, error: tasksError } = await client
+        .from('schedule_tasks')
+        .select('*')
+        .eq('schedule_id', scheduleId)
+        .order('task_date', { ascending: true });
+
+      if (tasksError) {
+        console.warn('⚠️ [CropScheduleView] Failed to fetch tasks online:', tasksError);
+        // Fallback to local DB
+        const localTasks = await localDB.getTasksBySchedule(scheduleId);
+        const mappedTasks = (localTasks || []).map((t: any) => ({
+          id: t.id,
+          schedule_id: t.schedule_id,
+          task_date: t.scheduled_date || t.task_date,
+          task_type: t.task_type,
+          task_name: t.task_name,
+          task_description: t.description || t.task_description,
+          priority: t.priority || 'medium',
+          status: t.status,
+          weather_dependent: t.weather_dependent || false,
+          instructions: t.instructions,
+          precautions: t.precautions,
+          language: t.language,
+          currency: t.currency,
+        }));
+        console.log(`📦 [CropScheduleView] Loaded ${mappedTasks.length} tasks from localDB`);
+        setTasks(mappedTasks);
+      } else {
+        console.log(`✅ [CropScheduleView] Loaded ${tasksData?.length || 0} tasks from API`);
+        setTasks(tasksData || []);
+      }
+
+      // Fetch latest climate monitoring data
+      const { data: climateMonitoring } = await client
+        .from('schedule_climate_monitoring')
+        .select('*')
+        .eq('schedule_id', scheduleId)
+        .order('monitoring_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      setClimateData(climateMonitoring);
+    } catch (error) {
+      console.error('❌ [CropScheduleView] Error fetching tasks:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load schedule tasks',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingTasks(false);
+    }
+  };
 
   // Dynamic Climate Monitoring - Auto-adjust schedule based on weather & NDVI
   useEffect(() => {
@@ -100,7 +188,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
     const monitorClimate = async () => {
       try {
-        console.log('Running automatic climate monitoring for schedule:', schedule.id);
+        console.log('🌦️ [CropScheduleView] Running automatic climate monitoring for schedule:', schedule.id);
         
         // Use device location for weather data
         const { useLocation } = await import('@/hooks/useLocation');
@@ -149,7 +237,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               description: `${monitorResult.adjustments_made || 0} tasks rescheduled based on weather & crop health`,
               className: 'bg-blue-50 border-blue-200',
             });
-            fetchSchedule(); // Reload to show adjusted tasks
+            refetchSchedules(); // Reload schedules to show adjusted tasks
           }
         }
       } catch (error) {
@@ -167,104 +255,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       clearInterval(interval);
       clearTimeout(initialTimer);
     };
-  }, [schedule?.id, landId]);
-
-  const fetchSchedule = async () => {
-    try {
-      setLoading(true);
-      
-      // Use offline data service for automatic fallback and proper data isolation
-      const { offlineDataService } = await import('@/services/offlineDataService');
-      const schedules = await offlineDataService.fetchSchedules(landId);
-      
-      // Find active schedule for this land
-      const activeSchedule = schedules.find((s: any) => s.land_id === landId && s.is_active);
-      
-      if (activeSchedule) {
-        setSchedule(activeSchedule);
-        
-        // Fetch tasks for this schedule (online with fallback)
-        const { supabaseWithAuth } = await import('@/integrations/supabase/client');
-        const client = supabaseWithAuth();
-        
-        const { data: tasksData, error: tasksError } = await client
-          .from('schedule_tasks')
-          .select('*')
-          .eq('schedule_id', activeSchedule.id)
-          .order('task_date', { ascending: true });
-
-        if (tasksError) {
-          console.warn('Failed to fetch tasks online:', tasksError);
-          // Fallback to local DB and map fields
-          const { localDB } = await import('@/services/localDB');
-          const localTasks = await localDB.getTasksBySchedule(activeSchedule.id);
-          // Map local DB fields to component expected fields
-          const mappedTasks = (localTasks || []).map((t: any) => ({
-            id: t.id,
-            schedule_id: t.schedule_id,
-            task_date: t.scheduled_date || t.task_date,
-            task_type: t.task_type,
-            task_name: t.task_name,
-            task_description: t.description || t.task_description,
-            priority: t.priority || 'medium',
-            status: t.status,
-            weather_dependent: t.weather_dependent || false,
-            instructions: t.instructions,
-            precautions: t.precautions,
-            language: t.language,
-            currency: t.currency,
-          }));
-          setTasks(mappedTasks);
-        } else {
-          setTasks(tasksData || []);
-        }
-
-        // Fetch latest climate monitoring data
-        const { data: climateMonitoring } = await client
-          .from('schedule_climate_monitoring')
-          .select('*')
-          .eq('schedule_id', activeSchedule.id)
-          .order('monitoring_date', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        setClimateData(climateMonitoring);
-      }
-    } catch (error) {
-      console.error('Error fetching schedule:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load crop schedule',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleTaskUpdate = (taskId: string, updates: Partial<ScheduleTask>) => {
-    setTasks(prevTasks => 
-      prevTasks.map(task => 
-        task.id === taskId 
-          ? { ...task, ...updates }
-          : task
-      )
-    );
-  };
-
-  const speakTask = (task: ScheduleTask) => {
-    const text = `${task.task_name}. ${task.task_description || ''}. 
-      ${task.instructions ? 'Instructions: ' + task.instructions.join('. ') : ''}
-      ${task.precautions ? 'Precautions: ' + task.precautions.join('. ') : ''}`;
-    
-    if (isSpeaking && speakingTaskId === task.id) {
-      stop();
-      setSpeakingTaskId(null);
-    } else {
-      speak(text);
-      setSpeakingTaskId(task.id);
-    }
-  };
+  }, [schedule?.id, landId, refetchSchedules]);
 
   const getFilteredTasks = () => {
     const today = new Date();
@@ -290,6 +281,32 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
     }
   };
 
+
+  const handleTaskUpdate = (taskId: string, updates: Partial<ScheduleTask>) => {
+    setTasks(prevTasks => 
+      prevTasks.map(task => 
+        task.id === taskId 
+          ? { ...task, ...updates }
+          : task
+      )
+    );
+  };
+
+  const speakTask = (task: ScheduleTask) => {
+    const text = `${task.task_name}. ${task.task_description || ''}. 
+      ${task.instructions ? 'Instructions: ' + task.instructions.join('. ') : ''}
+      ${task.precautions ? 'Precautions: ' + task.precautions.join('. ') : ''}`;
+    
+    if (isSpeaking && speakingTaskId === task.id) {
+      stop();
+      setSpeakingTaskId(null);
+    } else {
+      speak(text);
+      setSpeakingTaskId(task.id);
+    }
+  };
+
+  const loading = loadingSchedules || loadingTasks;
 
   if (loading) {
     return (
@@ -470,7 +487,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
             <Button
               variant="outline"
               size="sm"
-              onClick={() => fetchSchedule()}
+              onClick={() => refetchSchedules()}
               className="w-full mt-3 bg-background/60 backdrop-blur-sm border-primary/20 hover:bg-primary/10"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
@@ -502,7 +519,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                   <TaskTimeline 
                     tasks={filteredTasks} 
                     onTaskClick={(task: any) => setSelectedTask(task as ScheduleTask)}
-                    onTaskComplete={fetchSchedule}
+                    onTaskComplete={refetchSchedules}
                     onTaskUpdate={handleTaskUpdate}
                   />
                 ) : (
