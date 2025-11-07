@@ -14,9 +14,9 @@ import CropDateInput from '@/components/schedule/CropDateInput';
 import CropScheduleView from '@/components/schedule/CropScheduleView';
 import { format } from 'date-fns';
 import { useNotifications } from '@/hooks/useNotifications';
-import { useRealtimeData } from '@/hooks/useRealtimeData';
 import { useLocation } from '@/hooks/useLocation';
 import { useWeather } from '@/hooks/useWeather';
+import { useLands } from '@/hooks/useLands';
 
 interface Land {
   id: string;
@@ -44,9 +44,10 @@ export default function Schedule() {
   const { user, session } = useAuthStore();
   const { tenant } = useTenantStore();
   const { currentLanguage } = useLanguageStore();
+  // Use the unified lands hook with real-time updates
+  const { lands: fetchedLands, isLoading: isLoadingLands } = useLands();
   const [lands, setLands] = useState<Land[]>([]);
   const [selectedLand, setSelectedLand] = useState<Land | null>(null);
-  const [loading, setLoading] = useState(true);
   const [flowStep, setFlowStep] = useState<FlowStep>('land-selection');
   const [scheduleData, setScheduleData] = useState<{
     cropName: string;
@@ -58,62 +59,35 @@ export default function Schedule() {
   const [retryCount, setRetryCount] = useState(0);
   const { scheduleTaskReminder } = useNotifications();
 
-  // Enable real-time updates for schedules and tasks
-  useRealtimeData({ 
-    tables: ['crop_schedules', 'schedule_tasks', 'lands'], 
-    enabled: !!user?.id 
-  });
-
   // Get device location and weather data for AI schedule generation
   const { location: deviceLocation } = useLocation();
   const weatherLocation = deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : undefined;
   const { currentWeather, forecast } = useWeather(weatherLocation);
 
+  // Sync lands from React Query to local state
   useEffect(() => {
-    fetchLands();
-  }, []);
-
-  const fetchLands = async () => {
-    if (!user?.id) return;
-    
-    try {
-      // Use offline data service for automatic offline fallback
-      const { offlineDataService } = await import('@/services/offlineDataService');
-      const data = await offlineDataService.fetchLands();
-      
-      if (data && data.length > 0) {
-        // Map the API response to our Land interface
-        const mappedLands: Land[] = data.map(land => ({
-          id: land.id || '',
-          name: land.name || 'Unnamed Land',
-          area_acres: land.area_acres || 0,
-          area_guntas: land.area_guntas,
-          village: land.village || undefined,
-          taluka: land.taluka || undefined,
-          district: land.district || undefined,
-          state: land.state || undefined,
-          survey_number: land.survey_number || undefined,
-          soil_type: land.soil_type || undefined,
-          water_source: land.water_source || undefined,
-          irrigation_type: land.irrigation_type || undefined,
-          current_crop: land.current_crop || undefined,
-          // These fields might be in the actual response but not in the interface
-          soil_ph: undefined,
-          organic_carbon_percent: undefined,
-        }));
-        setLands(mappedLands);
-      }
-    } catch (error) {
-      console.error('Error fetching lands:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch lands. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
+    if (fetchedLands && fetchedLands.length > 0) {
+      // Map the API response to our Land interface
+      const mappedLands: Land[] = fetchedLands.map(land => ({
+        id: land.id || '',
+        name: land.name || 'Unnamed Land',
+        area_acres: land.area_acres || 0,
+        area_guntas: land.area_guntas,
+        village: land.village || undefined,
+        taluka: land.taluka || undefined,
+        district: land.district || undefined,
+        state: land.state || undefined,
+        survey_number: land.survey_number || undefined,
+        soil_type: land.soil_type || undefined,
+        water_source: land.water_source || undefined,
+        irrigation_type: land.irrigation_type || undefined,
+        current_crop: land.current_crop || undefined,
+        soil_ph: (land as any).soil_ph || undefined,
+        organic_carbon_percent: (land as any).organic_carbon_percent || undefined,
+      }));
+      setLands(mappedLands);
     }
-  };
+  }, [fetchedLands]);
 
   const handleLandSelect = (land: Land) => {
     setSelectedLand(land);
@@ -280,7 +254,7 @@ export default function Schedule() {
     }
   };
 
-  if (loading) {
+  if (isLoadingLands) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center space-y-4">

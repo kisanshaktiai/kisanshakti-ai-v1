@@ -55,6 +55,7 @@ import { WhiteLabelService } from "@/services/WhiteLabelService";
 import { useLocationPreloader } from "@/hooks/useLocationPreloader";
 import { syncService } from "@/services/syncService";
 import { localDB } from "@/services/localDB";
+import { useGlobalRealtimeSync } from "@/hooks/useGlobalRealtimeSync";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -78,11 +79,17 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   // Preload location data for faster form loading
   useLocationPreloader();
 
+  // Initialize global real-time sync
+  useGlobalRealtimeSync();
+
   useEffect(() => {
     // Initialize app with performance optimization
     const initializeApp = async () => {
-      // Initialize local database
+      console.log('🚀 App initialization started');
+      
+      // Initialize local database first
       await localDB.initialize();
+      console.log('✅ Local database initialized');
       
       // Start fetching tenant data
       const tenantPromise = fetchTenant();
@@ -94,24 +101,33 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       // Fetch initial GPS location when app starts
       const locationPromise = LocationService.getCurrentLocation(true).then(location => {
         if (location) {
-          console.log('Initial location fetched:', location);
+          console.log('✅ Initial location fetched:', location);
         }
-      });
+      }).catch(err => console.warn('Location fetch failed:', err));
       
       // Wait for critical tasks
       await Promise.all([tenantPromise, authPromise, locationPromise]);
+      console.log('✅ Critical initialization complete');
       
       // Start listening for tenant and theme changes
       listenForTenantChanges();
-      
-      // Initialize sync service
-      if (session?.farmerId && tenant?.id) {
-        syncService.performSync(false).catch(console.error);
-      }
     };
 
-    initializeApp();
+    initializeApp().catch(error => {
+      console.error('❌ App initialization error:', error);
+    });
   }, []);
+
+  // Initialize sync service AFTER authentication is complete
+  useEffect(() => {
+    if (session?.farmerId && tenant?.id) {
+      console.log('🔄 Starting sync service');
+      // Delay sync slightly to ensure all hooks are ready
+      setTimeout(() => {
+        syncService.performSync(false).catch(console.error);
+      }, 1000);
+    }
+  }, [session?.farmerId, tenant?.id]);
 
   // Update Supabase headers when user auth is restored
   useEffect(() => {

@@ -13,9 +13,9 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
+import { useLands } from '@/hooks/useLands';
 import { Progress } from '@/components/ui/progress';
 import { ModernLandCard } from '@/components/land/ModernLandCard';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
@@ -58,51 +58,22 @@ export default function LandManagement() {
   const { user } = useAuthStore();
   const isOnline = useOfflineStatus();
   
+  // Use the unified lands hook with real-time updates
+  const { lands: fetchedLands, isLoading, refetch: refetchLands } = useLands();
   const [lands, setLands] = useState<Land[]>([]);
-  const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterBy, setFilterBy] = useState('all');
   const [sortBy, setSortBy] = useState('name');
   const [showStats, setShowStats] = useState(true);
 
+  // Sync lands from React Query to local state
   useEffect(() => {
-    fetchLands();
-  }, [user]);
-
-  const fetchLands = async () => {
-    if (!user?.id) return;
-    
-    try {
-      setLoading(true);
-      const { offlineDataService } = await import('@/services/offlineDataService');
-      const data = await offlineDataService.fetchLands();
-      const validLands = (data || []).filter(land => land.id) as Land[];
+    if (fetchedLands) {
+      const validLands = (fetchedLands || []).filter(land => land.id) as Land[];
       setLands(validLands);
-      
-      if (data) {
-        localStorage.setItem(`lands_${user.id}`, JSON.stringify(data));
-      }
-    } catch (error) {
-      console.error('Error fetching lands:', error);
-      const cachedData = localStorage.getItem(`lands_${user.id}`);
-      if (cachedData) {
-        setLands(JSON.parse(cachedData));
-        toast({
-          title: 'Offline Mode',
-          description: 'Showing cached land data',
-        });
-      } else {
-        toast({
-          title: 'Error',
-          description: 'Failed to fetch land data',
-          variant: 'destructive',
-        });
-      }
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [fetchedLands]);
 
   const getSoilHealthColor = (ph?: number, organic?: number) => {
     if (!ph && !organic) return 'bg-muted';
@@ -218,7 +189,7 @@ export default function LandManagement() {
     </motion.div>
   );
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="space-y-6 p-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -425,7 +396,7 @@ export default function LandManagement() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mt-4">
               <AnimatePresence>
                 {filteredLands.map(land => (
-                  <ModernLandCard key={land.id} land={land} onRefresh={fetchLands} />
+                  <ModernLandCard key={land.id} land={land} onRefresh={refetchLands} />
                 ))}
               </AnimatePresence>
             </div>
