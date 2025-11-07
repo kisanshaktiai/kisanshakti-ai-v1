@@ -16431,6 +16431,13 @@ export type Database = {
             foreignKeyName: "task_completions_task_id_fkey"
             columns: ["task_id"]
             isOneToOne: false
+            referencedRelation: "farmer_upcoming_needs"
+            referencedColumns: ["task_id"]
+          },
+          {
+            foreignKeyName: "task_completions_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
             referencedRelation: "schedule_tasks"
             referencedColumns: ["id"]
           },
@@ -16478,7 +16485,58 @@ export type Database = {
             foreignKeyName: "task_notifications_task_id_fkey"
             columns: ["task_id"]
             isOneToOne: false
+            referencedRelation: "farmer_upcoming_needs"
+            referencedColumns: ["task_id"]
+          },
+          {
+            foreignKeyName: "task_notifications_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
             referencedRelation: "schedule_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      task_product_mappings: {
+        Row: {
+          created_at: string | null
+          id: string
+          product_category: string | null
+          product_type: string
+          quantity_multiplier: number | null
+          recommended_product_ids: string[] | null
+          task_type: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          product_category?: string | null
+          product_type: string
+          quantity_multiplier?: number | null
+          recommended_product_ids?: string[] | null
+          task_type: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          product_category?: string | null
+          product_type?: string
+          quantity_multiplier?: number | null
+          recommended_product_ids?: string[] | null
+          task_type?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_product_mappings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -19798,6 +19856,26 @@ export type Database = {
           },
         ]
       }
+      farmer_upcoming_needs: {
+        Row: {
+          crop_name: string | null
+          crop_variety: string | null
+          days_until_task: number | null
+          estimated_cost: number | null
+          farmer_id: string | null
+          farmer_name: string | null
+          location: string | null
+          mobile_number: string | null
+          resources: Json | null
+          status: string | null
+          task_date: string | null
+          task_id: string | null
+          task_name: string | null
+          task_type: string | null
+          tenant_id: string | null
+        }
+        Relationships: []
+      }
       geography_columns: {
         Row: {
           coord_dimension: number | null
@@ -20358,6 +20436,14 @@ export type Database = {
         Args: { workflow_id: string }
         Returns: number
       }
+      calculate_product_demand: {
+        Args: { p_days?: number; p_tenant_id: string }
+        Returns: {
+          predicted_demand: number
+          product_type: string
+          urgency_level: string
+        }[]
+      }
       calculate_vegetation_health_score: {
         Args: {
           p_data_completeness: number
@@ -20552,6 +20638,10 @@ export type Database = {
         Returns: boolean
       }
       expire_old_invites: { Args: never; Returns: number }
+      extract_numeric_quantity: {
+        Args: { resources: Json; task_type: string }
+        Returns: number
+      }
       find_intersecting_districts: {
         Args: { tile_geom: unknown }
         Returns: {
@@ -20773,11 +20863,23 @@ export type Database = {
           tenant_id: string
         }[]
       }
+      get_current_farmer_id: { Args: never; Returns: string }
       get_current_tenant_id: { Args: never; Returns: string }
       get_current_user_email: { Args: never; Returns: string }
       get_geometry_bbox: { Args: { geom: unknown }; Returns: number[] }
       get_header_farmer_id: { Args: never; Returns: string }
       get_header_tenant_id: { Args: never; Returns: string }
+      get_inventory_gap: {
+        Args: { p_days?: number; p_tenant_id: string }
+        Returns: {
+          current_stock: number
+          gap: number
+          gap_percentage: number
+          predicted_demand: number
+          product_type: string
+          urgency_level: string
+        }[]
+      }
       get_jwt_dealer_id: { Args: never; Returns: string }
       get_jwt_farmer_id: { Args: never; Returns: string }
       get_jwt_tenant_id: { Args: never; Returns: string }
@@ -21104,6 +21206,7 @@ export type Database = {
         Args: { p_email: string; p_ip_address?: unknown }
         Returns: Json
       }
+      refresh_farmer_upcoming_needs: { Args: never; Returns: undefined }
       refresh_organization_analytics: {
         Args: { p_tenant_id: string }
         Returns: undefined
