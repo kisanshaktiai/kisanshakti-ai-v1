@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Clock, Volume2, Sparkles, RefreshCw, MapPin, ArrowLeft } from 'lucide-react';
+import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Clock, Volume2, Sparkles, RefreshCw, MapPin, ArrowLeft, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -310,21 +311,122 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="min-h-screen bg-gradient-to-b from-background via-accent/5 to-primary/5">
+        {/* Header Skeleton */}
+        <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-2xl border-b border-border/50">
+          <div className="px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 flex-1">
+                <Skeleton className="h-9 w-9 rounded-xl" />
+                <div className="space-y-2">
+                  <Skeleton className="h-5 w-32" />
+                  <Skeleton className="h-3 w-48" />
+                </div>
+              </div>
+              <Skeleton className="h-6 w-20 rounded-full" />
+            </div>
+          </div>
+        </div>
+
+        {/* Content Skeleton */}
+        <div className="px-4 pt-4 pb-2 space-y-3">
+          {/* Stats Cards */}
+          <div className="grid grid-cols-2 gap-3">
+            {[1, 2].map((i) => (
+              <Card key={i} className="animate-pulse">
+                <div className="p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Skeleton className="h-4 w-4 rounded" />
+                    <Skeleton className="h-3 w-16 rounded-full" />
+                  </div>
+                  <Skeleton className="h-5 w-20" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          {/* Tasks Skeleton */}
+          <Card className="animate-pulse">
+            <div className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-5 w-16 rounded-full" />
+              </div>
+              {[1, 2].map((i) => (
+                <div key={i} className="p-3 rounded-lg bg-muted/20 space-y-2">
+                  <div className="flex items-start gap-3">
+                    <Skeleton className="h-10 w-10 rounded-full" />
+                    <div className="flex-1 space-y-2">
+                      <Skeleton className="h-4 w-40" />
+                      <Skeleton className="h-3 w-full" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Loading message */}
+          <div className="flex items-center justify-center gap-2 text-muted-foreground py-4">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
+            <p className="text-sm font-medium">Loading schedule data...</p>
+          </div>
+        </div>
       </div>
     );
   }
 
   if (!schedule) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
-        <div className="text-center space-y-4">
-          <Calendar className="h-16 w-16 text-primary/60 mx-auto animate-pulse" />
-          <h3 className="text-xl font-bold text-foreground">No Schedule Available</h3>
-          <p className="text-sm text-muted-foreground max-w-sm">
-            Generate an AI-powered crop schedule from the Schedule page
-          </p>
+      <div className="min-h-screen bg-gradient-to-b from-background via-accent/5 to-primary/5">
+        {/* Header */}
+        <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-2xl border-b border-border/50">
+          <div className="px-4 py-3">
+            <div className="flex items-center gap-3">
+              {onBack && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={onBack}
+                  className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </Button>
+              )}
+              <div>
+                <h2 className="text-lg font-bold text-foreground">
+                  {landName}
+                </h2>
+                <p className="text-xs text-muted-foreground font-medium">
+                  No Active Schedule
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Empty State */}
+        <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
+          <div className="text-center space-y-4 max-w-sm">
+            <div className="relative">
+              <Calendar className="h-20 w-20 text-primary/60 mx-auto animate-pulse" />
+              <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
+            </div>
+            <h3 className="text-xl font-bold text-foreground">No Schedule Available</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Generate an AI-powered crop schedule to get personalized farming tasks and recommendations
+            </p>
+            <div className="pt-4">
+              <Button 
+                onClick={onBack}
+                className="bg-gradient-to-r from-primary to-accent hover:shadow-lg hover:shadow-primary/30 transition-all"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Generate Schedule
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     );

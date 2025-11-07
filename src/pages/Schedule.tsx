@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Calendar, Plus } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { ArrowLeft, Calendar, Plus, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
@@ -45,7 +46,7 @@ export default function Schedule() {
   const { tenant } = useTenantStore();
   const { currentLanguage } = useLanguageStore();
   // Use the unified lands hook with real-time updates
-  const { lands: fetchedLands, isLoading: isLoadingLands } = useLands();
+  const { lands: fetchedLands, isLoading: isLoadingLands, refetch: refetchLands } = useLands();
   const [lands, setLands] = useState<Land[]>([]);
   const [selectedLand, setSelectedLand] = useState<Land | null>(null);
   const [flowStep, setFlowStep] = useState<FlowStep>('land-selection');
@@ -256,10 +257,64 @@ export default function Schedule() {
 
   if (isLoadingLands) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center space-y-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
-          <p className="text-muted-foreground">Loading...</p>
+      <div className="fixed inset-0 bg-gradient-to-br from-background via-accent/5 to-primary/5">
+        {/* Header Skeleton */}
+        <div className="fixed top-0 left-0 right-0 z-40 bg-background/60 backdrop-blur-2xl border-b border-border/50">
+          <div className="px-3 py-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-9 w-9 rounded-xl" />
+                <div className="space-y-2">
+                  <Skeleton className="h-5 w-32" />
+                  <Skeleton className="h-3 w-24" />
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-1.5">
+                  <Skeleton className="h-1.5 w-8 rounded-full" />
+                  <Skeleton className="h-1.5 w-6 rounded-full" />
+                  <Skeleton className="h-1.5 w-6 rounded-full" />
+                </div>
+                <Skeleton className="h-3 w-16" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Content Skeleton */}
+        <div className="fixed inset-0 pt-14 pb-16 overflow-y-auto">
+          <div className="min-h-full p-4 space-y-4">
+            <Card className="animate-pulse">
+              <CardContent className="p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-2">
+                    <Skeleton className="h-6 w-48" />
+                    <Skeleton className="h-4 w-64" />
+                  </div>
+                  <Skeleton className="h-10 w-24 rounded-lg" />
+                </div>
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center gap-4 p-4 rounded-xl border border-border/50">
+                      <Skeleton className="h-16 w-16 rounded-xl" />
+                      <div className="flex-1 space-y-2">
+                        <Skeleton className="h-5 w-32" />
+                        <Skeleton className="h-4 w-48" />
+                        <Skeleton className="h-3 w-24" />
+                      </div>
+                      <Skeleton className="h-10 w-20 rounded-lg" />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+            
+            {/* Syncing message */}
+            <div className="flex items-center justify-center gap-2 text-muted-foreground">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
+              <p className="text-sm font-medium">Syncing data from server...</p>
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -323,25 +378,46 @@ export default function Schedule() {
               </div>
             </div>
             
-            {/* Modern Step Progress Bar */}
-            <div className="flex flex-col items-end gap-1">
-              <div className="flex items-center gap-1.5">
-                {['land-selection', 'crop-input', 'schedule-view'].map((step, index) => (
-                  <div 
-                    key={step}
-                    className={`h-1.5 rounded-full transition-all duration-500 ${
-                      flowStep === step 
-                        ? 'w-8 bg-gradient-to-r from-primary to-accent shadow-lg shadow-primary/50' 
-                        : index < ['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep)
-                        ? 'w-6 bg-primary/60'
-                        : 'w-6 bg-primary/20'
-                    }`} 
-                  />
-                ))}
+            <div className="flex items-center gap-2">
+              {/* Manual Refresh Button */}
+              {flowStep === 'land-selection' && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    refetchLands();
+                    toast({
+                      title: '🔄 Refreshing',
+                      description: 'Syncing latest data...',
+                      className: 'bg-accent/10 border-accent/20',
+                    });
+                  }}
+                  className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all duration-300"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              )}
+              
+              {/* Modern Step Progress Bar */}
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-1.5">
+                  {['land-selection', 'crop-input', 'schedule-view'].map((step, index) => (
+                    <div 
+                      key={step}
+                      className={`h-1.5 rounded-full transition-all duration-500 ${
+                        flowStep === step 
+                          ? 'w-8 bg-gradient-to-r from-primary to-accent shadow-lg shadow-primary/50' 
+                          : index < ['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep)
+                          ? 'w-6 bg-primary/60'
+                          : 'w-6 bg-primary/20'
+                      }`} 
+                    />
+                  ))}
+                </div>
+                <span className="text-[10px] text-muted-foreground font-medium">
+                  Step {['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep) + 1} of 3
+                </span>
               </div>
-              <span className="text-[10px] text-muted-foreground font-medium">
-                Step {['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep) + 1} of 3
-              </span>
             </div>
           </div>
         </div>
