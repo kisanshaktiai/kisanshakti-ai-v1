@@ -26,12 +26,20 @@ let headerPromise: Promise<void> | null = null;
 /**
  * Wait for Supabase headers to be set before making queries
  * This prevents race conditions where queries execute before auth headers are ready
- * Uses active polling to check auth store state
+ * IMPROVED: Faster polling with immediate check
  */
 export function waitForHeaders(): Promise<void> {
-  if (headersReady) {
-    console.log('🟢 [Headers] Already ready');
-    return Promise.resolve();
+  // Immediate synchronous check first
+  try {
+    const { useAuthStore } = require('@/stores/authStore');
+    const { user } = useAuthStore.getState();
+    
+    if (user?.id && user?.tenantId && headersReady) {
+      console.log('🟢 [Headers] Already ready (immediate check)');
+      return Promise.resolve();
+    }
+  } catch (error) {
+    console.warn('⚠️ [Headers] Error in immediate check:', error);
   }
   
   if (headerPromise) {
@@ -39,10 +47,15 @@ export function waitForHeaders(): Promise<void> {
     return headerPromise;
   }
   
-  console.log('🔄 [Headers] Creating wait promise with active polling');
+  console.log('🔄 [Headers] Creating wait promise with fast polling (25ms)');
   headerPromise = new Promise((resolve) => {
+    let attempts = 0;
+    const maxAttempts = 200; // 200 * 25ms = 5 seconds max
+    
     // Actively poll auth store to check if user data is available
     const check = setInterval(() => {
+      attempts++;
+      
       try {
         // Dynamically import to avoid circular dependencies
         const { useAuthStore } = require('@/stores/authStore');
@@ -51,24 +64,28 @@ export function waitForHeaders(): Promise<void> {
         if (user?.id && user?.tenantId) {
           headersReady = true;
           clearInterval(check);
-          console.log('✅ [Headers] Ready via polling - user found:', { 
+          console.log(`✅ [Headers] Ready via polling after ${attempts} attempts (${attempts * 25}ms) - user found:`, { 
             userId: user.id, 
             tenantId: user.tenantId 
           });
           resolve();
         }
+        
+        if (attempts >= maxAttempts) {
+          clearInterval(check);
+          console.error('❌ [Headers] Timeout after 5s - headers may not be ready!');
+          headersReady = true; // Proceed anyway to prevent hanging
+          resolve();
+        }
       } catch (error) {
         console.warn('⚠️ [Headers] Error checking auth store:', error);
+        if (attempts >= maxAttempts) {
+          clearInterval(check);
+          headersReady = true;
+          resolve();
+        }
       }
-    }, 50); // Check every 50ms
-    
-    // Timeout after 5 seconds to prevent indefinite hanging
-    setTimeout(() => {
-      clearInterval(check);
-      console.warn('⚠️ [Headers] Timeout after 5s, proceeding anyway');
-      headersReady = true;
-      resolve();
-    }, 5000);
+    }, 25); // Check every 25ms (faster than before)
   });
   
   return headerPromise;

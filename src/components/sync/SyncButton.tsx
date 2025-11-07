@@ -56,6 +56,11 @@ export function SyncButton() {
       if (forceFull) {
         console.log('🗑️ [SyncButton] Force full sync - clearing local DB');
         await localDB.forceClearAndReload();
+        
+        // Also reset headers state to force re-authentication check
+        const { resetHeadersState } = await import('@/integrations/supabase/client');
+        resetHeadersState();
+        console.log('🔄 [SyncButton] Reset headers state for clean reload');
       }
 
       const result = await syncService.performSync(!forceFull); // Pass forceRefresh flag
@@ -74,10 +79,28 @@ export function SyncButton() {
         toast({
           title: "✅ Sync complete!",
           description: forceFull 
-            ? "All data reloaded from server" 
+            ? "All data reloaded from server - please refresh if needed" 
             : (result.message || "All data is up to date"),
           duration: 3000,
         });
+
+        // For full sync, suggest page reload after a delay
+        if (forceFull) {
+          setTimeout(() => {
+            toast({
+              title: "💡 Tip",
+              description: "For best results, refresh the page after full sync",
+              action: (
+                <Button
+                  size="sm"
+                  onClick={() => window.location.reload()}
+                >
+                  Refresh Now
+                </Button>
+              ),
+            });
+          }, 2000);
+        }
 
         // Reset success state after animation
         setTimeout(() => setSyncSuccess(false), 2000);

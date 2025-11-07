@@ -13,6 +13,7 @@ import { landsApi } from '@/services/landsApi';
 import LandSelector from '@/components/schedule/LandSelector';
 import CropDateInput from '@/components/schedule/CropDateInput';
 import CropScheduleView from '@/components/schedule/CropScheduleView';
+import { ScheduleDebugPanel } from '@/components/schedule/ScheduleDebugPanel';
 import { format } from 'date-fns';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useLocation } from '@/hooks/useLocation';
@@ -463,6 +464,11 @@ export default function Schedule() {
           </div>
         </div>
       </div>
+      
+      {/* Development Debug Panel */}
+      {flowStep === 'schedule-view' && selectedLand && (
+        <ScheduleDebugPanel landId={selectedLand.id} />
+      )}
     </div>
   );
 }

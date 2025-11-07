@@ -76,14 +76,17 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   });
   
   // Use React Query hook for schedules - replaces offlineDataService
-  const { schedules, isLoading: loadingSchedules, refetch: refetchSchedules } = useSchedules(landId);
+  const { schedules, isLoading: loadingSchedules, refetch: refetchSchedules, isError, error } = useSchedules(landId);
   
   // Debug log to see what the hook returns
   console.log('🔍 [CropScheduleView] Hook return value:', {
     schedules,
     schedulesLength: schedules?.length,
     loadingSchedules,
-    landId
+    isError,
+    error: error?.message,
+    landId,
+    userReady: !!user?.id,
   });
   
   const [schedule, setSchedule] = useState<CropSchedule | null>(null);
@@ -105,17 +108,28 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   };
 
   // Update schedule when schedules data changes from React Query
-  // Update schedule when schedules data changes from React Query
   useEffect(() => {
     console.log('📋 [CropScheduleView] useEffect triggered:', {
       schedulesCount: schedules?.length,
       loadingSchedules,
+      isError,
       landId,
-      schedulesData: schedules
+      userReady: !!user?.id,
     });
+    
+    // Wait for user to be ready
+    if (!user?.id) {
+      console.log('⏳ [CropScheduleView] Waiting for user authentication...');
+      return;
+    }
     
     if (loadingSchedules) {
       console.log('⏳ [CropScheduleView] Still loading schedules...');
+      return;
+    }
+    
+    if (isError) {
+      console.error('❌ [CropScheduleView] Error loading schedules:', error);
       return;
     }
     
@@ -143,7 +157,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       setSchedule(null);
       setTasks([]);
     }
-  }, [schedules, landId, loadingSchedules]);
+  }, [schedules, landId, loadingSchedules, isError, error, user?.id]);
 
   const fetchTasks = async (scheduleId: string) => {
     try {

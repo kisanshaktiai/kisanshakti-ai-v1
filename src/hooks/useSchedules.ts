@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/integrations/supabase/client';
 import { localDB } from '@/services/localDB';
 import { useToast } from '@/hooks/use-toast';
+import { useState, useEffect } from 'react';
 
 /**
  * Unified hook for fetching schedules with:
@@ -15,6 +16,30 @@ export function useSchedules(landId?: string) {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [headersReady, setHeadersReady] = useState(false);
+
+  // Check if headers are ready before enabling query
+  useEffect(() => {
+    const checkHeaders = async () => {
+      if (user?.id && user?.tenantId) {
+        console.log('🔐 [useSchedules] User detected, checking headers readiness');
+        try {
+          const { waitForHeaders } = await import('@/integrations/supabase/client');
+          await waitForHeaders();
+          console.log('✅ [useSchedules] Headers confirmed ready');
+          setHeadersReady(true);
+        } catch (error) {
+          console.error('❌ [useSchedules] Headers check failed:', error);
+          setHeadersReady(false);
+        }
+      } else {
+        console.log('⚠️ [useSchedules] No user yet, headers not ready');
+        setHeadersReady(false);
+      }
+    };
+    
+    checkHeaders();
+  }, [user?.id, user?.tenantId]);
 
   const query = useQuery({
     queryKey: ['schedules', landId, user?.id],
@@ -25,11 +50,19 @@ export function useSchedules(landId?: string) {
         tenantId: user?.tenantId,
         landId,
         isOnline: navigator.onLine,
+        headersReady,
       });
       
       if (!user?.id) {
         console.log('⚠️ [useSchedules] No user ID, returning empty array');
         return [];
+      }
+      
+      if (!headersReady) {
+        console.log('⚠️ [useSchedules] Headers not ready yet, waiting...');
+        const { waitForHeaders } = await import('@/integrations/supabase/client');
+        await waitForHeaders();
+        console.log('✅ [useSchedules] Headers now ready after wait');
       }
       
       // STEP 1: If online, fetch from API FIRST (not localDB)
@@ -126,12 +159,12 @@ export function useSchedules(landId?: string) {
       console.log(`📦 [useSchedules] Local DB has ${localData?.length || 0} schedules`);
       return localData || [];
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && headersReady, // Only enable when BOTH user AND headers are ready
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
-    retry: 1, // Reduced retry for faster fallback
-    retryDelay: 1000, // Quick retry
+    retry: 2, // Retry twice
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 3000), // Exponential backoff
   });
 
   // Mutation for deleting a schedule

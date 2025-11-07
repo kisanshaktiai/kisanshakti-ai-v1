@@ -188,10 +188,13 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         console.log('🚪 [Auth] Logging out - clearing auth data');
         
-        // Reset headers state
-        import('@/integrations/supabase/client').then(({ resetHeadersState }) => {
+        // Reset headers state synchronously
+        try {
+          const { resetHeadersState } = require('@/integrations/supabase/client');
           resetHeadersState();
-        });
+        } catch (error) {
+          console.warn('⚠️ [Auth] Could not reset headers state:', error);
+        }
         
         // Clear all auth data
         set({ 
@@ -211,7 +214,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       checkAuth: () => {
-        // Validate existing session on app load (SYNCHRONOUS for faster header setup)
+        // CRITICAL: Validate existing session on app load - SYNCHRONOUS header setup
         const { session, user } = get();
         
         console.log('🔍 [Auth] Checking authentication on app load');
@@ -234,17 +237,21 @@ export const useAuthStore = create<AuthState>()(
                 isPinRequired: false
               });
               
-              // Set Supabase headers SYNCHRONOUSLY - critical for preventing race conditions
+              // CRITICAL: Set Supabase headers SYNCHRONOUSLY to prevent race conditions
               if (parsedAuth.state.user?.id && parsedAuth.state.user?.tenantId) {
-                console.log('🔐 [Auth] Setting headers for restored user:', {
+                console.log('🔐 [Auth] Setting headers SYNCHRONOUSLY for restored user:', {
                   userId: parsedAuth.state.user.id,
                   tenantId: parsedAuth.state.user.tenantId,
                 });
-                // Use dynamic import to avoid circular dependency, but execute synchronously
-                import('@/integrations/supabase/client').then(({ updateSupabaseHeaders }) => {
+                
+                // Import synchronously to avoid race condition
+                try {
+                  const { updateSupabaseHeaders } = require('@/integrations/supabase/client');
                   updateSupabaseHeaders(parsedAuth.state.user.id, parsedAuth.state.user.tenantId);
-                  console.log('✅ [Auth] Headers set synchronously after restoration');
-                });
+                  console.log('✅ [Auth] Headers set SYNCHRONOUSLY after restoration');
+                } catch (error) {
+                  console.error('❌ [Auth] Failed to set headers synchronously:', error);
+                }
               }
               
               // Validate the restored session
