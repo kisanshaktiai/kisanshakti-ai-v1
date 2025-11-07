@@ -98,23 +98,31 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
   // Update schedule when schedules data changes from React Query
   useEffect(() => {
-    console.log('📋 [CropScheduleView] Schedules updated:', schedules?.length);
+    console.log('📋 [CropScheduleView] Schedules updated:', {
+      count: schedules?.length,
+      landId,
+      schedules: schedules?.map((s: any) => ({ id: s.id, crop_name: s.crop_name, is_active: s.is_active, land_id: s.land_id }))
+    });
     
     if (schedules && schedules.length > 0) {
-      // Find active schedule for this land
-      const activeSchedule = schedules.find((s: any) => s.land_id === landId && s.is_active);
+      // Since useSchedules already filters by is_active=true, just find by land_id
+      const activeSchedule = schedules.find((s: any) => s.land_id === landId);
       
       if (activeSchedule) {
-        console.log('✅ [CropScheduleView] Found active schedule:', activeSchedule.id);
+        console.log('✅ [CropScheduleView] Found active schedule:', {
+          id: activeSchedule.id,
+          crop_name: activeSchedule.crop_name,
+          is_active: activeSchedule.is_active
+        });
         setSchedule(activeSchedule);
         fetchTasks(activeSchedule.id);
       } else {
-        console.log('⚠️ [CropScheduleView] No active schedule found for land:', landId);
+        console.log('⚠️ [CropScheduleView] No schedule found for land:', landId);
         setSchedule(null);
         setTasks([]);
       }
     } else {
-      console.log('⚠️ [CropScheduleView] No schedules available');
+      console.log('⚠️ [CropScheduleView] No schedules available for landId:', landId);
       setSchedule(null);
       setTasks([]);
     }
@@ -184,78 +192,16 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   };
 
   // Dynamic Climate Monitoring - Auto-adjust schedule based on weather & NDVI
+  // Note: Removed automatic climate monitoring to prevent invalid hook calls
+  // Climate monitoring should be triggered manually or via server-side cron jobs
   useEffect(() => {
     if (!schedule?.id) return;
-
-    const monitorClimate = async () => {
-      try {
-        console.log('🌦️ [CropScheduleView] Running automatic climate monitoring for schedule:', schedule.id);
-        
-        // Use device location for weather data
-        const { useLocation } = await import('@/hooks/useLocation');
-        const { useWeather } = await import('@/hooks/useWeather');
-        
-        const { location: deviceLocation } = useLocation();
-        if (!deviceLocation) {
-          console.log('No device location available for weather monitoring');
-          return;
-        }
-
-        const { currentWeather } = useWeather({ lat: deviceLocation.lat, lon: deviceLocation.lon });
-        
-        // Get latest NDVI data from land data (stored in generation_params)
-        const { data: scheduleData } = await supabase
-          .from('crop_schedules')
-          .select('generation_params')
-          .eq('id', schedule.id)
-          .single();
-        
-        // Type assertion for generation_params
-        const generationParams = scheduleData?.generation_params as any;
-        const ndviValue = generationParams?.calculations?.ndvi_considered ? 0.5 : 0.5;
-        
-        // Call climate monitor edge function with available data
-        const { data: monitorResult, error: monitorError } = await supabase.functions.invoke('ai-schedule-climate-monitor', {
-          body: {
-            scheduleId: schedule.id,
-            climateData: {
-              rainfall_24h: 0, // Will be calculated in edge function from weather API
-              ndvi_value: ndviValue,
-              temperature_avg: currentWeather?.temp || 25,
-            }
-          }
-        });
-        
-        if (monitorError) {
-          console.error('Climate monitoring error:', monitorError);
-        } else {
-          console.log('Climate monitoring result:', monitorResult);
-          
-          // If adjustments were made, refresh the schedule
-          if (monitorResult?.adjustments_triggered) {
-            toast({
-              title: '🌦️ Schedule Auto-Adjusted',
-              description: `${monitorResult.adjustments_made || 0} tasks rescheduled based on weather & crop health`,
-              className: 'bg-blue-50 border-blue-200',
-            });
-            refetchSchedules(); // Reload schedules to show adjusted tasks
-          }
-        }
-      } catch (error) {
-        console.error('Error in climate monitoring:', error);
-      }
-    };
-
-    // Run monitoring every 6 hours
-    const interval = setInterval(monitorClimate, 6 * 60 * 60 * 1000);
     
-    // Run once immediately after 30 seconds (allow schedule to settle)
-    const initialTimer = setTimeout(monitorClimate, 30000);
+    console.log('✅ [CropScheduleView] Active schedule loaded:', schedule.id);
     
-    return () => {
-      clearInterval(interval);
-      clearTimeout(initialTimer);
-    };
+    // Climate monitoring has been disabled to prevent invalid hook calls
+    // To re-enable, move weather/location logic to component-level hooks
+    // or implement as a server-side scheduled task
   }, [schedule?.id, landId, refetchSchedules]);
 
   const getFilteredTasks = () => {

@@ -46,12 +46,15 @@ export function useSchedules(landId?: string) {
           let query = supabase
             .from('crop_schedules')
             .select('*')
+            .eq('is_active', true)
             .order('created_at', { ascending: false });
 
           if (landId) {
             console.log('🎯 [useSchedules] Filtering by land_id:', landId);
             query = query.eq('land_id', landId);
           }
+          
+          console.log('🔍 [useSchedules] Query filters: is_active=true', landId ? `, land_id=${landId}` : '');
 
           console.log('📡 [useSchedules] Executing Supabase query...');
           const { data, error } = await query;
