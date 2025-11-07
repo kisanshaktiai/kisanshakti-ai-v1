@@ -186,6 +186,13 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        console.log('🚪 [Auth] Logging out - clearing auth data');
+        
+        // Reset headers state
+        import('@/integrations/supabase/client').then(({ resetHeadersState }) => {
+          resetHeadersState();
+        });
+        
         // Clear all auth data
         set({ 
           user: null,
@@ -199,6 +206,8 @@ export const useAuthStore = create<AuthState>()(
         localStorage.removeItem('authMobile');
         localStorage.removeItem('farmerId');
         localStorage.removeItem('tenantId');
+        
+        console.log('✅ [Auth] Logout complete');
       },
 
       checkAuth: () => {
@@ -227,6 +236,10 @@ export const useAuthStore = create<AuthState>()(
               
               // Set Supabase headers SYNCHRONOUSLY - critical for preventing race conditions
               if (parsedAuth.state.user?.id && parsedAuth.state.user?.tenantId) {
+                console.log('🔐 [Auth] Setting headers for restored user:', {
+                  userId: parsedAuth.state.user.id,
+                  tenantId: parsedAuth.state.user.tenantId,
+                });
                 // Use dynamic import to avoid circular dependency, but execute synchronously
                 import('@/integrations/supabase/client').then(({ updateSupabaseHeaders }) => {
                   updateSupabaseHeaders(parsedAuth.state.user.id, parsedAuth.state.user.tenantId);

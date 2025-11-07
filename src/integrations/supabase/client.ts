@@ -21,12 +21,12 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
 
 // Header readiness tracking
 let headersReady = false;
-let headersReadyPromise: Promise<void> | null = null;
-let resolveHeadersReady: (() => void) | null = null;
+let headerPromise: Promise<void> | null = null;
 
 /**
  * Wait for Supabase headers to be set before making queries
  * This prevents race conditions where queries execute before auth headers are ready
+ * Uses active polling to check auth store state
  */
 export function waitForHeaders(): Promise<void> {
   if (headersReady) {
@@ -34,33 +34,53 @@ export function waitForHeaders(): Promise<void> {
     return Promise.resolve();
   }
   
-  if (headersReadyPromise) {
+  if (headerPromise) {
     console.log('⏳ [Headers] Waiting for existing promise');
-    return headersReadyPromise;
+    return headerPromise;
   }
   
-  console.log('🔄 [Headers] Creating wait promise');
-  headersReadyPromise = new Promise((resolve) => {
-    resolveHeadersReady = resolve;
+  console.log('🔄 [Headers] Creating wait promise with active polling');
+  headerPromise = new Promise((resolve) => {
+    // Actively poll auth store to check if user data is available
+    const check = setInterval(() => {
+      try {
+        // Dynamically import to avoid circular dependencies
+        const { useAuthStore } = require('@/stores/authStore');
+        const { user } = useAuthStore.getState();
+        
+        if (user?.id && user?.tenantId) {
+          headersReady = true;
+          clearInterval(check);
+          console.log('✅ [Headers] Ready via polling - user found:', { 
+            userId: user.id, 
+            tenantId: user.tenantId 
+          });
+          resolve();
+        }
+      } catch (error) {
+        console.warn('⚠️ [Headers] Error checking auth store:', error);
+      }
+    }, 50); // Check every 50ms
     
-    // Timeout after 3 seconds to prevent indefinite hanging
+    // Timeout after 5 seconds to prevent indefinite hanging
     setTimeout(() => {
-      console.warn('⚠️ [Headers] Timeout after 3s, proceeding anyway');
+      clearInterval(check);
+      console.warn('⚠️ [Headers] Timeout after 5s, proceeding anyway');
       headersReady = true;
       resolve();
-    }, 3000);
+    }, 5000);
   });
   
-  return headersReadyPromise;
+  return headerPromise;
 }
 
 /**
  * Reset headers ready state (useful for testing or logout)
  */
 export function resetHeadersState() {
+  console.log('🔄 [Headers] Resetting state');
   headersReady = false;
-  headersReadyPromise = null;
-  resolveHeadersReady = null;
+  headerPromise = null;
 }
 
 /**
@@ -84,14 +104,9 @@ export const updateSupabaseHeaders = (farmerId?: string, tenantId?: string) => {
     ...headers
   };
   
-  console.log('✅ [Headers] Updated Supabase headers:', headers);
-  
-  // Mark headers as ready and resolve any waiting promises
+  // Mark headers as ready
   headersReady = true;
-  if (resolveHeadersReady) {
-    resolveHeadersReady();
-    resolveHeadersReady = null;
-  }
+  console.log('✅ [Headers] Set:', { farmerId, tenantId, headersReady });
 };
 
 /**
@@ -111,7 +126,10 @@ export const supabaseWithAuth = () => {
 
   const authState = getAuthState();
   if (authState?.user?.id && authState?.user?.tenantId) {
+    console.log('🔐 [supabaseWithAuth] Setting headers from current auth state');
     updateSupabaseHeaders(authState.user.id, authState.user.tenantId);
+  } else {
+    console.warn('⚠️ [supabaseWithAuth] No auth state available');
   }
   
   return supabase;

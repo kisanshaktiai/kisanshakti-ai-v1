@@ -21,6 +21,11 @@ export function useLands() {
     queryKey: ['lands', user?.id],
     queryFn: async () => {
       console.log('🔍 [useLands] Fetching lands for user:', user?.id);
+      console.log('📊 [useLands] Query context:', {
+        userId: user?.id,
+        tenantId: user?.tenantId,
+        isOnline: navigator.onLine,
+      });
       
       if (!user?.id) {
         console.log('⚠️ [useLands] No user ID, returning empty array');
@@ -38,11 +43,21 @@ export function useLands() {
           try {
             // CRITICAL: Wait for headers to be set before making API calls
             const { waitForHeaders } = await import('@/integrations/supabase/client');
+            console.log('⏳ [useLands] Waiting for headers...');
             await waitForHeaders();
             console.log('✅ [useLands] Headers ready, proceeding with API call');
+            console.log('🔐 [useLands] Fetching with farmer_id:', user.id, 'tenant_id:', user.tenantId);
             
+            console.log('📡 [useLands] Calling lands API...');
             const data = await landsApi.fetchLands();
             console.log(`✅ [useLands] API returned ${data?.length || 0} lands`);
+            if (data && data.length > 0) {
+              console.log('📋 [useLands] Sample land:', {
+                id: data[0].id,
+                name: data[0].name,
+                area_acres: data[0].area_acres,
+              });
+            }
             
             // Save to local DB for offline access
             if (data && data.length > 0) {

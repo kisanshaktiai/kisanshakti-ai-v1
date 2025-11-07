@@ -20,6 +20,12 @@ export function useSchedules(landId?: string) {
     queryKey: ['schedules', landId, user?.id],
     queryFn: async () => {
       console.log('🔍 [useSchedules] Fetching schedules for user:', user?.id, 'landId:', landId);
+      console.log('📊 [useSchedules] Query context:', {
+        userId: user?.id,
+        tenantId: user?.tenantId,
+        landId,
+        isOnline: navigator.onLine,
+      });
       
       if (!user?.id) {
         console.log('⚠️ [useSchedules] No user ID, returning empty array');
@@ -39,8 +45,10 @@ export function useSchedules(landId?: string) {
           try {
             // CRITICAL: Wait for headers to be set before making API calls
             const { waitForHeaders } = await import('@/integrations/supabase/client');
+            console.log('⏳ [useSchedules] Waiting for headers...');
             await waitForHeaders();
             console.log('✅ [useSchedules] Headers ready, proceeding with API call');
+            console.log('🔐 [useSchedules] Fetching with farmer_id:', user.id, 'tenant_id:', user.tenantId);
             
             let query = supabase
               .from('crop_schedules')
@@ -48,14 +56,28 @@ export function useSchedules(landId?: string) {
               .order('created_at', { ascending: false });
 
             if (landId) {
+              console.log('🎯 [useSchedules] Filtering by land_id:', landId);
               query = query.eq('land_id', landId);
             }
 
+            console.log('📡 [useSchedules] Executing Supabase query...');
             const { data, error } = await query;
 
-            if (error) throw error;
+            if (error) {
+              console.error('❌ [useSchedules] Supabase query error:', error);
+              throw error;
+            }
 
             console.log(`✅ [useSchedules] API returned ${data?.length || 0} schedules`);
+            if (data && data.length > 0) {
+              console.log('📋 [useSchedules] Sample schedule:', {
+                id: data[0].id,
+                crop_name: data[0].crop_name,
+                land_id: data[0].land_id,
+                farmer_id: data[0].farmer_id,
+                tenant_id: data[0].tenant_id,
+              });
+            }
 
             // Save to local DB for offline access
             if (data && data.length > 0) {
