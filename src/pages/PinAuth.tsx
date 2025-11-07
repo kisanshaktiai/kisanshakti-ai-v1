@@ -149,8 +149,32 @@ export default function PinAuth() {
         });
 
       // Update Supabase client headers for RLS to work with custom auth
-      const { updateSupabaseHeaders } = await import('@/integrations/supabase/client');
+      const { updateSupabaseHeaders, waitForHeaders, supabaseWithAuth } = await import('@/integrations/supabase/client');
       updateSupabaseHeaders(farmer.id, farmer.tenant_id);
+      
+      // CRITICAL: Wait for headers to be ready
+      console.log('⏳ [PinAuth] Waiting for headers...');
+      await waitForHeaders();
+      console.log('✅ [PinAuth] Headers ready');
+      
+      // VERIFY headers are working before navigating
+      console.log('🔍 [PinAuth] Testing data access...');
+      try {
+        const testQuery = await supabaseWithAuth(farmer.id, farmer.tenant_id)
+          .from('lands')
+          .select('count')
+          .limit(1);
+
+        if (testQuery.error) {
+          console.error('❌ [PinAuth] Data access test failed:', testQuery.error);
+          throw new Error('Authentication succeeded but data access failed. Please contact support.');
+        }
+
+        console.log('✅ [PinAuth] Data access verified');
+      } catch (testError) {
+        console.error('❌ [PinAuth] Data access verification failed:', testError);
+        throw new Error('Cannot verify data access. Please try again.');
+      }
 
       // Clear temp storage but keep session data
       localStorage.removeItem('authMobile');

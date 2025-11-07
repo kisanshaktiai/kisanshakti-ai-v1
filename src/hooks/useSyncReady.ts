@@ -1,37 +1,56 @@
 import { useState, useEffect } from 'react';
 import { localDB } from '@/services/localDB';
+import { useAuthStore } from '@/stores/authStore';
 
 /**
  * Hook to check if initial sync is complete
  * Ensures queries don't run before data is available in localDB
+ * 
+ * IMPROVED: Now checks for actual data, not just sync timestamp
  */
 export function useSyncReady() {
   const [syncReady, setSyncReady] = useState(false);
+  const { user } = useAuthStore();
 
   useEffect(() => {
     const checkSyncStatus = async () => {
+      if (!user?.id) {
+        console.log('⚠️ [useSyncReady] No user, not ready');
+        setSyncReady(false);
+        return;
+      }
+
       try {
-        // Check if we have sync metadata (means DB is initialized)
         const metadata = await localDB.getSyncMetadata();
         
-        // Consider sync ready if:
-        // 1. lastSyncTime exists (at least one sync completed), OR
-        // 2. We're still within first 10 seconds of app load (give sync time to complete)
-        const hasCompletedSync = metadata?.lastSyncTime && metadata.lastSyncTime > 0;
+        // ✅ NEW: Check if data actually exists, not just sync time
+        const lands = await localDB.getLands();
+        const schedules = await localDB.getAllSchedules();
         
-        if (hasCompletedSync) {
-          console.log('✅ [useSyncReady] Initial sync completed at:', new Date(metadata.lastSyncTime));
-          setSyncReady(true);
-        } else {
-          // Wait a bit for initial sync to complete
-          console.log('⏳ [useSyncReady] Waiting for initial sync...');
-          setTimeout(() => {
-            setSyncReady(true);
-          }, 3000); // 3 second grace period
-        }
+        // Consider sync ready if:
+        // 1. Initial sync completed (lastSyncTime exists), AND
+        // 2. User has data OR at least 5 seconds have passed (grace period for new users)
+        
+        const hasData = lands.length > 0 || schedules.length > 0;
+        const syncCompleted = metadata?.lastSyncTime !== null && metadata?.lastSyncTime !== undefined;
+        const gracePeriodPassed = Date.now() - (metadata?.lastSchemaCheck || Date.now()) > 5000;
+        
+        const isReady = syncCompleted && (hasData || gracePeriodPassed);
+        
+        console.log('🔄 [useSyncReady] Status:', {
+          hasData,
+          syncCompleted,
+          gracePeriodPassed,
+          isReady,
+          landsCount: lands.length,
+          schedulesCount: schedules.length,
+          lastSyncTime: metadata?.lastSyncTime ? new Date(metadata.lastSyncTime).toLocaleString() : 'Never',
+        });
+        
+        setSyncReady(isReady);
       } catch (error) {
         console.error('❌ [useSyncReady] Failed to check sync status:', error);
-        // Fail open - don't block queries indefinitely
+        // Fail open after grace period - don't block queries indefinitely
         setSyncReady(true);
       }
     };
@@ -46,7 +65,7 @@ export function useSyncReady() {
     }, 2000);
 
     return () => clearInterval(interval);
-  }, [syncReady]);
+  }, [user?.id, syncReady]);
 
   return syncReady;
 }

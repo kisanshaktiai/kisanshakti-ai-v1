@@ -386,14 +386,48 @@ class SyncService {
   }
 
   private async downloadServerData(tenantId: string): Promise<void> {
+    console.log('📥 [Sync] Starting server data download for tenant:', tenantId);
+    
     try {
-      console.log('📥 [Sync] Fetching farmers from server...');
+      const { supabaseWithAuth } = await import('@/integrations/supabase/client');
+      const { useAuthStore } = await import('@/stores/authStore');
+      
+      // Get auth context from store
+      const { user } = useAuthStore.getState();
+      const userId = user?.id;
+      const tenant = user?.tenantId || tenantId;
+      
+      console.log('🔐 [Sync] Auth context:', { userId, tenant, providedTenant: tenantId });
+      
+      if (!userId || !tenant) {
+        throw new Error('Missing authentication data for sync');
+      }
+      
+      // Test headers are working BEFORE downloading data
+      console.log('🔍 [Sync] Testing database access...');
+      const client = supabaseWithAuth(userId, tenant);
+      
+      const testQuery = await client
+        .from('farmers')
+        .select('id')
+        .eq('id', userId)
+        .limit(1)
+        .single();
+      
+      if (testQuery.error) {
+        console.error('❌ [Sync] Database access test failed:', testQuery.error);
+        throw new Error(`Database access failed: ${testQuery.error.message}. Your authentication may have expired.`);
+      }
+      
+      console.log('✅ [Sync] Database access verified, proceeding with download');
+      
       // Download farmers data
-      const { data: farmers, error: farmersError } = await supabase
+      console.log('📥 [Sync] Fetching farmers from server...');
+      const { data: farmers, error: farmersError } = await client
         .from('farmers')
         .select('*')
-        .eq('tenant_id', tenantId)
-        .order('created_at', { ascending: false });
+        .eq('tenant_id', tenant)
+        .eq('id', userId);
 
       if (farmersError) {
         console.error('❌ [Sync] Failed to fetch farmers:', farmersError);
@@ -466,10 +500,11 @@ class SyncService {
 
       // Download lands data
       console.log('📥 [Sync] Fetching lands from server...');
-      const { data: lands, error: landsError } = await supabase
+      const { data: lands, error: landsError } = await client
         .from('lands')
         .select('*')
-        .eq('tenant_id', tenantId)
+        .eq('tenant_id', tenant)
+        .eq('farmer_id', userId)
         .order('created_at', { ascending: false });
 
       if (landsError) {
@@ -559,10 +594,10 @@ class SyncService {
 
       // Download schedules data
       console.log('📥 [Sync] Fetching schedules from server...');
-      const { data: schedules, error: schedulesError } = await supabase
+      const { data: schedules, error: schedulesError } = await client
         .from('crop_schedules')
         .select('*')
-        .eq('tenant_id', tenantId)
+        .eq('tenant_id', tenant)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
@@ -603,6 +638,27 @@ class SyncService {
         console.log('✅ [Sync] Schedules saved to localDB');
       }
       
+      // VERIFY data was actually saved
+      const verifyLands = await localDB.getLands();
+      const verifySchedules = await localDB.getAllSchedules();
+      console.log('🔍 [Sync] Data verification:', {
+        landsInDB: verifyLands.length,
+        schedulesInDB: verifySchedules.length,
+        landsSaved: lands?.length || 0,
+        schedulesSaved: schedules?.length || 0,
+      });
+
+      if (verifyLands.length !== (lands?.length || 0)) {
+        console.error('❌ [Sync] Land save mismatch!');
+        throw new Error('LocalDB save verification failed for lands');
+      }
+
+      if (verifySchedules.length < (schedules?.length || 0)) {
+        console.error('❌ [Sync] Schedule save mismatch!');
+        throw new Error('LocalDB save verification failed for schedules');
+      }
+      
+      console.log('✅ [Sync] Data verification passed');
       console.log('✅ [Sync] Server data download complete');
     } catch (error) {
       console.error('❌ [Sync] Failed to download server data:', error);

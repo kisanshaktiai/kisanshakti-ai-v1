@@ -124,15 +124,32 @@ export const updateSupabaseHeaders = (farmerId?: string, tenantId?: string) => {
 /**
  * Get Supabase client with auth headers automatically set
  * Always use this wrapper for authenticated requests
+ * 
+ * IMPORTANT: This creates a client with headers in the global config
+ * which should work with PostgREST requests
  */
-export const supabaseWithAuth = () => {
-  // Use global auth data (no imports needed!)
-  if (globalAuthData) {
-    console.log('🔐 [supabaseWithAuth] Setting headers from global auth data');
-    updateSupabaseHeaders(globalAuthData.userId, globalAuthData.tenantId);
-  } else {
-    console.warn('⚠️ [supabaseWithAuth] No global auth data available');
+export const supabaseWithAuth = (farmerId?: string, tenantId?: string) => {
+  const userId = farmerId || globalAuthData?.userId;
+  const tenant = tenantId || globalAuthData?.tenantId;
+  
+  if (!userId || !tenant) {
+    console.warn('⚠️ [supabaseWithAuth] Missing auth data:', { userId, tenant });
+    return supabase;
   }
   
-  return supabase;
+  console.log('🔐 [supabaseWithAuth] Creating client with headers:', { userId, tenant });
+  
+  // Create a new client instance with custom headers for THIS request
+  // This ensures headers are sent with every PostgREST request
+  return createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: {
+      persistSession: false, // Don't persist, use custom auth
+    },
+    global: {
+      headers: {
+        'x-farmer-id': userId,
+        'x-tenant-id': tenant,
+      }
+    }
+  });
 };

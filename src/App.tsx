@@ -49,6 +49,7 @@ import AIScheduleDashboard from "./pages/AIScheduleDashboard";
 import { useTenantStore } from "@/stores/tenantStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useLanguageStore } from "@/stores/languageStore";
+import { toast } from "@/hooks/use-toast";
 import LocationService from "@/services/LocationService";
 import { useLocationPermission } from "@/hooks/useLocationPermission";
 import { WhiteLabelService } from "@/services/WhiteLabelService";
@@ -131,29 +132,63 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         tenantId: user?.tenantId
       });
       
-      if (user?.id && user?.tenantId) {
-        console.log('🔄 [App] Starting initial sync for user:', user.id);
-        try {
-          const result = await syncService.performSync(false);
-          console.log('✅ [App] Initial sync completed:', result);
-          
-          // Verify data was downloaded
-          const lands = await localDB.getLands();
-          const schedules = await localDB.getAllSchedules();
-          console.log('📊 [App] LocalDB status after sync:', {
-            lands: lands?.length || 0,
-            schedules: schedules?.length || 0,
+      if (!user?.id || !user?.tenantId) {
+        console.log('⚠️ [App] Cannot sync - no user');
+        return;
+      }
+      
+      console.log('🔄 [App] Starting initial sync for user:', user.id);
+      
+      try {
+        // CRITICAL: Wait for headers to be VERIFIED
+        const { waitForHeaders, supabaseWithAuth } = await import('@/integrations/supabase/client');
+        console.log('⏳ [App] Waiting for auth headers...');
+        await waitForHeaders();
+        console.log('✅ [App] Headers ready');
+        
+        // Test that headers actually work
+        console.log('🔍 [App] Testing database access...');
+        const testQuery = await supabaseWithAuth(user.id, user.tenantId)
+          .from('farmers')
+          .select('id')
+          .eq('id', user.id)
+          .limit(1)
+          .single();
+        
+        if (testQuery.error) {
+          console.error('❌ [App] Auth test failed:', testQuery.error);
+          toast({
+            title: 'Authentication Error',
+            description: 'Cannot access your data. Please try logging in again.',
+            variant: 'destructive'
           });
-        } catch (error) {
-          console.error('❌ [App] Initial sync failed:', error);
+          return;
         }
-      } else {
-        console.log('⚠️ [App] Cannot start sync - user not fully authenticated');
+        
+        console.log('✅ [App] Auth verified, starting sync...');
+        
+        const result = await syncService.performSync(false);
+        console.log('✅ [App] Initial sync completed:', result);
+        
+        // Verify data was downloaded
+        const lands = await localDB.getLands();
+        const schedules = await localDB.getAllSchedules();
+        console.log('📊 [App] LocalDB status after sync:', {
+          lands: lands?.length || 0,
+          schedules: schedules?.length || 0,
+        });
+      } catch (error) {
+        console.error('❌ [App] Sync failed:', error);
+        toast({
+          title: 'Sync Failed',
+          description: 'Could not download your data. Check your connection.',
+          variant: 'destructive'
+        });
       }
     };
     
-    // Small delay to ensure auth is fully set up
-    const timer = setTimeout(initializeSync, 500);
+    // Longer delay to ensure auth is fully ready
+    const timer = setTimeout(initializeSync, 1000);
     return () => clearTimeout(timer);
   }, []);
 
