@@ -50,138 +50,75 @@ export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = fal
 
   return (
     <>
-      <nav className="fixed bottom-0 left-0 right-0 z-50 pb-safe">
-        {/* Neural Grid Background */}
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-background/95 to-background/90 backdrop-blur-3xl" />
-        <div className="absolute inset-0 border-t border-primary/10" 
-             style={{
-               background: 'linear-gradient(90deg, transparent 0%, hsl(var(--primary) / 0.05) 50%, transparent 100%)'
-             }} />
-        
-        <div className="relative h-20 flex justify-around items-center px-3">
+      <nav className="fixed bottom-0 left-0 right-0 glassmorphism-nav border-t border-border/10 z-50 backdrop-blur-xl pb-safe">
+        <div className="h-20 flex justify-around items-center px-3 relative">
           {/* Nav items before the action button */}
           {navItemsBeforeAction.map(({ path, icon: Icon, labelKey }) => (
             <NavLink
               key={path}
               to={path!}
-              end={path === '/'}
+              end={path === '/'} // Add 'end' prop for exact matching on home route
               className={({ isActive }) =>
                 cn(
                   'flex flex-col items-center justify-center flex-1 h-full py-2',
-                  'transition-all duration-500 ease-out',
+                  'transition-all duration-300 ease-out',
                   'relative group',
-                  hasAction && 'pr-4'
+                  hasAction && 'pr-4' // Dynamic spacing when FAB exists
                 )
               }
             >
               {({ isActive }) => (
                 <>
-                  {/* Glow effect for active state */}
-                  {isActive && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-14 h-14 rounded-3xl bg-primary/10 blur-xl animate-pulse-subtle" />
-                    </div>
-                  )}
-                  
                   <div className={cn(
-                    "relative w-13 h-13 rounded-3xl flex items-center justify-center",
-                    "transition-all duration-500",
-                    "before:absolute before:inset-0 before:rounded-3xl before:transition-all before:duration-500",
+                    "w-12 h-12 rounded-2xl flex items-center justify-center",
+                    "transition-all duration-300",
                     isActive 
-                      ? "scale-110 before:bg-gradient-to-br before:from-primary/20 before:via-accent/15 before:to-primary/20 shadow-ai" 
-                      : "hover:scale-105 before:bg-muted/40 hover:before:bg-muted/60",
-                    "group-active:scale-95",
-                    "backdrop-blur-sm"
+                      ? "bg-primary/15 scale-110 shadow-lg shadow-primary/20" 
+                      : "hover:bg-muted/60 hover:scale-105",
+                    "group-active:scale-95"
                   )}>
                     <Icon className={cn(
-                      'relative z-10 w-5 h-5 transition-all duration-500',
+                      'w-5 h-5 transition-all duration-300',
                       isActive 
-                        ? 'text-primary drop-shadow-[0_0_8px_hsl(var(--primary)/0.5)] animate-slide-up' 
+                        ? 'text-primary drop-shadow-glow animate-slide-up' 
                         : 'text-muted-foreground',
-                      'group-hover:scale-110 group-hover:drop-shadow-[0_0_4px_hsl(var(--primary)/0.3)]'
+                      'group-hover:scale-110'
                     )} />
                   </div>
-                  
                   <span className={cn(
-                    "text-[10px] mt-1.5 font-semibold tracking-wide transition-all duration-500 leading-tight",
+                    "text-[11px] mt-1 font-medium transition-all duration-300 leading-tight",
                     isActive 
-                      ? 'text-primary drop-shadow-[0_0_4px_hsl(var(--primary)/0.3)]' 
-                      : 'text-muted-foreground/70 group-hover:text-muted-foreground'
+                      ? 'text-primary font-semibold' 
+                      : 'text-muted-foreground/80'
                   )}>
                     {t(labelKey)}
                   </span>
-                  
-                  {/* Active indicator with gradient */}
                   {isActive && (
-                    <div className="absolute -bottom-0 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full overflow-hidden animate-fade-in">
-                      <div className="w-full h-full bg-gradient-to-r from-transparent via-primary to-transparent" />
-                    </div>
+                    <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-gradient-primary animate-fade-in" />
                   )}
                 </>
               )}
             </NavLink>
           ))}
 
-          {/* Central AI Action Button - Futuristic FAB */}
+          {/* Central action button */}
           {hasAction && !hideAction && (
             <button
               onClick={handleActionClick}
               className={cn(
-                "absolute left-1/2 -translate-x-1/2 -top-6",
-                "w-20 h-20 rounded-full",
-                "transition-all duration-500",
-                "hover:scale-110 active:scale-95",
-                "group"
+                "absolute left-1/2 -translate-x-1/2 -top-4",
+                "w-16 h-16 rounded-full",
+                "bg-gradient-primary",
+                "shadow-elegant shadow-primary/30",
+                "flex items-center justify-center",
+                "transition-smooth",
+                "hover:scale-110 hover:shadow-glow",
+                "active:scale-95",
+                isPulsing && "animate-pulse"
               )}
             >
-              {/* Outer glow ring */}
-              <div className={cn(
-                "absolute inset-0 rounded-full",
-                "bg-gradient-to-br from-primary via-accent to-secondary",
-                "opacity-100 blur-md",
-                isPulsing ? "animate-pulse" : "animate-pulse-subtle"
-              )} />
-              
-              {/* Middle ring */}
-              <div className="absolute inset-1 rounded-full bg-background/20 backdrop-blur-sm" />
-              
-              {/* Inner gradient button */}
-              <div className={cn(
-                "absolute inset-2 rounded-full",
-                "bg-gradient-to-br from-primary via-accent to-secondary",
-                "flex items-center justify-center",
-                "shadow-[0_0_40px_hsl(var(--primary)/0.5)]",
-                "group-hover:shadow-[0_0_60px_hsl(var(--primary)/0.7)]",
-                "transition-all duration-500"
-              )}>
-                {/* Icon container with animation */}
-                <div className="relative">
-                  <Scan className={cn(
-                    "w-8 h-8 text-primary-foreground",
-                    "drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]",
-                    "transition-transform duration-500",
-                    "group-hover:scale-110 group-hover:rotate-12"
-                  )} />
-                  
-                  {/* Scanning lines effect */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-12 h-12 border-2 border-primary-foreground/20 rounded-lg animate-pulse" />
-                  </div>
-                </div>
-              </div>
-              
-              {/* Corner accents */}
-              <div className="absolute inset-0 rounded-full">
-                {[0, 90, 180, 270].map((rotation) => (
-                  <div
-                    key={rotation}
-                    className="absolute top-0 left-1/2 w-1 h-3 bg-primary-foreground/50 rounded-full"
-                    style={{ 
-                      transform: `rotate(${rotation}deg) translateX(-50%)`,
-                      transformOrigin: '50% 40px'
-                    }}
-                  />
-                ))}
+              <div className="w-14 h-14 rounded-full bg-background/10 backdrop-blur-sm flex items-center justify-center">
+                <Scan className="w-7 h-7 text-primary-foreground drop-shadow-lg" />
               </div>
             </button>
           )}
@@ -194,58 +131,44 @@ export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = fal
             <NavLink
               key={path}
               to={path!}
-              end={path === '/'}
+              end={path === '/'} // Add 'end' prop for exact matching on home route
               className={({ isActive }) =>
                 cn(
                   'flex flex-col items-center justify-center flex-1 h-full py-2',
-                  'transition-all duration-500 ease-out',
+                  'transition-all duration-300 ease-out',
                   'relative group',
-                  hasAction && 'pl-4'
+                  hasAction && 'pl-4' // Dynamic spacing when FAB exists
                 )
               }
             >
               {({ isActive }) => (
                 <>
-                  {/* Glow effect for active state */}
-                  {isActive && (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-14 h-14 rounded-3xl bg-primary/10 blur-xl animate-pulse-subtle" />
-                    </div>
-                  )}
-                  
                   <div className={cn(
-                    "relative w-13 h-13 rounded-3xl flex items-center justify-center",
-                    "transition-all duration-500",
-                    "before:absolute before:inset-0 before:rounded-3xl before:transition-all before:duration-500",
+                    "w-12 h-12 rounded-2xl flex items-center justify-center",
+                    "transition-all duration-300",
                     isActive 
-                      ? "scale-110 before:bg-gradient-to-br before:from-primary/20 before:via-accent/15 before:to-primary/20 shadow-ai" 
-                      : "hover:scale-105 before:bg-muted/40 hover:before:bg-muted/60",
-                    "group-active:scale-95",
-                    "backdrop-blur-sm"
+                      ? "bg-primary/15 scale-110 shadow-lg shadow-primary/20" 
+                      : "hover:bg-muted/60 hover:scale-105",
+                    "group-active:scale-95"
                   )}>
                     <Icon className={cn(
-                      'relative z-10 w-5 h-5 transition-all duration-500',
+                      'w-5 h-5 transition-all duration-300',
                       isActive 
-                        ? 'text-primary drop-shadow-[0_0_8px_hsl(var(--primary)/0.5)] animate-slide-up' 
+                        ? 'text-primary drop-shadow-glow animate-slide-up' 
                         : 'text-muted-foreground',
-                      'group-hover:scale-110 group-hover:drop-shadow-[0_0_4px_hsl(var(--primary)/0.3)]'
+                      'group-hover:scale-110'
                     )} />
                   </div>
-                  
                   <span className={cn(
-                    "text-[10px] mt-1.5 font-semibold tracking-wide transition-all duration-500 leading-tight",
+                    "text-[11px] mt-1 font-medium transition-all duration-300 leading-tight",
                     isActive 
-                      ? 'text-primary drop-shadow-[0_0_4px_hsl(var(--primary)/0.3)]' 
-                      : 'text-muted-foreground/70 group-hover:text-muted-foreground'
+                      ? 'text-primary font-semibold' 
+                      : 'text-muted-foreground/80'
                   )}>
                     {t(labelKey)}
                   </span>
-                  
-                  {/* Active indicator with gradient */}
                   {isActive && (
-                    <div className="absolute -bottom-0 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full overflow-hidden animate-fade-in">
-                      <div className="w-full h-full bg-gradient-to-r from-transparent via-primary to-transparent" />
-                    </div>
+                    <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-gradient-primary animate-fade-in" />
                   )}
                 </>
               )}
