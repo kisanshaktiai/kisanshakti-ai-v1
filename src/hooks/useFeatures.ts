@@ -6,8 +6,8 @@ export function useFeatures() {
   const { tenant } = useTenantStore();
   const [isLoading, setIsLoading] = useState(false);
 
-  // Map database feature keys to app feature IDs
-  const mapDatabaseFeaturesToAppIds = (dbFeatures: Record<string, boolean>): string[] => {
+  // Map database feature keys to app feature IDs for DISABLE overrides
+  const mapDatabaseFeaturesToDisabledIds = (dbFeatures: Record<string, boolean>): string[] => {
     const featureMapping: Record<string, string[]> = {
       'basic_analytics': ['analytics'],
       'farmer_management': ['lands', 'profile'],
@@ -18,48 +18,60 @@ export function useFeatures() {
       'scheme_information': ['schemes'],
     };
 
-    const mappedIds: string[] = [];
+    const disabledIds: string[] = [];
     Object.entries(dbFeatures).forEach(([dbKey, isEnabled]) => {
-      if (isEnabled && featureMapping[dbKey]) {
-        mappedIds.push(...featureMapping[dbKey]);
+      // If explicitly disabled (false), add to disabled list
+      if (isEnabled === false && featureMapping[dbKey]) {
+        disabledIds.push(...featureMapping[dbKey]);
       }
     });
 
-    return mappedIds;
+    return disabledIds;
   };
 
   // Process features based on tenant settings
+  // DEFAULT: All features are ENABLED (except comingSoon)
+  // Tenant settings act as DISABLE OVERRIDES
   const features = useMemo(() => {
-    console.log('useFeatures - Processing features with tenant:', tenant);
-    console.log('useFeatures - defaultFeatures count:', defaultFeatures.length);
+    console.log('🎯 [useFeatures] Processing features - ALL ENABLED BY DEFAULT');
+    console.log('🎯 [useFeatures] Tenant:', tenant?.id);
+    console.log('🎯 [useFeatures] Default features count:', defaultFeatures.length);
     
     let processedFeatures: FeatureItem[];
     
-    // Check if tenant has feature settings
+    // Check if tenant has feature settings to DISABLE specific features
     if (tenant?.settings?.features) {
       const tenantFeatures = tenant.settings.features;
       
-      // Handle array format (new format)
+      // Handle array format - features NOT in array are disabled
       if (Array.isArray(tenantFeatures)) {
-        console.log('useFeatures - Tenant features (array):', tenantFeatures);
+        console.log('🎯 [useFeatures] Tenant features (array) - treating as ENABLED list:', tenantFeatures);
         processedFeatures = defaultFeatures.map(feature => ({
           ...feature,
-          enabled: feature.comingSoon ? false : tenantFeatures.includes(feature.id)
+          // Feature is enabled if:
+          // 1. It's in the tenant array OR
+          // 2. It's not comingSoon and tenant array is empty (enable all)
+          enabled: feature.comingSoon ? false : (
+            tenantFeatures.length === 0 ? true : tenantFeatures.includes(feature.id)
+          )
         }));
       } 
-      // Handle object format (legacy format from database)
+      // Handle object format - features with false are disabled
       else if (typeof tenantFeatures === 'object') {
-        console.log('useFeatures - Tenant features (object, mapping to app IDs):', tenantFeatures);
-        const mappedFeatureIds = mapDatabaseFeaturesToAppIds(tenantFeatures);
-        console.log('useFeatures - Mapped feature IDs:', mappedFeatureIds);
+        console.log('🎯 [useFeatures] Tenant features (object) - checking for disabled features:', tenantFeatures);
+        const disabledFeatureIds = mapDatabaseFeaturesToDisabledIds(tenantFeatures);
+        console.log('🎯 [useFeatures] Explicitly disabled feature IDs:', disabledFeatureIds);
         
         processedFeatures = defaultFeatures.map(feature => ({
           ...feature,
-          enabled: feature.comingSoon ? false : mappedFeatureIds.includes(feature.id)
+          // Feature is enabled if:
+          // 1. Not in disabled list AND
+          // 2. Not comingSoon
+          enabled: !feature.comingSoon && !disabledFeatureIds.includes(feature.id)
         }));
       } else {
         // Unknown format - enable all features by default
-        console.log('useFeatures - Unknown tenant feature format, enabling all');
+        console.log('🎯 [useFeatures] Unknown tenant feature format, enabling all by default');
         processedFeatures = defaultFeatures.map(feature => ({
           ...feature,
           enabled: !feature.comingSoon
@@ -67,16 +79,23 @@ export function useFeatures() {
       }
     } else {
       // No tenant settings - enable all features by default (except coming soon)
-      console.log('useFeatures - No tenant settings, enabling all non-coming-soon features');
+      console.log('🎯 [useFeatures] No tenant settings, enabling ALL non-coming-soon features');
       processedFeatures = defaultFeatures.map(feature => ({
         ...feature,
         enabled: !feature.comingSoon
       }));
     }
     
-    console.log('useFeatures - Processed features count:', processedFeatures.length);
-    console.log('useFeatures - Enabled features:', processedFeatures.filter(f => f.enabled).map(f => f.id));
-    console.log('useFeatures - Coming soon features:', processedFeatures.filter(f => f.comingSoon).map(f => f.id));
+    const enabledCount = processedFeatures.filter(f => f.enabled).length;
+    const comingSoonCount = processedFeatures.filter(f => f.comingSoon).length;
+    
+    console.log('✅ [useFeatures] Processed features:', {
+      total: processedFeatures.length,
+      enabled: enabledCount,
+      comingSoon: comingSoonCount,
+      enabledIds: processedFeatures.filter(f => f.enabled).map(f => f.id),
+      comingSoonIds: processedFeatures.filter(f => f.comingSoon).map(f => f.id)
+    });
     
     return processedFeatures;
   }, [tenant]);
@@ -87,8 +106,10 @@ export function useFeatures() {
       .filter(f => f.enabled || f.comingSoon)
       .sort((a, b) => a.order - b.order);
     
-    console.log('useFeatures - enabledFeatures count:', list.length);
-    console.log('useFeatures - enabledFeatures IDs:', list.map(f => f.id));
+    console.log('✅ [useFeatures] enabledFeatures:', {
+      count: list.length,
+      ids: list.map(f => f.id)
+    });
     
     return list;
   }, [features]);
