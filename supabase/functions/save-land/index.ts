@@ -66,24 +66,49 @@ serve(async (req) => {
       }
     }
 
-    // Prepare boundary polygon and center point in WKT format for PostGIS
-    let boundaryPolygonWKT = null;
-    let centerPointWKT = null;
-    if (body.boundary && body.boundary.length > 0) {
-      // Create WKT format: POLYGON((lng1 lat1, lng2 lat2, ...))
-      const coordinates = body.boundary.map((point: any) => `${point.lng} ${point.lat}`);
-      // Close the polygon by adding first point at the end
-      coordinates.push(`${body.boundary[0].lng} ${body.boundary[0].lat}`);
-      boundaryPolygonWKT = `POLYGON((${coordinates.join(', ')}))`;
+    // Convert boundary to GeoJSON format for JSONB storage if boundary exists
+    let boundaryGeoJSON = null;
+    let centerGeoJSON = null;
+
+    if (body.boundary && Array.isArray(body.boundary) && body.boundary.length > 0) {
+      console.log('Processing boundary data:', { pointCount: body.boundary.length });
       
-      // Calculate center point
-      const centerLat =
-        body.boundary.reduce((sum: number, p: any) => sum + p.lat, 0) /
-        body.boundary.length;
-      const centerLng =
-        body.boundary.reduce((sum: number, p: any) => sum + p.lng, 0) /
-        body.boundary.length;
-      centerPointWKT = `POINT(${centerLng} ${centerLat})`;
+      // Create GeoJSON Polygon
+      // Ensure the polygon is closed (first point = last point)
+      const points = [...body.boundary];
+      if (points.length > 0) {
+        const firstPoint = points[0];
+        const lastPoint = points[points.length - 1];
+        
+        // Close the polygon if not already closed
+        if (firstPoint.lat !== lastPoint.lat || firstPoint.lng !== lastPoint.lng) {
+          points.push(firstPoint);
+        }
+        
+        // GeoJSON uses [lng, lat] order (NOT [lat, lng])
+        const coordinates = points.map((p: any) => [p.lng, p.lat]);
+        
+        boundaryGeoJSON = {
+          type: 'Polygon',
+          coordinates: [coordinates] // Array of rings, we only have one outer ring
+        };
+        
+        console.log('Generated boundary GeoJSON:', JSON.stringify(boundaryGeoJSON));
+        
+        // Calculate center point
+        const sumLat = body.boundary.reduce((sum: number, p: any) => sum + p.lat, 0);
+        const sumLng = body.boundary.reduce((sum: number, p: any) => sum + p.lng, 0);
+        const centerLat = sumLat / body.boundary.length;
+        const centerLng = sumLng / body.boundary.length;
+        
+        // GeoJSON Point
+        centerGeoJSON = {
+          type: 'Point',
+          coordinates: [centerLng, centerLat] // [lng, lat] order
+        };
+        
+        console.log('Generated center GeoJSON:', JSON.stringify(centerGeoJSON));
+      }
     }
 
     // Prepare land data for insertion
@@ -124,12 +149,12 @@ serve(async (req) => {
       area_guntas: body.area_guntas || null,
       area_sqft: body.area_sqft || null,
 
-      // Boundary info (WKT format for PostGIS compatibility)
-      boundary_polygon_old: boundaryPolygonWKT,
-      center_point_old: centerPointWKT,
-      boundary_method: boundaryPolygonWKT ? 'gps_points' : null,
-      gps_accuracy_meters: boundaryPolygonWKT ? 10 : null,
-      gps_recorded_at: boundaryPolygonWKT ? new Date().toISOString() : null,
+      // Boundary info (GeoJSON format for JSONB storage)
+      boundary_polygon_old: boundaryGeoJSON,
+      center_point_old: centerGeoJSON,
+      boundary_method: boundaryGeoJSON ? 'gps_points' : null,
+      gps_accuracy_meters: boundaryGeoJSON ? 10 : null,
+      gps_recorded_at: boundaryGeoJSON ? new Date().toISOString() : null,
 
       // Status and timestamps
       is_active: true,
@@ -144,8 +169,9 @@ serve(async (req) => {
     let data: any;
     let error: any;
     
-    if (boundaryPolygonWKT) {
-      // Use raw SQL with ST_GeomFromText for proper geometry insertion
+    if (boundaryGeoJSON) {
+      console.log('Inserting land with geometry using RPC...');
+      
       const { data: insertData, error: insertError } = await supabase.rpc('insert_land_with_geometry', {
         p_farmer_id: farmerId,
         p_tenant_id: tenantId,
@@ -170,11 +196,17 @@ serve(async (req) => {
         p_last_harvest_date: body.last_harvest_date || null,
         p_area_guntas: body.area_guntas || null,
         p_area_sqft: body.area_sqft || null,
-        p_boundary_wkt: boundaryPolygonWKT,
-        p_center_wkt: centerPointWKT
+        p_boundary_geojson: boundaryGeoJSON,
+        p_center_geojson: centerGeoJSON
       });
       data = insertData;
       error = insertError;
+      
+      if (error) {
+        console.error('RPC Error:', error);
+      } else {
+        console.log('Land saved successfully via RPC:', data);
+      }
     } else {
       // No geometry - use regular insert
       const { data: insertData, error: insertError } = await supabase

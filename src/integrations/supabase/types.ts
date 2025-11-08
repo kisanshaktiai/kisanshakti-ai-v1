@@ -21051,8 +21051,8 @@ export type Database = {
           p_area_acres: number
           p_area_guntas?: number
           p_area_sqft?: number
-          p_boundary_wkt?: string
-          p_center_wkt?: string
+          p_boundary_geojson?: Json
+          p_center_geojson?: Json
           p_cultivation_date?: string
           p_current_crop?: string
           p_district?: string

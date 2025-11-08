@@ -33,6 +33,7 @@ interface MapControlsProps {
   isTracking?: boolean;
   onToggleTracking?: () => void;
   gpsAccuracy?: number;
+  hasValidationError?: boolean;
 }
 
 export function MapControls({
@@ -46,7 +47,8 @@ export function MapControls({
   canSave,
   isTracking = false,
   onToggleTracking,
-  gpsAccuracy
+  gpsAccuracy,
+  hasValidationError = false,
 }: MapControlsProps) {
   return (
     <TooltipProvider>
@@ -153,7 +155,7 @@ export function MapControls({
               
               <Button
                 onClick={onSave}
-                disabled={!canSave}
+                disabled={!canSave || hasValidationError}
                 size="sm"
                 className="flex-1 h-9 bg-primary text-primary-foreground shadow-lg"
               >

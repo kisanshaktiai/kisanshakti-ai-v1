@@ -6,7 +6,7 @@ import { AreaDisplay } from './AreaDisplay';
 import { useToast } from '@/components/ui/use-toast';
 import LocationService from '@/services/LocationService';
 import { Card } from '@/components/ui/card';
-import { Satellite, Navigation, MapPin, Loader2 } from 'lucide-react';
+import { Satellite, Navigation, MapPin, Loader2, AlertCircle } from 'lucide-react';
 
 interface LatLng {
   lat: number;
@@ -42,6 +42,7 @@ export function GoogleMapBoundaryDrawer({
   const [currentPosition, setCurrentPosition] = useState<LatLng | null>(null);
   const [gpsAccuracy, setGpsAccuracy] = useState<number>(0);
   const [area, setArea] = useState({ sqft: 0, guntha: 0, acres: 0 });
+  const [validationError, setValidationError] = useState<string | null>(null);
   const [isCentering, setIsCentering] = useState(false);
   const [isAccuracyInfoVisible, setIsAccuracyInfoVisible] = useState(false);
   const [locationSource, setLocationSource] = useState<string>('gps');
@@ -148,29 +149,58 @@ export function GoogleMapBoundaryDrawer({
     fetchLocation();
   }, [map, toast, isMapInitialized]);
 
-  // Calculate area whenever boundary changes
+  // Calculate area and validate boundary whenever boundary changes
   useEffect(() => {
-    if (boundary.length >= 3) {
-      try {
-        // Create a polygon with the first point repeated at the end to close it
-        const coordinates = [...boundary, boundary[0]].map(point => [point.lng, point.lat]);
-        const polygon = turf.polygon([coordinates]);
-        const areaInSqMeters = turf.area(polygon);
-        
-        // Convert to different units
-        const areaInSqft = areaInSqMeters * 10.764;
-        const areaInGuntha = areaInSqft / 1089;
-        const areaInAcres = areaInSqft / 43560;
-        
-        setArea({
-          sqft: Math.round(areaInSqft),
-          guntha: Math.round(areaInGuntha * 100) / 100,
-          acres: Math.round(areaInAcres * 100) / 100,
-        });
-      } catch (error) {
-        console.error('Error calculating area:', error);
+    // Reset validation error
+    setValidationError(null);
+
+    if (boundary.length < 3) {
+      setArea({ sqft: 0, guntha: 0, acres: 0 });
+      if (boundary.length > 0) {
+        setValidationError(`Need ${3 - boundary.length} more point${3 - boundary.length > 1 ? 's' : ''} to form a boundary`);
       }
-    } else {
+      return;
+    }
+
+    try {
+      // Close the polygon by adding the first point at the end if needed
+      const closedBoundary = [...boundary];
+      const firstPoint = boundary[0];
+      const lastPoint = boundary[boundary.length - 1];
+      
+      if (firstPoint.lat !== lastPoint.lat || firstPoint.lng !== lastPoint.lng) {
+        closedBoundary.push(firstPoint);
+      }
+
+      // Convert to GeoJSON polygon format for Turf
+      const polygon = turf.polygon([
+        closedBoundary.map(point => [point.lng, point.lat])
+      ]);
+      
+      // Check for self-intersections using kinks
+      const kinks = turf.kinks(polygon);
+      if (kinks.features.length > 0) {
+        setValidationError('⚠️ Boundary lines are crossing each other. Please adjust the points.');
+        setArea({ sqft: 0, guntha: 0, acres: 0 });
+        return;
+      }
+      
+      // Calculate area in square meters
+      const areaInSquareMeters = turf.area(polygon);
+      
+      // Convert to different units
+      const sqft = areaInSquareMeters * 10.7639; // 1 sq meter = 10.7639 sq ft
+      const guntha = sqft / 1089; // 1 guntha = 1089 sq ft
+      const acres = sqft / 43560; // 1 acre = 43560 sq ft
+      
+      setArea({
+        sqft: Math.round(sqft),
+        guntha: Math.round(guntha * 100) / 100,
+        acres: Math.round(acres * 100) / 100,
+      });
+    } catch (error) {
+      console.error('Error calculating area:', error);
+      setValidationError('Error calculating area. Please check your boundary points.');
       setArea({ sqft: 0, guntha: 0, acres: 0 });
     }
   }, [boundary]);
@@ -312,7 +342,8 @@ export function GoogleMapBoundaryDrawer({
   }, [isTracking, startTracking, stopTracking]);
 
   const handleSave = useCallback(() => {
-    console.log('handleSave called', { boundary, area });
+    console.log('handleSave called', { boundary, area, validationError });
+    
     if (boundary.length < 3) {
       toast({
         title: "Invalid Boundary",
@@ -322,9 +353,18 @@ export function GoogleMapBoundaryDrawer({
       return;
     }
     
+    if (validationError) {
+      toast({
+        title: "Invalid Boundary",
+        description: validationError,
+        variant: "destructive",
+      });
+      return;
+    }
+    
     console.log('Calling onSave with:', boundary, area);
     onSave(boundary, area);
-  }, [boundary, area, onSave, toast]);
+  }, [boundary, area, validationError, onSave, toast]);
 
   // Get theme colors from CSS variables
   const getThemeColor = (varName: string, fallback: string): string => {
@@ -566,6 +606,16 @@ export function GoogleMapBoundaryDrawer({
       </GoogleMap>
 
       <AreaDisplay area={area} pointsCount={boundary.length} />
+      
+      {/* Validation Error Display */}
+      {validationError && (
+        <Card className="absolute top-24 left-4 right-4 md:left-1/2 md:-translate-x-1/2 md:w-auto md:max-w-md z-10 bg-destructive/10 border-destructive">
+          <div className="p-4 flex items-start gap-2">
+            <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-destructive font-medium">{validationError}</p>
+          </div>
+        </Card>
+      )}
 
       <MapControls
         mode={mode}
@@ -579,6 +629,7 @@ export function GoogleMapBoundaryDrawer({
         isTracking={isTracking}
         onToggleTracking={mode === 'walk' ? handleToggleTracking : undefined}
         gpsAccuracy={gpsAccuracy}
+        hasValidationError={!!validationError}
       />
     </div>
   );
