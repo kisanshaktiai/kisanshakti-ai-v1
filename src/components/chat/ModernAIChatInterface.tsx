@@ -237,12 +237,16 @@ const MessageBubble = ({
   message, 
   onFeedback, 
   onSpeak,
+  onCopy,
+  onShare,
   isSpeaking,
   fontSize 
 }: { 
   message: Message; 
   onFeedback: (id: string, feedback: 'positive' | 'negative') => void;
   onSpeak: (id: string, content: string) => void;
+  onCopy: (content: string) => void;
+  onShare: (content: string) => void;
   isSpeaking: boolean;
   fontSize: number;
 }) => {
@@ -389,10 +393,20 @@ const MessageBubble = ({
                 <motion.button
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
-                  onClick={() => navigator.clipboard.writeText(message.content)}
+                  onClick={() => onCopy(message.content)}
                   className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                  title="Copy"
                 >
                   <Copy className="w-3 h-3" />
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => onShare(message.content)}
+                  className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
+                  title="Share"
+                >
+                  <Share2 className="w-3 h-3" />
                 </motion.button>
                 <motion.button
                   whileHover={{ scale: 1.1 }}
@@ -402,6 +416,7 @@ const MessageBubble = ({
                     "p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700",
                     message.feedback === 'positive' && "text-green-600"
                   )}
+                  title="Like"
                 >
                   <ThumbsUp className="w-3 h-3" />
                 </motion.button>
@@ -413,6 +428,7 @@ const MessageBubble = ({
                     "p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700",
                     message.feedback === 'negative' && "text-red-600"
                   )}
+                  title="Dislike"
                 >
                   <ThumbsDown className="w-3 h-3" />
                 </motion.button>
@@ -892,6 +908,35 @@ export function ModernAIChatInterface() {
     });
   };
 
+  // Handle copy message
+  const handleCopy = (content: string) => {
+    navigator.clipboard.writeText(content);
+    toast({ 
+      description: '✅ Copied to clipboard!',
+      duration: 2000
+    });
+  };
+
+  // Handle share message
+  const handleShare = (content: string) => {
+    if (navigator.share) {
+      navigator.share({
+        title: 'KisanShakti AI Advice',
+        text: content
+      }).catch(() => {
+        // If share fails, fallback to copy
+        handleCopy(content);
+      });
+    } else {
+      // Fallback to copy if share is not supported
+      handleCopy(content);
+      toast({ 
+        description: '✅ Copied! Share it with others.',
+        duration: 2000
+      });
+    }
+  };
+
   // Common emojis for farmers
   const farmerEmojis = ['🌾', '🌱', '🌿', '🌻', '🌽', '🍅', '🥬', '☀️', '🌧️', '🚜', '👨‍🌾', '👩‍🌾'];
 
@@ -1062,6 +1107,8 @@ export function ModernAIChatInterface() {
                 message={message}
                 onFeedback={handleFeedback}
                 onSpeak={handleSpeak}
+                onCopy={handleCopy}
+                onShare={handleShare}
                 isSpeaking={isSpeaking && speakingMessageId === message.id}
                 fontSize={fontSize}
               />

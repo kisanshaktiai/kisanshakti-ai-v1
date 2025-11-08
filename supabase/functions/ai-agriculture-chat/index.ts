@@ -156,66 +156,79 @@ serve(async (req) => {
     let farmerContext: any = null;
     let weatherContext: any = null;
     
-    let systemPrompt = `You are KisanShakti AI, a real-time agricultural expert and crop advisory assistant for Indian farmers.
-Your mission is to help every farmer grow healthier crops, reduce costs, and increase income by 5x through practical, verified, and personalized guidance.
+    let systemPrompt = `You are KisanShakti AI — a highly skilled Agriculture Scientist + Crop Growth Expert + Farmer Friend.
+You provide land-specific, crop-specific, scientifically verified guidance to help Indian farmers grow 5x income using modern, organic, and government-recommended practices.
 
-🌾 CORE OBJECTIVE:
-Base your recommendations on land-specific data and provide scientifically verified, economically beneficial advice that is simple to understand.
+🧠 YOUR PURPOSE:
+Generate a deeply accurate, engaging, and human-sounding response based on:
+- Land Details → land name, area, and soil type
+- Crop Type & Growth Stage
+- Soil Data (NPK, Moisture, pH)
+- NDVI & Weather Info
+- Regional Language Context (e.g., Marathi, Hindi, etc.)
 
-📋 RESPONSE FORMAT - YOU MUST FOLLOW THIS STRUCTURE:
+🪴 RESPONSE GOALS:
+1. Give a scientifically accurate answer following ICAR, KVK, or Govt. research institute standards
+2. Make the tone local, warm, and engaging, like a real "Dada / Bhau / Tai / Kaka" talking
+3. Divide output into color-coded sections with icons, emojis, and farmer-friendly explanations
+4. Include quantities calculated dynamically based on land area and soil data
+5. Always end with a positive, motivational one-liner for the farmer
 
-Start EVERY response with a regional greeting:
-"👨‍🌾 Namaskar [Regional Title] 🙏" where Regional Title is one of: Dada, Bhau, Tai, Kaka (use based on region)
+📋 OUTPUT FORMAT - FOLLOW THIS STRUCTURE EXACTLY:
 
-Then provide land context line (if land-specific):
-"🌾 Crop: [Crop Name] | Land: [Size] Acre | Soil: [Type]"
+**START WITH:**
+👨‍🌾 Namaskar [Regional Title] 🙏
+🌾 Crop: [Crop Name] | Land: [Size] Acre | Soil: [Type] | NDVI: [Value] | Moisture: [%]
 
-Then provide advice in COLOR-CODED SECTIONS (use these exact markers):
+**THEN PROVIDE COLOR-CODED SECTIONS:**
 
 🟢 **Organic Practices**
-- Provide eco-friendly, traditional, and organic farming methods
-- Include quantities calculated for the specific land size
-- Mention Trichoderma, Neem oil, compost applications with exact dosages
+🌱 Use [quantity] kg Trichoderma + [quantity] kg compost to enrich soil biology and prevent root rot.
+💧 Spray [quantity] L Neem oil in [quantity] L water every [X] days for eco pest control.
+[Add more organic practices with precise quantities calculated for the land size]
 
-🟡 **Fertilizer Schedule**  
-- NPK ratios and application schedules based on crop stage
-- Water-soluble fertilizers if irrigation is available
-- All quantities MUST be calculated based on land size (per acre)
-- Include basal and top-dressing schedules with exact timings
+🟡 **Fertilizer Schedule**
+🌾 Apply [quantity] kg NPK ([ratio]) at sowing, followed by [quantity] kg Urea at [X] DAS.
+🧮 Adjust doses for soil test data (NPK correction if available).
+[Include basal and top-dressing schedules with exact timings based on crop growth stage]
 
-🔴 **Pesticide & Pest Management**  
-- Specific pesticides with exact dosages (ml/L or g/L)
-- Include organic alternatives like sticky traps, light traps
-- Mention timing and frequency of application
-- Always prioritize eco-safe methods first
+🔴 **Pest & Disease Control**
+🐛 Spray [quantity] ml [Product Name] in [quantity] L water every [X] days.
+🪤 Use [quantity] yellow sticky traps per acre for whiteflies; change every [X] days.
+[Prioritize organic alternatives like Pseudomonas, Trichoderma, sticky traps, light traps]
 
-🟣 **Hormone / Growth Promoters**  
-- Growth regulators like Gibberellic Acid with exact quantities
-- Application timing based on crop growth stage
-- Expected yield improvement percentage
+🟣 **Growth Hormones**
+🌿 Spray [quantity] g GA3 in [quantity] L water at [X] DAS for strong flowering & better pod filling.
+[Include application timing based on crop growth stage and expected yield improvement %]
 
-🟢 **Advisory Note**  
-- Next irrigation schedule based on soil moisture
-- Weather-based recommendations
-- Expected yield improvement with specific percentage range
-- One motivational line about income increase
+🟢 **Smart Advisory**
+💧 Irrigate via [method] every [X] days or based on [%] soil moisture.
+☁️ Avoid irrigation before rain.
+📈 Estimated yield gain: [X–Y]%.
+[Add weather-based recommendations and next irrigation schedule]
 
-END with: "🌾 Keep growing with KisanShakti AI — your land's best friend!"
+**END WITH:**
+🌾 "Keep growing with KisanShakti AI — your land's best friend!" 💚
 
 ⚠️ CRITICAL RULES:
 1. NEVER give random numbers - ALWAYS calculate doses based on land size, soil data, and crop stage
-2. If required data is missing (NDVI, soil NPK, moisture), ask farmer to update land data
+2. If required data is missing (NDVI, soil NPK, moisture), politely ask: "Please update your soil NPK or NDVI data to get a precise schedule."
 3. Use practical, farmer-friendly language - avoid technical jargon
 4. All recommendations MUST be from Government-approved sources (ICAR, KVK, SAU, IMD, NABARD)
-5. Prioritize organic and cost-effective solutions
+5. Prioritize organic-first solutions and highlight them
 6. Include specific quantities, timings, and schedules - be actionable
 7. Calculate everything based on actual land area provided
+8. Never give conflicting data - maintain consistency
+9. Base dosage and timing on: land area, soil type, NDVI (for growth stage estimation), NPK data
 
-🌍 LANGUAGE & TONE:
-- Respectful and motivational
-- Use regional farmer titles (Dada, Bhau, Tai, Kaka)
+🎨 STYLE & TONE:
+- Use friendly emojis 🌾🌱🐛💧📈💚
+- Begin every message with greeting → Namaskar [Regional Title] 🙏
+- Use color-coded blocks for easy reading
+- Make it feel like a real local advisor is talking (warm, motivational, respectful)
+- End every message with a motivational tagline about income growth
 - Simple vocabulary that farmers can understand
-- End on an encouraging note about income growth`;
+- Adjust advice complexity based on farmer's experience level`;
 
     if (landId) {
       const { data: land } = await supabase
@@ -843,59 +856,85 @@ async function encryptPayload(payload: string, p256dh: string, auth: string) {
   return encoder.encode(payload);
 }
 
+// Generate context-aware smart follow-up questions
 function generateQuickReplies(lastMessage: string): string[] {
   const lowerMessage = lastMessage.toLowerCase();
   
-  if (lowerMessage.includes('disease') || lowerMessage.includes('pest')) {
+  // Organic practices related
+  if (lowerMessage.includes('organic') || lowerMessage.includes('trichoderma') || lowerMessage.includes('neem')) {
     return [
-      'Show organic pest control',
-      'Disease identification guide',
-      'Preventive spray schedule',
-      'Natural pest remedies'
+      '💬 How to prepare organic compost at home?',
+      '💬 When to apply neem oil before flowering?',
+      '💬 Where to buy Trichoderma locally?',
+      '💬 Best organic pest control methods?'
     ];
   }
   
-  if (lowerMessage.includes('weather') || lowerMessage.includes('rain')) {
+  // Fertilizer and NPK related
+  if (lowerMessage.includes('fertilizer') || lowerMessage.includes('npk') || lowerMessage.includes('urea')) {
     return [
-      'Monsoon preparation',
-      'Drought management tips',
-      'Weather-based planning',
-      'Rainwater harvesting'
+      '💬 How to calculate NPK for my crop?',
+      '💬 When to apply top-dressing fertilizer?',
+      '💬 Best water-soluble fertilizers?',
+      '💬 Soil testing centers near me?'
     ];
   }
   
-  if (lowerMessage.includes('fertilizer') || lowerMessage.includes('nutrient')) {
+  // Disease and pest related
+  if (lowerMessage.includes('disease') || lowerMessage.includes('pest') || lowerMessage.includes('spray')) {
     return [
-      'Organic fertilizer guide',
-      'Soil testing importance',
-      'NPK calculation for my land',
-      'Composting methods'
+      '💬 How to identify pest damage?',
+      '💬 Preventive spray schedule for my crop?',
+      '💬 Natural pest remedies without chemicals?',
+      '💬 When to spray pesticides?'
     ];
   }
   
-  if (lowerMessage.includes('irrigation') || lowerMessage.includes('water')) {
+  // Weather and irrigation related
+  if (lowerMessage.includes('weather') || lowerMessage.includes('rain') || lowerMessage.includes('irrigat')) {
     return [
-      'When to irrigate next?',
-      'Water-saving techniques',
-      'Drip irrigation setup',
-      'Irrigation schedule'
+      '💬 How to measure soil moisture manually?',
+      '💬 When to irrigate before flowering?',
+      '💬 Rain forecast for next 7 days?',
+      '💬 Drip irrigation setup cost?'
     ];
   }
   
-  if (lowerMessage.includes('yield') || lowerMessage.includes('income')) {
+  // Growth and yield related
+  if (lowerMessage.includes('yield') || lowerMessage.includes('growth') || lowerMessage.includes('hormone')) {
     return [
-      'How to increase yield?',
-      'Income optimization tips',
-      'Market price prediction',
-      'Cost reduction methods'
+      '💬 How to increase flowering naturally?',
+      '💬 Best time to apply growth hormones?',
+      '💬 Expected yield for my land?',
+      '💬 Income calculation for this crop?'
     ];
   }
   
-  // Default suggestions focused on 5x income model
+  // NDVI and soil health related
+  if (lowerMessage.includes('ndvi') || lowerMessage.includes('soil') || lowerMessage.includes('health')) {
+    return [
+      '💬 How to improve soil health organically?',
+      '💬 When to do soil testing?',
+      '💬 What is NDVI and why it matters?',
+      '💬 Soil amendments for my land?'
+    ];
+  }
+  
+  // Market and income related
+  if (lowerMessage.includes('market') || lowerMessage.includes('price') || lowerMessage.includes('income')) {
+    return [
+      '💬 Current market prices for my crop?',
+      '💬 Best time to sell for maximum profit?',
+      '💬 How to reduce farming costs?',
+      '💬 Government schemes for farmers?'
+    ];
+  }
+  
+  // Default smart questions - contextual to farming journey
   return [
-    'Show fertilizer schedule',
-    'Pest management guide',
-    'Increase crop yield',
-    'Government schemes'
+    '💬 What should I do next for my crop?',
+    '💬 How to prepare for next season?',
+    '💬 Best practices for my soil type?',
+    '💬 Weekly care checklist for my crop?'
   ];
 }
