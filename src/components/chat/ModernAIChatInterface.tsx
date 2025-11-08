@@ -1,4 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
+import remarkGfm from 'remark-gfm';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -21,69 +24,136 @@ import {
   Paperclip, Smile, MoreVertical, Copy, Type, Trees,
   ThumbsUp, ThumbsDown, RefreshCw, Download, Share2, Maximize2, Zap,
   Shield, Heart, Star, TrendingUp, Clock, Calendar, ArrowUp, Plus,
-  Bug, Droplets, Info, PlayCircle, PauseCircle, ChevronRight, Minus
+  Bug, Droplets, Info, PlayCircle, PauseCircle, ChevronRight, Minus, Bookmark
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { localDB } from '@/services/localDB';
 
-// Helper function to render markdown content
+// Crop to Emoji Mapping
+const cropEmojiMap: Record<string, string> = {
+  'Wheat': '🌾',
+  'Rice': '🍚',
+  'Corn': '🌽',
+  'Maize': '🌽',
+  'Sugarcane': '🎋',
+  'Cotton': '🌿',
+  'Soybean': '🫘',
+  'Chickpea': '🫘',
+  'Potato': '🥔',
+  'Tomato': '🍅',
+  'Onion': '🧅',
+  'Cabbage': '🥬',
+  'Carrot': '🥕',
+  'Sunflower': '🌻',
+  'Groundnut': '🥜',
+  'Peanut': '🥜'
+};
+
+// Agronomic Term Highlighting
+const agronomicTerms = [
+  'NDVI', 'ETL', 'Trichoderma', 'IPM', 'Neem', 'NPK', 
+  'Vermicompost', 'FYM', 'Mulching', 'Fertigation', 'GDD'
+];
+
+// Enhanced Markdown Renderer with Crop Emojis and Term Highlighting
 const renderMarkdown = (text: string): React.ReactNode => {
-  // Simple markdown parser for common patterns
-  let content = text;
-  
-  // Split by newlines and process each line
-  const lines = content.split('\n');
-  const elements: React.ReactNode[] = [];
-  
-  lines.forEach((line, lineIndex) => {
-    // Headers (## Header)
-    if (line.startsWith('## ')) {
-      elements.push(
-        <h2 key={lineIndex} className="text-lg font-bold mt-4 mb-2 first:mt-0">
-          {line.replace('## ', '')}
-        </h2>
-      );
-      return;
-    }
-    
-    // Bold text with emojis (🟢 **Text**)
-    let processedLine = line;
-    const parts: React.ReactNode[] = [];
-    let lastIndex = 0;
-    
-    // Match emoji + bold patterns or just bold
-    const boldRegex = /\*\*(.+?)\*\*/g;
-    let match;
-    
-    while ((match = boldRegex.exec(processedLine)) !== null) {
-      // Add text before match
-      if (match.index > lastIndex) {
-        parts.push(processedLine.slice(lastIndex, match.index));
-      }
-      // Add bold text
-      parts.push(<strong key={match.index} className="font-semibold">{match[1]}</strong>);
-      lastIndex = match.index + match[0].length;
-    }
-    
-    // Add remaining text
-    if (lastIndex < processedLine.length) {
-      parts.push(processedLine.slice(lastIndex));
-    }
-    
-    // Empty lines
-    if (line.trim() === '') {
-      elements.push(<br key={lineIndex} />);
-      return;
-    }
-    
-    // Regular lines with processed bold
-    elements.push(
-      <div key={lineIndex} className="my-1.5">
-        {parts.length > 0 ? parts : line}
-      </div>
-    );
+  // Add crop emojis to text
+  let enhancedText = text;
+  Object.entries(cropEmojiMap).forEach(([crop, emoji]) => {
+    const regex = new RegExp(`\\b${crop}\\b`, 'gi');
+    enhancedText = enhancedText.replace(regex, `${crop} ${emoji}`);
   });
+
+  return (
+    <ReactMarkdown
+      rehypePlugins={[rehypeRaw]}
+      remarkPlugins={[remarkGfm]}
+      components={{
+        h1: ({node, ...props}) => <h1 className="text-2xl font-bold mt-4 mb-2 first:mt-0" {...props} />,
+        h2: ({node, ...props}) => <h2 className="text-xl font-bold mt-4 mb-2 first:mt-0" {...props} />,
+        h3: ({node, ...props}) => <h3 className="text-lg font-semibold mt-3 mb-2 first:mt-0" {...props} />,
+        ul: ({node, ...props}) => <ul className="list-disc list-inside my-2 space-y-1" {...props} />,
+        ol: ({node, ...props}) => <ol className="list-decimal list-inside my-2 space-y-1" {...props} />,
+        li: ({node, ...props}) => <li className="ml-2" {...props} />,
+        table: ({node, ...props}) => (
+          <div className="overflow-x-auto my-3">
+            <table className="min-w-full border border-gray-300 dark:border-gray-600 rounded-lg" {...props} />
+          </div>
+        ),
+        thead: ({node, ...props}) => <thead className="bg-emerald-100 dark:bg-emerald-900/40" {...props} />,
+        th: ({node, ...props}) => <th className="px-3 py-2 border border-gray-300 dark:border-gray-600 font-semibold text-left" {...props} />,
+        td: ({node, ...props}) => <td className="px-3 py-2 border border-gray-300 dark:border-gray-600" {...props} />,
+        strong: ({node, ...props}) => <strong className="font-semibold text-emerald-700 dark:text-emerald-300" {...props} />,
+        em: ({node, ...props}) => <em className="italic text-gray-700 dark:text-gray-300" {...props} />,
+        p: ({node, ...props}) => <p className="my-2 leading-relaxed" {...props} />,
+        code: ({node, inline, ...props}: any) => 
+          inline ? (
+            <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-xs font-mono" {...props} />
+          ) : (
+            <code className="block p-3 rounded-lg bg-gray-100 dark:bg-gray-800 overflow-x-auto text-xs font-mono my-2" {...props} />
+          )
+      }}
+    >
+      {enhancedText}
+    </ReactMarkdown>
+  );
+};
+
+// Contextual Prompt Generator based on AI response
+const generateContextualPrompts = (lastMessage: string): string[] => {
+  const prompts: string[] = [];
+  const lowerText = lastMessage.toLowerCase();
+
+  // Pest-related
+  if (lowerText.includes('pest') || lowerText.includes('insect')) {
+    prompts.push('Show pest-specific organic spray schedule');
+    prompts.push('What are natural predators for this pest?');
+  }
   
-  return <div className="space-y-0.5">{elements}</div>;
+  // Disease-related
+  if (lowerText.includes('disease') || lowerText.includes('fungus')) {
+    prompts.push('Give preventive measures for this disease');
+    prompts.push('Recommend organic fungicide alternatives');
+  }
+  
+  // Soil-related
+  if (lowerText.includes('soil') || lowerText.includes('nutrient')) {
+    prompts.push('Give organic soil booster plan');
+    prompts.push('Show NPK ratio for my crop');
+  }
+  
+  // NDVI/Crop health
+  if (lowerText.includes('ndvi') || lowerText.includes('stress') || lowerText.includes('health')) {
+    prompts.push('Show crop stress alert zones');
+    prompts.push('Explain NDVI interpretation for my field');
+  }
+  
+  // Water-related
+  if (lowerText.includes('water') || lowerText.includes('irrigation')) {
+    prompts.push('Give weather-based irrigation schedule');
+    prompts.push('Calculate water requirement per acre');
+  }
+  
+  // Fertilizer-related
+  if (lowerText.includes('fertilizer') || lowerText.includes('npk')) {
+    prompts.push('Show precision fertilizer application timeline');
+    prompts.push('Organic vs synthetic fertilizer comparison');
+  }
+  
+  // Harvest/Yield
+  if (lowerText.includes('harvest') || lowerText.includes('yield')) {
+    prompts.push('Optimal harvest timing and indicators');
+    prompts.push('Post-harvest storage best practices');
+  }
+
+  // Default prompts if no specific matches
+  if (prompts.length === 0) {
+    prompts.push('What should I do next for my crop?');
+    prompts.push('Any weather alerts to watch for?');
+    prompts.push('Show current crop growth stage advice');
+  }
+
+  return prompts.slice(0, 5); // Max 5 prompts
 };
 
 interface Message {
@@ -213,7 +283,7 @@ const QuickActions = ({ onActionClick, collapsed = false }: { onActionClick: (ac
   );
 };
 
-// Enhanced Typing Indicator with Wave Animation
+// Enhanced Typing Indicator with Breathing Avatar Animation
 const TypingIndicator = () => (
   <motion.div 
     initial={{ opacity: 0, x: -20 }}
@@ -221,17 +291,28 @@ const TypingIndicator = () => (
     exit={{ opacity: 0, x: -20 }}
     className="flex items-start gap-3 px-4 py-2"
   >
-    <Avatar className="w-8 h-8 ring-2 ring-primary/20">
-      <AvatarFallback className="bg-gradient-to-br from-primary to-primary-600">
-        <Bot className="w-4 h-4 text-white" />
-      </AvatarFallback>
-    </Avatar>
+    <motion.div
+      animate={{
+        scale: [1, 1.1, 1],
+      }}
+      transition={{
+        duration: 2,
+        repeat: Infinity,
+        ease: "easeInOut"
+      }}
+    >
+      <Avatar className="w-8 h-8 ring-2 ring-primary/20">
+        <AvatarFallback className="bg-gradient-to-br from-emerald-500 to-green-600">
+          <Bot className="w-4 h-4 text-white" />
+        </AvatarFallback>
+      </Avatar>
+    </motion.div>
     <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border border-gray-200/50 dark:border-gray-700/50">
       <div className="flex items-center gap-1.5">
         {[0, 0.2, 0.4].map((delay, i) => (
           <motion.div
             key={i}
-            className="w-2 h-2 rounded-full bg-gradient-to-br from-primary to-primary-600"
+            className="w-2 h-2 rounded-full bg-gradient-to-br from-emerald-500 to-green-600"
             animate={{
               scale: [1, 1.5, 1],
               opacity: [0.5, 1, 0.5],
@@ -300,6 +381,8 @@ const MessageBubble = ({
   onSpeak,
   onCopy,
   onShare,
+  onSave,
+  onAskAgain,
   isSpeaking,
   fontSize 
 }: { 
@@ -308,6 +391,8 @@ const MessageBubble = ({
   onSpeak: (id: string, content: string) => void;
   onCopy: (content: string) => void;
   onShare: (content: string) => void;
+  onSave: (content: string) => void;
+  onAskAgain: (content: string) => void;
   isSpeaking: boolean;
   fontSize: number;
 }) => {
@@ -328,15 +413,25 @@ const MessageBubble = ({
         isUser ? "flex-row-reverse" : "flex-row"
       )}
     >
-      {/* Avatar */}
+      {/* Avatar with Speaking Animation */}
       {!isUser && (
         <motion.div
           initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 0.1, type: "spring" }}
+          animate={{ 
+            scale: isSpeaking ? [1, 1.15, 1] : 1
+          }}
+          transition={{ 
+            delay: 0.1, 
+            type: "spring",
+            duration: isSpeaking ? 0.8 : 0.3,
+            repeat: isSpeaking ? Infinity : 0
+          }}
           className="flex-shrink-0 mt-1"
         >
-          <Avatar className="w-9 h-9 ring-2 ring-primary/10 shadow-md">
+          <Avatar className={cn(
+            "w-9 h-9 ring-2 shadow-md transition-all",
+            isSpeaking ? "ring-emerald-500 ring-4" : "ring-primary/10"
+          )}>
             <AvatarFallback className="bg-gradient-to-br from-emerald-500 to-green-600">
               <Bot className="w-5 h-5 text-white" />
             </AvatarFallback>
@@ -436,17 +531,17 @@ const MessageBubble = ({
             initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="flex items-center gap-1.5 px-2"
+            className="flex items-center gap-1.5 px-2 flex-wrap"
           >
             {/* Read Aloud Button */}
             <motion.button
-              whileHover={{ scale: 1.1, y: -2 }}
+              whileHover={{ scale: 1.05, y: -2 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => onSpeak(message.id, message.content)}
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all text-xs font-medium shadow-sm",
                 isSpeaking 
-                  ? "bg-primary text-white shadow-primary/30" 
+                  ? "bg-emerald-600 text-white shadow-emerald-500/30" 
                   : "bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700"
               )}
             >
@@ -463,9 +558,53 @@ const MessageBubble = ({
               )}
             </motion.button>
 
+            {/* Copy Button */}
+            <motion.button
+              whileHover={{ scale: 1.05, y: -2 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => onCopy(message.content)}
+              className="p-2 rounded-full bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 border border-gray-200 dark:border-gray-700 transition-all shadow-sm"
+              title="Copy"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </motion.button>
+
+            {/* Save Advice Button */}
+            <motion.button
+              whileHover={{ scale: 1.05, y: -2 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => onSave(message.content)}
+              className="p-2 rounded-full bg-white dark:bg-gray-800 hover:bg-amber-50 dark:hover:bg-amber-900/20 border border-gray-200 dark:border-gray-700 transition-all shadow-sm"
+              title="Save Advice"
+            >
+              <Bookmark className="w-3.5 h-3.5" />
+            </motion.button>
+
+            {/* Ask Again Button */}
+            <motion.button
+              whileHover={{ scale: 1.05, y: -2 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => onAskAgain(message.content)}
+              className="p-2 rounded-full bg-white dark:bg-gray-800 hover:bg-purple-50 dark:hover:bg-purple-900/20 border border-gray-200 dark:border-gray-700 transition-all shadow-sm"
+              title="Ask Again"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </motion.button>
+
+            {/* Share Button */}
+            <motion.button
+              whileHover={{ scale: 1.05, y: -2 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => onShare(message.content)}
+              className="p-2 rounded-full bg-white dark:bg-gray-800 hover:bg-green-50 dark:hover:bg-green-900/20 border border-gray-200 dark:border-gray-700 transition-all shadow-sm"
+              title="Share"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+            </motion.button>
+
             {/* Like Button */}
             <motion.button
-              whileHover={{ scale: 1.1, y: -2 }}
+              whileHover={{ scale: 1.05, y: -2 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => onFeedback(message.id, 'positive')}
               className={cn(
@@ -484,7 +623,7 @@ const MessageBubble = ({
 
             {/* Dislike Button */}
             <motion.button
-              whileHover={{ scale: 1.1, y: -2 }}
+              whileHover={{ scale: 1.05, y: -2 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => onFeedback(message.id, 'negative')}
               className={cn(
@@ -499,28 +638,6 @@ const MessageBubble = ({
                 "w-3.5 h-3.5",
                 message.feedback === 'negative' && "fill-current"
               )} />
-            </motion.button>
-
-            {/* Copy Button */}
-            <motion.button
-              whileHover={{ scale: 1.1, y: -2 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => onCopy(message.content)}
-              className="p-2 rounded-full bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 transition-all shadow-sm"
-              title="Copy"
-            >
-              <Copy className="w-3.5 h-3.5" />
-            </motion.button>
-
-            {/* Share Button */}
-            <motion.button
-              whileHover={{ scale: 1.1, y: -2 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => onShare(message.content)}
-              className="p-2 rounded-full bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 transition-all shadow-sm"
-              title="Share"
-            >
-              <Share2 className="w-3.5 h-3.5" />
             </motion.button>
           </motion.div>
         )}
@@ -573,6 +690,7 @@ export function ModernAIChatInterface() {
   const [fontSize, setFontSize] = useState(14);
   const [showFontControl, setShowFontControl] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [offlineBannerVisible, setOfflineBannerVisible] = useState(false);
   
   // Persistent session ID management
   const [sessionId, setSessionId] = useState<string>(() => {
@@ -626,6 +744,20 @@ export function ModernAIChatInterface() {
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Offline banner management
+  useEffect(() => {
+    if (!isOnline) {
+      setOfflineBannerVisible(true);
+    } else {
+      setOfflineBannerVisible(false);
+    }
+  }, [isOnline]);
+
+  // Initialize IndexedDB for offline caching
+  useEffect(() => {
+    localDB.initialize();
+  }, []);
 
   // Load lands from API
   const loadLands = async () => {
@@ -874,7 +1006,12 @@ export function ModernAIChatInterface() {
         m.id === userMessage.id ? { ...m, status: 'sent' } : m
       ));
 
-      // Add AI response
+      // Add AI response with contextual prompts
+      const contextualPrompts = generateContextualPrompts(data.response);
+      const finalSuggestions = data.quickReplies?.length > 0 
+        ? data.quickReplies 
+        : contextualPrompts;
+
       const assistantMessage: Message = {
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -882,7 +1019,7 @@ export function ModernAIChatInterface() {
         timestamp: new Date(),
         landId: selectedLand?.id,
         landName: selectedLand?.name,
-        suggestions: data.quickReplies,
+        suggestions: finalSuggestions,
         status: 'sent'
       };
 
@@ -1012,14 +1149,65 @@ export function ModernAIChatInterface() {
         title: 'KisanShakti AI Advice',
         text: content
       }).catch(() => {
-        // If share fails, fallback to copy
         handleCopy(content);
       });
     } else {
-      // Fallback to copy if share is not supported
       handleCopy(content);
       toast({ 
         description: '✅ Copied! Share it with others.',
+        duration: 2000
+      });
+    }
+  };
+
+  // Handle save advice to local storage
+  const handleSave = async (content: string) => {
+    try {
+      const { session } = useAuthStore.getState();
+      if (!session?.farmerId) return;
+
+      // Save to IndexedDB using saveFarmerAlert
+      await localDB.saveFarmerAlert({
+        id: crypto.randomUUID(),
+        farmer_id: session.farmerId,
+        tenant_id: session.tenantId,
+        land_id: selectedLand?.id || '',
+        title: 'Saved AI Advice',
+        message: content,
+        alert_type: 'saved_advice',
+        priority: 'low',
+        ai_reasoning: null,
+        action_required: null,
+        data_source: { source: 'ai_chat', timestamp: new Date().toISOString() },
+        schedule_id: null,
+        is_read: false,
+        is_actioned: false,
+        actioned_at: null,
+        expires_at: null,
+        created_at: new Date().toISOString()
+      });
+
+      toast({
+        description: '🪴 Advice saved successfully!',
+        duration: 2000
+      });
+    } catch (error) {
+      console.error('Error saving advice:', error);
+      toast({
+        description: '❌ Failed to save advice',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  // Handle ask again (re-prompt)
+  const handleAskAgain = (content: string) => {
+    // Extract the last user message that led to this response
+    const lastUserMsg = messages.filter(m => m.role === 'user').pop();
+    if (lastUserMsg) {
+      sendMessage(lastUserMsg.content);
+      toast({
+        description: '🔄 Re-asking your question...',
         duration: 2000
       });
     }
@@ -1030,8 +1218,22 @@ export function ModernAIChatInterface() {
 
   return (
     <div className="flex flex-col h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950">
+      {/* Offline Banner */}
+      <AnimatePresence>
+        {offlineBannerVisible && (
+          <motion.div
+            initial={{ y: -50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -50, opacity: 0 }}
+            className="bg-amber-500 text-white px-4 py-2 text-center text-sm font-medium"
+          >
+            📵 You are offline — messages will sync when connected
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Enhanced Sticky Header */}
-      <motion.div 
+      <motion.div
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-md border-b border-gray-200/50 dark:border-gray-700/50 px-3 py-2 sticky top-0 z-40"
@@ -1197,6 +1399,8 @@ export function ModernAIChatInterface() {
                 onSpeak={handleSpeak}
                 onCopy={handleCopy}
                 onShare={handleShare}
+                onSave={handleSave}
+                onAskAgain={handleAskAgain}
                 isSpeaking={isSpeaking && speakingMessageId === message.id}
                 fontSize={fontSize}
               />
@@ -1413,14 +1617,14 @@ export function ModernAIChatInterface() {
           <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
-            onClick={() => {
-              if (inputMessage.trim()) {
-                sendMessage();
-              } else if (isSpeechSupported) {
-                toggleListening();
-              }
-            }}
-            disabled={isLoading}
+              onClick={() => {
+                if (inputMessage.trim()) {
+                  sendMessage();
+                } else if (isSpeechSupported) {
+                  toggleListening();
+                }
+              }}
+              disabled={isLoading || (!isOnline && !inputMessage.trim())}
             className={cn(
               "p-3 rounded-full transition-all shadow-lg",
               inputMessage.trim() || isListening
