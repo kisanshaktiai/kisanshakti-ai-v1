@@ -97,7 +97,7 @@ class NotificationService {
   }
 
   private async saveSubscription(userId: string, subscription: any) {
-    // Store in localStorage as primary storage
+    // Store in localStorage as backup
     const subscriptions = this.getStoredSubscriptions();
     subscriptions[userId] = {
       endpoint: subscription.endpoint,
@@ -106,8 +106,32 @@ class NotificationService {
     };
     localStorage.setItem('pushSubscriptions', JSON.stringify(subscriptions));
     
-    // TODO: Save to database when push_subscriptions table is created
-    console.log('Subscription saved to localStorage for user:', userId);
+    // Save to database
+    try {
+      // Get tenant_id from auth session or use default
+      const { data: { session } } = await supabase.auth.getSession();
+      const tenantId = session?.user?.user_metadata?.tenant_id || '00000000-0000-0000-0000-000000000000';
+      
+      const { error } = await supabase.from('push_subscriptions').upsert({
+        tenant_id: tenantId,
+        farmer_id: userId,
+        endpoint: subscription.endpoint,
+        p256dh_key: subscription.keys.p256dh,
+        auth_key: subscription.keys.auth,
+        user_agent: navigator.userAgent,
+        is_active: true
+      }, {
+        onConflict: 'farmer_id,endpoint'
+      });
+      
+      if (error) {
+        console.error('Error saving subscription to database:', error);
+      } else {
+        console.log('Subscription saved to database for user:', userId);
+      }
+    } catch (err) {
+      console.error('Failed to save subscription:', err);
+    }
   }
 
   private async removeSubscription(userId: string) {
@@ -116,8 +140,21 @@ class NotificationService {
     delete subscriptions[userId];
     localStorage.setItem('pushSubscriptions', JSON.stringify(subscriptions));
     
-    // TODO: Remove from database when push_subscriptions table is created
-    console.log('Subscription removed from localStorage for user:', userId);
+    // Remove from database
+    try {
+      const { error } = await supabase
+        .from('push_subscriptions')
+        .update({ is_active: false })
+        .eq('farmer_id', userId);
+      
+      if (error) {
+        console.error('Error removing subscription from database:', error);
+      } else {
+        console.log('Subscription removed from database for user:', userId);
+      }
+    } catch (err) {
+      console.error('Failed to remove subscription:', err);
+    }
   }
 
   private getStoredSubscriptions(): Record<string, any> {

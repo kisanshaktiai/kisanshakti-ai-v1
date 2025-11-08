@@ -1182,6 +1182,93 @@ export type Database = {
         }
         Relationships: []
       }
+      alert_notifications: {
+        Row: {
+          alert_type: string
+          chat_message_id: string | null
+          clicked_at: string | null
+          created_at: string
+          data: Json | null
+          farmer_id: string
+          id: string
+          land_id: string | null
+          message: string
+          priority: string
+          read_at: string | null
+          sent_at: string
+          tenant_id: string
+          title: string
+        }
+        Insert: {
+          alert_type: string
+          chat_message_id?: string | null
+          clicked_at?: string | null
+          created_at?: string
+          data?: Json | null
+          farmer_id: string
+          id?: string
+          land_id?: string | null
+          message: string
+          priority?: string
+          read_at?: string | null
+          sent_at?: string
+          tenant_id: string
+          title: string
+        }
+        Update: {
+          alert_type?: string
+          chat_message_id?: string | null
+          clicked_at?: string | null
+          created_at?: string
+          data?: Json | null
+          farmer_id?: string
+          id?: string
+          land_id?: string | null
+          message?: string
+          priority?: string
+          read_at?: string | null
+          sent_at?: string
+          tenant_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "alert_notifications_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "alert_notifications_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "alert_notifications_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "alert_notifications_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "alert_notifications_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       analytics_reports: {
         Row: {
           end_date: string
@@ -13297,6 +13384,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      push_subscriptions: {
+        Row: {
+          auth_key: string
+          created_at: string
+          endpoint: string
+          farmer_id: string
+          id: string
+          is_active: boolean
+          p256dh_key: string
+          tenant_id: string
+          updated_at: string
+          user_agent: string | null
+        }
+        Insert: {
+          auth_key: string
+          created_at?: string
+          endpoint: string
+          farmer_id: string
+          id?: string
+          is_active?: boolean
+          p256dh_key: string
+          tenant_id: string
+          updated_at?: string
+          user_agent?: string | null
+        }
+        Update: {
+          auth_key?: string
+          created_at?: string
+          endpoint?: string
+          farmer_id?: string
+          id?: string
+          is_active?: boolean
+          p256dh_key?: string
+          tenant_id?: string
+          updated_at?: string
+          user_agent?: string | null
+        }
+        Relationships: []
       }
       rate_limits: {
         Row: {

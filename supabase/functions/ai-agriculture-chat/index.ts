@@ -498,8 +498,25 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
         }
       });
       
-    if (aiMsgError) {
+     if (aiMsgError) {
       console.error('Error saving AI response:', aiMsgError);
+    }
+    
+    // Detect critical alerts and send push notifications
+    const isCritical = detectCriticalAlert(aiMessage, sectionTags);
+    if (isCritical.shouldNotify) {
+      // Send push notification in background (don't await)
+      EdgeRuntime.waitUntil(
+        sendCriticalAlert(
+          supabase,
+          finalTenantId,
+          finalFarmerId,
+          isCritical,
+          aiMessage,
+          landId,
+          currentSessionId
+        )
+      );
     }
     
     // Update session activity
@@ -587,6 +604,98 @@ function extractSectionTags(message: string): string[] {
   if (lowerMsg.includes('income') || lowerMsg.includes('yield')) tags.push('income_optimization');
   
   return [...new Set(tags)]; // Remove duplicates
+}
+
+// Detect if message contains critical alerts
+function detectCriticalAlert(message: string, sectionTags: string[]) {
+  const lowerMsg = message.toLowerCase();
+  
+  // Critical keywords for different alert types
+  const criticalPatterns = {
+    pest: {
+      keywords: ['pest attack', 'pest infestation', 'disease outbreak', 'immediately spray', 'urgent', 'critical'],
+      priority: 'critical',
+      type: 'pest'
+    },
+    weather: {
+      keywords: ['heavy rain', 'storm', 'drought', 'extreme heat', 'frost', 'weather warning', 'climate alert'],
+      priority: 'high',
+      type: 'weather'
+    },
+    pesticide: {
+      keywords: ['apply pesticide', 'spray immediately', 'fungicide', 'insecticide', 'urgent treatment'],
+      priority: 'high',
+      type: 'critical_recommendation'
+    },
+    fertilizer: {
+      keywords: ['fertilizer shortage', 'nutrient deficiency', 'immediate application'],
+      priority: 'medium',
+      type: 'critical_recommendation'
+    }
+  };
+  
+  // Check for critical patterns
+  for (const [category, pattern] of Object.entries(criticalPatterns)) {
+    const hasKeyword = pattern.keywords.some(kw => lowerMsg.includes(kw));
+    const hasTag = sectionTags.includes(category) || sectionTags.includes(pattern.type);
+    
+    if (hasKeyword || (hasTag && pattern.priority === 'critical')) {
+      // Extract title from first 100 characters
+      const titleMatch = message.match(/^[👨‍🌾🌾🟢🟡🔴🟣\s]*(.*?)[\n\r]/);
+      const title = titleMatch ? titleMatch[1].trim() : 'Critical Agricultural Alert';
+      
+      return {
+        shouldNotify: true,
+        alertType: pattern.type,
+        priority: pattern.priority,
+        title: title.substring(0, 50),
+        category
+      };
+    }
+  }
+  
+  return { shouldNotify: false };
+}
+
+// Send critical alert push notification
+async function sendCriticalAlert(
+  supabase: any,
+  tenantId: string,
+  farmerId: string,
+  alertInfo: any,
+  message: string,
+  landId: string | undefined,
+  chatMessageId: string
+) {
+  try {
+    console.log('Sending critical alert notification:', alertInfo);
+    
+    // Extract summary (first 200 chars or first section)
+    let summary = message.substring(0, 200).trim();
+    if (summary.length === 200) summary += '...';
+    
+    // Call push notification function
+    await supabase.functions.invoke('send-push-notification', {
+      body: {
+        farmerIds: [farmerId],
+        title: `🚨 ${alertInfo.title}`,
+        message: summary,
+        alertType: alertInfo.alertType,
+        priority: alertInfo.priority,
+        data: {
+          category: alertInfo.category,
+          chatMessageId
+        },
+        landId,
+        chatMessageId
+      }
+    });
+    
+    console.log('Critical alert notification sent successfully');
+  } catch (error) {
+    console.error('Failed to send critical alert:', error);
+    // Don't throw - notification failure shouldn't break the chat
+  }
 }
 
 function generateQuickReplies(lastMessage: string): string[] {
