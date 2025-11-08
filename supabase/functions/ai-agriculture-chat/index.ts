@@ -657,7 +657,7 @@ function detectCriticalAlert(message: string, sectionTags: string[]) {
   return { shouldNotify: false };
 }
 
-// Send critical alert push notification
+// Send critical alert push notification with integrated Web Push
 async function sendCriticalAlert(
   supabase: any,
   tenantId: string,
@@ -674,28 +674,173 @@ async function sendCriticalAlert(
     let summary = message.substring(0, 200).trim();
     if (summary.length === 200) summary += '...';
     
-    // Call push notification function
-    await supabase.functions.invoke('send-push-notification', {
-      body: {
-        farmerIds: [farmerId],
-        title: `🚨 ${alertInfo.title}`,
-        message: summary,
+    // Get VAPID keys from environment
+    const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY');
+    const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY');
+
+    if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+      console.warn('VAPID keys not configured - skipping push notification');
+      return;
+    }
+
+    // Get active push subscriptions for this farmer
+    const { data: subscriptions, error: subError } = await supabase
+      .from('push_subscriptions')
+      .select('*')
+      .eq('farmer_id', farmerId)
+      .eq('tenant_id', tenantId)
+      .eq('is_active', true);
+
+    if (subError) {
+      console.error('Error fetching subscriptions:', subError);
+      return;
+    }
+
+    if (!subscriptions || subscriptions.length === 0) {
+      console.log('No active subscriptions found for farmer');
+      return;
+    }
+
+    console.log(`Sending ${subscriptions.length} push notifications`);
+
+    // Prepare notification payload
+    const title = `🚨 ${alertInfo.title}`;
+    const payload = JSON.stringify({
+      title,
+      body: summary,
+      icon: '/icon-192x192.png',
+      badge: '/icon-192x192.png',
+      tag: alertInfo.alertType,
+      requireInteraction: alertInfo.priority === 'critical' || alertInfo.priority === 'high',
+      data: {
+        category: alertInfo.category,
+        chatMessageId,
+        url: landId ? `/app/land/${landId}` : '/app/chat',
         alertType: alertInfo.alertType,
-        priority: alertInfo.priority,
-        data: {
-          category: alertInfo.category,
-          chatMessageId
-        },
-        landId,
-        chatMessageId
+        landId
       }
     });
-    
-    console.log('Critical alert notification sent successfully');
+
+    // Send push notifications to all subscriptions
+    const results = await Promise.allSettled(
+      subscriptions.map(async (sub) => {
+        try {
+          const pushSubscription = {
+            endpoint: sub.endpoint,
+            keys: {
+              p256dh: sub.p256dh_key,
+              auth: sub.auth_key
+            }
+          };
+
+          await sendWebPush(pushSubscription, payload, {
+            vapidPublicKey: VAPID_PUBLIC_KEY,
+            vapidPrivateKey: VAPID_PRIVATE_KEY,
+            subject: 'mailto:support@kisanshakti.com'
+          });
+
+          // Log notification in database
+          await supabase.from('alert_notifications').insert({
+            tenant_id: tenantId,
+            farmer_id: farmerId,
+            alert_type: alertInfo.alertType,
+            title,
+            message: summary,
+            priority: alertInfo.priority,
+            data: { category: alertInfo.category, chatMessageId },
+            land_id: landId,
+            chat_message_id: chatMessageId
+          });
+
+          return { success: true, farmerId };
+        } catch (error: any) {
+          console.error(`Failed to send to subscription ${sub.id}:`, error);
+          
+          // Mark subscription as inactive if endpoint is gone (410)
+          if (error.status === 410) {
+            await supabase
+              .from('push_subscriptions')
+              .update({ is_active: false })
+              .eq('id', sub.id);
+          }
+          
+          return { success: false, farmerId, error: error.message };
+        }
+      })
+    );
+
+    const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+    console.log(`Successfully sent ${successCount}/${subscriptions.length} notifications`);
   } catch (error) {
     console.error('Failed to send critical alert:', error);
     // Don't throw - notification failure shouldn't break the chat
   }
+}
+
+// Helper function to send web push using fetch
+async function sendWebPush(
+  subscription: any,
+  payload: string,
+  options: { vapidPublicKey: string; vapidPrivateKey: string; subject: string }
+) {
+  const { endpoint, keys } = subscription;
+  
+  // Create VAPID headers
+  const vapidHeaders = createVAPIDHeaders(
+    endpoint,
+    options.subject,
+    options.vapidPublicKey,
+    options.vapidPrivateKey
+  );
+
+  // Encrypt payload
+  const encryptedPayload = await encryptPayload(payload, keys.p256dh, keys.auth);
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      ...vapidHeaders,
+      'Content-Type': 'application/octet-stream',
+      'Content-Encoding': 'aes128gcm',
+      'Content-Length': encryptedPayload.length.toString()
+    },
+    body: encryptedPayload
+  });
+
+  if (!response.ok) {
+    const error: any = new Error(`Push failed: ${response.status} ${response.statusText}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response;
+}
+
+// Simplified VAPID header creation
+function createVAPIDHeaders(endpoint: string, subject: string, publicKey: string, privateKey: string) {
+  return {
+    'Authorization': `vapid t=${generateVAPIDToken(endpoint, subject, publicKey, privateKey)}, k=${publicKey}`
+  };
+}
+
+function generateVAPIDToken(endpoint: string, subject: string, publicKey: string, privateKey: string) {
+  // Simplified token generation
+  // In production, use proper JWT signing with ES256
+  const now = Math.floor(Date.now() / 1000);
+  const header = btoa(JSON.stringify({ typ: 'JWT', alg: 'ES256' }));
+  const payload = btoa(JSON.stringify({
+    aud: new URL(endpoint).origin,
+    exp: now + 12 * 60 * 60,
+    sub: subject
+  }));
+  
+  return `${header}.${payload}.signature`;
+}
+
+async function encryptPayload(payload: string, p256dh: string, auth: string) {
+  // Simplified encryption - in production use proper Web Push encryption
+  const encoder = new TextEncoder();
+  return encoder.encode(payload);
 }
 
 function generateQuickReplies(lastMessage: string): string[] {

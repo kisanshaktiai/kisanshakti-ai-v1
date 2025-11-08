@@ -29,6 +29,3 @@ verify_jwt = true
 
 [functions.ai-marketing-insights]
 verify_jwt = true
-
-[functions.send-push-notification]
-verify_jwt = true
