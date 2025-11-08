@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { localDB } from '@/services/localDB';
+import { WaveformVisualizer } from './WaveformVisualizer';
 
 // Crop to Emoji Mapping
 const cropEmojiMap: Record<string, string> = {
@@ -691,6 +692,7 @@ export function ModernAIChatInterface() {
   const [showFontControl, setShowFontControl] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [offlineBannerVisible, setOfflineBannerVisible] = useState(false);
+  const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   
   // Persistent session ID management
   const [sessionId, setSessionId] = useState<string>(() => {
@@ -718,6 +720,20 @@ export function ModernAIChatInterface() {
     rate: 1.0,
     pitch: 1.0
   });
+
+  // Get audio stream for waveform visualization
+  useEffect(() => {
+    if (isListening) {
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => setAudioStream(stream))
+        .catch(err => console.error('Error accessing microphone:', err));
+    } else {
+      if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
+        setAudioStream(null);
+      }
+    }
+  }, [isListening, audioStream]);
 
   // Persist session ID
   useEffect(() => {
@@ -1552,8 +1568,11 @@ export function ModernAIChatInterface() {
         )}
       </AnimatePresence>
 
+      {/* Waveform Visualizer */}
+      <WaveformVisualizer isListening={isListening} stream={audioStream} />
+
       {/* Enhanced WhatsApp-style Floating Input Dock */}
-      <motion.div 
+      <motion.div
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-md border-t border-gray-200/50 dark:border-gray-700/50 px-3 py-3"
