@@ -28,7 +28,6 @@ import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { landsApi } from '@/services/landsApi';
 import { useWeather } from '@/hooks/useWeather';
-import { useRealtimeData } from '@/hooks/useRealtimeData';
 
 interface FeatureCard {
   title: string;
@@ -51,10 +50,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const { currentWeather } = useWeather();
 
-  // Enable real-time updates for lands
-  useRealtimeData({ tables: ['lands'], enabled: !!user?.id });
-
   // Fetch lands data
+  // Note: Real-time updates are handled globally in App.tsx via useGlobalRealtimeSync()
   useEffect(() => {
     const fetchLands = async () => {
       if (!user?.id) return;
