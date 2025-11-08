@@ -66,28 +66,24 @@ serve(async (req) => {
       }
     }
 
-    // Prepare boundary polygon and center point
-    let boundaryPolygon = null;
-    let centerPoint = null;
+    // Prepare boundary polygon and center point in WKT format for PostGIS
+    let boundaryPolygonWKT = null;
+    let centerPointWKT = null;
     if (body.boundary && body.boundary.length > 0) {
-      const coordinates = body.boundary.map((point: any) => [point.lng, point.lat]);
-      if (coordinates.length > 0) {
-        coordinates.push(coordinates[0]); // close polygon
-      }
-      boundaryPolygon = {
-        type: 'Polygon',
-        coordinates: [coordinates]
-      };
+      // Create WKT format: POLYGON((lng1 lat1, lng2 lat2, ...))
+      const coordinates = body.boundary.map((point: any) => `${point.lng} ${point.lat}`);
+      // Close the polygon by adding first point at the end
+      coordinates.push(`${body.boundary[0].lng} ${body.boundary[0].lat}`);
+      boundaryPolygonWKT = `POLYGON((${coordinates.join(', ')}))`;
+      
+      // Calculate center point
       const centerLat =
         body.boundary.reduce((sum: number, p: any) => sum + p.lat, 0) /
         body.boundary.length;
       const centerLng =
         body.boundary.reduce((sum: number, p: any) => sum + p.lng, 0) /
         body.boundary.length;
-      centerPoint = {
-        type: 'Point',
-        coordinates: [centerLng, centerLat]
-      };
+      centerPointWKT = `POINT(${centerLng} ${centerLat})`;
     }
 
     // Prepare land data for insertion
@@ -128,12 +124,12 @@ serve(async (req) => {
       area_guntas: body.area_guntas || null,
       area_sqft: body.area_sqft || null,
 
-      // Boundary info
-      boundary_polygon_old: boundaryPolygon,
-      center_point_old: centerPoint,
-      boundary_method: boundaryPolygon ? 'gps_points' : null,
-      gps_accuracy_meters: boundaryPolygon ? 10 : null,
-      gps_recorded_at: boundaryPolygon ? new Date().toISOString() : null,
+      // Boundary info (WKT format for PostGIS compatibility)
+      boundary_polygon_old: boundaryPolygonWKT,
+      center_point_old: centerPointWKT,
+      boundary_method: boundaryPolygonWKT ? 'gps_points' : null,
+      gps_accuracy_meters: boundaryPolygonWKT ? 10 : null,
+      gps_recorded_at: boundaryPolygonWKT ? new Date().toISOString() : null,
 
       // Status and timestamps
       is_active: true,
