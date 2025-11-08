@@ -73,13 +73,16 @@ export function useSchedules(landId?: string) {
         console.log('🌐 [useSchedules] Online - fetching from API FIRST');
         try {
           // CRITICAL: Wait for headers to be set before making API calls
-          const { waitForHeaders } = await import('@/integrations/supabase/client');
+          const { waitForHeaders, supabaseWithAuth } = await import('@/integrations/supabase/client');
           console.log('⏳ [useSchedules] Waiting for headers...');
           await waitForHeaders();
           console.log('✅ [useSchedules] Headers ready, proceeding with API call');
           console.log('🔐 [useSchedules] Fetching with farmer_id:', user.id, 'tenant_id:', user.tenantId);
           
-          let query = supabase
+          // Use supabaseWithAuth to include custom headers for RLS
+          const authClient = supabaseWithAuth(user.id, user.tenantId);
+          
+          let query = authClient
             .from('crop_schedules')
             .select('*')
             .eq('is_active', true)
