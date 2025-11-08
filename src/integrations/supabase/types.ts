@@ -21046,6 +21046,36 @@ export type Database = {
       }
       gettransactionid: { Args: never; Returns: unknown }
       has_tenant_access: { Args: { check_tenant_id: string }; Returns: boolean }
+      insert_land_with_geometry: {
+        Args: {
+          p_area_acres: number
+          p_area_guntas?: number
+          p_area_sqft?: number
+          p_boundary_wkt?: string
+          p_center_wkt?: string
+          p_cultivation_date?: string
+          p_current_crop?: string
+          p_district?: string
+          p_district_id?: string
+          p_farmer_id: string
+          p_irrigation_type?: string
+          p_last_harvest_date?: string
+          p_name: string
+          p_ownership_type: string
+          p_previous_crop?: string
+          p_soil_type?: string
+          p_state?: string
+          p_state_id?: string
+          p_survey_number?: string
+          p_taluka?: string
+          p_taluka_id?: string
+          p_tenant_id: string
+          p_village?: string
+          p_village_id?: string
+          p_water_source?: string
+        }
+        Returns: Json
+      }
       is_authenticated_admin: { Args: never; Returns: boolean }
       is_bootstrap_completed: { Args: never; Returns: boolean }
       is_bootstrap_required: { Args: never; Returns: boolean }
