@@ -46,7 +46,7 @@ export default function Profile() {
 
   const handleLogout = async () => {
     await logout();
-    navigate('/login');
+    navigate('/auth');
   };
 
   const handleEditProfile = () => {
@@ -116,10 +116,11 @@ export default function Profile() {
   const profileCompletion = calculateProfileCompletion();
 
   return (
-    <div className="p-4 space-y-6 pb-20 animate-fade-in">
-      {/* Sync Status Card */}
-      <SyncStatus />
-      {/* Header Section */}
+    <div className="h-full overflow-y-auto">
+      <div className="p-4 space-y-6 pb-24 animate-fade-in">
+        {/* Sync Status Card */}
+        <SyncStatus />
+        {/* Header Section */}
       <div className="relative">
         <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-primary/10 rounded-2xl blur-2xl" />
         <Card className="relative border-0 bg-gradient-to-br from-card to-card/95 shadow-xl">
@@ -433,6 +434,7 @@ export default function Profile() {
           <LogOut className="w-4 h-4 mr-2" />
           {t('auth.logout')}
         </Button>
+      </div>
       </div>
     </div>
   );
