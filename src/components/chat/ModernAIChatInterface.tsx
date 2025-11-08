@@ -25,6 +25,67 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 
+// Helper function to render markdown content
+const renderMarkdown = (text: string): React.ReactNode => {
+  // Simple markdown parser for common patterns
+  let content = text;
+  
+  // Split by newlines and process each line
+  const lines = content.split('\n');
+  const elements: React.ReactNode[] = [];
+  
+  lines.forEach((line, lineIndex) => {
+    // Headers (## Header)
+    if (line.startsWith('## ')) {
+      elements.push(
+        <h2 key={lineIndex} className="text-lg font-bold mt-4 mb-2 first:mt-0">
+          {line.replace('## ', '')}
+        </h2>
+      );
+      return;
+    }
+    
+    // Bold text with emojis (🟢 **Text**)
+    let processedLine = line;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    
+    // Match emoji + bold patterns or just bold
+    const boldRegex = /\*\*(.+?)\*\*/g;
+    let match;
+    
+    while ((match = boldRegex.exec(processedLine)) !== null) {
+      // Add text before match
+      if (match.index > lastIndex) {
+        parts.push(processedLine.slice(lastIndex, match.index));
+      }
+      // Add bold text
+      parts.push(<strong key={match.index} className="font-semibold">{match[1]}</strong>);
+      lastIndex = match.index + match[0].length;
+    }
+    
+    // Add remaining text
+    if (lastIndex < processedLine.length) {
+      parts.push(processedLine.slice(lastIndex));
+    }
+    
+    // Empty lines
+    if (line.trim() === '') {
+      elements.push(<br key={lineIndex} />);
+      return;
+    }
+    
+    // Regular lines with processed bold
+    elements.push(
+      <div key={lineIndex} className="my-1.5">
+        {parts.length > 0 ? parts : line}
+      </div>
+    );
+  });
+  
+  return <div className="space-y-0.5">{elements}</div>;
+};
+
 interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
@@ -232,7 +293,7 @@ const LandWelcomeCard = ({ land }: { land: Land }) => (
   </motion.div>
 );
 
-// Enhanced Message Bubble Component
+// Enhanced Message Bubble Component with Modern 2030 Design
 const MessageBubble = ({ 
   message, 
   onFeedback, 
@@ -252,10 +313,10 @@ const MessageBubble = ({
 }) => {
   const isUser = message.role === 'user';
   const [expanded, setExpanded] = useState(false);
-  const shouldTruncate = message.content.length > 300;
+  const shouldTruncate = message.content.length > 500;
   const displayContent = expanded || !shouldTruncate 
     ? message.content 
-    : message.content.slice(0, 300) + '...';
+    : message.content.slice(0, 500) + '...';
 
   return (
     <motion.div
@@ -263,7 +324,7 @@ const MessageBubble = ({
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ type: "spring", stiffness: 300, damping: 25 }}
       className={cn(
-        "flex gap-3 px-4 py-2 group",
+        "flex gap-2 px-3 py-2 group",
         isUser ? "flex-row-reverse" : "flex-row"
       )}
     >
@@ -273,52 +334,59 @@ const MessageBubble = ({
           initial={{ scale: 0 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.1, type: "spring" }}
+          className="flex-shrink-0 mt-1"
         >
-          <Avatar className="w-8 h-8 ring-2 ring-primary/20">
-            <AvatarFallback className="bg-gradient-to-br from-primary to-primary-600">
-              <Bot className="w-4 h-4 text-white" />
+          <Avatar className="w-9 h-9 ring-2 ring-primary/10 shadow-md">
+            <AvatarFallback className="bg-gradient-to-br from-emerald-500 to-green-600">
+              <Bot className="w-5 h-5 text-white" />
             </AvatarFallback>
           </Avatar>
         </motion.div>
       )}
 
-      {/* Message Content */}
+      {/* Message Content Container */}
       <div className={cn(
-        "max-w-[75%] space-y-2",
+        "flex flex-col gap-2 max-w-[85%] min-w-[200px]",
         isUser && "items-end"
       )}>
+        {/* Message Bubble */}
         <motion.div
-          whileHover={{ scale: 1.01 }}
+          whileHover={{ scale: 1.005 }}
           className={cn(
-            "relative px-4 py-3 rounded-2xl",
-            "shadow-md hover:shadow-lg transition-all duration-300",
+            "relative px-4 py-3 rounded-3xl shadow-lg",
+            "transition-all duration-300",
             isUser ? [
-              "rounded-tr-sm bg-gradient-to-br from-primary to-primary-600 text-white",
+              "rounded-tr-md bg-gradient-to-br from-primary via-primary-600 to-primary-700",
+              "text-white shadow-primary/20"
             ] : [
-              "rounded-tl-sm bg-white/90 dark:bg-gray-800/90 backdrop-blur-md",
-              "border border-gray-200/50 dark:border-gray-700/50",
-              message.status === 'sent' && "ring-2 ring-primary/20 animate-pulse-once"
+              "rounded-tl-md bg-gradient-to-br from-white to-gray-50",
+              "dark:from-gray-800 dark:to-gray-850",
+              "border border-gray-100 dark:border-gray-700/50",
+              "shadow-gray-200/50 dark:shadow-gray-900/50"
             ]
           )}
-          style={{ fontSize: `${fontSize}px` }}
+          style={{ fontSize: `${fontSize}px`, lineHeight: '1.6' }}
         >
+          {/* Content with Markdown Rendering */}
           <div className={cn(
-            "break-words",
-            !isUser && "text-gray-800 dark:text-gray-200"
+            "break-words whitespace-pre-wrap",
+            !isUser && "text-gray-800 dark:text-gray-100"
           )}>
-            {displayContent}
+            {isUser ? displayContent : renderMarkdown(displayContent)}
           </div>
 
           {shouldTruncate && (
-            <button
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={() => setExpanded(!expanded)}
               className={cn(
-                "mt-2 text-xs font-medium",
-                isUser ? "text-white/80 hover:text-white" : "text-primary hover:text-primary-600"
+                "mt-3 text-xs font-semibold underline",
+                isUser ? "text-white/90" : "text-primary"
               )}
             >
-              {expanded ? 'Show less' : 'Read more'}
-            </button>
+              {expanded ? '↑ Show less' : '↓ Read more'}
+            </motion.button>
           )}
 
           {/* Attachments */}
@@ -327,18 +395,18 @@ const MessageBubble = ({
               {message.attachments.map((attachment, idx) => (
                 <motion.div 
                   key={idx} 
-                  initial={{ opacity: 0, scale: 0.8 }}
+                  initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
-                  className="rounded-lg overflow-hidden"
+                  className="rounded-2xl overflow-hidden shadow-md"
                 >
                   {attachment.type === 'image' ? (
                     <img 
                       src={attachment.url} 
                       alt={attachment.name}
-                      className="max-w-full rounded-lg"
+                      className="max-w-full rounded-2xl"
                     />
                   ) : (
-                    <div className="flex items-center gap-2 p-2 bg-white/10 rounded">
+                    <div className="flex items-center gap-2 p-3 bg-white/20 rounded-xl">
                       <Paperclip className="w-4 h-4" />
                       <span className="text-xs">{attachment.name}</span>
                     </div>
@@ -349,93 +417,113 @@ const MessageBubble = ({
           )}
         </motion.div>
 
-        {/* Timestamp and Actions */}
+        {/* Timestamp */}
         <div className={cn(
-          "flex items-center gap-2 px-1",
+          "flex items-center gap-1.5 px-2",
           isUser ? "justify-end" : "justify-start"
         )}>
-          <span className="text-xs text-gray-500 dark:text-gray-400">
+          <span className="text-[10px] text-gray-400 dark:text-gray-500 font-medium">
             {format(message.timestamp, 'h:mm a')}
           </span>
           {message.status === 'sent' && isUser && (
-            <Check className="w-3 h-3 text-gray-500" />
-          )}
-          
-          {/* Enhanced Message Actions for Assistant */}
-          {!isUser && (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-              className="flex items-center gap-1 ml-2"
-            >
-              {/* Read Aloud Button - Always Visible */}
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => onSpeak(message.id, message.content)}
-                className={cn(
-                  "p-1.5 rounded-full transition-all",
-                  isSpeaking 
-                    ? "bg-primary text-white" 
-                    : "bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600"
-                )}
-              >
-                {isSpeaking ? (
-                  <PauseCircle className="w-4 h-4" />
-                ) : (
-                  <PlayCircle className="w-4 h-4" />
-                )}
-              </motion.button>
-
-              {/* Other actions */}
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <motion.button
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => onCopy(message.content)}
-                  className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
-                  title="Copy"
-                >
-                  <Copy className="w-3 h-3" />
-                </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => onShare(message.content)}
-                  className="p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700"
-                  title="Share"
-                >
-                  <Share2 className="w-3 h-3" />
-                </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => onFeedback(message.id, 'positive')}
-                  className={cn(
-                    "p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700",
-                    message.feedback === 'positive' && "text-green-600"
-                  )}
-                  title="Like"
-                >
-                  <ThumbsUp className="w-3 h-3" />
-                </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.1 }}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => onFeedback(message.id, 'negative')}
-                  className={cn(
-                    "p-1.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700",
-                    message.feedback === 'negative' && "text-red-600"
-                  )}
-                  title="Dislike"
-                >
-                  <ThumbsDown className="w-3 h-3" />
-                </motion.button>
-              </div>
-            </motion.div>
+            <Check className="w-3 h-3 text-green-500" />
           )}
         </div>
+
+        {/* Action Buttons Below Message - AI Messages Only */}
+        {!isUser && (
+          <motion.div 
+            initial={{ opacity: 0, y: -5 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="flex items-center gap-1.5 px-2"
+          >
+            {/* Read Aloud Button */}
+            <motion.button
+              whileHover={{ scale: 1.1, y: -2 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => onSpeak(message.id, message.content)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-full transition-all text-xs font-medium shadow-sm",
+                isSpeaking 
+                  ? "bg-primary text-white shadow-primary/30" 
+                  : "bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700"
+              )}
+            >
+              {isSpeaking ? (
+                <>
+                  <PauseCircle className="w-3.5 h-3.5" />
+                  <span>Pause</span>
+                </>
+              ) : (
+                <>
+                  <PlayCircle className="w-3.5 h-3.5" />
+                  <span>Read</span>
+                </>
+              )}
+            </motion.button>
+
+            {/* Like Button */}
+            <motion.button
+              whileHover={{ scale: 1.1, y: -2 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => onFeedback(message.id, 'positive')}
+              className={cn(
+                "p-2 rounded-full transition-all shadow-sm",
+                message.feedback === 'positive' 
+                  ? "bg-green-500 text-white" 
+                  : "bg-white dark:bg-gray-800 hover:bg-green-50 dark:hover:bg-green-900/20 border border-gray-200 dark:border-gray-700"
+              )}
+              title="Like"
+            >
+              <ThumbsUp className={cn(
+                "w-3.5 h-3.5",
+                message.feedback === 'positive' && "fill-current"
+              )} />
+            </motion.button>
+
+            {/* Dislike Button */}
+            <motion.button
+              whileHover={{ scale: 1.1, y: -2 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => onFeedback(message.id, 'negative')}
+              className={cn(
+                "p-2 rounded-full transition-all shadow-sm",
+                message.feedback === 'negative' 
+                  ? "bg-red-500 text-white" 
+                  : "bg-white dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/20 border border-gray-200 dark:border-gray-700"
+              )}
+              title="Dislike"
+            >
+              <ThumbsDown className={cn(
+                "w-3.5 h-3.5",
+                message.feedback === 'negative' && "fill-current"
+              )} />
+            </motion.button>
+
+            {/* Copy Button */}
+            <motion.button
+              whileHover={{ scale: 1.1, y: -2 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => onCopy(message.content)}
+              className="p-2 rounded-full bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 transition-all shadow-sm"
+              title="Copy"
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </motion.button>
+
+            {/* Share Button */}
+            <motion.button
+              whileHover={{ scale: 1.1, y: -2 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => onShare(message.content)}
+              className="p-2 rounded-full bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 transition-all shadow-sm"
+              title="Share"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+            </motion.button>
+          </motion.div>
+        )}
       </div>
     </motion.div>
   );
@@ -1120,27 +1208,42 @@ export function ModernAIChatInterface() {
             {isTyping && <TypingIndicator />}
           </AnimatePresence>
 
-          {/* Suggested Replies with Swipeable Carousel */}
-          {messages.length > 0 && messages[messages.length - 1].suggestions && (
+          {/* Enhanced Follow-up Questions Section */}
+          {messages.length > 0 && messages[messages.length - 1].role === 'assistant' && messages[messages.length - 1].suggestions && (
             <motion.div 
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 15 }}
               animate={{ opacity: 1, y: 0 }}
-              className="px-4 py-3"
+              transition={{ delay: 0.3 }}
+              className="px-4 py-4 bg-gradient-to-r from-emerald-50/50 to-green-50/50 dark:from-emerald-900/10 dark:to-green-900/10 rounded-2xl mx-3 mb-2"
             >
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <h4 className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  💬 Would you like to know:
+                </h4>
+              </div>
               <ScrollArea className="w-full">
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2">
                   {messages[messages.length - 1].suggestions!.map((suggestion, idx) => (
                     <motion.button
                       key={idx}
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: idx * 0.05 }}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.4 + (idx * 0.08) }}
+                      whileHover={{ scale: 1.02, x: 4 }}
+                      whileTap={{ scale: 0.98 }}
                       onClick={() => handleQuickAction(suggestion)}
-                      className="px-4 py-2 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all whitespace-nowrap shadow-sm hover:shadow-md"
+                      className="px-4 py-3 rounded-xl bg-white dark:bg-gray-800 border border-emerald-200 dark:border-emerald-800 text-sm font-medium hover:bg-emerald-50 dark:hover:bg-emerald-900/20 hover:border-emerald-300 dark:hover:border-emerald-700 transition-all text-left shadow-sm hover:shadow-md group"
                     >
-                      {suggestion}
+                      <div className="flex items-center gap-2">
+                        <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                          {idx + 1}️⃣
+                        </span>
+                        <span className="flex-1 text-gray-700 dark:text-gray-300 group-hover:text-emerald-700 dark:group-hover:text-emerald-300">
+                          {suggestion}
+                        </span>
+                        <ChevronRight className="w-4 h-4 text-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
                     </motion.button>
                   ))}
                 </div>
