@@ -137,14 +137,54 @@ serve(async (req) => {
       updated_at: new Date().toISOString()
     };
 
-    console.log('Inserting land data:', landData);
+    console.log('Inserting land data:', JSON.stringify(landData, null, 2));
 
-    // Insert land record
-    const { data, error } = await supabase
-      .from('lands')
-      .insert([landData]) // insert expects an array
-      .select()
-      .single();
+    // Insert land record using raw SQL with PostGIS functions for geometry columns
+    let query: any;
+    let data: any;
+    let error: any;
+    
+    if (boundaryPolygonWKT) {
+      // Use raw SQL with ST_GeomFromText for proper geometry insertion
+      const { data: insertData, error: insertError } = await supabase.rpc('insert_land_with_geometry', {
+        p_farmer_id: farmerId,
+        p_tenant_id: tenantId,
+        p_name: body.name,
+        p_ownership_type: body.ownership_type,
+        p_area_acres: body.area_acres,
+        p_survey_number: body.survey_number || null,
+        p_state_id: body.state_id || null,
+        p_state: body.state || null,
+        p_district_id: body.district_id || null,
+        p_district: body.district || null,
+        p_taluka_id: body.taluka_id || null,
+        p_taluka: body.taluka || null,
+        p_village_id: body.village_id || null,
+        p_village: body.village || null,
+        p_soil_type: body.soil_type || null,
+        p_water_source: body.water_source || null,
+        p_irrigation_type: body.irrigation_type || null,
+        p_current_crop: body.current_crop || null,
+        p_previous_crop: body.previous_crop || null,
+        p_cultivation_date: body.cultivation_date || null,
+        p_last_harvest_date: body.last_harvest_date || null,
+        p_area_guntas: body.area_guntas || null,
+        p_area_sqft: body.area_sqft || null,
+        p_boundary_wkt: boundaryPolygonWKT,
+        p_center_wkt: centerPointWKT
+      });
+      data = insertData;
+      error = insertError;
+    } else {
+      // No geometry - use regular insert
+      const { data: insertData, error: insertError } = await supabase
+        .from('lands')
+        .insert([landData])
+        .select()
+        .single();
+      data = insertData;
+      error = insertError;
+    }
 
     if (error) {
       console.error('Error inserting land:', error);
