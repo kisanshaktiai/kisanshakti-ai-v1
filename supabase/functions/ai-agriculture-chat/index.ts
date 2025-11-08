@@ -156,17 +156,66 @@ serve(async (req) => {
     let farmerContext: any = null;
     let weatherContext: any = null;
     
-    let systemPrompt = `You are an expert agricultural advisor providing personalized farming advice in simple, natural language.
-    
-INSTRUCTIONS:
-1. Provide advice specific to Indian farmers
-2. Use simple, practical language that farmers can easily understand
-3. Consider local climate, soil conditions, and seasonal patterns
-4. Give actionable recommendations with specific timings and quantities
-5. Include traditional wisdom along with modern techniques
-6. Be culturally sensitive and consider local farming practices
-7. If discussing pesticides or fertilizers, mention organic alternatives
-8. Provide cost-effective solutions suitable for small farmers`;
+    let systemPrompt = `You are KisanShakti AI, a real-time agricultural expert and crop advisory assistant for Indian farmers.
+Your mission is to help every farmer grow healthier crops, reduce costs, and increase income by 5x through practical, verified, and personalized guidance.
+
+🌾 CORE OBJECTIVE:
+Base your recommendations on land-specific data and provide scientifically verified, economically beneficial advice that is simple to understand.
+
+📋 RESPONSE FORMAT - YOU MUST FOLLOW THIS STRUCTURE:
+
+Start EVERY response with a regional greeting:
+"👨‍🌾 Namaskar [Regional Title] 🙏" where Regional Title is one of: Dada, Bhau, Tai, Kaka (use based on region)
+
+Then provide land context line (if land-specific):
+"🌾 Crop: [Crop Name] | Land: [Size] Acre | Soil: [Type]"
+
+Then provide advice in COLOR-CODED SECTIONS (use these exact markers):
+
+🟢 **Organic Practices**
+- Provide eco-friendly, traditional, and organic farming methods
+- Include quantities calculated for the specific land size
+- Mention Trichoderma, Neem oil, compost applications with exact dosages
+
+🟡 **Fertilizer Schedule**  
+- NPK ratios and application schedules based on crop stage
+- Water-soluble fertilizers if irrigation is available
+- All quantities MUST be calculated based on land size (per acre)
+- Include basal and top-dressing schedules with exact timings
+
+🔴 **Pesticide & Pest Management**  
+- Specific pesticides with exact dosages (ml/L or g/L)
+- Include organic alternatives like sticky traps, light traps
+- Mention timing and frequency of application
+- Always prioritize eco-safe methods first
+
+🟣 **Hormone / Growth Promoters**  
+- Growth regulators like Gibberellic Acid with exact quantities
+- Application timing based on crop growth stage
+- Expected yield improvement percentage
+
+🟢 **Advisory Note**  
+- Next irrigation schedule based on soil moisture
+- Weather-based recommendations
+- Expected yield improvement with specific percentage range
+- One motivational line about income increase
+
+END with: "🌾 Keep growing with KisanShakti AI — your land's best friend!"
+
+⚠️ CRITICAL RULES:
+1. NEVER give random numbers - ALWAYS calculate doses based on land size, soil data, and crop stage
+2. If required data is missing (NDVI, soil NPK, moisture), ask farmer to update land data
+3. Use practical, farmer-friendly language - avoid technical jargon
+4. All recommendations MUST be from Government-approved sources (ICAR, KVK, SAU, IMD, NABARD)
+5. Prioritize organic and cost-effective solutions
+6. Include specific quantities, timings, and schedules - be actionable
+7. Calculate everything based on actual land area provided
+
+🌍 LANGUAGE & TONE:
+- Respectful and motivational
+- Use regional farmer titles (Dada, Bhau, Tai, Kaka)
+- Simple vocabulary that farmers can understand
+- End on an encouraging note about income growth`;
 
     if (landId) {
       const { data: land } = await supabase
@@ -178,20 +227,42 @@ INSTRUCTIONS:
 
       if (land) {
         landDetails = land;
+        
+        // Calculate area in acres
+        const areaInAcres = land.area_acres || 
+                           (land.area_gunta ? (land.area_gunta / 40).toFixed(2) : null) ||
+                           (land.size ? land.size : 'Unknown');
+        
         landContext = {
+          land_id: land.id,
           name: land.name,
-          size: land.size || land.area_gunta,
+          area_acres: areaInAcres,
           soil_type: land.soil_type,
           location: land.location,
           crops: land.crops,
-          water_source: land.water_source
+          current_crop: land.current_crop,
+          water_source: land.water_source,
+          irrigation_type: land.irrigation_type,
+          cultivation_date: land.cultivation_date,
+          soil_npk: land.soil_npk || 'Not available',
+          ndvi_value: land.ndvi_latest || 'Not available',
+          soil_moisture: land.soil_moisture || 'Not available'
         };
         
-        systemPrompt += `\n\nLAND DETAILS:
+        systemPrompt += `\n\n📊 LAND-SPECIFIC CONTEXT (USE THIS DATA FOR CALCULATIONS):
 - Land Name: ${land.name || 'Unknown'}
-- Size: ${land.size || 'Unknown'} acres
+- Size: ${areaInAcres} acres (${land.area_gunta || 'Unknown'} gunta)
 - Soil Type: ${land.soil_type || 'Not specified'}
-- Location: ${land.location || 'Not specified'}`;
+- Current Crop: ${land.current_crop || 'Not specified'}
+- Cultivation Date: ${land.cultivation_date || 'Not specified'}
+- Location: ${land.village || ''}, ${land.district || ''}, ${land.state || 'India'}
+- Water Source: ${land.water_source || 'Not specified'}
+- Irrigation Type: ${land.irrigation_type || 'Not specified'}
+- Soil NPK: ${land.soil_npk || 'Not available - ask farmer to update'}
+- NDVI Value: ${land.ndvi_latest || 'Not available - suggest updating'}
+- Soil Moisture: ${land.soil_moisture || 'Not available'}
+
+⚠️ IMPORTANT: Calculate ALL fertilizer/pesticide doses for ${areaInAcres} acres. Show per-acre calculation.`;
       }
     }
 
@@ -205,8 +276,18 @@ INSTRUCTIONS:
 
     if (farmer) {
       farmerDetails = farmer;
+      
+      // Determine regional title based on state/language
+      let regionalTitle = 'Dada'; // Default
+      const state = farmer.state?.toLowerCase() || '';
+      if (state.includes('maharashtra')) regionalTitle = 'Bhau';
+      else if (state.includes('punjab') || state.includes('haryana')) regionalTitle = 'Veere';
+      else if (state.includes('tamil') || state.includes('kerala')) regionalTitle = 'Anna';
+      else if (state.includes('karnataka')) regionalTitle = 'Avare';
+      
       farmerContext = {
         name: farmer.name,
+        regional_title: regionalTitle,
         village: farmer.village,
         district: farmer.district,
         state: farmer.state,
@@ -215,24 +296,32 @@ INSTRUCTIONS:
         education: farmer.education_level
       };
       
-      systemPrompt += `\n\nFARMER PROFILE:
+      systemPrompt += `\n\n👨‍🌾 FARMER PROFILE:
 You are speaking with ${farmer.name || 'a farmer'}:
+- Regional Title: Use "${regionalTitle}" in your greeting
 - Location: ${farmer.village || 'Unknown village'}, ${farmer.district || 'Unknown district'}, ${farmer.state || 'India'}
 - Total Land: ${farmer.total_land_size || 'Unknown'} acres
 - Experience: ${farmer.farming_experience || 'Not specified'} years
-- Preferred Language: ${farmer.language || language}
-- Adjust your advice based on their experience level and location`;
+- Language: ${farmer.language || language}
+- Adjust advice complexity based on experience: ${farmer.farming_experience > 10 ? 'Experienced farmer - can handle advanced techniques' : 'Provide simple, step-by-step guidance'}`;
     }
     
-    // Add seasonal context
+    // Add seasonal context with crop stage if available
     const currentMonth = new Date().getMonth() + 1;
     const season = currentMonth >= 6 && currentMonth <= 10 ? 'Kharif' : 
                    currentMonth >= 10 || currentMonth <= 3 ? 'Rabi' : 'Zaid';
     
-    systemPrompt += `\n\nCURRENT SEASON: ${season} season
-- Provide season-specific advice
-- Consider typical weather patterns for this time
-- Suggest appropriate crops and activities for this season`;
+    let cropStage = 'Not available';
+    if (landDetails?.cultivation_date) {
+      cropStage = getCropStage(landDetails.cultivation_date);
+    }
+    
+    systemPrompt += `\n\n📅 SEASONAL & CROP CONTEXT:
+- Current Season: ${season} season
+- Crop Growth Stage: ${cropStage}
+${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now() - new Date(landDetails.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))} days` : ''}
+- Provide season-specific and stage-specific advice
+- Consider weather patterns typical for this season in ${farmerDetails?.state || 'this region'}`;
 
     // Prepare messages for OpenAI
     const openAIMessages = [
@@ -285,10 +374,10 @@ You are speaking with ${farmer.name || 'a farmer'}:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini', // Fixed model name
+        model: 'gpt-4o-mini',
         messages: openAIMessages,
-        max_tokens: 1000,
-        temperature: 0.8,
+        max_tokens: 1500, // Increased for detailed structured responses
+        temperature: 0.7, // Slightly lower for more consistent formatting
         stream: false
       }),
     });
@@ -359,6 +448,9 @@ You are speaking with ${farmer.name || 'a farmer'}:
       }
     }
 
+    // Extract section tags from AI response for training data
+    const sectionTags = extractSectionTags(aiMessage);
+    
     // Save AI response with enhanced metadata for training
     const { error: aiMsgError } = await supabase
       .from('ai_chat_messages')
@@ -374,7 +466,15 @@ You are speaking with ${farmer.name || 'a farmer'}:
         word_count: aiMessage ? aiMessage.split(/\s+/).length : 0,
         land_context: landContext,
         weather_context: weatherContext,
-        crop_context: landContext?.crops,
+        crop_context: landContext?.current_crop ? {
+          crop_name: landContext.current_crop,
+          crop_stage: landDetails?.cultivation_date ? getCropStage(landDetails.cultivation_date) : null,
+          days_since_sowing: landDetails?.cultivation_date ? 
+            Math.floor((Date.now() - new Date(landDetails.cultivation_date).getTime()) / (1000 * 60 * 60 * 24)) : 0,
+          soil_npk: landContext?.soil_npk,
+          ndvi_value: landContext?.ndvi_value,
+          soil_moisture: landContext?.soil_moisture
+        } : landContext?.crops,
         location_context: {
           village: farmerDetails?.village,
           district: farmerDetails?.district,
@@ -391,7 +491,10 @@ You are speaking with ${farmer.name || 'a farmer'}:
           ...enhancedMetadata,
           prompt_tokens: aiData.usage?.prompt_tokens,
           completion_tokens: aiData.usage?.completion_tokens,
-          quick_replies: generateQuickReplies(lastUserMessage?.content || '')
+          quick_replies: generateQuickReplies(lastUserMessage?.content || ''),
+          section_tags: sectionTags, // For AI training classification
+          regional_title: farmerContext?.regional_title,
+          land_size_acres: landContext?.area_acres
         }
       });
       
@@ -466,41 +569,79 @@ function getCropStage(cultivationDate: string): string {
   return 'harvest';
 }
 
+function extractSectionTags(message: string): string[] {
+  const tags: string[] = [];
+  
+  if (message.includes('🟢') && message.includes('Organic Practices')) tags.push('organic_practices');
+  if (message.includes('🟡') && message.includes('Fertilizer Schedule')) tags.push('fertilizer_schedule');
+  if (message.includes('🔴') && message.includes('Pesticide')) tags.push('pesticide_management');
+  if (message.includes('🟣') && message.includes('Hormone')) tags.push('growth_promoters');
+  if (message.includes('🟢') && message.includes('Advisory Note')) tags.push('advisory_note');
+  
+  // Content-based classification for training
+  const lowerMsg = message.toLowerCase();
+  if (lowerMsg.includes('irrigation') || lowerMsg.includes('water')) tags.push('irrigation');
+  if (lowerMsg.includes('disease') || lowerMsg.includes('pest')) tags.push('pest_disease');
+  if (lowerMsg.includes('weather') || lowerMsg.includes('rain')) tags.push('weather');
+  if (lowerMsg.includes('market') || lowerMsg.includes('price')) tags.push('market_info');
+  if (lowerMsg.includes('income') || lowerMsg.includes('yield')) tags.push('income_optimization');
+  
+  return [...new Set(tags)]; // Remove duplicates
+}
+
 function generateQuickReplies(lastMessage: string): string[] {
   const lowerMessage = lastMessage.toLowerCase();
   
   if (lowerMessage.includes('disease') || lowerMessage.includes('pest')) {
     return [
-      'Organic pest control methods',
-      'How to identify crop diseases?',
-      'Preventive measures for pests',
-      'Natural remedies'
+      'Show organic pest control',
+      'Disease identification guide',
+      'Preventive spray schedule',
+      'Natural pest remedies'
     ];
   }
   
   if (lowerMessage.includes('weather') || lowerMessage.includes('rain')) {
     return [
-      'Monsoon preparation tips',
-      'Drought management strategies',
-      'Weather-based crop planning',
-      'Rain water harvesting'
+      'Monsoon preparation',
+      'Drought management tips',
+      'Weather-based planning',
+      'Rainwater harvesting'
     ];
   }
   
   if (lowerMessage.includes('fertilizer') || lowerMessage.includes('nutrient')) {
     return [
-      'Organic fertilizer options',
+      'Organic fertilizer guide',
       'Soil testing importance',
-      'NPK ratio explained',
+      'NPK calculation for my land',
       'Composting methods'
     ];
   }
   
-  // Default suggestions
+  if (lowerMessage.includes('irrigation') || lowerMessage.includes('water')) {
+    return [
+      'When to irrigate next?',
+      'Water-saving techniques',
+      'Drip irrigation setup',
+      'Irrigation schedule'
+    ];
+  }
+  
+  if (lowerMessage.includes('yield') || lowerMessage.includes('income')) {
+    return [
+      'How to increase yield?',
+      'Income optimization tips',
+      'Market price prediction',
+      'Cost reduction methods'
+    ];
+  }
+  
+  // Default suggestions focused on 5x income model
   return [
-    'Crop rotation benefits',
-    'Government schemes for farmers',
-    'Modern farming techniques',
-    'Organic farming basics'
+    'Show fertilizer schedule',
+    'Pest management guide',
+    'Increase crop yield',
+    'Government schemes'
   ];
 }

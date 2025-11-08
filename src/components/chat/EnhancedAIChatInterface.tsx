@@ -36,6 +36,11 @@ interface Message {
   isPlaying?: boolean;
   landContext?: any;
   structured?: {
+    greeting?: string;
+    landContext?: string;
+    sections?: Array<{type: string, title: string, content: string, color: string}>;
+    closingMessage?: string;
+    // Legacy format support
     irrigation?: string;
     fertilizer?: string;
     pest?: string;
@@ -356,33 +361,61 @@ export function EnhancedAIChatInterface() {
   };
 
   const parseStructuredResponse = (response: string) => {
-    // Improved parsing to avoid nested info and duplication
-    const structured: any = {};
-    const responseLines = response.split(/[.!?]+/).filter(line => line.trim());
+    // Parse color-coded sections from AI response
+    const structured: any = {
+      greeting: '',
+      landContext: '',
+      sections: [] as Array<{type: string, title: string, content: string, color: string}>,
+      closingMessage: ''
+    };
     
-    responseLines.forEach(line => {
-      const lowerLine = line.toLowerCase();
-      
-      // Extract irrigation info
-      if ((lowerLine.includes('irrigation') || lowerLine.includes('water')) && !structured.irrigation) {
-        structured.irrigation = line.trim();
-      }
-      // Extract fertilizer info
-      else if ((lowerLine.includes('fertilizer') || lowerLine.includes('nutrient')) && !structured.fertilizer) {
-        structured.fertilizer = line.trim();
-      }
-      // Extract pest info
-      else if ((lowerLine.includes('pest') || lowerLine.includes('disease')) && !structured.pest) {
-        structured.pest = line.trim();
-      }
-      // Extract weather info
-      else if ((lowerLine.includes('weather') || lowerLine.includes('rain')) && !structured.weather) {
-        structured.weather = line.trim();
+    // Extract greeting (first line with emoji)
+    const greetingMatch = response.match(/^👨‍🌾.*?🙏/m);
+    if (greetingMatch) {
+      structured.greeting = greetingMatch[0];
+    }
+    
+    // Extract land context line
+    const landContextMatch = response.match(/🌾.*?\|.*?\|.*$/m);
+    if (landContextMatch) {
+      structured.landContext = landContextMatch[0];
+    }
+    
+    // Extract color-coded sections
+    const sectionPatterns = [
+      { emoji: '🟢', keyword: 'Organic Practices', type: 'organic', color: 'green' },
+      { emoji: '🟡', keyword: 'Fertilizer Schedule', type: 'fertilizer', color: 'yellow' },
+      { emoji: '🔴', keyword: 'Pesticide', type: 'pesticide', color: 'red' },
+      { emoji: '🟣', keyword: 'Hormone', type: 'hormone', color: 'purple' },
+      { emoji: '🟢', keyword: 'Advisory Note', type: 'advisory', color: 'blue' }
+    ];
+    
+    sectionPatterns.forEach(pattern => {
+      // More flexible regex to capture section content
+      const regex = new RegExp(`${pattern.emoji}\\s*\\*\\*([^*]+)\\*\\*([^🟢🟡🔴🟣🌾]+)`, 'g');
+      let match;
+      while ((match = regex.exec(response)) !== null) {
+        const title = match[1].trim();
+        const content = match[2].trim();
+        if (title.includes(pattern.keyword) && content) {
+          structured.sections.push({
+            type: pattern.type,
+            title: title,
+            content: content,
+            color: pattern.color
+          });
+        }
       }
     });
     
-    // Only return structured data if we found meaningful content
-    return Object.keys(structured).length > 0 ? structured : undefined;
+    // Extract closing message
+    const closingMatch = response.match(/🌾.*best friend!.*$/m);
+    if (closingMatch) {
+      structured.closingMessage = closingMatch[0];
+    }
+    
+    // Return structured data if we found sections, otherwise return simple structure
+    return structured.sections.length > 0 ? structured : undefined;
   };
 
   const storeMessageForTraining = async (userMessage: Message, aiMessage: Message, land?: any) => {
@@ -805,48 +838,79 @@ export function EnhancedAIChatInterface() {
                   </Button>
                 </div>
                 
-                {/* Message content */}
+                {/* Message content with glass-like effect for AI messages */}
                 <div className={cn(
-                  "rounded-2xl p-3",
+                  "rounded-2xl p-4 backdrop-blur-sm",
                   message.role === 'user' 
-                    ? 'bg-primary text-primary-foreground' 
-                    : 'bg-card border border-border shadow-sm'
+                    ? 'bg-gradient-to-br from-primary to-primary/90 text-primary-foreground shadow-lg' 
+                    : 'bg-gradient-to-br from-card/95 to-card/80 border border-border/50 shadow-md'
                 )}>
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                  
-                  {/* Structured sections for AI responses - using semantic colors */}
-                  {message.role === 'assistant' && message.structured && (
-                    <div className="mt-3 space-y-2">
-                      {message.structured.irrigation && (
-                        <div className="p-2 rounded-lg bg-primary/5 border-l-4 border-primary">
-                          <p className="text-xs font-medium text-primary">💧 {t('chat.irrigation')}</p>
-                          <p className="text-xs mt-1 text-muted-foreground">{message.structured.irrigation}</p>
+                  {/* For AI messages with structured sections */}
+                  {message.role === 'assistant' && message.structured?.sections ? (
+                    <div className="space-y-3">
+                      {/* Greeting */}
+                      {message.structured.greeting && (
+                        <div className="text-base font-semibold text-foreground mb-2 pb-2 border-b border-border/30">
+                          {message.structured.greeting}
                         </div>
                       )}
-                      {message.structured.fertilizer && (
-                        <div className="p-2 rounded-lg bg-secondary/5 border-l-4 border-secondary">
-                          <p className="text-xs font-medium text-secondary">🌱 {t('chat.fertilizer')}</p>
-                          <p className="text-xs mt-1 text-muted-foreground">{message.structured.fertilizer}</p>
+                      
+                      {/* Land Context */}
+                      {message.structured.landContext && (
+                        <div className="text-sm text-muted-foreground mb-3 p-2 rounded-lg bg-muted/20">
+                          {message.structured.landContext}
                         </div>
                       )}
-                      {message.structured.pest && (
-                        <div className="p-2 rounded-lg bg-destructive/5 border-l-4 border-destructive">
-                          <p className="text-xs font-medium text-destructive">🐛 {t('chat.pest')}</p>
-                          <p className="text-xs mt-1 text-muted-foreground">{message.structured.pest}</p>
-                        </div>
-                      )}
-                      {message.structured.weather && (
-                        <div className="p-2 rounded-lg bg-accent/5 border-l-4 border-accent">
-                          <p className="text-xs font-medium text-accent-foreground">☁️ {t('chat.weather')}</p>
-                          <p className="text-xs mt-1 text-muted-foreground">{message.structured.weather}</p>
+                      
+                      {/* Color-coded sections */}
+                      {message.structured.sections.map((section: any, idx: number) => (
+                        <motion.div
+                          key={idx}
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: idx * 0.1 }}
+                          className={cn(
+                            "p-3 rounded-xl backdrop-blur-sm border-l-4",
+                            section.color === 'green' && "bg-green-500/10 border-green-500",
+                            section.color === 'yellow' && "bg-yellow-500/10 border-yellow-500",
+                            section.color === 'red' && "bg-red-500/10 border-red-500",
+                            section.color === 'purple' && "bg-purple-500/10 border-purple-500",
+                            section.color === 'blue' && "bg-blue-500/10 border-blue-500"
+                          )}
+                        >
+                          <p className={cn(
+                            "text-xs font-bold mb-1.5",
+                            section.color === 'green' && "text-green-600 dark:text-green-400",
+                            section.color === 'yellow' && "text-yellow-600 dark:text-yellow-400",
+                            section.color === 'red' && "text-red-600 dark:text-red-400",
+                            section.color === 'purple' && "text-purple-600 dark:text-purple-400",
+                            section.color === 'blue' && "text-blue-600 dark:text-blue-400"
+                          )}>
+                            {section.title}
+                          </p>
+                          <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                            {section.content.split('\n').map((line: string, i: number) => (
+                              <p key={i} className="mb-1">{line}</p>
+                            ))}
+                          </div>
+                        </motion.div>
+                      ))}
+                      
+                      {/* Closing message */}
+                      {message.structured.closingMessage && (
+                        <div className="text-sm font-medium text-primary mt-3 pt-3 border-t border-border/30">
+                          {message.structured.closingMessage}
                         </div>
                       )}
                     </div>
+                  ) : (
+                    /* Regular text message */
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
                   )}
                   
                   {/* Timestamp */}
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-xs opacity-70">
+                  <div className="flex items-center gap-2 mt-3 pt-2 border-t border-border/20">
+                    <span className="text-xs opacity-60">
                       {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>

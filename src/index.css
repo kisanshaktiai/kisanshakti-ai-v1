@@ -107,6 +107,14 @@
     --gradient-danger: linear-gradient(135deg, hsl(0 85% 60%), hsl(38 95% 58%));
     --gradient-cyber: linear-gradient(135deg, hsl(180 100% 45%), hsl(210 100% 56%), hsl(270 75% 60%));
     
+    /* Agricultural Theme Gradients for Chat */
+    --gradient-agri-green: linear-gradient(135deg, hsl(142 76% 45%), hsl(100 70% 50%));
+    --gradient-agri-yellow: linear-gradient(135deg, hsl(45 95% 55%), hsl(38 95% 58%));
+    --gradient-agri-brown: linear-gradient(135deg, hsl(30 45% 45%), hsl(20 55% 35%));
+    --gradient-soil: linear-gradient(180deg, hsl(30 45% 45%), hsl(25 50% 40%));
+    --gradient-crop: linear-gradient(135deg, hsl(100 70% 50%), hsl(142 76% 45%));
+    --gradient-sky: linear-gradient(180deg, hsl(210 100% 56%), hsl(200 85% 65%));
+    
     /* Advanced Shadows - Multi-layer Depth */
     --shadow-sm: 0 1px 3px 0 hsl(220 15% 12% / 0.08), 0 1px 2px 0 hsl(220 15% 12% / 0.06);
     --shadow-md: 0 4px 12px 0 hsl(220 15% 12% / 0.12), 0 2px 6px 0 hsl(220 15% 12% / 0.08);
@@ -147,6 +155,15 @@
     --glass-background: 0 0% 100%;
     --glass-border: 220 20% 88%;
     --glass-blur: 24px;
+    
+    /* Agricultural Chat Styling */
+    --chat-bubble-user: linear-gradient(135deg, hsl(210 100% 56%), hsl(210 100% 48%));
+    --chat-bubble-ai: linear-gradient(135deg, hsl(0 0% 100% / 0.95), hsl(0 0% 98% / 0.8));
+    --chat-section-green: hsl(142 76% 45% / 0.1);
+    --chat-section-yellow: hsl(45 95% 55% / 0.1);
+    --chat-section-red: hsl(0 85% 60% / 0.1);
+    --chat-section-purple: hsl(270 75% 60% / 0.1);
+    --chat-section-blue: hsl(210 100% 56% / 0.1);
   }
 
   .dark {
@@ -200,6 +217,14 @@
     --gradient-danger: linear-gradient(135deg, hsl(0 85% 65%), hsl(38 95% 62%));
     --gradient-cyber: linear-gradient(135deg, hsl(180 100% 50%), hsl(210 100% 60%), hsl(270 75% 65%));
     
+    /* Agricultural Theme Gradients for Chat - Dark Mode */
+    --gradient-agri-green: linear-gradient(135deg, hsl(142 76% 50%), hsl(100 70% 55%));
+    --gradient-agri-yellow: linear-gradient(135deg, hsl(45 95% 60%), hsl(38 95% 62%));
+    --gradient-agri-brown: linear-gradient(135deg, hsl(30 45% 50%), hsl(20 55% 40%));
+    --gradient-soil: linear-gradient(180deg, hsl(30 45% 50%), hsl(25 50% 45%));
+    --gradient-crop: linear-gradient(135deg, hsl(100 70% 55%), hsl(142 76% 50%));
+    --gradient-sky: linear-gradient(180deg, hsl(210 100% 60%), hsl(200 85% 70%));
+    
     --shadow-sm: 0 1px 3px 0 hsl(0 0% 0% / 0.3), 0 1px 2px 0 hsl(0 0% 0% / 0.2);
     --shadow-md: 0 4px 12px 0 hsl(0 0% 0% / 0.4), 0 2px 6px 0 hsl(0 0% 0% / 0.3);
     --shadow-lg: 0 20px 40px 0 hsl(0 0% 0% / 0.5), 0 8px 16px 0 hsl(0 0% 0% / 0.4);
@@ -219,6 +244,15 @@
     --glass-background: 220 20% 12%;
     --glass-border: 220 20% 22%;
     --glass-blur: 24px;
+    
+    /* Dark mode Agricultural Chat Styling */
+    --chat-bubble-user: linear-gradient(135deg, hsl(210 100% 60%), hsl(210 100% 52%));
+    --chat-bubble-ai: linear-gradient(135deg, hsl(220 20% 12% / 0.95), hsl(220 20% 15% / 0.8));
+    --chat-section-green: hsl(142 76% 50% / 0.15);
+    --chat-section-yellow: hsl(45 95% 60% / 0.15);
+    --chat-section-red: hsl(0 85% 65% / 0.15);
+    --chat-section-purple: hsl(270 75% 65% / 0.15);
+    --chat-section-blue: hsl(210 100% 60% / 0.15);
   }
 }
 
