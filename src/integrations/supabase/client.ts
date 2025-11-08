@@ -26,6 +26,9 @@ let headerPromise: Promise<void> | null = null;
 // Store auth data globally to avoid circular imports
 let globalAuthData: { userId: string; tenantId: string } | null = null;
 
+// Client cache to prevent creating multiple GoTrueClient instances
+const clientCache = new Map<string, ReturnType<typeof createClient<Database>>>();
+
 /**
  * Set global auth data (called by auth store)
  * This breaks the circular dependency
@@ -44,6 +47,9 @@ export function clearGlobalAuthData() {
   globalAuthData = null;
   headersReady = false;
   headerPromise = null;
+  // Clear client cache to prevent memory leaks
+  clientCache.clear();
+  console.log('🗑️ [Headers] Cleared client cache');
 }
 
 /**
@@ -125,8 +131,8 @@ export const updateSupabaseHeaders = (farmerId?: string, tenantId?: string) => {
  * Get Supabase client with auth headers automatically set
  * Always use this wrapper for authenticated requests
  * 
- * IMPORTANT: This creates a client with headers in the global config
- * which should work with PostgREST requests
+ * IMPORTANT: Uses cached clients to prevent "Multiple GoTrueClient instances" warning
+ * Clients are cached per userId-tenantId combination for optimal performance
  */
 export const supabaseWithAuth = (farmerId?: string, tenantId?: string) => {
   const userId = farmerId || globalAuthData?.userId;
@@ -137,11 +143,19 @@ export const supabaseWithAuth = (farmerId?: string, tenantId?: string) => {
     return supabase;
   }
   
-  console.log('🔐 [supabaseWithAuth] Creating client with headers:', { userId, tenant });
+  // Create cache key from userId and tenantId
+  const cacheKey = `${userId}-${tenant}`;
   
-  // Create a new client instance with custom headers for THIS request
-  // This ensures headers are sent with every PostgREST request
-  return createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  // Return cached client if exists
+  if (clientCache.has(cacheKey)) {
+    console.log('♻️ [supabaseWithAuth] Using cached client:', { userId, tenant });
+    return clientCache.get(cacheKey)!;
+  }
+  
+  // Create new client only if not in cache
+  console.log('🔐 [supabaseWithAuth] Creating NEW client with headers:', { userId, tenant });
+  
+  const client = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: {
       persistSession: false, // Don't persist, use custom auth
     },
@@ -152,4 +166,10 @@ export const supabaseWithAuth = (farmerId?: string, tenantId?: string) => {
       }
     }
   });
+  
+  // Cache the client for reuse
+  clientCache.set(cacheKey, client);
+  console.log('💾 [supabaseWithAuth] Client cached. Total cached clients:', clientCache.size);
+  
+  return client;
 };
