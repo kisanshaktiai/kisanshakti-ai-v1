@@ -42,6 +42,10 @@ serve(async (req) => {
     const finalTenantId = metadata.tenantId || headerTenantId;
     const finalFarmerId = metadata.farmerId || headerFarmerId;
 
+    // Initialize Supabase client (needed for validation)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
     // CRITICAL SECURITY: Validate isolation context before ANY database operation
     await validateIsolation(finalTenantId, finalFarmerId, supabaseUrl, supabaseServiceKey);
 
@@ -101,9 +105,7 @@ serve(async (req) => {
 
     console.log('AI Chat Request:', { tenantId: finalTenantId, farmerId: finalFarmerId, landId, sessionId, language });
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    // Create Supabase client (credentials already initialized above)
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Set app session for RLS (if we have session token)
