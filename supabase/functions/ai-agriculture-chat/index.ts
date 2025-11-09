@@ -24,8 +24,14 @@ serve(async (req) => {
       imageUrl,
       language = 'en',
       metadata = {},
-      fileContent
+      fileContent,
+      action // New: support for different actions
     } = requestBody;
+
+    // Handle training data collection action
+    if (action === 'collect_training_data') {
+      return await handleTrainingDataCollection(requestBody);
+    }
 
     // Extract tenantId and farmerId from metadata or headers
     const headerTenantId = req.headers.get('x-tenant-id');
@@ -1138,4 +1144,170 @@ function generateQuickReplies(lastMessage: string): string[] {
     '💬 Best practices for my soil type?',
     '💬 Weekly care checklist for my crop?'
   ];
+}
+
+// Handle training data collection from positive feedback
+async function handleTrainingDataCollection(requestBody: any) {
+  try {
+    const { messageId, tenantId, farmerId } = requestBody;
+
+    if (!messageId || !tenantId || !farmerId) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields: messageId, tenantId, farmerId' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Collecting training data for message:', messageId);
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Get the message with positive feedback
+    const { data: message, error: messageError } = await supabase
+      .from('ai_chat_messages')
+      .select(`
+        *,
+        session:ai_chat_sessions(
+          land_id,
+          session_type,
+          metadata
+        )
+      `)
+      .eq('id', messageId)
+      .eq('tenant_id', tenantId)
+      .eq('farmer_id', farmerId)
+      .eq('is_training_candidate', true)
+      .single();
+
+    if (messageError || !message) {
+      console.error('Message not found or not a training candidate:', messageError);
+      return new Response(
+        JSON.stringify({ error: 'Message not found or not suitable for training' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Get the previous user message (prompt)
+    const { data: userMessage } = await supabase
+      .from('ai_chat_messages')
+      .select('content, metadata')
+      .eq('session_id', message.session_id)
+      .eq('role', 'user')
+      .lt('created_at', message.created_at)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!userMessage) {
+      console.error('User prompt not found for message:', messageId);
+      return new Response(
+        JSON.stringify({ error: 'User prompt not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Extract context data
+    const landId = message.session?.[0]?.land_id;
+    let contextData: any = {
+      prompt: userMessage.content,
+      response: message.content,
+      feedback_rating: message.feedback_rating,
+      feedback_text: message.feedback_text,
+      language: message.metadata?.language || 'en',
+      session_type: message.session?.[0]?.session_type,
+      created_at: message.created_at
+    };
+
+    // Get land context if available
+    if (landId) {
+      const { data: land } = await supabase
+        .from('lands')
+        .select('*')
+        .eq('id', landId)
+        .eq('tenant_id', tenantId)
+        .single();
+
+      if (land) {
+        contextData.land_context = {
+          crop: land.current_crop || land.crops?.[0],
+          soil_type: land.soil_type,
+          area_acres: land.area_acres || (land.area_gunta ? land.area_gunta / 40 : null),
+          location: land.location,
+          irrigation_type: land.irrigation_type
+        };
+      }
+    }
+
+    // Get farmer context
+    const { data: farmer } = await supabase
+      .from('users')
+      .select('name, language, metadata')
+      .eq('id', farmerId)
+      .eq('tenant_id', tenantId)
+      .single();
+
+    if (farmer) {
+      contextData.farmer_context = {
+        language: farmer.language,
+        experience_level: farmer.metadata?.experience_level,
+        farming_type: farmer.metadata?.farming_type
+      };
+    }
+
+    // Calculate success metrics (placeholder - can be enhanced with real data)
+    const successMetrics = {
+      feedback_score: message.feedback_rating,
+      has_detailed_feedback: !!message.feedback_text,
+      response_time_ms: message.metadata?.response_time_ms,
+      tokens_used: message.metadata?.tokens_used,
+      section_tags: message.metadata?.section_tags || [],
+      marked_as_training: new Date().toISOString()
+    };
+
+    // Store in training context table
+    const { error: trainingError } = await supabase
+      .from('ai_training_context')
+      .insert({
+        tenant_id: tenantId,
+        farmer_id: farmerId,
+        message_id: messageId,
+        context_type: landId ? 'land_specific' : 'general',
+        context_data: contextData,
+        success_metrics: successMetrics,
+        is_validated: false, // Requires manual review before training
+        created_at: new Date().toISOString()
+      });
+
+    if (trainingError) {
+      console.error('Error storing training context:', trainingError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to store training context', details: trainingError }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Training data collected successfully for message:', messageId);
+
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        message: 'Training data collected successfully',
+        messageId 
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
+  } catch (error) {
+    console.error('Error in training data collection:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: 'Failed to collect training data',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
 }

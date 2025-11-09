@@ -745,10 +745,12 @@ export type Database = {
           farmer_id: string
           feedback_rating: number | null
           feedback_text: string | null
+          feedback_timestamp: string | null
           id: string
           image_urls: string[] | null
           ip_address: unknown
           is_edited: boolean | null
+          is_training_candidate: boolean | null
           land_context: Json | null
           language: string | null
           location_context: Json | null
@@ -782,10 +784,12 @@ export type Database = {
           farmer_id: string
           feedback_rating?: number | null
           feedback_text?: string | null
+          feedback_timestamp?: string | null
           id?: string
           image_urls?: string[] | null
           ip_address?: unknown
           is_edited?: boolean | null
+          is_training_candidate?: boolean | null
           land_context?: Json | null
           language?: string | null
           location_context?: Json | null
@@ -819,10 +823,12 @@ export type Database = {
           farmer_id?: string
           feedback_rating?: number | null
           feedback_text?: string | null
+          feedback_timestamp?: string | null
           id?: string
           image_urls?: string[] | null
           ip_address?: unknown
           is_edited?: boolean | null
+          is_training_candidate?: boolean | null
           land_context?: Json | null
           language?: string | null
           location_context?: Json | null
@@ -1142,11 +1148,14 @@ export type Database = {
           context_data: Json
           context_type: string
           created_at: string
+          farmer_id: string | null
           id: string
           is_active: boolean | null
           language: string | null
+          message_id: string | null
           region: string
           source: string | null
+          success_metrics: Json | null
           tenant_id: string
           updated_at: string
           validity_end: string | null
@@ -1156,11 +1165,14 @@ export type Database = {
           context_data: Json
           context_type: string
           created_at?: string
+          farmer_id?: string | null
           id?: string
           is_active?: boolean | null
           language?: string | null
+          message_id?: string | null
           region: string
           source?: string | null
+          success_metrics?: Json | null
           tenant_id: string
           updated_at?: string
           validity_end?: string | null
@@ -1170,17 +1182,28 @@ export type Database = {
           context_data?: Json
           context_type?: string
           created_at?: string
+          farmer_id?: string | null
           id?: string
           is_active?: boolean | null
           language?: string | null
+          message_id?: string | null
           region?: string
           source?: string | null
+          success_metrics?: Json | null
           tenant_id?: string
           updated_at?: string
           validity_end?: string | null
           validity_start?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ai_training_context_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "ai_chat_messages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       alert_notifications: {
         Row: {

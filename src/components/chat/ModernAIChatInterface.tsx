@@ -31,6 +31,7 @@ import { localDB } from '@/services/localDB';
 import { WaveformVisualizer } from './WaveformVisualizer';
 import { MessageSkeleton } from './MessageSkeleton';
 import { ResponseSectionCard } from './ResponseSectionCard';
+import { FeedbackDialog } from './FeedbackDialog';
 
 // Crop to Emoji Mapping
 const cropEmojiMap: Record<string, string> = {
@@ -1281,16 +1282,90 @@ export function ModernAIChatInterface() {
     sendMessage(query);
   };
 
-  // Handle message feedback
+  // Feedback dialog state
+  const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
+  const [feedbackMessageId, setFeedbackMessageId] = useState<string | null>(null);
+  const [feedbackType, setFeedbackType] = useState<'positive' | 'negative' | null>(null);
+
+  // Handle message feedback (opens dialog)
   const handleFeedback = (messageId: string, feedback: 'positive' | 'negative') => {
+    const message = messages.find(m => m.id === messageId);
+    if (!message) return;
+
+    // Update UI immediately
     setMessages(prev => prev.map(m => 
       m.id === messageId ? { ...m, feedback } : m
     ));
-    
-    toast({
-      description: '✅ Thank you for your feedback!',
-      duration: 2000
-    });
+
+    // Open feedback dialog for optional comment
+    setFeedbackMessageId(messageId);
+    setFeedbackType(feedback);
+    setFeedbackDialogOpen(true);
+  };
+
+  // Submit feedback with optional comment
+  const submitFeedback = async (feedback: 'positive' | 'negative', comment?: string) => {
+    if (!feedbackMessageId) return;
+
+    const message = messages.find(m => m.id === feedbackMessageId);
+    if (!message) return;
+
+    try {
+      const { session } = useAuthStore.getState();
+      if (!session?.farmerId || !session?.tenantId) {
+        toast({
+          title: 'Error',
+          description: 'Session information missing',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Save feedback to database
+      const { error: updateError } = await supabase
+        .from('ai_chat_messages')
+        .update({
+          feedback_rating: feedback === 'positive' ? 5 : 1,
+          feedback_text: comment,
+          feedback_timestamp: new Date().toISOString(),
+          is_training_candidate: feedback === 'positive' // Mark positive feedback as training candidate
+        })
+        .eq('id', feedbackMessageId);
+
+      if (updateError) {
+        console.error('Error saving feedback:', updateError);
+        throw updateError;
+      }
+
+      // If positive feedback, trigger training data collection
+      if (feedback === 'positive') {
+        try {
+          await supabase.functions.invoke('ai-agriculture-chat', {
+            body: { 
+              action: 'collect_training_data',
+              messageId: feedbackMessageId,
+              tenantId: session.tenantId,
+              farmerId: session.farmerId
+            }
+          });
+        } catch (trainingError) {
+          console.error('Error triggering training data collection:', trainingError);
+          // Don't show error to user - this is background work
+        }
+      }
+
+      toast({
+        description: '✅ Thank you for your feedback!',
+        duration: 2000
+      });
+    } catch (error) {
+      console.error('Error submitting feedback:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save feedback. Please try again.',
+        variant: 'destructive'
+      });
+    }
   };
 
   // Handle copy message
@@ -1899,6 +1974,21 @@ export function ModernAIChatInterface() {
         type="file"
         onChange={handleFileUpload}
         className="hidden"
+      />
+
+      {/* Feedback Dialog */}
+      <FeedbackDialog
+        open={feedbackDialogOpen}
+        onClose={() => {
+          setFeedbackDialogOpen(false);
+          setFeedbackMessageId(null);
+          setFeedbackType(null);
+        }}
+        onSubmit={submitFeedback}
+        feedbackType={feedbackType}
+        messageContent={
+          messages.find(m => m.id === feedbackMessageId)?.content || ''
+        }
       />
 
       {/* Custom Styles for Animations */}
