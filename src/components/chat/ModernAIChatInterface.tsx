@@ -29,6 +29,8 @@ import {
 import { format } from 'date-fns';
 import { localDB } from '@/services/localDB';
 import { WaveformVisualizer } from './WaveformVisualizer';
+import { MessageSkeleton } from './MessageSkeleton';
+import { ResponseSectionCard } from './ResponseSectionCard';
 
 // Crop to Emoji Mapping
 const cropEmojiMap: Record<string, string> = {
@@ -67,13 +69,15 @@ const renderMarkdown = (text: string): React.ReactNode => {
     enhancedText = enhancedText.replace(regex, `${crop} ${emoji}`);
   });
 
-  // Add color-coded section styling for emojis
+  // Add color-coded section styling for emojis with bold text
   enhancedText = enhancedText
     .replace(/🟢\s*\*\*([^*]+)\*\*/g, '<span class="text-emerald-600 dark:text-emerald-400 font-bold">🟢 $1</span>')
     .replace(/🟡\s*\*\*([^*]+)\*\*/g, '<span class="text-amber-600 dark:text-amber-400 font-bold">🟡 $1</span>')
     .replace(/🔴\s*\*\*([^*]+)\*\*/g, '<span class="text-rose-600 dark:text-rose-400 font-bold">🔴 $1</span>')
     .replace(/🟣\s*\*\*([^*]+)\*\*/g, '<span class="text-purple-600 dark:text-purple-400 font-bold">🟣 $1</span>')
-    .replace(/🔵\s*\*\*([^*]+)\*\*/g, '<span class="text-blue-600 dark:text-blue-400 font-bold">🔵 $1</span>');
+    .replace(/🔵\s*\*\*([^*]+)\*\*/g, '<span class="text-blue-600 dark:text-blue-400 font-bold">🔵 $1</span>')
+    // Handle ALL remaining bold text (not just emoji-prefixed)
+    .replace(/\*\*([^*]+)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>');
 
   return (
     <ReactMarkdown
@@ -169,6 +173,60 @@ const generateContextualPrompts = (lastMessage: string): string[] => {
   }
 
   return prompts.slice(0, 5); // Max 5 prompts
+};
+
+// Parse AI response into colored sections
+interface ParsedSection {
+  emoji: string;
+  title: string;
+  content: string;
+  sectionType: 'organic' | 'fertilizer' | 'pest' | 'water' | 'income' | 'other';
+}
+
+const parseAIResponseIntoSections = (content: string): ParsedSection[] => {
+  const sections: ParsedSection[] = [];
+  
+  // Define section patterns with their types
+  const sectionPatterns = [
+    { emoji: '🟢', type: 'organic' as const, keywords: ['organic', 'natural', 'biological'] },
+    { emoji: '🟡', type: 'fertilizer' as const, keywords: ['fertilizer', 'nutrient', 'npk'] },
+    { emoji: '🔴', type: 'pest' as const, keywords: ['pest', 'disease', 'alert', 'critical'] },
+    { emoji: '🔵', type: 'water' as const, keywords: ['water', 'irrigation', 'rainfall'] },
+    { emoji: '🟣', type: 'income' as const, keywords: ['income', 'market', 'price', 'profit'] }
+  ];
+  
+  // Split content by emoji markers
+  const emojiRegex = /[🟢🟡🔴🔵🟣]\s*([^\n]+)\n([\s\S]*?)(?=[🟢🟡🔴🔵🟣]|$)/g;
+  let match;
+  
+  while ((match = emojiRegex.exec(content)) !== null) {
+    const emoji = match[0][0]; // First character is the emoji
+    const title = match[1].trim().replace(/\*\*/g, ''); // Remove ** from title
+    const sectionContent = match[2].trim();
+    
+    // Determine section type based on emoji
+    const pattern = sectionPatterns.find(p => p.emoji === emoji);
+    const sectionType = pattern?.type || 'other';
+    
+    sections.push({
+      emoji,
+      title,
+      content: sectionContent,
+      sectionType
+    });
+  }
+  
+  // If no sections found, return the whole content as one section
+  if (sections.length === 0) {
+    sections.push({
+      emoji: '💬',
+      title: 'Response',
+      content: content,
+      sectionType: 'other'
+    });
+  }
+  
+  return sections;
 };
 
 interface Message {
@@ -477,12 +535,40 @@ const MessageBubble = ({
           )}
           style={{ fontSize: `${fontSize}px`, lineHeight: '1.6' }}
         >
-          {/* Content with Markdown Rendering */}
+          {/* Content with Markdown Rendering or Section Cards */}
           <div className={cn(
             "break-words whitespace-pre-wrap",
             !isUser && "text-gray-800 dark:text-gray-100"
           )}>
-            {isUser ? displayContent : renderMarkdown(displayContent)}
+            {isUser ? (
+              displayContent
+            ) : (
+              (() => {
+                // Parse AI response into sections
+                const sections = parseAIResponseIntoSections(displayContent);
+                
+                // If we have multiple sections with emoji markers, render as cards
+                if (sections.length > 1 || (sections.length === 1 && sections[0].emoji !== '💬')) {
+                  return (
+                    <div className="space-y-3 -mx-4 -my-3">
+                      {sections.map((section, idx) => (
+                        <ResponseSectionCard
+                          key={idx}
+                          emoji={section.emoji}
+                          title={section.title}
+                          content={section.content}
+                          sectionType={section.sectionType}
+                          isExpanded={idx === 0} // First section expanded by default
+                        />
+                      ))}
+                    </div>
+                  );
+                }
+                
+                // Otherwise render as normal markdown
+                return renderMarkdown(displayContent);
+              })()
+            )}
           </div>
 
           {shouldTruncate && (
@@ -707,6 +793,8 @@ export function ModernAIChatInterface() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [offlineBannerVisible, setOfflineBannerVisible] = useState(false);
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [historyLoadError, setHistoryLoadError] = useState<string | null>(null);
   
   // Persistent session ID management
   const [sessionId, setSessionId] = useState<string>(() => {
@@ -800,12 +888,17 @@ export function ModernAIChatInterface() {
     }
   };
 
-  // Load chat session for specific land with proper session ID management
-  const loadChatSession = async (landId: string | null) => {
+  // Load chat session for specific land with proper session ID management and isolation
+  const loadChatSession = async (landId: string | null, retryCount = 0) => {
+    setIsLoadingHistory(true);
+    setHistoryLoadError(null);
+    
     try {
       const { session } = useAuthStore.getState();
       if (!session?.farmerId || !session?.tenantId) {
         console.error('Missing session context:', session);
+        setHistoryLoadError('Missing authentication context');
+        setIsLoadingHistory(false);
         return;
       }
 
@@ -813,7 +906,7 @@ export function ModernAIChatInterface() {
       
       const searchLandId = landId || null;
       
-      // Try to find existing session
+      // Try to find existing session with STRICT isolation
       let existingSession = null;
       if (searchLandId) {
         const { data, error } = await supabase
@@ -827,6 +920,7 @@ export function ModernAIChatInterface() {
           
         if (error) {
           console.error('Error loading session:', error);
+          throw error;
         }
         existingSession = data;
       } else {
@@ -841,6 +935,7 @@ export function ModernAIChatInterface() {
           
         if (error) {
           console.error('Error loading session:', error);
+          throw error;
         }
         existingSession = data;
       }
@@ -850,17 +945,19 @@ export function ModernAIChatInterface() {
         setSessionId(existingSession.id);
         localStorage.setItem(`chat_session_${landId || 'general'}`, existingSession.id);
         
-        // Load messages from database
+        // Load messages from database with STRICT isolation
         try {
           const { data: dbMessages, error: messagesError } = await supabase
             .from('ai_chat_messages')
             .select('*')
             .eq('session_id', existingSession.id)
+            .eq('tenant_id', session.tenantId)  // ✓ Explicit tenant filter
+            .eq('farmer_id', session.farmerId)  // ✓ Explicit farmer filter
             .order('created_at', { ascending: true });
           
           if (messagesError) {
             console.error('Error loading messages from DB:', messagesError);
-            setMessages([]);
+            throw messagesError;
           } else if (dbMessages && dbMessages.length > 0) {
             // Convert database messages to UI format
             const formattedMessages = dbMessages.map((msg: any) => ({
@@ -873,12 +970,14 @@ export function ModernAIChatInterface() {
             setMessages(formattedMessages);
             // Update localStorage cache
             localStorage.setItem(`chat_messages_${landId || 'general'}`, JSON.stringify(formattedMessages));
+            console.log(`Loaded ${formattedMessages.length} messages from database`);
           } else {
             setMessages([]);
+            console.log('No messages found for this session');
           }
         } catch (e) {
           console.error('Error loading messages:', e);
-          setMessages([]);
+          throw e;
         }
       } else {
         // Check if we have a stored session ID for this land
@@ -902,9 +1001,11 @@ export function ModernAIChatInterface() {
           
         if (insertError && insertError.code !== '23505') { // Ignore duplicate key errors
           console.error('Error creating session:', insertError);
+          throw insertError;
         } else {
           setSessionId(newSessionId);
           localStorage.setItem(`chat_session_${landId || 'general'}`, newSessionId);
+          console.log('Created new session:', newSessionId);
         }
         
         setMessages([]);
@@ -912,9 +1013,24 @@ export function ModernAIChatInterface() {
       }
       
       setShowQuickActions(true);
+      setIsLoadingHistory(false);
     } catch (error) {
       console.error('Error in loadChatSession:', error);
-      setMessages([]);
+      setHistoryLoadError('Failed to load chat history');
+      
+      // Retry logic (max 2 retries)
+      if (retryCount < 2) {
+        console.log(`Retrying... (${retryCount + 1}/2)`);
+        setTimeout(() => loadChatSession(landId, retryCount + 1), 1000);
+      } else {
+        setMessages([]);
+        setIsLoadingHistory(false);
+        toast({
+          title: 'Failed to load chat history',
+          description: 'Please try again',
+          variant: 'destructive'
+        });
+      }
     }
   };
 
@@ -1399,8 +1515,39 @@ export function ModernAIChatInterface() {
       {/* Messages Area with Better Scrolling */}
       <div className="flex-1 overflow-y-auto relative" ref={scrollAreaRef}>
         <div className="pb-2">
+          {/* Loading History Skeleton */}
+          {isLoadingHistory && (
+            <div className="space-y-4 p-4">
+              <MessageSkeleton />
+              <MessageSkeleton />
+              <MessageSkeleton />
+            </div>
+          )}
+
+          {/* History Load Error with Retry */}
+          {historyLoadError && !isLoadingHistory && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-4"
+            >
+              <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800 rounded-lg p-4 text-center">
+                <p className="text-sm text-rose-600 dark:text-rose-400 mb-2">{historyLoadError}</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => loadChatSession(selectedLand?.id || null)}
+                  className="text-xs"
+                >
+                  <RefreshCw className="w-3 h-3 mr-1" />
+                  Retry
+                </Button>
+              </div>
+            </motion.div>
+          )}
+
           {/* Enhanced Quick Actions */}
-          {messages.length === 0 && showQuickActions && (
+          {!isLoadingHistory && messages.length === 0 && showQuickActions && (
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
