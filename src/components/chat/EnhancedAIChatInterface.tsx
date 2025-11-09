@@ -171,17 +171,93 @@ export function EnhancedAIChatInterface() {
     scrollToBottom();
   }, [messages, activeTab]);
 
+  // Load session and messages for a specific land (or general chat if landId is null)
+  const loadLandSession = async (landId: string | null) => {
+    try {
+      // Get existing active session for this land
+      const { data: existingSession } = await supabase
+        .from('ai_chat_sessions')
+        .select('id')
+        .eq('farmer_id', user?.id)
+        .eq('tenant_id', currentTenant?.id)
+        .eq('land_id', landId)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (existingSession) {
+        console.log(`✅ Loaded session for ${landId || 'general'}:`, existingSession.id);
+        
+        // Load messages for this session
+        const { data: previousMessages } = await supabase
+          .from('ai_chat_messages')
+          .select('*')
+          .eq('session_id', existingSession.id)
+          .eq('farmer_id', user?.id)
+          .order('created_at', { ascending: true });
+
+        console.log(`📜 Loaded ${previousMessages?.length || 0} messages for ${landId || 'general'}`);
+
+        return {
+          sessionId: existingSession.id,
+          messages: (previousMessages || []).map(msg => ({
+            id: msg.id,
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+            timestamp: new Date(msg.created_at),
+            feedback: msg.feedback_rating 
+              ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
+              : null
+          }))
+        };
+      }
+
+      console.log(`ℹ️ No existing session for ${landId || 'general'}`);
+      return { sessionId: null, messages: [] };
+    } catch (error) {
+      console.error(`Error loading session for ${landId || 'general'}:`, error);
+      return { sessionId: null, messages: [] };
+    }
+  };
+
   const fetchLands = async () => {
     try {
       const fetchedLands = await landsApi.fetchLands();
       setLands(fetchedLands);
       
-      // Initialize message arrays for each land
-      const landMessages: Record<string, Message[]> = { general: [] };
-      fetchedLands.forEach(land => {
-        landMessages[land.id] = [];
+      console.log('🔄 Loading chat history for all lands...');
+      
+      // Load general chat history
+      const generalSession = await loadLandSession(null);
+      
+      // Load land-specific histories
+      const landMessages: Record<string, Message[]> = { 
+        general: generalSession.messages 
+      };
+      const landSessionIds: Record<string, string> = {};
+      
+      if (generalSession.sessionId) {
+        landSessionIds.general = generalSession.sessionId;
+      }
+      
+      // Load history for each land
+      for (const land of fetchedLands) {
+        const session = await loadLandSession(land.id);
+        landMessages[land.id] = session.messages;
+        if (session.sessionId) {
+          landSessionIds[land.id] = session.sessionId;
+        }
+      }
+      
+      setMessages(landMessages);
+      setSessionIds(prev => ({ ...prev, ...landSessionIds }));
+      
+      console.log('✅ Chat history loaded:', {
+        generalMessages: generalSession.messages.length,
+        landsCount: fetchedLands.length,
+        totalSessions: Object.keys(landSessionIds).length
       });
-      setMessages(prev => ({ ...prev, ...landMessages }));
     } catch (error) {
       console.error('Error fetching lands:', error);
     }
