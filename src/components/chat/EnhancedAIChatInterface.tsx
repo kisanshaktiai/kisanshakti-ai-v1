@@ -1028,16 +1028,60 @@ export function EnhancedAIChatInterface() {
                     "relative max-w-[85%]",
                     message.role === 'user' && 'order-1'
                   )}>
-                    {/* Action buttons in top corner */}
+                    {/* Message content - 2030 Modern UI */}
                     <div className={cn(
-                      "absolute -top-1 flex items-center gap-1 z-10",
-                      message.role === 'user' ? '-left-1' : '-right-1'
+                      "relative rounded-3xl overflow-hidden",
+                      message.role === 'user' 
+                        ? 'bg-gradient-to-br from-primary via-primary/95 to-primary/90 text-primary-foreground shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-primary/20' 
+                        : 'bg-gradient-to-br from-background via-background/98 to-muted/30 border border-border/40 shadow-[0_8px_30px_rgb(0,0,0,0.08)]'
+                    )}>
+                      <div className="p-5">
+                        {message.role === 'assistant' && message.structured?.sections ? (
+                          <div className="space-y-3">
+                            {message.structured.greeting && (
+                              <div className="text-base font-semibold text-foreground mb-2 pb-2 border-b border-border/30">
+                                {message.structured.greeting.replace(/\*\*/g, '')}
+                              </div>
+                            )}
+                            {message.structured.sections.map((section: any, idx: number) => (
+                              <ResponseSectionCard 
+                                key={idx} 
+                                emoji={section.emoji || '📋'}
+                                title={section.title.replace(/\*\*/g, '')}
+                                content={section.content.replace(/\*\*/g, '')}
+                                sectionType={section.type || 'other'}
+                              />
+                            ))}
+                            {message.structured.closingMessage && (
+                              <div className="text-sm text-muted-foreground mt-2 pt-2 border-t border-border/20">
+                                {message.structured.closingMessage.replace(/\*\*/g, '')}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-[15px] leading-[1.7] whitespace-pre-wrap break-words">
+                            {message.content.replace(/\*\*/g, '')}
+                          </p>
+                        )}
+                        
+                        <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border/10">
+                          <span className="text-xs opacity-60">
+                            {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action buttons below message - 2030 Modern Design */}
+                    <div className={cn(
+                      "flex items-center gap-1.5 mt-2",
+                      message.role === 'user' ? 'justify-end' : 'justify-start'
                     )}>
                       {/* Read aloud button */}
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted"
+                        size="sm"
+                        className="h-8 px-3 rounded-full bg-muted/50 hover:bg-muted/80 backdrop-blur transition-all"
                         onClick={() => handlePlayMessage(message.id, message.content)}
                       >
                         {playingMessageId === message.id && isSpeaking ? (
@@ -1052,10 +1096,10 @@ export function EnhancedAIChatInterface() {
                         <>
                           <Button
                             variant="ghost"
-                            size="icon"
+                            size="sm"
                             className={cn(
-                              "h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted",
-                              message.feedback === 'like' && "text-primary"
+                              "h-8 px-3 rounded-full bg-muted/50 hover:bg-muted/80 backdrop-blur transition-all",
+                              message.feedback === 'like' && "bg-primary/20 text-primary hover:bg-primary/30"
                             )}
                             onClick={() => handleLike(message.id, true)}
                           >
@@ -1063,10 +1107,10 @@ export function EnhancedAIChatInterface() {
                           </Button>
                           <Button
                             variant="ghost"
-                            size="icon"
+                            size="sm"
                             className={cn(
-                              "h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted",
-                              message.feedback === 'dislike' && "text-destructive"
+                              "h-8 px-3 rounded-full bg-muted/50 hover:bg-muted/80 backdrop-blur transition-all",
+                              message.feedback === 'dislike' && "bg-destructive/20 text-destructive hover:bg-destructive/30"
                             )}
                             onClick={() => handleLike(message.id, false)}
                           >
@@ -1078,12 +1122,15 @@ export function EnhancedAIChatInterface() {
                       {/* Copy button */}
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted"
+                        size="sm"
+                        className={cn(
+                          "h-8 px-3 rounded-full bg-muted/50 hover:bg-muted/80 backdrop-blur transition-all",
+                          copiedMessageId === message.id && "bg-green-500/20 text-green-600"
+                        )}
                         onClick={() => handleCopy(message.id, message.content)}
                       >
                         {copiedMessageId === message.id ? (
-                          <Check className="h-3.5 w-3.5 text-green-500" />
+                          <Check className="h-3.5 w-3.5" />
                         ) : (
                           <Copy className="h-3.5 w-3.5" />
                         )}
@@ -1092,54 +1139,12 @@ export function EnhancedAIChatInterface() {
                       {/* Share button */}
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted"
+                        size="sm"
+                        className="h-8 px-3 rounded-full bg-muted/50 hover:bg-muted/80 backdrop-blur transition-all"
                         onClick={() => handleShare(message.content)}
                       >
                         <Share2 className="h-3.5 w-3.5" />
                       </Button>
-                    </div>
-                    
-                    {/* Message content */}
-                    <div className={cn(
-                      "rounded-2xl p-4 backdrop-blur-sm",
-                      message.role === 'user' 
-                        ? 'bg-gradient-to-br from-primary to-primary/90 text-primary-foreground shadow-lg' 
-                        : 'bg-gradient-to-br from-card/95 to-card/80 border border-border/50 shadow-md'
-                    )}>
-                      {message.role === 'assistant' && message.structured?.sections ? (
-                        <div className="space-y-3">
-                          {message.structured.greeting && (
-                            <div className="text-base font-semibold text-foreground mb-2 pb-2 border-b border-border/30">
-                              {message.structured.greeting}
-                            </div>
-                          )}
-                          {message.structured.sections.map((section: any, idx: number) => (
-                            <ResponseSectionCard 
-                              key={idx} 
-                              emoji={section.emoji || '📋'}
-                              title={section.title}
-                              content={section.content}
-                              sectionType={section.type || 'other'}
-                            />
-                          ))}
-                          {message.structured.closingMessage && (
-                            <div className="text-sm text-muted-foreground mt-2 pt-2 border-t border-border/20">
-                              {message.structured.closingMessage}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
-                          {message.content}
-                        </p>
-                      )}
-                      
-                      <div className="flex items-center gap-2 mt-3 pt-2 border-t border-border/20">
-                        <span className="text-xs opacity-60">
-                          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
                     </div>
                   </div>
                   
