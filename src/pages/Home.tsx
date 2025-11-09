@@ -30,6 +30,7 @@ import { landsApi } from '@/services/landsApi';
 import { useWeather } from '@/hooks/useWeather';
 import { useLands } from '@/hooks/useLands';
 import { HomeSkeleton } from '@/components/skeletons';
+import { OfflineModeDebugger } from '@/components/OfflineModeDebugger';
 
 interface FeatureCard {
   title: string;
@@ -484,6 +485,9 @@ export default function Home() {
           </CardContent>
         </Card>
       </div>
+      
+      {/* Offline Mode Debugger */}
+      <OfflineModeDebugger />
     </div>
   );
 }
