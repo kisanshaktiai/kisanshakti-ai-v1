@@ -68,6 +68,7 @@ export function EnhancedAIChatInterface() {
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sessionIds, setSessionIds] = useState<Record<string, string>>({});
+  const [loadedSessionIds, setLoadedSessionIds] = useState<Set<string>>(new Set()); // Track sessions loaded from DB
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -254,10 +255,15 @@ export function EnhancedAIChatInterface() {
       setMessages(landMessages);
       setSessionIds(prev => ({ ...prev, ...landSessionIds }));
       
+      // Mark all loaded sessions so we don't recreate them in the database
+      const loadedIds = new Set(Object.values(landSessionIds));
+      setLoadedSessionIds(loadedIds);
+      
       console.log('✅ Chat history loaded:', {
         generalMessages: generalSession.messages.length,
         landsCount: fetchedLands.length,
-        totalSessions: Object.keys(landSessionIds).length
+        totalSessions: Object.keys(landSessionIds).length,
+        loadedSessionIds: Array.from(loadedIds)
       });
     } catch (error) {
       console.error('Error fetching lands:', error);
@@ -271,12 +277,17 @@ export function EnhancedAIChatInterface() {
   };
 
   const getCurrentSessionId = () => {
-    if (!sessionIds[activeTab]) {
-      const newSessionId = crypto.randomUUID();
-      setSessionIds(prev => ({ ...prev, [activeTab]: newSessionId }));
-      return newSessionId;
+    // Check if we already have a session ID loaded from database or created in this session
+    if (sessionIds[activeTab]) {
+      console.log(`♻️ Reusing existing session for ${activeTab}:`, sessionIds[activeTab]);
+      return sessionIds[activeTab];
     }
-    return sessionIds[activeTab];
+    
+    // Create new session ID only if none exists
+    const newSessionId = crypto.randomUUID();
+    console.log(`🆕 Creating new session for ${activeTab}:`, newSessionId);
+    setSessionIds(prev => ({ ...prev, [activeTab]: newSessionId }));
+    return newSessionId;
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -328,8 +339,9 @@ export function EnhancedAIChatInterface() {
       const tenantId = currentTenant?.id || '00000000-0000-0000-0000-000000000000';
       const farmerId = user?.id || '00000000-0000-0000-0000-000000000000';
       
-      // Create or get session
-      if (!sessionIds[activeTab]) {
+      // Create session in database only if it's a new session (not loaded from DB)
+      if (!loadedSessionIds.has(sessionId)) {
+        console.log('💾 Creating new session in database:', sessionId);
         const { error: sessionError } = await supabase.from('ai_chat_sessions').insert({
           id: sessionId,
           tenant_id: tenantId,
@@ -344,7 +356,14 @@ export function EnhancedAIChatInterface() {
           }
         });
         
-        if (sessionError) console.error('Session creation error:', sessionError);
+        if (sessionError) {
+          console.error('Session creation error:', sessionError);
+        } else {
+          // Mark this session as loaded (exists in DB now)
+          setLoadedSessionIds(prev => new Set([...prev, sessionId]));
+        }
+      } else {
+        console.log('♻️ Reusing existing database session:', sessionId);
       }
       
       // Save user message immediately with status 'sending'
