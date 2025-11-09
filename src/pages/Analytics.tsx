@@ -10,6 +10,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTenantStore } from '@/stores/tenantStore';
 import { landsApi } from '@/services/landsApi';
 import { supabase } from '@/utils/supabase';
+import { AnalyticsSkeleton } from '@/components/skeletons';
 import {
   TrendingUp,
   TrendingDown,
@@ -307,6 +308,10 @@ export default function Analytics() {
   const speakCard = (text: string) => {
     speak(text);
   };
+
+  if (isLoading) {
+    return <AnalyticsSkeleton />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background/95 to-primary/5">

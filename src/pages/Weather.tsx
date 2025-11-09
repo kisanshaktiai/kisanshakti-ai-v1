@@ -29,6 +29,7 @@ import { useWeatherSync } from '@/hooks/useWeatherSync';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { WeatherSkeleton } from '@/components/skeletons';
 
 export default function Weather() {
   const { currentWeather, forecast, hourlyForecast, loading, error, refetch } = useWeather();
@@ -174,21 +175,7 @@ export default function Weather() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background to-primary/5">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="text-center space-y-4"
-        >
-          <div className="relative">
-            <div className="h-20 w-20 mx-auto rounded-full border-4 border-primary/20 border-t-primary animate-spin" />
-            <Cloud className="h-10 w-10 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-primary animate-pulse" />
-          </div>
-          <p className="text-muted-foreground animate-pulse">Loading weather data...</p>
-        </motion.div>
-      </div>
-    );
+    return <WeatherSkeleton />;
   }
 
   if (error || !currentWeather) {

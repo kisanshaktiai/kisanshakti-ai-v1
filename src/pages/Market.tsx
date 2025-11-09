@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Package, ShoppingBag, Store, TrendingUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
+import { MarketSkeleton } from '@/components/skeletons';
 
 export default function Market() {
   const { t } = useTranslation();
@@ -179,6 +180,10 @@ export default function Market() {
   useEffect(() => {
     fetchProducts();
   }, [selectedCategory, searchQuery]);
+
+  if (loading && products.length === 0) {
+    return <MarketSkeleton />;
+  }
 
   return (
     <div className="min-h-screen bg-background">

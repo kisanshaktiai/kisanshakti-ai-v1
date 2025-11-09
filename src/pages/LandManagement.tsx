@@ -21,6 +21,7 @@ import { ModernLandCard } from '@/components/land/ModernLandCard';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { motion, AnimatePresence } from 'framer-motion';
+import { LandsSkeleton } from '@/components/skeletons';
 
 interface Land {
   id: string;
@@ -190,21 +191,7 @@ export default function LandManagement() {
   );
 
   if (isLoading) {
-    return (
-      <div className="space-y-6 p-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-20" />
-          ))}
-        </div>
-        <Skeleton className="h-12" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[...Array(6)].map((_, i) => (
-            <Skeleton key={i} className="h-64" />
-          ))}
-        </div>
-      </div>
-    );
+    return <LandsSkeleton />;
   }
 
   return (

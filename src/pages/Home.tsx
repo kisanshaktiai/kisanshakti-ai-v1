@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { landsApi } from '@/services/landsApi';
 import { useWeather } from '@/hooks/useWeather';
+import { HomeSkeleton } from '@/components/skeletons';
 
 interface FeatureCard {
   title: string;
@@ -211,6 +212,10 @@ export default function Home() {
       trend: lands.length > 0 ? 'up' : 'stable' 
     }
   ];
+
+  if (loading) {
+    return <HomeSkeleton />;
+  }
 
   return (
     <div className="bg-gradient-subtle">

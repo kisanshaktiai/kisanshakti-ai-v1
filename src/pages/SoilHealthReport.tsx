@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { SoilReportHeader } from '@/components/soil/SoilReportHeader';
 import { SoilReportBanner } from '@/components/soil/SoilReportBanner';
 import { NutrientCard } from '@/components/soil/NutrientCard';
+import { SoilHealthSkeleton } from '@/components/skeletons';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 
@@ -175,14 +176,7 @@ export default function SoilHealthReport() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex items-center justify-center p-4">
-        <div className="text-center space-y-4">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mx-auto" />
-          <p className="text-muted-foreground">Loading soil health data...</p>
-        </div>
-      </div>
-    );
+    return <SoilHealthSkeleton />;
   }
 
   if (!data) {
