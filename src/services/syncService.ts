@@ -79,18 +79,14 @@ class SyncService {
       return { success: false, message: 'Device is offline' };
     }
 
-    // Get tenant context from auth store
     const authState = useAuthStore.getState();
     const tenantId = authState.user?.tenantId;
     const userId = authState.user?.id;
     
-    // Don't sync if user is not authenticated yet
     if (!tenantId || !userId) {
-      console.log('⚠️ [Sync] Skipping sync: User not authenticated', { tenantId, userId });
       return { success: false, message: 'User not authenticated' };
     }
 
-    console.log('🔄 [Sync] Starting sync for tenant:', tenantId, 'user:', userId);
     this.syncInProgress = true;
     await localDB.updateSyncMetadata({ syncInProgress: true });
 

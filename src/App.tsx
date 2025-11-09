@@ -84,70 +84,38 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   useGlobalRealtimeSync();
 
   useEffect(() => {
-    // Initialize app with performance optimization
     const initializeApp = async () => {
-      console.log('🚀 App initialization started');
-      
-      // Initialize local database first
+      // Initialize local database
       await localDB.initialize();
-      console.log('✅ Local database initialized');
       
-      // Start fetching tenant data
-      const tenantPromise = fetchTenant();
+      // Parallel initialization
+      await Promise.all([
+        fetchTenant(),
+        checkAuth(),
+        LocationService.getCurrentLocation(true).catch(() => null)
+      ]);
       
-      // Check authentication status synchronously
-      // This will restore auth state and set headers BEFORE queries start
-      console.log('🔐 [App] Starting auth check');
-      checkAuth();
-      console.log('✅ [App] Auth check complete, headers should be ready');
-      
-      // Fetch initial GPS location when app starts
-      const locationPromise = LocationService.getCurrentLocation(true).then(location => {
-        if (location) {
-          console.log('✅ Initial location fetched:', location);
-        }
-      }).catch(err => console.warn('Location fetch failed:', err));
-      
-      // Wait for critical tasks (auth is now synchronous)
-      await Promise.all([tenantPromise, locationPromise]);
-      console.log('✅ Critical initialization complete');
-      
-      // Start listening for tenant and theme changes
       listenForTenantChanges();
     };
 
-    initializeApp().catch(error => {
-      console.error('❌ App initialization error:', error);
-    });
+    initializeApp();
   }, []);
 
-  // Initialize sync service AFTER authentication is complete
+  // Initialize sync service ONLY when user is authenticated
   useEffect(() => {
     const initializeSync = async () => {
       const { user } = useAuthStore.getState();
-      console.log('🔄 [App] Sync initialization check:', { 
-        hasUser: !!user?.id, 
-        hasTenant: !!user?.tenantId,
-        userId: user?.id,
-        tenantId: user?.tenantId
-      });
       
+      // Silent skip if no user
       if (!user?.id || !user?.tenantId) {
-        console.log('⚠️ [App] Cannot sync - no user');
         return;
       }
       
-      console.log('🔄 [App] Starting initial sync for user:', user.id);
-      
       try {
-        // CRITICAL: Wait for headers to be VERIFIED
         const { waitForHeaders, supabaseWithAuth } = await import('@/integrations/supabase/client');
-        console.log('⏳ [App] Waiting for auth headers...');
         await waitForHeaders();
-        console.log('✅ [App] Headers ready');
         
-        // Test that headers actually work
-        console.log('🔍 [App] Testing database access...');
+        // Quick auth test
         const testQuery = await supabaseWithAuth(user.id, user.tenantId)
           .from('farmers')
           .select('id')
@@ -156,39 +124,16 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           .single();
         
         if (testQuery.error) {
-          console.error('❌ [App] Auth test failed:', testQuery.error);
-          toast({
-            title: 'Authentication Error',
-            description: 'Cannot access your data. Please try logging in again.',
-            variant: 'destructive'
-          });
           return;
         }
         
-        console.log('✅ [App] Auth verified, starting sync...');
-        
-        const result = await syncService.performSync(false);
-        console.log('✅ [App] Initial sync completed:', result);
-        
-        // Verify data was downloaded
-        const lands = await localDB.getLands();
-        const schedules = await localDB.getAllSchedules();
-        console.log('📊 [App] LocalDB status after sync:', {
-          lands: lands?.length || 0,
-          schedules: schedules?.length || 0,
-        });
+        await syncService.performSync(false);
       } catch (error) {
-        console.error('❌ [App] Sync failed:', error);
-        toast({
-          title: 'Sync Failed',
-          description: 'Could not download your data. Check your connection.',
-          variant: 'destructive'
-        });
+        // Silent fail - user will sync on next login
       }
     };
     
-    // Longer delay to ensure auth is fully ready
-    const timer = setTimeout(initializeSync, 1000);
+    const timer = setTimeout(initializeSync, 500);
     return () => clearTimeout(timer);
   }, []);
 

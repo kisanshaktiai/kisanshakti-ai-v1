@@ -18,16 +18,12 @@ export default function SplashScreen() {
 
   useEffect(() => {
     const initializeApp = async () => {
-      // Fetch tenant data
-      await fetchTenant();
+      await Promise.all([fetchTenant(), checkAuth()]);
       
-      // Check authentication
-      await checkAuth();
-      
-      // Set ready state after initialization
+      // Quick ready state
       setTimeout(() => {
         setIsReady(true);
-      }, 1500);
+      }, 800);
     };
 
     initializeApp();
