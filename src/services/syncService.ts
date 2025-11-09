@@ -83,9 +83,13 @@ class SyncService {
     const tenantId = authState.user?.tenantId;
     const userId = authState.user?.id;
     
-    if (!tenantId || !userId) {
+    // Strict validation: Check for missing OR empty string values
+    if (!tenantId || !userId || tenantId.trim() === '' || userId.trim() === '') {
+      console.error('❌ [Sync] Invalid auth data:', { tenantId, userId });
       return { success: false, message: 'User not authenticated' };
     }
+    
+    console.log('✅ [Sync] Auth validated:', { userId, tenantId });
 
     this.syncInProgress = true;
     await localDB.updateSyncMetadata({ syncInProgress: true });
@@ -395,20 +399,23 @@ class SyncService {
       
       console.log('🔐 [Sync] Auth context:', { userId, tenant, providedTenant: tenantId });
       
-      if (!userId || !tenant) {
-        throw new Error('Missing authentication data for sync');
+      // Strict validation: Check for missing OR empty string values
+      if (!userId || !tenant || userId.trim() === '' || tenant.trim() === '') {
+        console.error('❌ [Sync] Invalid auth context:', { userId, tenant });
+        throw new Error('Missing or invalid authentication data for sync');
       }
       
-      // Test headers are working BEFORE downloading data
+      // Test database access with a simple, non-failing query
       console.log('🔍 [Sync] Testing database access...');
       const client = supabaseWithAuth(userId, tenant);
       
+      // Fixed: Use a query that won't fail if farmer doesn't exist
+      // Just test we can access the farmers table at all
       const testQuery = await client
         .from('farmers')
         .select('id')
-        .eq('id', userId)
-        .limit(1)
-        .single();
+        .eq('tenant_id', tenant)
+        .limit(1);
       
       if (testQuery.error) {
         console.error('❌ [Sync] Database access test failed:', testQuery.error);

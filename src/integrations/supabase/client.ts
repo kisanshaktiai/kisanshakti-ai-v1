@@ -138,8 +138,13 @@ export const supabaseWithAuth = (farmerId?: string, tenantId?: string) => {
   const userId = farmerId || globalAuthData?.userId;
   const tenant = tenantId || globalAuthData?.tenantId;
   
-  if (!userId || !tenant) {
-    console.warn('⚠️ [supabaseWithAuth] Missing auth data:', { userId, tenant });
+  // Strict validation: Check for missing OR empty string values
+  if (!userId || !tenant || userId.trim() === '' || tenant.trim() === '') {
+    console.warn('⚠️ [supabaseWithAuth] Invalid auth data:', { 
+      userId: userId || '(empty)', 
+      tenant: tenant || '(empty)',
+      isEmptyString: userId === '' || tenant === ''
+    });
     return supabase;
   }
   
