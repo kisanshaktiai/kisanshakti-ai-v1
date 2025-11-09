@@ -11,7 +11,7 @@ import {
   Send, Mic, MicOff, Volume2, VolumeX, Loader2, Bot, User, 
   RefreshCw, Wifi, WifiOff, MessageSquare, Mountain, 
   Paperclip, Camera, Image, ArrowLeft, ChevronDown,
-  ThumbsUp, ThumbsDown, Copy, Share2, Check
+  ThumbsUp, ThumbsDown, Copy, Share2, Check, Search, X, Clock, MessageCircle
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -23,6 +23,7 @@ import { useTenantStore } from '@/stores/tenantStore';
 import { landsApi } from '@/services/landsApi';
 import { LandContextCard } from './LandContextCard';
 import { GeneralChatWelcomeCard } from './GeneralChatWelcomeCard';
+import { ResponseSectionCard } from './ResponseSectionCard';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
@@ -74,6 +75,9 @@ export function EnhancedAIChatInterface() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [dynamicQuickReplies, setDynamicQuickReplies] = useState<Record<string, string[]>>({});
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [sessionStartTime, setSessionStartTime] = useState<Record<string, Date>>({});
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -162,6 +166,13 @@ export function EnhancedAIChatInterface() {
   useEffect(() => {
     fetchLands();
   }, []);
+
+  // Track session start time when switching tabs or sending first message
+  useEffect(() => {
+    if (!sessionStartTime[activeTab] && messages[activeTab]?.length > 0) {
+      setSessionStartTime(prev => ({ ...prev, [activeTab]: new Date() }));
+    }
+  }, [activeTab, messages]);
 
   useEffect(() => {
     if (transcript) {
@@ -742,6 +753,67 @@ export function EnhancedAIChatInterface() {
     return suggestions;
   };
 
+  // Helper: Group messages by date
+  const groupMessagesByDate = (messages: Message[]) => {
+    const groups: { date: string; messages: Message[] }[] = [];
+    const dateMap = new Map<string, Message[]>();
+
+    messages.forEach(msg => {
+      const dateKey = new Date(msg.timestamp).toLocaleDateString();
+      if (!dateMap.has(dateKey)) {
+        dateMap.set(dateKey, []);
+      }
+      dateMap.get(dateKey)!.push(msg);
+    });
+
+    dateMap.forEach((msgs, date) => {
+      groups.push({ date, messages: msgs });
+    });
+
+    return groups;
+  };
+
+  // Helper: Filter messages by search query
+  const filterMessages = (messages: Message[]) => {
+    if (!searchQuery.trim()) return messages;
+    
+    const query = searchQuery.toLowerCase();
+    return messages.filter(msg => 
+      msg.content.toLowerCase().includes(query)
+    );
+  };
+
+  // Helper: Get session statistics
+  const getSessionStats = () => {
+    const currentMessages = messages[activeTab] || [];
+    const sessionId = sessionIds[activeTab];
+    const isExistingSession = sessionId && loadedSessionIds.has(sessionId);
+    const startTime = sessionStartTime[activeTab];
+    
+    return {
+      messageCount: currentMessages.length,
+      userMessages: currentMessages.filter(m => m.role === 'user').length,
+      aiMessages: currentMessages.filter(m => m.role === 'assistant').length,
+      isExisting: isExistingSession,
+      sessionId: sessionId,
+      duration: startTime ? Date.now() - startTime.getTime() : 0
+    };
+  };
+
+  // Helper: Format duration
+  const formatDuration = (ms: number) => {
+    const minutes = Math.floor(ms / 60000);
+    if (minutes < 1) return 'Just started';
+    if (minutes < 60) return `${minutes}m`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ${minutes % 60}m`;
+  };
+
+  // Get filtered and grouped messages
+  const currentMessages = filterMessages(messages[activeTab] || []);
+  const groupedMessages = groupMessagesByDate(currentMessages);
+  const sessionStats = getSessionStats();
+
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header */}
@@ -776,9 +848,72 @@ export function EnhancedAIChatInterface() {
                   {t('common.offline')}
                 </Badge>
               )}
+              {/* Session Status Badge */}
+              {sessionStats.sessionId && (
+                <Badge 
+                  variant={sessionStats.isExisting ? "secondary" : "default"} 
+                  className="text-xs"
+                >
+                  {sessionStats.isExisting ? '♻️ Continuing' : '🆕 New'}
+                </Badge>
+              )}
             </div>
           </div>
+
+          {/* Search Toggle and Stats */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsSearchOpen(!isSearchOpen)}
+              className="h-9 w-9"
+            >
+              <Search className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
+
+        {/* Session Statistics Bar */}
+        {sessionStats.messageCount > 0 && (
+          <div className="px-3 pb-2 flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <MessageCircle className="w-3 h-3" />
+              <span>{sessionStats.messageCount} messages</span>
+            </div>
+            {sessionStats.duration > 0 && (
+              <div className="flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                <span>{formatDuration(sessionStats.duration)}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Search Bar */}
+        {isSearchOpen && (
+          <div className="px-3 pb-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search messages..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-9 h-9"
+              />
+              {searchQuery && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
         
       {/* Tabs - Mobile optimized horizontal scroll */}
       <div className="w-full overflow-x-auto scrollbar-hide">
@@ -852,191 +987,172 @@ export function EnhancedAIChatInterface() {
             </motion.div>
           )}
           
-          {(messages[activeTab] || []).map((message) => (
-            <motion.div
-              key={message.id}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.3, type: "spring", stiffness: 500, damping: 30 }}
-              className={cn(
-                "flex gap-2 mb-4",
-                message.role === 'user' ? 'justify-end' : 'justify-start'
-              )}
-            >
-              {message.role === 'assistant' && (
-                <Avatar className="h-8 w-8 shrink-0">
-                  <AvatarFallback className="bg-primary text-primary-foreground">
-                    <Bot className="h-4 w-4" />
-                  </AvatarFallback>
-                </Avatar>
-              )}
-              
-              <div className={cn(
-                "relative max-w-[85%]",
-                message.role === 'user' && 'order-1'
-              )}>
-                {/* Action buttons in top corner */}
-                <div className={cn(
-                  "absolute -top-1 flex items-center gap-1 z-10",
-                  message.role === 'user' ? '-left-1' : '-right-1'
-                )}>
-                  {/* Read aloud button */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted"
-                    onClick={() => handlePlayMessage(message.id, message.content)}
-                  >
-                    {playingMessageId === message.id && isSpeaking ? (
-                      <VolumeX className="h-3.5 w-3.5" />
-                    ) : (
-                      <Volume2 className="h-3.5 w-3.5" />
-                    )}
-                  </Button>
-                  
-                  {/* Like button */}
-                  {message.role === 'assistant' && (
-                    <>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className={cn(
-                          "h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted",
-                          message.feedback === 'like' && "text-primary"
-                        )}
-                        onClick={() => handleLike(message.id, true)}
-                      >
-                        <ThumbsUp className="h-3.5 w-3.5" />
-                      </Button>
-                      
-                      {/* Dislike button */}
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className={cn(
-                          "h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted",
-                          message.feedback === 'dislike' && "text-destructive"
-                        )}
-                        onClick={() => handleLike(message.id, false)}
-                      >
-                        <ThumbsDown className="h-3.5 w-3.5" />
-                      </Button>
-                    </>
-                  )}
-                  
-                  {/* Copy button */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted"
-                    onClick={() => handleCopy(message.id, message.content)}
-                  >
-                    {copiedMessageId === message.id ? (
-                      <Check className="h-3.5 w-3.5 text-primary" />
-                    ) : (
-                      <Copy className="h-3.5 w-3.5" />
-                    )}
-                  </Button>
-                  
-                  {/* Share button */}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted"
-                    onClick={() => handleShare(message.content)}
-                  >
-                    <Share2 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-                
-                {/* Message content with glass-like effect for AI messages */}
-                <div className={cn(
-                  "rounded-2xl p-4 backdrop-blur-sm",
-                  message.role === 'user' 
-                    ? 'bg-gradient-to-br from-primary to-primary/90 text-primary-foreground shadow-lg' 
-                    : 'bg-gradient-to-br from-card/95 to-card/80 border border-border/50 shadow-md'
-                )}>
-                  {/* For AI messages with structured sections */}
-                  {message.role === 'assistant' && message.structured?.sections ? (
-                    <div className="space-y-3">
-                      {/* Greeting */}
-                      {message.structured.greeting && (
-                        <div className="text-base font-semibold text-foreground mb-2 pb-2 border-b border-border/30">
-                          {message.structured.greeting}
-                        </div>
-                      )}
-                      
-                      {/* Land Context */}
-                      {message.structured.landContext && (
-                        <div className="text-sm text-muted-foreground mb-3 p-2 rounded-lg bg-muted/20">
-                          {message.structured.landContext}
-                        </div>
-                      )}
-                      
-                      {/* Color-coded sections */}
-                      {message.structured.sections.map((section: any, idx: number) => (
-                        <motion.div
-                          key={idx}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: idx * 0.1 }}
-                          className={cn(
-                            "p-3 rounded-xl backdrop-blur-sm border-l-4",
-                            section.color === 'green' && "bg-green-500/10 border-green-500",
-                            section.color === 'yellow' && "bg-yellow-500/10 border-yellow-500",
-                            section.color === 'red' && "bg-red-500/10 border-red-500",
-                            section.color === 'purple' && "bg-purple-500/10 border-purple-500",
-                            section.color === 'blue' && "bg-blue-500/10 border-blue-500"
-                          )}
-                        >
-                          <p className={cn(
-                            "text-xs font-bold mb-1.5",
-                            section.color === 'green' && "text-green-600 dark:text-green-400",
-                            section.color === 'yellow' && "text-yellow-600 dark:text-yellow-400",
-                            section.color === 'red' && "text-red-600 dark:text-red-400",
-                            section.color === 'purple' && "text-purple-600 dark:text-purple-400",
-                            section.color === 'blue' && "text-blue-600 dark:text-blue-400"
-                          )}>
-                            {section.title}
-                          </p>
-                          <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                            {section.content.split('\n').map((line: string, i: number) => (
-                              <p key={i} className="mb-1">{line}</p>
-                            ))}
-                          </div>
-                        </motion.div>
-                      ))}
-                      
-                      {/* Closing message */}
-                      {message.structured.closingMessage && (
-                        <div className="text-sm font-medium text-primary mt-3 pt-3 border-t border-border/30">
-                          {message.structured.closingMessage}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    /* Regular text message */
-                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{message.content}</p>
-                  )}
-                  
-                  {/* Timestamp */}
-                  <div className="flex items-center gap-2 mt-3 pt-2 border-t border-border/20">
-                    <span className="text-xs opacity-60">
-                      {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
+          {/* Messages grouped by date */}
+          {groupedMessages.map((group, groupIndex) => (
+            <div key={group.date}>
+              {/* Date Separator */}
+              <div className="flex items-center justify-center my-4">
+                <div className="bg-muted/50 backdrop-blur px-3 py-1 rounded-full">
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {new Date(group.messages[0].timestamp).toLocaleDateString() === new Date().toLocaleDateString()
+                      ? 'Today'
+                      : new Date(group.messages[0].timestamp).toLocaleDateString() === new Date(Date.now() - 86400000).toLocaleDateString()
+                      ? 'Yesterday'
+                      : group.date}
+                  </span>
                 </div>
               </div>
-              
-              {message.role === 'user' && (
-                <Avatar className="h-8 w-8 shrink-0">
-                  <AvatarFallback className="bg-secondary">
-                    <User className="h-4 w-4" />
-                  </AvatarFallback>
-                </Avatar>
-              )}
-            </motion.div>
+
+              {/* Messages for this date */}
+              {group.messages.map((message) => (
+                <motion.div
+                  key={message.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3, type: "spring", stiffness: 500, damping: 30 }}
+                  className={cn(
+                    "flex gap-2 mb-4",
+                    message.role === 'user' ? 'justify-end' : 'justify-start'
+                  )}
+                >
+                  {message.role === 'assistant' && (
+                    <Avatar className="h-8 w-8 shrink-0">
+                      <AvatarFallback className="bg-primary text-primary-foreground">
+                        <Bot className="h-4 w-4" />
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
+                  
+                  <div className={cn(
+                    "relative max-w-[85%]",
+                    message.role === 'user' && 'order-1'
+                  )}>
+                    {/* Action buttons in top corner */}
+                    <div className={cn(
+                      "absolute -top-1 flex items-center gap-1 z-10",
+                      message.role === 'user' ? '-left-1' : '-right-1'
+                    )}>
+                      {/* Read aloud button */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted"
+                        onClick={() => handlePlayMessage(message.id, message.content)}
+                      >
+                        {playingMessageId === message.id && isSpeaking ? (
+                          <VolumeX className="h-3.5 w-3.5" />
+                        ) : (
+                          <Volume2 className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                      
+                      {/* Like/Dislike buttons */}
+                      {message.role === 'assistant' && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn(
+                              "h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted",
+                              message.feedback === 'like' && "text-primary"
+                            )}
+                            onClick={() => handleLike(message.id, true)}
+                          >
+                            <ThumbsUp className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={cn(
+                              "h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted",
+                              message.feedback === 'dislike' && "text-destructive"
+                            )}
+                            onClick={() => handleLike(message.id, false)}
+                          >
+                            <ThumbsDown className="h-3.5 w-3.5" />
+                          </Button>
+                        </>
+                      )}
+                      
+                      {/* Copy button */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted"
+                        onClick={() => handleCopy(message.id, message.content)}
+                      >
+                        {copiedMessageId === message.id ? (
+                          <Check className="h-3.5 w-3.5 text-green-500" />
+                        ) : (
+                          <Copy className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                      
+                      {/* Share button */}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 bg-background/90 backdrop-blur hover:bg-muted"
+                        onClick={() => handleShare(message.content)}
+                      >
+                        <Share2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    
+                    {/* Message content */}
+                    <div className={cn(
+                      "rounded-2xl p-4 backdrop-blur-sm",
+                      message.role === 'user' 
+                        ? 'bg-gradient-to-br from-primary to-primary/90 text-primary-foreground shadow-lg' 
+                        : 'bg-gradient-to-br from-card/95 to-card/80 border border-border/50 shadow-md'
+                    )}>
+                      {message.role === 'assistant' && message.structured?.sections ? (
+                        <div className="space-y-3">
+                          {message.structured.greeting && (
+                            <div className="text-base font-semibold text-foreground mb-2 pb-2 border-b border-border/30">
+                              {message.structured.greeting}
+                            </div>
+                          )}
+                          {message.structured.sections.map((section: any, idx: number) => (
+                            <ResponseSectionCard 
+                              key={idx} 
+                              emoji={section.emoji || '📋'}
+                              title={section.title}
+                              content={section.content}
+                              sectionType={section.type || 'other'}
+                            />
+                          ))}
+                          {message.structured.closingMessage && (
+                            <div className="text-sm text-muted-foreground mt-2 pt-2 border-t border-border/20">
+                              {message.structured.closingMessage}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                          {message.content}
+                        </p>
+                      )}
+                      
+                      <div className="flex items-center gap-2 mt-3 pt-2 border-t border-border/20">
+                        <span className="text-xs opacity-60">
+                          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {message.role === 'user' && (
+                    <Avatar className="h-8 w-8 shrink-0">
+                      <AvatarFallback className="bg-secondary">
+                        <User className="h-4 w-4" />
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
+                </motion.div>
+              ))}
+            </div>
           ))}
         </AnimatePresence>
         
