@@ -21173,6 +21173,7 @@ export type Database = {
           tile_id: string
         }[]
       }
+      get_user_tenant_id: { Args: { _user_id: string }; Returns: string }
       get_user_tenant_relationships: {
         Args: {
           p_include_inactive?: boolean

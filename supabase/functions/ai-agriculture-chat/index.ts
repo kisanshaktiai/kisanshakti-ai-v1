@@ -42,6 +42,9 @@ serve(async (req) => {
     const finalTenantId = metadata.tenantId || headerTenantId;
     const finalFarmerId = metadata.farmerId || headerFarmerId;
 
+    // CRITICAL SECURITY: Validate isolation context before ANY database operation
+    await validateIsolation(finalTenantId, finalFarmerId, supabaseUrl, supabaseServiceKey);
+
     // Rate limiting check (20 requests per minute per farmer)
     const rateLimitKey = `ai-chat:${finalTenantId}:${finalFarmerId}`;
     const rateLimit = checkRateLimit(rateLimitKey, { maxRequests: 20, windowMs: 60000 });
@@ -1144,6 +1147,44 @@ function generateQuickReplies(lastMessage: string): string[] {
     '💬 Best practices for my soil type?',
     '💬 Weekly care checklist for my crop?'
   ];
+}
+
+// Validate isolation context to prevent tenant/farmer data leakage
+async function validateIsolation(
+  tenantId: string | null, 
+  farmerId: string | null,
+  supabaseUrl: string,
+  supabaseServiceKey: string
+) {
+  // Check required fields
+  if (!tenantId || !farmerId) {
+    throw new Error('SECURITY: Missing isolation context - tenantId and farmerId are required');
+  }
+
+  // Verify tenant and farmer match in user_profiles table
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+  
+  const { data: userProfile, error } = await supabase
+    .from('user_profiles')
+    .select('tenant_id')
+    .eq('id', farmerId)
+    .single();
+
+  if (error || !userProfile) {
+    console.error('SECURITY: Farmer profile not found', { farmerId, error });
+    throw new Error('SECURITY: Invalid farmer ID');
+  }
+
+  if (userProfile.tenant_id !== tenantId) {
+    console.error('SECURITY: Tenant-Farmer mismatch detected', {
+      providedTenantId: tenantId,
+      actualTenantId: userProfile.tenant_id,
+      farmerId
+    });
+    throw new Error('SECURITY: Tenant-Farmer mismatch - potential data isolation breach');
+  }
+
+  return true;
 }
 
 // Handle training data collection from positive feedback

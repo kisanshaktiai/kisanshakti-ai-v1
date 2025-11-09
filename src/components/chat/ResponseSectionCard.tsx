@@ -8,6 +8,8 @@ import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
+import { InteractiveScheduleTable, ScheduleRow } from './InteractiveScheduleTable';
+import { ProgressTimeline, TimelineStage } from './ProgressTimeline';
 
 interface ResponseSectionCardProps {
   emoji: string;
@@ -15,6 +17,8 @@ interface ResponseSectionCardProps {
   content: string;
   sectionType: 'organic' | 'fertilizer' | 'pest' | 'water' | 'income' | 'other';
   isExpanded?: boolean;
+  scheduleData?: ScheduleRow[];
+  timelineData?: TimelineStage[];
 }
 
 const sectionColors = {
@@ -61,7 +65,9 @@ export const ResponseSectionCard: React.FC<ResponseSectionCardProps> = ({
   title,
   content,
   sectionType,
-  isExpanded = true
+  isExpanded = true,
+  scheduleData,
+  timelineData
 }) => {
   const [expanded, setExpanded] = useState(isExpanded);
   const [bookmarked, setBookmarked] = useState(false);
@@ -86,6 +92,12 @@ export const ResponseSectionCard: React.FC<ResponseSectionCardProps> = ({
     } else {
       handleCopy();
     }
+  };
+
+  const handleSaveSchedule = (updatedRows: ScheduleRow[]) => {
+    // Save to local storage or backend
+    console.log('Saving schedule:', updatedRows);
+    toast({ title: 'Schedule saved successfully' });
   };
 
   return (
@@ -146,8 +158,27 @@ export const ResponseSectionCard: React.FC<ResponseSectionCardProps> = ({
               animate={{ height: 'auto', opacity: 1 }}
               exit={{ height: 0, opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="overflow-hidden"
+              className="overflow-hidden space-y-4"
             >
+              {/* Timeline if provided */}
+              {timelineData && timelineData.length > 0 && (
+                <div className="mb-4">
+                  <ProgressTimeline stages={timelineData} />
+                </div>
+              )}
+
+              {/* Interactive Schedule Table if provided */}
+              {scheduleData && scheduleData.length > 0 && (
+                <div className="mb-4">
+                  <InteractiveScheduleTable
+                    title="Application Schedule"
+                    rows={scheduleData}
+                    onSave={handleSaveSchedule}
+                  />
+                </div>
+              )}
+
+              {/* Markdown Content */}
               <div className="prose prose-sm max-w-none dark:prose-invert">
                 <ReactMarkdown
                   rehypePlugins={[rehypeRaw]}
