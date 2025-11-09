@@ -58,6 +58,8 @@ const agronomicTerms = [
 
 // Enhanced Markdown Renderer with Crop Emojis and Term Highlighting
 const renderMarkdown = (text: string): React.ReactNode => {
+  if (!text) return null;
+
   // Add crop emojis to text
   let enhancedText = text;
   Object.entries(cropEmojiMap).forEach(([crop, emoji]) => {
@@ -65,33 +67,45 @@ const renderMarkdown = (text: string): React.ReactNode => {
     enhancedText = enhancedText.replace(regex, `${crop} ${emoji}`);
   });
 
+  // Add color-coded section styling for emojis
+  enhancedText = enhancedText
+    .replace(/🟢\s*\*\*([^*]+)\*\*/g, '<span class="text-emerald-600 dark:text-emerald-400 font-bold">🟢 $1</span>')
+    .replace(/🟡\s*\*\*([^*]+)\*\*/g, '<span class="text-amber-600 dark:text-amber-400 font-bold">🟡 $1</span>')
+    .replace(/🔴\s*\*\*([^*]+)\*\*/g, '<span class="text-rose-600 dark:text-rose-400 font-bold">🔴 $1</span>')
+    .replace(/🟣\s*\*\*([^*]+)\*\*/g, '<span class="text-purple-600 dark:text-purple-400 font-bold">🟣 $1</span>')
+    .replace(/🔵\s*\*\*([^*]+)\*\*/g, '<span class="text-blue-600 dark:text-blue-400 font-bold">🔵 $1</span>');
+
   return (
     <ReactMarkdown
       rehypePlugins={[rehypeRaw]}
       remarkPlugins={[remarkGfm]}
       components={{
-        h1: ({node, ...props}) => <h1 className="text-2xl font-bold mt-4 mb-2 first:mt-0" {...props} />,
-        h2: ({node, ...props}) => <h2 className="text-xl font-bold mt-4 mb-2 first:mt-0" {...props} />,
-        h3: ({node, ...props}) => <h3 className="text-lg font-semibold mt-3 mb-2 first:mt-0" {...props} />,
+        h1: ({node, ...props}) => <h1 className="text-2xl font-bold mt-4 mb-2 first:mt-0 text-foreground" {...props} />,
+        h2: ({node, ...props}) => <h2 className="text-xl font-bold mt-4 mb-2 first:mt-0 text-foreground" {...props} />,
+        h3: ({node, ...props}) => <h3 className="text-lg font-semibold mt-3 mb-2 first:mt-0 text-foreground" {...props} />,
         ul: ({node, ...props}) => <ul className="list-disc list-inside my-2 space-y-1" {...props} />,
         ol: ({node, ...props}) => <ol className="list-decimal list-inside my-2 space-y-1" {...props} />,
         li: ({node, ...props}) => <li className="ml-2" {...props} />,
         table: ({node, ...props}) => (
           <div className="overflow-x-auto my-3">
-            <table className="min-w-full border border-gray-300 dark:border-gray-600 rounded-lg" {...props} />
+            <table className="min-w-full border border-border rounded-lg overflow-hidden" {...props} />
           </div>
         ),
         thead: ({node, ...props}) => <thead className="bg-emerald-100 dark:bg-emerald-900/40" {...props} />,
-        th: ({node, ...props}) => <th className="px-3 py-2 border border-gray-300 dark:border-gray-600 font-semibold text-left" {...props} />,
-        td: ({node, ...props}) => <td className="px-3 py-2 border border-gray-300 dark:border-gray-600" {...props} />,
-        strong: ({node, ...props}) => <strong className="font-semibold text-emerald-700 dark:text-emerald-300" {...props} />,
-        em: ({node, ...props}) => <em className="italic text-gray-700 dark:text-gray-300" {...props} />,
+        th: ({node, ...props}) => <th className="px-3 py-2 border border-border font-semibold text-left" {...props} />,
+        td: ({node, ...props}) => <td className="px-3 py-2 border border-border" {...props} />,
+        strong: ({node, ...props}) => <strong className="font-semibold text-foreground" {...props} />,
+        em: ({node, ...props}) => <em className="italic text-muted-foreground" {...props} />,
         p: ({node, ...props}) => <p className="my-2 leading-relaxed" {...props} />,
+        hr: ({node, ...props}) => <hr className="my-4 border-t-2 border-emerald-200 dark:border-emerald-800" {...props} />,
+        blockquote: ({node, ...props}) => (
+          <blockquote className="border-l-4 border-primary/50 pl-4 italic my-2 text-muted-foreground" {...props} />
+        ),
         code: ({node, inline, ...props}: any) => 
           inline ? (
-            <code className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-xs font-mono" {...props} />
+            <code className="px-1.5 py-0.5 rounded bg-muted/60 text-xs font-mono text-foreground" {...props} />
           ) : (
-            <code className="block p-3 rounded-lg bg-gray-100 dark:bg-gray-800 overflow-x-auto text-xs font-mono my-2" {...props} />
+            <code className="block p-3 rounded-lg bg-muted/60 overflow-x-auto text-xs font-mono my-2" {...props} />
           )
       }}
     >
@@ -836,20 +850,34 @@ export function ModernAIChatInterface() {
         setSessionId(existingSession.id);
         localStorage.setItem(`chat_session_${landId || 'general'}`, existingSession.id);
         
-        // Load cached messages
-        const cachedMessages = localStorage.getItem(`chat_messages_${landId || 'general'}`);
-        if (cachedMessages) {
-          try {
-            const parsed = JSON.parse(cachedMessages);
-            setMessages(parsed.map((m: any) => ({
-              ...m,
-              timestamp: new Date(m.timestamp)
-            })));
-          } catch (e) {
-            console.error('Error parsing cached messages:', e);
+        // Load messages from database
+        try {
+          const { data: dbMessages, error: messagesError } = await supabase
+            .from('ai_chat_messages')
+            .select('*')
+            .eq('session_id', existingSession.id)
+            .order('created_at', { ascending: true });
+          
+          if (messagesError) {
+            console.error('Error loading messages from DB:', messagesError);
+            setMessages([]);
+          } else if (dbMessages && dbMessages.length > 0) {
+            // Convert database messages to UI format
+            const formattedMessages = dbMessages.map((msg: any) => ({
+              id: msg.id,
+              role: msg.role,
+              content: msg.content,
+              timestamp: new Date(msg.created_at),
+              attachments: msg.image_urls || msg.attachments || []
+            }));
+            setMessages(formattedMessages);
+            // Update localStorage cache
+            localStorage.setItem(`chat_messages_${landId || 'general'}`, JSON.stringify(formattedMessages));
+          } else {
             setMessages([]);
           }
-        } else {
+        } catch (e) {
+          console.error('Error loading messages:', e);
           setMessages([]);
         }
       } else {

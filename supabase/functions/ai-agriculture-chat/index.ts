@@ -160,6 +160,13 @@ serve(async (req) => {
 
 Your mission: Help Indian farmers achieve 2-3X crop yields and double their income through scientifically proven, data-driven agricultural practices.
 
+⚠️ RESPONSE FORMAT REQUIREMENTS:
+- Use simple, conversational language - avoid heavy academic terminology
+- Format with clear sections using emojis (🟢🟡🔴🟣🔵) and **bold headers**
+- Use tables for schedules, bullet points for steps
+- Keep responses concise but comprehensive (max 1200 words)
+- Base all advice on the actual data provided (soil tests, NDVI, crop stage, weather)
+
 ═══════════════════════════════════════════════════════════════
 🎯 CORE COMPETENCIES
 ═══════════════════════════════════════════════════════════════
@@ -167,8 +174,8 @@ Your mission: Help Indian farmers achieve 2-3X crop yields and double their inco
 1. SCIENTIFIC EXPERTISE (Foundation of every response):
    ✓ Base ALL recommendations on ICAR research bulletins, KVK field trials, SAU crop guides
    ✓ Reference specific studies: "ICAR-CRIDA 2023 study shows...", "As per KVK Pune trials..."
-   ✓ Use scientific principles: nutrient uptake curves, phenological stages, vapor pressure deficit
-   ✓ Calculate precisely using agronomic formulas (not generic estimates)
+   ✓ Use scientific principles but explain in farmer-friendly language
+   ✓ Calculate precisely using agronomic formulas and ACTUAL data provided
 
 2. PRECISION AGRICULTURE:
    ✓ Use NDVI for biomass estimation → predict fertilizer needs
@@ -385,6 +392,25 @@ Your mission: Help Indian farmers achieve 2-3X crop yields and double their inco
                            (land.area_gunta ? (land.area_gunta / 40).toFixed(2) : null) ||
                            (land.size ? land.size : 'Unknown');
         
+        // Get NDVI history data
+        const { data: ndviData } = await supabase
+          .from('ndvi_analysis')
+          .select('*')
+          .eq('land_id', landId)
+          .order('analysis_date', { ascending: false })
+          .limit(5);
+        
+        // Get soil health data
+        const { data: soilHealthData } = await supabase
+          .from('soil_health')
+          .select('*')
+          .eq('land_id', landId)
+          .order('test_date', { ascending: false })
+          .limit(1);
+        
+        const latestSoilHealth = soilHealthData && soilHealthData.length > 0 ? soilHealthData[0] : null;
+        const latestNDVI = ndviData && ndviData.length > 0 ? ndviData[0] : null;
+        
         landContext = {
           land_id: land.id,
           name: land.name,
@@ -396,10 +422,42 @@ Your mission: Help Indian farmers achieve 2-3X crop yields and double their inco
           water_source: land.water_source,
           irrigation_type: land.irrigation_type,
           cultivation_date: land.cultivation_date,
-          soil_npk: land.soil_npk || 'Not available',
-          ndvi_value: land.ndvi_latest || 'Not available',
-          soil_moisture: land.soil_moisture || 'Not available'
+          soil_npk: land.soil_npk || latestSoilHealth?.npk_values || 'Not available',
+          ndvi_value: land.ndvi_latest || latestNDVI?.ndvi_value || 'Not available',
+          soil_moisture: land.soil_moisture || latestSoilHealth?.moisture_level || 'Not available',
+          soil_health: latestSoilHealth,
+          ndvi_history: ndviData
         };
+        
+        // Build enhanced prompt with real data
+        let dataInsights = '';
+        
+        if (latestSoilHealth) {
+          dataInsights += `\n\n🧪 SOIL HEALTH DATA (Test Date: ${latestSoilHealth.test_date}):\n`;
+          dataInsights += `- pH Level: ${latestSoilHealth.ph_level || 'N/A'}\n`;
+          dataInsights += `- Nitrogen (N): ${latestSoilHealth.nitrogen || 'N/A'} kg/ha\n`;
+          dataInsights += `- Phosphorus (P): ${latestSoilHealth.phosphorus || 'N/A'} kg/ha\n`;
+          dataInsights += `- Potassium (K): ${latestSoilHealth.potassium || 'N/A'} kg/ha\n`;
+          dataInsights += `- Organic Carbon: ${latestSoilHealth.organic_carbon || 'N/A'}%\n`;
+          dataInsights += `- Moisture Level: ${latestSoilHealth.moisture_level || 'N/A'}%\n`;
+          if (latestSoilHealth.micronutrients) {
+            dataInsights += `- Micronutrients: ${JSON.stringify(latestSoilHealth.micronutrients)}\n`;
+          }
+        }
+        
+        if (ndviData && ndviData.length > 0) {
+          dataInsights += `\n\n📊 NDVI TREND ANALYSIS (Last ${ndviData.length} readings):\n`;
+          ndviData.forEach((reading, idx) => {
+            dataInsights += `${idx + 1}. Date: ${reading.analysis_date} | NDVI: ${reading.ndvi_value} | Health: ${reading.health_status || 'N/A'}\n`;
+          });
+          
+          // Calculate trend
+          if (ndviData.length >= 2) {
+            const trend = ndviData[0].ndvi_value - ndviData[ndviData.length - 1].ndvi_value;
+            const trendText = trend > 0 ? '📈 Improving' : trend < 0 ? '📉 Declining' : '➡️ Stable';
+            dataInsights += `Trend: ${trendText} (${trend > 0 ? '+' : ''}${trend.toFixed(2)})\n`;
+          }
+        }
         
         systemPrompt += `\n\n📊 LAND-SPECIFIC CONTEXT (USE THIS DATA FOR CALCULATIONS):
 - Land Name: ${land.name || 'Unknown'}
@@ -410,11 +468,14 @@ Your mission: Help Indian farmers achieve 2-3X crop yields and double their inco
 - Location: ${land.village || ''}, ${land.district || ''}, ${land.state || 'India'}
 - Water Source: ${land.water_source || 'Not specified'}
 - Irrigation Type: ${land.irrigation_type || 'Not specified'}
-- Soil NPK: ${land.soil_npk || 'Not available - ask farmer to update'}
-- NDVI Value: ${land.ndvi_latest || 'Not available - suggest updating'}
-- Soil Moisture: ${land.soil_moisture || 'Not available'}
+${dataInsights}
 
-⚠️ IMPORTANT: Calculate ALL fertilizer/pesticide doses for ${areaInAcres} acres. Show per-acre calculation.`;
+⚠️ IMPORTANT: 
+1. Calculate ALL fertilizer/pesticide doses for ${areaInAcres} acres. Show per-acre calculation.
+2. Use ACTUAL soil health and NDVI data provided above for precise recommendations.
+3. Format your response with clear sections using emojis (🟢🟡🔴🟣🔵) and **bold headers**.
+4. Keep language simple and conversational - avoid excessive technical jargon.
+5. Use tables for schedules and bullet points for steps.`;
       }
     }
 
