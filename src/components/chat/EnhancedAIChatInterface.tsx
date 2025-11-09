@@ -1028,18 +1028,18 @@ export function EnhancedAIChatInterface() {
                     "relative max-w-[85%]",
                     message.role === 'user' && 'order-1'
                   )}>
-                    {/* Message content - 2030 Modern UI */}
+                    {/* Message content - 2030 Modern UI with theme-based colors */}
                     <div className={cn(
-                      "relative rounded-3xl overflow-hidden",
+                      "relative rounded-[1.75rem] overflow-hidden",
                       message.role === 'user' 
-                        ? 'bg-gradient-to-br from-primary via-primary/95 to-primary/90 text-primary-foreground shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-primary/20' 
-                        : 'bg-gradient-to-br from-background via-background/98 to-muted/30 border border-border/40 shadow-[0_8px_30px_rgb(0,0,0,0.08)]'
+                        ? 'bg-[image:var(--chat-bubble-user-bg)] text-primary-foreground shadow-[0_4px_20px_rgba(0,0,0,0.08)] border border-primary/10' 
+                        : 'bg-[hsl(var(--chat-bubble-ai-bg))] border border-[hsl(var(--chat-bubble-ai-border))] shadow-[0_4px_20px_rgba(0,0,0,0.06)]'
                     )}>
                       <div className="p-5">
                         {message.role === 'assistant' && message.structured?.sections ? (
-                          <div className="space-y-3">
+                          <div className="space-y-4">
                             {message.structured.greeting && message.structured.greeting.trim() !== '' && (
-                              <div className="text-base font-semibold text-foreground mb-2 pb-2 border-b border-border/30">
+                              <div className="text-base font-medium text-foreground mb-3 pb-3 border-b border-border/20">
                                 {message.structured.greeting.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
                               </div>
                             )}
@@ -1053,7 +1053,7 @@ export function EnhancedAIChatInterface() {
                               />
                             ))}
                             {message.structured.closingMessage && message.structured.closingMessage.trim() !== '' && (
-                              <div className="text-sm text-muted-foreground mt-2 pt-2 border-t border-border/20">
+                              <div className="text-sm text-muted-foreground mt-3 pt-3 border-t border-border/20">
                                 {message.structured.closingMessage.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
                               </div>
                             )}
@@ -1064,7 +1064,7 @@ export function EnhancedAIChatInterface() {
                           </p>
                         )}
                         
-                        <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border/10">
+                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/10">
                           <span className="text-xs opacity-60">
                             {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
@@ -1072,22 +1072,22 @@ export function EnhancedAIChatInterface() {
                       </div>
                     </div>
 
-                    {/* Action buttons below message - 2030 Modern Design */}
+                    {/* Action buttons below message - Modern subtle design */}
                     <div className={cn(
-                      "flex items-center gap-1.5 mt-2",
+                      "flex items-center gap-1 mt-2",
                       message.role === 'user' ? 'justify-end' : 'justify-start'
                     )}>
                       {/* Read aloud button */}
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-8 px-3 rounded-full bg-muted/50 hover:bg-muted/80 backdrop-blur transition-all"
+                        className="h-7 px-2.5 rounded-full text-xs bg-background/60 hover:bg-background/80 border border-border/40 backdrop-blur transition-all"
                         onClick={() => handlePlayMessage(message.id, message.content)}
                       >
                         {playingMessageId === message.id && isSpeaking ? (
-                          <VolumeX className="h-3.5 w-3.5" />
+                          <VolumeX className="h-3 w-3" />
                         ) : (
-                          <Volume2 className="h-3.5 w-3.5" />
+                          <Volume2 className="h-3 w-3" />
                         )}
                       </Button>
                       
@@ -1098,23 +1098,23 @@ export function EnhancedAIChatInterface() {
                             variant="ghost"
                             size="sm"
                             className={cn(
-                              "h-8 px-3 rounded-full bg-muted/50 hover:bg-muted/80 backdrop-blur transition-all",
-                              message.feedback === 'like' && "bg-primary/20 text-primary hover:bg-primary/30"
+                              "h-7 px-2.5 rounded-full text-xs bg-background/60 hover:bg-background/80 border border-border/40 backdrop-blur transition-all",
+                              message.feedback === 'like' && "bg-primary/15 text-primary hover:bg-primary/25 border-primary/30"
                             )}
                             onClick={() => handleLike(message.id, true)}
                           >
-                            <ThumbsUp className="h-3.5 w-3.5" />
+                            <ThumbsUp className="h-3 w-3" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
                             className={cn(
-                              "h-8 px-3 rounded-full bg-muted/50 hover:bg-muted/80 backdrop-blur transition-all",
-                              message.feedback === 'dislike' && "bg-destructive/20 text-destructive hover:bg-destructive/30"
+                              "h-7 px-2.5 rounded-full text-xs bg-background/60 hover:bg-background/80 border border-border/40 backdrop-blur transition-all",
+                              message.feedback === 'dislike' && "bg-destructive/15 text-destructive hover:bg-destructive/25 border-destructive/30"
                             )}
                             onClick={() => handleLike(message.id, false)}
                           >
-                            <ThumbsDown className="h-3.5 w-3.5" />
+                            <ThumbsDown className="h-3 w-3" />
                           </Button>
                         </>
                       )}
@@ -1124,15 +1124,15 @@ export function EnhancedAIChatInterface() {
                         variant="ghost"
                         size="sm"
                         className={cn(
-                          "h-8 px-3 rounded-full bg-muted/50 hover:bg-muted/80 backdrop-blur transition-all",
-                          copiedMessageId === message.id && "bg-green-500/20 text-green-600"
+                          "h-7 px-2.5 rounded-full text-xs bg-background/60 hover:bg-background/80 border border-border/40 backdrop-blur transition-all",
+                          copiedMessageId === message.id && "bg-success/15 text-success border-success/30"
                         )}
                         onClick={() => handleCopy(message.id, message.content)}
                       >
                         {copiedMessageId === message.id ? (
-                          <Check className="h-3.5 w-3.5" />
+                          <Check className="h-3 w-3" />
                         ) : (
-                          <Copy className="h-3.5 w-3.5" />
+                          <Copy className="h-3 w-3" />
                         )}
                       </Button>
                       
@@ -1140,10 +1140,10 @@ export function EnhancedAIChatInterface() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-8 px-3 rounded-full bg-muted/50 hover:bg-muted/80 backdrop-blur transition-all"
+                        className="h-7 px-2.5 rounded-full text-xs bg-background/60 hover:bg-background/80 border border-border/40 backdrop-blur transition-all"
                         onClick={() => handleShare(message.content)}
                       >
-                        <Share2 className="h-3.5 w-3.5" />
+                        <Share2 className="h-3 w-3" />
                       </Button>
                     </div>
                   </div>

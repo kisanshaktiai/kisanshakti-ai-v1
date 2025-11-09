@@ -23,40 +23,46 @@ interface ResponseSectionCardProps {
 
 const sectionColors = {
   organic: {
-    border: 'border-l-emerald-500',
-    bg: 'bg-emerald-50/50 dark:bg-emerald-950/20',
-    icon: 'text-emerald-600 dark:text-emerald-400',
-    badge: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
+    border: 'border-l-[3px] border-l-[hsl(var(--chat-section-green-border))]',
+    bg: 'bg-[hsl(var(--chat-section-green-bg))]',
+    icon: 'text-[hsl(var(--chat-section-green-icon))]',
+    badge: 'bg-[hsl(var(--chat-section-green-badge))] text-white',
+    iconBg: 'bg-[hsl(var(--chat-section-green-badge))]'
   },
   fertilizer: {
-    border: 'border-l-amber-500',
-    bg: 'bg-amber-50/50 dark:bg-amber-950/20',
-    icon: 'text-amber-600 dark:text-amber-400',
-    badge: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
+    border: 'border-l-[3px] border-l-[hsl(var(--chat-section-yellow-border))]',
+    bg: 'bg-[hsl(var(--chat-section-yellow-bg))]',
+    icon: 'text-[hsl(var(--chat-section-yellow-icon))]',
+    badge: 'bg-[hsl(var(--chat-section-yellow-badge))] text-white',
+    iconBg: 'bg-[hsl(var(--chat-section-yellow-badge))]'
   },
   pest: {
-    border: 'border-l-rose-500',
-    bg: 'bg-rose-50/50 dark:bg-rose-950/20',
-    icon: 'text-rose-600 dark:text-rose-400',
-    badge: 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300'
+    border: 'border-l-[3px] border-l-[hsl(var(--chat-section-red-border))]',
+    bg: 'bg-[hsl(var(--chat-section-red-bg))]',
+    icon: 'text-[hsl(var(--chat-section-red-icon))]',
+    badge: 'bg-[hsl(var(--chat-section-red-badge))] text-white',
+    iconBg: 'bg-[hsl(var(--chat-section-red-badge))]'
   },
   water: {
-    border: 'border-l-blue-500',
-    bg: 'bg-blue-50/50 dark:bg-blue-950/20',
-    icon: 'text-blue-600 dark:text-blue-400',
-    badge: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
+    border: 'border-l-[3px] border-l-[hsl(var(--chat-section-blue-border))]',
+    bg: 'bg-[hsl(var(--chat-section-blue-bg))]',
+    icon: 'text-[hsl(var(--chat-section-blue-icon))]',
+    badge: 'bg-[hsl(var(--chat-section-blue-badge))] text-white',
+    iconBg: 'bg-[hsl(var(--chat-section-blue-badge))]'
   },
   income: {
-    border: 'border-l-purple-500',
-    bg: 'bg-purple-50/50 dark:bg-purple-950/20',
-    icon: 'text-purple-600 dark:text-purple-400',
-    badge: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300'
+    border: 'border-l-[3px] border-l-[hsl(var(--chat-section-purple-border))]',
+    bg: 'bg-[hsl(var(--chat-section-purple-bg))]',
+    icon: 'text-[hsl(var(--chat-section-purple-icon))]',
+    badge: 'bg-[hsl(var(--chat-section-purple-badge))] text-white',
+    iconBg: 'bg-[hsl(var(--chat-section-purple-badge))]'
   },
   other: {
-    border: 'border-l-slate-500',
-    bg: 'bg-slate-50/50 dark:bg-slate-950/20',
-    icon: 'text-slate-600 dark:text-slate-400',
-    badge: 'bg-slate-100 dark:bg-slate-900/40 text-slate-700 dark:text-slate-300'
+    border: 'border-l-[3px] border-l-[hsl(var(--chat-section-default-border))]',
+    bg: 'bg-[hsl(var(--chat-section-default-bg))]',
+    icon: 'text-[hsl(var(--chat-section-default-icon))]',
+    badge: 'bg-[hsl(var(--chat-section-default-badge))] text-white',
+    iconBg: 'bg-[hsl(var(--chat-section-default-badge))]'
   }
 };
 
@@ -102,15 +108,21 @@ export const ResponseSectionCard: React.FC<ResponseSectionCardProps> = ({
 
   return (
     <Card className={cn(
-      'border-l-4 overflow-hidden transition-all duration-300',
+      'overflow-hidden transition-all duration-300 shadow-[0_4px_20px_rgba(0,0,0,0.06)] hover:shadow-[0_6px_24px_rgba(0,0,0,0.08)]',
       colors.border,
       colors.bg
     )}>
-      <div className="p-4">
+      <div className="p-5">
         {/* Header */}
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="flex items-center gap-2 flex-1">
-            <span className={cn('text-2xl', colors.icon)}>{emoji}</span>
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3 flex-1">
+            {/* Icon Badge */}
+            <div className={cn(
+              'flex items-center justify-center w-10 h-10 rounded-xl shrink-0',
+              colors.iconBg
+            )}>
+              <span className="text-2xl text-white">{emoji}</span>
+            </div>
             <h3 className="font-semibold text-base text-foreground flex-1">{title}</h3>
           </div>
           
@@ -118,7 +130,7 @@ export const ResponseSectionCard: React.FC<ResponseSectionCardProps> = ({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 hover:bg-background/60 transition-colors"
               onClick={() => setBookmarked(!bookmarked)}
             >
               <Bookmark className={cn('h-4 w-4', bookmarked && 'fill-current')} />
@@ -126,7 +138,7 @@ export const ResponseSectionCard: React.FC<ResponseSectionCardProps> = ({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 hover:bg-background/60 transition-colors"
               onClick={handleCopy}
             >
               <Copy className="h-4 w-4" />
@@ -134,7 +146,7 @@ export const ResponseSectionCard: React.FC<ResponseSectionCardProps> = ({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 hover:bg-background/60 transition-colors"
               onClick={handleShare}
             >
               <Share2 className="h-4 w-4" />
@@ -142,7 +154,7 @@ export const ResponseSectionCard: React.FC<ResponseSectionCardProps> = ({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
+              className="h-8 w-8 hover:bg-background/60 transition-colors"
               onClick={() => setExpanded(!expanded)}
             >
               {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
