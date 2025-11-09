@@ -144,16 +144,16 @@ export function useLands() {
         } catch (apiError) {
           // Only fall back to localDB if API fails
           console.warn('⚠️ [useLands] API failed, falling back to localDB:', apiError);
-          const localData = await localDB.getLands();
-          console.log(`📦 [useLands] Fallback: Local DB has ${localData?.length || 0} lands`);
+          const localData = await localDB.getLands(undefined, user.id);
+          console.log(`📦 [useLands] Fallback: Local DB has ${localData?.length || 0} lands for farmer ${user.id}`);
           return localData || [];
         }
       }
       
-      // STEP 2: Offline - use localDB
+      // STEP 2: Offline - use localDB with farmer isolation
       console.log('📴 [useLands] Offline - using local DB');
-      const localData = await localDB.getLands();
-      console.log(`📦 [useLands] Local DB has ${localData?.length || 0} lands`);
+      const localData = await localDB.getLands(undefined, user.id);
+      console.log(`📦 [useLands] Local DB has ${localData?.length || 0} lands for farmer ${user.id}`);
       return localData || [];
     },
     enabled: !!user?.id && syncReady, // Wait for initial sync

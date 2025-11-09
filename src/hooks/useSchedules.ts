@@ -151,18 +151,18 @@ export function useSchedules(landId?: string) {
           console.warn('⚠️ [useSchedules] API failed, falling back to localDB:', apiError);
           const localData = landId 
             ? await localDB.getSchedulesByLand(landId)
-            : await localDB.getAllSchedules();
-          console.log(`📦 [useSchedules] Fallback: Local DB has ${localData?.length || 0} schedules`);
+            : await localDB.getAllSchedules(user.id);
+          console.log(`📦 [useSchedules] Fallback: Local DB has ${localData?.length || 0} schedules for farmer ${user.id}`);
           return localData || [];
         }
       }
       
-      // STEP 2: Offline - use localDB
+      // STEP 2: Offline - use localDB with farmer isolation
       console.log('📴 [useSchedules] Offline - using local DB');
       const localData = landId 
         ? await localDB.getSchedulesByLand(landId)
-        : await localDB.getAllSchedules();
-      console.log(`📦 [useSchedules] Local DB has ${localData?.length || 0} schedules`);
+        : await localDB.getAllSchedules(user.id);
+      console.log(`📦 [useSchedules] Local DB has ${localData?.length || 0} schedules for farmer ${user.id}`);
       return localData || [];
     },
     enabled: !!user?.id && headersReady && syncReady, // Wait for user, headers AND initial sync

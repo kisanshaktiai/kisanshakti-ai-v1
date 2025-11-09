@@ -1,6 +1,7 @@
 import { localDB } from './localDB';
 import { landsApi } from './landsApi';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuthStore } from '@/stores/authStore';
 
 /**
  * Offline-first data service
@@ -118,12 +119,16 @@ class OfflineDataService {
         return data;
       } catch (error) {
         console.warn('Failed to fetch from API, falling back to local DB:', error);
-        return await localDB.getLands();
+        const authState = useAuthStore.getState();
+        const userId = authState.user?.id;
+        return await localDB.getLands(undefined, userId);
       }
     } else {
-      // Offline: Use local database
+      // Offline: Use local database with farmer isolation
       console.log('📴 Offline mode: Loading lands from local DB');
-      return await localDB.getLands();
+      const authState = useAuthStore.getState();
+      const userId = authState.user?.id;
+      return await localDB.getLands(undefined, userId);
     }
   }
 

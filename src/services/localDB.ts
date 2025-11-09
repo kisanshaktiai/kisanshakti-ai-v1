@@ -817,13 +817,20 @@ class LocalDatabase {
 
   async getLands(tenantId?: string, farmerId?: string): Promise<LandData[]> {
     if (!this.db) await this.initialize();
+    
+    // SECURITY: Require farmer_id for data isolation in multi-tenant SaaS
+    if (!farmerId && !tenantId) {
+      console.error('❌ [LocalDB] SECURITY: getLands() called without farmerId or tenantId!');
+      return [];
+    }
+    
     if (farmerId) {
       return await this.db!.getAllFromIndex('lands', 'by-farmer', farmerId);
     }
     if (tenantId) {
       return await this.db!.getAllFromIndex('lands', 'by-tenant', tenantId);
     }
-    return await this.db!.getAll('lands');
+    return [];
   }
 
   async getLandsByFarmer(farmerId: string): Promise<LandData[]> {
@@ -849,9 +856,16 @@ class LocalDatabase {
     await this.updatePendingCount();
   }
 
-  async getAllSchedules(): Promise<CropScheduleData[]> {
+  async getAllSchedules(farmerId?: string): Promise<CropScheduleData[]> {
     if (!this.db) await this.initialize();
-    return await this.db!.getAll('cropSchedules');
+    
+    // SECURITY: Require farmer_id for data isolation in multi-tenant SaaS
+    if (!farmerId) {
+      console.error('❌ [LocalDB] SECURITY: getAllSchedules() called without farmerId!');
+      return [];
+    }
+    
+    return await this.db!.getAllFromIndex('cropSchedules', 'by-farmer', farmerId);
   }
 
   async getSchedulesByLand(landId: string): Promise<CropScheduleData[]> {

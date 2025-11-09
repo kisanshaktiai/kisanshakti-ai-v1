@@ -11,6 +11,7 @@ import { useTenantStore } from '@/stores/tenantStore';
 import { landsApi } from '@/services/landsApi';
 import { supabase } from '@/utils/supabase';
 import { AnalyticsSkeleton } from '@/components/skeletons';
+import { useLands } from '@/hooks/useLands';
 import {
   TrendingUp,
   TrendingDown,
@@ -178,17 +179,20 @@ export default function Analytics() {
     tentativeExpenses: 0
   });
 
+  // Use consistent data fetching hook (handles online/offline automatically)
+  const { lands: landsFromHook, isLoading: landsLoading } = useLands();
+
   useEffect(() => {
     loadAnalyticsData();
-  }, [user, tenant]);
-
+  }, [user, tenant, landsFromHook]);
+  
   const loadAnalyticsData = async () => {
     if (!user || !tenant) return;
     
-    setIsLoading(true);
+    setIsLoading(landsLoading);
     try {
-      // Fetch lands with tenant isolation
-      const lands = await landsApi.fetchLands();
+      // Use lands from hook (consistent with other pages)
+      const lands = landsFromHook;
       
       // Calculate analytics from real data
       const totalArea = lands.reduce((sum, land) => sum + (land.area_acres || 0), 0);

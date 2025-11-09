@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { landsApi } from '@/services/landsApi';
 import { useWeather } from '@/hooks/useWeather';
+import { useLands } from '@/hooks/useLands';
 import { HomeSkeleton } from '@/components/skeletons';
 
 interface FeatureCard {
@@ -47,30 +48,10 @@ export default function Home() {
   const { t } = useTranslation();
   const { user } = useAuthStore();
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [lands, setLands] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const { currentWeather } = useWeather();
-
-  // Fetch lands data
-  // Note: Real-time updates are handled globally in App.tsx via useGlobalRealtimeSync()
-  useEffect(() => {
-    const fetchLands = async () => {
-      if (!user?.id) return;
-      
-      try {
-        // Use offline data service for automatic offline fallback
-        const { offlineDataService } = await import('@/services/offlineDataService');
-        const data = await offlineDataService.fetchLands();
-        setLands(data || []);
-      } catch (error) {
-        console.error('Error fetching lands:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchLands();
-  }, [user]);
+  
+  // Use consistent data fetching hook (handles online/offline automatically)
+  const { lands, isLoading: loading } = useLands();
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -83,7 +64,7 @@ export default function Home() {
   // Note: area_acres, area_guntas, and area_sqft are different representations of the same area, not cumulative
   const totalArea = lands.reduce((sum, land) => {
     // Use area_acres as the primary source (it's the total area in acres)
-    const acres = parseFloat(land.area_acres) || 0;
+    const acres = typeof land.area_acres === 'number' ? land.area_acres : parseFloat(String(land.area_acres)) || 0;
     return sum + acres;
   }, 0);
 

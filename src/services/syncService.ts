@@ -47,13 +47,13 @@ class SyncService {
       clearInterval(this.syncInterval);
     }
 
-    // Auto sync every 5 minutes when online
+    // Auto sync every 1 hour when online
     this.syncInterval = setInterval(() => {
       if (this.isOnline && !this.syncInProgress) {
-        console.log('Auto-sync triggered');
+        console.log('🔄 [Sync] Auto-sync triggered (hourly)');
         this.performSync();
       }
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 60 * 60 * 1000); // 1 hour
 
     // Initial sync if online
     if (this.isOnline) {
@@ -594,6 +594,7 @@ class SyncService {
         .from('crop_schedules')
         .select('*')
         .eq('tenant_id', tenant)
+        .eq('farmer_id', userId)
         .eq('is_active', true)
         .order('created_at', { ascending: false });
 
@@ -635,13 +636,15 @@ class SyncService {
       }
       
       // VERIFY data was actually saved
-      const verifyLands = await localDB.getLands();
-      const verifySchedules = await localDB.getAllSchedules();
+      const verifyLands = await localDB.getLands(undefined, userId);
+      const verifySchedules = await localDB.getAllSchedules(userId);
       console.log('🔍 [Sync] Data verification:', {
         landsInDB: verifyLands.length,
         schedulesInDB: verifySchedules.length,
         landsSaved: lands?.length || 0,
         schedulesSaved: schedules?.length || 0,
+        userId,
+        tenant,
       });
 
       if (verifyLands.length !== (lands?.length || 0)) {
