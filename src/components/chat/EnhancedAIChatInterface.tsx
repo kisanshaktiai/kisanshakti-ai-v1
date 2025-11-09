@@ -72,6 +72,7 @@ export function EnhancedAIChatInterface() {
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [dynamicQuickReplies, setDynamicQuickReplies] = useState<Record<string, string[]>>({});
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -413,6 +414,15 @@ export function EnhancedAIChatInterface() {
         [activeTab]: [...(prev[activeTab] || []), aiMessage]
       }));
       
+      // Save quick replies from AI response
+      if (data.quickReplies && data.quickReplies.length > 0) {
+        console.log('💬 Received quick replies:', data.quickReplies);
+        setDynamicQuickReplies(prev => ({
+          ...prev,
+          [activeTab]: data.quickReplies
+        }));
+      }
+      
       // Save AI response - No need to save separately as edge function already does this
       
     } catch (error) {
@@ -700,6 +710,13 @@ export function EnhancedAIChatInterface() {
   };
 
   const getSuggestionChips = () => {
+    // Use AI-generated quick replies if available
+    if (dynamicQuickReplies[activeTab] && dynamicQuickReplies[activeTab].length > 0) {
+      console.log('📝 Using dynamic quick replies for', activeTab);
+      return dynamicQuickReplies[activeTab];
+    }
+    
+    // Fallback to static suggestions
     const suggestions = activeTab === 'general' 
       ? [t('chat.weatherToday'), t('chat.cropSuggestion'), t('chat.marketPrices')]
       : [t('chat.whenToIrrigate'), t('chat.bestFertilizerNow'), t('chat.pestAlert'), t('chat.yieldEstimate')];
@@ -1027,15 +1044,16 @@ export function EnhancedAIChatInterface() {
       </ScrollArea>
     </div>
 
-      {/* Suggestion Chips */}
-      {messages[activeTab]?.length === 0 && (
+      {/* Suggestion Chips - Show when no messages OR when AI has provided quick replies */}
+      {(messages[activeTab]?.length === 0 || (messages[activeTab]?.length > 0 && dynamicQuickReplies[activeTab]?.length > 0)) && (
         <div className="px-3 pb-2">
           <div className="flex flex-wrap gap-2">
             {getSuggestionChips().map((chip, index) => (
               <button
                 key={index}
-                onClick={() => sendMessage(chip)}
-                className="px-3 py-1.5 text-xs font-medium rounded-full bg-secondary/20 hover:bg-secondary/30 transition-colors"
+                onClick={() => sendMessage(chip.replace('💬 ', ''))}
+                disabled={isLoading}
+                className="px-3 py-1.5 text-xs font-medium rounded-full bg-primary/10 hover:bg-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {chip}
               </button>
