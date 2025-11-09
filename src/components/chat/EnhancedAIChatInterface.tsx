@@ -1187,13 +1187,13 @@ export function EnhancedAIChatInterface() {
       {/* Suggestion Chips - Show when no messages OR when AI has provided quick replies */}
       {(messages[activeTab]?.length === 0 || (messages[activeTab]?.length > 0 && dynamicQuickReplies[activeTab]?.length > 0)) && (
         <div className="px-3 pb-2">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex gap-2 overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-thumb-primary/20 scrollbar-track-transparent pb-1">
             {getSuggestionChips().map((chip, index) => (
               <button
                 key={index}
                 onClick={() => sendMessage(chip.replace('💬 ', ''))}
                 disabled={isLoading}
-                className="px-3 py-1.5 text-xs font-medium rounded-full bg-primary/10 hover:bg-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 text-xs font-medium rounded-full bg-primary/10 hover:bg-primary/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap shrink-0"
               >
                 {chip}
               </button>
