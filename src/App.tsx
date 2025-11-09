@@ -14,6 +14,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { LocationPermissionDialog } from "@/components/LocationPermissionDialog";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
+import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
 
 // Pages
 import Home from "./pages/Home";
@@ -195,6 +196,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   return (
     <>
       <OfflineIndicator />
+      <PWAUpdatePrompt />
       {children}
       <LocationPermissionDialog 
         open={showLocationDialog}

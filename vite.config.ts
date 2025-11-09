@@ -14,8 +14,15 @@ export default defineConfig(({ mode }) => ({
     react(),
     mode === "development" && componentTagger(),
     VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico'],
+      registerType: 'prompt',
+      srcDir: 'src',
+      filename: 'sw-custom.ts',
+      strategies: 'injectManifest',
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff,woff2}'],
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+      },
+      includeAssets: ['favicon.ico', 'icon-192x192.png', 'icon-512x512.png'],
       manifest: {
         name: 'KisanShakti',
         short_name: 'KisanShakti',
@@ -30,32 +37,14 @@ export default defineConfig(({ mode }) => ({
           {
             src: '/icon-192x192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any maskable'
           },
           {
             src: '/icon-512x512.png',
             sizes: '512x512',
-            type: 'image/png'
-          }
-        ]
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff,woff2}'],
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
+            type: 'image/png',
+            purpose: 'any maskable'
           }
         ]
       },
