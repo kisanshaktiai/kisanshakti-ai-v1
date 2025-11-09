@@ -1038,9 +1038,9 @@ export function EnhancedAIChatInterface() {
                       <div className="p-5">
                         {message.role === 'assistant' && message.structured?.sections ? (
                           <div className="space-y-3">
-                            {message.structured.greeting && (
+                            {message.structured.greeting && message.structured.greeting.trim() !== '' && (
                               <div className="text-base font-semibold text-foreground mb-2 pb-2 border-b border-border/30">
-                                {message.structured.greeting.replace(/\*\*/g, '')}
+                                {message.structured.greeting.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
                               </div>
                             )}
                             {message.structured.sections.map((section: any, idx: number) => (
@@ -1048,19 +1048,19 @@ export function EnhancedAIChatInterface() {
                                 key={idx} 
                                 emoji={section.emoji || '📋'}
                                 title={section.title.replace(/\*\*/g, '')}
-                                content={section.content.replace(/\*\*/g, '')}
+                                content={section.content.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
                                 sectionType={section.type || 'other'}
                               />
                             ))}
-                            {message.structured.closingMessage && (
+                            {message.structured.closingMessage && message.structured.closingMessage.trim() !== '' && (
                               <div className="text-sm text-muted-foreground mt-2 pt-2 border-t border-border/20">
-                                {message.structured.closingMessage.replace(/\*\*/g, '')}
+                                {message.structured.closingMessage.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
                               </div>
                             )}
                           </div>
                         ) : (
-                          <p className="text-[15px] leading-[1.7] whitespace-pre-wrap break-words">
-                            {message.content.replace(/\*\*/g, '')}
+                          <p className="text-[15px] leading-[1.6] whitespace-pre-wrap break-words">
+                            {message.content.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
                           </p>
                         )}
                         
