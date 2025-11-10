@@ -1075,10 +1075,15 @@ export function EnhancedAIChatInterface() {
               {group.messages.map((message) => (
                 <motion.div
                   key={message.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.3, type: "spring", stiffness: 500, damping: 30 }}
+                  initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -20, scale: 0.95 }}
+                  transition={{ 
+                    duration: 0.5, 
+                    type: "spring", 
+                    stiffness: 300, 
+                    damping: 25 
+                  }}
                   className={cn(
                     "flex gap-2 mb-4",
                     message.role === 'user' ? 'justify-end' : 'justify-start'
@@ -1096,12 +1101,46 @@ export function EnhancedAIChatInterface() {
                     "relative max-w-[85%]",
                     message.role === 'user' && 'order-1'
                   )}>
-                    {/* Message content - 2030 Modern UI with theme-based colors */}
+                    {/* Message content - 2030 Modern UI with glassmorphism */}
                     <div className={cn(
-                      "relative rounded-[1.75rem] overflow-hidden",
+                      "relative overflow-hidden group",
                       message.role === 'user' 
-                        ? 'bg-[image:var(--chat-bubble-user-bg)] text-primary-foreground shadow-[0_4px_20px_rgba(0,0,0,0.08)] border border-primary/10' 
-                        : 'bg-[hsl(var(--chat-bubble-ai-bg))] border border-[hsl(var(--chat-bubble-ai-border))] shadow-[0_4px_20px_rgba(0,0,0,0.06)]'
+                        ? cn(
+                            // Base glassmorphism
+                            "backdrop-blur-2xl bg-gradient-to-br from-primary/90 via-primary to-primary-hover",
+                            // Asymmetric rounded corners
+                            "rounded-[2rem_2rem_0.5rem_2rem]",
+                            // Text color
+                            "text-primary-foreground",
+                            // Smooth animations
+                            "transition-all duration-500 ease-out",
+                            // Interactive hover
+                            "hover:scale-[1.02]",
+                            // Advanced shadows for depth
+                            "shadow-[0_8px_32px_rgba(33,150,243,0.25),0_16px_64px_rgba(33,150,243,0.15),0_0_0_1px_rgba(255,255,255,0.1)_inset]",
+                            "hover:shadow-[0_12px_48px_rgba(33,150,243,0.35)]",
+                            // Glow effect
+                            "after:absolute after:inset-0 after:rounded-[2rem_2rem_0.5rem_2rem]",
+                            "after:bg-gradient-to-t after:from-white/10 after:to-transparent after:pointer-events-none"
+                          )
+                        : cn(
+                            // Glassmorphism base
+                            "bg-card/60 backdrop-blur-2xl",
+                            // Multi-layer border
+                            "border-2 border-border/40",
+                            // Organic shape
+                            "rounded-[0.5rem_2rem_2rem_2rem]",
+                            // Smooth entrance animation
+                            "animate-in slide-in-from-left-4 fade-in duration-500",
+                            // Interactive
+                            "hover:border-border/60 transition-all duration-300",
+                            // Advanced shadows
+                            "shadow-[0_8px_32px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.04),0_0_0_1px_rgba(255,255,255,0.05)_inset]",
+                            "hover:shadow-[0_12px_48px_rgba(0,0,0,0.12)]",
+                            // Inner glow
+                            "before:absolute before:inset-0 before:rounded-[0.5rem_2rem_2rem_2rem]",
+                            "before:bg-gradient-to-br before:from-primary/5 before:to-transparent before:pointer-events-none"
+                          )
                     )}>
                       <div className="p-5">
                         {message.role === 'assistant' && message.structured?.sections ? (
@@ -1149,7 +1188,19 @@ export function EnhancedAIChatInterface() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 px-2.5 rounded-full text-xs bg-background/60 hover:bg-background/80 border border-border/40 backdrop-blur transition-all"
+                        className={cn(
+                          // Glassmorphism
+                          "backdrop-blur-xl bg-background/40",
+                          // Floating effect
+                          "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
+                          // Size and shape
+                          "h-7 px-2.5 rounded-full text-xs",
+                          // Smooth transitions
+                          "transition-all duration-300",
+                          // Interactive states
+                          "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
+                          "active:scale-95"
+                        )}
                         onClick={() => handlePlayMessage(message.id, message.content)}
                       >
                         {playingMessageId === message.id && isSpeaking ? (
@@ -1166,8 +1217,19 @@ export function EnhancedAIChatInterface() {
                             variant="ghost"
                             size="sm"
                             className={cn(
-                              "h-7 px-2.5 rounded-full text-xs bg-background/60 hover:bg-background/80 border border-border/40 backdrop-blur transition-all",
-                              message.feedback === 'like' && "bg-primary/15 text-primary hover:bg-primary/25 border-primary/30"
+                              // Glassmorphism
+                              "backdrop-blur-xl bg-background/40",
+                              // Floating effect
+                              "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
+                              // Size and shape
+                              "h-7 px-2.5 rounded-full text-xs",
+                              // Smooth transitions
+                              "transition-all duration-300",
+                              // Interactive states
+                              "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
+                              "active:scale-95",
+                              // Active state
+                              message.feedback === 'like' && "bg-primary/20 text-primary hover:bg-primary/30 border-primary/40"
                             )}
                             onClick={() => handleLike(message.id, true)}
                           >
@@ -1177,8 +1239,19 @@ export function EnhancedAIChatInterface() {
                             variant="ghost"
                             size="sm"
                             className={cn(
-                              "h-7 px-2.5 rounded-full text-xs bg-background/60 hover:bg-background/80 border border-border/40 backdrop-blur transition-all",
-                              message.feedback === 'dislike' && "bg-destructive/15 text-destructive hover:bg-destructive/25 border-destructive/30"
+                              // Glassmorphism
+                              "backdrop-blur-xl bg-background/40",
+                              // Floating effect
+                              "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
+                              // Size and shape
+                              "h-7 px-2.5 rounded-full text-xs",
+                              // Smooth transitions
+                              "transition-all duration-300",
+                              // Interactive states
+                              "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
+                              "active:scale-95",
+                              // Active state
+                              message.feedback === 'dislike' && "bg-destructive/20 text-destructive hover:bg-destructive/30 border-destructive/40"
                             )}
                             onClick={() => handleLike(message.id, false)}
                           >
@@ -1192,8 +1265,19 @@ export function EnhancedAIChatInterface() {
                         variant="ghost"
                         size="sm"
                         className={cn(
-                          "h-7 px-2.5 rounded-full text-xs bg-background/60 hover:bg-background/80 border border-border/40 backdrop-blur transition-all",
-                          copiedMessageId === message.id && "bg-success/15 text-success border-success/30"
+                          // Glassmorphism
+                          "backdrop-blur-xl bg-background/40",
+                          // Floating effect
+                          "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
+                          // Size and shape
+                          "h-7 px-2.5 rounded-full text-xs",
+                          // Smooth transitions
+                          "transition-all duration-300",
+                          // Interactive states
+                          "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
+                          "active:scale-95",
+                          // Active state
+                          copiedMessageId === message.id && "bg-success/20 text-success border-success/40"
                         )}
                         onClick={() => handleCopy(message.id, message.content)}
                       >
@@ -1208,7 +1292,19 @@ export function EnhancedAIChatInterface() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-7 px-2.5 rounded-full text-xs bg-background/60 hover:bg-background/80 border border-border/40 backdrop-blur transition-all"
+                        className={cn(
+                          // Glassmorphism
+                          "backdrop-blur-xl bg-background/40",
+                          // Floating effect
+                          "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
+                          // Size and shape
+                          "h-7 px-2.5 rounded-full text-xs",
+                          // Smooth transitions
+                          "transition-all duration-300",
+                          // Interactive states
+                          "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
+                          "active:scale-95"
+                        )}
                         onClick={() => handleShare(message.content)}
                       >
                         <Share2 className="h-3 w-3" />

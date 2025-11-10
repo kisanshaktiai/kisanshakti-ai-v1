@@ -156,7 +156,26 @@
     --glass-border: 220 20% 88%;
     --glass-blur: 24px;
     
-    /* Agricultural Chat Styling - Light Mode */
+    /* 2030 Chat Bubble Gradients - Light Mode */
+    --chat-bubble-user-gradient: linear-gradient(135deg, 
+      hsl(210 100% 56%), 
+      hsl(210 100% 48%), 
+      hsl(200 100% 60%)
+    );
+    --chat-bubble-ai-glass: hsl(var(--card) / 0.6);
+    
+    /* Advanced Shadows for Chat Bubbles */
+    --shadow-chat-user: 
+      0 8px 32px rgba(33, 150, 243, 0.25),
+      0 16px 64px rgba(33, 150, 243, 0.15),
+      0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+    
+    --shadow-chat-ai: 
+      0 8px 32px rgba(0, 0, 0, 0.08),
+      0 2px 8px rgba(0, 0, 0, 0.04),
+      0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+    
+    /* Legacy variables for compatibility */
     --chat-bubble-user-bg: linear-gradient(135deg, hsl(210 100% 56%), hsl(210 100% 48%));
     --chat-bubble-ai-bg: hsl(0 0% 99%);
     --chat-bubble-ai-border: hsl(220 15% 92%);
@@ -272,7 +291,26 @@
     --glass-border: 220 20% 22%;
     --glass-blur: 24px;
     
-    /* Dark mode Agricultural Chat Styling */
+    /* 2030 Chat Bubble Gradients - Dark Mode */
+    --chat-bubble-user-gradient: linear-gradient(135deg, 
+      hsl(210 100% 60%), 
+      hsl(210 100% 52%), 
+      hsl(200 100% 65%)
+    );
+    --chat-bubble-ai-glass: hsl(var(--card) / 0.6);
+    
+    /* Advanced Shadows for Chat Bubbles - Dark Mode */
+    --shadow-chat-user: 
+      0 8px 32px rgba(33, 150, 243, 0.3),
+      0 16px 64px rgba(33, 150, 243, 0.2),
+      0 0 0 1px rgba(255, 255, 255, 0.15) inset;
+    
+    --shadow-chat-ai: 
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      0 2px 8px rgba(0, 0, 0, 0.3),
+      0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+    
+    /* Legacy variables for compatibility */
     --chat-bubble-user-bg: linear-gradient(135deg, hsl(210 100% 60%), hsl(210 100% 52%));
     --chat-bubble-ai-bg: hsl(220 20% 15%);
     --chat-bubble-ai-border: hsl(220 20% 25%);

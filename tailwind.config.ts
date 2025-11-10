@@ -130,8 +130,10 @@ export default {
         },
         'chat-bubble': {
           'user-bg': "var(--chat-bubble-user-bg)",
+          'user-gradient': "var(--chat-bubble-user-gradient)",
           'ai-bg': "hsl(var(--chat-bubble-ai-bg))",
           'ai-border': "hsl(var(--chat-bubble-ai-border))",
+          'ai-glass': "var(--chat-bubble-ai-glass)",
         },
       },
       borderRadius: {
@@ -160,6 +162,8 @@ export default {
         glow: "var(--shadow-glow)",
         neural: "var(--shadow-neural)",
         ai: "var(--shadow-ai)",
+        'chat-user': "var(--shadow-chat-user)",
+        'chat-ai': "var(--shadow-chat-ai)",
       },
       height: {
         nav: "var(--nav-height)",
