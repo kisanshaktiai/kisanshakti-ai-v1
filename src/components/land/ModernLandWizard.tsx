@@ -240,8 +240,9 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
     setIsSaving(true);
     
     try {
-      const response = await supabase.functions.invoke('save-land', {
+      const response = await supabase.functions.invoke('lands-api', {
         body: {
+          action: 'create',
           ...formData,
           farmer_id: user?.id,
           tenant_id: user?.tenantId,

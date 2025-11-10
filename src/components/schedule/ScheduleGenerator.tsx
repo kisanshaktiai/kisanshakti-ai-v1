@@ -77,14 +77,14 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
       } : null;
 
       // Call edge function to generate schedule
-      const response = await supabase.functions.invoke('generate-crop-schedule', {
+      const response = await supabase.functions.invoke('ai-smart-schedule', {
         body: {
           landId,
           cropName,
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
           isReadyMadePlant,
-          weatherData,
+          weather: weatherData,
           regenerate: false,
           language: currentLanguage,
           country: 'India',

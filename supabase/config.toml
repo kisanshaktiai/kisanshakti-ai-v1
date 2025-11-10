@@ -12,14 +12,8 @@ verify_jwt = true
 [functions.google-maps-config]
 verify_jwt = false
 
-[functions.save-land]
-verify_jwt = true
-
 [functions.get-white-label-config]
 verify_jwt = false
-
-[functions.filter-community-image]
-verify_jwt = true
 
 [functions.lands-api]
 verify_jwt = false
@@ -31,4 +25,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.ai-marketing-insights]
+verify_jwt = true
+
+[functions.ai-schedule-climate-monitor]
 verify_jwt = true
