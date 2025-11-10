@@ -92,6 +92,13 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       try {
         setCurrentStep('Loading configuration...');
         
+        // Set dynamic manifest link immediately
+        const manifestLink = document.querySelector('link[rel="manifest"]') as HTMLLinkElement;
+        if (manifestLink) {
+          const domain = window.location.hostname;
+          manifestLink.href = `https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/generate-manifest?domain=${encodeURIComponent(domain)}`;
+        }
+        
         // PARALLEL initialization - all tasks run simultaneously for fastest load
         await Promise.all([
           localDB.initialize(),

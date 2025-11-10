@@ -626,13 +626,27 @@ const SCHEMA_VERSION = 4; // Bumped for better schema validation
 
 class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;
+  private initPromise: Promise<void> | null = null;
+  private schemaUpgradeComplete = false;
 
+  /**
+   * Lazy initialization - starts DB connection without blocking
+   * Schema upgrades run in background
+   */
   async initialize(): Promise<void> {
     if (this.db) return;
+    if (this.initPromise) return this.initPromise;
+
+    this.initPromise = this.performInitialization();
+    return this.initPromise;
+  }
+
+  private async performInitialization(): Promise<void> {
+    console.log('🚀 [LocalDB] Starting lazy initialization...');
 
     this.db = await openDB<KisanDB>(DB_NAME, DB_VERSION, {
-      upgrade(db, oldVersion, newVersion, transaction) {
-        console.log(`📦 [LocalDB] Upgrading from version ${oldVersion} to ${newVersion}`);
+      upgrade: (db, oldVersion, newVersion, transaction) => {
+        console.log(`📦 [LocalDB] Schema upgrade ${oldVersion} → ${newVersion} (background)`);
 
         // Create or update farmers store
         if (!db.objectStoreNames.contains('farmers')) {
@@ -714,14 +728,17 @@ class LocalDatabase {
           db.createObjectStore('syncMetadata', { keyPath: 'key' });
         }
         
-        console.log('✅ [LocalDB] Schema upgrade complete');
+        this.schemaUpgradeComplete = true;
+        console.log('✅ [LocalDB] Schema upgrade complete (background)');
       },
     });
 
-    // Initialize or validate sync metadata and schema version
-    await this.validateSchemaVersion();
-    
-    console.log('✅ [LocalDB] Initialized with DB v', DB_VERSION, 'Schema v', SCHEMA_VERSION);
+    console.log('✅ [LocalDB] DB connection ready (v', DB_VERSION, ')');
+
+    // Run schema validation in background, don't block
+    this.validateSchemaVersion().catch(err => {
+      console.error('❌ [LocalDB] Schema validation error:', err);
+    });
   }
 
   /**

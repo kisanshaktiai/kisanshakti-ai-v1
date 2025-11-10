@@ -458,6 +458,9 @@ export const useTenantStore = create<TenantState>((set, get) => ({
         if (whiteLabelData) {
           get().applyWhiteLabelTheme(tenant.whiteLabel!);
         }
+        
+        // Update manifest link on tenant load
+        updateManifestLink();
       }
     } catch (error: any) {
       console.error('Error fetching tenant:', error);
@@ -711,28 +714,8 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       }
     }
     
-    // Apply PWA manifest updates
-    if (whiteLabel.pwa_config) {
-      const manifestLink = document.querySelector('link[rel="manifest"]');
-      if (manifestLink) {
-        // Update manifest data dynamically
-        const manifestData = {
-          name: whiteLabel.pwa_config.app_name || whiteLabel.brand_identity?.company_name || 'KisanShakti Ai',
-          short_name: whiteLabel.pwa_config.short_name || 'KS Ai',
-          theme_color: whiteLabel.pwa_config.theme_color || '#3b82f6',
-          background_color: whiteLabel.pwa_config.background_color || '#ffffff',
-          display: whiteLabel.pwa_config.display || 'standalone',
-          orientation: whiteLabel.pwa_config.orientation || 'portrait',
-          start_url: whiteLabel.pwa_config.start_url || '/',
-          icons: whiteLabel.pwa_config.icons || []
-        };
-        
-        // Create a blob URL for the manifest
-        const manifestBlob = new Blob([JSON.stringify(manifestData)], { type: 'application/json' });
-        const manifestUrl = URL.createObjectURL(manifestBlob);
-        manifestLink.setAttribute('href', manifestUrl);
-      }
-    }
+    // Update PWA manifest dynamically
+    updateManifestLink();
     
     // Apply custom CSS if available
     if (whiteLabel.css_injection?.enabled && whiteLabel.css_injection?.custom_css) {
@@ -921,6 +904,9 @@ function rgbToHSL(r: number, g: number, b: number): string {
           
           // Re-fetch tenant to apply new config
           get().fetchTenant();
+          
+          // Update manifest immediately
+          updateManifestLink();
         }
       )
       .subscribe();
@@ -940,6 +926,23 @@ function rgbToHSL(r: number, g: number, b: number): string {
     console.log('[TenantStore] Realtime listeners setup complete');
   },
 }));
+
+/**
+ * Update manifest link to use dynamic edge function
+ */
+function updateManifestLink() {
+  const manifestLink = document.querySelector('link[rel="manifest"]') as HTMLLinkElement;
+  if (!manifestLink) return;
+  
+  const domain = window.location.hostname;
+  const manifestUrl = `https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/generate-manifest?domain=${encodeURIComponent(domain)}`;
+  
+  // Only update if URL changed
+  if (manifestLink.href !== manifestUrl) {
+    manifestLink.href = manifestUrl;
+    console.log('[TenantStore] Updated manifest URL:', manifestUrl);
+  }
+}
 
 // Helper function to convert RGB to HSL
 function rgbToHSL(r: number, g: number, b: number): string {
