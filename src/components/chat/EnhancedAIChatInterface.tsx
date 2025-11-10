@@ -83,6 +83,8 @@ export function EnhancedAIChatInterface() {
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const lastScrollTop = useRef(0);
   
   const [transcript, setTranscript] = useState('');
   const { isListening, startListening: originalStartListening, stopListening } = useSpeechRecognition({
@@ -281,11 +283,77 @@ export function EnhancedAIChatInterface() {
     }
   };
 
-  const scrollToBottom = () => {
-    if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
-    }
-  };
+  const scrollToBottom = useCallback(() => {
+    // Don't auto-scroll if user is manually scrolling
+    if (isUserScrolling) return;
+    
+    // Wait for next tick to ensure DOM is updated
+    setTimeout(() => {
+      if (scrollAreaRef.current) {
+        // Get the actual viewport element that contains the scroll
+        const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+        if (viewport) {
+          viewport.scrollTo({
+            top: viewport.scrollHeight,
+            behavior: 'smooth'
+          });
+        }
+      }
+    }, 100);
+  }, [isUserScrolling]);
+
+  // Detect user scroll vs auto-scroll
+  useEffect(() => {
+    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (!viewport) return;
+
+    const handleScroll = () => {
+      const currentScrollTop = viewport.scrollTop;
+      const scrollHeight = viewport.scrollHeight;
+      const clientHeight = viewport.clientHeight;
+      
+      // Check if user scrolled up (not at bottom)
+      const isAtBottom = scrollHeight - currentScrollTop - clientHeight < 50;
+      
+      // If user manually scrolled up, set flag
+      if (currentScrollTop < lastScrollTop.current && !isAtBottom) {
+        setIsUserScrolling(true);
+      }
+      // If user scrolled to bottom, clear flag
+      else if (isAtBottom) {
+        setIsUserScrolling(false);
+      }
+      
+      lastScrollTop.current = currentScrollTop;
+    };
+
+    viewport.addEventListener('scroll', handleScroll, { passive: true });
+    return () => viewport.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // MutationObserver to watch for new messages
+  useEffect(() => {
+    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (!viewport) return;
+
+    const observer = new MutationObserver((mutations) => {
+      // Check if new content was added
+      const hasNewContent = mutations.some(mutation => 
+        mutation.type === 'childList' && mutation.addedNodes.length > 0
+      );
+      
+      if (hasNewContent && !isUserScrolling) {
+        scrollToBottom();
+      }
+    });
+
+    observer.observe(viewport, {
+      childList: true,
+      subtree: true
+    });
+
+    return () => observer.disconnect();
+  }, [scrollToBottom, isUserScrolling]);
 
   const getCurrentSessionId = () => {
     // Check if we already have a session ID loaded from database or created in this session
