@@ -4,7 +4,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { localDB } from '@/services/localDB';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
-import { useSyncReady } from '@/hooks/useSyncReady';
 
 /**
  * Unified hook for fetching schedules with:
@@ -19,7 +18,6 @@ export function useSchedules(landId?: string) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [headersReady, setHeadersReady] = useState(false);
-  const syncReady = useSyncReady();
 
   // Check if headers are ready before enabling query
   useEffect(() => {
@@ -165,7 +163,7 @@ export function useSchedules(landId?: string) {
       console.log(`📦 [useSchedules] Local DB has ${localData?.length || 0} schedules for farmer ${user.id}`);
       return localData || [];
     },
-    enabled: !!user?.id && headersReady && syncReady, // Wait for user, headers AND initial sync
+    enabled: !!user?.id && headersReady, // Wait for user and headers only - no sync blocking
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,

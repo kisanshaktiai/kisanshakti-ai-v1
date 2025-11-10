@@ -4,7 +4,6 @@ import { offlineDataService } from '@/services/offlineDataService';
 import { landsApi } from '@/services/landsApi';
 import { localDB } from '@/services/localDB';
 import { useToast } from '@/hooks/use-toast';
-import { useSyncReady } from '@/hooks/useSyncReady';
 
 /**
  * Unified hook for fetching lands with:
@@ -18,7 +17,6 @@ export function useLands() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const syncReady = useSyncReady();
 
   const query = useQuery({
     queryKey: ['lands', user?.id],
@@ -156,7 +154,7 @@ export function useLands() {
       console.log(`📦 [useLands] Local DB has ${localData?.length || 0} lands for farmer ${user.id}`);
       return localData || [];
     },
-    enabled: !!user?.id && syncReady, // Wait for initial sync
+    enabled: !!user?.id, // No sync blocking - fetch immediately
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
