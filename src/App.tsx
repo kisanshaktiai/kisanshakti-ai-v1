@@ -86,11 +86,9 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const initializeApp = async () => {
-      // Initialize local database
-      await localDB.initialize();
-      
-      // Parallel initialization
+      // PARALLEL initialization - all tasks run simultaneously for fastest load
       await Promise.all([
+        localDB.initialize(),
         fetchTenant(),
         checkAuth(),
         LocationService.getCurrentLocation(true).catch(() => null)
@@ -102,9 +100,9 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
     initializeApp();
   }, []);
 
-  // Initialize sync service ONLY when user is authenticated
+  // Initialize sync service ONLY when user is authenticated (non-blocking background task)
   useEffect(() => {
-    const initializeSync = async () => {
+    const initializeSync = () => {
       const { user } = useAuthStore.getState();
       
       // Silent skip if no user
@@ -112,30 +110,15 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         return;
       }
       
-      try {
-        const { waitForHeaders, supabaseWithAuth } = await import('@/integrations/supabase/client');
-        await waitForHeaders();
-        
-        // Quick auth test
-        const testQuery = await supabaseWithAuth(user.id, user.tenantId)
-          .from('farmers')
-          .select('id')
-          .eq('id', user.id)
-          .limit(1)
-          .single();
-        
-        if (testQuery.error) {
-          return;
-        }
-        
-        await syncService.performSync(false);
-      } catch (error) {
-        // Silent fail - user will sync on next login
-      }
+      // Run sync in background without blocking app load
+      syncService.performSync(false).catch(() => {
+        // Silent fail - user will sync on next login or manual refresh
+        console.log('[Sync] Background sync skipped - will retry on next interaction');
+      });
     };
     
-    const timer = setTimeout(initializeSync, 500);
-    return () => clearTimeout(timer);
+    // Start sync immediately in background (non-blocking)
+    initializeSync();
   }, []);
 
   // Apply white label theme whenever tenant changes
