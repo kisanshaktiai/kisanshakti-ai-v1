@@ -51,8 +51,8 @@ export function useOfflineStatus() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Periodic check every 30 seconds
-    const interval = setInterval(checkConnectivity, 30000);
+    // Periodic check every 5 minutes (reduced battery drain for mobile)
+    const interval = setInterval(checkConnectivity, 5 * 60 * 1000);
 
     return () => {
       window.removeEventListener('online', handleOnline);

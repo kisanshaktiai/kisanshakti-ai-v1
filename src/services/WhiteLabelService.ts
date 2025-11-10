@@ -30,9 +30,9 @@ interface CachedConfig {
 }
 
 const CACHE_KEY = 'white_label_config';
-const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
-const CHECK_INTERVAL = 24 * 60 * 60 * 1000; // Check every 24 hours
-const BACKGROUND_REFRESH_THRESHOLD = 60 * 60 * 1000; // 1 hour
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes - fast updates for production
+const CHECK_INTERVAL = 2 * 60 * 1000; // Check every 2 minutes
+const BACKGROUND_REFRESH_THRESHOLD = 1 * 60 * 1000; // 1 minute - refresh sooner
 
 export class WhiteLabelService {
   private static instance: WhiteLabelService;
@@ -56,9 +56,9 @@ export class WhiteLabelService {
       clearInterval(this.autoRefreshTimer);
     }
 
-    // Set up automatic refresh every 24 hours
+    // Set up automatic refresh every 2 minutes for production readiness
     this.autoRefreshTimer = setInterval(() => {
-      console.log('[WhiteLabelService] Auto-refreshing theme after 24 hours');
+      console.log('[WhiteLabelService] Auto-refreshing theme (every 2 mins)');
       this.forceRefresh();
     }, CHECK_INTERVAL);
 
@@ -70,9 +70,9 @@ export class WhiteLabelService {
           if (cached) {
             const age = Date.now() - (cached.expiresAt - CACHE_DURATION);
             
-            // If cache is older than 24 hours, refresh
+            // If cache is older than 2 minutes, refresh
             if (age > CHECK_INTERVAL) {
-              console.log('[WhiteLabelService] Cache expired, refreshing on visibility change');
+              console.log('[WhiteLabelService] Cache expired (>2 mins), refreshing on visibility change');
               this.forceRefresh();
             }
           }
@@ -92,7 +92,7 @@ export class WhiteLabelService {
     if (cached && cached.expiresAt > Date.now()) {
       const age = Date.now() - (cached.expiresAt - CACHE_DURATION);
       
-      // If cache is older than 1 hour, refresh in background
+      // If cache is older than 1 minute, refresh in background for instant updates
       if (age > BACKGROUND_REFRESH_THRESHOLD) {
         this.refreshInBackground(tenantId, domain);
       }

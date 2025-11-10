@@ -15,6 +15,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { LocationPermissionDialog } from "@/components/LocationPermissionDialog";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
+import { AppLoadingProgress } from "@/components/AppLoadingProgress";
 
 // Pages
 import Home from "./pages/Home";
@@ -77,6 +78,8 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   const { permissionStatus, requestPermission } = useLocationPermission();
   const [showLocationDialog, setShowLocationDialog] = useState(false);
   const [hasRequestedPermission, setHasRequestedPermission] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [currentStep, setCurrentStep] = useState('Initializing...');
   
   // Preload location data for faster form loading
   useLocationPreloader();
@@ -86,15 +89,27 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const initializeApp = async () => {
-      // PARALLEL initialization - all tasks run simultaneously for fastest load
-      await Promise.all([
-        localDB.initialize(),
-        fetchTenant(),
-        checkAuth(),
-        LocationService.getCurrentLocation(true).catch(() => null)
-      ]);
-      
-      listenForTenantChanges();
+      try {
+        setCurrentStep('Loading configuration...');
+        
+        // PARALLEL initialization - all tasks run simultaneously for fastest load
+        await Promise.all([
+          localDB.initialize(),
+          fetchTenant(),
+          checkAuth(),
+          LocationService.getCurrentLocation(true).catch(() => null)
+        ]);
+        
+        setCurrentStep('Setting up...');
+        listenForTenantChanges();
+        
+        setCurrentStep('Almost ready...');
+        
+        // Small delay to show final step
+        await new Promise(resolve => setTimeout(resolve, 300));
+      } finally {
+        setIsInitializing(false);
+      }
     };
 
     initializeApp();
@@ -178,6 +193,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
 
   return (
     <>
+      <AppLoadingProgress isLoading={isInitializing} currentStep={currentStep} />
       <OfflineIndicator />
       <PWAUpdatePrompt />
       {children}
