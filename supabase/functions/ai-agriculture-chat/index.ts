@@ -579,7 +579,7 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
           ...enhancedMetadata,
           prompt_tokens: aiData.usage?.prompt_tokens,
           completion_tokens: aiData.usage?.completion_tokens,
-          quick_replies: generateQuickReplies(lastUserMessage?.content || ''),
+          quick_replies: generateQuickReplies(lastUserMessage?.content || '', aiMessage, landDetails),
           section_tags: sectionTags, // For AI training classification
           regional_title: farmerContext?.regional_title,
           land_size_acres: landContext?.area_acres,
