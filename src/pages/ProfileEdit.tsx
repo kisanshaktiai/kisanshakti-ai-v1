@@ -12,6 +12,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
+import { AvatarUpload } from '@/components/profile/AvatarUpload';
 
 export default function ProfileEdit() {
   const { t } = useTranslation();
@@ -19,6 +20,7 @@ export default function ProfileEdit() {
   const { user, setUser } = useAuthStore();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
 
   // Initialize form with user data
   const [formData, setFormData] = useState({
@@ -51,6 +53,13 @@ export default function ProfileEdit() {
     annualIncomeRange: user?.annualIncomeRange || '',
     preferredLanguage: user?.preferredLanguage || 'hi'
   });
+
+  const handleAvatarUpdate = (url: string) => {
+    setAvatarUrl(url);
+    if (user) {
+      setUser({ ...user, avatarUrl: url });
+    }
+  };
 
   const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({
@@ -219,6 +228,22 @@ export default function ProfileEdit() {
           </Button>
           <h1 className="text-xl font-bold text-foreground truncate">Edit Profile</h1>
         </div>
+
+        {/* Profile Picture Section */}
+        <Card>
+          <CardContent className="pt-6 flex flex-col items-center gap-4">
+            <AvatarUpload 
+              currentAvatarUrl={avatarUrl}
+              onAvatarUpdate={handleAvatarUpdate}
+              size="xl"
+              editable={true}
+            />
+            <div className="text-center">
+              <p className="text-sm font-medium">{user?.fullName || user?.name}</p>
+              <p className="text-xs text-muted-foreground">Click to change profile picture</p>
+            </div>
+          </CardContent>
+        </Card>
 
       {/* Personal Information */}
       <Card>

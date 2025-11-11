@@ -5196,14 +5196,44 @@ export type Database = {
           },
         ]
       }
+      email_template_categories: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          icon: string | null
+          id: string
+          name: string
+          sort_order: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          icon?: string | null
+          id?: string
+          name: string
+          sort_order?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          icon?: string | null
+          id?: string
+          name?: string
+          sort_order?: number | null
+        }
+        Relationships: []
+      }
       email_templates: {
         Row: {
+          category: string | null
           created_at: string | null
           created_by: string | null
           html_template: string
           id: string
           is_active: boolean | null
           is_default: boolean | null
+          parent_template_id: string | null
+          preview_text: string | null
           subject_template: string
           template_name: string
           template_type: string
@@ -5211,14 +5241,18 @@ export type Database = {
           text_template: string | null
           updated_at: string | null
           variables: string[] | null
+          version: number | null
         }
         Insert: {
+          category?: string | null
           created_at?: string | null
           created_by?: string | null
           html_template: string
           id?: string
           is_active?: boolean | null
           is_default?: boolean | null
+          parent_template_id?: string | null
+          preview_text?: string | null
           subject_template: string
           template_name: string
           template_type: string
@@ -5226,14 +5260,18 @@ export type Database = {
           text_template?: string | null
           updated_at?: string | null
           variables?: string[] | null
+          version?: number | null
         }
         Update: {
+          category?: string | null
           created_at?: string | null
           created_by?: string | null
           html_template?: string
           id?: string
           is_active?: boolean | null
           is_default?: boolean | null
+          parent_template_id?: string | null
+          preview_text?: string | null
           subject_template?: string
           template_name?: string
           template_type?: string
@@ -5241,8 +5279,16 @@ export type Database = {
           text_template?: string | null
           updated_at?: string | null
           variables?: string[] | null
+          version?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "email_templates_parent_template_id_fkey"
+            columns: ["parent_template_id"]
+            isOneToOne: false
+            referencedRelation: "email_templates"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "email_templates_tenant_id_fkey"
             columns: ["tenant_id"]

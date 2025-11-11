@@ -38,6 +38,7 @@ import {
   Legend
 } from 'recharts';
 import { SyncStatus } from '@/components/sync/SyncStatus';
+import { AvatarUpload } from '@/components/profile/AvatarUpload';
 
 export default function Profile() {
   const { t } = useTranslation();
@@ -128,14 +129,16 @@ export default function Profile() {
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-4">
                 <div className="relative">
-                  <div className="w-20 h-20 bg-gradient-to-br from-primary to-primary/80 rounded-2xl flex items-center justify-center shadow-lg">
-                    <User className="w-10 h-10 text-primary-foreground" />
-                  </div>
+                  <AvatarUpload 
+                    currentAvatarUrl={user?.avatarUrl}
+                    size="xl"
+                    editable={false}
+                  />
                   <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-success rounded-full border-2 border-card" />
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold text-foreground">
-                    {user?.fullName || user?.name || 'Farmer'}
+                    {user?.farmerName || user?.fullName || user?.name || 'Farmer'}
                   </h1>
                   <div className="flex items-center gap-2 mt-1">
                     <Badge variant="secondary" className="bg-primary/10 text-primary">

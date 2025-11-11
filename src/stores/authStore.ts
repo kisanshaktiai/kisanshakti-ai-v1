@@ -10,6 +10,7 @@ interface User {
   language: string;
   tenantId: string;
   farmerCode?: string;
+  farmerName?: string;
   sessionToken?: string;
   lastLoginAt?: string;
   // Profile fields from user_profiles
@@ -23,6 +24,7 @@ interface User {
   state?: string;
   pincode?: string;
   preferredLanguage?: string;
+  avatarUrl?: string;
   // Farm details from farmers
   totalLandAcres?: number;
   primaryCrops?: string[];

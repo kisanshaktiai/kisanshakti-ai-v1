@@ -118,11 +118,12 @@ export default function PinAuth() {
       setUser({
           id: farmer.id,
           phone: farmer.mobile_number,
-          name: profileData?.full_name || farmer.farmer_code || 'Farmer',
+          name: profileData?.full_name || farmer.farmer_name || farmer.farmer_code || 'Farmer',
           role: 'farmer',
           language: farmer.language_preference || 'hi',
           tenantId: farmer.tenant_id,
           farmerCode: farmer.farmer_code,
+          farmerName: farmer.farmer_name,
           sessionToken: updatedSession.token,
           lastLoginAt: new Date().toISOString(),
           // Profile fields
@@ -136,6 +137,7 @@ export default function PinAuth() {
           state: profileData?.state || '',
           pincode: profileData?.pincode || '',
           preferredLanguage: profileData?.preferred_language || farmer.language_preference || 'hi',
+          avatarUrl: profileData?.avatar_url || '',
           // Farm details
           totalLandAcres: farmer.total_land_acres || profileData?.total_land_acres || 0,
           primaryCrops: farmer.primary_crops || profileData?.primary_crops || [],
