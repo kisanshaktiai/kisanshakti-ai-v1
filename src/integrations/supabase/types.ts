@@ -1635,6 +1635,36 @@ export type Database = {
           },
         ]
       }
+      archived_data: {
+        Row: {
+          archived_at: string | null
+          archived_data: Json
+          created_at: string | null
+          id: string
+          original_id: string | null
+          retention_expires_at: string | null
+          source_table: string
+        }
+        Insert: {
+          archived_at?: string | null
+          archived_data: Json
+          created_at?: string | null
+          id?: string
+          original_id?: string | null
+          retention_expires_at?: string | null
+          source_table: string
+        }
+        Update: {
+          archived_at?: string | null
+          archived_data?: Json
+          created_at?: string | null
+          id?: string
+          original_id?: string | null
+          retention_expires_at?: string | null
+          source_table?: string
+        }
+        Relationships: []
+      }
       audit_logs: {
         Row: {
           action_type: string
@@ -4413,6 +4443,42 @@ export type Database = {
           },
         ]
       }
+      data_retention_config: {
+        Row: {
+          archive_before_delete: boolean | null
+          created_at: string | null
+          date_column: string
+          id: string
+          is_active: boolean | null
+          retention_days: number
+          soft_delete: boolean | null
+          table_name: string
+          updated_at: string | null
+        }
+        Insert: {
+          archive_before_delete?: boolean | null
+          created_at?: string | null
+          date_column?: string
+          id?: string
+          is_active?: boolean | null
+          retention_days: number
+          soft_delete?: boolean | null
+          table_name: string
+          updated_at?: string | null
+        }
+        Update: {
+          archive_before_delete?: boolean | null
+          created_at?: string | null
+          date_column?: string
+          id?: string
+          is_active?: boolean | null
+          retention_days?: number
+          soft_delete?: boolean | null
+          table_name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       data_transformations: {
         Row: {
           created_at: string
@@ -5632,6 +5698,67 @@ export type Database = {
           },
           {
             foreignKeyName: "farmer_communications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      farmer_consent_log: {
+        Row: {
+          consent_given: boolean
+          consent_type: string
+          consent_version: string
+          created_at: string | null
+          farmer_id: string
+          id: string
+          ip_address: unknown
+          metadata: Json | null
+          tenant_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          consent_given: boolean
+          consent_type: string
+          consent_version?: string
+          created_at?: string | null
+          farmer_id: string
+          id?: string
+          ip_address?: unknown
+          metadata?: Json | null
+          tenant_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          consent_given?: boolean
+          consent_type?: string
+          consent_version?: string
+          created_at?: string | null
+          farmer_id?: string
+          id?: string
+          ip_address?: unknown
+          metadata?: Json | null
+          tenant_id?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "farmer_consent_log_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "farmer_consent_log_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "farmer_consent_log_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -20321,6 +20448,13 @@ export type Database = {
           },
         ]
       }
+      security_audit_summary: {
+        Row: {
+          audit_category: string | null
+          issue_count: number | null
+        }
+        Relationships: []
+      }
       weather_with_location: {
         Row: {
           area_acres: number | null
@@ -20698,6 +20832,14 @@ export type Database = {
       cleanup_expired_registrations: { Args: never; Returns: number }
       cleanup_expired_sessions: { Args: never; Returns: undefined }
       cleanup_old_dashboard_updates: { Args: never; Returns: number }
+      cleanup_old_data_with_retention: {
+        Args: never
+        Returns: {
+          archived_count: number
+          deleted_count: number
+          table_name: string
+        }[]
+      }
       cleanup_old_idempotency_records: { Args: never; Returns: number }
       cleanup_old_metrics: {
         Args: { keep_count?: number; table_name: string }
