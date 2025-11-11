@@ -139,10 +139,10 @@ export default function Profile() {
                   </h1>
                   <div className="flex items-center gap-2 mt-1">
                     <Badge variant="secondary" className="bg-primary/10 text-primary">
-                      {user?.farmerCode || 'ID-000'}
+                      Farmer
                     </Badge>
                     <Badge variant="outline">
-                      {user?.farmType || 'Farmer'}
+                      {user?.farmType || 'General'}
                     </Badge>
                   </div>
                 </div>

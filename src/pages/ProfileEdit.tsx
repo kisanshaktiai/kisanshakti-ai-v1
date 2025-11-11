@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 
 export default function ProfileEdit() {
   const { t } = useTranslation();
@@ -206,17 +206,19 @@ export default function ProfileEdit() {
   };
 
   return (
-    <div className="p-4 space-y-4 pb-20">
-      <div className="flex items-center gap-3 mb-4">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => navigate('/app/profile')}
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </Button>
-        <h1 className="text-2xl font-bold text-foreground">Edit Profile</h1>
-      </div>
+    <div className="h-full overflow-y-auto">
+      <div className="p-4 space-y-4 pb-24">
+        <div className="flex items-center gap-2 sticky top-0 bg-background/95 backdrop-blur-sm z-10 -mx-4 px-4 py-3 border-b">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => navigate('/app/profile')}
+            className="shrink-0"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Button>
+          <h1 className="text-xl font-bold text-foreground truncate">Edit Profile</h1>
+        </div>
 
       {/* Personal Information */}
       <Card>
@@ -496,21 +498,38 @@ export default function ProfileEdit() {
         </CardContent>
       </Card>
 
-      {/* Save Button */}
-      <Button 
-        onClick={handleSave} 
-        className="w-full" 
-        disabled={loading}
-      >
-        {loading ? (
-          'Saving...'
-        ) : (
-          <>
-            <Save className="w-4 h-4 mr-2" />
-            Save Profile
-          </>
-        )}
-      </Button>
+      {/* Fixed Bottom Action Bar */}
+      <div className="fixed bottom-16 left-0 right-0 p-4 bg-background/95 backdrop-blur-sm border-t z-10">
+        <div className="max-w-2xl mx-auto flex gap-3">
+          <Button
+            onClick={() => navigate('/app/profile')}
+            variant="outline"
+            className="flex-1"
+            disabled={loading}
+          >
+            Cancel
+          </Button>
+          
+          <Button
+            onClick={handleSave}
+            className="flex-1"
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                Save
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+      </div>
     </div>
   );
 }
