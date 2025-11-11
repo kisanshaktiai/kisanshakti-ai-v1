@@ -462,10 +462,10 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4.1-2025-04-14', // Upgraded to GPT-4.1 for superior reasoning and scientific accuracy
+        model: 'gpt-5-mini-2025-08-07', // Fast, accurate, multilingual farmer chat
         messages: openAIMessages,
-        max_completion_tokens: 2000, // Increased for comprehensive scientific responses (GPT-4.1+ uses max_completion_tokens)
-        // temperature not supported in GPT-4.1+ (defaults to 1.0 for balanced output)
+        max_completion_tokens: 2000, // GPT-5 models use max_completion_tokens
+        // temperature not supported in GPT-5 models (defaults to 1.0 for balanced output)
         stream: false
       }),
     });
@@ -572,7 +572,7 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
         agro_climatic_zone: landDetails?.agro_climatic_zone || farmerDetails?.agro_climatic_zone,
         soil_zone: landDetails?.soil_type,
         rainfall_zone: farmerDetails?.rainfall_zone,
-        ai_model: 'gpt-4.1-2025-04-14', // Upgraded model for scientific accuracy
+        ai_model: 'gpt-5-mini-2025-08-07', // Fast, accurate model for farmer chat
         response_time_ms: responseTime,
         tokens_used: tokensUsed,
         metadata: {
@@ -583,7 +583,7 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
           section_tags: sectionTags, // For AI training classification
           regional_title: farmerContext?.regional_title,
           land_size_acres: landContext?.area_acres,
-          model_upgrade: 'Using GPT-4.1 for enhanced scientific reasoning and precision'
+          model_info: 'Using GPT-5-mini for multilingual, fast farmer assistance'
         }
       });
       
