@@ -210,10 +210,9 @@ export const useAuthStore = create<AuthState>()(
           error: null 
         });
         
-        // Clear localStorage items
+        // Clear localStorage items - but NOT tenantId (it's system-level config)
         localStorage.removeItem('authMobile');
         localStorage.removeItem('farmerId');
-        localStorage.removeItem('tenantId');
         
         console.log('✅ [Auth] Logout complete');
       },

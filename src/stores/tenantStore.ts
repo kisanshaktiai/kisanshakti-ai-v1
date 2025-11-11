@@ -216,6 +216,11 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       // Fetch white label config or tenant branding if tenant found
       if (tenantData?.id) {
         localStorage.setItem('tenantId', tenantData.id);
+        console.log('✅ [Tenant] Tenant ID stored in localStorage:', {
+          tenantId: tenantData.id,
+          tenantName: tenantData.name,
+          domain: tenantData.domain
+        });
         
         // First try white_label_configs
         const { data: whiteLabel } = await supabase
