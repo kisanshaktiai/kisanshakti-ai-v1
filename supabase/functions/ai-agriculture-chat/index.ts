@@ -938,9 +938,16 @@ async function encryptPayload(payload: string, p256dh: string, auth: string) {
 }
 
 // Generate context-aware smart follow-up questions based on land and AI response
-function generateQuickReplies(lastMessage: string, aiResponse: string, landData: any = null): string[] {
-  const lowerMessage = lastMessage.toLowerCase();
-  const lowerResponse = aiResponse.toLowerCase();
+function generateQuickReplies(lastMessage: string = '', aiResponse: string = '', landData: any = null): string[] {
+  try {
+    // Validation guards - ensure parameters are defined and are strings
+    if (typeof lastMessage !== 'string' || typeof aiResponse !== 'string') {
+      console.error('Invalid parameters for generateQuickReplies:', { lastMessage: typeof lastMessage, aiResponse: typeof aiResponse });
+      return getDefaultQuickReplies();
+    }
+
+    const lowerMessage = (lastMessage || '').toLowerCase();
+    const lowerResponse = (aiResponse || '').toLowerCase();
   
   // PRIORITY 1: Generate questions based on AI response content
   const responseBasedQuestions: string[] = [];
@@ -1082,6 +1089,15 @@ function generateQuickReplies(lastMessage: string, aiResponse: string, landData:
   }
   
   // Ultimate fallback
+  return getDefaultQuickReplies();
+  } catch (error) {
+    console.error('Error in generateQuickReplies:', error);
+    return getDefaultQuickReplies();
+  }
+}
+
+// Helper function to return safe default quick replies
+function getDefaultQuickReplies(): string[] {
   return [
     '🌅 आज क्या करूं?',           // What to do today?
     '💧 पानी देना है?',            // Need to water?
