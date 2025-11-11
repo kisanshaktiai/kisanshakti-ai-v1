@@ -63,6 +63,13 @@ export function EnhancedAIChatInterface() {
   
   const [activeTab, setActiveTab] = useState('general');
   const [lands, setLands] = useState<any[]>([]);
+  
+  // 🤖 MULTI-AGENT ARCHITECTURE:
+  // Each land (tab) has its own independent AI agent with:
+  // - Separate conversation history (messages)
+  // - Unique session ID for tracking
+  // - Land-specific context and training data
+  // - Isolated chat memory per land
   const [messages, setMessages] = useState<Record<string, Message[]>>({
     general: []
   });
@@ -475,7 +482,15 @@ export function EnhancedAIChatInterface() {
       
       if (msgError) console.error('Error saving user message:', msgError);
       
-      // Call AI function
+      // 🤖 Call Land-Specific AI Agent
+      // Each land has its own AI agent that:
+      // 1. Uses land-specific context (crop, soil, area, NDVI)
+      // 2. Generates quick replies based on land data
+      // 3. Stores conversation data for training the land's model
+      console.log(`🌾 Invoking AI Agent for Land: ${land?.name || 'General Chat'}`);
+      console.log(`📊 Session ID: ${sessionId}`);
+      console.log(`🗂️ Training data collected per land in: ai_chat_messages table`);
+      
       const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
         body: {
           messages: [{ role: 'user', content: finalMessage }],
@@ -512,9 +527,13 @@ export function EnhancedAIChatInterface() {
         [activeTab]: [...(prev[activeTab] || []), aiMessage]
       }));
       
-      // Save quick replies from AI response
+      // 🎯 Save Land-Specific Quick Replies
+      // Quick replies are generated based on:
+      // 1. Land context (crop type, soil type, growth stage)
+      // 2. AI response content (what was just discussed)
+      // 3. User's last message (conversation context)
       if (data.quickReplies && data.quickReplies.length > 0) {
-        console.log('💬 Received quick replies:', data.quickReplies);
+        console.log(`💬 Land-specific quick replies for ${land?.name || 'General'}:`, data.quickReplies);
         setDynamicQuickReplies(prev => ({
           ...prev,
           [activeTab]: data.quickReplies

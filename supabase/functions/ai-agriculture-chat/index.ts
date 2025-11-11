@@ -621,15 +621,20 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
       })
       .eq('id', currentSessionId);
 
-    // Generate quick replies
-    const quickReplies = generateQuickReplies(lastUserMessage?.content || '');
+    // Generate quick replies based on land context and AI response
+    const quickReplies = generateQuickReplies(
+      lastUserMessage?.content || '', 
+      aiMessage,
+      landDetails
+    );
 
     return new Response(
       JSON.stringify({ 
         response: aiMessage, // Changed from 'message' to 'response' to match frontend
         sessionId: currentSessionId,
         quickReplies,
-        responseTime
+        responseTime,
+        landContext // Return land context so frontend knows which land this is for
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -932,86 +937,156 @@ async function encryptPayload(payload: string, p256dh: string, auth: string) {
   return encoder.encode(payload);
 }
 
-// Generate context-aware smart follow-up questions
-function generateQuickReplies(lastMessage: string): string[] {
+// Generate context-aware smart follow-up questions based on land and AI response
+function generateQuickReplies(lastMessage: string, aiResponse: string, landData: any = null): string[] {
   const lowerMessage = lastMessage.toLowerCase();
+  const lowerResponse = aiResponse.toLowerCase();
   
-  // Organic practices related
-  if (lowerMessage.includes('organic') || lowerMessage.includes('trichoderma') || lowerMessage.includes('neem')) {
+  // PRIORITY 1: Generate questions based on AI response content
+  const responseBasedQuestions: string[] = [];
+  
+  // If AI mentioned fertilizer application
+  if (lowerResponse.includes('fertilizer') || lowerResponse.includes('खाद')) {
+    responseBasedQuestions.push('💬 कौनसी खाद डालूं?'); // Which fertilizer?
+  }
+  
+  // If AI mentioned watering/irrigation
+  if (lowerResponse.includes('water') || lowerResponse.includes('irrigat') || lowerResponse.includes('पानी')) {
+    responseBasedQuestions.push('💧 पानी कब दूं?'); // When to water?
+  }
+  
+  // If AI mentioned pests/diseases
+  if (lowerResponse.includes('pest') || lowerResponse.includes('disease') || lowerResponse.includes('कीड़े') || lowerResponse.includes('बीमारी')) {
+    responseBasedQuestions.push('🐛 दवाई कब छिड़कें?'); // When to spray medicine?
+  }
+  
+  // If AI mentioned spraying schedule
+  if (lowerResponse.includes('spray') || lowerResponse.includes('application') || lowerResponse.includes('छिड़काव')) {
+    responseBasedQuestions.push('📅 अगला छिड़काव कब?'); // When is next spray?
+  }
+  
+  // If AI mentioned weather/rain
+  if (lowerResponse.includes('weather') || lowerResponse.includes('rain') || lowerResponse.includes('मौसम') || lowerResponse.includes('बारिश')) {
+    responseBasedQuestions.push('☁️ बारिश आएगी?'); // Will it rain?
+  }
+  
+  // If AI mentioned yield/harvest
+  if (lowerResponse.includes('yield') || lowerResponse.includes('harvest') || lowerResponse.includes('उपज') || lowerResponse.includes('कटाई')) {
+    responseBasedQuestions.push('💰 कमाई कितनी होगी?'); // How much income?
+  }
+  
+  // PRIORITY 2: Generate land-specific questions if land data available
+  const landSpecificQuestions: string[] = [];
+  
+  if (landData) {
+    const currentCrop = landData.current_crop?.toLowerCase() || '';
+    const soilType = landData.soil_type?.toLowerCase() || '';
+    const cultivationDate = landData.cultivation_date;
+    
+    // Crop-specific questions
+    if (currentCrop.includes('wheat') || currentCrop.includes('गेहूं')) {
+      landSpecificQuestions.push('🌾 गेहूं में पानी कब?'); // When to water wheat?
+      landSpecificQuestions.push('🌱 गेहूं में खाद?'); // Wheat fertilizer?
+    } else if (currentCrop.includes('rice') || currentCrop.includes('चावल') || currentCrop.includes('धान')) {
+      landSpecificQuestions.push('🌾 धान में पानी?'); // Rice water?
+      landSpecificQuestions.push('🐛 धान के कीड़े?'); // Rice pests?
+    } else if (currentCrop.includes('cotton') || currentCrop.includes('कपास')) {
+      landSpecificQuestions.push('🌸 कपास में फूल?'); // Cotton flowering?
+      landSpecificQuestions.push('🐛 गुलाबी इल्ली?'); // Pink bollworm?
+    } else if (currentCrop.includes('tomato') || currentCrop.includes('टमाटर')) {
+      landSpecificQuestions.push('🍅 टमाटर की देखभाल?'); // Tomato care?
+      landSpecificQuestions.push('🐛 टमाटर की बीमारी?'); // Tomato disease?
+    } else if (currentCrop.includes('onion') || currentCrop.includes('प्याज')) {
+      landSpecificQuestions.push('🧅 प्याज में पानी?'); // Onion water?
+      landSpecificQuestions.push('🌱 प्याज की खाद?'); // Onion fertilizer?
+    }
+    
+    // Soil-specific questions
+    if (soilType.includes('clay') || soilType.includes('चिकनी')) {
+      landSpecificQuestions.push('🌱 चिकनी मिट्टी सुधार?'); // Clay soil improvement?
+    } else if (soilType.includes('sandy') || soilType.includes('रेतीली')) {
+      landSpecificQuestions.push('💧 रेतीली मिट्टी में पानी?'); // Sandy soil water?
+    } else if (soilType.includes('loam') || soilType.includes('दोमट')) {
+      landSpecificQuestions.push('🌿 दोमट मिट्टी खाद?'); // Loam soil fertilizer?
+    }
+    
+    // Growth stage-specific questions
+    if (cultivationDate) {
+      const daysElapsed = Math.floor((Date.now() - new Date(cultivationDate).getTime()) / (1000 * 60 * 60 * 24));
+      if (daysElapsed < 30) {
+        landSpecificQuestions.push('🌱 शुरुआती देखभाल?'); // Early care?
+      } else if (daysElapsed < 60) {
+        landSpecificQuestions.push('🌿 बढ़वार का समय?'); // Growth stage?
+      } else if (daysElapsed < 90) {
+        landSpecificQuestions.push('🌸 फूल आने पर क्या करें?'); // During flowering?
+      } else {
+        landSpecificQuestions.push('✂️ कटाई कब करें?'); // When to harvest?
+      }
+    }
+  }
+  
+  // PRIORITY 3: User message context
+  const messageBasedQuestions: string[] = [];
+  
+  // Fertilizer related
+  if (lowerMessage.includes('fertilizer') || lowerMessage.includes('खाद') || lowerMessage.includes('npk')) {
+    messageBasedQuestions.push('💬 कौनसी खाद डालूं?'); // Which fertilizer?
+    messageBasedQuestions.push('💬 खाद कब डालें?'); // When to add fertilizer?
+    messageBasedQuestions.push('💬 कितनी खाद चाहिए?'); // How much fertilizer?
+  }
+  
+  // Pest/Disease related
+  else if (lowerMessage.includes('pest') || lowerMessage.includes('disease') || lowerMessage.includes('कीड़े') || lowerMessage.includes('बीमारी')) {
+    messageBasedQuestions.push('🐛 कीड़े दिख रहे हैं'); // Seeing insects
+    messageBasedQuestions.push('🍃 पत्ते पीले हैं'); // Leaves are yellow
+    messageBasedQuestions.push('💧 दवाई कब छिड़कें?'); // When to spray medicine?
+  }
+  
+  // Weather/Irrigation related
+  else if (lowerMessage.includes('water') || lowerMessage.includes('rain') || lowerMessage.includes('irrigat') || lowerMessage.includes('पानी')) {
+    messageBasedQuestions.push('💧 पानी कब दूं?'); // When to water?
+    messageBasedQuestions.push('☁️ बारिश आएगी?'); // Will it rain?
+    messageBasedQuestions.push('💦 कितना पानी दूं?'); // How much water?
+  }
+  
+  // Market/Yield related
+  else if (lowerMessage.includes('market') || lowerMessage.includes('price') || lowerMessage.includes('yield') || lowerMessage.includes('बाजार')) {
+    messageBasedQuestions.push('💰 आज का भाव?'); // Today's price?
+    messageBasedQuestions.push('📊 बेचें कब?'); // When to sell?
+    messageBasedQuestions.push('📈 कितनी पैदावार होगी?'); // How much yield?
+  }
+  
+  // Combine all questions with priority (response-based > land-specific > message-based)
+  const allQuestions = [
+    ...responseBasedQuestions,
+    ...landSpecificQuestions,
+    ...messageBasedQuestions
+  ];
+  
+  // Remove duplicates and limit to 4 questions
+  const uniqueQuestions = [...new Set(allQuestions)];
+  
+  // If we have questions, return top 4
+  if (uniqueQuestions.length > 0) {
+    return uniqueQuestions.slice(0, 4);
+  }
+  
+  // FALLBACK: Default land-based questions or general questions
+  if (landData?.current_crop) {
     return [
-      '💬 How to prepare organic compost at home?',
-      '💬 When to apply neem oil before flowering?',
-      '💬 Where to buy Trichoderma locally?',
-      '💬 Best organic pest control methods?'
+      '🌅 आज क्या करूं?',           // What to do today?
+      '💧 पानी देना है?',            // Need to water?
+      `🌾 ${landData.current_crop} कैसी है?`, // How's the crop?
+      '📅 अगला काम कब?'             // When's next task?
     ];
   }
   
-  // Fertilizer and NPK related
-  if (lowerMessage.includes('fertilizer') || lowerMessage.includes('npk') || lowerMessage.includes('urea')) {
-    return [
-      '💬 How to calculate NPK for my crop?',
-      '💬 When to apply top-dressing fertilizer?',
-      '💬 Best water-soluble fertilizers?',
-      '💬 Soil testing centers near me?'
-    ];
-  }
-  
-  // Disease and pest related
-  if (lowerMessage.includes('disease') || lowerMessage.includes('pest') || lowerMessage.includes('spray')) {
-    return [
-      '💬 How to identify pest damage?',
-      '💬 Preventive spray schedule for my crop?',
-      '💬 Natural pest remedies without chemicals?',
-      '💬 When to spray pesticides?'
-    ];
-  }
-  
-  // Weather and irrigation related
-  if (lowerMessage.includes('weather') || lowerMessage.includes('rain') || lowerMessage.includes('irrigat')) {
-    return [
-      '💬 How to measure soil moisture manually?',
-      '💬 When to irrigate before flowering?',
-      '💬 Rain forecast for next 7 days?',
-      '💬 Drip irrigation setup cost?'
-    ];
-  }
-  
-  // Growth and yield related
-  if (lowerMessage.includes('yield') || lowerMessage.includes('growth') || lowerMessage.includes('hormone')) {
-    return [
-      '💬 How to increase flowering naturally?',
-      '💬 Best time to apply growth hormones?',
-      '💬 Expected yield for my land?',
-      '💬 Income calculation for this crop?'
-    ];
-  }
-  
-  // NDVI and soil health related
-  if (lowerMessage.includes('ndvi') || lowerMessage.includes('soil') || lowerMessage.includes('health')) {
-    return [
-      '💬 How to improve soil health organically?',
-      '💬 When to do soil testing?',
-      '💬 What is NDVI and why it matters?',
-      '💬 Soil amendments for my land?'
-    ];
-  }
-  
-  // Market and income related
-  if (lowerMessage.includes('market') || lowerMessage.includes('price') || lowerMessage.includes('income')) {
-    return [
-      '💬 Current market prices for my crop?',
-      '💬 Best time to sell for maximum profit?',
-      '💬 How to reduce farming costs?',
-      '💬 Government schemes for farmers?'
-    ];
-  }
-  
-  // Default smart questions - contextual to farming journey
+  // Ultimate fallback
   return [
-    '💬 What should I do next for my crop?',
-    '💬 How to prepare for next season?',
-    '💬 Best practices for my soil type?',
-    '💬 Weekly care checklist for my crop?'
+    '🌅 आज क्या करूं?',           // What to do today?
+    '💧 पानी देना है?',            // Need to water?
+    '🌾 फसल कैसी है?',            // How's the crop?
+    '📅 अगला काम कब?'             // When's next task?
   ];
 }
 
