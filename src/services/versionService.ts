@@ -9,9 +9,9 @@ class VersionService {
   private lastCheckTime: number = 0;
 
   constructor() {
-    // Get version from package.json or build time
+    // Get version from build-time environment variable
     this.currentVersion = import.meta.env.VITE_APP_VERSION || '1.0.0';
-    console.log(`[VersionService] Current version: ${this.currentVersion}`);
+    console.log(`[VersionService] App version: ${this.currentVersion}, Build: ${this.getBuildTime()}`);
   }
 
   /**
@@ -47,6 +47,8 @@ class VersionService {
 
   /**
    * Check if a new version is available by comparing manifest ETag
+   * NOTE: This is now only for background detection. 
+   * Actual update prompts are handled by service worker state.
    */
   async checkForUpdates(): Promise<boolean> {
     const now = Date.now();
@@ -74,15 +76,17 @@ class VersionService {
       const etag = response.headers.get('etag');
       const storedEtag = localStorage.getItem('app-manifest-etag');
 
+      // Only compare, DON'T store new ETag yet
+      // ETag is stored only after user updates or dismisses
       if (etag && storedEtag && etag !== storedEtag) {
-        console.log('[VersionService] New version detected');
-        localStorage.setItem('app-manifest-etag', etag);
+        console.log('[VersionService] New ETag detected (old: %s, new: %s)', storedEtag?.substring(0, 10), etag?.substring(0, 10));
         return true;
       }
 
       if (etag && !storedEtag) {
-        // First time, just store it
+        // First time - store it as baseline
         localStorage.setItem('app-manifest-etag', etag);
+        console.log('[VersionService] Baseline ETag stored');
       }
 
       return false;
@@ -90,6 +94,22 @@ class VersionService {
       console.error('[VersionService] Error checking for updates:', error);
       return false;
     }
+  }
+
+  /**
+   * Mark current version as acknowledged (called after update or dismissal)
+   */
+  acknowledgeCurrentVersion(): void {
+    // Get fresh ETag and store it
+    fetch(`/manifest.json?t=${Date.now()}`, { method: 'HEAD', cache: 'no-cache' })
+      .then(response => {
+        const etag = response.headers.get('etag');
+        if (etag) {
+          localStorage.setItem('app-manifest-etag', etag);
+          console.log('[VersionService] Current ETag acknowledged');
+        }
+      })
+      .catch(err => console.error('[VersionService] Error acknowledging version:', err));
   }
 
   /**
@@ -136,7 +156,7 @@ class VersionService {
    * Get build timestamp if available
    */
   getBuildTime(): string | null {
-    return import.meta.env.VITE_BUILD_TIME || null;
+    return import.meta.env.VITE_BUILD_TIMESTAMP || null;
   }
 
   /**

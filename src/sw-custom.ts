@@ -17,9 +17,10 @@ precacheAndRoute(self.__WB_MANIFEST);
 // Take control of all pages immediately
 clientsClaim();
 
-// Listen for SKIP_WAITING message from update prompt
+// Handle messages from clients (for manual update triggering)
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
+    console.log('Service Worker: Received SKIP_WAITING message - activating update');
     self.skipWaiting();
   }
 });
@@ -123,17 +124,31 @@ registerRoute(
   })
 );
 
-// ======= Push Notification Handling =======
+// ======= Service Worker Lifecycle Events =======
 
+// Install event - DO NOT skip waiting automatically
+// Only skip waiting when user explicitly clicks "Update Now"
 self.addEventListener('install', (event) => {
-  console.log('Service Worker installing...');
-  self.skipWaiting();
+  console.log('Service Worker: Installing... (waiting for activation approval)');
+  // Don't call self.skipWaiting() here - let the update prompt control it
 });
 
+// Activate event
 self.addEventListener('activate', (event) => {
-  console.log('Service Worker activating...');
-  event.waitUntil(self.clients.claim());
+  console.log('Service Worker: Activated and claiming clients');
+  event.waitUntil(
+    self.clients.claim().then(() => {
+      // Notify all clients that service worker is now active
+      return self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({ type: 'SW_ACTIVATED', version: 'updated' });
+        });
+      });
+    })
+  );
 });
+
+// ======= Push Notification Handling =======
 
 // Handle push notifications
 self.addEventListener('push', (event) => {
