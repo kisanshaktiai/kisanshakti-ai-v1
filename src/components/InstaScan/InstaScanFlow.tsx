@@ -44,7 +44,15 @@ export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
     setErrorMessage(null);
 
     try {
-      console.log('Sending image to AI for analysis...');
+      // Enhanced logging for debugging
+      const imageSizeKB = Math.round(imageData.length / 1024);
+      const imageFormat = imageData.substring(0, 30);
+      console.log('📷 Sending image to AI for analysis:', {
+        imageSize: `${imageSizeKB}KB`,
+        format: imageFormat,
+        timestamp: new Date().toISOString(),
+        language: i18n.language
+      });
       
       // Get authentication context
       const farmerId = user?.id;

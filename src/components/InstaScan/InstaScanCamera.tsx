@@ -28,6 +28,71 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
     };
   }, []);
 
+  // Image quality validation function
+  const validateImageQuality = (canvas: HTMLCanvasElement): {
+    isValid: boolean;
+    reason?: string;
+    metrics: {
+      brightness: number;
+      contrast: number;
+    }
+  } => {
+    const context = canvas.getContext('2d');
+    if (!context) {
+      return { isValid: true, metrics: { brightness: 0, contrast: 0 } };
+    }
+
+    const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+    const pixels = imageData.data;
+    
+    // Calculate average brightness (0-255)
+    let totalBrightness = 0;
+    let minBrightness = 255;
+    let maxBrightness = 0;
+    
+    for (let i = 0; i < pixels.length; i += 4) {
+      const brightness = (pixels[i] + pixels[i+1] + pixels[i+2]) / 3;
+      totalBrightness += brightness;
+      minBrightness = Math.min(minBrightness, brightness);
+      maxBrightness = Math.max(maxBrightness, brightness);
+    }
+    
+    const avgBrightness = totalBrightness / (pixels.length / 4);
+    const contrast = maxBrightness - minBrightness;
+    
+    // Check if too dark
+    if (avgBrightness < 40) {
+      return { 
+        isValid: false, 
+        reason: 'Image too dark - please use better lighting', 
+        metrics: { brightness: avgBrightness, contrast } 
+      };
+    }
+    
+    // Check if overexposed
+    if (avgBrightness > 240) {
+      return { 
+        isValid: false, 
+        reason: 'Image overexposed - reduce lighting or avoid direct sunlight', 
+        metrics: { brightness: avgBrightness, contrast } 
+      };
+    }
+    
+    // Check contrast (low contrast = blurry/foggy)
+    if (contrast < 50) {
+      return { 
+        isValid: false, 
+        reason: 'Image appears blurry or low contrast - hold camera steady', 
+        metrics: { brightness: avgBrightness, contrast } 
+      };
+    }
+    
+    return { 
+      isValid: true, 
+      metrics: { brightness: avgBrightness, contrast } 
+    };
+  };
+
   const requestCameraPermission = async () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
@@ -70,8 +135,8 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
     const originalWidth = video.videoWidth;
     const originalHeight = video.videoHeight;
     
-    // Calculate dimensions to fit within 1024x1024 while maintaining aspect ratio
-    const maxDimension = 1024;
+    // Calculate dimensions to fit within 1536x1536 while maintaining aspect ratio (increased for better AI analysis)
+    const maxDimension = 1536;
     let targetWidth = originalWidth;
     let targetHeight = originalHeight;
     
@@ -94,8 +159,21 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
     // Draw scaled image
     context.drawImage(video, 0, 0, targetWidth, targetHeight);
     
-    // Convert to base64 with JPEG compression
-    const imageData = canvas.toDataURL('image/jpeg', 0.8);
+    // Validate image quality before sending
+    const qualityCheck = validateImageQuality(canvas);
+    console.log('📷 Image Quality Metrics:', qualityCheck);
+    
+    if (!qualityCheck.isValid) {
+      console.warn('⚠️ Image quality warning:', qualityCheck.reason);
+      toast({
+        title: 'Image Quality Warning',
+        description: qualityCheck.reason + ' - Results may be less accurate.',
+        variant: 'default'
+      });
+    }
+    
+    // Convert to base64 with higher quality JPEG compression (0.92 instead of 0.8 for better detail)
+    const imageData = canvas.toDataURL('image/jpeg', 0.92);
     
     // Add capture animation
     const overlay = document.createElement('div');
