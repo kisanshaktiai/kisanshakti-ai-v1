@@ -79,5 +79,33 @@
     "onion": "ਪਿਆਜ਼",
     "tomato": "ਟਮਾਟਰ",
     "chilli": "ਮਿਰਚ"
+  },
+  "instaScan": {
+    "title": "ਤੁਰੰਤ ਫਸਲ ਸਕੈਨ",
+    "instruction": "ਕੈਮਰੇ ਨੂੰ ਫਸਲ ਜਾਂ ਕੀੜੇ ਵੱਲ ਇਸ਼ਾਰਾ ਕਰੋ",
+    "analyzing": "ਚਿੱਤਰ ਦਾ ਵਿਸ਼ਲੇਸ਼ਣ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ...",
+    "aiWorking": "AI ਤੁਹਾਡੀ ਫਸਲ ਦੀ ਜਾਂਚ ਕਰ ਰਿਹਾ ਹੈ",
+    "results": "ਸਕੈਨ ਨਤੀਜੇ",
+    "confidence": "ਵਿਸ਼ਵਾਸ",
+    "cropIdentified": "ਪਛਾਣੀ ਗਈ ਫਸਲ",
+    "condition": "ਫਸਲ ਦੀ ਸਥਿਤੀ",
+    "conditions": {
+      "healthy": "ਸਿਹਤਮੰਦ",
+      "warning": "ਧਿਆਨ ਦੀ ਲੋੜ",
+      "critical": "ਗੰਭੀਰ"
+    },
+    "diseasesDetected": "ਮਿਲੀਆਂ ਸਮੱਸਿਆਵਾਂ",
+    "noDiseasesDetected": "ਕੋਈ ਬਿਮਾਰੀ ਨਹੀਂ ਮਿਲੀ",
+    "smartSuggestions": "AI ਸਿਫਾਰਸ਼ਾਂ",
+    "detailedGuidance": "ਵਿਸਥਾਰ ਮਾਰਗਦਰਸ਼ਨ",
+    "continueInChat": "AI ਚੈਟ ਵਿੱਚ ਜਾਰੀ ਰੱਖੋ",
+    "unknownCrop": "ਅਣਜਾਣ ਫਸਲ",
+    "defaultSuggestion": "ਵਿਸਤ੍ਰਿਤ ਸਲਾਹ ਲਈ ਖੇਤੀਬਾੜੀ ਮਾਹਰ ਨਾਲ ਸਲਾਹ ਕਰੋ",
+    "analysisError": "ਵਿਸ਼ਲੇਸ਼ਣ ਅਸਫਲ",
+    "tryAgain": "ਕਿਰਪਾ ਕਰਕੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ ਜਾਂ ਸਪਸ਼ਟ ਫੋਟੋ ਲਓ",
+    "permissionDenied": "ਕੈਮਰਾ ਅਨੁਮਤੀ ਅਸਵੀਕਾਰ",
+    "enableCamera": "ਕਿਰਪਾ ਕਰਕੇ ਸੈਟਿੰਗਾਂ ਵਿੱਚ ਕੈਮਰਾ ਪਹੁੰਚ ਨੂੰ ਸਮਰੱਥ ਕਰੋ",
+    "cameraRequired": "ਕੈਮਰਾ ਪਹੁੰਚ ਲੋੜੀਂਦੀ ਹੈ",
+    "enableCameraInSettings": "InstaScan ਦੀ ਵਰਤੋਂ ਕਰਨ ਲਈ ਆਪਣੀ ਡਿਵਾਈਸ ਸੈਟਿੰਗਾਂ ਵਿੱਚ ਕੈਮਰਾ ਨੂੰ ਸਮਰੱਥ ਕਰੋ"
   }
 }

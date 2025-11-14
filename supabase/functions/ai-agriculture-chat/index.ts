@@ -411,38 +411,127 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
 - Provide season-specific and stage-specific advice
 - Consider weather patterns typical for this season in ${farmerDetails?.state || 'this region'}`;
 
+    // Detect InstaScan mode (vision analysis)
+    const isInstaScan = !!imageUrl;
+    
     // Prepare messages for OpenAI
-    const openAIMessages = [
-      { role: 'system', content: systemPrompt }
-    ];
+    let openAIMessages: any[] = [];
+    let openAIModel = 'gpt-5-mini-2025-08-07'; // Default model
+    let tools = undefined;
+    let tool_choice = undefined;
 
-    // Get conversation history from database
-    const { data: messageHistory } = await supabase
-      .from('ai_chat_messages')
-      .select('role, content')
-      .eq('session_id', currentSessionId)
-      .order('created_at', { ascending: true })
-      .limit(10);
+    if (isInstaScan) {
+      // InstaScan: Vision analysis with structured output
+      console.log('InstaScan mode: Analyzing crop image with vision API');
+      openAIModel = 'gpt-4o-mini'; // Vision-capable model
+      
+      const instaScanPrompt = `You are an expert agricultural AI assistant specializing in crop health analysis. Analyze the provided crop image and identify:
 
-    if (messageHistory && messageHistory.length > 0) {
-      openAIMessages.push(...messageHistory.map(msg => ({
-        role: msg.role === 'user' ? 'user' : 'assistant',
-        content: msg.content
-      })));
-    }
+1. CROP TYPE: What crop is in the image? (wheat, rice, cotton, sugarcane, maize, tomato, etc.)
+2. HEALTH STATUS: Is the crop healthy, needs attention, or in critical condition?
+3. DISEASES/PESTS: Any visible diseases, pests, nutrient deficiencies, or damage?
+4. ACTIONABLE SUGGESTIONS: Provide 3-5 specific, practical recommendations for the farmer
 
-    // Add current messages - handle both old and new format
-    if (messages && messages.length > 0) {
-      for (const msg of messages) {
-        if (typeof msg === 'string') {
-          // Old format - just a string
-          openAIMessages.push({ role: 'user', content: msg });
-        } else if (msg && typeof msg === 'object') {
-          // New format - object with role and content
-          openAIMessages.push({
-            role: msg.role || 'user',
-            content: msg.content || ''
-          });
+Be specific, accurate, and provide actionable advice. If you cannot identify the crop clearly, say "Unknown Crop" and ask for a clearer image.
+
+Language: Respond in ${language === 'en' ? 'English' : language === 'hi' ? 'Hindi' : language === 'mr' ? 'Marathi' : language === 'pa' ? 'Punjabi' : language === 'ta' ? 'Tamil' : 'English'}.`;
+
+      // Vision message format
+      openAIMessages = [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: instaScanPrompt
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: imageUrl,
+                detail: 'high' // High detail for accurate crop analysis
+              }
+            }
+          ]
+        }
+      ];
+
+      // Structured output using tool calling for reliable JSON
+      tools = [
+        {
+          type: 'function',
+          function: {
+            name: 'analyze_crop_image',
+            description: 'Return structured crop analysis results',
+            parameters: {
+              type: 'object',
+              properties: {
+                cropName: {
+                  type: 'string',
+                  description: 'Name of the identified crop (e.g., "Wheat", "Rice", "Unknown Crop")'
+                },
+                condition: {
+                  type: 'string',
+                  enum: ['healthy', 'warning', 'critical'],
+                  description: 'Overall health status of the crop'
+                },
+                diseases: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'List of detected diseases, pests, or issues. Empty array if none detected.'
+                },
+                suggestions: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: '3-5 actionable recommendations for the farmer'
+                },
+                confidence: {
+                  type: 'number',
+                  minimum: 0,
+                  maximum: 100,
+                  description: 'Confidence level of the analysis (0-100)'
+                }
+              },
+              required: ['cropName', 'condition', 'diseases', 'suggestions', 'confidence'],
+              additionalProperties: false
+            }
+          }
+        }
+      ];
+      tool_choice = { type: 'function', function: { name: 'analyze_crop_image' } };
+      
+    } else {
+      // Regular chat mode
+      openAIMessages = [
+        { role: 'system', content: systemPrompt }
+      ];
+
+      // Get conversation history from database
+      const { data: messageHistory } = await supabase
+        .from('ai_chat_messages')
+        .select('role, content')
+        .eq('session_id', currentSessionId)
+        .order('created_at', { ascending: true })
+        .limit(10);
+
+      if (messageHistory && messageHistory.length > 0) {
+        openAIMessages.push(...messageHistory.map(msg => ({
+          role: msg.role === 'user' ? 'user' : 'assistant',
+          content: msg.content
+        })));
+      }
+
+      // Add current messages - handle both old and new format
+      if (messages && messages.length > 0) {
+        for (const msg of messages) {
+          if (typeof msg === 'string') {
+            openAIMessages.push({ role: 'user', content: msg });
+          } else if (msg && typeof msg === 'object') {
+            openAIMessages.push({
+              role: msg.role || 'user',
+              content: msg.content || ''
+            });
+          }
         }
       }
     }
@@ -453,7 +542,24 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
       throw new Error('OpenAI API key not configured');
     }
 
-    console.log('Calling OpenAI API with messages:', openAIMessages.length);
+    console.log('Calling OpenAI API:', { 
+      model: openAIModel, 
+      isInstaScan, 
+      messagesCount: openAIMessages.length,
+      hasTools: !!tools 
+    });
+
+    const requestBody: any = {
+      model: openAIModel,
+      messages: openAIMessages,
+      max_completion_tokens: isInstaScan ? 1000 : 2000,
+      stream: false
+    };
+
+    if (tools) {
+      requestBody.tools = tools;
+      requestBody.tool_choice = tool_choice;
+    }
 
     const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -461,24 +567,52 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
         'Authorization': `Bearer ${openAIKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: 'gpt-5-mini-2025-08-07', // Fast, accurate, multilingual farmer chat
-        messages: openAIMessages,
-        max_completion_tokens: 2000, // GPT-5 models use max_completion_tokens
-        // temperature not supported in GPT-5 models (defaults to 1.0 for balanced output)
-        stream: false
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!openAIResponse.ok) {
       const errorData = await openAIResponse.text();
       console.error('OpenAI API error:', errorData);
-      throw new Error('Failed to get AI response');
+      throw new Error(`OpenAI API failed: ${openAIResponse.status} - ${errorData}`);
     }
 
     const aiData = await openAIResponse.json();
-    const aiMessage = aiData.choices[0].message.content;
+    
+    let aiMessage: string;
+    let structuredResult = null;
+
+    // Handle structured output from tool calling
+    if (isInstaScan && aiData.choices[0].message.tool_calls) {
+      const toolCall = aiData.choices[0].message.tool_calls[0];
+      try {
+        structuredResult = JSON.parse(toolCall.function.arguments);
+        console.log('Structured InstaScan result:', structuredResult);
+        // Format as readable text for storage
+        aiMessage = `Crop: ${structuredResult.cropName}\nCondition: ${structuredResult.condition}\nDiseases: ${structuredResult.diseases.join(', ') || 'None'}\nSuggestions: ${structuredResult.suggestions.join(' ')}`;
+      } catch (e) {
+        console.error('Failed to parse tool call:', e);
+        throw new Error('Failed to parse crop analysis results');
+      }
+    } else {
+      aiMessage = aiData.choices[0].message.content;
+    }
     const tokensUsed = aiData.usage?.total_tokens || 0;
+
+    // For InstaScan, return structured result immediately
+    if (isInstaScan && structuredResult) {
+      return new Response(
+        JSON.stringify({ 
+          success: true,
+          result: structuredResult,
+          responseTime: Date.now() - startTime,
+          tokensUsed
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200
+        }
+      );
+    }
 
     // Save messages to database
     const lastUserMessage = messages[messages.length - 1];

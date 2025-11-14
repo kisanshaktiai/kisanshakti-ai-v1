@@ -265,5 +265,33 @@
     "onion": "Onion",
     "tomato": "Tomato",
     "chilli": "Chilli"
+  },
+  "instaScan": {
+    "title": "Instant Crop Scan",
+    "instruction": "Point camera at crop or pest",
+    "analyzing": "Analyzing Image...",
+    "aiWorking": "AI is examining your crop",
+    "results": "Scan Results",
+    "confidence": "Confidence",
+    "cropIdentified": "Crop Identified",
+    "condition": "Crop Condition",
+    "conditions": {
+      "healthy": "Healthy",
+      "warning": "Needs Attention",
+      "critical": "Critical"
+    },
+    "diseasesDetected": "Issues Detected",
+    "noDiseasesDetected": "No diseases detected",
+    "smartSuggestions": "AI Recommendations",
+    "detailedGuidance": "Detailed Guidance",
+    "continueInChat": "Continue in AI Chat",
+    "unknownCrop": "Unknown Crop",
+    "defaultSuggestion": "Consult agricultural expert for detailed advice",
+    "analysisError": "Analysis Failed",
+    "tryAgain": "Please try again or take a clearer photo",
+    "permissionDenied": "Camera Permission Denied",
+    "enableCamera": "Please enable camera access in settings",
+    "cameraRequired": "Camera Access Required",
+    "enableCameraInSettings": "Enable camera in your device settings to use InstaScan"
   }
 }
