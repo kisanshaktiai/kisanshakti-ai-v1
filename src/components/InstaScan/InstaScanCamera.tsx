@@ -66,14 +66,35 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
     
     if (!context) return;
     
-    // Set canvas dimensions to match video
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    // Get original dimensions
+    const originalWidth = video.videoWidth;
+    const originalHeight = video.videoHeight;
     
-    // Draw video frame to canvas
-    context.drawImage(video, 0, 0);
+    // Calculate dimensions to fit within 1024x1024 while maintaining aspect ratio
+    const maxDimension = 1024;
+    let targetWidth = originalWidth;
+    let targetHeight = originalHeight;
     
-    // Convert to base64
+    if (originalWidth > maxDimension || originalHeight > maxDimension) {
+      const aspectRatio = originalWidth / originalHeight;
+      
+      if (originalWidth > originalHeight) {
+        targetWidth = maxDimension;
+        targetHeight = Math.round(maxDimension / aspectRatio);
+      } else {
+        targetHeight = maxDimension;
+        targetWidth = Math.round(maxDimension * aspectRatio);
+      }
+    }
+    
+    // Set canvas to target dimensions
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    
+    // Draw scaled image
+    context.drawImage(video, 0, 0, targetWidth, targetHeight);
+    
+    // Convert to base64 with JPEG compression
     const imageData = canvas.toDataURL('image/jpeg', 0.8);
     
     // Add capture animation

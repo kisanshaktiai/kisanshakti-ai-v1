@@ -20915,6 +20915,14 @@ export type Database = {
         }
         Returns: Json
       }
+      debug_auth_state: {
+        Args: never
+        Returns: {
+          current_user_id: string
+          db_role: string
+          db_user: string
+        }[]
+      }
       detect_land_overlaps: {
         Args: { p_tenant: string }
         Returns: {
@@ -21203,6 +21211,7 @@ export type Database = {
       get_current_farmer_id: { Args: never; Returns: string }
       get_current_tenant_id: { Args: never; Returns: string }
       get_current_user_email: { Args: never; Returns: string }
+      get_current_user_id: { Args: never; Returns: string }
       get_geometry_bbox: { Args: { geom: unknown }; Returns: number[] }
       get_header_farmer_id: { Args: never; Returns: string }
       get_header_tenant_id: { Args: never; Returns: string }
