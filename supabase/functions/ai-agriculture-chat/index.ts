@@ -425,16 +425,44 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
       console.log('InstaScan mode: Analyzing crop image with vision API');
       openAIModel = 'gpt-4o-mini'; // Vision-capable model
       
-      const instaScanPrompt = `You are an expert agricultural AI assistant specializing in crop health analysis. Analyze the provided crop image and identify:
+      const instaScanPrompt = `You are an expert agricultural AI specializing in crop disease identification and plant health analysis. 
 
-1. CROP TYPE: What crop is in the image? (wheat, rice, cotton, sugarcane, maize, tomato, etc.)
-2. HEALTH STATUS: Is the crop healthy, needs attention, or in critical condition?
-3. DISEASES/PESTS: Any visible diseases, pests, nutrient deficiencies, or damage?
-4. ACTIONABLE SUGGESTIONS: Provide 3-5 specific, practical recommendations for the farmer
+🔍 CRITICAL INSTRUCTIONS FOR ACCURATE CROP IDENTIFICATION:
+- Look carefully at leaf patterns, plant structure, growth habit, and distinctive features
+- ONLY identify as a crop if you're absolutely certain (confidence > 70%)
+- If you see grass, weeds, random plants, or unclear vegetation, report "Unknown Plant" or "Not a Crop"
+- Common crops to identify: Wheat, Rice, Maize/Corn, Cotton, Sugarcane, Tomato, Potato, Onion, Soybean, Chickpea, etc.
 
-Be specific, accurate, and provide actionable advice. If you cannot identify the crop clearly, say "Unknown Crop" and ask for a clearer image.
+📊 YOUR ANALYSIS MUST INCLUDE:
+1. **CROP IDENTIFICATION**: 
+   - Identify the specific crop visible in the image
+   - If uncertain or not a recognizable crop, clearly state "Unknown Plant" or "Not a Crop"
+   
+2. **HEALTH ASSESSMENT**:
+   - "healthy": Crop looks vibrant, no visible issues
+   - "warning": Minor issues detected (yellowing, slight damage, early disease signs)
+   - "critical": Severe problems (extensive disease, pest damage, dying plants)
+   
+3. **DISEASE/PEST DETECTION**:
+   - List SPECIFIC diseases, pests, or deficiencies with their exact names
+   - Examples: "Leaf Rust", "Aphid Infestation", "Nitrogen Deficiency", "Bacterial Blight"
+   - If healthy, return empty array []
+   - Be precise - don't use vague terms like "some disease"
+   
+4. **ACTIONABLE RECOMMENDATIONS**:
+   - Provide 3-5 SPECIFIC, PRACTICAL steps the farmer can take immediately
+   - Include fertilizer names, pesticide recommendations, irrigation advice, etc.
+   - Example: "Apply Neem oil spray at 5ml/L water" NOT "Use pesticides"
 
-Language: Respond in ${language === 'en' ? 'English' : language === 'hi' ? 'Hindi' : language === 'mr' ? 'Marathi' : language === 'pa' ? 'Punjabi' : language === 'ta' ? 'Tamil' : 'English'}.`;
+🎯 CONFIDENCE SCORING:
+- 85-100%: Crystal clear crop, excellent image quality, very certain identification
+- 70-84%: Good clarity, crop identifiable but some uncertainty
+- 50-69%: Moderate clarity, crop type uncertain
+- Below 50%: Poor image, cannot reliably identify - mark as "Unknown Plant"
+
+🌐 Language: Respond in ${language === 'en' ? 'English' : language === 'hi' ? 'Hindi' : language === 'mr' ? 'Marathi' : language === 'pa' ? 'Punjabi' : language === 'ta' ? 'Tamil' : 'English'}.
+
+⚠️ REMEMBER: Accuracy over guessing. If you're not sure, say so clearly in the cropName field.`;
 
       // Vision message format
       openAIMessages = [
@@ -468,7 +496,7 @@ Language: Respond in ${language === 'en' ? 'English' : language === 'hi' ? 'Hind
               properties: {
                 cropName: {
                   type: 'string',
-                  description: 'Name of the identified crop (e.g., "Wheat", "Rice", "Unknown Crop")'
+                  description: 'Exact name of the identified crop (e.g., "Wheat", "Rice Paddy", "Cotton"). Use "Unknown Plant" or "Not a Crop" if uncertain or not a recognizable agricultural crop.'
                 },
                 condition: {
                   type: 'string',
@@ -478,18 +506,18 @@ Language: Respond in ${language === 'en' ? 'English' : language === 'hi' ? 'Hind
                 diseases: {
                   type: 'array',
                   items: { type: 'string' },
-                  description: 'List of detected diseases, pests, or issues. Empty array if none detected.'
+                  description: 'List of SPECIFIC disease names, pest names, or nutrient deficiencies detected (e.g., "Powdery Mildew", "Aphid Infestation", "Iron Deficiency"). Empty array [] if crop is healthy.'
                 },
                 suggestions: {
                   type: 'array',
                   items: { type: 'string' },
-                  description: '3-5 actionable recommendations for the farmer'
+                  description: '3-5 SPECIFIC, ACTIONABLE recommendations with exact product names, quantities, or methods (e.g., "Spray Chlorpyrifos 20% EC at 2ml/L water", "Apply Urea fertilizer 50kg/acre"). Be precise and practical.'
                 },
                 confidence: {
                   type: 'number',
                   minimum: 0,
                   maximum: 100,
-                  description: 'Confidence level of the analysis (0-100)'
+                  description: 'Confidence level of crop identification and analysis (0-100). 85-100: Very certain, 70-84: Good certainty, 50-69: Uncertain, <50: Cannot identify reliably'
                 }
               },
               required: ['cropName', 'condition', 'diseases', 'suggestions', 'confidence'],
@@ -586,11 +614,23 @@ Language: Respond in ${language === 'en' ? 'English' : language === 'hi' ? 'Hind
       const toolCall = aiData.choices[0].message.tool_calls[0];
       try {
         structuredResult = JSON.parse(toolCall.function.arguments);
-        console.log('Structured InstaScan result:', structuredResult);
+        console.log('✅ InstaScan analysis completed:', {
+          cropName: structuredResult.cropName,
+          condition: structuredResult.condition,
+          diseaseCount: structuredResult.diseases?.length || 0,
+          confidence: structuredResult.confidence
+        });
+        
+        // Validate critical fields
+        if (!structuredResult.cropName || !structuredResult.condition || !structuredResult.confidence) {
+          console.error('❌ Missing critical fields in InstaScan result:', structuredResult);
+          throw new Error('Incomplete crop analysis - missing required fields');
+        }
+        
         // Format as readable text for storage
         aiMessage = `Crop: ${structuredResult.cropName}\nCondition: ${structuredResult.condition}\nDiseases: ${structuredResult.diseases.join(', ') || 'None'}\nSuggestions: ${structuredResult.suggestions.join(' ')}`;
       } catch (e) {
-        console.error('Failed to parse tool call:', e);
+        console.error('❌ Failed to parse InstaScan tool call:', e, toolCall);
         throw new Error('Failed to parse crop analysis results');
       }
     } else {

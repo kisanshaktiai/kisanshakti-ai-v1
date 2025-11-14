@@ -26,6 +26,16 @@ export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
   const [scanResult, setScanResult] = useState<InstaScanResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Reset state when dialog opens/closes
+  React.useEffect(() => {
+    if (isOpen) {
+      setShowCamera(true);
+      setIsAnalyzing(false);
+      setScanResult(null);
+      setErrorMessage(null);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleImageCapture = async (imageData: string) => {
@@ -96,15 +106,31 @@ export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
         return;
       }
 
+      // Validate result quality
+      const resultData = data.result;
+      
+      // Check if AI couldn't identify the crop reliably
+      if (resultData.confidence < 50 || 
+          resultData.cropName?.toLowerCase().includes('unknown') ||
+          resultData.cropName?.toLowerCase().includes('not a crop')) {
+        console.warn('Low confidence or unidentified crop:', resultData);
+        sonnerToast.warning(t('instaScan.lowConfidence') || 'Could not identify crop clearly. Please take a clearer photo.');
+        setErrorMessage(t('instaScan.tryAgain'));
+        setShowCamera(true);
+        setIsAnalyzing(false);
+        return;
+      }
+
       const result: InstaScanResult = {
         imageUrl: imageData,
-        cropName: data.result.cropName || t('instaScan.unknownCrop'),
-        cropCondition: data.result.condition || 'warning',
-        diseases: data.result.diseases || [],
-        suggestions: data.result.suggestions || [t('instaScan.defaultSuggestion')],
-        confidence: data.result.confidence || 0
+        cropName: resultData.cropName || t('instaScan.unknownCrop'),
+        cropCondition: resultData.condition || 'warning',
+        diseases: resultData.diseases || [],
+        suggestions: resultData.suggestions || [t('instaScan.defaultSuggestion')],
+        confidence: resultData.confidence || 0
       };
 
+      console.log('✅ InstaScan completed successfully:', result);
       setScanResult(result);
     } catch (error) {
       console.error('Error analyzing image:', error);
