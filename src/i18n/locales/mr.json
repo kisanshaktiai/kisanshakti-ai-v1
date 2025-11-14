@@ -79,5 +79,33 @@
     "onion": "कांदा",
     "tomato": "टोमॅटो",
     "chilli": "मिरची"
+  },
+  "instaScan": {
+    "title": "त्वरित पीक स्कॅन",
+    "instruction": "कॅमेरा पीक किंवा कीटकांकडे दाखवा",
+    "analyzing": "प्रतिमा विश्लेषण करत आहे...",
+    "aiWorking": "AI तुमच्या पिकाची तपासणी करत आहे",
+    "results": "स्कॅन परिणाम",
+    "confidence": "विश्वास",
+    "cropIdentified": "ओळखले गेलेले पीक",
+    "condition": "पिकाची स्थिती",
+    "conditions": {
+      "healthy": "निरोगी",
+      "warning": "लक्ष देण्याची गरज",
+      "critical": "गंभीर"
+    },
+    "diseasesDetected": "आढळलेल्या समस्या",
+    "noDiseasesDetected": "कोणतेही रोग आढळले नाहीत",
+    "smartSuggestions": "AI शिफारसी",
+    "detailedGuidance": "तपशीलवार मार्गदर्शन",
+    "continueInChat": "AI चॅटमध्ये सुरू ठेवा",
+    "unknownCrop": "अज्ञात पीक",
+    "defaultSuggestion": "तपशीलवार सल्ल्यासाठी कृषी तज्ञांचा सल्ला घ्या",
+    "analysisError": "विश्लेषण अयशस्वी",
+    "tryAgain": "कृपया पुन्हा प्रयत्न करा किंवा स्पष्ट फोटो घ्या",
+    "permissionDenied": "कॅमेरा परवानगी नाकारली",
+    "enableCamera": "कृपया सेटिंग्जमध्ये कॅमेरा प्रवेश सक्षम करा",
+    "cameraRequired": "कॅमेरा प्रवेश आवश्यक",
+    "enableCameraInSettings": "InstaScan वापरण्यासाठी तुमच्या डिव्हाइस सेटिंग्जमध्ये कॅमेरा सक्षम करा"
   }
 }
