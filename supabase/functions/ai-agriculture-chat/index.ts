@@ -549,7 +549,7 @@ Language: Respond in ${language === 'en' ? 'English' : language === 'hi' ? 'Hind
       hasTools: !!tools 
     });
 
-    const requestBody: any = {
+    const openAIRequestBody: any = {
       model: openAIModel,
       messages: openAIMessages,
       max_completion_tokens: isInstaScan ? 1000 : 2000,
@@ -557,8 +557,8 @@ Language: Respond in ${language === 'en' ? 'English' : language === 'hi' ? 'Hind
     };
 
     if (tools) {
-      requestBody.tools = tools;
-      requestBody.tool_choice = tool_choice;
+      openAIRequestBody.tools = tools;
+      openAIRequestBody.tool_choice = tool_choice;
     }
 
     const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -567,7 +567,7 @@ Language: Respond in ${language === 'en' ? 'English' : language === 'hi' ? 'Hind
         'Authorization': `Bearer ${openAIKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify(openAIRequestBody),
     });
 
     if (!openAIResponse.ok) {
