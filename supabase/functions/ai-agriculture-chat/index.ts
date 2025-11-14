@@ -423,46 +423,128 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
     if (isInstaScan) {
       // InstaScan: Vision analysis with structured output
       console.log('InstaScan mode: Analyzing crop image with vision API');
-      openAIModel = 'gpt-4o-mini'; // Vision-capable model
+      openAIModel = 'gpt-4o'; // Full vision model for better agricultural accuracy
       
-      const instaScanPrompt = `You are an expert agricultural AI specializing in crop disease identification and plant health analysis. 
+      const instaScanPrompt = `You are an expert agricultural botanist with 20+ years of field experience in crop identification and disease diagnosis.
 
-🔍 CRITICAL INSTRUCTIONS FOR ACCURATE CROP IDENTIFICATION:
-- Look carefully at leaf patterns, plant structure, growth habit, and distinctive features
-- ONLY identify as a crop if you're absolutely certain (confidence > 70%)
-- If you see grass, weeds, random plants, or unclear vegetation, report "Unknown Plant" or "Not a Crop"
-- Common crops to identify: Wheat, Rice, Maize/Corn, Cotton, Sugarcane, Tomato, Potato, Onion, Soybean, Chickpea, etc.
+🎯 YOUR MISSION: Analyze this crop image and provide ACCURATE, SPECIFIC identification.
 
-📊 YOUR ANALYSIS MUST INCLUDE:
-1. **CROP IDENTIFICATION**: 
-   - Identify the specific crop visible in the image
-   - If uncertain or not a recognizable crop, clearly state "Unknown Plant" or "Not a Crop"
-   
-2. **HEALTH ASSESSMENT**:
-   - "healthy": Crop looks vibrant, no visible issues
-   - "warning": Minor issues detected (yellowing, slight damage, early disease signs)
-   - "critical": Severe problems (extensive disease, pest damage, dying plants)
-   
-3. **DISEASE/PEST DETECTION**:
-   - List SPECIFIC diseases, pests, or deficiencies with their exact names
-   - Examples: "Leaf Rust", "Aphid Infestation", "Nitrogen Deficiency", "Bacterial Blight"
-   - If healthy, return empty array []
-   - Be precise - don't use vague terms like "some disease"
-   
-4. **ACTIONABLE RECOMMENDATIONS**:
-   - Provide 3-5 SPECIFIC, PRACTICAL steps the farmer can take immediately
-   - Include fertilizer names, pesticide recommendations, irrigation advice, etc.
-   - Example: "Apply Neem oil spray at 5ml/L water" NOT "Use pesticides"
+📸 VISION ANALYSIS GUIDELINES:
 
-🎯 CONFIDENCE SCORING:
-- 85-100%: Crystal clear crop, excellent image quality, very certain identification
-- 70-84%: Good clarity, crop identifiable but some uncertainty
-- 50-69%: Moderate clarity, crop type uncertain
-- Below 50%: Poor image, cannot reliably identify - mark as "Unknown Plant"
+**Step 1: Examine the Image Quality**
+- Check if the image shows clear plant features (leaves, stems, flowers, fruits)
+- Verify adequate lighting and focus
+- Confirm the plant takes up most of the frame
 
-🌐 Language: Respond in ${language === 'en' ? 'English' : language === 'hi' ? 'Hindi' : language === 'mr' ? 'Marathi' : language === 'pa' ? 'Punjabi' : language === 'ta' ? 'Tamil' : 'English'}.
+**Step 2: Identify Distinctive Features**
+Look for these key identifiers:
+- LEAF SHAPE: Broad, narrow, serrated, smooth edges?
+- LEAF ARRANGEMENT: Alternate, opposite, whorled?
+- STEM: Round, square, hollow? Color?
+- PLANT HEIGHT & STRUCTURE: Tall grass-like, bushy, vine?
+- FLOWERS/FRUITS: Present? What color and shape?
+- GROWTH PATTERN: Single stalk, multiple branches, creeping?
 
-⚠️ REMEMBER: Accuracy over guessing. If you're not sure, say so clearly in the cropName field.`;
+**Step 3: Match to Known Crops**
+
+🌾 CEREAL CROPS (Grass-like, tall, grain heads):
+- Wheat: Narrow leaves, hollow stem, grain spikes at top
+- Rice: Narrow leaves, flooded fields, drooping grain panicles
+- Maize/Corn: Broad leaves, thick stem, tassels/ears
+- Barley: Similar to wheat but with long awns on grain
+
+🌱 LEGUME CROPS (Compound leaves, pod fruits):
+- Chickpea: Pinnate leaves, small white/pink flowers
+- Soybean: Trifoliate leaves, small pods
+- Lentil: Pinnate leaves, tiny flowers
+
+🍅 VEGETABLE CROPS (Varied structures):
+- Tomato: Compound leaves, yellow flowers, red fruits
+- Potato: Compound leaves, white/purple flowers, underground tubers
+- Onion: Hollow tube-like leaves, bulb base
+- Cotton: Broad palmate leaves, white/pink flowers, cotton bolls
+
+🌾 CASH CROPS:
+- Sugarcane: Tall thick canes with nodes, strap-like leaves
+- Tea: Small shiny leaves, white flowers
+- Coffee: Glossy opposite leaves, red berries
+
+❌ NON-CROPS (Report as "Unknown Plant" or "Not a Crop"):
+- Grass lawns (too uniform, too short)
+- Weeds (dock, thistle, dandelion)
+- Ornamental plants
+- Random vegetation without clear crop features
+
+**Step 4: Disease/Pest Detection**
+
+🔍 Look for these specific symptoms:
+
+FUNGAL DISEASES:
+- Powdery white coating → Powdery Mildew
+- Yellow-orange pustules → Rust (Leaf Rust, Stem Rust)
+- Brown spots with yellow halos → Leaf Spot
+- Gray fuzzy growth → Gray Mold (Botrytis)
+
+BACTERIAL DISEASES:
+- Water-soaked lesions → Bacterial Blight
+- Black streaks on leaves → Bacterial Streak
+
+VIRAL DISEASES:
+- Yellow mosaic patterns → Mosaic Virus
+- Stunted growth + yellowing → Yellow Dwarf Virus
+
+PEST DAMAGE:
+- Curled leaves with tiny insects → Aphids
+- Holes in leaves → Caterpillar/Beetle damage
+- Webbing on leaves → Spider Mites
+- Whitish scales on stems → Scale Insects
+
+NUTRIENT DEFICIENCIES:
+- Yellow older leaves, green veins → Iron Deficiency
+- Yellow older leaves, uniform → Nitrogen Deficiency
+- Purple tint on leaves → Phosphorus Deficiency
+- Brown leaf edges → Potassium Deficiency
+
+**Step 5: Generate Specific Recommendations**
+
+✅ GOOD RECOMMENDATIONS (Be this specific):
+- "Apply Mancozeb 75% WP fungicide at 2g/L water every 7 days"
+- "Spray Neem oil (Azadirachtin 1500ppm) at 5ml/L water in evening"
+- "Apply Urea fertilizer at 50kg/acre split into 3 doses"
+- "Increase irrigation frequency to twice weekly"
+- "Remove and destroy infected leaves to prevent spread"
+
+❌ BAD RECOMMENDATIONS (Too vague):
+- "Use fungicides" 
+- "Improve nutrition"
+- "Water properly"
+
+🎯 CONFIDENCE LEVELS:
+
+**85-100% (Report with certainty)**
+- Image is sharp, well-lit, shows multiple identifying features
+- Clear match to known crop with distinctive characteristics
+- Example: "This is definitely Wheat based on the narrow leaves, hollow stem, and grain spikes"
+
+**70-84% (Good identification)**
+- Most features visible but some ambiguity
+- Crop type clear but specific variety uncertain
+- Example: "This appears to be Rice based on leaf shape and growth pattern"
+
+**Below 70% (Do NOT identify - use "Unknown Plant")**
+- Blurry image, poor lighting, or unclear features
+- Could be multiple crop types or non-crop plant
+- Example: Return "Unknown Plant" with confidence 40-60%
+
+🌐 LANGUAGE: Respond in ${language === 'en' ? 'English' : language === 'hi' ? 'Hindi' : language === 'mr' ? 'Marathi' : language === 'pa' ? 'Punjabi' : language === 'ta' ? 'Tamil' : 'English'}.
+
+⚠️ CRITICAL RULES:
+1. NEVER guess if uncertain - use "Unknown Plant" with low confidence
+2. ALWAYS provide specific disease names, not "some disease"
+3. ALWAYS give actionable recommendations with product names and quantities
+4. If image is too blurry/dark/unclear, report low confidence (<50%) and suggest retaking photo
+
+NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
 
       // Vision message format
       openAIMessages = [
@@ -605,6 +687,27 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
     }
 
     const aiData = await openAIResponse.json();
+    
+    // Enhanced logging for debugging
+    if (isInstaScan) {
+      console.log('📸 InstaScan - Full OpenAI Response:', JSON.stringify({
+        model: aiData.model,
+        finishReason: aiData.choices[0].finish_reason,
+        hasToolCalls: !!aiData.choices[0].message.tool_calls,
+        toolCallsCount: aiData.choices[0].message.tool_calls?.length || 0,
+        contentPreview: aiData.choices[0].message.content?.substring(0, 100),
+        tokensUsed: aiData.usage,
+        timestamp: new Date().toISOString()
+      }, null, 2));
+      
+      if (aiData.choices[0].message.tool_calls) {
+        console.log('🔧 Tool Call Details:', JSON.stringify(
+          aiData.choices[0].message.tool_calls[0],
+          null,
+          2
+        ));
+      }
+    }
     
     let aiMessage: string;
     let structuredResult = null;
