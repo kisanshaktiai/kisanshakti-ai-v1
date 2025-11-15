@@ -18,16 +18,12 @@ export default function SplashScreen() {
 
   useEffect(() => {
     const initializeApp = async () => {
-      // Fetch tenant data
-      await fetchTenant();
+      await Promise.all([fetchTenant(), checkAuth()]);
       
-      // Check authentication
-      await checkAuth();
-      
-      // Set ready state after initialization
+      // Quick ready state
       setTimeout(() => {
         setIsReady(true);
-      }, 1500);
+      }, 800);
     };
 
     initializeApp();
@@ -36,6 +32,7 @@ export default function SplashScreen() {
   const handleContinue = () => {
     markSplashCompleted();
     
+    // Check if user is fully authenticated (session exists and PIN is verified)
     if (isAuthenticated) {
       navigate('/app');
     } else if (hasSelectedLanguage) {

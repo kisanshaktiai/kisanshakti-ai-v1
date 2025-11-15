@@ -8,8 +8,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { useTenantStore } from '@/stores/tenantStore';
 import { useAuthFlowStore } from '@/stores/authFlowStore';
 import { useAuthStore } from '@/stores/authStore';
-import { Loader2, Phone, ArrowLeft, ChevronRight } from 'lucide-react';
+import { Loader2, Phone, ArrowLeft, ChevronRight, WifiOff } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useOfflineStatus } from '@/hooks/useOfflineStatus';
+import { offlineAuthService } from '@/services/offlineAuthService';
 
 export default function AuthScreen() {
   const { t } = useTranslation();
@@ -21,6 +23,7 @@ export default function AuthScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<'check' | 'register'>('check');
+  const isOnline = useOfflineStatus();
 
   useEffect(() => {
     setStep('mobile');
@@ -87,58 +90,11 @@ export default function AuthScreen() {
         setStep('pin');
         navigate('/pin');
       } else if (mode === 'register') {
-        // Generate farmer code with tenant prefix
-        const tenantPrefix = tenant.name?.substring(0, 3).toUpperCase() || 'KIS';
-        const timestamp = Date.now().toString().slice(-6);
-        const farmerCode = `${tenantPrefix}${timestamp}`;
-        
-        // Create new farmer with tenant_id (REQUIRED for multi-tenancy)
-        const farmerData = {
-          mobile_number: cleanMobile, // Use the cleaned mobile number
-          tenant_id: tenant.id, // REQUIRED: Ensures farmer belongs to correct tenant
-          farmer_code: farmerCode,
-          language_preference: localStorage.getItem('i18nextLng') || 'hi',
-          is_active: true,
-          app_install_date: new Date().toISOString(),
-          total_app_opens: 0,
-          login_attempts: 0,
-          failed_login_attempts: 0
-        };
-        
-        const { data: newFarmer, error: insertError } = await supabase
-          .from('farmers')
-          .insert(farmerData)
-          .select()
-          .single();
-
-        if (insertError) {
-          // Handle unique constraint violation for mobile+tenant
-          if (insertError.code === '23505') {
-            setError(t('auth.mobileAlreadyExists') || 'This mobile number is already registered.');
-            setMode('check');
-            return;
-          }
-          console.error('Error creating farmer:', insertError);
-          throw insertError;
-        }
-        
-        // Create user profile with tenant_id (REQUIRED)
-        const profileData = {
-          id: newFarmer.id,
-          farmer_id: newFarmer.id,
-          tenant_id: tenant.id, // REQUIRED: Link profile to tenant
-          mobile_number: cleanMobile, // Use cleaned mobile
-          preferred_language: localStorage.getItem('i18nextLng') as any || 'hi',
-          is_profile_complete: false
-        };
-        
-        await supabase
-          .from('user_profiles')
-          .insert(profileData);
-
-        localStorage.setItem('authMobile', cleanMobile); // Store cleaned mobile
-        localStorage.setItem('farmerId', newFarmer.id);
+        // Store registration data and navigate to PIN setup
+        // Don't create farmer record yet - wait until PIN is set
+        localStorage.setItem('registerMobile', cleanMobile);
         localStorage.setItem('tenantId', tenant.id);
+        localStorage.setItem('isNewRegistration', 'true');
         setStep('setpin');
         navigate('/set-pin');
       } else {
@@ -248,7 +204,7 @@ export default function AuthScreen() {
               </>
             ) : (
               <>
-                {mode === 'register' ? t('auth.createAccount') : t('common.continue')}
+                {mode === 'register' ? t('common.next') : t('common.continue')}
                 <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
               </>
             )}

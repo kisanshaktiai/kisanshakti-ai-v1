@@ -56,11 +56,12 @@ export default function EditLand() {
         setLandData(data);
         
         // Parse boundary from database
+        let boundaryPoints: LatLng[] = [];
         if (data.boundary_polygon_old && typeof data.boundary_polygon_old === 'object' && 'coordinates' in data.boundary_polygon_old) {
           const polygonData = data.boundary_polygon_old as any;
           if (polygonData.coordinates?.[0]) {
             const coords = polygonData.coordinates[0];
-            const boundaryPoints = coords.map((coord: number[]) => ({
+            boundaryPoints = coords.map((coord: number[]) => ({
               lng: coord[0],
               lat: coord[1]
             }));
@@ -81,20 +82,21 @@ export default function EditLand() {
           sqft: (data.area_acres || 0) * 43560
         });
         
-        // Set center for map initialization
-        if (data.center_point_old && typeof data.center_point_old === 'object' && 'coordinates' in data.center_point_old) {
+        // IMPORTANT: Center map on the boundary, not GPS location
+        // Calculate center from boundary points if boundary exists
+        if (boundaryPoints.length > 0) {
+          const sumLat = boundaryPoints.reduce((sum, point) => sum + point.lat, 0);
+          const sumLng = boundaryPoints.reduce((sum, point) => sum + point.lng, 0);
+          setInitialCenter({
+            lat: sumLat / boundaryPoints.length,
+            lng: sumLng / boundaryPoints.length
+          });
+        } else if (data.center_point_old && typeof data.center_point_old === 'object' && 'coordinates' in data.center_point_old) {
+          // Fall back to saved center point only if no boundary
           const centerData = data.center_point_old as any;
           setInitialCenter({
             lng: centerData.coordinates[0],
             lat: centerData.coordinates[1]
-          });
-        } else if (boundary.length > 0) {
-          // Calculate center from boundary if no center point saved
-          const sumLat = boundary.reduce((sum, point) => sum + point.lat, 0);
-          const sumLng = boundary.reduce((sum, point) => sum + point.lng, 0);
-          setInitialCenter({
-            lat: sumLat / boundary.length,
-            lng: sumLng / boundary.length
           });
         }
         

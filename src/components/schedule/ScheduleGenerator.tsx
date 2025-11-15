@@ -13,6 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { useWeather } from '@/hooks/useWeather';
+import { useLanguageStore } from '@/stores/languageStore';
 
 interface ScheduleGeneratorProps {
   landId: string;
@@ -23,18 +24,18 @@ interface ScheduleGeneratorProps {
 }
 
 const popularCrops = [
-  { value: 'rice', label: 'Rice (धान)', season: 'Kharif' },
-  { value: 'wheat', label: 'Wheat (गेहूं)', season: 'Rabi' },
-  { value: 'cotton', label: 'Cotton (कपास)', season: 'Kharif' },
-  { value: 'sugarcane', label: 'Sugarcane (गन्ना)', season: 'All' },
-  { value: 'maize', label: 'Maize (मक्का)', season: 'Kharif' },
-  { value: 'soybean', label: 'Soybean (सोयाबीन)', season: 'Kharif' },
-  { value: 'groundnut', label: 'Groundnut (मूंगफली)', season: 'Kharif' },
-  { value: 'pulses', label: 'Pulses (दाल)', season: 'Both' },
-  { value: 'potato', label: 'Potato (आलू)', season: 'Rabi' },
-  { value: 'onion', label: 'Onion (प्याज)', season: 'Both' },
-  { value: 'tomato', label: 'Tomato (टमाटर)', season: 'All' },
-  { value: 'chilli', label: 'Chilli (मिर्च)', season: 'Both' },
+  { value: 'rice', label: 'Rice', season: 'Kharif' },
+  { value: 'wheat', label: 'Wheat', season: 'Rabi' },
+  { value: 'cotton', label: 'Cotton', season: 'Kharif' },
+  { value: 'sugarcane', label: 'Sugarcane', season: 'All' },
+  { value: 'maize', label: 'Maize', season: 'Kharif' },
+  { value: 'soybean', label: 'Soybean', season: 'Kharif' },
+  { value: 'groundnut', label: 'Groundnut', season: 'Kharif' },
+  { value: 'pulses', label: 'Pulses', season: 'Both' },
+  { value: 'potato', label: 'Potato', season: 'Rabi' },
+  { value: 'onion', label: 'Onion', season: 'Both' },
+  { value: 'tomato', label: 'Tomato', season: 'All' },
+  { value: 'chilli', label: 'Chilli', season: 'Both' },
 ];
 
 const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({ 
@@ -47,10 +48,12 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
   const { toast } = useToast();
   const { user, session } = useAuthStore();
   const { currentWeather, forecast, loading: weatherLoading } = useWeather();
+  const { currentLanguage } = useLanguageStore();
   
   const [cropName, setCropName] = useState(currentCrop || '');
   const [cropVariety, setCropVariety] = useState('');
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
+  const [isReadyMadePlant, setIsReadyMadePlant] = useState<boolean>(false);
   const [generating, setGenerating] = useState(false);
   const [step, setStep] = useState(1);
 
@@ -74,14 +77,17 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
       } : null;
 
       // Call edge function to generate schedule
-      const response = await supabase.functions.invoke('generate-crop-schedule', {
+      const response = await supabase.functions.invoke('ai-smart-schedule', {
         body: {
           landId,
           cropName,
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
-          weatherData,
+          isReadyMadePlant,
+          weather: weatherData,
           regenerate: false,
+          language: currentLanguage,
+          country: 'India',
         },
         headers: {
           'x-tenant-id': user?.tenantId || '',
@@ -116,14 +122,18 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
   };
 
   return (
-    <Card className="max-w-2xl mx-auto">
-      <CardHeader>
+    <Card className="bg-background/60 backdrop-blur-2xl border-border/50 shadow-2xl">
+      <CardHeader className="bg-gradient-to-r from-primary/10 to-accent/10 border-b border-border/50">
         <CardTitle className="flex items-center gap-2">
-          <Sparkles className="h-5 w-5 text-primary" />
-          Generate AI Crop Schedule
+          <div className="p-2 rounded-xl bg-gradient-to-br from-primary/20 to-accent/20 border border-primary/30">
+            <Sparkles className="h-5 w-5 text-primary" />
+          </div>
+          <span className="bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
+            Generate AI Crop Schedule
+          </span>
         </CardTitle>
         <CardDescription>
-          Create a personalized crop schedule for {landName}
+          Create a personalized schedule for {landName}
         </CardDescription>
       </CardHeader>
 
@@ -173,9 +183,31 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
               />
             </div>
 
-            {/* Sowing Date */}
+            {/* Ready-made Plant Option */}
+            <div className="space-y-3 p-4 bg-accent/20 rounded-lg border border-border/50">
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="ready-made"
+                  checked={isReadyMadePlant}
+                  onChange={(e) => setIsReadyMadePlant(e.target.checked)}
+                  className="mt-1 h-4 w-4 rounded border-gray-300"
+                />
+                <div className="flex-1">
+                  <Label htmlFor="ready-made" className="text-sm font-medium cursor-pointer">
+                    Using ready-made nursery plants/transplants
+                  </Label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Check this if you're planting ready-made seedlings from nursery instead of sowing seeds 
+                    (applicable for vegetables, sugarcane sets, etc.)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Sowing/Planting Date */}
             <div className="space-y-2">
-              <Label>Sowing Date *</Label>
+              <Label>{isReadyMadePlant ? 'Planting Date *' : 'Sowing Date *'}</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button

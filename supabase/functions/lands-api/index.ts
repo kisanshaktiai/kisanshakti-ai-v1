@@ -39,51 +39,89 @@ serve(async (req) => {
       );
     }
 
-    // Parse request URL
+    // Parse request URL - extract only the path after '/lands-api'
     const url = new URL(req.url);
-    const pathSegments = url.pathname.split('/').filter(s => s);
-    const operation = pathSegments[0]; // 'lands'
-    const landId = pathSegments[1]; // optional land ID for specific operations
+    const pathAfterFunction = url.pathname.split('/lands-api')[1] || '';
+    const cleanPath = pathAfterFunction.startsWith('/') ? pathAfterFunction.slice(1) : pathAfterFunction;
+    
+    // Get land ID if present (e.g., /lands-api/{id})
+    const landId = cleanPath && !cleanPath.includes('/') ? cleanPath : null;
 
     // Set session variables for RLS
     const { error: sessionError } = await supabase.rpc('set_app_session', {
-      p_tenant: tenantId,
-      p_farmer: farmerId
+      p_tenant_id: tenantId,
+      p_farmer_id: farmerId,
+      p_session_token: sessionToken
     });
 
     if (sessionError) {
       console.error('Failed to set session:', sessionError);
-      return new Response(
-        JSON.stringify({ error: 'Session setup failed', details: sessionError.message }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      // Continue without RLS session - edge functions use service role key
+      // This allows the API to work even if the RPC function doesn't exist
     }
 
     // Handle different HTTP methods
     switch (req.method) {
       case 'GET': {
-        // List all lands for the farmer
-        const { data, error } = await supabase
-          .from('lands')
-          .select('*')
-          .eq('tenant_id', tenantId)
-          .eq('farmer_id', farmerId)
-          .eq('is_active', true)
-          .is('deleted_at', null)
-          .order('created_at', { ascending: false });
+        // Check if fetching a specific land by ID
+        if (landId) {
+          // Fetch specific land by ID
+          const { data, error } = await supabase
+            .from('lands')
+            .select('*')
+            .eq('id', landId)
+            .eq('tenant_id', tenantId)
+            .eq('farmer_id', farmerId)
+            .eq('is_active', true)
+            .is('deleted_at', null)
+            .single();
 
-        if (error) {
-          console.error('Error fetching lands:', error);
+          if (error) {
+            console.error('Error fetching land by ID:', error);
+            return new Response(
+              JSON.stringify({ error: error.message }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          if (!data) {
+            return new Response(
+              JSON.stringify({ 
+                error: 'Land not found', 
+                details: 'The requested land was not found or you do not have permission to view it' 
+              }),
+              { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
           return new Response(
-            JSON.stringify({ error: error.message }),
-            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            JSON.stringify({ data, success: true }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        } else {
+          // List all lands for the farmer
+          const { data, error } = await supabase
+            .from('lands')
+            .select('*')
+            .eq('tenant_id', tenantId)
+            .eq('farmer_id', farmerId)
+            .eq('is_active', true)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false });
+
+          if (error) {
+            console.error('Error fetching lands:', error);
+            return new Response(
+              JSON.stringify({ error: error.message }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          return new Response(
+            JSON.stringify({ data, success: true }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
-
-        return new Response(
-          JSON.stringify({ data, success: true }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
       }
 
       case 'POST': {

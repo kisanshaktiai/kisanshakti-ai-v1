@@ -28,6 +28,9 @@ import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { landsApi } from '@/services/landsApi';
 import { useWeather } from '@/hooks/useWeather';
+import { useLands } from '@/hooks/useLands';
+import { HomeSkeleton } from '@/components/skeletons';
+
 
 interface FeatureCard {
   title: string;
@@ -46,27 +49,10 @@ export default function Home() {
   const { t } = useTranslation();
   const { user } = useAuthStore();
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [lands, setLands] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const { currentWeather } = useWeather();
-
-  // Fetch lands data
-  useEffect(() => {
-    const fetchLands = async () => {
-      if (!user?.id) return;
-      
-      try {
-        const data = await landsApi.fetchLands();
-        setLands(data || []);
-      } catch (error) {
-        console.error('Error fetching lands:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchLands();
-  }, [user]);
+  
+  // Use consistent data fetching hook (handles online/offline automatically)
+  const { lands, isLoading: loading } = useLands();
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -79,7 +65,7 @@ export default function Home() {
   // Note: area_acres, area_guntas, and area_sqft are different representations of the same area, not cumulative
   const totalArea = lands.reduce((sum, land) => {
     // Use area_acres as the primary source (it's the total area in acres)
-    const acres = parseFloat(land.area_acres) || 0;
+    const acres = typeof land.area_acres === 'number' ? land.area_acres : parseFloat(String(land.area_acres)) || 0;
     return sum + acres;
   }, 0);
 
@@ -154,7 +140,7 @@ export default function Home() {
     {
       title: 'NDVI & Satellite',
       icon: Satellite,
-      path: '/app/lands',
+      path: '/app/ndvi',
       description: 'Crop health monitoring',
       stats: avgNdvi > 0 ? `Score: ${avgNdvi}` : 'No data',
       color: 'bg-primary/10',
@@ -172,7 +158,7 @@ export default function Home() {
     {
       title: 'Analytics',
       icon: BarChart3,
-      path: '/app/lands',
+      path: '/app/analytics',
       description: 'Farm performance metrics',
       stats: 'View Report',
       color: 'bg-destructive/10',
@@ -209,28 +195,93 @@ export default function Home() {
     }
   ];
 
+  if (loading) {
+    return <HomeSkeleton />;
+  }
+
   return (
     <div className="bg-gradient-subtle">
-      {/* Hero Section with Welcome */}
-      <div className="relative overflow-hidden bg-gradient-earth p-6 rounded-b-3xl shadow-elegant">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-accent/20" />
+      {/* Hero Section with Weather Animation */}
+      <div className="relative overflow-hidden bg-gradient-earth p-4 pb-6 rounded-b-3xl shadow-elegant">
+        {/* Weather-based animated background */}
+        <div className="absolute inset-0">
+          {/* Base gradient */}
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-accent/20" />
+          
+          {/* Weather-based animations */}
+          {currentWeather && (
+            <>
+              {/* Sunny animation */}
+              {currentWeather.main === 'Clear' && (
+                <div className="absolute inset-0">
+                  <div className="absolute top-4 right-8 w-24 h-24 bg-yellow-400/20 rounded-full blur-2xl animate-pulse" />
+                  <div className="absolute top-12 right-16 w-16 h-16 bg-orange-400/15 rounded-full blur-xl animate-[pulse_3s_ease-in-out_infinite]" />
+                </div>
+              )}
+              
+              {/* Cloudy animation */}
+              {(currentWeather.main === 'Clouds' || currentWeather.main === 'Mist') && (
+                <div className="absolute inset-0 overflow-hidden">
+                  <div className="absolute -top-4 left-0 w-32 h-20 bg-gray-300/10 rounded-full blur-xl animate-[slide-in-right_20s_ease-in-out_infinite]" />
+                  <div className="absolute top-8 right-0 w-40 h-24 bg-gray-400/10 rounded-full blur-2xl animate-[slide-out-right_25s_ease-in-out_infinite]" />
+                  <div className="absolute top-16 left-1/3 w-28 h-16 bg-gray-300/10 rounded-full blur-xl animate-[slide-in-right_30s_ease-in-out_infinite]" />
+                </div>
+              )}
+              
+              {/* Rainy animation */}
+              {(currentWeather.main === 'Rain' || currentWeather.main === 'Drizzle') && (
+                <div className="absolute inset-0 overflow-hidden">
+                  <div className="absolute inset-0 opacity-30">
+                    {[...Array(15)].map((_, i) => (
+                      <div
+                        key={i}
+                        className="absolute w-0.5 h-8 bg-gradient-to-b from-transparent via-blue-400/40 to-transparent animate-[fade-in_2s_ease-in-out_infinite]"
+                        style={{
+                          left: `${Math.random() * 100}%`,
+                          top: `${Math.random() * 100}%`,
+                          animationDelay: `${Math.random() * 2}s`,
+                          transform: `rotate(15deg)`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* Thunderstorm animation */}
+              {currentWeather.main === 'Thunderstorm' && (
+                <div className="absolute inset-0">
+                  <div className="absolute inset-0 bg-purple-900/5 animate-[pulse_4s_ease-in-out_infinite]" />
+                  <div className="absolute top-0 left-1/4 w-1 h-full bg-gradient-to-b from-transparent via-purple-400/20 to-transparent animate-[scale-in_3s_ease-in-out_infinite]" />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        
         <div className="relative z-10">
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <p className="text-muted-foreground flex items-center gap-2">
-                <Leaf className="w-4 h-4" />
-                {currentTime.toLocaleDateString('en-IN', {
-                  weekday: 'long',
-                  year: 'numeric',
-                  month: 'long',
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3 text-sm text-white whitespace-nowrap">
+              <div className="flex items-center gap-1.5">
+                <Leaf className="w-3.5 h-3.5" />
+                <span>{currentTime.toLocaleDateString('en-IN', {
+                  weekday: 'short',
+                  month: 'short',
                   day: 'numeric',
+                  year: 'numeric'
+                })}</span>
+              </div>
+              <div className="ml-auto text-white/60 text-xs">
+                Last sync: {currentTime.toLocaleTimeString('en-IN', { 
+                  hour: '2-digit', 
+                  minute: '2-digit' 
                 })}
-              </p>
+              </div>
             </div>
           </div>
 
           {/* Quick Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
             {quickStats.map((stat, index) => {
               const Icon = stat.icon;
               return (
@@ -434,6 +485,7 @@ export default function Home() {
           </CardContent>
         </Card>
       </div>
+      
     </div>
   );
 }

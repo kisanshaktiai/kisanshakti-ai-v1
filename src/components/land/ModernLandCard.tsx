@@ -13,7 +13,13 @@ import {
   TreePine,
   Globe,
   ChevronRight,
-  Clock
+  Clock,
+  Share2,
+  Copy,
+  Eye,
+  Satellite,
+  Activity,
+  Percent
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -31,6 +37,8 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface ModernLandCardProps {
   land: {
@@ -63,35 +71,37 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
   const { toast } = useToast();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [imageLoading, setImageLoading] = useState(true);
   const { apiKey } = useGoogleMapsApi();
   
-  // Generate static map URL with boundary polygon using visible parameter
+  // Generate static map URL with boundary polygon
   const getStaticMapUrl = () => {
-    // Return placeholder if API key not loaded yet
     if (!apiKey) {
       return '/placeholder.svg';
     }
     
     try {
-      // If no polygon, use center point with default zoom
+      // Mobile optimized - smaller image size for faster loading
+      const isMobile = window.innerWidth < 640;
+      const imageSize = isMobile ? '400x200' : '600x300';
+      
       if (!land.boundary_polygon_old || !land.boundary_polygon_old.coordinates) {
         if (land.center_point_old?.coordinates) {
           const center = `${land.center_point_old.coordinates[1]},${land.center_point_old.coordinates[0]}`;
           return `https://maps.googleapis.com/maps/api/staticmap?` +
             `center=${center}` +
             `&zoom=16` +
-            `&size=600x300` +
+            `&size=${imageSize}` +
             `&maptype=satellite` +
             `&style=feature:all|element:labels|visibility:off` +
             `&style=feature:poi|visibility:off` +
             `&style=feature:road|visibility:off` +
-            `&markers=color:green|size:large|${center}` +
+            `&markers=color:green|size:medium|${center}` +
             `&key=${apiKey}`;
         }
         return '/placeholder.svg';
       }
       
-      // Get polygon coordinates
       const coordinates = land.boundary_polygon_old.coordinates[0];
       if (!coordinates || coordinates.length === 0) return '/placeholder.svg';
       
@@ -108,13 +118,10 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
         maxLng = Math.max(maxLng, coord[0]);
       });
       
-      // Add padding to the bounds (25% expansion for better visibility)
       const latDiff = maxLat - minLat;
       const lngDiff = maxLng - minLng;
       const paddingFactor = 0.25;
-      
-      // Ensure minimum bounds for very small polygons
-      const minBoundSize = 0.0005; // Approximately 50 meters
+      const minBoundSize = 0.0005;
       const effectiveLatDiff = Math.max(latDiff, minBoundSize);
       const effectiveLngDiff = Math.max(lngDiff, minBoundSize);
       
@@ -123,28 +130,21 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
       const paddedMinLng = minLng - (effectiveLngDiff * paddingFactor);
       const paddedMaxLng = maxLng + (effectiveLngDiff * paddingFactor);
       
-      // Create visible bounds parameter (ensures entire polygon is visible)
       const visibleBounds = `${paddedMinLat},${paddedMinLng}|${paddedMaxLat},${paddedMaxLng}`;
       
-      // Create path from boundary points with enhanced styling
       const path = coordinates
         .map((coord: number[]) => `${coord[1]},${coord[0]}`)
         .join('|');
       
-      // Generate map URL using visible parameter for automatic zoom/center
-      // This ensures the entire polygon is always visible with proper padding
       return `https://maps.googleapis.com/maps/api/staticmap?` +
-        `visible=${visibleBounds}` + // Use visible parameter instead of manual zoom/center
-        `&size=600x300` +
+        `visible=${visibleBounds}` +
+        `&size=${imageSize}` +
         `&maptype=satellite` +
         `&style=feature:all|element:labels|visibility:off` +
         `&style=feature:poi|visibility:off` +
         `&style=feature:road|visibility:off` +
-        `&style=feature:administrative|visibility:off` +
-        `&style=feature:transit|visibility:off` +
-        `&style=feature:water|element:labels|visibility:off` +
-        `&path=color:0xffffff|weight:4|${path}` + // White border (outer) for contrast
-        `&path=color:0x00ff00|weight:2|fillcolor:0x00ff0044|${path}` + // Green fill with border
+        `&path=color:0xffffff|weight:3|${path}` +
+        `&path=color:0x00ff00|weight:2|fillcolor:0x00ff0033|${path}` +
         `&key=${apiKey}`;
     } catch (error) {
       console.error('Error generating map URL:', error);
@@ -183,6 +183,22 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
     }
   };
   
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator.share({
+        title: land.name,
+        text: `Check out my land parcel: ${land.name}`,
+        url: window.location.href,
+      });
+    } else {
+      navigator.clipboard.writeText(window.location.href);
+      toast({
+        title: 'Link Copied',
+        description: 'Land link copied to clipboard',
+      });
+    }
+  };
+  
   const formatArea = () => {
     let areaText = `${land.area_acres.toFixed(2)} acres`;
     if (land.area_guntas && land.area_guntas > 0) {
@@ -199,138 +215,195 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
         whileHover={{ scale: 1.02, y: -5 }}
         whileTap={{ scale: 0.98 }}
         transition={{ duration: 0.2 }}
+        className="h-full"
       >
-        <Card className="overflow-hidden cursor-pointer group relative bg-background hover:shadow-2xl transition-all duration-300 border-primary/10">
-          {/* Gradient Header with Map */}
-          <div className="relative h-48 overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-primary/10 to-transparent z-10" />
+        <Card className="overflow-hidden cursor-pointer group relative bg-card hover:shadow-2xl transition-all duration-300 border-border/50 h-full flex flex-col">
+          {/* Map Image Section */}
+          <div className="relative h-40 sm:h-48 overflow-hidden bg-muted">
+            <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent z-10" />
+            
+            {imageLoading && (
+              <Skeleton className="absolute inset-0" />
+            )}
+            
             <img 
               src={mapUrl} 
               alt={`${land.name} boundary`}
               className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
               loading="lazy"
+              onLoad={() => setImageLoading(false)}
+              onError={() => setImageLoading(false)}
             />
             
-            {/* Floating Action Buttons */}
-            <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20">
-              <Button
-                size="icon"
-                variant="secondary"
-                className="h-8 w-8 bg-background/90 backdrop-blur hover:bg-primary hover:text-primary-foreground shadow-lg"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleEdit();
-                }}
-              >
-                <Edit3 className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant="secondary"
-                className="h-8 w-8 bg-background/90 backdrop-blur hover:bg-destructive hover:text-destructive-foreground shadow-lg"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDeleteDialogOpen(true);
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+            {/* Direct Action Icons */}
+            <div className="absolute top-2 right-2 flex gap-1 z-20">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="secondary"
+                      className="h-8 w-8 bg-background/90 backdrop-blur hover:bg-background shadow-lg"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEdit();
+                      }}
+                    >
+                      <Edit3 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Edit</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="secondary"
+                      className="h-8 w-8 bg-background/90 backdrop-blur hover:bg-background shadow-lg"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteDialogOpen(true);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Delete</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
             
+            {/* Utilized Percentage Badge */}
+            <Badge className="absolute top-2 left-2 bg-primary/90 backdrop-blur text-primary-foreground border-primary/20 z-20 text-xs sm:text-sm">
+              <Percent className="h-3 w-3 mr-1" />
+              {land.current_crop ? '85% Utilized' : '0% Utilized'}
+            </Badge>
+            
             {/* Area Badge */}
-            <Badge className="absolute bottom-3 left-3 bg-background/90 backdrop-blur border-primary/20 z-20">
-              <Mountain className="h-3 w-3 mr-1.5" />
+            <Badge className="absolute bottom-2 left-2 bg-background/90 backdrop-blur border-primary/20 z-20 text-xs sm:text-sm">
+              <Mountain className="h-3 w-3 mr-1" />
               {formatArea()}
             </Badge>
           </div>
           
+          {/* Content Section */}
           <CardContent 
-            className="p-4 space-y-4"
+            className="p-3 sm:p-4 space-y-3 flex-1 flex flex-col"
             onClick={() => navigate(`/app/lands/${land.id}`)}
           >
             {/* Land Name and Survey Number */}
             <div className="space-y-1">
-              <h3 className="font-bold text-lg tracking-tight flex items-center gap-2">
+              <h3 className="font-bold text-base sm:text-lg tracking-tight flex items-center gap-1 line-clamp-1">
                 {land.name}
-                <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
               </h3>
               {land.survey_number && (
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <MapPin className="h-3 w-3" />
-                  Survey/Gat No: {land.survey_number}
+                  Survey No: {land.survey_number}
                 </p>
               )}
             </div>
             
-            {/* Crop Information */}
-            <div className="grid grid-cols-2 gap-3">
-              {land.current_crop && (
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Current Crop</p>
-                  <div className="flex items-center gap-1.5">
-                    <Wheat className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-medium">{land.current_crop}</span>
+            {/* Crop Information - Mobile optimized */}
+            {(land.current_crop || land.previous_crop) && (
+              <div className="grid grid-cols-2 gap-2">
+                {land.current_crop && (
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground">Current</p>
+                    <div className="flex items-center gap-1">
+                      <Wheat className="h-3 w-3 sm:h-4 sm:w-4 text-primary flex-shrink-0" />
+                      <span className="text-xs sm:text-sm font-medium truncate">{land.current_crop}</span>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+                
+                {land.previous_crop && (
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground">Previous</p>
+                    <div className="flex items-center gap-1">
+                      <TreePine className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-xs sm:text-sm truncate">{land.previous_crop}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Smart Action Buttons */}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 h-8 text-xs font-medium"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/app/lands/${land.id}/soil`);
+                }}
+              >
+                <Activity className="h-3 w-3 mr-1" />
+                Soil Health
+              </Button>
               
-              {land.previous_crop && (
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground">Previous Crop</p>
-                  <div className="flex items-center gap-1.5">
-                    <TreePine className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">{land.previous_crop}</span>
-                  </div>
-                </div>
-              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex-1 h-8 text-xs font-medium"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/app/lands/${land.id}/ndvi`);
+                }}
+              >
+                <Satellite className="h-3 w-3 mr-1" />
+                NDVI Data
+              </Button>
             </div>
             
-            {/* Land Details */}
-            <div className="flex flex-wrap gap-2">
+            {/* Land Details Tags */}
+            <div className="flex flex-wrap gap-1.5">
               {land.irrigation_type && (
-                <Badge variant="secondary" className="text-xs">
-                  <Droplets className="h-3 w-3 mr-1" />
+                <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                  <Droplets className="h-2.5 w-2.5 mr-1" />
                   {land.irrigation_type.replace('_', ' ')}
                 </Badge>
               )}
               
               {land.soil_type && (
-                <Badge variant="outline" className="text-xs">
-                  <Globe className="h-3 w-3 mr-1" />
+                <Badge variant="outline" className="text-xs px-2 py-0.5">
+                  <Globe className="h-2.5 w-2.5 mr-1" />
                   {land.soil_type.replace('_', ' ')}
                 </Badge>
               )}
               
               {land.ownership_type && (
-                <Badge variant="outline" className="text-xs">
+                <Badge variant="outline" className="text-xs px-2 py-0.5">
                   {land.ownership_type}
                 </Badge>
               )}
             </div>
             
-            {/* Location */}
+            {/* Location Footer */}
             {(land.village || land.district) && (
-              <div className="pt-3 border-t border-border/50">
-                <p className="text-xs text-muted-foreground">
+              <div className="pt-2 border-t border-border/50">
+                <p className="text-xs text-muted-foreground truncate">
                   {[land.village, land.district, land.state].filter(Boolean).join(', ')}
+                </p>
+                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                  <Clock className="h-2.5 w-2.5" />
+                  Updated: {land.updated_at ? format(new Date(land.updated_at), 'MMM d') : 'Never'}
                 </p>
               </div>
             )}
-            
-            {/* Last Updated Footer */}
-            <div className="flex items-center justify-between pt-3 border-t border-border/50">
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                Last updated: {land.updated_at ? format(new Date(land.updated_at), 'MMM d, yyyy') : 'Never'}
-              </p>
-            </div>
           </CardContent>
         </Card>
       </motion.div>
       
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-[90vw] sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Land</AlertDialogTitle>
             <AlertDialogDescription>
@@ -338,12 +411,12 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
               This land will no longer appear in your list but can be recovered later if needed.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-0">
+            <AlertDialogCancel className="w-full sm:w-auto">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={isDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="w-full sm:w-auto bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isDeleting ? 'Removing...' : 'Remove'}
             </AlertDialogAction>

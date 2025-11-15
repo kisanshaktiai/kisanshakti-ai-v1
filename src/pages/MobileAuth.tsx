@@ -6,8 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
 import { useTenantStore } from '@/stores/tenantStore';
-import { Loader2, Phone, ArrowLeft } from 'lucide-react';
+import { Loader2, Phone, ArrowLeft, WifiOff } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useOfflineStatus } from '@/hooks/useOfflineStatus';
+import { localDB } from '@/services/localDB';
+import { offlineAuthService } from '@/services/offlineAuthService';
 
 export default function MobileAuth() {
   const { t } = useTranslation();
@@ -17,6 +20,7 @@ export default function MobileAuth() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
+  const isOnline = useOfflineStatus();
 
   // Wait for tenant to load
   useEffect(() => {
@@ -42,24 +46,43 @@ export default function MobileAuth() {
     setError(null);
 
     try {
-      console.log('Checking farmer with mobile:', mobile, 'tenant_id:', tenant?.id);
+      console.log('Checking farmer with mobile:', mobile, 'tenant_id:', tenant?.id, 'isOnline:', isOnline);
       
-      // Build query
-      let query = supabase
-        .from('farmers')
-        .select('id, mobile_number, pin, pin_hash, tenant_id')
-        .eq('mobile_number', mobile);
+      let farmer = null;
       
-      // Only add tenant filter if tenant exists
-      if (tenant?.id) {
-        query = query.eq('tenant_id', tenant.id);
-      }
-      
-      const { data: farmer, error: fetchError } = await query.maybeSingle();
+      // If offline, check local database first
+      if (!isOnline) {
+        console.log('Offline mode: Checking local database');
+        const cachedAuth = await offlineAuthService.getCachedAuthData();
+        
+        if (cachedAuth && cachedAuth.farmerData?.mobile_number === mobile) {
+          farmer = cachedAuth.farmerData;
+          console.log('Found farmer in local cache:', farmer.id);
+        } else {
+          setError('Cannot register new users while offline. Please connect to the internet.');
+          setIsLoading(false);
+          return;
+        }
+      } else {
+        // Online mode: Check Supabase
+        let query = supabase
+          .from('farmers')
+          .select('id, mobile_number, pin, pin_hash, tenant_id')
+          .eq('mobile_number', mobile);
+        
+        // Only add tenant filter if tenant exists
+        if (tenant?.id) {
+          query = query.eq('tenant_id', tenant.id);
+        }
+        
+        const { data: farmerData, error: fetchError } = await query.maybeSingle();
 
-      if (fetchError) {
-        console.error('Error fetching farmer:', fetchError);
-        throw fetchError;
+        if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 = no rows returned
+          console.error('Error fetching farmer:', fetchError);
+          throw fetchError;
+        }
+        
+        farmer = farmerData;
       }
 
       if (farmer) {
@@ -170,6 +193,16 @@ export default function MobileAuth() {
             </p>
           </div>
         </div>
+
+        {/* Offline indicator */}
+        {!isOnline && (
+          <Alert className="border-yellow-500 bg-yellow-50">
+            <WifiOff className="h-4 w-4" />
+            <AlertDescription className="text-yellow-800">
+              You are offline. You can only log in with existing accounts.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {error && (
           <Alert variant="destructive">

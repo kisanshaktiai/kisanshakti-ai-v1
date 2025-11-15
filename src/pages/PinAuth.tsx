@@ -25,6 +25,7 @@ export default function PinAuth() {
   const [error, setError] = useState<string | null>(null);
   const [attempts, setAttempts] = useState(0);
   const isOnline = useOfflineStatus();
+  const [isOffline, setIsOffline] = useState(false);
   
   const mobile = localStorage.getItem('authMobile');
   const farmerId = localStorage.getItem('farmerId');
@@ -46,6 +47,7 @@ export default function PinAuth() {
 
     try {
       // Use offline-first authentication
+      console.log('Attempting authentication with offline fallback...');
       const authResult = await offlineAuthService.authenticateWithFallback(
         mobile!,
         value,
@@ -116,11 +118,12 @@ export default function PinAuth() {
       setUser({
           id: farmer.id,
           phone: farmer.mobile_number,
-          name: profileData?.full_name || farmer.farmer_code || 'Farmer',
+          name: profileData?.full_name || farmer.farmer_name || farmer.farmer_code || 'Farmer',
           role: 'farmer',
           language: farmer.language_preference || 'hi',
           tenantId: farmer.tenant_id,
           farmerCode: farmer.farmer_code,
+          farmerName: farmer.farmer_name,
           sessionToken: updatedSession.token,
           lastLoginAt: new Date().toISOString(),
           // Profile fields
@@ -134,6 +137,7 @@ export default function PinAuth() {
           state: profileData?.state || '',
           pincode: profileData?.pincode || '',
           preferredLanguage: profileData?.preferred_language || farmer.language_preference || 'hi',
+          avatarUrl: profileData?.avatar_url || '',
           // Farm details
           totalLandAcres: farmer.total_land_acres || profileData?.total_land_acres || 0,
           primaryCrops: farmer.primary_crops || profileData?.primary_crops || [],
@@ -145,6 +149,34 @@ export default function PinAuth() {
           hasStorage: farmer.has_storage || profileData?.has_storage || false,
           annualIncomeRange: farmer.annual_income_range || profileData?.annual_income_range || ''
         });
+
+      // Update Supabase client headers for RLS to work with custom auth
+      const { updateSupabaseHeaders, waitForHeaders, supabaseWithAuth } = await import('@/integrations/supabase/client');
+      updateSupabaseHeaders(farmer.id, farmer.tenant_id);
+      
+      // CRITICAL: Wait for headers to be ready
+      console.log('⏳ [PinAuth] Waiting for headers...');
+      await waitForHeaders();
+      console.log('✅ [PinAuth] Headers ready');
+      
+      // VERIFY headers are working before navigating
+      console.log('🔍 [PinAuth] Testing data access...');
+      try {
+        const testQuery = await supabaseWithAuth(farmer.id, farmer.tenant_id)
+          .from('lands')
+          .select('count')
+          .limit(1);
+
+        if (testQuery.error) {
+          console.error('❌ [PinAuth] Data access test failed:', testQuery.error);
+          throw new Error('Authentication succeeded but data access failed. Please contact support.');
+        }
+
+        console.log('✅ [PinAuth] Data access verified');
+      } catch (testError) {
+        console.error('❌ [PinAuth] Data access verification failed:', testError);
+        throw new Error('Cannot verify data access. Please try again.');
+      }
 
       // Clear temp storage but keep session data
       localStorage.removeItem('authMobile');

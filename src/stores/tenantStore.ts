@@ -216,6 +216,11 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       // Fetch white label config or tenant branding if tenant found
       if (tenantData?.id) {
         localStorage.setItem('tenantId', tenantData.id);
+        console.log('✅ [Tenant] Tenant ID stored in localStorage:', {
+          tenantId: tenantData.id,
+          tenantName: tenantData.name,
+          domain: tenantData.domain
+        });
         
         // First try white_label_configs
         const { data: whiteLabel } = await supabase
@@ -458,6 +463,9 @@ export const useTenantStore = create<TenantState>((set, get) => ({
         if (whiteLabelData) {
           get().applyWhiteLabelTheme(tenant.whiteLabel!);
         }
+        
+        // Update manifest link on tenant load
+        updateManifestLink();
       }
     } catch (error: any) {
       console.error('Error fetching tenant:', error);
@@ -711,28 +719,8 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       }
     }
     
-    // Apply PWA manifest updates
-    if (whiteLabel.pwa_config) {
-      const manifestLink = document.querySelector('link[rel="manifest"]');
-      if (manifestLink) {
-        // Update manifest data dynamically
-        const manifestData = {
-          name: whiteLabel.pwa_config.app_name || whiteLabel.brand_identity?.company_name || 'KisanShakti Ai',
-          short_name: whiteLabel.pwa_config.short_name || 'KS Ai',
-          theme_color: whiteLabel.pwa_config.theme_color || '#3b82f6',
-          background_color: whiteLabel.pwa_config.background_color || '#ffffff',
-          display: whiteLabel.pwa_config.display || 'standalone',
-          orientation: whiteLabel.pwa_config.orientation || 'portrait',
-          start_url: whiteLabel.pwa_config.start_url || '/',
-          icons: whiteLabel.pwa_config.icons || []
-        };
-        
-        // Create a blob URL for the manifest
-        const manifestBlob = new Blob([JSON.stringify(manifestData)], { type: 'application/json' });
-        const manifestUrl = URL.createObjectURL(manifestBlob);
-        manifestLink.setAttribute('href', manifestUrl);
-      }
-    }
+    // Update PWA manifest dynamically
+    updateManifestLink();
     
     // Apply custom CSS if available
     if (whiteLabel.css_injection?.enabled && whiteLabel.css_injection?.custom_css) {
@@ -851,22 +839,79 @@ function rgbToHSL(r: number, g: number, b: number): string {
   clearError: () => set({ error: null }),
 
   listenForTenantChanges: () => {
+    const { tenant } = get();
     const whiteLabelService = WhiteLabelService.getInstance();
     
-    // Listen for tenant changes from Supabase
-    supabase
-      .channel('tenant-changes')
+    if (!tenant?.id) {
+      console.log('[TenantStore] No tenant ID, skipping realtime listeners');
+      return;
+    }
+    
+    console.log('[TenantStore] Setting up realtime listeners for tenant:', tenant.id);
+    
+    // Listen for tenant table changes (specific to current tenant)
+    const tenantsChannel = supabase
+      .channel(`tenant-${tenant.id}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'tenants'
+          table: 'tenants',
+          filter: `id=eq.${tenant.id}`
         },
         async (payload) => {
-          console.log('Tenant changed, refreshing configuration');
-          await whiteLabelService.forceRefresh();
+          console.log('[TenantStore] Tenant updated:', payload);
+          
+          // Show toast notification
+          if (typeof window !== 'undefined') {
+            const { toast } = await import('@/hooks/use-toast');
+            toast({
+              title: 'Configuration updated',
+              description: 'Your app theme has been refreshed',
+            });
+          }
+          
+          // Force refresh and re-fetch tenant
+          await whiteLabelService.forceRefresh(tenant.id);
           get().fetchTenant();
+        }
+      )
+      .subscribe();
+    
+    // Listen for white_label_configs table changes (specific to current tenant)
+    const whiteLabelChannel = supabase
+      .channel(`white-label-${tenant.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'white_label_configs',
+          filter: `tenant_id=eq.${tenant.id}`
+        },
+        async (payload) => {
+          console.log('[TenantStore] White-label config updated:', payload);
+          
+          // Clear cache and force refresh
+          whiteLabelService.clearCache();
+          await whiteLabelService.forceRefresh(tenant.id);
+          
+          // Show toast notification
+          if (typeof window !== 'undefined') {
+            const { toast } = await import('@/hooks/use-toast');
+            toast({
+              title: 'Theme updated!',
+              description: 'New branding has been applied instantly',
+              duration: 3000,
+            });
+          }
+          
+          // Re-fetch tenant to apply new config
+          get().fetchTenant();
+          
+          // Update manifest immediately
+          updateManifestLink();
         }
       )
       .subscribe();
@@ -874,7 +919,7 @@ function rgbToHSL(r: number, g: number, b: number): string {
     // Listen for theme updates from auto-refresh
     if (typeof window !== 'undefined') {
       window.addEventListener('themeUpdated', async (event: Event) => {
-        console.log('Theme auto-refreshed, applying new configuration');
+        console.log('[TenantStore] Theme auto-refreshed, applying new configuration');
         const customEvent = event as CustomEvent;
         const config = customEvent.detail;
         if (config && config.whiteLabelConfig) {
@@ -882,8 +927,27 @@ function rgbToHSL(r: number, g: number, b: number): string {
         }
       });
     }
+    
+    console.log('[TenantStore] Realtime listeners setup complete');
   },
 }));
+
+/**
+ * Update manifest link to use dynamic edge function
+ */
+function updateManifestLink() {
+  const manifestLink = document.querySelector('link[rel="manifest"]') as HTMLLinkElement;
+  if (!manifestLink) return;
+  
+  const domain = window.location.hostname;
+  const manifestUrl = `https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/generate-manifest?domain=${encodeURIComponent(domain)}`;
+  
+  // Only update if URL changed
+  if (manifestLink.href !== manifestUrl) {
+    manifestLink.href = manifestUrl;
+    console.log('[TenantStore] Updated manifest URL:', manifestUrl);
+  }
+}
 
 // Helper function to convert RGB to HSL
 function rgbToHSL(r: number, g: number, b: number): string {

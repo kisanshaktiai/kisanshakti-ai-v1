@@ -162,7 +162,7 @@ export function CentralizedCropSelector({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -20 }}
-        className="grid grid-cols-3 gap-3 p-4 h-full overflow-y-auto"
+        className="grid grid-cols-3 sm:grid-cols-4 gap-2 sm:gap-3 p-3 sm:p-4 h-full overflow-y-auto"
       >
         {groups.map((group, index) => (
           <motion.div
@@ -180,8 +180,8 @@ export function CentralizedCropSelector({
             <button
               className={cn(
                 "relative w-full aspect-square",
-                "bg-gradient-to-br from-white/90 to-white/70 dark:from-black/40 dark:to-black/20",
-                "backdrop-blur-2xl border border-white/50 dark:border-white/20",
+                "bg-gradient-to-br from-background/90 to-background/70",
+                "backdrop-blur-2xl border border-border/50",
                 "rounded-xl shadow-lg hover:shadow-xl",
                 "transition-all duration-300 ease-out",
                 "hover:-translate-y-0.5 active:translate-y-0",
@@ -205,7 +205,7 @@ export function CentralizedCropSelector({
                   whileHover={{ rotate: [0, -5, 5, 0], scale: 1.1 }}
                   transition={{ duration: 0.5 }}
                 >
-                  <span className="text-2xl sm:text-3xl filter drop-shadow-lg">
+                  <span className="text-2xl sm:text-3xl lg:text-4xl filter drop-shadow-lg">
                     {group.group_icon}
                   </span>
                 </motion.div>
@@ -269,7 +269,7 @@ export function CentralizedCropSelector({
       <ScrollArea className="flex-1 h-full">
         <AnimatePresence mode="wait">
           <motion.div 
-            className="grid grid-cols-3 gap-2 p-4"
+            className="grid grid-cols-3 sm:grid-cols-4 gap-2 p-3 sm:p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -292,12 +292,12 @@ export function CentralizedCropSelector({
                 >
                   <button
                     className={cn(
-                      "relative w-full p-3 text-left",
-                      "bg-gradient-to-br from-white/80 to-white/60 dark:from-black/30 dark:to-black/10",
+                      "relative w-full p-2 sm:p-3 text-left",
+                      "bg-gradient-to-br from-background/80 to-background/60",
                       "backdrop-blur-xl border",
                       isSelected 
                         ? "border-primary/50 shadow-lg shadow-primary/20" 
-                        : "border-white/40 dark:border-white/20 shadow-md",
+                        : "border-border/40 shadow-md",
                       "rounded-lg transition-all duration-300",
                       "hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0",
                       "group overflow-hidden"
@@ -413,7 +413,7 @@ export function CentralizedCropSelector({
   }
 
   const containerClass = cn(
-    "bg-background rounded-lg overflow-hidden flex flex-col",
+    "bg-background/50 backdrop-blur-sm rounded-lg overflow-hidden flex flex-col",
     variant === 'compact' && "h-full",
     variant === 'modal' && "h-[calc(100vh-10rem)]",
     variant === 'default' && "h-full",

@@ -13,5 +13,168 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     storage: localStorage,
     persistSession: true,
     autoRefreshToken: true,
+  },
+  global: {
+    headers: {}
   }
 });
+
+// Header readiness tracking - Simple global state pattern (no circular dependencies)
+let headersReady = false;
+let headerPromise: Promise<void> | null = null;
+
+// Store auth data globally to avoid circular imports
+let globalAuthData: { userId: string; tenantId: string } | null = null;
+
+// Client cache to prevent creating multiple GoTrueClient instances
+const clientCache = new Map<string, ReturnType<typeof createClient<Database>>>();
+
+/**
+ * Set global auth data (called by auth store)
+ * This breaks the circular dependency
+ */
+export function setGlobalAuthData(userId: string, tenantId: string) {
+  console.log('🔐 [Headers] Setting global auth data:', { userId, tenantId });
+  globalAuthData = { userId, tenantId };
+  headersReady = true;
+}
+
+/**
+ * Clear global auth data (on logout)
+ */
+export function clearGlobalAuthData() {
+  console.log('🔄 [Headers] Clearing global auth data');
+  globalAuthData = null;
+  headersReady = false;
+  headerPromise = null;
+  // Clear client cache to prevent memory leaks
+  clientCache.clear();
+  console.log('🗑️ [Headers] Cleared client cache');
+}
+
+/**
+ * Wait for Supabase headers to be set before making queries
+ * This prevents race conditions where queries execute before auth headers are ready
+ */
+export function waitForHeaders(): Promise<void> {
+  // Immediate check using global state (no imports needed!)
+  if (globalAuthData && headersReady) {
+    console.log('🟢 [Headers] Already ready (immediate check)');
+    return Promise.resolve();
+  }
+  
+  if (headerPromise) {
+    console.log('⏳ [Headers] Waiting for existing promise');
+    return headerPromise;
+  }
+  
+  console.log('🔄 [Headers] Creating wait promise');
+  headerPromise = new Promise((resolve) => {
+    let attempts = 0;
+    const maxAttempts = 200; // 200 * 25ms = 5 seconds max
+    
+    // Poll global auth data
+    const check = setInterval(() => {
+      attempts++;
+      
+      if (globalAuthData && headersReady) {
+        clearInterval(check);
+        console.log(`✅ [Headers] Ready after ${attempts} attempts (${attempts * 25}ms)`);
+        resolve();
+      } else if (attempts >= maxAttempts) {
+        clearInterval(check);
+        console.error('❌ [Headers] Timeout after 5s - proceeding anyway');
+        headersReady = true; // Proceed anyway to prevent hanging
+        resolve();
+      }
+    }, 25);
+  });
+  
+  return headerPromise;
+}
+
+/**
+ * Reset headers ready state (useful for testing or logout)
+ */
+export function resetHeadersState() {
+  console.log('🔄 [Headers] Resetting state');
+  clearGlobalAuthData();
+}
+
+/**
+ * Update Supabase client headers with custom authentication context
+ * This enables RLS policies to work with custom auth system
+ */
+export const updateSupabaseHeaders = (farmerId?: string, tenantId?: string) => {
+  const headers: Record<string, string> = {};
+  
+  if (farmerId) {
+    headers['x-farmer-id'] = farmerId;
+  }
+  
+  if (tenantId) {
+    headers['x-tenant-id'] = tenantId;
+  }
+  
+  // Update the global headers on the supabase client
+  (supabase as any).rest.headers = {
+    ...(supabase as any).rest.headers,
+    ...headers
+  };
+  
+  // Mark headers as ready
+  headersReady = true;
+  console.log('✅ [Headers] Set:', { farmerId, tenantId, headersReady });
+};
+
+/**
+ * Get Supabase client with auth headers automatically set
+ * Always use this wrapper for authenticated requests
+ * 
+ * IMPORTANT: Uses cached clients to prevent "Multiple GoTrueClient instances" warning
+ * Clients are cached per userId-tenantId combination for optimal performance
+ */
+export const supabaseWithAuth = (farmerId?: string, tenantId?: string) => {
+  const userId = farmerId || globalAuthData?.userId;
+  const tenant = tenantId || globalAuthData?.tenantId;
+  
+  // Strict validation: Check for missing OR empty string values
+  if (!userId || !tenant || userId.trim() === '' || tenant.trim() === '') {
+    console.warn('⚠️ [supabaseWithAuth] Invalid auth data:', { 
+      userId: userId || '(empty)', 
+      tenant: tenant || '(empty)',
+      isEmptyString: userId === '' || tenant === ''
+    });
+    return supabase;
+  }
+  
+  // Create cache key from userId and tenantId
+  const cacheKey = `${userId}-${tenant}`;
+  
+  // Return cached client if exists
+  if (clientCache.has(cacheKey)) {
+    console.log('♻️ [supabaseWithAuth] Using cached client:', { userId, tenant });
+    return clientCache.get(cacheKey)!;
+  }
+  
+  // Create new client only if not in cache
+  console.log('🔐 [supabaseWithAuth] Creating NEW client with headers:', { userId, tenant });
+  
+  const client = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+    auth: {
+      persistSession: false, // Don't persist, use custom auth
+    },
+    global: {
+      headers: {
+        'x-farmer-id': userId,
+        'x-tenant-id': tenant,
+      }
+    }
+  });
+  
+  // Cache the client for reuse
+  clientCache.set(cacheKey, client);
+  console.log('💾 [supabaseWithAuth] Client cached. Total cached clients:', clientCache.size);
+  
+  return client;
+};

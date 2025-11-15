@@ -1,17 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, Grid3X3, Leaf } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Plus, Grid3X3, Leaf, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import { useFeatures } from '@/hooks/useFeatures';
 import { Badge } from '@/components/ui/badge';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 export function FloatingActionButton() {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isMorphing, setIsMorphing] = useState(false);
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const { enabledFeatures, isLoading } = useFeatures();
+  
+  // Hide FAB on schedule page
+  const shouldHideFAB = location.pathname === '/app/schedule';
 
   // Debug logging
   console.log('FAB Debug - enabledFeatures:', enabledFeatures);
@@ -46,17 +56,38 @@ export function FloatingActionButton() {
   }, [isExpanded, t]);
 
   if (isLoading) {
-    console.log('FAB Debug - Still loading features');
-    return null;
+    console.log('🔄 [FAB] Loading features...');
+    // Show loading spinner while features are being fetched
+    return (
+      <div className="fixed right-4 z-50" style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0))' }}>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/60 via-accent/60 to-primary-glow/60 shadow-2xl shadow-primary/20 flex items-center justify-center">
+                <Loader2 className="w-7 h-7 text-primary-foreground animate-spin" />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="left">
+              <p className="text-sm">Loading features...</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+    );
   }
   
   if (!enabledFeatures || enabledFeatures.length === 0) {
     console.log('FAB Debug - No enabled features available');
     return null;
   }
+  
+  if (shouldHideFAB) {
+    console.log('FAB Debug - Hidden on schedule page');
+    return null;
+  }
 
   return (
-    <>
+    <TooltipProvider>
       {/* Backdrop with blur effect */}
       {isExpanded && (
         <div 
@@ -106,30 +137,40 @@ export function FloatingActionButton() {
                   )}
                 </div>
 
-                {/* Icon Button with Theme Gradient */}
-                <button
-                  onClick={() => handleItemClick(item.path, item.enabled, item.comingSoon)}
-                  disabled={!item.enabled || item.comingSoon}
-                  aria-label={t(item.labelKey)}
-                  className={cn(
-                    "w-14 h-14 rounded-2xl",
-                    "shadow-xl shadow-primary/20",
-                    "flex items-center justify-center",
-                    "transition-all duration-300",
-                    "transform hover:scale-110 active:scale-95",
-                    "relative overflow-hidden",
-                    item.comingSoon || !item.enabled
-                      ? "bg-muted text-muted-foreground cursor-not-allowed"
-                      : "bg-gradient-to-br from-primary via-primary to-primary-glow text-primary-foreground hover:shadow-2xl hover:shadow-primary/30"
+                {/* Icon Button with Theme Gradient and Tooltip */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => handleItemClick(item.path, item.enabled, item.comingSoon)}
+                      disabled={!item.enabled || item.comingSoon}
+                      aria-label={t(item.labelKey)}
+                      className={cn(
+                        "w-14 h-14 rounded-2xl",
+                        "shadow-xl shadow-primary/20",
+                        "flex items-center justify-center",
+                        "transition-all duration-300",
+                        "transform hover:scale-110 active:scale-95",
+                        "relative overflow-hidden",
+                        item.comingSoon || !item.enabled
+                          ? "bg-muted text-muted-foreground cursor-not-allowed"
+                          : "bg-gradient-to-br from-primary via-primary to-primary-glow text-primary-foreground hover:shadow-2xl hover:shadow-primary/30"
+                      )}
+                    >
+                      {/* Ripple effect background */}
+                      <div className="absolute inset-0 bg-gradient-radial from-primary-foreground/10 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300" />
+                      {/* Safe icon rendering with proper React component check */}
+                      {item.icon && (
+                        <item.icon className="w-6 h-6 relative z-10" />
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  {item.comingSoon && (
+                    <TooltipContent side="left">
+                      <p className="text-sm font-medium">Coming Soon</p>
+                      <p className="text-xs text-muted-foreground">This feature is under development</p>
+                    </TooltipContent>
                   )}
-                >
-                  {/* Ripple effect background */}
-                  <div className="absolute inset-0 bg-gradient-radial from-primary-foreground/10 to-transparent opacity-0 hover:opacity-100 transition-opacity duration-300" />
-                  {/* Safe icon rendering with proper React component check */}
-                  {item.icon && (
-                    <item.icon className="w-6 h-6 relative z-10" />
-                  )}
-                </button>
+                </Tooltip>
               </div>
             ))}
           </div>
@@ -189,6 +230,6 @@ export function FloatingActionButton() {
           </div>
         )}
       </div>
-    </>
+    </TooltipProvider>
   );
 }

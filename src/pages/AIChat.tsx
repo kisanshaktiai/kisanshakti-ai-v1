@@ -1,6 +1,6 @@
 import React from 'react';
-import { ImmersiveChatInterface } from '@/components/chat/ImmersiveChatInterface';
+import { EnhancedAIChatInterface } from '@/components/chat/EnhancedAIChatInterface';
 
 export default function AIChat() {
-  return <ImmersiveChatInterface />;
+  return <EnhancedAIChatInterface />;
 }

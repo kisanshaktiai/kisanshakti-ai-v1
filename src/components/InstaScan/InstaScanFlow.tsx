@@ -4,8 +4,11 @@ import { InstaScanCamera } from './InstaScanCamera';
 import { InstaScanResults, InstaScanResult } from './InstaScanResults';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
+import { useAuthStore } from '@/stores/authStore';
+import { useTenantStore } from '@/stores/tenantStore';
+import { toast as sonnerToast } from 'sonner';
 
 interface InstaScanFlowProps {
   isOpen: boolean;
@@ -13,75 +16,129 @@ interface InstaScanFlowProps {
 }
 
 export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const { tenant } = useTenantStore();
   const [showCamera, setShowCamera] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [scanResult, setScanResult] = useState<InstaScanResult | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Reset state when dialog opens/closes
+  React.useEffect(() => {
+    if (isOpen) {
+      setShowCamera(true);
+      setIsAnalyzing(false);
+      setScanResult(null);
+      setErrorMessage(null);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleImageCapture = async (imageData: string) => {
     setShowCamera(false);
     setIsAnalyzing(true);
+    setErrorMessage(null);
 
     try {
-      // Call the AI agriculture chat edge function for crop analysis
+      // Enhanced logging for debugging
+      const imageSizeKB = Math.round(imageData.length / 1024);
+      const imageFormat = imageData.substring(0, 30);
+      console.log('📷 Sending image to AI for analysis:', {
+        imageSize: `${imageSizeKB}KB`,
+        format: imageFormat,
+        timestamp: new Date().toISOString(),
+        language: i18n.language
+      });
+      
+      // Get authentication context
+      const farmerId = user?.id;
+      const currentTenantId = tenant?.id;
+
+      if (!farmerId || !currentTenantId) {
+        console.error('Missing authentication context:', { farmerId, tenantId: currentTenantId });
+        sonnerToast.error(t('instaScan.analysisError'));
+        setErrorMessage(t('auth.loginRequired') || 'Please log in to use InstaScan');
+        setShowCamera(true);
+        setIsAnalyzing(false);
+        return;
+      }
+
+      // Use authenticated Supabase client
+      const supabase = supabaseWithAuth(farmerId, currentTenantId);
+      
+      // Call the edge function with proper authentication and context
       const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
         body: {
-          messages: [
-            {
-              role: 'user',
-              content: `Analyze this crop image and provide:
-                1. Crop name identification
-                2. Overall crop condition (healthy/warning/critical)
-                3. Any visible diseases or pest issues (list them)
-                4. 3-5 specific actionable suggestions for the farmer
-                
-                Please respond in JSON format:
-                {
-                  "cropName": "string",
-                  "condition": "healthy|warning|critical",
-                  "diseases": ["string"],
-                  "suggestions": ["string"],
-                  "confidence": number (0-100)
-                }`
-            }
-          ],
-          imageUrl: imageData
+          messages: [],
+          imageUrl: imageData,
+          sessionId: `instascan-${Date.now()}`,
+          language: i18n.language,
+          metadata: {
+            tenantId: currentTenantId,
+            farmerId
+          }
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error analyzing image:', error);
+        
+        // Handle specific error types
+        if (error.message?.includes('429') || error.message?.includes('rate limit')) {
+          sonnerToast.error(t('common.rateLimitError') || 'Too many requests. Please try again later.');
+        } else if (error.message?.includes('401') || error.message?.includes('authentication')) {
+          sonnerToast.error(t('auth.loginRequired') || 'Authentication required');
+        } else {
+          sonnerToast.error(t('instaScan.analysisError'));
+        }
+        
+        setErrorMessage(t('instaScan.tryAgain'));
+        setShowCamera(true);
+        setIsAnalyzing(false);
+        return;
+      }
 
-      // Parse the AI response
-      let analysis;
-      try {
-        // The response might be wrapped in the data object
-        const responseText = data?.response || data;
-        analysis = JSON.parse(responseText);
-      } catch (parseError) {
-        // Fallback parsing if response is not in expected format
-        console.error('Parse error:', parseError);
-        analysis = {
-          cropName: t('instaScan.unknownCrop'),
-          condition: 'warning',
-          diseases: [],
-          suggestions: [data?.response || t('instaScan.defaultSuggestion')],
-          confidence: 75
-        };
+      console.log('AI Analysis result:', data);
+
+      // Handle the structured response
+      if (!data?.success || !data?.result) {
+        console.error('Invalid response format:', data);
+        sonnerToast.error(t('instaScan.analysisError'));
+        setErrorMessage(t('instaScan.tryAgain'));
+        setShowCamera(true);
+        setIsAnalyzing(false);
+        return;
+      }
+
+      // Validate result quality
+      const resultData = data.result;
+      
+      // Check if AI couldn't identify the crop reliably
+      if (resultData.confidence < 50 || 
+          resultData.cropName?.toLowerCase().includes('unknown') ||
+          resultData.cropName?.toLowerCase().includes('not a crop')) {
+        console.warn('Low confidence or unidentified crop:', resultData);
+        sonnerToast.warning(t('instaScan.lowConfidence') || 'Could not identify crop clearly. Please take a clearer photo.');
+        setErrorMessage(t('instaScan.tryAgain'));
+        setShowCamera(true);
+        setIsAnalyzing(false);
+        return;
       }
 
       const result: InstaScanResult = {
         imageUrl: imageData,
-        cropName: analysis.cropName || t('instaScan.unknownCrop'),
-        cropCondition: analysis.condition || 'warning',
-        diseases: analysis.diseases || [],
-        suggestions: analysis.suggestions || [],
-        confidence: analysis.confidence || 85
+        cropName: resultData.cropName || t('instaScan.unknownCrop'),
+        cropCondition: resultData.condition || 'warning',
+        diseases: resultData.diseases || [],
+        suggestions: resultData.suggestions || [t('instaScan.defaultSuggestion')],
+        confidence: resultData.confidence || 0
       };
 
+      console.log('✅ InstaScan completed successfully:', result);
       setScanResult(result);
     } catch (error) {
       console.error('Error analyzing image:', error);
@@ -90,7 +147,8 @@ export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
         description: t('instaScan.tryAgain'),
         variant: 'destructive'
       });
-      onClose();
+      setErrorMessage(t('instaScan.tryAgain'));
+      setShowCamera(true);
     } finally {
       setIsAnalyzing(false);
     }

@@ -1,5 +1,6 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from '@/utils/supabase';
 import { useAuthStore } from '@/stores/authStore';
+import { dataIsolation, isolatedSupabase } from './dataIsolationService';
 
 const LANDS_API_URL = 'https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/lands-api';
 
@@ -35,25 +36,18 @@ interface LandData {
 
 class LandsApiService {
   private getHeaders(): HeadersInit {
-    const authStore = useAuthStore.getState();
-    const { user, session } = authStore;
-
-    if (!user || !session) {
-      throw new Error('No authentication context available');
-    }
-
+    // Use centralized data isolation service for headers
+    const headers = dataIsolation.getIsolationHeaders();
+    
     return {
-      'Content-Type': 'application/json',
-      'x-tenant-id': user.tenantId || '',
-      'x-farmer-id': user.id,
-      'x-session-token': session.token || '',
+      ...headers,
       'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbwYom1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4'
     };
   }
 
   async fetchLands(): Promise<LandData[]> {
     try {
-      const response = await fetch(`${LANDS_API_URL}/lands`, {
+      const response = await fetch(LANDS_API_URL, {
         method: 'GET',
         headers: this.getHeaders(),
       });
@@ -73,7 +67,7 @@ class LandsApiService {
 
   async createLand(landData: Omit<LandData, 'id'>): Promise<LandData> {
     try {
-      const response = await fetch(`${LANDS_API_URL}/lands`, {
+      const response = await fetch(LANDS_API_URL, {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify(landData),
@@ -94,7 +88,7 @@ class LandsApiService {
 
   async updateLand(id: string, landData: Partial<LandData>): Promise<LandData> {
     try {
-      const response = await fetch(`${LANDS_API_URL}/lands/${id}`, {
+      const response = await fetch(`${LANDS_API_URL}/${id}`, {
         method: 'PUT',
         headers: this.getHeaders(),
         body: JSON.stringify(landData),
@@ -115,7 +109,7 @@ class LandsApiService {
 
   async deleteLand(id: string): Promise<void> {
     try {
-      const response = await fetch(`${LANDS_API_URL}/lands/${id}`, {
+      const response = await fetch(`${LANDS_API_URL}/${id}`, {
         method: 'DELETE',
         headers: this.getHeaders(),
       });
@@ -130,45 +124,33 @@ class LandsApiService {
     }
   }
 
-  // Legacy method for compatibility - uses direct Supabase access for specific queries
+  // Fetch a specific land by ID - uses the Edge Function
   async fetchLandById(id: string): Promise<LandData | null> {
-    const authStore = useAuthStore.getState();
-    const { user } = authStore;
+    try {
+      const response = await fetch(`${LANDS_API_URL}/${id}`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
 
-    if (!user) {
-      throw new Error('No authentication context available');
-    }
-
-    // Log query parameters for debugging
-    console.log('Fetching land with parameters:', {
-      landId: id,
-      farmerId: user.id,
-      filters: {
-        is_active: true,
-        deleted_at: null
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Error fetching land by ID:', error);
+        
+        // Return null for 404 errors (land not found)
+        if (response.status === 404) {
+          console.log('Land not found with ID:', id);
+          return null;
+        }
+        
+        throw new Error(error.error || 'Failed to fetch land');
       }
-    });
 
-    const { data, error } = await supabase
-      .from('lands')
-      .select('*')
-      .eq('id', id)
-      .eq('farmer_id', user.id)
-      .eq('is_active', true)
-      .is('deleted_at', null)
-      .maybeSingle();  // Changed from .single() to .maybeSingle()
-
-    if (error) {
+      const result = await response.json();
+      return result.data || null;
+    } catch (error) {
       console.error('Error fetching land by ID:', error);
       return null;
     }
-
-    if (!data) {
-      console.log('No land found with ID:', id);
-      return null;
-    }
-
-    return data;
   }
 }
 

@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { 
   MapPin, 
   Droplets, 
@@ -14,10 +15,28 @@ import {
   TreePine,
   ChevronRight,
   Waves,
-  Grid3x3
+  Grid3x3,
+  Sparkles,
+  CalendarCheck,
+  Calendar,
+  Zap,
+  Edit,
+  Trash2
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useToast } from '@/hooks/use-toast';
 
 interface Land {
   id: string;
@@ -40,6 +59,15 @@ interface Land {
 interface LandSelectorProps {
   lands: Land[];
   onSelectLand: (land: Land) => void;
+  onViewSchedule?: (landId: string) => void;
+  onEditSchedule?: (landId: string) => void;
+}
+
+interface LandScheduleStatus {
+  landId: string;
+  hasSchedule: boolean;
+  cropName?: string;
+  scheduleId?: string;
 }
 
 const getSoilIcon = (soilType?: string) => {
@@ -66,8 +94,57 @@ const getCropIcon = (crop?: string) => {
   return Sprout;
 };
 
-export default function LandSelector({ lands, onSelectLand }: LandSelectorProps) {
+export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEditSchedule }: LandSelectorProps) {
   const navigate = useNavigate();
+  const { toast } = useToast();
+  const [scheduleStatuses, setScheduleStatuses] = useState<LandScheduleStatus[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [scheduleToDelete, setScheduleToDelete] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchScheduleStatuses();
+  }, [lands]);
+
+  const fetchScheduleStatuses = async () => {
+    try {
+      const landIds = lands.map(l => l.id);
+      
+      const { data, error } = await supabase
+        .from('crop_schedules')
+        .select('id, land_id, crop_name')
+        .in('land_id', landIds)
+        .eq('is_active', true);
+
+      if (error) throw error;
+
+      const statuses: LandScheduleStatus[] = lands.map(land => {
+        const schedule = data?.find(s => s.land_id === land.id);
+        return {
+          landId: land.id,
+          hasSchedule: !!schedule,
+          cropName: schedule?.crop_name,
+          scheduleId: schedule?.id
+        };
+      });
+
+      setScheduleStatuses(statuses);
+    } catch (error) {
+      console.error('Error fetching schedule statuses:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLandClick = (land: Land) => {
+    const status = scheduleStatuses.find(s => s.landId === land.id);
+    
+    if (status?.hasSchedule && onViewSchedule) {
+      onViewSchedule(land.id);
+    } else {
+      onSelectLand(land);
+    }
+  };
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -91,10 +168,69 @@ export default function LandSelector({ lands, onSelectLand }: LandSelectorProps)
     }
   };
 
+  const handleDeleteSchedule = async (landId: string) => {
+    setScheduleToDelete(landId);
+    setDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteSchedule = async () => {
+    if (!scheduleToDelete) return;
+
+    try {
+      const status = scheduleStatuses.find(s => s.landId === scheduleToDelete);
+      if (!status?.scheduleId) return;
+
+      // Delete all tasks for this schedule
+      const { error: tasksError } = await supabase
+        .from('schedule_tasks')
+        .delete()
+        .eq('schedule_id', status.scheduleId);
+
+      if (tasksError) throw tasksError;
+
+      // Delete the schedule
+      const { error: scheduleError } = await supabase
+        .from('crop_schedules')
+        .delete()
+        .eq('id', status.scheduleId);
+
+      if (scheduleError) throw scheduleError;
+
+      toast({
+        title: '✅ Schedule Deleted',
+        description: 'AI crop schedule has been removed',
+        className: 'bg-success/10 border-success/20',
+      });
+
+      // Refresh schedule statuses
+      fetchScheduleStatuses();
+    } catch (error) {
+      console.error('Error deleting schedule:', error);
+      toast({
+        title: '❌ Delete Failed',
+        description: 'Failed to delete schedule',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleteDialogOpen(false);
+      setScheduleToDelete(null);
+    }
+  };
+
+  const handleCreateSchedule = (land: Land) => {
+    onSelectLand(land);
+  };
+
+  const handleEditSchedule = (landId: string) => {
+    if (onEditSchedule) {
+      onEditSchedule(landId);
+    }
+  };
+
   return (
-    <div className="relative">
+    <div className="relative px-4 py-4">
       <motion.div 
-        className="grid gap-6 sm:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3"
+        className="grid gap-4 sm:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3"
         variants={containerVariants}
         initial="hidden"
         animate="visible"
@@ -103,6 +239,8 @@ export default function LandSelector({ lands, onSelectLand }: LandSelectorProps)
           const SoilIcon = getSoilIcon(land.soil_type);
           const WaterIcon = getWaterIcon(land.water_source);
           const CropIcon = getCropIcon(land.current_crop);
+          const status = scheduleStatuses.find(s => s.landId === land.id);
+          const hasSchedule = status?.hasSchedule || false;
           
           return (
             <motion.div key={land.id} variants={itemVariants}>
@@ -110,51 +248,129 @@ export default function LandSelector({ lands, onSelectLand }: LandSelectorProps)
                 className={cn(
                   "group relative overflow-hidden cursor-pointer",
                   "bg-card/80 backdrop-blur-md",
-                  "border border-border/50",
-                  "hover:border-primary/50",
+                  "border",
+                  hasSchedule 
+                    ? "border-primary/70 bg-gradient-to-br from-primary/5 to-accent/5" 
+                    : "border-border/50",
+                  "hover:border-primary/70",
                   "shadow-lg hover:shadow-xl",
                   "transition-all duration-300 ease-out",
                   "hover:scale-[1.02]"
                 )}
-                onClick={() => onSelectLand(land)}
+                onClick={() => handleLandClick(land)}
               >
                 {/* Gradient overlay on hover */}
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <div className={cn(
+                  "absolute inset-0 transition-opacity duration-300",
+                  hasSchedule 
+                    ? "bg-gradient-to-br from-primary/10 via-accent/5 to-success/10 opacity-50 group-hover:opacity-70"
+                    : "bg-gradient-to-br from-primary/5 via-transparent to-accent/5 opacity-0 group-hover:opacity-100"
+                )} />
+                
+                {/* AI Generated Badge */}
+                {hasSchedule && (
+                  <motion.div
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                    className="absolute top-2 right-2 z-10"
+                  >
+                    <Badge className="bg-gradient-to-r from-primary to-accent text-primary-foreground border-0 shadow-lg flex items-center gap-1.5 px-2.5 py-1">
+                      <Sparkles className="h-3 w-3 animate-pulse" />
+                      <span className="text-xs font-semibold">AI Schedule Ready</span>
+                    </Badge>
+                  </motion.div>
+                )}
+                
+                {/* Pending Generation Badge */}
+                {!hasSchedule && (
+                  <div className="absolute top-2 right-2 z-10">
+                    <Badge variant="outline" className="bg-background/80 backdrop-blur-sm border-muted-foreground/30 flex items-center gap-1.5 px-2.5 py-1">
+                      <Calendar className="h-3 w-3 text-muted-foreground" />
+                      <span className="text-xs font-medium text-muted-foreground">Generate Schedule</span>
+                    </Badge>
+                  </div>
+                )}
                 
                 {/* Content */}
                 <div className="relative p-4 space-y-3">
                   {/* Header */}
                   <div className="flex items-start justify-between">
-                    <div className="space-y-0.5">
-                      <h3 className="text-lg font-bold text-foreground group-hover:text-primary transition-colors">
+                    <div className="space-y-0.5 flex-1">
+                      <h3 className={cn(
+                        "text-lg font-bold transition-colors",
+                        hasSchedule 
+                          ? "text-foreground group-hover:text-primary" 
+                          : "text-foreground group-hover:text-primary"
+                      )}>
                         {land.name}
                       </h3>
-                      {land.survey_number && (
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Grid3x3 className="h-3 w-3" />
-                          Survey #{land.survey_number}
-                        </p>
-                      )}
-                    </div>
-                    <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors group-hover:translate-x-1 duration-300" />
-                  </div>
-
-                  {/* Area Display */}
-                  <div className="bg-gradient-to-r from-primary/10 to-accent/10 rounded-lg p-3">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-background/80 rounded-md">
-                        <Trees className="h-4 w-4 text-primary" />
-                      </div>
-                      <div>
-                        <p className="text-xl font-bold text-foreground">
-                          {land.area_acres} <span className="text-sm font-medium text-muted-foreground">acres</span>
-                        </p>
-                        {land.area_guntas && land.area_guntas > 0 && (
-                          <p className="text-xs text-muted-foreground">
-                            {land.area_guntas} guntas
+                      <div className="flex items-center gap-2">
+                        {land.survey_number && (
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Grid3x3 className="h-3 w-3" />
+                            Survey #{land.survey_number}
                           </p>
                         )}
+                        {hasSchedule && status?.cropName && (
+                          <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                            <Wheat className="h-2.5 w-2.5 mr-1" />
+                            {status.cropName}
+                          </Badge>
+                        )}
                       </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      {hasSchedule ? (
+                        <div className="flex items-center gap-1 text-primary">
+                          <CalendarCheck className="h-4 w-4" />
+                          <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform duration-300" />
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1 text-muted-foreground group-hover:text-primary transition-colors">
+                          <Zap className="h-4 w-4" />
+                          <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform duration-300" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Area Display with Status */}
+                  <div className={cn(
+                    "rounded-lg p-3",
+                    hasSchedule 
+                      ? "bg-gradient-to-r from-primary/15 to-accent/15 border border-primary/20" 
+                      : "bg-gradient-to-r from-primary/10 to-accent/10"
+                  )}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className={cn(
+                          "p-1.5 rounded-md",
+                          hasSchedule ? "bg-primary/20" : "bg-background/80"
+                        )}>
+                          <Trees className={cn(
+                            "h-4 w-4",
+                            hasSchedule ? "text-primary" : "text-primary"
+                          )} />
+                        </div>
+                        <div>
+                          <p className="text-xl font-bold text-foreground">
+                            {land.area_acres} <span className="text-sm font-medium text-muted-foreground">acres</span>
+                          </p>
+                          {land.area_guntas && land.area_guntas > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              {land.area_guntas} guntas
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {hasSchedule && (
+                        <div className="text-right">
+                          <p className="text-xs text-primary font-semibold">Active</p>
+                          <p className="text-[10px] text-muted-foreground">Click to view</p>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -213,15 +429,71 @@ export default function LandSelector({ lands, onSelectLand }: LandSelectorProps)
                         </span>
                       </div>
                     )}
-                  </div>
-                </div>
-              </Card>
-            </motion.div>
-          );
-        })}
-      </motion.div>
+                   </div>
 
-      {/* Add Land Button - Positioned at bottom right of last card */}
+                   {/* Schedule Actions */}
+                   {hasSchedule && (
+                     <div className="flex gap-2 mt-3 pt-3 border-t border-border/50">
+                       <Button
+                         variant="outline"
+                         size="sm"
+                         className="flex-1 gap-2"
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           onViewSchedule?.(land.id);
+                         }}
+                       >
+                         <Calendar className="h-3.5 w-3.5" />
+                         View
+                       </Button>
+                       <Button
+                         variant="outline"
+                         size="sm"
+                         className="flex-1 gap-2"
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           handleEditSchedule(land.id);
+                         }}
+                       >
+                         <Edit className="h-3.5 w-3.5" />
+                         Edit
+                       </Button>
+                       <Button
+                         variant="outline"
+                         size="sm"
+                         className="gap-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                         onClick={(e) => {
+                           e.stopPropagation();
+                           handleDeleteSchedule(land.id);
+                         }}
+                       >
+                         <Trash2 className="h-3.5 w-3.5" />
+                       </Button>
+                     </div>
+                   )}
+
+                   {!hasSchedule && (
+                     <Button
+                       variant="outline"
+                       size="sm"
+                       className="w-full mt-3 gap-2"
+                       onClick={(e) => {
+                         e.stopPropagation();
+                         handleCreateSchedule(land);
+                       }}
+                     >
+                       <Plus className="h-3.5 w-3.5" />
+                       Create Schedule
+                     </Button>
+                   )}
+                 </div>
+               </Card>
+             </motion.div>
+           );
+         })}
+       </motion.div>
+
+      {/* Add Land Button - Centered Below Last Card */}
       <motion.div
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -231,29 +503,38 @@ export default function LandSelector({ lands, onSelectLand }: LandSelectorProps)
           stiffness: 200,
           damping: 15
         }}
-        className="flex justify-end mt-4 mb-4 pr-4"
+        className="flex justify-center mt-6 mb-4"
       >
-        <button
+        <Button
           onClick={() => navigate('/app/lands/add')}
-          className={cn(
-            "group relative",
-            "flex items-center justify-center",
-            "h-14 w-14",
-            "rounded-2xl",
-            "bg-gradient-to-br from-success/90 to-success",
-            "hover:from-success hover:to-success/90",
-            "shadow-lg hover:shadow-xl hover:shadow-success/20",
-            "transition-all duration-300",
-            "hover:scale-105 active:scale-95",
-            "border border-success/20"
-          )}
+          className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg rounded-full px-8 py-6 flex items-center gap-3"
+          size="lg"
         >
-          <Plus className="h-6 w-6 text-white transition-transform duration-300 group-hover:rotate-90" />
-          
-          {/* Ripple effect on hover */}
-          <div className="absolute inset-0 rounded-2xl bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        </button>
+          <Plus className="h-5 w-5" />
+          <span className="font-medium">Add Land</span>
+        </Button>
       </motion.div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete AI Schedule?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the AI-generated crop schedule and all its tasks. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteSchedule}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -40,8 +40,13 @@ export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = fal
 
   // Calculate dynamic spacing based on FAB presence
   const hasAction = !hideAction && displayNavItems.some(item => item.isAction);
-  const navItemsBeforeAction = displayNavItems.filter(item => !item.isAction).slice(0, 2);
-  const navItemsAfterAction = displayNavItems.filter(item => !item.isAction).slice(2);
+  
+  // Get non-action items only
+  const regularNavItems = displayNavItems.filter(item => !item.isAction);
+  
+  // Split nav items around the action button
+  const navItemsBeforeAction = regularNavItems.slice(0, 2);
+  const navItemsAfterAction = regularNavItems.slice(2);
 
   return (
     <>
@@ -52,6 +57,7 @@ export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = fal
             <NavLink
               key={path}
               to={path!}
+              end={path === '/'} // Add 'end' prop for exact matching on home route
               className={({ isActive }) =>
                 cn(
                   'flex flex-col items-center justify-center flex-1 h-full py-2',
@@ -80,7 +86,7 @@ export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = fal
                     )} />
                   </div>
                   <span className={cn(
-                    "text-[10px] mt-1 font-medium transition-all duration-300",
+                    "text-[11px] mt-1 font-medium transition-all duration-300 leading-tight",
                     isActive 
                       ? 'text-primary font-semibold' 
                       : 'text-muted-foreground/80'
@@ -125,6 +131,7 @@ export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = fal
             <NavLink
               key={path}
               to={path!}
+              end={path === '/'} // Add 'end' prop for exact matching on home route
               className={({ isActive }) =>
                 cn(
                   'flex flex-col items-center justify-center flex-1 h-full py-2',
@@ -153,7 +160,7 @@ export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = fal
                     )} />
                   </div>
                   <span className={cn(
-                    "text-[10px] mt-1 font-medium transition-all duration-300",
+                    "text-[11px] mt-1 font-medium transition-all duration-300 leading-tight",
                     isActive 
                       ? 'text-primary font-semibold' 
                       : 'text-muted-foreground/80'

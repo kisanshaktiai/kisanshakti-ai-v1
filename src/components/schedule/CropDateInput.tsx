@@ -24,7 +24,7 @@ interface CropDateInputProps {
     soil_type?: string;
     water_source?: string;
   };
-  onSubmit: (cropName: string, cropVariety: string, sowingDate: Date) => void;
+  onSubmit: (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant?: boolean) => void;
   onBack: () => void;
   loading?: boolean;
 }
@@ -40,6 +40,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   const [cropName, setCropName] = useState('');
   const [cropVariety, setCropVariety] = useState('');
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
+  const [isReadyMadePlant, setIsReadyMadePlant] = useState(false);
 
   const handleSubmit = () => {
     if (!cropName) {
@@ -60,7 +61,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
       return;
     }
 
-    onSubmit(cropName, cropVariety, sowingDate);
+    onSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant);
   };
 
   const handleCropSelect = (id: string, name: string) => {
@@ -74,22 +75,22 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   };
 
   return (
-    <div className="space-y-4 pb-20 sm:pb-4">
-      {/* Combined Land Info + Crop Selection Card */}
+    <div className="fixed inset-0 bg-gradient-to-br from-background via-accent/5 to-primary/5 pt-14 pb-16 overflow-hidden">
+      {/* Full Screen Container with Modern Card */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-gradient-to-br from-white/90 to-white/70 dark:from-black/40 dark:to-black/20 backdrop-blur-2xl border border-white/50 dark:border-white/20 rounded-2xl shadow-xl overflow-hidden"
+        className="h-full flex flex-col"
       >
-        {/* Land Header */}
-        <div className="px-4 py-3 border-b border-white/20 dark:border-white/10 bg-gradient-to-r from-primary/5 to-accent/5">
+        {/* Fixed Header Bar */}
+        <div className="px-4 py-3 bg-background/60 backdrop-blur-2xl border-b border-border/50">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={onBack}
-                className="h-8 w-8 rounded-full hover:bg-white/20 dark:hover:bg-white/10"
+                className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all duration-300"
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
@@ -116,33 +117,28 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
           </div>
         </div>
 
-        {/* Crop Selection Section - Full height for mobile */}
-        <div className="h-[calc(100vh-22rem)] sm:max-h-[50vh] overflow-hidden flex flex-col">
-          <div className="flex items-center gap-2 mb-3 px-4">
-            <Wheat className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">Select Crop</span>
-          </div>
-          
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <CentralizedCropSelector
-              selectedCropId={cropId}
-              onSelect={handleCropSelect}
-              className="h-full border-0 shadow-none bg-transparent"
-              showHeader={false}
-              variant="compact"
-              showSearch={true}
-            />
-          </div>
+        {/* Full Height Crop Selection */}
+        <div className="flex-1 overflow-hidden bg-background/40 backdrop-blur-sm">
+          <CentralizedCropSelector
+            selectedCropId={cropId}
+            onSelect={handleCropSelect}
+            className="h-full"
+            showHeader={false}
+            variant="compact"
+            showSearch={true}
+          />
         </div>
         
-        {/* Variety Input - Shows only when crop is selected */}
+        {/* Bottom Fixed Panel for Variety & Date (Shows when crop selected) */}
         {cropName && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="p-4 pt-0 space-y-2"
-            >
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 100, opacity: 0 }}
+            className="bg-background/95 backdrop-blur-2xl border-t border-border/50 p-4 space-y-4"
+          >
+            {/* Variety Input */}
+            <div className="space-y-2">
               <Label htmlFor="variety" className="text-xs font-medium text-muted-foreground">
                 Variety (Optional)
               </Label>
@@ -153,111 +149,88 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                 onChange={(e) => setCropVariety(e.target.value)}
                 className="h-10 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-white/30 dark:border-white/20 focus:border-primary/50 transition-all"
               />
-          </motion.div>
-        )}
-      </motion.div>
+            </div>
 
-      {/* Date Selection Card - Only shows when crop is selected */}
-      {cropName && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-gradient-to-br from-white/90 to-white/70 dark:from-black/40 dark:to-black/20 backdrop-blur-2xl border border-white/50 dark:border-white/20 rounded-2xl shadow-xl p-4"
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <CalendarIcon className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">Expected Sowing Date</span>
-          </div>
-          
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "w-full justify-start text-left font-normal h-12",
-                  "bg-white/50 dark:bg-black/20 backdrop-blur-sm",
-                  "border-white/30 dark:border-white/20 hover:border-primary/50",
-                  "transition-all duration-300 group",
-                  !sowingDate && "text-muted-foreground"
-                )}
-              >
-                <CalendarIcon className="mr-3 h-4 w-4 text-primary/60 group-hover:text-primary transition-colors" />
-                {sowingDate ? (
-                  <span className="text-foreground">{format(sowingDate, "PPP")}</span>
-                ) : (
-                  <span>Select sowing date...</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0 rounded-xl overflow-hidden" align="start">
-              <Calendar
-                mode="single"
-                selected={sowingDate}
-                onSelect={setSowingDate}
-                initialFocus
-                className="rounded-xl"
+            {/* Ready-made Plant Checkbox */}
+            <div className="flex items-start gap-3 p-3 bg-accent/20 rounded-lg border border-border/50">
+              <input
+                type="checkbox"
+                id="ready-made-plant"
+                checked={isReadyMadePlant}
+                onChange={(e) => setIsReadyMadePlant(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-gray-300"
               />
-            </PopoverContent>
-          </Popover>
-          
-          {/* AI Schedule Preview */}
-          {sowingDate && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="mt-3 p-3 rounded-lg bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/20"
-            >
-              <div className="flex items-start gap-2">
-                <Sun className="h-4 w-4 text-primary mt-0.5" />
-                <div className="flex-1">
-                  <p className="text-xs text-muted-foreground">AI will generate schedule for:</p>
-                  <p className="text-sm font-medium text-foreground mt-0.5">
-                    Full crop lifecycle from {format(sowingDate, "dd MMM yyyy")}
-                  </p>
-                </div>
+              <div className="flex-1">
+                <Label htmlFor="ready-made-plant" className="text-xs font-medium cursor-pointer">
+                  Using ready-made nursery plants
+                </Label>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Check if planting seedlings/transplants instead of sowing seeds
+                </p>
               </div>
-            </motion.div>
-          )}
-        </motion.div>
-      )}
+            </div>
 
-      {/* Floating Generate Button - Mobile optimized */}
-      <AnimatePresence>
-        {cropName && sowingDate && (
-          <motion.div
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 50 }}
-            className="fixed bottom-20 sm:bottom-4 left-4 right-4 sm:relative sm:left-auto sm:right-auto z-20"
-          >
+            {/* Date Selection */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="h-4 w-4 text-primary" />
+                <span className="text-xs font-medium">
+                  {isReadyMadePlant ? 'Planting Date' : 'Sowing Date'}
+                </span>
+              </div>
+              
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10",
+                      "bg-white/50 dark:bg-black/20 backdrop-blur-sm",
+                      "border-white/30 dark:border-white/20 hover:border-primary/50",
+                      !sowingDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {sowingDate ? format(sowingDate, "PPP") : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={sowingDate}
+                    onSelect={(date) => date && setSowingDate(date)}
+                    initialFocus
+                    disabled={(date) => 
+                      date < new Date(new Date().setHours(0,0,0,0)) || 
+                      date > new Date(new Date().setFullYear(new Date().getFullYear() + 1))
+                    }
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Submit Button */}
             <Button
               onClick={handleSubmit}
-              disabled={loading}
-              className={cn(
-                "w-full h-12 sm:h-11",
-                "bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary",
-                "shadow-2xl shadow-primary/30 hover:shadow-primary/40",
-                "transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98]",
-                "font-semibold text-white"
-              )}
-              size="lg"
+              disabled={!cropName || !sowingDate || loading}
+              className="w-full bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg"
             >
               {loading ? (
-                <div className="flex items-center gap-2">
-                  <div className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-                  <span>Generating Schedule...</span>
-                </div>
+                <>
+                  <Sparkles className="mr-2 h-4 w-4 animate-spin" />
+                  Generating AI Schedule...
+                </>
               ) : (
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-5 w-5" />
-                  <span>Generate AI Crop Schedule</span>
-                </div>
+                <>
+                  Generate AI Schedule
+                  <Sparkles className="ml-2 h-4 w-4" />
+                </>
               )}
             </Button>
           </motion.div>
         )}
-      </AnimatePresence>
+
+      </motion.div>
     </div>
   );
 };
