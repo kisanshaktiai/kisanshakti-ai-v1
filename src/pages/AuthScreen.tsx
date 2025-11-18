@@ -23,16 +23,26 @@ export default function AuthScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<'check' | 'register'>('check');
+  const [isReady, setIsReady] = useState(false);
   const isOnline = useOfflineStatus();
 
   useEffect(() => {
     setStep('mobile');
-    
-    // If no tenant loaded, redirect to splash to ensure proper flow
-    if (!tenantLoading && !tenant) {
-      navigate('/splash');
+  }, [setStep]);
+
+  // SECURITY: Blocking guard - wait for tenant before showing form
+  useEffect(() => {
+    if (!tenantLoading && tenant?.id) {
+      console.log('✅ [Security] Tenant confirmed for auth screen:', tenant.id);
+      setIsReady(true);
     }
-  }, [setStep, tenant, tenantLoading, navigate]);
+    
+    // If tenant loading failed, redirect to splash
+    if (!tenantLoading && !tenant) {
+      console.warn('⚠️ [Security] No tenant loaded, redirecting to splash');
+      navigate('/');
+    }
+  }, [tenant, tenantLoading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,12 +52,15 @@ export default function AuthScreen() {
       return;
     }
 
-    // CRITICAL: Ensure tenant is loaded before proceeding
+    // CRITICAL SECURITY CHECK: Ensure tenant is loaded
     if (!tenant?.id) {
+      console.error('🚨 [Security] Auth attempted without tenant context');
       setError(t('auth.tenantNotLoaded') || 'System is initializing. Please wait...');
-      setTimeout(() => navigate('/splash'), 1500);
+      setTimeout(() => navigate('/'), 1500);
       return;
     }
+
+    console.log('🔐 [Security] Auth request for tenant:', tenant.id);
 
     setIsLoading(true);
     setError(null);

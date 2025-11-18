@@ -628,12 +628,46 @@ class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;
   private initPromise: Promise<void> | null = null;
   private schemaUpgradeComplete = false;
+  private currentTenantId: string | null = null;
+  private dbName: string = DB_NAME;
 
   /**
-   * Lazy initialization - starts DB connection without blocking
-   * Schema upgrades run in background
+   * SECURE: Initialize with tenant isolation
+   * Creates tenant-prefixed database for complete data isolation
+   */
+  async initializeWithTenant(tenantId: string): Promise<void> {
+    if (!tenantId) {
+      throw new Error('🚨 [Security] CRITICAL: Cannot initialize LocalDB without tenant ID');
+    }
+    
+    // Close existing connection if switching tenants
+    if (this.currentTenantId && this.currentTenantId !== tenantId) {
+      console.warn('🔄 [Security] Switching tenant, closing old DB connection:', {
+        oldTenant: this.currentTenantId,
+        newTenant: tenantId
+      });
+      await this.closeTenantDB();
+    }
+    
+    this.currentTenantId = tenantId;
+    // Use tenant-prefixed database name for COMPLETE isolation
+    this.dbName = `${DB_NAME}_${tenantId}`;
+    
+    console.log('🔐 [Security] Initializing tenant-scoped database:', this.dbName);
+    
+    if (this.db) return;
+    if (this.initPromise) return this.initPromise;
+
+    this.initPromise = this.performInitialization();
+    return this.initPromise;
+  }
+
+  /**
+   * Legacy initialization - deprecated, use initializeWithTenant instead
+   * @deprecated Use initializeWithTenant for proper tenant isolation
    */
   async initialize(): Promise<void> {
+    console.warn('⚠️ [Security] Using legacy initialize() without tenant context');
     if (this.db) return;
     if (this.initPromise) return this.initPromise;
 
@@ -642,9 +676,10 @@ class LocalDatabase {
   }
 
   private async performInitialization(): Promise<void> {
-    console.log('🚀 [LocalDB] Starting lazy initialization...');
+    console.log('🚀 [LocalDB] Starting tenant-isolated initialization...');
+    console.log('🔐 [Security] Database name:', this.dbName, 'Tenant:', this.currentTenantId);
 
-    this.db = await openDB<KisanDB>(DB_NAME, DB_VERSION, {
+    this.db = await openDB<KisanDB>(this.dbName, DB_VERSION, {
       upgrade: (db, oldVersion, newVersion, transaction) => {
         console.log(`📦 [LocalDB] Schema upgrade ${oldVersion} → ${newVersion} (background)`);
 
@@ -733,12 +768,45 @@ class LocalDatabase {
       },
     });
 
-    console.log('✅ [LocalDB] DB connection ready (v', DB_VERSION, ')');
+    console.log('✅ [LocalDB] Tenant-isolated database ready:', this.dbName);
 
     // Run schema validation in background, don't block
     this.validateSchemaVersion().catch(err => {
       console.error('❌ [LocalDB] Schema validation error:', err);
     });
+  }
+
+  /**
+   * Close database connection (for tenant switching)
+   */
+  async closeTenantDB(): Promise<void> {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
+      this.initPromise = null;
+      this.schemaUpgradeComplete = false;
+      console.log('🔒 [LocalDB] Database connection closed for tenant:', this.currentTenantId);
+      this.currentTenantId = null;
+    }
+  }
+
+  /**
+   * SECURITY: Validate tenant context on read operations
+   */
+  private validateTenantContext(data: any): void {
+    if (!this.currentTenantId) {
+      console.warn('⚠️ [Security] No tenant context for validation');
+      return;
+    }
+    
+    if (data && data.tenant_id && data.tenant_id !== this.currentTenantId) {
+      console.error('🚨 [Security] TENANT ISOLATION VIOLATION DETECTED!', {
+        recordTenant: data.tenant_id,
+        currentTenant: this.currentTenantId,
+        dataId: data.id
+      });
+      throw new Error('Tenant isolation violation: Data belongs to different tenant');
+    }
   }
 
   /**
