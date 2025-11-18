@@ -90,30 +90,68 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        setCurrentStep('Loading configuration...');
+        // Get current domain for security validation
+        const currentDomain = window.location.hostname;
+        console.log('🔐 [Security] Starting secure multi-tenant initialization for:', currentDomain);
         
         // Set dynamic manifest link immediately
         const manifestLink = document.querySelector('link[rel="manifest"]') as HTMLLinkElement;
         if (manifestLink) {
-          const domain = window.location.hostname;
-          manifestLink.href = `https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/generate-manifest?domain=${encodeURIComponent(domain)}`;
+          manifestLink.href = `https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/generate-manifest?domain=${encodeURIComponent(currentDomain)}`;
         }
         
-        // PARALLEL initialization - all tasks run simultaneously for fastest load
-        await Promise.all([
-          localDB.initialize(),
-          fetchTenant(),
-          checkAuth(),
-          LocationService.getCurrentLocation(true).catch(() => null)
-        ]);
+        // STEP 1: TENANT RESOLUTION (BLOCKING - CRITICAL SECURITY)
+        setCurrentStep('Identifying tenant...');
+        await fetchTenant();
         
-        setCurrentStep('Setting up...');
+        const { tenant: loadedTenant } = useTenantStore.getState();
+        
+        if (!loadedTenant) {
+          console.error('🚨 [Security] CRITICAL: Tenant not found for domain:', currentDomain);
+          throw new Error('Tenant not found for domain: ' + currentDomain);
+        }
+        
+        console.log('✅ [Security] Tenant loaded:', {
+          id: loadedTenant.id,
+          name: loadedTenant.name,
+          domain: currentDomain
+        });
+        
+        // STEP 2: INITIALIZE TENANT-SCOPED LOCAL STORAGE (BLOCKING)
+        setCurrentStep('Initializing secure storage...');
+        await localDB.initializeWithTenant(loadedTenant.id);
+        
+        // STEP 3: CHECK AUTH WITH TENANT CONTEXT VALIDATION (BLOCKING)
+        setCurrentStep('Checking authentication...');
+        await checkAuth();
+        
+        // CRITICAL SECURITY: Validate auth tenant matches current tenant
+        const { user, session } = useAuthStore.getState();
+        if (session && user?.tenantId !== loadedTenant.id) {
+          console.error('🚨 [Security] TENANT MISMATCH DETECTED! Force logout.', {
+            sessionTenant: user?.tenantId,
+            currentTenant: loadedTenant.id,
+            userId: user?.id
+          });
+          // Force logout for security
+          useAuthStore.getState().logout();
+          await localDB.clearAll();
+        }
+        
+        // STEP 4: NON-BLOCKING TASKS (Background)
+        setCurrentStep('Finalizing...');
         listenForTenantChanges();
-        
-        setCurrentStep('Almost ready...');
+        LocationService.getCurrentLocation(true).catch(() => null);
         
         // Small delay to show final step
         await new Promise(resolve => setTimeout(resolve, 300));
+      } catch (error) {
+        console.error('🚨 [Security] App initialization failed:', error);
+        toast({
+          title: "Initialization Error",
+          description: "Failed to initialize application. Please refresh.",
+          variant: "destructive"
+        });
       } finally {
         setIsInitializing(false);
       }

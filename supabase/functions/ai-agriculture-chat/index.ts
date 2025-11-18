@@ -33,18 +33,58 @@ serve(async (req) => {
       return await handleTrainingDataCollection(requestBody);
     }
 
-    // Extract tenantId and farmerId from metadata or headers
-    const headerTenantId = req.headers.get('x-tenant-id');
-    const headerFarmerId = req.headers.get('x-farmer-id');
-    const sessionToken = req.headers.get('x-session-token');
+    // SECURITY: Extract and validate tenant and farmer IDs from headers
+    const tenantId = req.headers.get('x-tenant-id');
+    const farmerId = req.headers.get('x-farmer-id');
+
+    console.log('🔐 [Security] Request headers:', {
+      tenantId,
+      farmerId,
+      timestamp: new Date().toISOString()
+    });
     
     // Use metadata values first, then headers as fallback
-    const finalTenantId = metadata.tenantId || headerTenantId;
-    const finalFarmerId = metadata.farmerId || headerFarmerId;
+    const finalTenantId = metadata.tenantId || tenantId;
+    const finalFarmerId = metadata.farmerId || farmerId;
 
     // Initialize Supabase client (needed for validation)
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    // CRITICAL SECURITY: Database validation of tenant-farmer association
+    if (finalTenantId && finalFarmerId) {
+      console.log('🔐 [Security] Validating tenant-farmer association...');
+      
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      const { data: farmer, error: farmerError } = await supabase
+        .from('farmers')
+        .select('id, tenant_id, farmer_name')
+        .eq('id', finalFarmerId)
+        .eq('tenant_id', finalTenantId)
+        .single();
+
+      if (farmerError || !farmer) {
+        console.error('🚨 [Security] INVALID TENANT-FARMER ASSOCIATION:', {
+          tenantId: finalTenantId,
+          farmerId: finalFarmerId,
+          error: farmerError?.message,
+          code: farmerError?.code
+        });
+        return new Response(
+          JSON.stringify({ 
+            error: 'Unauthorized: Invalid tenant-farmer association',
+            details: 'Security validation failed'
+          }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('✅ [Security] Tenant-farmer association validated:', {
+        farmerId: farmer.id,
+        farmerName: farmer.farmer_name,
+        tenantId: farmer.tenant_id
+      });
+    }
 
     // CRITICAL SECURITY: Validate isolation context before ANY database operation
     await validateIsolation(finalTenantId, finalFarmerId, supabaseUrl, supabaseServiceKey);
