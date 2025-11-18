@@ -1,0 +1,170 @@
+name: Deploy to Hostinger
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      HOST_SFTP_HOST: ${{ secrets.HOST_SFTP_HOST }}
+      HOST_SFTP_PORT: ${{ secrets.HOST_SFTP_PORT }}
+      HOST_SFTP_USER: ${{ secrets.HOST_SFTP_USER }}
+      HOST_REMOTE_DIR: ${{ secrets.HOST_REMOTE_DIR }}
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then npm ci --prefer-offline --no-audit; else npm install --no-audit; fi
+          npx vite --version || true
+
+      - name: Build production
+        env:
+          NODE_ENV: production
+        run: |
+          npm run build
+          ls -la dist || true
+
+      - name: Copy .htaccess (if exists)
+        run: |
+          if [ -f ./public/.htaccess ]; then cp ./public/.htaccess ./dist/.htaccess || true; fi
+
+      - name: Verify build output
+        run: |
+          if [ ! -d ./dist ]; then echo "ERROR: dist folder not found!"; exit 1; fi
+          find dist -type f | head -50
+
+      - name: Setup deploy key & known_hosts
+        id: ssh_setup
+        run: |
+          set -e
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+
+          # Decode private key
+          echo "${{ secrets.SFTP_KEY_B64 }}" | tr -d '\r\n ' | base64 --decode > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+
+          # Setup known_hosts
+          if [ -n "${{ secrets.HOST_SFTP_KNOWN_HOSTS }}" ]; then
+            echo "${{ secrets.HOST_SFTP_KNOWN_HOSTS }}" > "$HOME/.ssh/known_hosts"
+            chmod 600 "$HOME/.ssh/known_hosts"
+          else
+            ssh-keyscan -p "${{ secrets.HOST_SFTP_PORT }}" "${{ secrets.HOST_SFTP_HOST }}" >> "$HOME/.ssh/known_hosts" 2>/dev/null
+            chmod 600 "$HOME/.ssh/known_hosts"
+          fi
+          
+      - name: Debug SSH Key Info
+        run: |
+          echo "==== SSH Key Fingerprint ===="
+          ssh-keygen -lf "$HOME/.ssh/deploy_key" || echo "Failed to read key fingerprint"
+          
+          echo "==== SSH Key Type ===="
+          head -1 "$HOME/.ssh/deploy_key" | cut -d' ' -f1
+          
+          echo "==== Known Hosts ===="
+          cat "$HOME/.ssh/known_hosts" | wc -l
+          echo "lines in known_hosts"
+
+      - name: Test SSH Connection (Multiple Auth Methods)
+        run: |
+          echo "Attempting SSH connection with detailed output..."
+          ssh -vvv -i "$HOME/.ssh/deploy_key" \
+            -p "${{ secrets.HOST_SFTP_PORT }}" \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -o PasswordAuthentication=no \
+            -o PubkeyAuthentication=yes \
+            -o PreferredAuthentications=publickey \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o ConnectTimeout=30 \
+            "${{ secrets.HOST_SFTP_USER }}@${{ secrets.HOST_SFTP_HOST }}" \
+            "echo 'SSH Connection Successful!' && pwd" 2>&1 || {
+              echo "SSH connection failed. Check the verbose output above for details."
+              exit 1
+            }
+
+      - name: Deploy via SFTP (rsync alternative)
+        if: success()
+        run: |
+          # Use sftp batch mode instead of scp
+          cd dist
+          
+          # Create sftp batch commands
+          cat > /tmp/sftp_commands.txt <<EOF
+          cd ${{ secrets.HOST_REMOTE_DIR }}
+          put -r *
+          bye
+          EOF
+          
+          # Execute sftp
+          sftp -i "$HOME/.ssh/deploy_key" \
+            -P "${{ secrets.HOST_SFTP_PORT }}" \
+            -o StrictHostKeyChecking=no \
+            -o BatchMode=yes \
+            -b /tmp/sftp_commands.txt \
+            "${{ secrets.HOST_SFTP_USER }}@${{ secrets.HOST_SFTP_HOST }}"
+
+      - name: Alternative - Deploy via SCP action
+        if: failure()
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST_SFTP_HOST }}
+          username: ${{ secrets.HOST_SFTP_USER }}
+          key: ${{ secrets.SFTP_KEY_B64 }}
+          port: ${{ secrets.HOST_SFTP_PORT }}
+          source: "dist/*"
+          target: ${{ secrets.HOST_REMOTE_DIR }}
+          strip_components: 1
+          rm: true
+          overwrite: true
+
+      - name: Remote permissions fix
+        if: success()
+        run: |
+          ssh -i "$HOME/.ssh/deploy_key" \
+            -p "${{ secrets.HOST_SFTP_PORT }}" \
+            -o StrictHostKeyChecking=no \
+            -o BatchMode=yes \
+            "${{ secrets.HOST_SFTP_USER }}@${{ secrets.HOST_SFTP_HOST }}" <<'EOF'
+            set -e
+            cd ${{ secrets.HOST_REMOTE_DIR }}
+            chmod -R 755 .
+            find . -type f -exec chmod 644 {} \;
+          EOF
+
+      - name: Purge Cloudflare cache
+        if: env.CF_API_TOKEN != '' && env.CF_ZONE_ID != ''
+        env:
+          CF_ZONE: ${{ secrets.CF_ZONE_ID }}
+          CF_TOKEN: ${{ secrets.CF_API_TOKEN }}
+        run: |
+          FILES='["https://kisanshaktiai.in/"]'
+          echo "Purging Cloudflare cache..."
+          response=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE/purge_cache" \
+            -H "Authorization: Bearer $CF_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data "{\"files\":$FILES}")
+          echo "$response" | jq -r '.success, .errors' || echo "$response"
+
+      - name: Cleanup SSH keys
+        if: always()
+        run: |
+          shred -u "$HOME/.ssh/deploy_key" 2>/dev/null || rm -f "$HOME/.ssh/deploy_key"
+          rm -f "$HOME/.ssh/known_hosts" || true
