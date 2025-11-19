@@ -294,5 +294,30 @@
     "enableCamera": "Please enable camera access in settings",
     "cameraRequired": "Camera Access Required",
     "enableCameraInSettings": "Enable camera in your device settings to use InstaScan"
+  },
+  "voice": {
+    "enabled": "Voice navigation enabled",
+    "disabled": "Voice navigation disabled",
+    "listening": "Listening...",
+    "speakNow": "Speak now",
+    "commandExecuted": "Voice command executed",
+    "commandNotRecognized": "Command not recognized",
+    "tapToSpeak": "Tap to speak",
+    "stopListening": "Stop listening",
+    "startVoiceCommand": "Start voice command",
+    "enableVoiceNav": "Enable voice navigation",
+    "disableVoiceNav": "Disable voice navigation",
+    "voiceInputActive": "Voice input active",
+    "commands": {
+      "home": "Home",
+      "lands": "My lands",
+      "weather": "Weather",
+      "schedule": "Schedule",
+      "chat": "AI assistant",
+      "market": "Market",
+      "profile": "Profile",
+      "community": "Community",
+      "analytics": "Analytics"
+    }
   }
 }

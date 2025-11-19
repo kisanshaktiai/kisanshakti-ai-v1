@@ -176,5 +176,30 @@
     "enableCamera": "कृपया सेटिंग्स में कैमरा एक्सेस सक्षम करें",
     "cameraRequired": "कैमरा एक्सेस आवश्यक",
     "enableCameraInSettings": "InstaScan का उपयोग करने के लिए अपनी डिवाइस सेटिंग्स में कैमरा सक्षम करें"
+  },
+  "voice": {
+    "enabled": "आवाज नेविगेशन सक्षम",
+    "disabled": "आवाज नेविगेशन अक्षम",
+    "listening": "सुन रहे हैं...",
+    "speakNow": "अब बोलें",
+    "commandExecuted": "आवाज कमांड निष्पादित",
+    "commandNotRecognized": "कमांड नहीं पहचाना गया",
+    "tapToSpeak": "बोलने के लिए टैप करें",
+    "stopListening": "सुनना बंद करें",
+    "startVoiceCommand": "आवाज कमांड शुरू करें",
+    "enableVoiceNav": "आवाज नेविगेशन सक्षम करें",
+    "disableVoiceNav": "आवाज नेविगेशन अक्षम करें",
+    "voiceInputActive": "आवाज इनपुट सक्रिय",
+    "commands": {
+      "home": "होम",
+      "lands": "मेरी जमीन",
+      "weather": "मौसम",
+      "schedule": "समय सारिणी",
+      "chat": "AI सहायक",
+      "market": "बाजार",
+      "profile": "प्रोफ़ाइल",
+      "community": "समुदाय",
+      "analytics": "विश्लेषण"
+    }
   }
 }

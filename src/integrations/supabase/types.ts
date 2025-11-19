@@ -20923,6 +20923,15 @@ export type Database = {
           db_user: string
         }[]
       }
+      debug_jwt_status: {
+        Args: never
+        Returns: {
+          current_user_id: string
+          is_expired: boolean
+          jwt_exp: string
+          jwt_present: boolean
+        }[]
+      }
       detect_land_overlaps: {
         Args: { p_tenant: string }
         Returns: {
