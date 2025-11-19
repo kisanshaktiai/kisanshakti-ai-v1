@@ -16,8 +16,6 @@ import { LocationPermissionDialog } from "@/components/LocationPermissionDialog"
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
 import { AppLoadingProgress } from "@/components/AppLoadingProgress";
-import { VoiceNavigationProvider } from "@/contexts/VoiceNavigationContext";
-import { VoiceAssistant } from "@/components/voice/VoiceAssistant";
 
 // Pages
 import Home from "./pages/Home";
@@ -244,7 +242,6 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       <OfflineIndicator />
       <PWAUpdatePrompt />
       {children}
-      <VoiceAssistant />
       <LocationPermissionDialog 
         open={showLocationDialog}
         onOpenChange={setShowLocationDialog}
@@ -339,9 +336,7 @@ export default function App() {
         <QueryClientProvider client={queryClient}>
           <TooltipProvider>
             <AppInitializer>
-              <VoiceNavigationProvider>
-                <RouterProvider router={router} />
-              </VoiceNavigationProvider>
+              <RouterProvider router={router} />
             </AppInitializer>
             <Toaster />
             <Sonner />
