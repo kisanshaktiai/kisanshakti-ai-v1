@@ -13620,6 +13620,42 @@ export type Database = {
         }
         Relationships: []
       }
+      rate_limit_buckets: {
+        Row: {
+          created_at: string | null
+          function_name: string
+          id: string
+          identifier: string
+          last_request: string | null
+          metadata: Json | null
+          request_count: number
+          window_end: string
+          window_start: string
+        }
+        Insert: {
+          created_at?: string | null
+          function_name: string
+          id?: string
+          identifier: string
+          last_request?: string | null
+          metadata?: Json | null
+          request_count?: number
+          window_end: string
+          window_start: string
+        }
+        Update: {
+          created_at?: string | null
+          function_name?: string
+          id?: string
+          identifier?: string
+          last_request?: string | null
+          metadata?: Json | null
+          request_count?: number
+          window_end?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       rate_limits: {
         Row: {
           created_at: string
