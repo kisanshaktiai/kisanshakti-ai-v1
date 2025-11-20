@@ -87,26 +87,72 @@ Deno.serve(async (req) => {
         console.log('Found tenant by custom domain:', tenant.name)
       }
       
-      // Check subdomain if not found
-      if (!tenant) {
-        const subdomain = domain.split('.')[0]
-        const { data: subdomainData, error: subdomainError } = await supabase
+    // Check subdomain if not found
+    if (!tenant) {
+      const subdomain = domain.split('.')[0]
+      console.log('📍 [Step 3] Trying subdomain lookup:', subdomain);
+      
+      const { data: subdomainData, error: subdomainError } = await supabase
+        .from('tenants')
+        .select(`
+          *,
+          whiteLabel:white_label_configs(*)
+        `)
+        .eq('subdomain', subdomain)
+        .single()
+      
+      if (!subdomainError && subdomainData) {
+        tenant = subdomainData
+        console.log('✅ [Step 3] Found tenant by subdomain:', tenant.name)
+      } else {
+        console.log('❌ [Step 3] Not found by subdomain:', subdomainError?.message)
+      }
+    }
+  }
+  
+  // STEP 3.5: Check white_label_configs.domain_config if still not found
+  if (!tenant && domain) {
+    console.log('📍 [Step 3.5] Checking white_label_configs.domain_config for:', domain);
+    
+    const { data: whitelabelDomains, error: wlError } = await supabase
+      .from('white_label_configs')
+      .select('tenant_id, domain_config');
+    
+    if (whitelabelDomains && whitelabelDomains.length > 0) {
+      // Find tenant by matching domain_config.custom_domain or subdomain
+      const matchedConfig = whitelabelDomains.find(wl => 
+        wl.domain_config?.custom_domain === domain ||
+        wl.domain_config?.subdomain === domain
+      );
+      
+      if (matchedConfig) {
+        console.log('🔍 Found domain in white_label_configs:', matchedConfig.tenant_id);
+        
+        // Fetch the full tenant record
+        const { data: tenantFromWL, error: tenantError } = await supabase
           .from('tenants')
           .select(`
             *,
             whiteLabel:white_label_configs(*)
           `)
-          .eq('subdomain', subdomain)
-          .single()
+          .eq('id', matchedConfig.tenant_id)
+          .single();
         
-        if (!subdomainError && subdomainData) {
-          tenant = subdomainData
-          console.log('Found tenant by subdomain:', tenant.name)
+        if (tenantFromWL && !tenantError) {
+          tenant = tenantFromWL;
+          console.log('✅ [Step 3.5] Found tenant via white_label_configs:', tenant.name);
+        } else {
+          console.log('❌ [Step 3.5] Failed to fetch tenant:', tenantError?.message);
         }
+      } else {
+        console.log('❌ [Step 3.5] No matching domain in white_label_configs');
       }
+    } else {
+      console.log('❌ [Step 3.5] No white_label_configs found:', wlError?.message);
     }
-    
-    // If still no tenant, get default
+  }
+  
+  // If still no tenant, get default
     if (!tenant) {
       const { data: defaultTenant, error: defaultError } = await supabase
         .from('tenants')
