@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
     
     // Rate limiting: 200 requests per minute per domain
     const identifier = domain || tenantId || 'anonymous';
-    const rateLimit = checkRateLimit(identifier, { maxRequests: 200, windowMs: 60000 });
+    const rateLimit = await checkRateLimit(identifier, 'get-white-label-config', { maxRequests: 200, windowMs: 60000 });
     if (!rateLimit.allowed) {
       return new Response(
         JSON.stringify({ error: 'Rate limit exceeded' }),
