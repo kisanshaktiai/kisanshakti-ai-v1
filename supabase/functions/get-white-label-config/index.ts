@@ -1,5 +1,6 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2'
-import { corsHeaders } from '../_shared/cors.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
+import { corsHeaders } from '../_shared/cors.ts';
+import { checkRateLimit } from '../_shared/rateLimiter.ts';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -11,11 +12,24 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const url = new URL(req.url)
-    const tenantId = url.searchParams.get('tenant_id')
-    const domain = url.searchParams.get('domain')
+    const url = new URL(req.url);
+    const tenantId = url.searchParams.get('tenant_id');
+    const domain = url.searchParams.get('domain');
     
-    console.log('Fetching white-label config:', { tenantId, domain })
+    // Rate limiting: 200 requests per minute per domain
+    const identifier = domain || tenantId || 'anonymous';
+    const rateLimit = checkRateLimit(identifier, { maxRequests: 200, windowMs: 60000 });
+    if (!rateLimit.allowed) {
+      return new Response(
+        JSON.stringify({ error: 'Rate limit exceeded' }),
+        { 
+          status: 429, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+    
+    console.log('Fetching white-label config:', { tenantId, domain });
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
