@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { checkRateLimit } from '../_shared/rateLimiter.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -471,6 +472,28 @@ serve(async (req: Request): Promise<Response> => {
     
     if (!lat || !lon) {
       throw new Error('Latitude and longitude are required')
+    }
+    
+    // Rate limiting: 100 requests per minute per IP
+    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown';
+    const rateLimit = await checkRateLimit(clientIp, 'weather', { maxRequests: 100, windowMs: 60000 });
+    
+    if (!rateLimit.allowed) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Rate limit exceeded. Please try again later.',
+          resetTime: new Date(rateLimit.resetTime).toISOString()
+        }),
+        { 
+          status: 429, 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json',
+            'X-RateLimit-Remaining': String(rateLimit.remaining),
+            'X-RateLimit-Reset': new Date(rateLimit.resetTime).toISOString()
+          } 
+        }
+      );
     }
     
     console.log('Processing weather request:', { action, lat, lon })
