@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { checkRateLimit } from '../_shared/rateLimiter.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -32,6 +33,25 @@ Deno.serve(async (req) => {
       scheduleId: string;
       climateData: ClimateData;
     };
+
+    // Rate limiting: 500 requests per hour for climate monitoring
+    const rateLimit = await checkRateLimit(scheduleId, 'ai-schedule-climate-monitor', { maxRequests: 500, windowMs: 3600000 });
+    
+    if (!rateLimit.allowed) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Rate limit exceeded for climate monitoring.',
+          resetTime: new Date(rateLimit.resetTime).toISOString()
+        }),
+        { 
+          status: 429, 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json'
+          } 
+        }
+      );
+    }
 
     console.log('Climate monitoring for schedule:', scheduleId, climateData);
 
