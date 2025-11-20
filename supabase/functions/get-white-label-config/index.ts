@@ -55,36 +55,36 @@ Deno.serve(async (req) => {
     
     // Try to fetch by tenant_id first
     if (tenantId) {
+      console.log('📍 [Step 1] Checking tenant_id:', tenantId)
       const { data, error } = await supabase
         .from('tenants')
-        .select(`
-          *,
-          whiteLabel:white_label_configs(*)
-        `)
+        .select('*')
         .eq('id', tenantId)
         .single()
       
       if (!error && data) {
         tenant = data
-        console.log('Found tenant by ID:', tenant.name)
+        console.log('✅ [Step 1] Found tenant by ID:', tenant.name)
+      } else {
+        console.log('❌ [Step 1] Not found by tenant_id:', error?.message)
       }
     }
     
     // If not found by ID, try by domain
     if (!tenant && domain) {
+      console.log('📍 [Step 2] Checking custom_domain:', domain)
       // Check custom domain first
       let { data, error } = await supabase
         .from('tenants')
-        .select(`
-          *,
-          whiteLabel:white_label_configs(*)
-        `)
+        .select('*')
         .eq('custom_domain', domain)
         .single()
       
       if (!error && data) {
         tenant = data
-        console.log('Found tenant by custom domain:', tenant.name)
+        console.log('✅ [Step 2] Found tenant by custom domain:', tenant.name)
+      } else {
+        console.log('❌ [Step 2] Not found by custom_domain:', error?.message)
       }
       
     // Check subdomain if not found
@@ -94,10 +94,7 @@ Deno.serve(async (req) => {
       
       const { data: subdomainData, error: subdomainError } = await supabase
         .from('tenants')
-        .select(`
-          *,
-          whiteLabel:white_label_configs(*)
-        `)
+        .select('*')
         .eq('subdomain', subdomain)
         .single()
       
@@ -131,10 +128,7 @@ Deno.serve(async (req) => {
         // Fetch the full tenant record
         const { data: tenantFromWL, error: tenantError } = await supabase
           .from('tenants')
-          .select(`
-            *,
-            whiteLabel:white_label_configs(*)
-          `)
+          .select('*')
           .eq('id', matchedConfig.tenant_id)
           .single();
         
@@ -156,21 +150,18 @@ Deno.serve(async (req) => {
     if (!tenant) {
       const { data: defaultTenant, error: defaultError } = await supabase
         .from('tenants')
-        .select(`
-          *,
-          whiteLabel:white_label_configs(*)
-        `)
+        .select('*')
         .eq('is_default', true)
         .single()
       
       if (!defaultError && defaultTenant) {
         tenant = defaultTenant
-        console.log('Using default tenant:', tenant.name)
+        console.log('✅ Using default tenant:', tenant.name)
       }
     }
     
     if (!tenant) {
-      console.error('No tenant found')
+      console.error('❌ No tenant found')
       return new Response(
         JSON.stringify({ error: 'Tenant not found' }),
         { 
@@ -180,18 +171,39 @@ Deno.serve(async (req) => {
       )
     }
     
+    console.log('📦 Fetching white_label_configs for tenant:', tenant.id)
+    
+    // Fetch white_label_configs separately to ensure we get the data
+    const { data: whiteLabelData, error: wlError } = await supabase
+      .from('white_label_configs')
+      .select('*')
+      .eq('tenant_id', tenant.id)
+      .maybeSingle()
+    
+    if (wlError) {
+      console.error('❌ Error fetching white_label_configs:', wlError)
+    } else if (whiteLabelData) {
+      console.log('✅ Found white_label_configs:', whiteLabelData.id)
+    } else {
+      console.log('⚠️ No white_label_configs found for tenant')
+    }
+    
     // Transform white label config if exists
     let whiteLabelConfig = null
-    if (tenant.whiteLabel && tenant.whiteLabel.length > 0) {
-      const wl = tenant.whiteLabel[0]
+    if (whiteLabelData) {
       whiteLabelConfig = {
-        brand_identity: wl.brand_identity || {},
-        app_customization: wl.app_customization || {},
-        pwa_config: wl.pwa_config || {},
-        theme_colors: wl.theme_colors || {},
-        email_templates: wl.email_templates || {}
+        brand_identity: whiteLabelData.brand_identity || {},
+        app_customization: whiteLabelData.app_customization || {},
+        pwa_config: whiteLabelData.pwa_config || {},
+        theme_colors: whiteLabelData.theme_colors || {},
+        mobile_theme: whiteLabelData.mobile_theme || {},
+        splash_screens: whiteLabelData.splash_screens || {},
+        email_templates: whiteLabelData.email_templates || {},
+        domain_config: whiteLabelData.domain_config || {}
       }
+      console.log('✅ Transformed white label config with theme_colors')
     } else if (tenant.tenant_branding) {
+      console.log('⚠️ Falling back to tenant_branding')
       // Fallback to tenant_branding if no white_label_configs
       whiteLabelConfig = {
         brand_identity: {
@@ -210,6 +222,8 @@ Deno.serve(async (req) => {
         theme_colors: {},
         email_templates: {}
       }
+    } else {
+      console.log('❌ No white label config or tenant branding found')
     }
     
     // Prepare response
