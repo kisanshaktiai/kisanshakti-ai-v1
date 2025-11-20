@@ -85,8 +85,30 @@ export class WhiteLabelService {
    * Get white label config with caching and offline support
    */
   async getConfig(tenantId?: string, domain?: string): Promise<WhiteLabelConfig | null> {
-    // Check cache first
+    const currentDomain = window.location.hostname;
+    
+    // Validate cached config matches current domain
     const cached = this.getCachedConfig();
+    if (cached?.data?.tenant) {
+      const cachedDomains = [
+        cached.data.tenant.custom_domain,
+        cached.data.tenant.subdomain,
+        (cached.data.whiteLabelConfig as any)?.domain_config?.custom_domain,
+        (cached.data.whiteLabelConfig as any)?.brand_identity?.domain_config?.custom_domain
+      ].filter(Boolean);
+      
+      const domainMatches = cachedDomains.some(d => d === currentDomain);
+      
+      if (!domainMatches) {
+        console.log('🔄 [WhiteLabelService] Domain mismatch, clearing cache:', {
+          cached: cachedDomains,
+          current: currentDomain
+        });
+        this.clearCache();
+        // Force fresh fetch
+        return this.fetchConfig(tenantId, domain);
+      }
+    }
     
     // If cache is valid and fresh, return it
     if (cached && cached.expiresAt > Date.now()) {
