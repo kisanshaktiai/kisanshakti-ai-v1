@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
+import { checkRateLimit } from '../_shared/rateLimiter.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -14,6 +15,18 @@ Deno.serve(async (req) => {
   try {
     const url = new URL(req.url);
     const domain = url.searchParams.get('domain') || req.headers.get('host') || '';
+    
+    // Rate limiting: 100 requests per minute per domain
+    const rateLimit = checkRateLimit(domain, { maxRequests: 100, windowMs: 60000 });
+    if (!rateLimit.allowed) {
+      return new Response(
+        JSON.stringify({ error: 'Rate limit exceeded' }),
+        { 
+          status: 429, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
     
     console.log('[generate-manifest] Fetching manifest for domain:', domain);
 
