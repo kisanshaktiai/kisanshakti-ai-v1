@@ -18,15 +18,33 @@ Deno.serve(async (req) => {
     
     // Rate limiting: 200 requests per minute per domain
     const identifier = domain || tenantId || 'anonymous';
-    const rateLimit = await checkRateLimit(identifier, 'get-white-label-config', { maxRequests: 200, windowMs: 60000 });
-    if (!rateLimit.allowed) {
-      return new Response(
-        JSON.stringify({ error: 'Rate limit exceeded' }),
-        { 
-          status: 429, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+    console.log('Rate limit check:', { identifier, domain, tenantId });
+    
+    try {
+      const rateLimit = await checkRateLimit(identifier, 'get-white-label-config', { maxRequests: 200, windowMs: 60000 });
+      console.log('Rate limit result:', rateLimit);
+      
+      if (!rateLimit.allowed) {
+        console.log('Rate limit exceeded for identifier:', identifier);
+        return new Response(
+          JSON.stringify({ 
+            error: 'Rate limit exceeded',
+            resetTime: new Date(rateLimit.resetTime).toISOString()
+          }),
+          { 
+            status: 429, 
+            headers: { 
+              ...corsHeaders, 
+              'Content-Type': 'application/json',
+              'X-RateLimit-Remaining': rateLimit.remaining.toString(),
+              'X-RateLimit-Reset': rateLimit.resetTime.toString()
+            } 
+          }
+        );
+      }
+    } catch (error) {
+      console.error('Rate limit check failed:', error);
+      // Fail open on rate limit errors to avoid blocking legitimate traffic
     }
     
     console.log('Fetching white-label config:', { tenantId, domain });
