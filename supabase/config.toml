@@ -16,7 +16,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.lands-api]
-verify_jwt = true
+verify_jwt = false
 
 [functions.ai-smart-schedule]
 verify_jwt = true
