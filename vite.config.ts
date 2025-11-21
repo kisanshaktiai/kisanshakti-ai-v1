@@ -30,7 +30,7 @@ export default defineConfig(({ mode }) => ({
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff,woff2}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
       },
-      includeAssets: ['favicon.ico', 'icon-192x192.png', 'icon-512x512.png'],
+      includeAssets: ['favicon.ico', 'icon-192x192.png', 'icon-512x512.png', '.htaccess', '_redirects'],
       manifest: {
         name: 'KisanShakti',
         short_name: 'KisanShakti',

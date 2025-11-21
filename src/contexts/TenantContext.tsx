@@ -429,8 +429,48 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       // Fallback to default tenant
-      console.warn('⚠️ [TenantProvider] No tenant found for domain, using default');
-      throw new Error('No tenant found for domain');
+      console.warn('⚠️ [TenantProvider] No tenant found for domain, checking if development...');
+      
+      const isDevelopment = domain.includes('localhost') || domain.includes('lovable.app') || domain.includes('lovableproject.com');
+      
+      if (isDevelopment) {
+        console.log('✅ [TenantProvider] Development mode detected, using default fallback tenant');
+        
+        // Create minimal default tenant for development
+        const defaultTenant: TenantConfig = {
+          id: 'dev-default-tenant',
+          name: 'KisanShakti Ai',
+          domain: domain,
+          status: 'active',
+          settings: {
+            languages: ['en', 'hi'],
+            defaultLanguage: 'en',
+            timezone: 'Asia/Kolkata',
+            currency: 'INR'
+          },
+          branding: {
+            company_name: 'KisanShakti Ai',
+            logo_url: null,
+            primary_color: '#22c55e',
+            secondary_color: '#16a34a',
+            accent_color: '#84cc16'
+          },
+          features: ['ai_chat', 'weather', 'marketplace', 'social', 'analytics']
+        };
+        
+        setTenant(defaultTenant);
+        setLastUpdated(new Date());
+        applyThemeToDOM(defaultTenant.branding, {});
+        
+        // Cache the development fallback
+        localStorage.setItem('tenantId', defaultTenant.id);
+        localStorage.setItem('lastTenantFetch', Date.now().toString());
+        
+        return;
+      } else {
+        // In production with custom domain, this is an error
+        throw new Error('No tenant found for domain: ' + domain);
+      }
 
     } catch (err) {
       console.error('❌ [TenantProvider] Error fetching tenant:', err);
