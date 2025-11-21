@@ -219,9 +219,10 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           }
         }
         
-        // STAGE 3: Check white_label_configs.domain_config (both flat and nested structures)
+        // STAGE 3: Check white_label_configs.domain_config
+        // IMPORTANT: This is a farmer app skeleton, so we prioritize farmer_app domains
         if (!tenantData) {
-          console.log('🔍 [Stage 3] Checking white_label_configs...');
+          console.log('🔍 [Stage 3] Checking white_label_configs (farmer_app domains)...');
           
           const { data: whitelabelConfigs } = await supabase
             .from('white_label_configs')
@@ -231,15 +232,23 @@ export const useTenantStore = create<TenantState>((set, get) => ({
             const matchedConfig = whitelabelConfigs.find(wl => {
               const domainConfig = wl.domain_config as any;
               
-              // Check flat structure (legacy)
-              if (domainConfig?.custom_domain === domain || domainConfig?.subdomain === domain) {
+              // PRIORITY 1: Check farmer_app.custom_domain (main use case for this skeleton)
+              if (domainConfig?.farmer_app?.custom_domain === domain) {
+                console.log('✅ [Stage 3] Matched farmer_app.custom_domain');
                 return true;
               }
               
-              // Check nested structure (new multi-domain setup)
-              if (domainConfig?.farmer_app?.custom_domain === domain) return true;
-              if (domainConfig?.public_website?.custom_domain === domain) return true;
-              if (domainConfig?.tenant_portal?.custom_domain === domain) return true;
+              // PRIORITY 2: Check flat structure custom_domain (legacy support)
+              if (domainConfig?.custom_domain === domain) {
+                console.log('✅ [Stage 3] Matched flat custom_domain (legacy)');
+                return true;
+              }
+              
+              // PRIORITY 3: Check subdomain (legacy support)
+              if (domainConfig?.subdomain === domain) {
+                console.log('✅ [Stage 3] Matched subdomain (legacy)');
+                return true;
+              }
               
               return false;
             });
