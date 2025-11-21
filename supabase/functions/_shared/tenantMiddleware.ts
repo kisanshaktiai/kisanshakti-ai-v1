@@ -151,9 +151,13 @@ export async function resolveTenantFromRequest(
       }
     }
 
-    // STAGE 4: Fallback for development (localhost)
-    if (!tenant && (domain === 'localhost' || domain.includes('127.0.0.1'))) {
-      console.log('🔧 [Stage 4] Development mode - using default tenant');
+    // STAGE 4: Fallback for development (localhost) or edge-runtime
+    if (!tenant && (
+      domain === 'localhost' || 
+      domain.includes('127.0.0.1') || 
+      domain.includes('edge-runtime.supabase.com')
+    )) {
+      console.log('🔧 [Stage 4] Development/Edge Runtime mode - using default tenant');
       const { data: defaultTenant } = await supabase
         .from('tenants')
         .select('id, name, slug, subdomain, custom_domain, status, settings')
