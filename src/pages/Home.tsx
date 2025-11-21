@@ -34,7 +34,6 @@ import { useLands } from '@/hooks/useLands';
 import { HomeSkeleton } from '@/components/skeletons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 
 
 interface FeatureCard {
@@ -330,7 +329,7 @@ export default function Home() {
               <div className="relative z-10">
                 {/* Namaste Greeting - Very Subtle */}
                 <div className="mb-2">
-                  <p className="text-white/40 text-[10px] font-light tracking-wide">
+                  <p className="text-white/30 text-[9px] font-light tracking-wider uppercase">
                     🙏 Namaste, {user?.fullName?.split(' ')[0] || user?.farmerName?.split(' ')[0] || user?.name?.split(' ')[0] || 'Farmer'}
                   </p>
                 </div>
@@ -356,15 +355,15 @@ export default function Home() {
                 </div>
 
                 {/* Horizontal Scrolling Weather Stats */}
-                <div className="relative -mx-4 px-4">
-                  <ScrollArea className="w-full">
-                    <div className="flex gap-2 pb-2">
+                <div className="relative -mx-4 px-4 mt-3">
+                  <div className="overflow-x-auto overflow-y-hidden scrollbar-hide -mx-1 px-1">
+                    <div className="flex gap-3 pb-3 min-w-max">
                       {quickStats.map((stat, index) => {
                         const Icon = stat.icon;
                         return (
                           <motion.div 
                             key={index} 
-                            className="flex-shrink-0 w-[160px] bg-card/80 backdrop-blur-sm rounded-xl p-3 border border-border/50 hover:border-primary/50 transition-all hover:shadow-lg"
+                            className="flex-shrink-0 w-[165px] bg-card/90 backdrop-blur-sm rounded-xl p-4 border border-border/50 hover:border-primary/50 transition-all hover:shadow-lg"
                             whileHover={{ scale: 1.05, y: -2 }}
                             transition={{ type: 'spring', stiffness: 400, damping: 17 }}
                           >
@@ -374,16 +373,16 @@ export default function Home() {
                                   <Icon className="w-4 h-4 text-primary" />
                                 </div>
                               </div>
-                              {stat.trend === 'up' && <ArrowUpRight className="w-3 h-3 text-success" />}
-                              {stat.trend === 'down' && <ArrowDownRight className="w-3 h-3 text-destructive" />}
+                              {stat.trend === 'up' && <ArrowUpRight className="w-3.5 h-3.5 text-success" />}
+                              {stat.trend === 'down' && <ArrowDownRight className="w-3.5 h-3.5 text-destructive" />}
                             </div>
-                            <span className="text-xs text-muted-foreground block mb-1">{stat.label}</span>
-                            <p className="text-lg font-semibold">{stat.value}</p>
+                            <span className="text-xs text-muted-foreground block mb-1.5">{stat.label}</span>
+                            <p className="text-xl font-bold tracking-tight">{stat.value}</p>
                           </motion.div>
                         );
                       })}
                     </div>
-                  </ScrollArea>
+                  </div>
                 </div>
               </div>
             </motion.div>
