@@ -3,7 +3,7 @@ import { BottomNavigation } from './BottomNavigation';
 import { HindenburgMenu } from './HindenburgMenu';
 import { FloatingActionButton } from './FloatingActionButton';
 import { LanguageSelector } from './LanguageSelector';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/stores/authStore';
 import { useTranslation } from 'react-i18next';
 import { Leaf } from 'lucide-react';
@@ -14,7 +14,7 @@ import { VoiceNavigationProvider } from '@/contexts/VoiceNavigationContext';
 import { VoiceAssistant } from '@/components/voice/VoiceAssistant';
 
 export function AppLayout() {
-  const { tenant, applyWhiteLabelTheme } = useTenantStore();
+  const { tenant, branding } = useTenant();
   const { user } = useAuthStore();
   const { t } = useTranslation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -24,40 +24,21 @@ export function AppLayout() {
   const isAIChat = location.pathname === '/app/chat';
   const isCommunityChat = location.pathname.includes('/app/community/') && location.pathname.includes('/chat');
 
-  // Apply theme whenever tenant changes
-  useEffect(() => {
-    if (tenant?.whiteLabel) {
-      applyWhiteLabelTheme(tenant.whiteLabel);
-    }
-  }, [tenant, applyWhiteLabelTheme]);
+  // Get branding from TenantProvider (theme is applied automatically by TenantProvider)
+  const logoUrl = branding?.logo_url;
+  const companyName = branding?.company_name || tenant?.name || t('app.name');
+  const tagline = branding?.tagline || t('app.tagline');
 
-  // Get logo URL from white label config
-  const logoUrl = tenant?.whiteLabel?.brand_identity?.logo_url;
-  const companyName = tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name || t('app.name');
-  const tagline = tenant?.whiteLabel?.brand_identity?.tagline || t('app.tagline');
-
-  // Debug logging for logo and branding
+  // Debug logging for branding
   useEffect(() => {
-    console.log('🖼️ [AppLayout] Branding loaded:', {
+    console.log('🖼️ [AppLayout] Branding from TenantProvider:', {
       logoUrl,
       companyName,
       tagline,
       hasTenant: !!tenant,
-      hasWhiteLabel: !!tenant?.whiteLabel
+      hasBranding: !!branding
     });
-  }, [logoUrl, companyName, tagline, tenant]);
-
-  // PHASE 5: Enhanced debugging - log branding state
-  useEffect(() => {
-    console.log('🖼️ [AppLayout] Current Branding State:', {
-      tenant_loaded: !!tenant,
-      whiteLabel_present: !!tenant?.whiteLabel,
-      logo_url_from_whiteLabel: tenant?.whiteLabel?.brand_identity?.logo_url,
-      logo_url_from_localStorage: localStorage.getItem('brand_logo_url'),
-      company_name: tenant?.whiteLabel?.brand_identity?.company_name,
-      tagline: tenant?.whiteLabel?.brand_identity?.tagline
-    });
-  }, [tenant]);
+  }, [logoUrl, companyName, tagline, tenant, branding]);
 
   return (
     <VoiceNavigationProvider>
