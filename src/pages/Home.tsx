@@ -228,19 +228,19 @@ export default function Home() {
           )}
         </Button>
 
-        {/* Minimized View */}
+        {/* Minimized View with Scrolling Stats */}
         <AnimatePresence>
           {!isWeatherExpanded && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="p-4 flex items-center justify-between"
+              className="p-4"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 mb-3">
                 <Cloud className="w-6 h-6 text-white" />
                 <div>
-                  <p className="text-white font-semibold">
+                  <p className="text-white font-semibold text-lg">
                     {currentWeather ? `${Math.round(currentWeather.temp)}°C` : 'Loading...'}
                   </p>
                   <p className="text-white/70 text-xs">
@@ -248,14 +248,25 @@ export default function Home() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-4 text-white/80 text-sm">
-                <div className="flex items-center gap-1">
-                  <Droplets className="w-4 h-4" />
-                  <span>{currentWeather?.humidity || '--'}%</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Wind className="w-4 h-4" />
-                  <span>{currentWeather ? Math.round(currentWeather.wind_speed * 3.6) : '--'} km/h</span>
+              
+              {/* Horizontal Scrolling Stats */}
+              <div className="overflow-x-auto scrollbar-hide -mx-1">
+                <div className="flex gap-2 pb-1 min-w-max px-1">
+                  {quickStats.map((stat, index) => {
+                    const Icon = stat.icon;
+                    return (
+                      <div 
+                        key={index} 
+                        className="flex-shrink-0 bg-white/10 backdrop-blur-sm rounded-lg p-2.5 border border-white/20 min-w-[110px]"
+                      >
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Icon className="w-3.5 h-3.5 text-white/80" />
+                          <span className="text-[10px] text-white/70 uppercase tracking-wide">{stat.label}</span>
+                        </div>
+                        <p className="text-sm font-bold text-white">{stat.value}</p>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </motion.div>
@@ -327,9 +338,9 @@ export default function Home() {
         </div>
         
               <div className="relative z-10">
-                {/* Namaste Greeting - Very Subtle */}
-                <div className="mb-2">
-                  <p className="text-white/30 text-[9px] font-light tracking-wider uppercase">
+                {/* Namaste Greeting - Clear and Visible */}
+                <div className="mb-3">
+                  <p className="text-white/60 text-[11px] font-normal tracking-wider uppercase" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>
                     🙏 Namaste, {user?.fullName?.split(' ')[0] || user?.farmerName?.split(' ')[0] || user?.name?.split(' ')[0] || 'Farmer'}
                   </p>
                 </div>
@@ -354,34 +365,32 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Horizontal Scrolling Weather Stats */}
-                <div className="relative -mx-4 px-4 mt-3">
-                  <div className="overflow-x-auto overflow-y-hidden scrollbar-hide -mx-1 px-1">
-                    <div className="flex gap-3 pb-3 min-w-max">
-                      {quickStats.map((stat, index) => {
-                        const Icon = stat.icon;
-                        return (
-                          <motion.div 
-                            key={index} 
-                            className="flex-shrink-0 w-[165px] bg-card/90 backdrop-blur-sm rounded-xl p-4 border border-border/50 hover:border-primary/50 transition-all hover:shadow-lg"
-                            whileHover={{ scale: 1.05, y: -2 }}
-                            transition={{ type: 'spring', stiffness: 400, damping: 17 }}
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <div className="p-1.5 rounded-lg bg-primary/10">
-                                  <Icon className="w-4 h-4 text-primary" />
-                                </div>
+                {/* Weather Stats Grid - All 4 Cards Visible */}
+                <div className="mt-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    {quickStats.map((stat, index) => {
+                      const Icon = stat.icon;
+                      return (
+                        <motion.div 
+                          key={index} 
+                          className="bg-card/90 backdrop-blur-sm rounded-xl p-4 border border-border/50 hover:border-primary/50 transition-all hover:shadow-lg"
+                          whileHover={{ scale: 1.03, y: -2 }}
+                          transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <div className="p-1.5 rounded-lg bg-primary/10">
+                                <Icon className="w-4 h-4 text-primary" />
                               </div>
-                              {stat.trend === 'up' && <ArrowUpRight className="w-3.5 h-3.5 text-success" />}
-                              {stat.trend === 'down' && <ArrowDownRight className="w-3.5 h-3.5 text-destructive" />}
                             </div>
-                            <span className="text-xs text-muted-foreground block mb-1.5">{stat.label}</span>
-                            <p className="text-xl font-bold tracking-tight">{stat.value}</p>
-                          </motion.div>
-                        );
-                      })}
-                    </div>
+                            {stat.trend === 'up' && <ArrowUpRight className="w-3.5 h-3.5 text-success" />}
+                            {stat.trend === 'down' && <ArrowDownRight className="w-3.5 h-3.5 text-destructive" />}
+                          </div>
+                          <span className="text-xs text-muted-foreground block mb-1.5">{stat.label}</span>
+                          <p className="text-lg font-bold tracking-tight">{stat.value}</p>
+                        </motion.div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
