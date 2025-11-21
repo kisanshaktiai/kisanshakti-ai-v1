@@ -6,7 +6,7 @@ import { checkRateLimit } from '../_shared/rateLimiter.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, if-none-match',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-client-domain, if-none-match, origin',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
 };
 
@@ -302,23 +302,60 @@ serve(async (req: Request) => {
 
     // ===== STEP 2: Resolve Tenant =====
     console.log('🔍 [TenantConfig] Resolving tenant from request...');
-    const tenant = await resolveTenantFromRequest(req, supabaseUrl, supabaseKey);
+    let tenant = await resolveTenantFromRequest(req, supabaseUrl, supabaseKey);
     
     if (!tenant) {
-      console.error('❌ [TenantConfig] No tenant found for domain');
-      return new Response(
-        JSON.stringify({ 
-          error: 'Tenant not found',
-          message: 'No tenant configuration found for this domain. Please verify the domain is correctly configured.'
-        }),
-        { 
-          status: 404, 
-          headers: { 
-            ...corsHeaders, 
-            'Content-Type': 'application/json' 
-          } 
-        }
-      );
+      console.warn('⚠️ [TenantConfig] No tenant found for domain, loading default tenant');
+      
+      // Load default tenant as fallback
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      const { data: defaultTenant } = await supabase
+        .from('tenants')
+        .select('id, name, slug, subdomain, custom_domain, status, settings')
+        .eq('is_default', true)
+        .maybeSingle();
+      
+      if (defaultTenant) {
+        // Fetch branding for default tenant
+        const { data: whiteLabel } = await supabase
+          .from('white_label_configs')
+          .select('brand_identity')
+          .eq('tenant_id', defaultTenant.id)
+          .maybeSingle();
+
+        tenant = {
+          id: defaultTenant.id,
+          name: defaultTenant.name,
+          slug: defaultTenant.slug,
+          domain: defaultTenant.custom_domain || defaultTenant.subdomain || 'unknown',
+          subdomain: defaultTenant.subdomain,
+          custom_domain: defaultTenant.custom_domain,
+          status: defaultTenant.status || 'active',
+          settings: defaultTenant.settings || {},
+          branding: whiteLabel?.brand_identity ? {
+            company_name: whiteLabel.brand_identity.company_name,
+            logo_url: whiteLabel.brand_identity.logo_url,
+            primary_color: whiteLabel.brand_identity.primary_color,
+          } : undefined,
+          features: defaultTenant.settings?.features || [],
+        };
+        console.log('✅ [TenantConfig] Using default tenant:', defaultTenant.name);
+      } else {
+        console.error('❌ [TenantConfig] No tenant found and no default tenant available');
+        return new Response(
+          JSON.stringify({ 
+            error: 'Tenant not found',
+            message: 'No tenant configuration found for this domain and no default tenant available.'
+          }),
+          { 
+            status: 404, 
+            headers: { 
+              ...corsHeaders, 
+              'Content-Type': 'application/json' 
+            } 
+          }
+        );
+      }
     }
 
     console.log(`✅ [TenantConfig] Tenant resolved: ${tenant.name} (${tenant.id})`);

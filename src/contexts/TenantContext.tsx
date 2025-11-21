@@ -199,6 +199,24 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const domain = getCurrentDomain();
       console.log('🔍 [TenantProvider] Fetching tenant config from API...');
 
+      // Check localStorage cache first (1 hour TTL)
+      const cachedTenant = localStorage.getItem('tenant_config_cache');
+      if (cachedTenant) {
+        try {
+          const parsed = JSON.parse(cachedTenant);
+          if (Date.now() - parsed.timestamp < 3600000) { // 1 hour cache
+            console.log('📦 [TenantProvider] Using cached tenant config');
+            setTenant(parsed.data);
+            tenantIsolationService.setTenantContext(parsed.data.id, domain);
+            applyThemeToDOM(parsed.data.branding, parsed.data.theme);
+            return;
+          }
+        } catch (e) {
+          console.warn('⚠️ [TenantProvider] Failed to parse cache:', e);
+          localStorage.removeItem('tenant_config_cache');
+        }
+      }
+
       // OPTION 1: Try centralized API first (cleaner)
       try {
         const response = await fetch(
@@ -207,6 +225,8 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
+              'X-Client-Domain': domain, // Pass actual client domain
+              'Origin': `https://${domain}`, // Helps with CORS and domain detection
             },
           }
         );
@@ -235,7 +255,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           tenantIsolationService.setTenantContext(config.id, domain);
           applyThemeToDOM(config.branding, config.theme);
 
-          // Cache for offline
+          // Cache for offline in IndexedDB
           await localDB.saveTenantConfig(config.id, { 
             brand_identity: apiConfig.branding,
             mobile_theme: apiConfig.theme,
@@ -245,6 +265,12 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             name: config.name,
             domain
           });
+
+          // Cache in localStorage for fast access
+          localStorage.setItem('tenant_config_cache', JSON.stringify({
+            data: config,
+            timestamp: Date.now()
+          }));
 
           console.log('✅ [TenantProvider] Config cached for offline use');
           return;
