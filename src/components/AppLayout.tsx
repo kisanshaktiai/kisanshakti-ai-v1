@@ -47,6 +47,18 @@ export function AppLayout() {
     });
   }, [logoUrl, companyName, tagline, tenant]);
 
+  // PHASE 5: Enhanced debugging - log branding state
+  useEffect(() => {
+    console.log('🖼️ [AppLayout] Current Branding State:', {
+      tenant_loaded: !!tenant,
+      whiteLabel_present: !!tenant?.whiteLabel,
+      logo_url_from_whiteLabel: tenant?.whiteLabel?.brand_identity?.logo_url,
+      logo_url_from_localStorage: localStorage.getItem('brand_logo_url'),
+      company_name: tenant?.whiteLabel?.brand_identity?.company_name,
+      tagline: tenant?.whiteLabel?.brand_identity?.tagline
+    });
+  }, [tenant]);
+
   return (
     <VoiceNavigationProvider>
       <div className="min-h-mobile-screen bg-background">
