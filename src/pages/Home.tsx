@@ -208,9 +208,9 @@ export default function Home() {
       {/* Hero Section with Weather Animation - Swipeable with Pill Handle */}
       <motion.div 
         className="relative overflow-hidden bg-gradient-primary rounded-b-[2rem] shadow-elegant border-b border-border/50"
-        initial={{ height: "35vh" }}
+        initial={{ height: "28vh" }}
         animate={{ 
-          height: isWeatherExpanded ? "35vh" : "64px",
+          height: isWeatherExpanded ? "28vh" : "64px",
         }}
         transition={{ 
           type: "spring",
@@ -362,10 +362,10 @@ export default function Home() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="h-full flex flex-col p-4 pt-7 relative z-10"
+              className="h-full flex flex-col p-3 pt-6 relative z-10"
             >
               {/* Header - Max 2 Lines */}
-              <div className="mb-3">
+              <div className="mb-2">
                 {/* Line 1: Namaste + Farmer Name */}
                 <div className="flex items-center gap-2 mb-0.5">
                   <motion.h2 
@@ -400,7 +400,7 @@ export default function Home() {
               </div>
 
               {/* Weather Stats Grid - 2x2 layout, max 2 lines per card */}
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-1.5">
                 {quickStats.map((stat, index) => {
                   const Icon = stat.icon;
                   return (
