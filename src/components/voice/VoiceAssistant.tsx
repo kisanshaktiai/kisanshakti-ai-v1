@@ -42,9 +42,9 @@ export const VoiceAssistant: React.FC = () => {
         {isListening && <WaveformVisualizer isListening={isListening} stream={stream} />}
       </AnimatePresence>
 
-      {/* Voice Assistant Floating Button */}
+      {/* Voice Assistant Floating Button - Left side for rural farmer accessibility */}
       <motion.div
-        className="fixed bottom-24 right-6 z-50 flex flex-col gap-3"
+        className="fixed bottom-24 left-6 z-50 flex flex-col gap-3"
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ delay: 0.5 }}
@@ -129,29 +129,29 @@ export const VoiceAssistant: React.FC = () => {
           </motion.div>
         )}
 
-        {/* Help Text */}
+        {/* Help Text - Flipped to right side */}
         {isEnabled && !isListening && !isSpeaking && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
-            className="absolute right-20 bottom-4 bg-popover text-popover-foreground px-4 py-2 rounded-lg shadow-lg text-sm whitespace-nowrap"
+            className="absolute left-20 bottom-4 bg-popover text-popover-foreground px-4 py-2 rounded-lg shadow-lg text-sm whitespace-nowrap"
           >
             Tap to speak
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-2 w-0 h-0 border-t-8 border-b-8 border-l-8 border-transparent border-l-popover" />
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-2 w-0 h-0 border-t-8 border-b-8 border-r-8 border-transparent border-r-popover" />
           </motion.div>
         )}
 
-        {/* Listening indicator */}
+        {/* Listening indicator - Flipped to right side */}
         {isListening && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
-            className="absolute right-20 bottom-4 bg-destructive text-destructive-foreground px-4 py-2 rounded-lg shadow-lg text-sm font-semibold whitespace-nowrap"
+            className="absolute left-20 bottom-4 bg-destructive text-destructive-foreground px-4 py-2 rounded-lg shadow-lg text-sm font-semibold whitespace-nowrap"
           >
             Listening...
-            <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-2 w-0 h-0 border-t-8 border-b-8 border-l-8 border-transparent border-l-destructive" />
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-2 w-0 h-0 border-t-8 border-b-8 border-r-8 border-transparent border-r-destructive" />
           </motion.div>
         )}
       </motion.div>

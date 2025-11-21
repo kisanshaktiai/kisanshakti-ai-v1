@@ -30,6 +30,7 @@ import { landsApi } from '@/services/landsApi';
 import { useWeather } from '@/hooks/useWeather';
 import { useLands } from '@/hooks/useLands';
 import { HomeSkeleton } from '@/components/skeletons';
+import { FloatingWeatherDock } from '@/components/weather/FloatingWeatherDock';
 
 
 interface FeatureCard {
@@ -200,7 +201,11 @@ export default function Home() {
   }
 
   return (
-    <div className="bg-gradient-subtle">
+    <>
+      {/* Floating Weather Dock - Dockable anywhere */}
+      <FloatingWeatherDock />
+      
+      <div className="bg-gradient-subtle">
       {/* Hero Section with Weather Animation */}
       <div className="relative overflow-hidden bg-gradient-earth p-4 pb-6 rounded-b-3xl shadow-elegant">
         {/* Weather-based animated background */}
@@ -485,7 +490,8 @@ export default function Home() {
           </CardContent>
         </Card>
       </div>
+      </div>
       
-    </div>
+    </>
   );
 }
