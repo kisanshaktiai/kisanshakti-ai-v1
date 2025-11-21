@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { toast as sonnerToast } from 'sonner';
 
 interface InstaScanFlowProps {
@@ -20,7 +20,7 @@ export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { tenant } = useTenantStore();
+  const { tenant } = useTenant();
   const [showCamera, setShowCamera] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [scanResult, setScanResult] = useState<InstaScanResult | null>(null);

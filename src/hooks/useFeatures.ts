@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { defaultFeatures, FeatureItem } from '@/config/featureConfig';
 
 export function useFeatures() {
-  const { tenant } = useTenantStore();
+  const { tenant } = useTenant();
   const [isLoading, setIsLoading] = useState(false);
 
   // Map database feature keys to app feature IDs for DISABLE overrides
@@ -40,8 +40,8 @@ export function useFeatures() {
     let processedFeatures: FeatureItem[];
     
     // Check if tenant has feature settings to DISABLE specific features
-    if (tenant?.settings?.features) {
-      const tenantFeatures = tenant.settings.features;
+    if (tenant?.features) {
+      const tenantFeatures = tenant.features;
       
       // Handle array format - features NOT in array are disabled
       if (Array.isArray(tenantFeatures)) {

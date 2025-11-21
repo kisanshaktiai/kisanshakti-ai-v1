@@ -46,7 +46,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { useToast } from '@/hooks/use-toast';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { cn } from '@/lib/utils';
@@ -90,7 +90,7 @@ const NDVIAnalysis = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { session } = useAuthStore();
-  const { tenant } = useTenantStore();
+  const { tenant } = useTenant();
   const { toast } = useToast();
   const { speak, isSpeaking, stop } = useTextToSpeech();
   const [selectedLandId, setSelectedLandId] = useState<string | null>(null);
