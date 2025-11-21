@@ -58,6 +58,7 @@ import { WhiteLabelService } from "@/services/WhiteLabelService";
 import { useLocationPreloader } from "@/hooks/useLocationPreloader";
 import { syncService } from "@/services/syncService";
 import { localDB } from "@/services/localDB";
+import { tenantIsolationService } from "@/services/tenantIsolationService";
 import { useGlobalRealtimeSync } from "@/hooks/useGlobalRealtimeSync";
 
 const queryClient = new QueryClient({
@@ -117,6 +118,12 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           domain: currentDomain
         });
         
+        // CRITICAL: Set tenant isolation context for all services
+        tenantIsolationService.setTenantContext(
+          loadedTenant.id,
+          currentDomain
+        );
+        
         // STEP 2: INITIALIZE TENANT-SCOPED LOCAL STORAGE (BLOCKING)
         setCurrentStep('Initializing secure storage...');
         await localDB.initializeWithTenant(loadedTenant.id);
@@ -127,6 +134,12 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         
         // CRITICAL SECURITY: Validate auth tenant matches current tenant
         const { user, session } = useAuthStore.getState();
+        
+        // Update tenant isolation service with user ID after auth
+        if (user?.id) {
+          tenantIsolationService.setUserId(user.id);
+        }
+        
         if (session && user?.tenantId !== loadedTenant.id) {
           console.error('🚨 [Security] TENANT MISMATCH DETECTED! Force logout.', {
             sessionTenant: user?.tenantId,
@@ -135,6 +148,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           });
           // Force logout for security
           useAuthStore.getState().logout();
+          tenantIsolationService.clearContext();
           await localDB.clearAll();
         }
         

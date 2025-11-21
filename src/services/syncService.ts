@@ -83,13 +83,22 @@ class SyncService {
     const tenantId = authState.user?.tenantId;
     const userId = authState.user?.id;
     
-    // Strict validation: Check for missing OR empty string values
-    if (!tenantId || !userId || tenantId.trim() === '' || userId.trim() === '') {
-      console.error('❌ [Sync] Invalid auth data:', { tenantId, userId });
-      return { success: false, message: 'User not authenticated' };
+    // CRITICAL: Strict validation - prevent sync without complete auth context
+    if (!tenantId || !userId) {
+      console.error('❌ [Sync] Missing auth data - cannot sync:', { 
+        userId: userId || 'undefined',
+        tenantId: tenantId || 'undefined'
+      });
+      return { success: false, message: 'User not authenticated with tenant' };
     }
     
-    console.log('✅ [Sync] Auth validated:', { userId, tenantId });
+    // Additional validation: Check for empty strings
+    if (tenantId.trim() === '' || userId.trim() === '') {
+      console.error('❌ [Sync] Empty auth data detected:', { tenantId, userId });
+      return { success: false, message: 'Invalid authentication data' };
+    }
+    
+    console.log('✅ [Sync] Auth context validated:', { userId, tenantId });
 
     this.syncInProgress = true;
     await localDB.updateSyncMetadata({ syncInProgress: true });
