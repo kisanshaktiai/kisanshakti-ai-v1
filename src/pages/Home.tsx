@@ -30,7 +30,9 @@ import { landsApi } from '@/services/landsApi';
 import { useWeather } from '@/hooks/useWeather';
 import { useLands } from '@/hooks/useLands';
 import { HomeSkeleton } from '@/components/skeletons';
-import { FloatingWeatherDock } from '@/components/weather/FloatingWeatherDock';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ChevronUp, ChevronDown } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 
 interface FeatureCard {
@@ -51,6 +53,7 @@ export default function Home() {
   const { user } = useAuthStore();
   const [currentTime, setCurrentTime] = useState(new Date());
   const { currentWeather } = useWeather();
+  const [isWeatherExpanded, setIsWeatherExpanded] = useState(true);
   
   // Use consistent data fetching hook (handles online/offline automatically)
   const { lands, isLoading: loading } = useLands();
@@ -201,14 +204,72 @@ export default function Home() {
   }
 
   return (
-    <>
-      {/* Floating Weather Dock - Dockable anywhere */}
-      <FloatingWeatherDock />
-      
-      <div className="bg-gradient-subtle">
-      {/* Hero Section with Weather Animation */}
-      <div className="relative overflow-hidden bg-gradient-earth p-4 pb-6 rounded-b-3xl shadow-elegant">
-        {/* Weather-based animated background */}
+    <div className="bg-gradient-subtle">
+      {/* Hero Section with Weather Animation - Collapsible */}
+      <motion.div 
+        className="relative overflow-hidden bg-gradient-earth rounded-b-3xl shadow-elegant"
+        animate={{
+          height: isWeatherExpanded ? 'auto' : '80px'
+        }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+      >
+        {/* Minimize/Expand Button */}
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setIsWeatherExpanded(!isWeatherExpanded)}
+          className="absolute top-2 right-2 z-10 h-8 w-8 rounded-full bg-background/20 backdrop-blur-sm hover:bg-background/40"
+        >
+          {isWeatherExpanded ? (
+            <ChevronUp className="h-4 w-4 text-white" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-white" />
+          )}
+        </Button>
+
+        {/* Minimized View */}
+        <AnimatePresence>
+          {!isWeatherExpanded && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="p-4 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <Cloud className="w-6 h-6 text-white" />
+                <div>
+                  <p className="text-white font-semibold">
+                    {currentWeather ? `${Math.round(currentWeather.temp)}°C` : 'Loading...'}
+                  </p>
+                  <p className="text-white/70 text-xs">
+                    {currentWeather?.description || 'Weather info'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 text-white/80 text-sm">
+                <div className="flex items-center gap-1">
+                  <Droplets className="w-4 h-4" />
+                  <span>{currentWeather?.humidity || '--'}%</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Wind className="w-4 h-4" />
+                  <span>{currentWeather ? Math.round(currentWeather.wind_speed * 3.6) : '--'} km/h</span>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Expanded View - Weather-based animated background */}
+        <AnimatePresence>
+          {isWeatherExpanded && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="p-4 pb-6"
+            >
         <div className="absolute inset-0">
           {/* Base gradient */}
           <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-accent/20" />
@@ -281,9 +342,12 @@ export default function Home() {
                   hour: '2-digit', 
                   minute: '2-digit' 
                 })}
-              </div>
-            </div>
           </div>
+        </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
 
           {/* Quick Stats Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
