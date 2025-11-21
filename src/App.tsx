@@ -177,12 +177,18 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   // Initialize sync service ONLY when user is authenticated (non-blocking background task)
   useEffect(() => {
     const initializeSync = () => {
-      const { user } = useAuthStore.getState();
+      const { user, session: currentSession } = useAuthStore.getState();
       
-      // Silent skip if no user
-      if (!user?.id || !user?.tenantId) {
+      // Only run sync if we have both user and valid session
+      if (!user?.id || !user?.tenantId || !currentSession) {
+        console.log('⏸️ [Sync] Skipping - no authenticated user');
         return;
       }
+      
+      console.log('▶️ [Sync] Starting background sync for authenticated user:', {
+        userId: user.id,
+        tenantId: user.tenantId
+      });
       
       // Run sync in background without blocking app load
       syncService.performSync(false).catch(() => {
@@ -191,9 +197,11 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       });
     };
     
-    // Start sync immediately in background (non-blocking)
-    initializeSync();
-  }, []);
+    // Only trigger sync when session is available (after auth completes)
+    if (session) {
+      initializeSync();
+    }
+  }, [session]); // Depend on session to ensure auth is complete
 
   // Apply white label theme whenever tenant changes
   useEffect(() => {
