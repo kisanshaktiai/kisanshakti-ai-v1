@@ -186,6 +186,13 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         return;
       }
       
+      // CRITICAL FIX: Ensure tenant isolation service has user ID before sync
+      const currentContext = tenantIsolationService.validateContext(false);
+      if (currentContext.valid && !currentContext.userId) {
+        console.log('🔧 [Sync] Adding user ID to tenant context before sync');
+        tenantIsolationService.setUserId(user.id);
+      }
+      
       console.log('▶️ [Sync] Starting background sync for authenticated user:', {
         userId: user.id,
         tenantId: user.tenantId
