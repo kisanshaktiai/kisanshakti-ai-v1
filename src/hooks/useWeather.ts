@@ -91,7 +91,7 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
-  const { tenant } = useTenant();
+  const { tenant, isLoading: tenantLoading } = useTenant();
   
   // Use the centralized location service
   const { location: deviceLocation } = useLocation();
@@ -101,7 +101,15 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
 
 
   const fetchWeatherData = async () => {
+    // Don't fetch if tenant isn't loaded yet
+    if (!tenant?.id) {
+      console.log('⏳ [useWeather] Waiting for tenant to load before fetching weather');
+      return;
+    }
+
     const weatherLocation = location || (deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : defaultLocation);
+    
+    console.log('🌤️ [useWeather] Fetching weather with tenant:', tenant.id);
     
     try {
       setLoading(true);
@@ -227,14 +235,21 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
   };
 
   useEffect(() => {
-    // Fetch weather data when location is available
-    if (location || deviceLocation) {
+    // Wait for tenant to load before fetching weather
+    if (tenantLoading) {
+      console.log('⏳ [useWeather] Tenant still loading, skipping weather fetch');
+      return;
+    }
+
+    // Fetch weather data when tenant and location are available
+    if (tenant?.id && (location || deviceLocation)) {
+      console.log('✅ [useWeather] Tenant loaded, fetching weather data');
       fetchWeatherData();
       // Refresh every 30 minutes
       const interval = setInterval(fetchWeatherData, 1800000);
       return () => clearInterval(interval);
     }
-  }, [location?.lat, location?.lon, deviceLocation?.lat, deviceLocation?.lon]);
+  }, [tenant?.id, tenantLoading, location?.lat, location?.lon, deviceLocation?.lat, deviceLocation?.lon]);
 
   // Update location name when device location changes
   useEffect(() => {
