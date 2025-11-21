@@ -405,21 +405,8 @@ serve(async (req: Request): Promise<Response> => {
       return blockResponse
     }
 
-    // ===== STEP 3: Validate Authentication (optional for weather) =====
-    const authResult = await validateTenantAuth(req, tenant, supabaseUrl, supabaseServiceKey, false)
-    
-    if (!authResult.valid && req.headers.get('authorization')) {
-      console.error('❌ [Weather] Auth validation failed:', authResult.error)
-      return new Response(
-        JSON.stringify({ error: authResult.error, errorCode: authResult.errorCode }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Log authenticated access
-    if (authResult.authContext) {
-      console.log(`👤 [Weather] Authenticated request from user: ${authResult.authContext.userId}`)
-    }
+    // ===== STEP 3: No Authentication Required (Public Weather Endpoint) =====
+    console.log('🌐 [Weather] Public endpoint - no authentication required')
     
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
