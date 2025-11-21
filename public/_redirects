@@ -1,0 +1,4 @@
+# Netlify redirects for SPA routing
+# This file is a backup for hosting platforms that support Netlify-style redirects
+
+/*    /index.html   200
