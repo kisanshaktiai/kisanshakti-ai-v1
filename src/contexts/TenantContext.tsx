@@ -129,12 +129,24 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
 
     console.log('🎨 [TenantProvider] Applying theme to DOM');
+    console.log('🎨 [TenantProvider] Branding data:', {
+      company_name: branding.company_name,
+      logo_url: branding.logo_url,
+      favicon_url: branding.favicon_url,
+      primary_color: branding.primary_color,
+      secondary_color: branding.secondary_color,
+      accent_color: branding.accent_color,
+    });
+    console.log('🎨 [TenantProvider] Theme data:', theme ? Object.keys(theme) : 'No theme data');
 
     // Apply theme colors if available
     if (theme?.core) {
+      console.log('🎨 [TenantProvider] Applying core theme colors:', Object.keys(theme.core));
       Object.entries(theme.core).forEach(([key, value]) => {
         if (value) {
-          root.style.setProperty(`--${key.replace(/_/g, '-')}`, ensureHSL(value));
+          const hslValue = ensureHSL(value);
+          root.style.setProperty(`--${key.replace(/_/g, '-')}`, hslValue);
+          console.log(`  ✓ Set --${key.replace(/_/g, '-')}: ${hslValue}`);
         }
       });
     }
@@ -198,6 +210,8 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const domain = getCurrentDomain();
       console.log('🔍 [TenantProvider] Fetching tenant config from API...');
+      console.log('🌐 [TenantProvider] Current domain:', domain);
+      console.log('🌐 [TenantProvider] Current URL:', window.location.href);
 
       // Check localStorage cache first (1 hour TTL)
       const cachedTenant = localStorage.getItem('tenant_config_cache');
@@ -235,6 +249,15 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const apiConfig = await response.json();
           
           console.log('✅ [TenantProvider] Loaded config from centralized API');
+          console.log('📦 [TenantProvider] API Response:', {
+            tenant_name: apiConfig.tenant?.name,
+            tenant_id: apiConfig.tenant?.id,
+            has_branding: !!apiConfig.branding,
+            has_theme: !!apiConfig.theme,
+            branding_company: apiConfig.branding?.company_name,
+            branding_logo: apiConfig.branding?.logo_url,
+            branding_primary_color: apiConfig.branding?.primary_color,
+          });
           
           const config: TenantConfig = {
             id: apiConfig.tenant.id,
@@ -252,7 +275,10 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           };
 
           setTenant(config);
+          console.log('✅ [TenantProvider] Tenant state updated:', config.name);
+          console.log('✅ [TenantProvider] Setting tenant context for isolation service');
           tenantIsolationService.setTenantContext(config.id, domain);
+          console.log('✅ [TenantProvider] Applying theme to DOM with branding and theme');
           applyThemeToDOM(config.branding, config.theme);
 
           // Cache for offline in IndexedDB
@@ -276,7 +302,9 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return;
         }
       } catch (apiError) {
-        console.warn('⚠️ [TenantProvider] API failed, falling back to direct DB access:', apiError);
+        console.error('❌ [TenantProvider] API failed, falling back to direct DB access');
+        console.error('❌ [TenantProvider] API Error details:', apiError);
+        console.error('❌ [TenantProvider] API Error message:', (apiError as Error)?.message);
       }
 
       // OPTION 2: Fallback to direct database access (for development/testing)
