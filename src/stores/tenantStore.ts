@@ -199,7 +199,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           // Try to load the stored tenant
           const { data: storedTenant, error: storedError } = await supabase
             .from('tenants')
-            .select('*')
+            .select('id, name, slug, subdomain, custom_domain, is_default, settings, status')
             .eq('id', storedTenantId)
             .maybeSingle();
           
@@ -213,7 +213,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           // Try to find the KisanShakti tenant specifically
           const { data, error: defaultError } = await supabase
             .from('tenants')
-            .select('*')
+            .select('id, name, slug, subdomain, custom_domain, is_default, settings, status')
             .eq('slug', 'kisanshakti-ai')
             .maybeSingle();
           
@@ -223,7 +223,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
             // Fallback to any tenant marked as default
             const { data: defaultData, error: fallbackError } = await supabase
               .from('tenants')
-              .select('*')
+              .select('id, name, slug, subdomain, custom_domain, is_default, settings, status')
               .eq('is_default', true)
               .maybeSingle();
             
@@ -238,7 +238,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
         // STAGE 1: Exact custom_domain match in tenants table
         const { data: exactMatch, error: exactError } = await supabase
           .from('tenants')
-          .select('*')
+          .select('id, name, slug, subdomain, custom_domain, is_default, settings, status')
           .eq('custom_domain', domain)
           .maybeSingle();
         
@@ -251,7 +251,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
         if (!tenantData) {
           const { data: subdomainMatch, error: subError } = await supabase
             .from('tenants')
-            .select('*')
+            .select('id, name, slug, subdomain, custom_domain, is_default, settings, status')
             .eq('subdomain', domain)
             .maybeSingle();
           
@@ -323,7 +323,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
             
             const { data: partialMatches } = await supabase
               .from('tenants')
-              .select('*')
+              .select('id, name, slug, subdomain, custom_domain, is_default, settings, status')
               .or(`subdomain.eq.${subdomain},custom_domain.ilike.%${baseDomain}%`);
             
             if (partialMatches && partialMatches.length > 0) {
@@ -895,6 +895,11 @@ export const useTenantStore = create<TenantState>((set, get) => ({
     
     // Fallback to brand identity colors if theme_colors not available
     const brandIdentity = whiteLabel.brand_identity;
+    
+    if (!themeColors) {
+      console.warn('⚠️ [Theme] No theme_colors or mobile_theme found, falling back to brand_identity colors');
+      console.warn('💡 [Theme] To fix: Populate mobile_theme or theme_colors in white_label_configs table');
+    }
     
     // Primary colors
     if (brandIdentity?.primary_color) {
