@@ -15126,6 +15126,48 @@ export type Database = {
         }
         Relationships: []
       }
+      security_audit_log: {
+        Row: {
+          attempted_tenant_id: string | null
+          created_at: string | null
+          details: Json | null
+          event_type: string
+          id: string
+          ip_address: unknown
+          operation: string | null
+          table_name: string | null
+          user_agent: string | null
+          user_id: string | null
+          user_tenant_id: string | null
+        }
+        Insert: {
+          attempted_tenant_id?: string | null
+          created_at?: string | null
+          details?: Json | null
+          event_type: string
+          id?: string
+          ip_address?: unknown
+          operation?: string | null
+          table_name?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+          user_tenant_id?: string | null
+        }
+        Update: {
+          attempted_tenant_id?: string | null
+          created_at?: string | null
+          details?: Json | null
+          event_type?: string
+          id?: string
+          ip_address?: unknown
+          operation?: string | null
+          table_name?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+          user_tenant_id?: string | null
+        }
+        Relationships: []
+      }
       security_events: {
         Row: {
           created_at: string
@@ -21504,6 +21546,7 @@ export type Database = {
         }
         Returns: Json
       }
+      is_admin_user: { Args: { _user_id: string }; Returns: boolean }
       is_authenticated_admin: { Args: never; Returns: boolean }
       is_bootstrap_completed: { Args: never; Returns: boolean }
       is_bootstrap_required: { Args: never; Returns: boolean }
@@ -21512,6 +21555,7 @@ export type Database = {
       is_invite_valid: { Args: { invite_token: string }; Returns: boolean }
       is_moderator: { Args: never; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
+      is_tenant_active: { Args: { _tenant_id: string }; Returns: boolean }
       is_tenant_admin:
         | { Args: never; Returns: boolean }
         | { Args: { _tenant_id: string }; Returns: boolean }
@@ -22335,6 +22379,10 @@ export type Database = {
       }
       user_has_tenant_access: {
         Args: { tenant_uuid: string }
+        Returns: boolean
+      }
+      user_owns_schedule: {
+        Args: { _schedule_id: string; _user_id: string }
         Returns: boolean
       }
       validate_admin_registration_token: {
