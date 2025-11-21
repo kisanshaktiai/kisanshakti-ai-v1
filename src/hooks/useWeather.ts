@@ -158,23 +158,26 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
       }
 
       if (data) {
+        // Extract current weather from response (API returns { current: {...}, tenant: {...} })
+        const currentData = data.current || data;
+        
         console.log('✅ [useWeather] Received current weather data:', {
-          temp: data.temp,
-          description: data.description,
-          provider: data.provider
+          temp: currentData.temp,
+          description: currentData.description,
+          provider: currentData.provider
         });
         
         // Add location name from localStorage or use coordinates
         const storedLocationName = localStorage.getItem('weatherLocationName');
         if (storedLocationName) {
-          data.location = storedLocationName;
-        } else if (data.location) {
-          data.location = data.location;
+          currentData.location = storedLocationName;
+        } else if (currentData.location) {
+          currentData.location = currentData.location;
         } else {
-          data.location = `${weatherLocation.lat.toFixed(2)}°N, ${weatherLocation.lon.toFixed(2)}°E`;
+          currentData.location = `${weatherLocation.lat.toFixed(2)}°N, ${weatherLocation.lon.toFixed(2)}°E`;
         }
         
-        setCurrentWeather(data);
+        setCurrentWeather(currentData);
         
         // Fetch forecast data
         console.log('📡 [useWeather] Fetching forecast data from API...');
@@ -189,19 +192,25 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
           } : undefined,
         });
 
+        let dailyData: any[] = [];
+        let hourlyData: any[] = [];
+
         if (forecastError) {
           console.error('❌ [useWeather] Forecast fetch error:', forecastError);
         } else if (forecastData) {
           console.log('✅ [useWeather] Received forecast data');
-          setForecast(forecastData.daily || []);
-          setHourlyForecast(forecastData.hourly || []);
+          // Extract forecast from response (API returns { forecast: [...], tenant: {...} })
+          dailyData = forecastData.forecast || forecastData.daily || [];
+          hourlyData = forecastData.hourly || [];
+          setForecast(dailyData);
+          setHourlyForecast(hourlyData);
         }
         
         // Cache the complete data in localStorage
         const cacheData = {
-          current: data,
-          forecast: forecastData?.daily || [],
-          hourly: forecastData?.hourly || [],
+          current: currentData,
+          forecast: dailyData,
+          hourly: hourlyData,
           timestamp: Date.now()
         };
         localStorage.setItem(cacheKey, JSON.stringify(cacheData));
