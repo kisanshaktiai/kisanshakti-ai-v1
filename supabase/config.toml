@@ -3,8 +3,11 @@ project_id = "qfklkkzxemsbeniyugiz"
 [functions.generate-manifest]
 verify_jwt = false
 
+[functions.tenant-config]
+verify_jwt = false
+
 [functions.weather]
-verify_jwt = true
+verify_jwt = false
 
 [functions.ai-agriculture-chat]
 verify_jwt = true

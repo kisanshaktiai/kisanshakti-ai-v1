@@ -199,7 +199,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           // Try to load the stored tenant
           const { data: storedTenant, error: storedError } = await supabase
             .from('tenants')
-            .select('*')
+            .select('id, name, slug, subdomain, custom_domain, is_default, settings, status')
             .eq('id', storedTenantId)
             .maybeSingle();
           
@@ -213,7 +213,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           // Try to find the KisanShakti tenant specifically
           const { data, error: defaultError } = await supabase
             .from('tenants')
-            .select('*')
+            .select('id, name, slug, subdomain, custom_domain, is_default, settings, status')
             .eq('slug', 'kisanshakti-ai')
             .maybeSingle();
           
@@ -223,7 +223,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
             // Fallback to any tenant marked as default
             const { data: defaultData, error: fallbackError } = await supabase
               .from('tenants')
-              .select('*')
+              .select('id, name, slug, subdomain, custom_domain, is_default, settings, status')
               .eq('is_default', true)
               .maybeSingle();
             
@@ -238,7 +238,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
         // STAGE 1: Exact custom_domain match in tenants table
         const { data: exactMatch, error: exactError } = await supabase
           .from('tenants')
-          .select('*')
+          .select('id, name, slug, subdomain, custom_domain, is_default, settings, status')
           .eq('custom_domain', domain)
           .maybeSingle();
         
@@ -251,7 +251,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
         if (!tenantData) {
           const { data: subdomainMatch, error: subError } = await supabase
             .from('tenants')
-            .select('*')
+            .select('id, name, slug, subdomain, custom_domain, is_default, settings, status')
             .eq('subdomain', domain)
             .maybeSingle();
           
@@ -300,9 +300,9 @@ export const useTenantStore = create<TenantState>((set, get) => ({
               
               const { data: tenantFromWL } = await supabase
                 .from('tenants')
-                .select('*')
+                .select('id, name, slug, subdomain, custom_domain, is_default, settings, status')
                 .eq('id', matchedConfig.tenant_id)
-                .single();
+                .maybeSingle();
               
               if (tenantFromWL) {
                 console.log('✅ [Stage 3] Loaded tenant:', tenantFromWL.name);
@@ -323,7 +323,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
             
             const { data: partialMatches } = await supabase
               .from('tenants')
-              .select('*')
+              .select('id, name, slug, subdomain, custom_domain, is_default, settings, status')
               .or(`subdomain.eq.${subdomain},custom_domain.ilike.%${baseDomain}%`);
             
             if (partialMatches && partialMatches.length > 0) {
@@ -358,11 +358,22 @@ export const useTenantStore = create<TenantState>((set, get) => ({
         // Initialize tenant-scoped database
         console.log('🔐 [Security] Initializing tenant-scoped database:', `KisanDB_${tenantData.id}`);
         
-        // First try white_label_configs
+        // First try white_label_configs with complete field selection
         console.log('🔍 [Tenant] Fetching white_label_configs for tenant:', tenantData.id);
         const { data: whiteLabel, error: wlError } = await supabase
           .from('white_label_configs')
-          .select('*')
+          .select(`
+            *,
+            brand_identity,
+            app_customization,
+            theme_colors,
+            mobile_theme,
+            pwa_config,
+            splash_screens,
+            domain_config,
+            email_templates,
+            css_injection
+          `)
           .eq('tenant_id', tenantData.id)
           .maybeSingle();
         
@@ -375,8 +386,25 @@ export const useTenantStore = create<TenantState>((set, get) => ({
             hasLogo: !!(whiteLabel as any).brand_identity?.logo_url,
             hasPrimaryColor: !!(whiteLabel as any).brand_identity?.primary_color,
             hasThemeColors: !!(whiteLabel as any).theme_colors,
-            brandIdentity: (whiteLabel as any).brand_identity
+            hasMobileTheme: !!(whiteLabel as any).mobile_theme,
+            brandIdentity: (whiteLabel as any).brand_identity,
+            logoUrl: (whiteLabel as any).brand_identity?.logo_url,
+            mobileTheme: (whiteLabel as any).mobile_theme
           });
+          
+          // CRITICAL: Verify data integrity
+          if (!(whiteLabel as any).brand_identity?.logo_url) {
+            console.warn('⚠️ [Tenant] WHITE LABEL DATA INCOMPLETE: Missing logo_url in database!');
+            console.warn('⚠️ [Tenant] Please check white_label_configs table for tenant:', tenantData.id);
+            console.warn('⚠️ [Tenant] Expected: brand_identity.logo_url should be populated');
+          }
+          
+          if (!(whiteLabel as any).mobile_theme && !(whiteLabel as any).theme_colors) {
+            console.warn('⚠️ [Tenant] WHITE LABEL DATA INCOMPLETE: Missing mobile_theme/theme_colors in database!');
+            console.warn('⚠️ [Tenant] Please check white_label_configs table for tenant:', tenantData.id);
+            console.warn('⚠️ [Tenant] Expected: mobile_theme or theme_colors should be populated');
+          }
+          
           whiteLabelData = whiteLabel;
         } else {
           // Fallback to tenant_branding table
@@ -867,6 +895,11 @@ export const useTenantStore = create<TenantState>((set, get) => ({
     
     // Fallback to brand identity colors if theme_colors not available
     const brandIdentity = whiteLabel.brand_identity;
+    
+    if (!themeColors) {
+      console.warn('⚠️ [Theme] No theme_colors or mobile_theme found, falling back to brand_identity colors');
+      console.warn('💡 [Theme] To fix: Populate mobile_theme or theme_colors in white_label_configs table');
+    }
     
     // Primary colors
     if (brandIdentity?.primary_color) {

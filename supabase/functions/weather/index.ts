@@ -1,10 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { checkRateLimit } from '../_shared/rateLimiter.ts'
+import { resolveTenantFromRequest } from '../_shared/tenantMiddleware.ts'
+import { validateTenantAuth } from '../_shared/authMiddleware.ts'
+import { withTenantBlocker } from '../_shared/tenantBlocker.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id',
 }
 
 // Type definitions
@@ -65,6 +68,62 @@ interface AgricultureInsights {
   humidity: number
   windSpeed: number
   recommendations: string[]
+}
+
+// Helper functions for weather APIs
+// Helper function to convert weather codes to descriptions
+const weatherCodeMap: { [key: number]: string } = {
+  0: "Clear",
+  1: "Mostly Clear",
+  2: "Partly Cloudy",
+  3: "Cloudy",
+  45: "Fog",
+  48: "Depositing Rime Fog",
+  51: "Light Drizzle",
+  53: "Moderate Drizzle",
+  55: "Dense Drizzle",
+  56: "Light Freezing Drizzle",
+  57: "Dense Freezing Drizzle",
+  61: "Slight Rain",
+  63: "Moderate Rain",
+  65: "Heavy Rain",
+  66: "Light Freezing Rain",
+  67: "Heavy Freezing Rain",
+  71: "Slight Snow Fall",
+  73: "Moderate Snow Fall",
+  75: "Heavy Snow Fall",
+  77: "Snow Grains",
+  80: "Slight Rain Showers",
+  81: "Moderate Rain Showers",
+  82: "Violent Rain Showers",
+  85: "Slight Snow Showers",
+  86: "Heavy Snow Showers",
+  95: "Thunderstorm",
+  96: "Thunderstorm with Slight Hail",
+  99: "Thunderstorm with Heavy Hail",
+};
+
+// Function to get weather recommendation for agriculture
+function getWeatherRecommendation(temperature: number, humidity: number, windSpeed: number): string[] {
+  const recommendations: string[] = [];
+
+  if (temperature > 30) {
+    recommendations.push("High temperature detected. Ensure adequate irrigation.");
+  } else if (temperature < 10) {
+    recommendations.push("Low temperature detected. Protect crops from frost.");
+  }
+
+  if (humidity > 80) {
+    recommendations.push("High humidity detected. Monitor for fungal diseases.");
+  } else if (humidity < 30) {
+    recommendations.push("Low humidity detected. Increase irrigation.");
+  }
+
+  if (windSpeed > 50) {
+    recommendations.push("High wind speed detected. Provide windbreaks for crops.");
+  }
+
+  return recommendations;
 }
 
 // Helper functions for Tomorrow.io API
@@ -192,22 +251,13 @@ function getWeatherIcon(code: number): string {
   return '01d'
 }
 
-// Helper functions for OpenWeather API (fallback)
-async function fetchOpenWeatherCurrent(
-  lat: number,
-  lon: number,
-  apiKey: string,
-  units: string
-): Promise<CurrentWeatherData> {
+async function fetchOpenWeatherCurrent(lat: number, lon: number, apiKey: string, units: string): Promise<CurrentWeatherData> {
   const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=${units}`
   const response = await fetch(url)
   
-  if (!response.ok) {
-    throw new Error(`OpenWeather API error: ${response.status}`)
-  }
+  if (!response.ok) throw new Error(`OpenWeather API error: ${response.status}`)
   
   const data = await response.json()
-  
   return {
     temp: data.main?.temp ?? 0,
     feels_like: data.main?.feels_like ?? 0,
@@ -230,65 +280,16 @@ async function fetchOpenWeatherCurrent(
   }
 }
 
-async function fetchOpenWeatherForecast(
-  lat: number,
-  lon: number,
-  apiKey: string,
-  units: string
-): Promise<DailyForecast[]> {
-  const url = `https://api.openweathermap.org/data/2.5/forecast/daily?lat=${lat}&lon=${lon}&appid=${apiKey}&units=${units}&cnt=14`
-  
-  try {
-    const response = await fetch(url)
-    
-    if (!response.ok) {
-      // Fallback to 5-day forecast if daily endpoint not available
-      return await fetchOpenWeather5DayForecast(lat, lon, apiKey, units)
-    }
-    
-    const data = await response.json()
-    
-    return data.list.map((day: any) => ({
-      dt: day.dt,
-      temp: {
-        day: day.temp.day,
-        min: day.temp.min,
-        max: day.temp.max,
-        night: day.temp.night,
-        eve: day.temp.eve,
-        morn: day.temp.morn
-      },
-      humidity: day.humidity,
-      wind_speed: day.speed,
-      weather: day.weather,
-      pop: day.pop ?? 0,
-      uv_index: day.uvi ?? 0
-    }))
-  } catch {
-    // Use 5-day forecast as fallback
-    return await fetchOpenWeather5DayForecast(lat, lon, apiKey, units)
-  }
-}
-
-async function fetchOpenWeather5DayForecast(
-  lat: number,
-  lon: number,
-  apiKey: string,
-  units: string
-): Promise<DailyForecast[]> {
+async function fetchOpenWeatherForecast(lat: number, lon: number, apiKey: string, units: string): Promise<DailyForecast[]> {
   const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${apiKey}&units=${units}`
   const response = await fetch(url)
-  
-  if (!response.ok) {
-    throw new Error(`OpenWeather forecast API error: ${response.status}`)
-  }
+  if (!response.ok) throw new Error(`OpenWeather forecast API error: ${response.status}`)
   
   const data = await response.json()
   const dailyMap = new Map<string, any>()
   
   data.list?.forEach((item: any) => {
     const date = new Date(item.dt * 1000).toDateString()
-    
     if (!dailyMap.has(date)) {
       dailyMap.set(date, {
         dt: item.dt,
@@ -299,7 +300,6 @@ async function fetchOpenWeather5DayForecast(
         wind_speed: [] as number[]
       })
     }
-    
     const daily = dailyMap.get(date)!
     daily.temps.push(item.main.temp)
     daily.humidity.push(item.main.humidity)
@@ -307,59 +307,43 @@ async function fetchOpenWeather5DayForecast(
     daily.wind_speed.push(item.wind.speed)
   })
   
-  return Array.from(dailyMap.values())
-    .slice(0, 5) // Only 5 days available from this endpoint
-    .map(day => ({
-      dt: day.dt,
-      temp: {
-        day: day.temps.reduce((a: number, b: number) => a + b, 0) / day.temps.length,
-        min: Math.min(...day.temps),
-        max: Math.max(...day.temps),
-        night: Math.min(...day.temps),
-        eve: day.temps[day.temps.length - 1] || day.temps[0],
-        morn: day.temps[0]
-      },
-      humidity: day.humidity.reduce((a: number, b: number) => a + b, 0) / day.humidity.length,
-      wind_speed: day.wind_speed.reduce((a: number, b: number) => a + b, 0) / day.wind_speed.length,
-      weather: day.weather,
-      pop: Math.max(...day.pop)
-    }))
+  return Array.from(dailyMap.values()).slice(0, 5).map(day => ({
+    dt: day.dt,
+    temp: {
+      day: day.temps.reduce((a: number, b: number) => a + b, 0) / day.temps.length,
+      min: Math.min(...day.temps),
+      max: Math.max(...day.temps),
+      night: Math.min(...day.temps),
+      eve: day.temps[day.temps.length - 1] || day.temps[0],
+      morn: day.temps[0]
+    },
+    humidity: day.humidity.reduce((a: number, b: number) => a + b, 0) / day.humidity.length,
+    wind_speed: day.wind_speed.reduce((a: number, b: number) => a + b, 0) / day.wind_speed.length,
+    weather: day.weather,
+    pop: Math.max(...day.pop)
+  }))
 }
 
-// Combined weather fetch with fallback
 async function fetchWeatherWithFallback(
-  lat: number,
-  lon: number,
-  tomorrowIoKey: string | undefined,
-  openWeatherKey: string,
-  units: string,
-  action: string
-): Promise<{ current?: CurrentWeatherData; forecast?: DailyForecast[]; hourly?: ForecastItem[] }> {
+  lat: number, lon: number, tomorrowIoKey: string | undefined, openWeatherKey: string, units: string, action: string
+): Promise<{ current?: CurrentWeatherData; forecast?: DailyForecast[] }> {
   let lastError: Error | null = null
   
-  // Try Tomorrow.io first if key is available
   if (tomorrowIoKey) {
     try {
       console.log('Attempting to fetch from Tomorrow.io...')
       const { current, forecast } = await fetchTomorrowIoWeather(lat, lon, tomorrowIoKey, units)
-      
-      if (action === 'current') {
-        return { current }
-      } else if (action === 'forecast') {
-        return { forecast }
-      } else {
-        return { current, forecast }
-      }
+      if (action === 'current') return { current }
+      else if (action === 'forecast') return { forecast }
+      else return { current, forecast }
     } catch (error) {
       console.error('Tomorrow.io failed:', error)
       lastError = error as Error
     }
   }
   
-  // Fallback to OpenWeather
   try {
     console.log('Falling back to OpenWeather...')
-    
     if (action === 'current') {
       const current = await fetchOpenWeatherCurrent(lat, lon, openWeatherKey, units)
       return { current }
@@ -379,70 +363,9 @@ async function fetchWeatherWithFallback(
   }
 }
 
-function generateAgricultureInsights(
-  current: CurrentWeatherData,
-  forecast: { daily: DailyForecast[]; hourly: ForecastItem[] }
-): AgricultureInsights {
-  const recommendations: string[] = []
-  const { temp, humidity, wind_speed: windSpeed } = current
-  
-  // Temperature recommendations
-  if (temp > 35) {
-    recommendations.push('High temperature: Ensure adequate irrigation')
-  } else if (temp < 10) {
-    recommendations.push('Low temperature: Protect sensitive crops')
-  }
-  
-  // Humidity recommendations  
-  if (humidity > 80) {
-    recommendations.push('High humidity: Monitor for fungal diseases')
-  } else if (humidity < 40) {
-    recommendations.push('Low humidity: Increase irrigation frequency')
-  }
-  
-  // Wind recommendations
-  if (windSpeed > 20) {
-    recommendations.push('Strong winds: Postpone pesticide spraying')
-  }
-  
-  // Rain forecast check
-  const hasUpcomingRain = forecast.hourly.slice(0, 8).some(h => h.pop > 0.3)
-  if (hasUpcomingRain) {
-    recommendations.push('Rain expected: Delay fertilizer application')
-  }
-  
-  return {
-    temperature: temp,
-    humidity,
-    windSpeed,
-    recommendations
-  }
-}
-
-async function cacheWeatherData(
-  supabase: any,
-  lat: number,
-  lon: number,
-  action: string,
-  data: unknown
-): Promise<void> {
-  try {
-    await supabase.from('weather_cache').upsert({
-      id: `${lat}-${lon}-${action}`,
-      lat,
-      lon,
-      data,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    })
-  } catch (error) {
-    console.error('Cache error (non-critical):', error)
-  }
-}
-
-// Main handler
+// Main handler with middleware
 serve(async (req: Request): Promise<Response> => {
-  // Handle CORS
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
@@ -452,8 +375,7 @@ serve(async (req: Request): Promise<Response> => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     const tomorrowIoApiKey = Deno.env.get('TOMORROW_IO_API_KEY')
-    const openWeatherApiKey = Deno.env.get('OPENWEATHER_API_KEY') || 
-                             Deno.env.get('WEATHER_API_KEY')
+    const openWeatherApiKey = Deno.env.get('OPENWEATHER_API_KEY') || Deno.env.get('WEATHER_API_KEY')
     
     if (!supabaseUrl || !supabaseServiceKey) {
       throw new Error('Missing Supabase configuration')
@@ -462,11 +384,34 @@ serve(async (req: Request): Promise<Response> => {
     if (!openWeatherApiKey && !tomorrowIoApiKey) {
       throw new Error('No weather API keys configured')
     }
+
+    // ===== STEP 1: Resolve Tenant from Domain =====
+    console.log('🔍 [Weather] Resolving tenant from request...')
+    const tenant = await resolveTenantFromRequest(req, supabaseUrl, supabaseServiceKey)
+    
+    if (!tenant) {
+      return new Response(
+        JSON.stringify({ error: 'Tenant not found for this domain' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    console.log(`✅ [Weather] Tenant resolved: ${tenant.name} (${tenant.id})`)
+
+    // ===== STEP 2: Block Inactive Tenants =====
+    const blockResponse = await withTenantBlocker(tenant, corsHeaders)
+    if (blockResponse) {
+      console.warn(`🚫 [Weather] Tenant blocked: ${tenant.status}`)
+      return blockResponse
+    }
+
+    // ===== STEP 3: No Authentication Required (Public Weather Endpoint) =====
+    console.log('🌐 [Weather] Public endpoint - no authentication required')
     
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     
-    // Parse and validate request
+    // Parse request
     const body = await req.json() as WeatherRequest
     const { action, lat, lon, units = 'metric' } = body
     
@@ -474,14 +419,14 @@ serve(async (req: Request): Promise<Response> => {
       throw new Error('Latitude and longitude are required')
     }
     
-    // Rate limiting: 100 requests per minute per IP
-    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown';
-    const rateLimit = await checkRateLimit(clientIp, 'weather', { maxRequests: 100, windowMs: 60000 });
+    // Rate limiting
+    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown'
+    const rateLimit = await checkRateLimit(clientIp, 'weather', { maxRequests: 100, windowMs: 60000 })
     
     if (!rateLimit.allowed) {
       return new Response(
         JSON.stringify({ 
-          error: 'Rate limit exceeded. Please try again later.',
+          error: 'Rate limit exceeded',
           resetTime: new Date(rateLimit.resetTime).toISOString()
         }),
         { 
@@ -489,108 +434,44 @@ serve(async (req: Request): Promise<Response> => {
           headers: { 
             ...corsHeaders, 
             'Content-Type': 'application/json',
-            'X-RateLimit-Remaining': String(rateLimit.remaining),
-            'X-RateLimit-Reset': new Date(rateLimit.resetTime).toISOString()
+            'X-RateLimit-Remaining': String(rateLimit.remaining)
           } 
         }
-      );
+      )
     }
     
-    console.log('Processing weather request:', { action, lat, lon })
-    console.log('Available APIs:', { 
-      tomorrowIo: !!tomorrowIoApiKey, 
-      openWeather: !!openWeatherApiKey 
-    })
+    console.log(`🌤️ [Weather] Processing request for tenant ${tenant.id}:`, { action, lat, lon })
     
-    // Process based on action
-    let responseData: unknown = {}
+    // Fetch weather data
+    const weatherData = await fetchWeatherWithFallback(
+      lat, lon, tomorrowIoApiKey, openWeatherApiKey, units, action
+    )
     
-    switch (action) {
-      case 'current': {
-        const { current } = await fetchWeatherWithFallback(
-          lat, lon, tomorrowIoApiKey, openWeatherApiKey!, units, action
-        )
-        responseData = current
-        break
-      }
-      
-      case 'forecast': {
-        const { current, forecast } = await fetchWeatherWithFallback(
-          lat, lon, tomorrowIoApiKey, openWeatherApiKey!, units, 'all'
-        )
-        
-        // For backward compatibility, return both daily and hourly
-        const hourlyData = forecast?.slice(0, 2).flatMap(day => {
-          // Generate synthetic hourly data from daily forecast
-          const hours = []
-          for (let i = 0; i < 24; i += 3) {
-            hours.push({
-              dt: day.dt + (i * 3600),
-              temp: day.temp.day,
-              feels_like: day.temp.day,
-              humidity: day.humidity,
-              wind_speed: day.wind_speed,
-              weather: day.weather,
-              pop: day.pop,
-              uv_index: day.uv_index
-            })
-          }
-          return hours
-        }).slice(0, 16) || []
-        
-        responseData = { 
-          current,
-          daily: forecast,
-          hourly: hourlyData
-        }
-        break
-      }
-      
-      case 'agricultural': {
-        const { current, forecast } = await fetchWeatherWithFallback(
-          lat, lon, tomorrowIoApiKey, openWeatherApiKey!, units, 'all'
-        )
-        
-        if (current && forecast) {
-          const insights = generateAgricultureInsights(
-            current, 
-            { daily: forecast, hourly: [] }
-          )
-          responseData = { current, forecast, insights }
-        }
-        break
-      }
-      
-      default:
-        throw new Error(`Invalid action: ${action}. Use: current, forecast, or agricultural`)
-    }
-    
-    // Cache the data
-    await cacheWeatherData(supabase, lat, lon, action, responseData)
-    
-    // Return success response
+    // Return response with tenant context
     return new Response(
-      JSON.stringify(responseData),
+      JSON.stringify({ 
+        ...weatherData,
+        tenant: {
+          id: tenant.id,
+          name: tenant.name
+        },
+        timestamp: new Date().toISOString()
+      }),
       { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200
+        status: 200, 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json',
+          'X-Tenant-ID': tenant.id
+        } 
       }
     )
     
-  } catch (error) {
-    console.error('Weather function error:', error)
-    
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    
+  } catch (error: any) {
+    console.error('❌ [Weather] Error:', error)
     return new Response(
-      JSON.stringify({ 
-        error: errorMessage,
-        message: 'Weather service temporarily unavailable'
-      }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })

@@ -20,7 +20,8 @@ import {
   ArrowDownRight,
   Activity,
   Sparkles,
-  Leaf
+  Leaf,
+  ChevronDown
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { Link } from 'react-router-dom';
@@ -30,6 +31,8 @@ import { landsApi } from '@/services/landsApi';
 import { useWeather } from '@/hooks/useWeather';
 import { useLands } from '@/hooks/useLands';
 import { HomeSkeleton } from '@/components/skeletons';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Button } from '@/components/ui/button';
 
 
 interface FeatureCard {
@@ -50,6 +53,7 @@ export default function Home() {
   const { user } = useAuthStore();
   const [currentTime, setCurrentTime] = useState(new Date());
   const { currentWeather } = useWeather();
+  const [isWeatherExpanded, setIsWeatherExpanded] = useState(true);
   
   // Use consistent data fetching hook (handles online/offline automatically)
   const { lands, isLoading: loading } = useLands();
@@ -201,12 +205,51 @@ export default function Home() {
 
   return (
     <div className="bg-gradient-subtle">
-      {/* Hero Section with Weather Animation */}
-      <div className="relative overflow-hidden bg-gradient-earth p-4 pb-6 rounded-b-3xl shadow-elegant">
-        {/* Weather-based animated background */}
+      {/* Hero Section with Weather Animation - Swipeable with Pill Handle */}
+      <motion.div 
+        className="relative overflow-hidden bg-gradient-primary rounded-b-[2rem] shadow-elegant border-b border-border/50"
+        initial={{ height: "28vh" }}
+        animate={{ 
+          height: isWeatherExpanded ? "28vh" : "64px",
+        }}
+        transition={{ 
+          type: "spring",
+          stiffness: 300,
+          damping: 30
+        }}
+        drag="y"
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={0.1}
+        onDragEnd={(e, { offset, velocity }) => {
+          const swipe = offset.y;
+          const swipeVelocity = velocity.y;
+          
+          // Swipe down to minimize (when expanded)
+          if (swipe > 50 || swipeVelocity > 500) {
+            setIsWeatherExpanded(false);
+          }
+          // Swipe up to expand (when minimized)
+          else if (swipe < -50 || swipeVelocity < -500) {
+            setIsWeatherExpanded(true);
+          }
+        }}
+      >
+        {/* Pill-Shaped Drag Handle */}
+        <motion.div 
+          className="absolute top-2 left-1/2 -translate-x-1/2 z-20 cursor-grab active:cursor-grabbing"
+          whileHover={{ scale: 1.2 }}
+          whileTap={{ scale: 0.9 }}
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+        >
+          <div className="w-8 h-1 bg-foreground/30 backdrop-blur-md rounded-full shadow-sm" />
+        </motion.div>
+
+        {/* Weather Background Animations */}
         <div className="absolute inset-0">
-          {/* Base gradient */}
-          <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-accent/20" />
+          {/* Base gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-accent/10" />
           
           {/* Weather-based animations */}
           {currentWeather && (
@@ -214,17 +257,17 @@ export default function Home() {
               {/* Sunny animation */}
               {currentWeather.main === 'Clear' && (
                 <div className="absolute inset-0">
-                  <div className="absolute top-4 right-8 w-24 h-24 bg-yellow-400/20 rounded-full blur-2xl animate-pulse" />
-                  <div className="absolute top-12 right-16 w-16 h-16 bg-orange-400/15 rounded-full blur-xl animate-[pulse_3s_ease-in-out_infinite]" />
+                  <div className="absolute top-4 right-8 w-24 h-24 bg-warning/20 rounded-full blur-2xl animate-pulse" />
+                  <div className="absolute top-12 right-16 w-16 h-16 bg-warning/15 rounded-full blur-xl animate-[pulse_3s_ease-in-out_infinite]" />
                 </div>
               )}
               
               {/* Cloudy animation */}
               {(currentWeather.main === 'Clouds' || currentWeather.main === 'Mist') && (
                 <div className="absolute inset-0 overflow-hidden">
-                  <div className="absolute -top-4 left-0 w-32 h-20 bg-gray-300/10 rounded-full blur-xl animate-[slide-in-right_20s_ease-in-out_infinite]" />
-                  <div className="absolute top-8 right-0 w-40 h-24 bg-gray-400/10 rounded-full blur-2xl animate-[slide-out-right_25s_ease-in-out_infinite]" />
-                  <div className="absolute top-16 left-1/3 w-28 h-16 bg-gray-300/10 rounded-full blur-xl animate-[slide-in-right_30s_ease-in-out_infinite]" />
+                  <div className="absolute -top-4 left-0 w-32 h-20 bg-muted/10 rounded-full blur-xl animate-[slide-in-right_20s_ease-in-out_infinite]" />
+                  <div className="absolute top-8 right-0 w-40 h-24 bg-muted/15 rounded-full blur-2xl animate-[slide-out-right_25s_ease-in-out_infinite]" />
+                  <div className="absolute top-16 left-1/3 w-28 h-16 bg-muted/10 rounded-full blur-xl animate-[slide-in-right_30s_ease-in-out_infinite]" />
                 </div>
               )}
               
@@ -235,7 +278,7 @@ export default function Home() {
                     {[...Array(15)].map((_, i) => (
                       <div
                         key={i}
-                        className="absolute w-0.5 h-8 bg-gradient-to-b from-transparent via-blue-400/40 to-transparent animate-[fade-in_2s_ease-in-out_infinite]"
+                        className="absolute w-0.5 h-8 bg-gradient-to-b from-transparent via-info/40 to-transparent animate-[fade-in_2s_ease-in-out_infinite]"
                         style={{
                           left: `${Math.random() * 100}%`,
                           top: `${Math.random() * 100}%`,
@@ -251,56 +294,144 @@ export default function Home() {
               {/* Thunderstorm animation */}
               {currentWeather.main === 'Thunderstorm' && (
                 <div className="absolute inset-0">
-                  <div className="absolute inset-0 bg-purple-900/5 animate-[pulse_4s_ease-in-out_infinite]" />
-                  <div className="absolute top-0 left-1/4 w-1 h-full bg-gradient-to-b from-transparent via-purple-400/20 to-transparent animate-[scale-in_3s_ease-in-out_infinite]" />
+                  <div className="absolute inset-0 bg-destructive/5 animate-[pulse_4s_ease-in-out_infinite]" />
+                  <div className="absolute top-0 left-1/4 w-1 h-full bg-gradient-to-b from-transparent via-destructive/20 to-transparent animate-[scale-in_3s_ease-in-out_infinite]" />
                 </div>
               )}
             </>
           )}
         </div>
-        
-        <div className="relative z-10">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3 text-sm text-white whitespace-nowrap">
-              <div className="flex items-center gap-1.5">
-                <Leaf className="w-3.5 h-3.5" />
-                <span>{currentTime.toLocaleDateString('en-IN', {
-                  weekday: 'short',
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric'
-                })}</span>
+
+        <AnimatePresence mode="wait">
+          {!isWeatherExpanded && (
+            <motion.div
+              key="minimized"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="h-full flex items-center relative z-10 pt-3 pb-1.5 px-3"
+            >
+              {/* Scrollable Quick Stats Strip with Gradient Indicators */}
+              <div className="relative w-full">
+                {/* Left Gradient Fade */}
+                <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-primary via-primary/60 to-transparent pointer-events-none z-10" />
+                {/* Right Gradient Fade */}
+                <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-primary via-primary/60 to-transparent pointer-events-none z-10" />
+                
+                <div 
+                  className="overflow-x-auto overflow-y-hidden scrollbar-hide scroll-smooth" 
+                  style={{ 
+                    WebkitOverflowScrolling: 'touch',
+                    scrollbarWidth: 'none',
+                    msOverflowStyle: 'none'
+                  }}
+                >
+                  <div className="flex gap-2 min-w-max">
+                    {quickStats.map((stat, index) => {
+                      const Icon = stat.icon;
+                      return (
+                        <motion.div
+                          key={index}
+                          className="flex-shrink-0 bg-background/80 backdrop-blur-sm rounded-lg px-2.5 py-1.5 border border-border/50 min-w-[95px] will-change-transform"
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.05 + index * 0.03 }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <Icon className="w-3 h-3 text-primary flex-shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-[8px] text-muted-foreground uppercase tracking-wide truncate">{stat.label}</p>
+                              <p className="text-xs font-bold text-foreground truncate">{stat.value}</p>
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
-              <div className="ml-auto text-white/60 text-xs">
-                Last sync: {currentTime.toLocaleTimeString('en-IN', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
+            </motion.div>
+          )}
+
+          {isWeatherExpanded && (
+            <motion.div
+              key="expanded"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="h-full flex flex-col p-3 pt-6 relative z-10"
+            >
+              {/* Header - Max 2 Lines */}
+              <div className="mb-2">
+                {/* Line 1: Namaste + Farmer Name */}
+                <div className="flex items-center gap-2 mb-0.5">
+                  <motion.h2 
+                    className="text-lg font-bold text-primary-foreground"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.1 }}
+                  >
+                    🙏 Namaste
+                  </motion.h2>
+                  <div className="bg-background/20 backdrop-blur-sm rounded-full px-2.5 py-0.5">
+                    <p className="text-primary-foreground/90 text-[10px] font-medium">
+                      {user?.fullName?.split(' ')[0] || user?.farmerName?.split(' ')[0] || user?.name?.split(' ')[0] || t('home.farmer')}
+                    </p>
+                  </div>
+                </div>
+                {/* Line 2: Date + Time + Last Sync */}
+                <div className="flex items-center gap-2.5 text-[9px] text-primary-foreground/70">
+                  <div className="flex items-center gap-1">
+                    <Calendar className="w-2.5 h-2.5" />
+                    <span>{currentTime.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Activity className="w-2.5 h-2.5" />
+                    <span>{currentTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Sparkles className="w-2.5 h-2.5" />
+                    <span>Synced</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Weather Stats Grid - 2x2 layout, max 2 lines per card */}
+              <div className="grid grid-cols-2 gap-1.5">
+                {quickStats.map((stat, index) => {
+                  const Icon = stat.icon;
+                  return (
+                    <motion.div 
+                      key={index} 
+                      className="bg-card/90 backdrop-blur-sm rounded-xl p-2 border border-border/50 hover:border-primary/50 transition-all will-change-transform"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.1 + index * 0.04, type: 'spring', stiffness: 400, damping: 17 }}
+                      whileHover={{ scale: 1.03, y: -2 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      {/* Line 1: Icon + Label + Trend */}
+                      <div className="flex items-center justify-between mb-0.5">
+                        <div className="flex items-center gap-1">
+                          <Icon className="w-3 h-3 text-primary flex-shrink-0" />
+                          <span className="text-[8px] text-muted-foreground uppercase tracking-wide truncate">{stat.label}</span>
+                        </div>
+                        {stat.trend === 'up' && <ArrowUpRight className="w-2.5 h-2.5 text-success flex-shrink-0" />}
+                        {stat.trend === 'down' && <ArrowDownRight className="w-2.5 h-2.5 text-destructive flex-shrink-0" />}
+                      </div>
+                      {/* Line 2: Value */}
+                      <p className="text-sm font-bold tracking-tight text-foreground truncate">{stat.value}</p>
+                    </motion.div>
+                  );
                 })}
               </div>
-            </div>
-          </div>
-
-          {/* Quick Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-            {quickStats.map((stat, index) => {
-              const Icon = stat.icon;
-              return (
-                <div key={index} className="bg-card/80 backdrop-blur-sm rounded-xl p-3 border border-border/50">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Icon className="w-4 h-4 text-primary" />
-                      <span className="text-xs text-muted-foreground">{stat.label}</span>
-                    </div>
-                    {stat.trend === 'up' && <ArrowUpRight className="w-3 h-3 text-success" />}
-                    {stat.trend === 'down' && <ArrowDownRight className="w-3 h-3 text-destructive" />}
-                  </div>
-                  <p className="text-lg font-semibold mt-1">{stat.value}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
 
       {/* Main Features Grid */}
       <div className="p-4 -mt-6">
@@ -485,7 +616,6 @@ export default function Home() {
           </CardContent>
         </Card>
       </div>
-      
     </div>
   );
 }

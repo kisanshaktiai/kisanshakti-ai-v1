@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/stores/authStore';
 import { useAuthFlowStore } from '@/stores/authFlowStore';
 import { Loader2, ChevronRight, ArrowRight } from 'lucide-react';
@@ -10,15 +10,30 @@ import { useTranslation } from 'react-i18next';
 export default function SplashScreen() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { tenant, fetchTenant, isLoading, error } = useTenantStore();
+  const { tenant, branding, isLoading, error } = useTenant();
   const { checkAuth, isAuthenticated } = useAuthStore();
   const { markSplashCompleted, hasCompletedSplash, hasSelectedLanguage } = useAuthFlowStore();
   const [isReady, setIsReady] = useState(false);
   const [startX, setStartX] = useState(0);
 
   useEffect(() => {
+    console.log('🚀 [SplashScreen] Tenant data:', { 
+      hasTenant: !!tenant, 
+      hasBranding: !!branding,
+      isLoading,
+      logoUrl: branding?.logo_url,
+      companyName: branding?.company_name
+    });
+
     const initializeApp = async () => {
-      await Promise.all([fetchTenant(), checkAuth()]);
+      // Wait for tenant to load from TenantProvider
+      if (isLoading || !tenant) {
+        console.log('⏳ [SplashScreen] Waiting for tenant to load...');
+        return;
+      }
+
+      console.log('✅ [SplashScreen] Tenant loaded, checking auth...');
+      await checkAuth();
       
       // Quick ready state
       setTimeout(() => {
@@ -27,7 +42,7 @@ export default function SplashScreen() {
     };
 
     initializeApp();
-  }, []);
+  }, [tenant, isLoading, checkAuth]);
 
   const handleContinue = () => {
     markSplashCompleted();
@@ -57,28 +72,19 @@ export default function SplashScreen() {
     }
   };
 
-  // Get theme colors and branding from white label config
-  const primaryColor = tenant?.whiteLabel?.brand_identity?.primary_color || '#10b981';
-  const secondaryColor = tenant?.whiteLabel?.brand_identity?.secondary_color || '#059669';
-  const backgroundColor = tenant?.whiteLabel?.pwa_config?.background_color || '#ffffff';
-  const splashScreen = tenant?.whiteLabel?.splash_screens?.mobile || tenant?.whiteLabel?.splash_screens?.mobile_splash;
-  const androidSplash = tenant?.whiteLabel?.splash_screens?.android;
-  const logoUrl = tenant?.whiteLabel?.brand_identity?.logo_url;
-  const companyName = tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name || 'KisanShakti';
-  const tagline = tenant?.whiteLabel?.brand_identity?.tagline || 'Empowering Farmers with Technology';
-  const appVersion = tenant?.whiteLabel?.pwa_config?.short_name ? '2.0' : '1.0';
-  
-  // Use Android splash if available and on Android device
-  const isAndroid = /Android/i.test(navigator.userAgent);
-  const splashUrl = isAndroid && androidSplash?.url ? androidSplash.url : splashScreen;
-  const splashBgColor = isAndroid && androidSplash?.backgroundColor ? androidSplash.backgroundColor : backgroundColor;
-
+  // Get theme colors and branding from TenantProvider
+  const primaryColor = branding?.primary_color || '#10b981';
+  const secondaryColor = branding?.secondary_color || '#059669';
+  const backgroundColor = branding?.background_color || '#ffffff';
+  const logoUrl = branding?.logo_url;
+  const companyName = branding?.company_name || tenant?.name || 'KisanShakti';
+  const tagline = branding?.tagline || 'Empowering Farmers with Technology';
+  const appVersion = '2.0';
   return (
     <div 
       className="min-h-screen flex flex-col items-center justify-between p-6 relative overflow-hidden"
       style={{
-        background: splashUrl ? `url(${splashUrl}) center/cover` :
-          `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`
+        background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`
       }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
@@ -93,6 +99,10 @@ export default function SplashScreen() {
                 src={logoUrl} 
                 alt={companyName}
                 className="w-24 h-24 object-contain"
+                onError={(e) => {
+                  console.error('❌ [SplashScreen] Failed to load logo:', logoUrl);
+                  e.currentTarget.style.display = 'none';
+                }}
               />
             ) : (
               <div className="text-overlay-light text-6xl font-bold">
@@ -114,13 +124,13 @@ export default function SplashScreen() {
           {/* Loading or Ready State */}
           {error ? (
             <div className="text-warning-foreground text-sm px-8 animate-fade-in">
-              {error}
+              {error.message || 'Loading error'}
             </div>
           ) : !isReady ? (
             <div className="flex items-center justify-center space-x-2 text-overlay-light/60">
               <Loader2 className="w-5 h-5 animate-spin" />
               <span className="text-sm">
-                {tenant?.whiteLabel?.splash_screens?.loading_text || t('common.loading') || 'Loading...'}
+                {t('common.loading') || 'Loading...'}
               </span>
             </div>
           ) : (

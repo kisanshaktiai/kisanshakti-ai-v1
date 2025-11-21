@@ -1316,31 +1316,49 @@ class LocalDatabase {
     
     console.log('🗑️ [LocalDB] Clearing all data stores...');
     
-    const tx = this.db!.transaction(
-      ['farmers', 'lands', 'cropSchedules', 'scheduleTasks', 'aiChatSessions', 'aiChatMessages', 'crops', 'weather', 'farmerAlerts', 'tenantConfig'],
-      'readwrite'
-    );
+    // List of all object stores that may exist
+    const storeNames: Array<'farmers' | 'lands' | 'cropSchedules' | 'scheduleTasks' | 'aiChatSessions' | 'aiChatMessages' | 'crops' | 'weather' | 'farmerAlerts' | 'tenantConfig'> = [
+      'farmers', 'lands', 'cropSchedules', 'scheduleTasks', 
+      'aiChatSessions', 'aiChatMessages', 'crops', 'weather', 
+      'farmerAlerts', 'tenantConfig'
+    ];
     
-    await tx.objectStore('farmers').clear();
-    await tx.objectStore('lands').clear();
-    await tx.objectStore('cropSchedules').clear();
-    await tx.objectStore('scheduleTasks').clear();
-    await tx.objectStore('aiChatSessions').clear();
-    await tx.objectStore('aiChatMessages').clear();
-    await tx.objectStore('crops').clear();
-    await tx.objectStore('weather').clear();
-    await tx.objectStore('farmerAlerts').clear();
-    await tx.objectStore('tenantConfig').clear();
+    // Get list of existing stores from the database
+    const existingStores = Array.from(this.db!.objectStoreNames);
     
-    await tx.done;
+    // Filter to only stores that actually exist
+    const storesToClear = storeNames.filter(store => existingStores.includes(store));
+    
+    if (storesToClear.length === 0) {
+      console.log('⚠️ [LocalDB] No object stores found to clear');
+      return;
+    }
+    
+    console.log(`🗑️ [LocalDB] Clearing ${storesToClear.length} stores:`, storesToClear);
+    
+    try {
+      const tx = this.db!.transaction(storesToClear as any, 'readwrite');
+      
+      // Clear each existing store
+      for (const storeName of storesToClear) {
+        await tx.objectStore(storeName as any).clear();
+        console.log(`  ✓ Cleared ${storeName}`);
+      }
+      
+      await tx.done;
 
-    // Reset pending changes counter
-    await this.updateSyncMetadata({ 
-      pendingChanges: 0,
-      lastSyncTime: null
-    });
+      // Reset pending changes counter
+      await this.updateSyncMetadata({ 
+        pendingChanges: 0,
+        lastSyncTime: null
+      });
 
-    console.log('✅ [LocalDB] All data cleared');
+      console.log('✅ [LocalDB] All data cleared successfully');
+    } catch (error) {
+      console.error('❌ [LocalDB] Error clearing stores:', error);
+      // Don't throw - allow operation to continue
+      console.log('⚠️ [LocalDB] Continuing despite clear error');
+    }
   }
   
   /**

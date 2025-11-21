@@ -2,6 +2,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { localDB } from './localDB';
 import { toast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
+import { tenantIsolationService } from './tenantIsolationService';
 
 interface SyncResult {
   success: boolean;
@@ -83,6 +84,25 @@ class SyncService {
     const tenantId = authState.user?.tenantId;
     const userId = authState.user?.id;
     
+    // CRITICAL: Validate tenant isolation context first
+    const tenantContext = tenantIsolationService.validateContext(true);
+    if (!tenantContext.valid) {
+      // Double-check: If we have auth data but tenant context missing user, add it
+      if (userId && tenantContext.tenantId && !tenantContext.userId) {
+        console.log('🔧 [Sync] Adding missing user ID to tenant context');
+        tenantIsolationService.setUserId(userId);
+        // Re-validate after fixing
+        const revalidated = tenantIsolationService.validateContext(true);
+        if (!revalidated.valid) {
+          console.error('❌ [Sync] Tenant isolation context not ready:', revalidated.error);
+          return { success: false, message: 'Tenant context not initialized' };
+        }
+      } else {
+        console.error('❌ [Sync] Tenant isolation context not ready:', tenantContext.error);
+        return { success: false, message: 'Tenant context not initialized' };
+      }
+    }
+    
     // CRITICAL: Strict validation - prevent sync without complete auth context
     if (!tenantId || !userId) {
       console.error('❌ [Sync] Missing auth data - cannot sync:', { 
@@ -96,6 +116,15 @@ class SyncService {
     if (tenantId.trim() === '' || userId.trim() === '') {
       console.error('❌ [Sync] Empty auth data detected:', { tenantId, userId });
       return { success: false, message: 'Invalid authentication data' };
+    }
+    
+    // Cross-validate tenant IDs match
+    if (tenantContext.tenantId !== tenantId) {
+      console.error('❌ [Sync] Tenant ID mismatch:', { 
+        contextTenantId: tenantContext.tenantId,
+        authTenantId: tenantId 
+      });
+      return { success: false, message: 'Tenant context mismatch - security error' };
     }
     
     console.log('✅ [Sync] Auth context validated:', { userId, tenantId });

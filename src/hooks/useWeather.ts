@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import LocationService from '@/services/LocationService';
 import { useLocation } from '@/hooks/useLocation';
+import { useTenant } from '@/contexts/TenantContext';
 
 interface WeatherData {
   temp: number;
@@ -90,6 +91,7 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const { tenant, isLoading: tenantLoading } = useTenant();
   
   // Use the centralized location service
   const { location: deviceLocation } = useLocation();
@@ -99,119 +101,163 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
 
 
   const fetchWeatherData = async () => {
+    // Don't fetch if tenant isn't loaded yet
+    if (!tenant?.id) {
+      console.log('⏳ [useWeather] Waiting for tenant to load before fetching weather');
+      return;
+    }
+
     const weatherLocation = location || (deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : defaultLocation);
+    
+    console.log('🌤️ [useWeather] Fetching weather with tenant:', tenant.id);
+    console.log('📍 [useWeather] Location:', weatherLocation);
     
     try {
       setLoading(true);
       setError(null);
 
-      // Try to get cached data first
-      const { data: cachedData } = await supabase
-        .from('weather_alerts')
-        .select('cache_data, last_fetched')
-        .eq('area_name', `${weatherLocation.lat},${weatherLocation.lon}`)
-        .maybeSingle();
-
-      // If cache is fresh (less than 10 minutes old), use it
-      if (cachedData?.cache_data && cachedData.last_fetched) {
-        const cacheAge = Date.now() - new Date(cachedData.last_fetched).getTime();
-        if (cacheAge < 600000) { // 10 minutes
-          const cached = cachedData.cache_data as any;
-          setCurrentWeather(cached.current);
-          setForecast(cached.forecast || []);
-          setHourlyForecast(cached.hourly || []);
-          setLoading(false);
-          return;
+      // Try to get cached data from localStorage first (more reliable than DB)
+      const cacheKey = `weather_cache_${weatherLocation.lat}_${weatherLocation.lon}`;
+      const cachedDataStr = localStorage.getItem(cacheKey);
+      
+      if (cachedDataStr) {
+        try {
+          const cached = JSON.parse(cachedDataStr);
+          const cacheAge = Date.now() - cached.timestamp;
+          
+          // Use cache if less than 10 minutes old
+          if (cacheAge < 600000) {
+            console.log('✅ [useWeather] Using cached weather data from localStorage');
+            setCurrentWeather(cached.current);
+            setForecast(cached.forecast || []);
+            setHourlyForecast(cached.hourly || []);
+            setLoading(false);
+            return;
+          }
+        } catch (e) {
+          console.warn('⚠️ [useWeather] Failed to parse cached weather data:', e);
         }
       }
 
       // Fetch fresh data from edge function
+      console.log('📡 [useWeather] Fetching current weather from API...');
       const { data, error: fetchError } = await supabase.functions.invoke('weather', {
         body: {
           action: 'current',
           lat: weatherLocation.lat,
           lon: weatherLocation.lon,
         },
+        headers: tenant?.id ? {
+          'x-tenant-id': tenant.id
+        } : undefined,
       });
 
       if (fetchError) {
-        console.error('Weather fetch error:', fetchError);
+        console.error('❌ [useWeather] Weather fetch error:', fetchError);
         throw fetchError;
       }
 
       if (data) {
+        // Extract current weather from response (API returns { current: {...}, tenant: {...} })
+        const currentData = data.current || data;
+        
+        console.log('✅ [useWeather] Received current weather data:', {
+          temp: currentData.temp,
+          description: currentData.description,
+          provider: currentData.provider
+        });
+        
         // Add location name from localStorage or use coordinates
         const storedLocationName = localStorage.getItem('weatherLocationName');
         if (storedLocationName) {
-          data.location = storedLocationName;
-        } else if (data.location) {
-          data.location = data.location;
+          currentData.location = storedLocationName;
+        } else if (currentData.location) {
+          currentData.location = currentData.location;
         } else {
-          data.location = `${weatherLocation.lat.toFixed(2)}°N, ${weatherLocation.lon.toFixed(2)}°E`;
+          currentData.location = `${weatherLocation.lat.toFixed(2)}°N, ${weatherLocation.lon.toFixed(2)}°E`;
         }
         
-        setCurrentWeather(data);
+        setCurrentWeather(currentData);
         
-        // Cache the data
-        await supabase.from('weather_alerts').upsert({
-          area_name: `${weatherLocation.lat},${weatherLocation.lon}`,
-          cache_data: { current: data },
-          last_fetched: new Date().toISOString(),
-          alert_id: 'weather-cache',
-          event_type: 'cache',
-          severity: 'info',
-          urgency: 'future',
-          certainty: 'observed',
-          title: 'Weather Cache',
-          data_source: 'openweathermap',
-          start_time: new Date().toISOString(),
-        });
-      }
-
-      // Fetch forecast data
-      const { data: forecastData } = await supabase.functions.invoke('weather', {
-        body: {
-          action: 'forecast',
-          lat: weatherLocation.lat,
-          lon: weatherLocation.lon,
-        },
-      });
-
-      if (forecastData) {
-        setForecast(forecastData.daily || []);
-        setHourlyForecast(forecastData.hourly || []);
-        
-        // Update cache with forecast data
-        await supabase.from('weather_alerts').update({
-          cache_data: { 
-            current: data, 
-            forecast: forecastData.daily,
-            hourly: forecastData.hourly
+        // Fetch forecast data
+        console.log('📡 [useWeather] Fetching forecast data from API...');
+        const { data: forecastData, error: forecastError } = await supabase.functions.invoke('weather', {
+          body: {
+            action: 'forecast',
+            lat: weatherLocation.lat,
+            lon: weatherLocation.lon,
           },
-          last_fetched: new Date().toISOString(),
-        }).eq('area_name', `${weatherLocation.lat},${weatherLocation.lon}`);
+          headers: tenant?.id ? {
+            'x-tenant-id': tenant.id
+          } : undefined,
+        });
+
+        let dailyData: any[] = [];
+        let hourlyData: any[] = [];
+
+        if (forecastError) {
+          console.error('❌ [useWeather] Forecast fetch error:', forecastError);
+        } else if (forecastData) {
+          console.log('✅ [useWeather] Received forecast data');
+          // Extract forecast from response (API returns { forecast: [...], tenant: {...} })
+          dailyData = forecastData.forecast || forecastData.daily || [];
+          hourlyData = forecastData.hourly || [];
+          setForecast(dailyData);
+          setHourlyForecast(hourlyData);
+        }
+        
+        // Cache the complete data in localStorage
+        const cacheData = {
+          current: currentData,
+          forecast: dailyData,
+          hourly: hourlyData,
+          timestamp: Date.now()
+        };
+        localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+        console.log('💾 [useWeather] Cached weather data in localStorage');
+        
+        // Also try to cache in database (optional, don't fail if it doesn't work)
+        try {
+          await supabase.from('weather_alerts').upsert({
+            area_name: `${weatherLocation.lat},${weatherLocation.lon}`,
+            cache_data: cacheData,
+            last_fetched: new Date().toISOString(),
+            alert_id: 'weather-cache',
+            event_type: 'cache',
+            severity: 'info',
+            urgency: 'future',
+            certainty: 'observed',
+            title: 'Weather Cache',
+            data_source: data.provider || 'openweathermap',
+            start_time: new Date().toISOString(),
+          });
+        } catch (dbError) {
+          console.warn('⚠️ [useWeather] Failed to cache in DB (non-critical):', dbError);
+        }
       }
     } catch (err) {
-      console.error('Weather fetch error:', err);
+      console.error('❌ [useWeather] Weather fetch error:', err);
       setError('Failed to fetch weather data');
       
-      // Try to use cached data even if expired
-      const { data: fallbackData } = await supabase
-        .from('weather_alerts')
-        .select('cache_data')
-        .eq('area_name', `${weatherLocation.lat},${weatherLocation.lon}`)
-        .maybeSingle();
-        
-      if (fallbackData?.cache_data) {
-        const cached = fallbackData.cache_data as any;
-        setCurrentWeather(cached.current);
-        setForecast(cached.forecast || []);
-        setHourlyForecast(cached.hourly || []);
-        toast({
-          title: "Using cached weather data",
-          description: "Unable to fetch latest weather. Showing cached data.",
-          variant: "default",
-        });
+      // Try to use localStorage cache even if expired
+      const cacheKey = `weather_cache_${weatherLocation.lat}_${weatherLocation.lon}`;
+      const fallbackDataStr = localStorage.getItem(cacheKey);
+      
+      if (fallbackDataStr) {
+        try {
+          const cached = JSON.parse(fallbackDataStr);
+          setCurrentWeather(cached.current);
+          setForecast(cached.forecast || []);
+          setHourlyForecast(cached.hourly || []);
+          console.log('📦 [useWeather] Using expired cache due to fetch error');
+          toast({
+            title: "Using cached weather data",
+            description: "Unable to fetch latest weather. Showing cached data.",
+            variant: "default",
+          });
+        } catch (parseError) {
+          console.error('❌ [useWeather] Failed to use cached data:', parseError);
+        }
       }
     } finally {
       setLoading(false);
@@ -219,14 +265,23 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
   };
 
   useEffect(() => {
-    // Fetch weather data when location is available
-    if (location || deviceLocation) {
+    // Wait for tenant to load before fetching weather
+    if (tenantLoading) {
+      console.log('⏳ [useWeather] Tenant still loading, skipping weather fetch');
+      return;
+    }
+
+    // Fetch weather data when tenant is available (location will use default if not available)
+    if (tenant?.id) {
+      console.log('✅ [useWeather] Tenant loaded, fetching weather data');
       fetchWeatherData();
       // Refresh every 30 minutes
       const interval = setInterval(fetchWeatherData, 1800000);
       return () => clearInterval(interval);
+    } else if (!tenant?.id && !tenantLoading) {
+      console.warn('⚠️ [useWeather] No tenant ID available after loading completed');
     }
-  }, [location?.lat, location?.lon, deviceLocation?.lat, deviceLocation?.lon]);
+  }, [tenant?.id, tenantLoading, location?.lat, location?.lon, deviceLocation?.lat, deviceLocation?.lon]);
 
   // Update location name when device location changes
   useEffect(() => {
