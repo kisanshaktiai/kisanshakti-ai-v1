@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import LocationService from '@/services/LocationService';
 import { useLocation } from '@/hooks/useLocation';
+import { useTenant } from '@/contexts/TenantContext';
 
 interface WeatherData {
   temp: number;
@@ -90,6 +91,7 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const { tenant } = useTenant();
   
   // Use the centralized location service
   const { location: deviceLocation } = useLocation();
@@ -132,6 +134,9 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
           lat: weatherLocation.lat,
           lon: weatherLocation.lon,
         },
+        headers: tenant?.id ? {
+          'x-tenant-id': tenant.id
+        } : undefined,
       });
 
       if (fetchError) {
@@ -175,6 +180,9 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
           lat: weatherLocation.lat,
           lon: weatherLocation.lon,
         },
+        headers: tenant?.id ? {
+          'x-tenant-id': tenant.id
+        } : undefined,
       });
 
       if (forecastData) {
