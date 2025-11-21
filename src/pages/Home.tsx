@@ -21,7 +21,10 @@ import {
   Activity,
   Sparkles,
   Leaf,
-  ChevronDown
+  ChevronDown,
+  Sun,
+  CloudRain,
+  CloudSnow
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { Link } from 'react-router-dom';
@@ -33,7 +36,6 @@ import { useLands } from '@/hooks/useLands';
 import { HomeSkeleton } from '@/components/skeletons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { ModernWeatherCard } from '@/components/weather/ModernWeatherCard';
 
 
 interface FeatureCard {
@@ -52,7 +54,16 @@ interface FeatureCard {
 export default function Home() {
   const { t } = useTranslation();
   const { user } = useAuthStore();
+  const [currentTime, setCurrentTime] = useState(new Date());
   const { currentWeather } = useWeather();
+  const [isWeatherExpanded, setIsWeatherExpanded] = useState(true);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
   
   // Use consistent data fetching hook (handles online/offline automatically)
   const { lands, isLoading: loading } = useLands();
@@ -68,10 +79,37 @@ export default function Home() {
   // Get next crop from lands
   const nextCrop = lands.find(land => land.current_crop)?.current_crop || 'Not planned';
   
-  // Calculate NDVI average (placeholder - will be replaced with actual NDVI data)
+  // Calculate NDVI average
   const avgNdvi = lands.length > 0 ? 0.85 : 0;
 
-  // Main features cards
+  // Quick stats for weather card
+  const quickStats = [
+    { 
+      icon: Thermometer, 
+      label: 'Temperature', 
+      value: currentWeather ? `${Math.round(currentWeather.temp)}°C` : '---', 
+      trend: currentWeather && currentWeather.temp > 25 ? 'up' : 'stable' 
+    },
+    { 
+      icon: Droplets, 
+      label: 'Humidity', 
+      value: currentWeather ? `${currentWeather.humidity}%` : '---', 
+      trend: currentWeather && currentWeather.humidity > 60 ? 'up' : 'down' 
+    },
+    { 
+      icon: Wind, 
+      label: 'Wind Speed', 
+      value: currentWeather ? `${Math.round(currentWeather.wind_speed * 3.6)} km/h` : '---', 
+      trend: currentWeather && currentWeather.wind_speed > 5 ? 'up' : 'down' 
+    },
+    { 
+      icon: Activity, 
+      label: 'Total Area', 
+      value: totalArea > 0 ? `${totalArea.toFixed(1)} acres` : 'No land', 
+      trend: lands.length > 0 ? 'up' : 'stable' 
+    }
+  ];
+
   const mainFeatures: FeatureCard[] = [
     {
       title: t('home.myLand'),
@@ -160,53 +198,222 @@ export default function Home() {
 
   return (
     <div className="relative bg-gradient-subtle min-h-screen">
-      {/* Modern Floating Weather Card */}
-      <ModernWeatherCard />
-
-      {/* Hero Section - Simplified */}
+      {/* Modern Floating Weather Card - Swipeable */}
       <motion.div 
-        className="relative overflow-hidden bg-gradient-primary rounded-b-[2rem] shadow-elegant border-b border-border/50 pt-6 pb-32"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
+        className="fixed top-16 left-4 right-4 z-30 pointer-events-auto"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ 
+          opacity: 1, 
+          y: 0,
+          height: isWeatherExpanded ? "auto" : "56px"
+        }}
+        transition={{ 
+          type: "spring",
+          stiffness: 300,
+          damping: 30
+        }}
+        drag="y"
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={0.1}
+        onDragEnd={(e, { offset, velocity }) => {
+          const swipe = offset.y;
+          const swipeVelocity = velocity.y;
+          
+          if (swipe > 50 || swipeVelocity > 500) {
+            setIsWeatherExpanded(false);
+          } else if (swipe < -50 || swipeVelocity < -500) {
+            setIsWeatherExpanded(true);
+          }
+        }}
       >
-        <div className="relative z-10 px-4">
-          {/* Greeting */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-2 mb-2"
+        <div className={`backdrop-blur-2xl bg-gradient-to-br from-primary/10 via-card/90 to-accent/10 border border-border/50 shadow-2xl rounded-2xl overflow-hidden cursor-pointer`}
+          onClick={() => setIsWeatherExpanded(!isWeatherExpanded)}
+        >
+          {/* Drag Handle */}
+          <motion.div 
+            className="absolute top-2 left-1/2 -translate-x-1/2 z-20"
+            whileHover={{ scale: 1.2 }}
+            whileTap={{ scale: 0.9 }}
           >
-            <h2 className="text-2xl font-bold text-primary-foreground">
-              🙏 Namaste
-            </h2>
-            <div className="bg-background/20 backdrop-blur-sm rounded-full px-3 py-1">
-              <p className="text-primary-foreground/90 text-sm font-medium">
-                {user?.fullName?.split(' ')[0] || user?.farmerName?.split(' ')[0] || user?.name?.split(' ')[0] || t('home.farmer')}
-              </p>
-            </div>
+            <div className="w-8 h-1 bg-foreground/30 backdrop-blur-md rounded-full shadow-sm" />
           </motion.div>
 
-          {/* Farm Summary */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="flex items-center gap-4 text-primary-foreground/80 text-sm"
-          >
-            <div className="flex items-center gap-1.5">
-              <MapPin className="w-4 h-4" />
-              <span>{lands.length} {lands.length === 1 ? 'Plot' : 'Plots'}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Leaf className="w-4 h-4" />
-              <span>{totalArea.toFixed(1)} acres</span>
-            </div>
-          </motion.div>
+          {/* Weather Background Animations */}
+          <div className="absolute inset-0 pointer-events-none">
+            {currentWeather && (
+              <>
+                {/* Sunny animation */}
+                {currentWeather.main === 'Clear' && (
+                  <div className="absolute inset-0">
+                    <motion.div 
+                      className="absolute top-4 right-8 w-24 h-24 bg-accent/20 rounded-full blur-2xl"
+                      animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
+                      transition={{ duration: 4, repeat: Infinity }}
+                    />
+                  </div>
+                )}
+                
+                {/* Rainy animation */}
+                {(currentWeather.main === 'Rain' || currentWeather.main === 'Drizzle') && (
+                  <div className="absolute inset-0 overflow-hidden">
+                    {[...Array(8)].map((_, i) => (
+                      <motion.div
+                        key={i}
+                        className="absolute w-0.5 h-6 bg-primary/30 rounded-full"
+                        initial={{ top: -20, left: `${Math.random() * 100}%` }}
+                        animate={{ top: '100%' }}
+                        transition={{
+                          duration: 1 + Math.random(),
+                          repeat: Infinity,
+                          delay: Math.random() * 2,
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <AnimatePresence mode="wait">
+            {!isWeatherExpanded && (
+              <motion.div
+                key="minimized"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="h-14 flex items-center relative z-10 px-4"
+              >
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center gap-3">
+                    {currentWeather?.main === 'Clear' && <Sun className="w-6 h-6 text-accent" />}
+                    {currentWeather?.main === 'Clouds' && <Cloud className="w-6 h-6 text-muted-foreground" />}
+                    {(currentWeather?.main === 'Rain' || currentWeather?.main === 'Drizzle') && <CloudRain className="w-6 h-6 text-primary" />}
+                    <div>
+                      <p className="text-lg font-bold text-foreground">
+                        {currentWeather?.temp ? Math.round(currentWeather.temp) : '--'}°C
+                      </p>
+                      <p className="text-xs text-muted-foreground capitalize">
+                        {currentWeather?.description || 'Loading...'}
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronDown className="w-5 h-5 text-muted-foreground" />
+                </div>
+              </motion.div>
+            )}
+
+            {isWeatherExpanded && (
+              <motion.div
+                key="expanded"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="relative z-10 p-5 pt-6"
+              >
+                {/* Header */}
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <motion.div
+                      initial={{ scale: 0.8 }}
+                      animate={{ scale: 1 }}
+                      className="flex items-baseline gap-1 mb-1"
+                    >
+                      <span className="text-5xl font-bold text-foreground">
+                        {currentWeather?.temp ? Math.round(currentWeather.temp) : '--'}
+                      </span>
+                      <span className="text-2xl text-muted-foreground">°C</span>
+                    </motion.div>
+                    <p className="text-sm font-medium text-foreground/90 capitalize mb-1">
+                      {currentWeather?.description || 'Loading...'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Feels like {currentWeather?.feels_like ? Math.round(currentWeather.feels_like) : '--'}°C
+                    </p>
+                  </div>
+
+                  <motion.div
+                    initial={{ rotate: -20, scale: 0.8 }}
+                    animate={{ rotate: 0, scale: 1 }}
+                    className="text-primary"
+                  >
+                    {currentWeather?.main === 'Clear' && <Sun className="w-12 h-12" />}
+                    {currentWeather?.main === 'Clouds' && <Cloud className="w-12 h-12" />}
+                    {(currentWeather?.main === 'Rain' || currentWeather?.main === 'Drizzle') && <CloudRain className="w-12 h-12" />}
+                    {currentWeather?.main === 'Snow' && <CloudSnow className="w-12 h-12" />}
+                  </motion.div>
+                </div>
+
+                {/* Weather Details Grid */}
+                <div className="grid grid-cols-3 gap-3 pt-4 border-t border-border/30">
+                  <div className="flex flex-col items-center gap-1">
+                    <Wind className="w-4 h-4 text-primary" />
+                    <span className="text-xs text-muted-foreground">Wind</span>
+                    <span className="text-sm font-semibold text-foreground">
+                      {currentWeather?.wind_speed ? Math.round(currentWeather.wind_speed * 3.6) : '--'} km/h
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col items-center gap-1">
+                    <Droplets className="w-4 h-4 text-primary" />
+                    <span className="text-xs text-muted-foreground">Humidity</span>
+                    <span className="text-sm font-semibold text-foreground">
+                      {currentWeather?.humidity || '--'}%
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col items-center gap-1">
+                    <Thermometer className="w-4 h-4 text-primary" />
+                    <span className="text-xs text-muted-foreground">Pressure</span>
+                    <span className="text-sm font-semibold text-foreground">
+                      {currentWeather?.pressure || '--'} hPa
+                    </span>
+                  </div>
+                </div>
+
+                {/* Farm Stats */}
+                <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-border/30">
+                  <div className="flex items-center gap-2 bg-background/50 rounded-lg p-2">
+                    <MapPin className="w-4 h-4 text-primary" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Plots</p>
+                      <p className="text-sm font-semibold text-foreground">{lands.length}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 bg-background/50 rounded-lg p-2">
+                    <Leaf className="w-4 h-4 text-primary" />
+                    <div>
+                      <p className="text-xs text-muted-foreground">Total Area</p>
+                      <p className="text-sm font-semibold text-foreground">{totalArea.toFixed(1)} acres</p>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </motion.div>
 
+      {/* Hero Section - Simplified Greeting */}
+      <div className="pt-32 pb-8 px-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-2 mb-6"
+        >
+          <h2 className="text-2xl font-bold text-foreground">
+            🙏 Namaste
+          </h2>
+          <div className="bg-primary/10 backdrop-blur-sm rounded-full px-3 py-1">
+            <p className="text-primary text-sm font-medium">
+              {user?.fullName?.split(' ')[0] || user?.farmerName?.split(' ')[0] || user?.name?.split(' ')[0] || t('home.farmer')}
+            </p>
+          </div>
+        </motion.div>
+      </div>
+
       {/* Main Features Grid */}
-      <div className="p-4 -mt-24">
+      <div className="px-4 -mt-2">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           {mainFeatures.map((feature) => {
             const Icon = feature.icon;
