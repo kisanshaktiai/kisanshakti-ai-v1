@@ -197,9 +197,14 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
 
   // Apply white label theme whenever tenant changes
   useEffect(() => {
-    if (tenant) {
-      const whiteLabelConfig = (tenant as any).white_label_config || {};
-      applyWhiteLabelTheme(whiteLabelConfig);
+    if (tenant?.whiteLabel) {
+      console.log('🎨 [App] Applying white label theme for tenant:', tenant.name);
+      console.log('🎨 [App] Theme config:', {
+        logo: tenant.whiteLabel.brand_identity?.logo_url,
+        primary_color: tenant.whiteLabel.brand_identity?.primary_color,
+        company_name: tenant.whiteLabel.brand_identity?.company_name
+      });
+      applyWhiteLabelTheme(tenant.whiteLabel);
     }
   }, [tenant, applyWhiteLabelTheme]);
 

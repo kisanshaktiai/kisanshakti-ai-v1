@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '@/integrations/supabase/client';
 import { WhiteLabelService } from '@/services/WhiteLabelService';
+import { localDB } from '@/services/localDB';
 
 interface BrandIdentity {
   logo_url?: string;
@@ -148,6 +149,47 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       let tenantData = null;
       let whiteLabelData = null;
       let error = null;
+      
+      // Check if offline and try to load from cache
+      if (!navigator.onLine) {
+        console.log('📴 [Tenant] Offline detected, attempting to load from localDB cache...');
+        const storedTenantId = localStorage.getItem('tenantId');
+        
+        if (storedTenantId) {
+          try {
+            const cachedConfig = await localDB.getTenantConfig(storedTenantId);
+            
+            if (cachedConfig) {
+              console.log('✅ [Tenant] Loaded tenant configuration from offline cache');
+              
+              // Reconstruct tenant object from cache
+              tenantData = cachedConfig.tenant_data;
+              whiteLabelData = cachedConfig.white_label_config;
+              
+              // Skip online fetch, use cached data
+              const tenant: Tenant = {
+                id: tenantData.id,
+                name: tenantData.name,
+                domain: domain,
+                whiteLabel: whiteLabelData,
+                settings: {
+                  languages: ['en', 'hi', 'pa', 'mr', 'ta'],
+                  defaultLanguage: 'hi',
+                  features: ['weather', 'market', 'advisory', 'schemes'],
+                },
+              };
+              
+              set({ tenant, isLoading: false });
+              get().applyWhiteLabelTheme(tenant.whiteLabel!);
+              
+              console.log('✅ [Tenant] Offline mode: Using cached tenant configuration');
+              return;
+            }
+          } catch (cacheError) {
+            console.warn('⚠️ [Tenant] Failed to load from cache:', cacheError);
+          }
+        }
+      }
       
       if (isDevelopment) {
         // In development, first try to get tenant from localStorage (for persistence)
@@ -317,13 +359,24 @@ export const useTenantStore = create<TenantState>((set, get) => ({
         console.log('🔐 [Security] Initializing tenant-scoped database:', `KisanDB_${tenantData.id}`);
         
         // First try white_label_configs
-        const { data: whiteLabel } = await supabase
+        console.log('🔍 [Tenant] Fetching white_label_configs for tenant:', tenantData.id);
+        const { data: whiteLabel, error: wlError } = await supabase
           .from('white_label_configs')
           .select('*')
           .eq('tenant_id', tenantData.id)
           .maybeSingle();
         
+        if (wlError) {
+          console.error('❌ [Tenant] Error fetching white_label_configs:', wlError);
+        }
+        
         if (whiteLabel) {
+          console.log('✅ [Tenant] Found white_label_configs:', {
+            hasLogo: !!(whiteLabel as any).brand_identity?.logo_url,
+            hasPrimaryColor: !!(whiteLabel as any).brand_identity?.primary_color,
+            hasThemeColors: !!(whiteLabel as any).theme_colors,
+            brandIdentity: (whiteLabel as any).brand_identity
+          });
           whiteLabelData = whiteLabel;
         } else {
           // Fallback to tenant_branding table
@@ -553,9 +606,28 @@ export const useTenantStore = create<TenantState>((set, get) => ({
 
         set({ tenant, isLoading: false });
         
+        // Save tenant configuration to localDB for offline use
+        try {
+          await localDB.saveTenantConfig(
+            tenantData.id,
+            whiteLabelData,
+            {
+              id: tenantData.id,
+              name: tenantData.name,
+              domain: domain
+            }
+          );
+          console.log('💾 [Tenant] Saved configuration to localDB for offline use');
+        } catch (error) {
+          console.error('❌ [Tenant] Failed to cache config in localDB:', error);
+        }
+        
         // Apply white label theme if available
         if (whiteLabelData) {
+          console.log('🎨 [Tenant] Applying white label theme after tenant load');
           get().applyWhiteLabelTheme(tenant.whiteLabel!);
+        } else {
+          console.warn('⚠️ [Tenant] No white label data found for tenant:', tenantData.name);
         }
         
         // Update manifest link on tenant load
@@ -573,6 +645,13 @@ export const useTenantStore = create<TenantState>((set, get) => ({
   },
 
   applyWhiteLabelTheme: (whiteLabel) => {
+    console.log('🎨 [Theme] Starting theme application...');
+    console.log('🎨 [Theme] White label config:', {
+      hasBrandIdentity: !!whiteLabel.brand_identity,
+      hasThemeColors: !!(whiteLabel as any).theme_colors,
+      hasPwaConfig: !!whiteLabel.pwa_config
+    });
+    
     // Apply custom theme to CSS variables
     const root = document.documentElement;
     
@@ -800,6 +879,20 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       }
     }
     
+    // Apply logo URL as CSS variable for components to use
+    if (brandIdentity?.logo_url) {
+      root.style.setProperty('--brand-logo-url', `url('${brandIdentity.logo_url}')`);
+      // Also store in localStorage for offline access
+      localStorage.setItem('brand_logo_url', brandIdentity.logo_url);
+      console.log('🎨 [Theme] Applied brand logo:', brandIdentity.logo_url);
+    }
+    
+    // Store company name for components
+    if (brandIdentity?.company_name) {
+      localStorage.setItem('brand_company_name', brandIdentity.company_name);
+      console.log('🎨 [Theme] Applied company name:', brandIdentity.company_name);
+    }
+    
     // Apply favicon if available
     if (brandIdentity?.favicon_url) {
       const existingFavicon = document.querySelector('link[rel="icon"]');
@@ -811,6 +904,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
         link.href = brandIdentity.favicon_url;
         document.head.appendChild(link);
       }
+      console.log('🎨 [Theme] Applied favicon:', brandIdentity.favicon_url);
     }
     
     // Update PWA manifest dynamically
