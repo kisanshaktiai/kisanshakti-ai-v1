@@ -105,21 +105,32 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           domain: currentDomain
         });
         
-        // Set dynamic manifest link
-        const manifestLink = document.querySelector('link[rel="manifest"]') as HTMLLinkElement;
-        if (manifestLink) {
-          manifestLink.href = `https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/generate-manifest?domain=${encodeURIComponent(currentDomain)}`;
-        }
+        // Helper function for non-blocking tasks
+        const runInBackground = (fn: () => void) => {
+          if ('requestIdleCallback' in window) {
+            requestIdleCallback(fn);
+          } else {
+            setTimeout(fn, 0);
+          }
+        };
         
-        // STEP 1: Set tenant isolation context for all services
-        setCurrentStep('Initializing secure storage...');
+        // Set dynamic manifest link (non-blocking)
+        runInBackground(() => {
+          const manifestLink = document.querySelector('link[rel="manifest"]') as HTMLLinkElement;
+          if (manifestLink) {
+            manifestLink.href = `https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/generate-manifest?domain=${encodeURIComponent(currentDomain)}`;
+          }
+        });
+        
+        // STEP 1: Set tenant isolation context for all services (fast)
+        setCurrentStep('Preparing your workspace...');
         tenantIsolationService.setTenantContext(tenant.id, currentDomain);
         
-        // STEP 2: Initialize tenant-scoped local storage
+        // STEP 2: Initialize tenant-scoped local storage (fast)
         await localDB.initializeWithTenant(tenant.id);
         
-        // STEP 3: Check authentication with tenant context validation
-        setCurrentStep('Checking authentication...');
+        // STEP 3: Check authentication with tenant context validation (potentially slow)
+        setCurrentStep('Verifying credentials...');
         await checkAuth();
         
         // Validate auth tenant matches current tenant
@@ -140,11 +151,14 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           await localDB.clearAll();
         }
         
-        // STEP 4: Background tasks
-        setCurrentStep('Finalizing...');
-        LocationService.getCurrentLocation(true).catch(() => null);
+        // STEP 4: Start location service in background (non-blocking)
+        setCurrentStep('Almost ready...');
+        runInBackground(() => {
+          LocationService.getCurrentLocation(true).catch(() => null);
+        });
         
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // Minimal delay for smooth transition
+        await new Promise(resolve => setTimeout(resolve, 150));
       } catch (error) {
         console.error('🚨 [Security] App initialization failed:', error);
         toast({
