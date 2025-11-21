@@ -60,6 +60,7 @@ import { syncService } from "@/services/syncService";
 import { localDB } from "@/services/localDB";
 import { tenantIsolationService } from "@/services/tenantIsolationService";
 import { useGlobalRealtimeSync } from "@/hooks/useGlobalRealtimeSync";
+import { TenantProvider } from "@/contexts/TenantContext";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -360,15 +361,17 @@ export default function App() {
   return (
     <I18nextProvider i18n={i18n}>
       <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <TooltipProvider>
-            <AppInitializer>
-              <RouterProvider router={router} />
-            </AppInitializer>
-            <Toaster />
-            <Sonner />
-          </TooltipProvider>
-        </QueryClientProvider>
+        <TenantProvider>
+          <QueryClientProvider client={queryClient}>
+            <TooltipProvider>
+              <AppInitializer>
+                <RouterProvider router={router} />
+              </AppInitializer>
+              <Toaster />
+              <Sonner />
+            </TooltipProvider>
+          </QueryClientProvider>
+        </TenantProvider>
       </ErrorBoundary>
     </I18nextProvider>
   );
