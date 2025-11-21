@@ -99,6 +99,12 @@ export function PWAUpdatePrompt() {
    * Handle when an update is detected and ready
    */
   const handleUpdateDetected = (reg: ServiceWorkerRegistration) => {
+    // Skip update prompts in development mode
+    if (versionService.isDevelopmentMode()) {
+      console.log('[PWAUpdatePrompt] Skipping update prompt in development mode');
+      return;
+    }
+
     // Get version info
     const buildTime = versionService.getBuildTime();
     const versionDisplay = buildTime 
@@ -107,17 +113,24 @@ export function PWAUpdatePrompt() {
     
     setNewVersion(versionDisplay);
 
+    // Get last known version to check if version actually changed
+    const lastKnownVersion = localStorage.getItem('last-known-version') || '0.0.0';
+    
+    // If version hasn't changed, don't show prompt (prevents false positives during dev)
+    if (lastKnownVersion === currentVersion) {
+      console.log('[PWAUpdatePrompt] Service worker updated but version unchanged - skipping prompt');
+      versionService.acknowledgeCurrentVersion(); // Acknowledge to prevent repeated checks
+      return;
+    }
+
     // Check if we should show the prompt based on dismissal state
     const shouldShow = updateStateManager.shouldShowUpdatePrompt(currentVersion);
     
     // For major updates, override dismissal
-    const isMajor = updateStateManager.isMajorUpdate(
-      localStorage.getItem('last-known-version') || '0.0.0',
-      currentVersion
-    );
+    const isMajor = updateStateManager.isMajorUpdate(lastKnownVersion, currentVersion);
 
     if (shouldShow || isMajor) {
-      console.log('[PWAUpdatePrompt] Showing update prompt', isMajor ? '(major update)' : '');
+      console.log('[PWAUpdatePrompt] Showing update prompt', isMajor ? '(major update)' : '', `(${lastKnownVersion} → ${currentVersion})`);
       setShowPrompt(true);
       setRegistration(reg);
     } else {

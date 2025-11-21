@@ -13620,6 +13620,75 @@ export type Database = {
         }
         Relationships: []
       }
+      rate_limit_buckets: {
+        Row: {
+          created_at: string | null
+          function_name: string
+          id: string
+          identifier: string
+          last_request: string | null
+          metadata: Json | null
+          request_count: number
+          window_end: string
+          window_start: string
+        }
+        Insert: {
+          created_at?: string | null
+          function_name: string
+          id?: string
+          identifier: string
+          last_request?: string | null
+          metadata?: Json | null
+          request_count?: number
+          window_end: string
+          window_start: string
+        }
+        Update: {
+          created_at?: string | null
+          function_name?: string
+          id?: string
+          identifier?: string
+          last_request?: string | null
+          metadata?: Json | null
+          request_count?: number
+          window_end?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
+      rate_limit_tracking: {
+        Row: {
+          created_at: string | null
+          endpoint: string
+          id: string
+          identifier: string
+          request_count: number
+          updated_at: string | null
+          window_end: string
+          window_start: string
+        }
+        Insert: {
+          created_at?: string | null
+          endpoint: string
+          id?: string
+          identifier: string
+          request_count?: number
+          updated_at?: string | null
+          window_end: string
+          window_start: string
+        }
+        Update: {
+          created_at?: string | null
+          endpoint?: string
+          id?: string
+          identifier?: string
+          request_count?: number
+          updated_at?: string | null
+          window_end?: string
+          window_start?: string
+        }
+        Relationships: []
+      }
       rate_limits: {
         Row: {
           created_at: string
@@ -17831,6 +17900,7 @@ export type Database = {
           created_by: string | null
           custom_domain: string | null
           deleted_at: string | null
+          domain_config: Json | null
           established_date: string | null
           id: string
           is_default: boolean | null
@@ -17884,6 +17954,7 @@ export type Database = {
           created_by?: string | null
           custom_domain?: string | null
           deleted_at?: string | null
+          domain_config?: Json | null
           established_date?: string | null
           id?: string
           is_default?: boolean | null
@@ -17937,6 +18008,7 @@ export type Database = {
           created_by?: string | null
           custom_domain?: string | null
           deleted_at?: string | null
+          domain_config?: Json | null
           established_date?: string | null
           id?: string
           is_default?: boolean | null
@@ -20845,7 +20917,7 @@ export type Database = {
         Args: { keep_count?: number; table_name: string }
         Returns: number
       }
-      cleanup_old_rate_limits: { Args: never; Returns: number }
+      cleanup_old_rate_limits: { Args: never; Returns: undefined }
       cluster_lands_for_ndvi: {
         Args: {
           p_max_cluster_area_km2?: number
@@ -20921,6 +20993,15 @@ export type Database = {
           current_user_id: string
           db_role: string
           db_user: string
+        }[]
+      }
+      debug_jwt_status: {
+        Args: never
+        Returns: {
+          current_user_id: string
+          is_expired: boolean
+          jwt_exp: string
+          jwt_present: boolean
         }[]
       }
       detect_land_overlaps: {
@@ -21530,6 +21611,7 @@ export type Database = {
       mark_invitation_accepted: { Args: { token: string }; Returns: boolean }
       mark_invitation_clicked: { Args: { token: string }; Returns: boolean }
       mark_invite_used: { Args: { invite_token: string }; Returns: boolean }
+      migrate_tenant_domains: { Args: never; Returns: undefined }
       migrate_theme_data_to_appearance_settings: {
         Args: never
         Returns: undefined

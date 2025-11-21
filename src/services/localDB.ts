@@ -1,4 +1,5 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
+import { tenantIsolationService } from './tenantIsolationService';
 
 // ============================================================================
 // DATA INTERFACES - Exact mirrors of Supabase tables
@@ -636,8 +637,8 @@ class LocalDatabase {
    * Creates tenant-prefixed database for complete data isolation
    */
   async initializeWithTenant(tenantId: string): Promise<void> {
-    if (!tenantId) {
-      throw new Error('🚨 [Security] CRITICAL: Cannot initialize LocalDB without tenant ID');
+    if (!tenantId || tenantId.trim() === '') {
+      throw new Error('🚨 [Security] CRITICAL: Cannot initialize LocalDB without valid tenant ID');
     }
     
     // Close existing connection if switching tenants
@@ -651,7 +652,7 @@ class LocalDatabase {
     
     this.currentTenantId = tenantId;
     // Use tenant-prefixed database name for COMPLETE isolation
-    this.dbName = `${DB_NAME}_${tenantId}`;
+    this.dbName = tenantIsolationService.getTenantDatabaseName();
     
     console.log('🔐 [Security] Initializing tenant-scoped database:', this.dbName);
     
@@ -663,16 +664,24 @@ class LocalDatabase {
   }
 
   /**
-   * Legacy initialization - deprecated, use initializeWithTenant instead
-   * @deprecated Use initializeWithTenant for proper tenant isolation
+   * Legacy initialization - now uses tenant isolation service
    */
   async initialize(): Promise<void> {
-    console.warn('⚠️ [Security] Using legacy initialize() without tenant context');
-    if (this.db) return;
-    if (this.initPromise) return this.initPromise;
-
-    this.initPromise = this.performInitialization();
-    return this.initPromise;
+    const tenantId = tenantIsolationService.getTenantId();
+    
+    if (!tenantId) {
+      console.warn('⚠️ [Security] No tenant context found, checking localStorage...');
+      const storedTenantId = localStorage.getItem('tenantId');
+      
+      if (storedTenantId) {
+        console.log('✅ [Security] Loaded tenant from localStorage:', storedTenantId);
+        return this.initializeWithTenant(storedTenantId);
+      }
+      
+      throw new Error('🚨 [Security] Cannot initialize LocalDB - tenant not loaded');
+    }
+    
+    return this.initializeWithTenant(tenantId);
   }
 
   private async performInitialization(): Promise<void> {
@@ -865,6 +874,17 @@ class LocalDatabase {
 
   async saveFarmer(farmer: Omit<FarmerData, 'lastModified' | 'syncStatus'>): Promise<void> {
     if (!this.db) await this.initialize();
+    
+    // SECURITY: Verify tenant_id matches current context
+    const validation = tenantIsolationService.validateContext(false);
+    if (!validation.valid) {
+      throw new Error(`[Security] Cannot save farmer: ${validation.error}`);
+    }
+    
+    if (farmer.tenant_id !== validation.tenantId) {
+      throw new Error(`[Security] CRITICAL: Farmer tenant_id mismatch! Expected: ${validation.tenantId}, Got: ${farmer.tenant_id}`);
+    }
+    
     const data: FarmerData = {
       ...farmer,
       lastModified: Date.now(),
@@ -876,10 +896,17 @@ class LocalDatabase {
 
   async getFarmers(tenantId?: string): Promise<FarmerData[]> {
     if (!this.db) await this.initialize();
-    if (tenantId) {
-      return await this.db!.getAllFromIndex('farmers', 'by-tenant', tenantId);
+    
+    // SECURITY: Default to current tenant if not specified
+    const contextTenantId = tenantIsolationService.getTenantId();
+    const filterTenantId = tenantId || contextTenantId;
+    
+    if (!filterTenantId) {
+      console.error('❌ [Security] Cannot get farmers without tenant context');
+      return [];
     }
-    return await this.db!.getAll('farmers');
+    
+    return await this.db!.getAllFromIndex('farmers', 'by-tenant', filterTenantId);
   }
 
   async getFarmerById(id: string): Promise<FarmerData | undefined> {
@@ -891,6 +918,17 @@ class LocalDatabase {
 
   async saveLand(land: Omit<LandData, 'lastModified' | 'syncStatus'>): Promise<void> {
     if (!this.db) await this.initialize();
+    
+    // SECURITY: Verify tenant_id matches current context
+    const validation = tenantIsolationService.validateContext(false);
+    if (!validation.valid) {
+      throw new Error(`[Security] Cannot save land: ${validation.error}`);
+    }
+    
+    if (land.tenant_id !== validation.tenantId) {
+      throw new Error(`[Security] CRITICAL: Land tenant_id mismatch! Expected: ${validation.tenantId}, Got: ${land.tenant_id}`);
+    }
+    
     const data: LandData = {
       ...land,
       lastModified: Date.now(),
@@ -903,17 +941,20 @@ class LocalDatabase {
   async getLands(tenantId?: string, farmerId?: string): Promise<LandData[]> {
     if (!this.db) await this.initialize();
     
-    // SECURITY: Require farmer_id for data isolation in multi-tenant SaaS
-    if (!farmerId && !tenantId) {
-      console.error('❌ [LocalDB] SECURITY: getLands() called without farmerId or tenantId!');
+    // SECURITY: Default to current tenant if not specified
+    const contextTenantId = tenantIsolationService.getTenantId();
+    const filterTenantId = tenantId || contextTenantId;
+    
+    if (!filterTenantId && !farmerId) {
+      console.error('❌ [Security] Cannot get lands without tenant or farmer context');
       return [];
     }
     
     if (farmerId) {
       return await this.db!.getAllFromIndex('lands', 'by-farmer', farmerId);
     }
-    if (tenantId) {
-      return await this.db!.getAllFromIndex('lands', 'by-tenant', tenantId);
+    if (filterTenantId) {
+      return await this.db!.getAllFromIndex('lands', 'by-tenant', filterTenantId);
     }
     return [];
   }

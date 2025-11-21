@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { checkRateLimit } from '../_shared/rateLimiter.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,6 +25,25 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
     const { tenantId } = await req.json();
+
+    // Rate limiting: 50 requests per hour per tenant
+    const rateLimit = await checkRateLimit(tenantId || 'anonymous', 'ai-marketing-insights', { maxRequests: 50, windowMs: 3600000 });
+    
+    if (!rateLimit.allowed) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Rate limit exceeded. Please try again later.',
+          resetTime: new Date(rateLimit.resetTime).toISOString()
+        }),
+        { 
+          status: 429, 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json'
+          } 
+        }
+      );
+    }
 
     console.log(`Generating marketing insights for tenant: ${tenantId}`);
 

@@ -90,8 +90,8 @@ serve(async (req) => {
     await validateIsolation(finalTenantId, finalFarmerId, supabaseUrl, supabaseServiceKey);
 
     // Rate limiting check (20 requests per minute per farmer)
-    const rateLimitKey = `ai-chat:${finalTenantId}:${finalFarmerId}`;
-    const rateLimit = checkRateLimit(rateLimitKey, { maxRequests: 20, windowMs: 60000 });
+    const rateLimitKey = `${finalTenantId}:${finalFarmerId}`;
+    const rateLimit = await checkRateLimit(rateLimitKey, 'ai-agriculture-chat', { maxRequests: 20, windowMs: 60000 });
     
     if (!rateLimit.allowed) {
       return new Response(

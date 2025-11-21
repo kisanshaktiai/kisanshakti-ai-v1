@@ -7,11 +7,27 @@ class VersionService {
   private checkInterval: number = 2 * 60 * 1000; // 2 minutes
   private intervalId: NodeJS.Timeout | null = null;
   private lastCheckTime: number = 0;
+  private isDevelopment: boolean;
 
   constructor() {
     // Get version from build-time environment variable
     this.currentVersion = import.meta.env.VITE_APP_VERSION || '1.0.0';
-    console.log(`[VersionService] App version: ${this.currentVersion}, Build: ${this.getBuildTime()}`);
+    
+    // Detect development mode
+    this.isDevelopment = import.meta.env.DEV || 
+      window.location.hostname === 'localhost' ||
+      window.location.hostname.includes('127.0.0.1') ||
+      window.location.hostname.includes('preview') ||
+      window.location.hostname.includes('lovable.app');
+    
+    console.log(`[VersionService] App version: ${this.currentVersion}, Build: ${this.getBuildTime()}, Mode: ${this.isDevelopment ? 'Development' : 'Production'}`);
+  }
+
+  /**
+   * Check if running in development mode
+   */
+  isDevelopmentMode(): boolean {
+    return this.isDevelopment;
   }
 
   /**

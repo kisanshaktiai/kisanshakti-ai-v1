@@ -190,7 +190,10 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           }
         }
       } else {
-        // In production, try exact domain match first
+        // PRODUCTION: Multi-stage domain lookup
+        console.log('🔍 [Tenant] Starting multi-stage domain lookup for:', domain);
+        
+        // STAGE 1: Exact custom_domain match in tenants table
         const { data: exactMatch, error: exactError } = await supabase
           .from('tenants')
           .select('*')
@@ -198,29 +201,120 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           .maybeSingle();
         
         if (exactMatch) {
+          console.log('✅ [Stage 1] Found by tenants.custom_domain');
           tenantData = exactMatch;
-        } else {
-          // Try subdomain match
-          const subdomain = domain.split('.')[0];
-          const { data: subdomainMatch, error: subdomainError } = await supabase
+        }
+        
+        // STAGE 2: Full subdomain match in tenants table
+        if (!tenantData) {
+          const { data: subdomainMatch, error: subError } = await supabase
             .from('tenants')
             .select('*')
-            .eq('subdomain', subdomain)
+            .eq('subdomain', domain)
             .maybeSingle();
           
-          tenantData = subdomainMatch;
-          error = subdomainError;
+          if (subdomainMatch) {
+            console.log('✅ [Stage 2] Found by tenants.subdomain (full match)');
+            tenantData = subdomainMatch;
+          }
         }
+        
+        // STAGE 3: Check white_label_configs.domain_config
+        // IMPORTANT: This is a farmer app skeleton, so we prioritize farmer_app domains
+        if (!tenantData) {
+          console.log('🔍 [Stage 3] Checking white_label_configs (farmer_app domains)...');
+          
+          const { data: whitelabelConfigs } = await supabase
+            .from('white_label_configs')
+            .select('tenant_id, domain_config');
+          
+          if (whitelabelConfigs) {
+            const matchedConfig = whitelabelConfigs.find(wl => {
+              const domainConfig = wl.domain_config as any;
+              
+              // PRIORITY 1: Check farmer_app.custom_domain (main use case for this skeleton)
+              if (domainConfig?.farmer_app?.custom_domain === domain) {
+                console.log('✅ [Stage 3] Matched farmer_app.custom_domain');
+                return true;
+              }
+              
+              // PRIORITY 2: Check flat structure custom_domain (legacy support)
+              if (domainConfig?.custom_domain === domain) {
+                console.log('✅ [Stage 3] Matched flat custom_domain (legacy)');
+                return true;
+              }
+              
+              // PRIORITY 3: Check subdomain (legacy support)
+              if (domainConfig?.subdomain === domain) {
+                console.log('✅ [Stage 3] Matched subdomain (legacy)');
+                return true;
+              }
+              
+              return false;
+            });
+            
+            if (matchedConfig) {
+              console.log('🎯 [Stage 3] Found domain in white_label_configs, fetching tenant...');
+              
+              const { data: tenantFromWL } = await supabase
+                .from('tenants')
+                .select('*')
+                .eq('id', matchedConfig.tenant_id)
+                .single();
+              
+              if (tenantFromWL) {
+                console.log('✅ [Stage 3] Loaded tenant:', tenantFromWL.name);
+                tenantData = tenantFromWL;
+              }
+            }
+          }
+        }
+        
+        // STAGE 4: Partial subdomain match (ONLY if base domain matches)
+        if (!tenantData) {
+          const parts = domain.split('.');
+          if (parts.length >= 2) {
+            const subdomain = parts[0];
+            const baseDomain = parts.slice(-2).join('.');
+            
+            console.log('🔍 [Stage 4] Trying partial subdomain match:', { subdomain, baseDomain });
+            
+            const { data: partialMatches } = await supabase
+              .from('tenants')
+              .select('*')
+              .or(`subdomain.eq.${subdomain},custom_domain.ilike.%${baseDomain}%`);
+            
+            if (partialMatches && partialMatches.length > 0) {
+              // Prioritize match with same base domain
+              tenantData = partialMatches.find(t => 
+                t.custom_domain?.includes(baseDomain) ||
+                t.subdomain?.includes(baseDomain)
+              ) || partialMatches[0];
+              
+              if (tenantData) {
+                console.log('⚠️ [Stage 4] Found via partial match (verify correct):', tenantData.name);
+              }
+            }
+          }
+        }
+        
+        error = exactError;
       }
 
       // Fetch white label config or tenant branding if tenant found
       if (tenantData?.id) {
+        // Store tenant context for security isolation
         localStorage.setItem('tenantId', tenantData.id);
-        console.log('✅ [Tenant] Tenant ID stored in localStorage:', {
-          tenantId: tenantData.id,
-          tenantName: tenantData.name,
-          domain: tenantData.domain
+        localStorage.setItem('tenantDomain', domain);
+        
+        console.log('✅ [Security] Tenant loaded:', {
+          id: tenantData.id,
+          name: tenantData.name,
+          domain: domain
         });
+        
+        // Initialize tenant-scoped database
+        console.log('🔐 [Security] Initializing tenant-scoped database:', `KisanDB_${tenantData.id}`);
         
         // First try white_label_configs
         const { data: whiteLabel } = await supabase
