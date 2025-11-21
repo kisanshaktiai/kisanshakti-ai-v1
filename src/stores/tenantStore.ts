@@ -565,11 +565,26 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           ? tenantData.settings as any 
           : {};
           
+        // PHASE 1: Complete WhiteLabel Config Construction
+        console.log('🎨 [Tenant] WhiteLabel data loaded:', {
+          has_brand_identity: !!whiteLabelData?.brand_identity,
+          has_mobile_theme: !!(whiteLabelData as any)?.mobile_theme,
+          has_theme_colors: !!(whiteLabelData as any)?.theme_colors,
+          has_splash_screens: !!whiteLabelData?.splash_screens,
+          has_domain_config: !!whiteLabelData?.domain_config,
+          logo_url: whiteLabelData?.brand_identity?.logo_url,
+          primary_color: whiteLabelData?.brand_identity?.primary_color
+        });
+        
         const tenant: Tenant = {
           id: tenantData.id,
           name: tenantData.name,
           domain: domain,
           whiteLabel: whiteLabelData ? {
+            // Include ALL fields from whiteLabelData
+            ...whiteLabelData,
+            // Normalize mobile_theme to theme_colors for compatibility
+            theme_colors: (whiteLabelData as any).mobile_theme || (whiteLabelData as any).theme_colors,
             brand_identity: {
               ...(typeof whiteLabelData.brand_identity === 'object' && whiteLabelData.brand_identity !== null ? whiteLabelData.brand_identity : {}),
               logo_url: (typeof whiteLabelData.brand_identity === 'object' && whiteLabelData.brand_identity !== null ? (whiteLabelData.brand_identity as any).logo_url : undefined),
@@ -645,54 +660,78 @@ export const useTenantStore = create<TenantState>((set, get) => ({
   },
 
   applyWhiteLabelTheme: (whiteLabel) => {
-    console.log('🎨 [Theme] Starting theme application...');
-    console.log('🎨 [Theme] White label config:', {
-      hasBrandIdentity: !!whiteLabel.brand_identity,
-      hasThemeColors: !!(whiteLabel as any).theme_colors,
-      hasPwaConfig: !!whiteLabel.pwa_config
-    });
-    
-    // Apply custom theme to CSS variables
-    const root = document.documentElement;
-    
-    // Helper function to ensure HSL format
-    const ensureHSL = (color: string): string => {
-      if (!color) return '';
+    try {
+      console.log('🎨 [Theme] Starting theme application...');
       
-      // If already in HSL format (contains % sign), return as is
-      if (color.includes('%')) return color;
+      // PHASE 5: Theme Validation
+      const validateThemeConfig = (wl: any): boolean => {
+        const checks = {
+          has_brand_identity: !!wl?.brand_identity,
+          has_logo: !!wl?.brand_identity?.logo_url,
+          has_theme_data: !!(wl?.theme_colors || wl?.mobile_theme),
+          has_primary_color: !!wl?.brand_identity?.primary_color
+        };
+        
+        console.log('🔍 [Theme Validation]:', checks);
+        return Object.values(checks).some(v => v === true);
+      };
       
-      // If it's a hex color, convert to HSL
-      if (color.startsWith('#')) {
-        return hexToHSL(color);
+      if (!validateThemeConfig(whiteLabel)) {
+        console.warn('⚠️ [Theme] Incomplete theme config, using defaults');
       }
       
-      // If it's an RGB color, convert to HSL
-      if (color.startsWith('rgb')) {
-        // Extract numbers from rgb/rgba string
-        const matches = color.match(/\d+/g);
-        if (matches && matches.length >= 3) {
-          const [r, g, b] = matches.map(Number);
-          return rgbToHSL(r, g, b);
+      console.log('🎨 [Theme] White label config:', {
+        hasBrandIdentity: !!whiteLabel.brand_identity,
+        hasThemeColors: !!(whiteLabel as any).theme_colors,
+        hasMobileTheme: !!(whiteLabel as any).mobile_theme,
+        hasPwaConfig: !!whiteLabel.pwa_config,
+        logoUrl: whiteLabel.brand_identity?.logo_url
+      });
+      
+      // Apply custom theme to CSS variables
+      const root = document.documentElement;
+      
+      // Helper function to ensure HSL format
+      const ensureHSL = (color: string): string => {
+        if (!color) return '';
+        
+        // If already in HSL format (contains % sign), return as is
+        if (color.includes('%')) return color;
+        
+        // If it's a hex color, convert to HSL
+        if (color.startsWith('#')) {
+          return hexToHSL(color);
         }
-      }
+        
+        // If it's an RGB color, convert to HSL
+        if (color.startsWith('rgb')) {
+          // Extract numbers from rgb/rgba string
+          const matches = color.match(/\d+/g);
+          if (matches && matches.length >= 3) {
+            const [r, g, b] = matches.map(Number);
+            return rgbToHSL(r, g, b);
+          }
+        }
+        
+        // If it's just numbers (like "142 76 36"), assume it's HSL without % signs
+        const numbers = color.match(/\d+/g);
+        if (numbers && numbers.length === 3) {
+          const [h, s, l] = numbers;
+          return `${h} ${s}% ${l}%`;
+        }
+        
+        // Default return the color as is
+        return color;
+      };
       
-      // If it's just numbers (like "142 76 36"), assume it's HSL without % signs
-      const numbers = color.match(/\d+/g);
-      if (numbers && numbers.length === 3) {
-        const [h, s, l] = numbers;
-        return `${h} ${s}% ${l}%`;
-      }
-      
-      // Default return the color as is
-      return color;
-    };
-    
-    // Apply theme colors if available (from new theme_colors column)
-    const themeColors = (whiteLabel as any).theme_colors;
+      // PHASE 2: Apply mobile_theme colors (priority)
+      const themeColors = (whiteLabel as any).theme_colors || (whiteLabel as any).mobile_theme;
     if (themeColors) {
-      // Apply core colors
+      console.log('🎨 [Theme] Applying theme colors from:', (whiteLabel as any).mobile_theme ? 'mobile_theme' : 'theme_colors');
+      
+      // PHASE 2: Apply mobile_theme.core colors to CSS variables
       if (themeColors.core) {
+        console.log('🎨 [Theme] Applying core colors:', Object.keys(themeColors.core));
         Object.entries(themeColors.core).forEach(([key, value]) => {
           if (value) {
             const hslValue = ensureHSL(String(value));
@@ -701,6 +740,55 @@ export const useTenantStore = create<TenantState>((set, get) => ({
             }
           }
         });
+      }
+      
+      // PHASE 2: Apply mobile_theme.neutral colors
+      if (themeColors.neutral) {
+        console.log('🎨 [Theme] Applying neutral colors');
+        if (themeColors.neutral.background) {
+          root.style.setProperty('--background', ensureHSL(String(themeColors.neutral.background)));
+        }
+        if (themeColors.neutral.surface) {
+          root.style.setProperty('--card', ensureHSL(String(themeColors.neutral.surface)));
+          root.style.setProperty('--popover', ensureHSL(String(themeColors.neutral.surface)));
+        }
+        if (themeColors.neutral.on_background) {
+          root.style.setProperty('--foreground', ensureHSL(String(themeColors.neutral.on_background)));
+        }
+        if (themeColors.neutral.on_surface) {
+          root.style.setProperty('--card-foreground', ensureHSL(String(themeColors.neutral.on_surface)));
+          root.style.setProperty('--popover-foreground', ensureHSL(String(themeColors.neutral.on_surface)));
+        }
+        if (themeColors.neutral.border) {
+          root.style.setProperty('--border', ensureHSL(String(themeColors.neutral.border)));
+          root.style.setProperty('--input', ensureHSL(String(themeColors.neutral.border)));
+        }
+      }
+      
+      // PHASE 2: Apply mobile_theme.status colors
+      if (themeColors.status) {
+        console.log('🎨 [Theme] Applying status colors');
+        if (themeColors.status.success) {
+          root.style.setProperty('--success', ensureHSL(String(themeColors.status.success)));
+          root.style.setProperty('--success-foreground', '0 0% 100%');
+        }
+        if (themeColors.status.error) {
+          root.style.setProperty('--destructive', ensureHSL(String(themeColors.status.error)));
+          root.style.setProperty('--destructive-foreground', '0 0% 100%');
+        }
+        if (themeColors.status.warning) {
+          root.style.setProperty('--warning', ensureHSL(String(themeColors.status.warning)));
+        }
+        if (themeColors.status.info) {
+          root.style.setProperty('--info', ensureHSL(String(themeColors.status.info)));
+        }
+      }
+      
+      // PHASE 2: Apply typography
+      if (themeColors.typography?.font_family) {
+        console.log('🎨 [Theme] Applying typography:', themeColors.typography.font_family);
+        root.style.setProperty('--font-sans', themeColors.typography.font_family);
+        document.body.style.fontFamily = themeColors.typography.font_family;
       }
       
       // Apply navigation colors
@@ -893,18 +981,39 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       console.log('🎨 [Theme] Applied company name:', brandIdentity.company_name);
     }
     
-    // Apply favicon if available
+    // PHASE 5: Log applied CSS variables for debugging
+    console.log('🎨 [Applied CSS Variables]:', {
+      '--primary': getComputedStyle(root).getPropertyValue('--primary').trim(),
+      '--background': getComputedStyle(root).getPropertyValue('--background').trim(),
+      '--brand-logo-url': getComputedStyle(root).getPropertyValue('--brand-logo-url').trim(),
+      '--font-sans': getComputedStyle(root).getPropertyValue('--font-sans').trim()
+    });
+    
+    console.log('🎨 [Theme] Complete theme applied successfully:', {
+      core_colors_applied: !!themeColors?.core,
+      neutral_colors_applied: !!themeColors?.neutral,
+      status_colors_applied: !!themeColors?.status,
+      typography_applied: !!themeColors?.typography,
+      logo_url_applied: !!brandIdentity?.logo_url,
+      company_name: brandIdentity?.company_name
+    });
+    
+    // PHASE 7: Apply favicon with error handling
     if (brandIdentity?.favicon_url) {
-      const existingFavicon = document.querySelector('link[rel="icon"]');
-      if (existingFavicon) {
-        existingFavicon.setAttribute('href', brandIdentity.favicon_url);
-      } else {
-        const link = document.createElement('link');
-        link.rel = 'icon';
-        link.href = brandIdentity.favicon_url;
-        document.head.appendChild(link);
+      try {
+        const existingFavicon = document.querySelector('link[rel="icon"]');
+        if (existingFavicon) {
+          existingFavicon.setAttribute('href', brandIdentity.favicon_url);
+        } else {
+          const link = document.createElement('link');
+          link.rel = 'icon';
+          link.href = brandIdentity.favicon_url;
+          document.head.appendChild(link);
+        }
+        console.log('🎨 [Theme] Applied favicon:', brandIdentity.favicon_url);
+      } catch (error) {
+        console.error('❌ [Theme] Failed to apply favicon:', error);
       }
-      console.log('🎨 [Theme] Applied favicon:', brandIdentity.favicon_url);
     }
     
     // Update PWA manifest dynamically
@@ -947,7 +1056,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       }
       
       // Respect reduced motion if configured
-      if (whiteLabel.app_customization.respect_reduce_motion && 
+      if (whiteLabel.app_customization.respect_reduce_motion &&
           window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
         root.style.setProperty('--animation-duration', '0s');
       }
@@ -979,42 +1088,9 @@ export const useTenantStore = create<TenantState>((set, get) => ({
       }
     }
     
-    if (whiteLabel.brand_identity?.tagline) {
-      const ogDescription = document.querySelector('meta[property="og:description"]');
-      if (ogDescription) {
-        ogDescription.setAttribute('content', whiteLabel.brand_identity.tagline);
-}
-
-// Helper function to convert RGB to HSL
-function rgbToHSL(r: number, g: number, b: number): string {
-  // Normalize RGB values to 0-1 range
-  r = r / 255;
-  g = g / 255;
-  b = b / 255;
-  
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  let h = 0, s = 0, l = (max + min) / 2;
-  
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    
-    switch (max) {
-      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
-      case g: h = ((b - r) / d + 2) / 6; break;
-      case b: h = ((r - g) / d + 4) / 6; break;
-    }
-  }
-  
-  // Return in Tailwind CSS format (space-separated, with % for s and l)
-  return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
-}
-      
-      const twitterDescription = document.querySelector('meta[name="twitter:description"]');
-      if (twitterDescription) {
-        twitterDescription.setAttribute('content', whiteLabel.brand_identity.tagline);
-      }
+    const twitterDescription = document.querySelector('meta[name="twitter:description"]');
+    if (twitterDescription) {
+      twitterDescription.setAttribute('content', whiteLabel.brand_identity.tagline);
     }
     
     // Update Apple mobile web app title
@@ -1022,7 +1098,14 @@ function rgbToHSL(r: number, g: number, b: number): string {
     if (appleMobileTitle && (whiteLabel.pwa_config?.short_name || whiteLabel.brand_identity?.company_name)) {
       appleMobileTitle.setAttribute('content', whiteLabel.pwa_config?.short_name || whiteLabel.brand_identity?.company_name || 'KisanShakti');
     }
-  },
+    
+    console.log('✅ [Theme] Theme applied successfully');
+  } catch (error) {
+    // PHASE 7: Error handling
+    console.error('❌ [Theme] Failed to apply theme:', error);
+    // Continue with fallback theme
+  }
+},
 
   clearError: () => set({ error: null }),
 
