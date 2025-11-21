@@ -21,8 +21,7 @@ import {
   Activity,
   Sparkles,
   Leaf,
-  Minimize2,
-  Maximize2
+  ChevronDown
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { Link } from 'react-router-dom';
@@ -206,82 +205,48 @@ export default function Home() {
 
   return (
     <div className="bg-gradient-subtle">
-      {/* Hero Section with Weather Animation - Collapsible */}
+      {/* Hero Section with Weather Animation - Swipeable with Pill Handle */}
       <motion.div 
-        className="relative overflow-hidden bg-gradient-earth rounded-b-3xl shadow-elegant"
-        animate={{
-          height: isWeatherExpanded ? 'auto' : '80px'
+        className="relative overflow-hidden bg-gradient-to-br from-primary/20 via-primary/10 to-background rounded-b-[2rem] shadow-xl border-b border-primary/20"
+        initial={{ height: "60vh" }}
+        animate={{ 
+          height: isWeatherExpanded ? "60vh" : "180px",
         }}
-        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        transition={{ 
+          type: "spring",
+          stiffness: 300,
+          damping: 30
+        }}
+        drag="y"
+        dragConstraints={{ top: 0, bottom: 0 }}
+        dragElastic={0.1}
+        onDragEnd={(e, { offset, velocity }) => {
+          const swipe = offset.y;
+          const swipeVelocity = velocity.y;
+          
+          // Swipe down to minimize (when expanded)
+          if (swipe > 50 || swipeVelocity > 500) {
+            setIsWeatherExpanded(false);
+          }
+          // Swipe up to expand (when minimized)
+          else if (swipe < -50 || swipeVelocity < -500) {
+            setIsWeatherExpanded(true);
+          }
+        }}
       >
-        {/* Unique Minimize/Expand Button */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setIsWeatherExpanded(!isWeatherExpanded)}
-          className="absolute top-4 right-4 z-20 h-11 w-11 rounded-2xl bg-white/95 backdrop-blur-sm hover:bg-white shadow-lg transition-all hover:scale-110 hover:rotate-180 duration-500 border border-primary/10"
+        {/* Pill-Shaped Drag Handle */}
+        <motion.div 
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-20 cursor-grab active:cursor-grabbing"
+          whileHover={{ scale: 1.2 }}
+          whileTap={{ scale: 0.9 }}
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
         >
-          {isWeatherExpanded ? (
-            <Minimize2 className="h-5 w-5 text-primary" strokeWidth={2.5} />
-          ) : (
-            <Maximize2 className="h-5 w-5 text-primary" strokeWidth={2.5} />
-          )}
-        </Button>
+          <div className="w-8 h-1 bg-white/30 backdrop-blur-md rounded-full shadow-lg" />
+        </motion.div>
 
-        {/* Minimized View with Scrolling Stats */}
-        <AnimatePresence>
-          {!isWeatherExpanded && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="p-4"
-            >
-              <div className="flex items-center gap-3 mb-3">
-                <Cloud className="w-6 h-6 text-white" />
-                <div>
-                  <p className="text-white font-semibold text-lg">
-                    {currentWeather ? `${Math.round(currentWeather.temp)}°C` : 'Loading...'}
-                  </p>
-                  <p className="text-white/70 text-xs">
-                    {currentWeather?.description || 'Weather info'}
-                  </p>
-                </div>
-              </div>
-              
-              {/* Horizontal Scrolling Stats */}
-              <div className="overflow-x-auto scrollbar-hide -mx-1">
-                <div className="flex gap-2 pb-1 min-w-max px-1">
-                  {quickStats.map((stat, index) => {
-                    const Icon = stat.icon;
-                    return (
-                      <div 
-                        key={index} 
-                        className="flex-shrink-0 bg-white/10 backdrop-blur-sm rounded-lg p-2.5 border border-white/20 min-w-[110px]"
-                      >
-                        <div className="flex items-center gap-1.5 mb-1">
-                          <Icon className="w-3.5 h-3.5 text-white/80" />
-                          <span className="text-[10px] text-white/70 uppercase tracking-wide">{stat.label}</span>
-                        </div>
-                        <p className="text-sm font-bold text-white">{stat.value}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Expanded View - Weather-based animated background */}
-        <AnimatePresence>
-          {isWeatherExpanded && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="p-4 pb-6"
-            >
+        {/* Weather Background Animations */}
         <div className="absolute inset-0">
           {/* Base gradient */}
           <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-accent/20" />
@@ -336,61 +301,146 @@ export default function Home() {
             </>
           )}
         </div>
-        
-              <div className="relative z-10">
-                {/* Namaste Greeting - Clear and Visible */}
-                <div className="mb-3">
-                  <p className="text-white/60 text-[11px] font-normal tracking-wider uppercase" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.2)' }}>
-                    🙏 Namaste, {user?.fullName?.split(' ')[0] || user?.farmerName?.split(' ')[0] || user?.name?.split(' ')[0] || 'Farmer'}
-                  </p>
-                </div>
 
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3 text-sm text-white whitespace-nowrap">
-                    <div className="flex items-center gap-1.5">
-                      <Leaf className="w-3.5 h-3.5" />
-                      <span>{currentTime.toLocaleDateString('en-IN', {
-                        weekday: 'short',
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric'
-                      })}</span>
-                    </div>
-                    <div className="ml-auto text-white/60 text-xs">
-                      Last sync: {currentTime.toLocaleTimeString('en-IN', { 
-                        hour: '2-digit', 
-                        minute: '2-digit' 
-                      })}
-                    </div>
+        <AnimatePresence mode="wait">
+          {!isWeatherExpanded && (
+            <motion.div
+              key="minimized"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+              className="h-full flex flex-col justify-between p-6 pt-8 relative z-10"
+            >
+              {/* Greeting */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <motion.h2 
+                    className="text-2xl font-bold text-white mb-1"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.1 }}
+                  >
+                    {t('home.greeting')}
+                  </motion.h2>
+                  <div 
+                    className="bg-black/10 backdrop-blur-sm rounded-full px-3 py-1 inline-block"
+                  >
+                    <p 
+                      className="text-white/80 text-[11px] font-medium"
+                      style={{ textShadow: '0 2px 4px rgba(0,0,0,0.3)' }}
+                    >
+                      {user?.fullName?.split(' ')[0] || user?.farmerName?.split(' ')[0] || user?.name?.split(' ')[0] || t('home.farmer')}
+                    </p>
                   </div>
                 </div>
+                {/* Current Weather */}
+                <div className="text-right">
+                  <div className="text-3xl font-bold text-white">{currentWeather ? `${Math.round(currentWeather.temp)}°` : '--°'}</div>
+                  <div className="text-xs text-white/70">{currentWeather?.description || t('home.loading')}</div>
+                </div>
+              </div>
 
-                {/* Weather Stats Grid - All 4 Cards Visible */}
-                <div className="mt-4">
-                  <div className="grid grid-cols-2 gap-3">
+              {/* Scrollable Quick Stats with Gradient Indicators */}
+              <div className="relative">
+                {/* Left Gradient Fade */}
+                <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-primary/20 to-transparent pointer-events-none z-10" />
+                {/* Right Gradient Fade */}
+                <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-primary/20 to-transparent pointer-events-none z-10" />
+                
+                <div className="overflow-x-auto scrollbar-hide px-4 -mx-4 scroll-smooth touch-pan-x" style={{ WebkitOverflowScrolling: 'touch' }}>
+                  <div className="flex gap-3 pb-2">
                     {quickStats.map((stat, index) => {
                       const Icon = stat.icon;
                       return (
-                        <motion.div 
-                          key={index} 
-                          className="bg-card/90 backdrop-blur-sm rounded-xl p-3 border border-border/50 hover:border-primary/50 transition-all hover:shadow-lg"
-                          whileHover={{ scale: 1.03, y: -2 }}
-                          transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+                        <motion.div
+                          key={index}
+                          className="flex-shrink-0 bg-white/10 backdrop-blur-md rounded-xl p-3 border border-white/20 min-w-[120px] will-change-transform"
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.2 + index * 0.1 }}
+                          whileHover={{ scale: 1.05 }}
+                          whileTap={{ scale: 0.98 }}
                         >
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center gap-1.5">
-                              <Icon className="w-3.5 h-3.5 text-primary" />
-                              <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{stat.label}</span>
-                            </div>
-                            {stat.trend === 'up' && <ArrowUpRight className="w-3 h-3 text-success" />}
-                            {stat.trend === 'down' && <ArrowDownRight className="w-3 h-3 text-destructive" />}
+                          <div className="flex items-center gap-2 mb-1">
+                            <Icon className="w-4 h-4 text-white" />
+                            <span className="text-[9px] text-white/70 uppercase tracking-wide">{stat.label}</span>
                           </div>
-                          <p className="text-lg font-bold tracking-tight">{stat.value}</p>
+                          <p className="text-base font-bold text-white">{stat.value}</p>
                         </motion.div>
                       );
                     })}
                   </div>
                 </div>
+              </div>
+            </motion.div>
+          )}
+
+          {isWeatherExpanded && (
+            <motion.div
+              key="expanded"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.3 }}
+              className="h-full flex flex-col p-6 pt-10 relative z-10"
+            >
+              {/* Header */}
+              <div className="mb-6">
+                <motion.h2 
+                  className="text-3xl font-bold text-white mb-2"
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                >
+                  {t('home.greeting')}
+                </motion.h2>
+                <div 
+                  className="bg-black/10 backdrop-blur-sm rounded-full px-3 py-1 inline-block mb-2"
+                >
+                  <p 
+                    className="text-white/80 text-[11px] font-medium"
+                    style={{ textShadow: '0 2px 4px rgba(0,0,0,0.3)' }}
+                  >
+                    {user?.fullName?.split(' ')[0] || user?.farmerName?.split(' ')[0] || user?.name?.split(' ')[0] || t('home.farmer')}
+                  </p>
+                </div>
+                <p className="text-white/80 text-sm">
+                  {currentTime.toLocaleDateString('en-IN', {
+                    weekday: 'short',
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                  })}
+                </p>
+              </div>
+
+              {/* Weather Stats Grid - 2x2 layout */}
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                {quickStats.map((stat, index) => {
+                  const Icon = stat.icon;
+                  return (
+                    <motion.div 
+                      key={index} 
+                      className="bg-card/90 backdrop-blur-sm rounded-xl p-3 border border-border/50 hover:border-primary/50 transition-all hover:shadow-lg will-change-transform"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.1 + index * 0.05, type: 'spring', stiffness: 400, damping: 17 }}
+                      whileHover={{ scale: 1.03, y: -2 }}
+                      whileTap={{ scale: 0.98 }}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <Icon className="w-3.5 h-3.5 text-primary" />
+                          <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{stat.label}</span>
+                        </div>
+                        {stat.trend === 'up' && <ArrowUpRight className="w-3 h-3 text-success" />}
+                        {stat.trend === 'down' && <ArrowDownRight className="w-3 h-3 text-destructive" />}
+                      </div>
+                      <p className="text-lg font-bold tracking-tight">{stat.value}</p>
+                    </motion.div>
+                  );
+                })}
               </div>
             </motion.div>
           )}
