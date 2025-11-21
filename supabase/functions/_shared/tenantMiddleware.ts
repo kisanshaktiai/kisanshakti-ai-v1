@@ -36,6 +36,13 @@ const CACHE_TTL = 60 * 60 * 1000; // 1 hour
  * Extract domain from request headers
  */
 export function extractDomain(req: Request): string {
+  // Priority 0: Custom client domain header (most reliable for production)
+  const clientDomain = req.headers.get('x-client-domain');
+  if (clientDomain) {
+    console.log('🔍 [TenantMiddleware] Using x-client-domain:', clientDomain);
+    return clientDomain;
+  }
+
   // Priority 1: X-Forwarded-Host (when behind reverse proxy)
   const forwardedHost = req.headers.get('x-forwarded-host');
   if (forwardedHost) {
