@@ -71,6 +71,8 @@ export interface TenantContextValue {
   isLoading: boolean;
   error: Error | null;
   refetch: () => Promise<void>;
+  clearCache: () => void;
+  lastUpdated: Date | null;
 }
 
 // ============= Context =============
@@ -84,6 +86,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [currentDomain, setCurrentDomain] = useState<string>('');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   const getCurrentDomain = useCallback(() => {
     if (typeof window === 'undefined') return 'localhost';
@@ -280,6 +283,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           tenantIsolationService.setTenantContext(config.id, domain);
           console.log('✅ [TenantProvider] Applying theme to DOM with branding and theme');
           applyThemeToDOM(config.branding, config.theme);
+          setLastUpdated(new Date());
 
           // Cache for offline in IndexedDB
           await localDB.saveTenantConfig(config.id, { 
@@ -466,6 +470,24 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [getCurrentDomain, applyThemeToDOM]);
 
+  // Clear cache and refetch (for theme updates)
+  const clearCache = useCallback(() => {
+    console.log('[TenantProvider] 🗑️ Clearing cache and refetching...');
+    localStorage.removeItem('tenant_config_cache');
+    fetchTenantConfig();
+  }, [fetchTenantConfig]);
+
+  // Listen for theme update events
+  useEffect(() => {
+    const handleThemeUpdate = () => {
+      console.log('[TenantProvider] 🎨 Theme update event received');
+      clearCache();
+    };
+    
+    window.addEventListener('theme-updated', handleThemeUpdate);
+    return () => window.removeEventListener('theme-updated', handleThemeUpdate);
+  }, [clearCache]);
+
   // Initial load
   useEffect(() => {
     const domain = getCurrentDomain();
@@ -491,6 +513,8 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     isLoading,
     error,
     refetch: fetchTenantConfig,
+    clearCache,
+    lastUpdated,
   };
 
   return <TenantContext.Provider value={value}>{children}</TenantContext.Provider>;
