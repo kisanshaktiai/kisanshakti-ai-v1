@@ -492,6 +492,17 @@ export interface FarmerAlertData {
 }
 
 /**
+ * Tenant Configuration (local cache only)
+ */
+export interface TenantConfigData {
+  tenant_id: string;
+  white_label_config: any;
+  tenant_data: any;
+  cached_at: number;
+  expires_at: number;
+}
+
+/**
  * Sync metadata (local only)
  */
 export interface SyncMetadata {
@@ -607,6 +618,15 @@ interface KisanDB extends DBSchema {
       'by-land': string;
       'by-read-status': string;
       'by-sync-status': string;
+    };
+  };
+  
+  // tenantConfig table (local cache only)
+  tenantConfig: {
+    key: string;
+    value: TenantConfigData;
+    indexes: {
+      'by-tenant': string;
     };
   };
   
@@ -765,6 +785,13 @@ class LocalDatabase {
           alertsStore.createIndex('by-land', 'land_id');
           alertsStore.createIndex('by-read-status', 'is_read');
           alertsStore.createIndex('by-sync-status', 'syncStatus');
+        }
+
+        // Create tenantConfig store for caching white label configurations
+        if (!db.objectStoreNames.contains('tenantConfig')) {
+          const configStore = db.createObjectStore('tenantConfig', { keyPath: 'tenant_id' });
+          configStore.createIndex('by-tenant', 'tenant_id');
+          console.log('✅ [LocalDB] Created tenantConfig store for offline theme support');
         }
 
         // Create syncMetadata store
@@ -1290,7 +1317,7 @@ class LocalDatabase {
     console.log('🗑️ [LocalDB] Clearing all data stores...');
     
     const tx = this.db!.transaction(
-      ['farmers', 'lands', 'cropSchedules', 'scheduleTasks', 'aiChatSessions', 'aiChatMessages', 'crops', 'weather', 'farmerAlerts'],
+      ['farmers', 'lands', 'cropSchedules', 'scheduleTasks', 'aiChatSessions', 'aiChatMessages', 'crops', 'weather', 'farmerAlerts', 'tenantConfig'],
       'readwrite'
     );
     
@@ -1303,6 +1330,7 @@ class LocalDatabase {
     await tx.objectStore('crops').clear();
     await tx.objectStore('weather').clear();
     await tx.objectStore('farmerAlerts').clear();
+    await tx.objectStore('tenantConfig').clear();
     
     await tx.done;
 
@@ -1333,6 +1361,63 @@ class LocalDatabase {
     });
     
     console.log('✅ [LocalDB] Ready for full reload from server');
+  }
+
+  /**
+   * Save tenant configuration (white label, branding) for offline use
+   */
+  async saveTenantConfig(tenantId: string, whiteLabelConfig: any, tenantData: any): Promise<void> {
+    if (!this.db) await this.initialize();
+    
+    const config: TenantConfigData = {
+      tenant_id: tenantId,
+      white_label_config: whiteLabelConfig,
+      tenant_data: tenantData,
+      cached_at: Date.now(),
+      expires_at: Date.now() + (24 * 60 * 60 * 1000) // 24 hours
+    };
+    
+    await this.db!.put('tenantConfig', config);
+    console.log('💾 [LocalDB] Saved tenant configuration for offline use:', tenantId);
+  }
+
+  /**
+   * Get cached tenant configuration
+   */
+  async getTenantConfig(tenantId: string): Promise<TenantConfigData | undefined> {
+    if (!this.db) await this.initialize();
+    
+    const config = await this.db!.get('tenantConfig', tenantId);
+    
+    if (config) {
+      // Check if expired
+      if (config.expires_at < Date.now()) {
+        console.log('⚠️ [LocalDB] Cached tenant config expired, will fetch fresh');
+        return undefined;
+      }
+      
+      console.log('✅ [LocalDB] Retrieved cached tenant config:', tenantId);
+      return config;
+    }
+    
+    return undefined;
+  }
+
+  /**
+   * Clear tenant configuration cache
+   */
+  async clearTenantConfig(tenantId?: string): Promise<void> {
+    if (!this.db) await this.initialize();
+    
+    if (tenantId) {
+      await this.db!.delete('tenantConfig', tenantId);
+      console.log('🗑️ [LocalDB] Cleared tenant config cache for:', tenantId);
+    } else {
+      const tx = this.db!.transaction('tenantConfig', 'readwrite');
+      await tx.objectStore('tenantConfig').clear();
+      await tx.done;
+      console.log('🗑️ [LocalDB] Cleared all tenant config caches');
+    }
   }
 }
 
