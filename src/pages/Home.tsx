@@ -373,20 +373,18 @@ export default function Home() {
                       return (
                         <motion.div 
                           key={index} 
-                          className="bg-card/90 backdrop-blur-sm rounded-xl p-4 border border-border/50 hover:border-primary/50 transition-all hover:shadow-lg"
+                          className="bg-card/90 backdrop-blur-sm rounded-xl p-3 border border-border/50 hover:border-primary/50 transition-all hover:shadow-lg"
                           whileHover={{ scale: 1.03, y: -2 }}
                           transition={{ type: 'spring', stiffness: 400, damping: 17 }}
                         >
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <div className="p-1.5 rounded-lg bg-primary/10">
-                                <Icon className="w-4 h-4 text-primary" />
-                              </div>
+                          <div className="flex items-center justify-between mb-1">
+                            <div className="flex items-center gap-1.5">
+                              <Icon className="w-3.5 h-3.5 text-primary" />
+                              <span className="text-[10px] text-muted-foreground uppercase tracking-wide">{stat.label}</span>
                             </div>
-                            {stat.trend === 'up' && <ArrowUpRight className="w-3.5 h-3.5 text-success" />}
-                            {stat.trend === 'down' && <ArrowDownRight className="w-3.5 h-3.5 text-destructive" />}
+                            {stat.trend === 'up' && <ArrowUpRight className="w-3 h-3 text-success" />}
+                            {stat.trend === 'down' && <ArrowDownRight className="w-3 h-3 text-destructive" />}
                           </div>
-                          <span className="text-xs text-muted-foreground block mb-1.5">{stat.label}</span>
                           <p className="text-lg font-bold tracking-tight">{stat.value}</p>
                         </motion.div>
                       );
