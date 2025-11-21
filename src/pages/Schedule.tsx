@@ -7,7 +7,7 @@ import { ArrowLeft, Calendar, Plus, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { useLanguageStore } from '@/stores/languageStore';
 import { landsApi } from '@/services/landsApi';
 import LandSelector from '@/components/schedule/LandSelector';
@@ -43,7 +43,7 @@ export default function Schedule() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, session } = useAuthStore();
-  const { tenant } = useTenantStore();
+  const { tenant } = useTenant();
   const { currentLanguage } = useLanguageStore();
   // Use the unified lands hook with real-time updates
   const { lands: fetchedLands, isLoading: isLoadingLands, refetch: refetchLands } = useLands();

@@ -9,7 +9,7 @@ import { useAuthFlowStore } from '@/stores/authFlowStore';
 import { Loader2, Lock, ArrowLeft, WifiOff } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { offlineAuthService } from '@/services/offlineAuthService';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { toast } from '@/hooks/use-toast';
@@ -19,7 +19,7 @@ export default function PinAuth() {
   const navigate = useNavigate();
   const { setUser, setSession, session } = useAuthStore();
   const { setStep } = useAuthFlowStore();
-  const { tenant } = useTenantStore();
+  const { tenant } = useTenant();
   const [pin, setPin] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -209,7 +209,7 @@ export default function PinAuth() {
   };
 
   // Get branding
-  const brandName = tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name;
+  const brandName = tenant?.branding?.company_name || tenant?.name;
 
   return (
     <div className="min-h-screen bg-gradient-primary flex flex-col items-center justify-center p-4">

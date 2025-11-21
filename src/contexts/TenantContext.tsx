@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { localDB } from '@/services/localDB';
 import { tenantIsolationService } from '@/services/tenantIsolationService';
+import { resetTenantStores } from '@/utils/resetStores';
 
 // ============= Types =============
 
@@ -87,6 +88,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [error, setError] = useState<Error | null>(null);
   const [currentDomain, setCurrentDomain] = useState<string>('');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const prevTenantIdRef = useRef<string | null>(null);
 
   const getCurrentDomain = useCallback(() => {
     if (typeof window === 'undefined') return 'localhost';
@@ -544,6 +546,30 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       fetchTenantConfig();
     }
   }, [getCurrentDomain, currentDomain, fetchTenantConfig]);
+
+  // Detect tenant changes and reset stores
+  useEffect(() => {
+    if (tenant?.id && prevTenantIdRef.current && prevTenantIdRef.current !== tenant.id) {
+      console.log('🔄 [TenantProvider] Tenant ID changed!', { 
+        from: prevTenantIdRef.current, 
+        to: tenant.id 
+      });
+      
+      // Reset all tenant-specific stores
+      resetTenantStores().then((result) => {
+        if (result.success) {
+          console.log('✅ [TenantProvider] Stores reset successfully for tenant switch');
+        } else {
+          console.error('❌ [TenantProvider] Failed to reset stores:', result.error);
+        }
+      });
+      
+      // Note: We don't force reload here to allow smooth tenant switching
+      // The app will naturally re-fetch data with the new tenant context
+    }
+    
+    prevTenantIdRef.current = tenant?.id || null;
+  }, [tenant?.id]);
 
   const value: TenantContextValue = {
     tenant,

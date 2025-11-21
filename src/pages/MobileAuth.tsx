@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { Loader2, Phone, ArrowLeft, WifiOff } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
@@ -15,7 +15,7 @@ import { offlineAuthService } from '@/services/offlineAuthService';
 export default function MobileAuth() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { tenant, isLoading: tenantLoading } = useTenantStore();
+  const { tenant, isLoading: tenantLoading } = useTenant();
   const [mobile, setMobile] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

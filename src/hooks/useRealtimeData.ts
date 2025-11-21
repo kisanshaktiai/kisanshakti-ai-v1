@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 
 type RealtimeTable = 'lands' | 'crop_schedules' | 'schedule_tasks';
 
@@ -18,7 +18,7 @@ interface UseRealtimeDataOptions {
 export function useRealtimeData({ tables, enabled = true }: UseRealtimeDataOptions) {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
-  const { tenant } = useTenantStore();
+  const { tenant } = useTenant();
 
   useEffect(() => {
     // Don't subscribe if disabled or no auth context
