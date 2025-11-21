@@ -218,12 +218,12 @@ export default function Home() {
           variant="ghost"
           size="icon"
           onClick={() => setIsWeatherExpanded(!isWeatherExpanded)}
-          className="absolute top-2 right-2 z-10 h-8 w-8 rounded-full bg-background/20 backdrop-blur-sm hover:bg-background/40"
+          className="absolute top-4 right-4 z-20 h-10 w-10 rounded-full bg-white/90 backdrop-blur-sm hover:bg-white shadow-lg transition-all hover:scale-110"
         >
           {isWeatherExpanded ? (
-            <ChevronUp className="h-4 w-4 text-white" />
+            <ChevronUp className="h-5 w-5 text-primary" />
           ) : (
-            <ChevronDown className="h-4 w-4 text-white" />
+            <ChevronDown className="h-5 w-5 text-primary" />
           )}
         </Button>
 
