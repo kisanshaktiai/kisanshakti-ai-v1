@@ -17900,6 +17900,7 @@ export type Database = {
           created_by: string | null
           custom_domain: string | null
           deleted_at: string | null
+          domain_config: Json | null
           established_date: string | null
           id: string
           is_default: boolean | null
@@ -17953,6 +17954,7 @@ export type Database = {
           created_by?: string | null
           custom_domain?: string | null
           deleted_at?: string | null
+          domain_config?: Json | null
           established_date?: string | null
           id?: string
           is_default?: boolean | null
@@ -18006,6 +18008,7 @@ export type Database = {
           created_by?: string | null
           custom_domain?: string | null
           deleted_at?: string | null
+          domain_config?: Json | null
           established_date?: string | null
           id?: string
           is_default?: boolean | null
@@ -21608,6 +21611,7 @@ export type Database = {
       mark_invitation_accepted: { Args: { token: string }; Returns: boolean }
       mark_invitation_clicked: { Args: { token: string }; Returns: boolean }
       mark_invite_used: { Args: { invite_token: string }; Returns: boolean }
+      migrate_tenant_domains: { Args: never; Returns: undefined }
       migrate_theme_data_to_appearance_settings: {
         Args: never
         Returns: undefined

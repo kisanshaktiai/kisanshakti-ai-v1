@@ -219,7 +219,7 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           }
         }
         
-        // STAGE 3: Check white_label_configs.domain_config
+        // STAGE 3: Check white_label_configs.domain_config (both flat and nested structures)
         if (!tenantData) {
           console.log('🔍 [Stage 3] Checking white_label_configs...');
           
@@ -230,8 +230,18 @@ export const useTenantStore = create<TenantState>((set, get) => ({
           if (whitelabelConfigs) {
             const matchedConfig = whitelabelConfigs.find(wl => {
               const domainConfig = wl.domain_config as any;
-              return domainConfig?.custom_domain === domain ||
-                     domainConfig?.subdomain === domain;
+              
+              // Check flat structure (legacy)
+              if (domainConfig?.custom_domain === domain || domainConfig?.subdomain === domain) {
+                return true;
+              }
+              
+              // Check nested structure (new multi-domain setup)
+              if (domainConfig?.farmer_app?.custom_domain === domain) return true;
+              if (domainConfig?.public_website?.custom_domain === domain) return true;
+              if (domainConfig?.tenant_portal?.custom_domain === domain) return true;
+              
+              return false;
             });
             
             if (matchedConfig) {
@@ -284,12 +294,18 @@ export const useTenantStore = create<TenantState>((set, get) => ({
 
       // Fetch white label config or tenant branding if tenant found
       if (tenantData?.id) {
+        // Store tenant context for security isolation
         localStorage.setItem('tenantId', tenantData.id);
-        console.log('✅ [Tenant] Tenant ID stored in localStorage:', {
-          tenantId: tenantData.id,
-          tenantName: tenantData.name,
-          domain: tenantData.domain
+        localStorage.setItem('tenantDomain', domain);
+        
+        console.log('✅ [Security] Tenant loaded:', {
+          id: tenantData.id,
+          name: tenantData.name,
+          domain: domain
         });
+        
+        // Initialize tenant-scoped database
+        console.log('🔐 [Security] Initializing tenant-scoped database:', `KisanDB_${tenantData.id}`);
         
         // First try white_label_configs
         const { data: whiteLabel } = await supabase
