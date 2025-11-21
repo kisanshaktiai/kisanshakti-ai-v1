@@ -325,51 +325,51 @@ export default function Home() {
           )}
         </div>
         
-        <div className="relative z-10">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3 text-sm text-white whitespace-nowrap">
-              <div className="flex items-center gap-1.5">
-                <Leaf className="w-3.5 h-3.5" />
-                <span>{currentTime.toLocaleDateString('en-IN', {
-                  weekday: 'short',
-                  month: 'short',
-                  day: 'numeric',
-                  year: 'numeric'
-                })}</span>
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3 text-sm text-white whitespace-nowrap">
+                    <div className="flex items-center gap-1.5">
+                      <Leaf className="w-3.5 h-3.5" />
+                      <span>{currentTime.toLocaleDateString('en-IN', {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric'
+                      })}</span>
+                    </div>
+                    <div className="ml-auto text-white/60 text-xs">
+                      Last sync: {currentTime.toLocaleTimeString('en-IN', { 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Stats Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+                  {quickStats.map((stat, index) => {
+                    const Icon = stat.icon;
+                    return (
+                      <div key={index} className="bg-card/80 backdrop-blur-sm rounded-xl p-3 border border-border/50">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Icon className="w-4 h-4 text-primary" />
+                            <span className="text-xs text-muted-foreground">{stat.label}</span>
+                          </div>
+                          {stat.trend === 'up' && <ArrowUpRight className="w-3 h-3 text-success" />}
+                          {stat.trend === 'down' && <ArrowDownRight className="w-3 h-3 text-destructive" />}
+                        </div>
+                        <p className="text-lg font-semibold mt-1">{stat.value}</p>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="ml-auto text-white/60 text-xs">
-                Last sync: {currentTime.toLocaleTimeString('en-IN', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                })}
-          </div>
-        </div>
             </motion.div>
           )}
         </AnimatePresence>
       </motion.div>
-
-          {/* Quick Stats Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-            {quickStats.map((stat, index) => {
-              const Icon = stat.icon;
-              return (
-                <div key={index} className="bg-card/80 backdrop-blur-sm rounded-xl p-3 border border-border/50">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Icon className="w-4 h-4 text-primary" />
-                      <span className="text-xs text-muted-foreground">{stat.label}</span>
-                    </div>
-                    {stat.trend === 'up' && <ArrowUpRight className="w-3 h-3 text-success" />}
-                    {stat.trend === 'down' && <ArrowDownRight className="w-3 h-3 text-destructive" />}
-                  </div>
-                  <p className="text-lg font-semibold mt-1">{stat.value}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
 
       {/* Main Features Grid */}
       <div className="p-4 -mt-6">
@@ -554,8 +554,6 @@ export default function Home() {
           </CardContent>
         </Card>
       </div>
-      </div>
-      
-    </>
+    </div>
   );
 }
