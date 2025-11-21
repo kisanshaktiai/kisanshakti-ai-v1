@@ -197,8 +197,63 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setError(null);
 
       const domain = getCurrentDomain();
-      console.log('🔍 [TenantProvider] Fetching tenant for domain:', domain);
+      console.log('🔍 [TenantProvider] Fetching tenant config from API...');
 
+      // OPTION 1: Try centralized API first (cleaner)
+      try {
+        const response = await fetch(
+          'https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/tenant-config',
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        if (response.ok) {
+          const apiConfig = await response.json();
+          
+          console.log('✅ [TenantProvider] Loaded config from centralized API');
+          
+          const config: TenantConfig = {
+            id: apiConfig.tenant.id,
+            name: apiConfig.tenant.name,
+            slug: apiConfig.tenant.slug,
+            domain: apiConfig.tenant.domain,
+            subdomain: apiConfig.tenant.subdomain,
+            custom_domain: apiConfig.tenant.custom_domain,
+            status: apiConfig.tenant.status,
+            branding: apiConfig.branding,
+            theme: apiConfig.theme,
+            pwa: apiConfig.pwa,
+            features: apiConfig.features,
+            settings: apiConfig.settings,
+          };
+
+          setTenant(config);
+          tenantIsolationService.setTenantContext(config.id, domain);
+          applyThemeToDOM(config.branding, config.theme);
+
+          // Cache for offline
+          await localDB.saveTenantConfig(config.id, { 
+            brand_identity: apiConfig.branding,
+            mobile_theme: apiConfig.theme,
+            pwa_config: apiConfig.pwa
+          }, {
+            id: config.id,
+            name: config.name,
+            domain
+          });
+
+          console.log('✅ [TenantProvider] Config cached for offline use');
+          return;
+        }
+      } catch (apiError) {
+        console.warn('⚠️ [TenantProvider] API failed, falling back to direct DB access:', apiError);
+      }
+
+      // OPTION 2: Fallback to direct database access (for development/testing)
       // Development mode: Use stored tenant or default
       if (domain === 'localhost' || domain.includes('lovable.app')) {
         const storedTenantId = localStorage.getItem('tenantId');
