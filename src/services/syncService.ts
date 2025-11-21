@@ -87,8 +87,20 @@ class SyncService {
     // CRITICAL: Validate tenant isolation context first
     const tenantContext = tenantIsolationService.validateContext(true);
     if (!tenantContext.valid) {
-      console.error('❌ [Sync] Tenant isolation context not ready:', tenantContext.error);
-      return { success: false, message: 'Tenant context not initialized' };
+      // Double-check: If we have auth data but tenant context missing user, add it
+      if (userId && tenantContext.tenantId && !tenantContext.userId) {
+        console.log('🔧 [Sync] Adding missing user ID to tenant context');
+        tenantIsolationService.setUserId(userId);
+        // Re-validate after fixing
+        const revalidated = tenantIsolationService.validateContext(true);
+        if (!revalidated.valid) {
+          console.error('❌ [Sync] Tenant isolation context not ready:', revalidated.error);
+          return { success: false, message: 'Tenant context not initialized' };
+        }
+      } else {
+        console.error('❌ [Sync] Tenant isolation context not ready:', tenantContext.error);
+        return { success: false, message: 'Tenant context not initialized' };
+      }
     }
     
     // CRITICAL: Strict validation - prevent sync without complete auth context
