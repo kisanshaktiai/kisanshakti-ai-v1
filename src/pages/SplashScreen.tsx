@@ -32,6 +32,20 @@ export default function SplashScreen() {
         return;
       }
 
+      // Check if we're in development mode
+      const isDevelopment = window.location.hostname.includes('localhost') || 
+                           window.location.hostname.includes('lovable.app') ||
+                           window.location.hostname.includes('lovableproject.com');
+
+      // In development, ignore tenant errors and continue
+      if (error && isDevelopment) {
+        console.warn('⚠️ [SplashScreen] Tenant error in development mode, continuing anyway:', error);
+      } else if (error && !isDevelopment) {
+        console.error('❌ [SplashScreen] Tenant error in production:', error);
+        setIsReady(true);
+        return;
+      }
+
       console.log('✅ [SplashScreen] Tenant loaded, checking auth...');
       await checkAuth();
       
