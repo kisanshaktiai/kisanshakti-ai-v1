@@ -107,20 +107,38 @@ Deno.serve(async (req) => {
     }
   }
   
-  // STEP 3.5: Check white_label_configs.domain_config if still not found
+  // STEP 3.5: FARMER APP PRIORITY - Check white_label_configs.farmer_app.custom_domain
   if (!tenant && domain) {
-    console.log('📍 [Step 3.5] Checking white_label_configs.domain_config for:', domain);
+    console.log('📍 [Step 3.5] 🌾 FARMER APP: Checking white_label_configs for:', domain);
     
     const { data: whitelabelDomains, error: wlError } = await supabase
       .from('white_label_configs')
       .select('tenant_id, domain_config');
     
     if (whitelabelDomains && whitelabelDomains.length > 0) {
-      // Find tenant by matching domain_config.custom_domain or subdomain
-      const matchedConfig = whitelabelDomains.find(wl => 
-        wl.domain_config?.custom_domain === domain ||
-        wl.domain_config?.subdomain === domain
-      );
+      // PRIORITY 1: Check farmer_app.custom_domain (main use case for farmer app skeleton)
+      const matchedConfig = whitelabelDomains.find(wl => {
+        const domainConfig = wl.domain_config;
+        
+        // Check nested farmer_app structure first
+        if (domainConfig?.farmer_app?.custom_domain === domain) {
+          console.log('✅ [Farmer App] Matched farmer_app.custom_domain');
+          return true;
+        }
+        
+        // Fallback to flat structure (legacy support)
+        if (domainConfig?.custom_domain === domain) {
+          console.log('✅ [Legacy] Matched flat custom_domain');
+          return true;
+        }
+        
+        if (domainConfig?.subdomain === domain) {
+          console.log('✅ [Legacy] Matched subdomain');
+          return true;
+        }
+        
+        return false;
+      });
       
       if (matchedConfig) {
         console.log('🔍 Found domain in white_label_configs:', matchedConfig.tenant_id);
