@@ -20,7 +20,9 @@ import {
   ArrowDownRight,
   Activity,
   Sparkles,
-  Leaf
+  Leaf,
+  Minimize2,
+  Maximize2
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { Link } from 'react-router-dom';
@@ -31,8 +33,8 @@ import { useWeather } from '@/hooks/useWeather';
 import { useLands } from '@/hooks/useLands';
 import { HomeSkeleton } from '@/components/skeletons';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronUp, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 
 interface FeatureCard {
@@ -213,17 +215,17 @@ export default function Home() {
         }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
       >
-        {/* Minimize/Expand Button */}
+        {/* Unique Minimize/Expand Button */}
         <Button
           variant="ghost"
           size="icon"
           onClick={() => setIsWeatherExpanded(!isWeatherExpanded)}
-          className="absolute top-4 right-4 z-20 h-10 w-10 rounded-full bg-white/90 backdrop-blur-sm hover:bg-white shadow-lg transition-all hover:scale-110"
+          className="absolute top-4 right-4 z-20 h-11 w-11 rounded-2xl bg-white/95 backdrop-blur-sm hover:bg-white shadow-lg transition-all hover:scale-110 hover:rotate-180 duration-500 border border-primary/10"
         >
           {isWeatherExpanded ? (
-            <ChevronUp className="h-5 w-5 text-primary" />
+            <Minimize2 className="h-5 w-5 text-primary" strokeWidth={2.5} />
           ) : (
-            <ChevronDown className="h-5 w-5 text-primary" />
+            <Maximize2 className="h-5 w-5 text-primary" strokeWidth={2.5} />
           )}
         </Button>
 
@@ -326,6 +328,13 @@ export default function Home() {
         </div>
         
               <div className="relative z-10">
+                {/* Namaste Greeting - Very Subtle */}
+                <div className="mb-2">
+                  <p className="text-white/40 text-[10px] font-light tracking-wide">
+                    🙏 Namaste, {user?.fullName?.split(' ')[0] || user?.farmerName?.split(' ')[0] || user?.name?.split(' ')[0] || 'Farmer'}
+                  </p>
+                </div>
+
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3 text-sm text-white whitespace-nowrap">
                     <div className="flex items-center gap-1.5">
@@ -346,24 +355,35 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Quick Stats Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-                  {quickStats.map((stat, index) => {
-                    const Icon = stat.icon;
-                    return (
-                      <div key={index} className="bg-card/80 backdrop-blur-sm rounded-xl p-3 border border-border/50">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Icon className="w-4 h-4 text-primary" />
-                            <span className="text-xs text-muted-foreground">{stat.label}</span>
-                          </div>
-                          {stat.trend === 'up' && <ArrowUpRight className="w-3 h-3 text-success" />}
-                          {stat.trend === 'down' && <ArrowDownRight className="w-3 h-3 text-destructive" />}
-                        </div>
-                        <p className="text-lg font-semibold mt-1">{stat.value}</p>
-                      </div>
-                    );
-                  })}
+                {/* Horizontal Scrolling Weather Stats */}
+                <div className="relative -mx-4 px-4">
+                  <ScrollArea className="w-full">
+                    <div className="flex gap-2 pb-2">
+                      {quickStats.map((stat, index) => {
+                        const Icon = stat.icon;
+                        return (
+                          <motion.div 
+                            key={index} 
+                            className="flex-shrink-0 w-[160px] bg-card/80 backdrop-blur-sm rounded-xl p-3 border border-border/50 hover:border-primary/50 transition-all hover:shadow-lg"
+                            whileHover={{ scale: 1.05, y: -2 }}
+                            transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+                          >
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <div className="p-1.5 rounded-lg bg-primary/10">
+                                  <Icon className="w-4 h-4 text-primary" />
+                                </div>
+                              </div>
+                              {stat.trend === 'up' && <ArrowUpRight className="w-3 h-3 text-success" />}
+                              {stat.trend === 'down' && <ArrowDownRight className="w-3 h-3 text-destructive" />}
+                            </div>
+                            <span className="text-xs text-muted-foreground block mb-1">{stat.label}</span>
+                            <p className="text-lg font-semibold">{stat.value}</p>
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
                 </div>
               </div>
             </motion.div>
