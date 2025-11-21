@@ -18,26 +18,15 @@ export const VoiceAssistant: React.FC = () => {
   const [stream, setStream] = useState<MediaStream | null>(null);
 
   const handleVoiceClick = async () => {
-    if (isEnabled && isListening) {
-      // Stop listening and disable
+    if (isListening) {
+      // Stop listening
       stopListening();
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
         setStream(null);
       }
-      toggleVoiceNavigation(); // Disable voice navigation
-    } else if (isEnabled && !isListening) {
-      // Start listening (already enabled)
-      try {
-        const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        setStream(mediaStream);
-        startListening();
-      } catch (error) {
-        console.error('Failed to access microphone:', error);
-      }
     } else {
-      // Enable and start listening
-      toggleVoiceNavigation(); // Enable voice navigation
+      // Start listening
       try {
         const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
         setStream(mediaStream);
@@ -52,8 +41,7 @@ export const VoiceAssistant: React.FC = () => {
   const getButtonState = () => {
     if (isListening) return 'listening';
     if (isSpeaking) return 'speaking';
-    if (isEnabled) return 'enabled';
-    return 'disabled';
+    return 'ready';
   };
 
   const buttonState = getButtonState();
@@ -84,16 +72,12 @@ export const VoiceAssistant: React.FC = () => {
                 ? 'bg-destructive text-destructive-foreground animate-pulse'
                 : buttonState === 'speaking'
                 ? 'bg-accent text-accent-foreground'
-                : buttonState === 'enabled'
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground'
+                : 'bg-primary text-primary-foreground'
             }`}
             aria-label={
               buttonState === 'listening' 
                 ? "Stop listening" 
-                : buttonState === 'enabled'
-                ? "Start voice command"
-                : "Enable voice navigation"
+                : "Start voice command"
             }
           >
             {/* Pulse animation when listening */}
@@ -142,7 +126,7 @@ export const VoiceAssistant: React.FC = () => {
             exit={{ opacity: 0, x: -10 }}
             className="absolute left-20 bottom-4 bg-popover text-popover-foreground px-4 py-2 rounded-lg shadow-lg text-sm whitespace-nowrap"
           >
-            {buttonState === 'enabled' ? 'Tap to speak' : 'Tap to enable voice'}
+            Tap to speak
             <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-2 w-0 h-0 border-t-8 border-b-8 border-r-8 border-transparent border-r-popover" />
           </motion.div>
         )}
