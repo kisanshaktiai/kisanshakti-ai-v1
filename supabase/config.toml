@@ -7,7 +7,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.weather]
-verify_jwt = true
+verify_jwt = false
 
 [functions.ai-agriculture-chat]
 verify_jwt = true
