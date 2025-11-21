@@ -48,7 +48,6 @@ import SoilHealthReport from "./pages/SoilHealthReport";
 import AIScheduleDashboard from "./pages/AIScheduleDashboard";
 
 // Stores and Services
-import { useTenantStore } from "@/stores/tenantStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useLanguageStore } from "@/stores/languageStore";
 import { toast } from "@/hooks/use-toast";
@@ -60,7 +59,7 @@ import { syncService } from "@/services/syncService";
 import { localDB } from "@/services/localDB";
 import { tenantIsolationService } from "@/services/tenantIsolationService";
 import { useGlobalRealtimeSync } from "@/hooks/useGlobalRealtimeSync";
-import { TenantProvider } from "@/contexts/TenantContext";
+import { TenantProvider, useTenant } from "@/contexts/TenantContext";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -74,7 +73,7 @@ const queryClient = new QueryClient({
 });
 
 function AppInitializer({ children }: { children: React.ReactNode }) {
-  const { fetchTenant, tenant, applyWhiteLabelTheme, listenForTenantChanges } = useTenantStore();
+  const { tenant, isLoading: tenantLoading } = useTenant();
   const { checkAuth, requirePin, session } = useAuthStore();
   const { currentLanguage } = useLanguageStore();
   const { permissionStatus, requestPermission } = useLocationPermission();
@@ -92,73 +91,59 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Get current domain for security validation
+        // Wait for TenantProvider to load tenant data
+        if (tenantLoading || !tenant) {
+          console.log('⏳ [AppInit] Waiting for TenantProvider to load tenant...');
+          return;
+        }
+
         const currentDomain = window.location.hostname;
         console.log('🔐 [Security] Starting secure multi-tenant initialization for:', currentDomain);
+        console.log('✅ [Security] Tenant loaded from TenantProvider:', {
+          id: tenant.id,
+          name: tenant.name,
+          domain: currentDomain
+        });
         
-        // Set dynamic manifest link immediately
+        // Set dynamic manifest link
         const manifestLink = document.querySelector('link[rel="manifest"]') as HTMLLinkElement;
         if (manifestLink) {
           manifestLink.href = `https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/generate-manifest?domain=${encodeURIComponent(currentDomain)}`;
         }
         
-        // STEP 1: TENANT RESOLUTION (BLOCKING - CRITICAL SECURITY)
-        setCurrentStep('Identifying tenant...');
-        await fetchTenant();
-        
-        const { tenant: loadedTenant } = useTenantStore.getState();
-        
-        if (!loadedTenant) {
-          console.error('🚨 [Security] CRITICAL: Tenant not found for domain:', currentDomain);
-          throw new Error('Tenant not found for domain: ' + currentDomain);
-        }
-        
-        console.log('✅ [Security] Tenant loaded:', {
-          id: loadedTenant.id,
-          name: loadedTenant.name,
-          domain: currentDomain
-        });
-        
-        // CRITICAL: Set tenant isolation context for all services
-        tenantIsolationService.setTenantContext(
-          loadedTenant.id,
-          currentDomain
-        );
-        
-        // STEP 2: INITIALIZE TENANT-SCOPED LOCAL STORAGE (BLOCKING)
+        // STEP 1: Set tenant isolation context for all services
         setCurrentStep('Initializing secure storage...');
-        await localDB.initializeWithTenant(loadedTenant.id);
+        tenantIsolationService.setTenantContext(tenant.id, currentDomain);
         
-        // STEP 3: CHECK AUTH WITH TENANT CONTEXT VALIDATION (BLOCKING)
+        // STEP 2: Initialize tenant-scoped local storage
+        await localDB.initializeWithTenant(tenant.id);
+        
+        // STEP 3: Check authentication with tenant context validation
         setCurrentStep('Checking authentication...');
         await checkAuth();
         
-        // CRITICAL SECURITY: Validate auth tenant matches current tenant
+        // Validate auth tenant matches current tenant
         const { user, session } = useAuthStore.getState();
         
-        // Update tenant isolation service with user ID after auth
         if (user?.id) {
           tenantIsolationService.setUserId(user.id);
         }
         
-        if (session && user?.tenantId !== loadedTenant.id) {
+        if (session && user?.tenantId !== tenant.id) {
           console.error('🚨 [Security] TENANT MISMATCH DETECTED! Force logout.', {
             sessionTenant: user?.tenantId,
-            currentTenant: loadedTenant.id,
+            currentTenant: tenant.id,
             userId: user?.id
           });
-          // Force logout for security
           useAuthStore.getState().logout();
           tenantIsolationService.clearContext();
           await localDB.clearAll();
         }
         
-        // STEP 4: NON-BLOCKING TASKS (Background)
+        // STEP 4: Background tasks
         setCurrentStep('Finalizing...');
-        listenForTenantChanges();
         LocationService.getCurrentLocation(true).catch(() => null);
         
-        // Small delay to show final step
         await new Promise(resolve => setTimeout(resolve, 300));
       } catch (error) {
         console.error('🚨 [Security] App initialization failed:', error);
@@ -173,7 +158,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
     };
 
     initializeApp();
-  }, []);
+  }, [tenant, tenantLoading, checkAuth]);
 
   // Initialize sync service ONLY when user is authenticated (non-blocking background task)
   useEffect(() => {
@@ -211,18 +196,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
     }
   }, [session]); // Depend on session to ensure auth is complete
 
-  // Apply white label theme whenever tenant changes
-  useEffect(() => {
-    if (tenant?.whiteLabel) {
-      console.log('🎨 [App] Applying white label theme for tenant:', tenant.name);
-      console.log('🎨 [App] Theme config:', {
-        logo: tenant.whiteLabel.brand_identity?.logo_url,
-        primary_color: tenant.whiteLabel.brand_identity?.primary_color,
-        company_name: tenant.whiteLabel.brand_identity?.company_name
-      });
-      applyWhiteLabelTheme(tenant.whiteLabel);
-    }
-  }, [tenant, applyWhiteLabelTheme]);
+  // Note: Theme is now applied by TenantProvider automatically
 
   // Apply language changes
   useEffect(() => {
