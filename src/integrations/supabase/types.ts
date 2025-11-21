@@ -21493,6 +21493,15 @@ export type Database = {
           tile_id: string
         }[]
       }
+      get_user_storage_usage: {
+        Args: { user_id: string }
+        Returns: {
+          bucket_name: string
+          file_count: number
+          total_size_bytes: number
+          total_size_mb: number
+        }[]
+      }
       get_user_tenant_id: { Args: { _user_id: string }; Returns: string }
       get_user_tenant_relationships: {
         Args: {
