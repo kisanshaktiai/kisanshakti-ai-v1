@@ -36,6 +36,17 @@ export function AppLayout() {
   const companyName = tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name || t('app.name');
   const tagline = tenant?.whiteLabel?.brand_identity?.tagline || t('app.tagline');
 
+  // Debug logging for logo and branding
+  useEffect(() => {
+    console.log('🖼️ [AppLayout] Branding loaded:', {
+      logoUrl,
+      companyName,
+      tagline,
+      hasTenant: !!tenant,
+      hasWhiteLabel: !!tenant?.whiteLabel
+    });
+  }, [logoUrl, companyName, tagline, tenant]);
+
   return (
     <VoiceNavigationProvider>
       <div className="min-h-mobile-screen bg-background">
