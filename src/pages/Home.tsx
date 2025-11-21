@@ -208,9 +208,9 @@ export default function Home() {
       {/* Hero Section with Weather Animation - Swipeable with Pill Handle */}
       <motion.div 
         className="relative overflow-hidden bg-gradient-primary rounded-b-[2rem] shadow-elegant border-b border-border/50"
-        initial={{ height: "50vh" }}
+        initial={{ height: "35vh" }}
         animate={{ 
-          height: isWeatherExpanded ? "50vh" : "72px",
+          height: isWeatherExpanded ? "35vh" : "64px",
         }}
         transition={{ 
           type: "spring",
@@ -310,33 +310,40 @@ export default function Home() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="h-full flex items-center relative z-10 pt-3 pb-2 px-4"
+              className="h-full flex items-center relative z-10 pt-3 pb-1.5 px-3"
             >
               {/* Scrollable Quick Stats Strip with Gradient Indicators */}
               <div className="relative w-full">
                 {/* Left Gradient Fade */}
-                <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-primary via-primary/50 to-transparent pointer-events-none z-10" />
+                <div className="absolute left-0 top-0 bottom-0 w-4 bg-gradient-to-r from-primary via-primary/60 to-transparent pointer-events-none z-10" />
                 {/* Right Gradient Fade */}
-                <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-primary via-primary/50 to-transparent pointer-events-none z-10" />
+                <div className="absolute right-0 top-0 bottom-0 w-4 bg-gradient-to-l from-primary via-primary/60 to-transparent pointer-events-none z-10" />
                 
-                <div className="overflow-x-auto scrollbar-hide scroll-smooth touch-pan-x" style={{ WebkitOverflowScrolling: 'touch' }}>
-                  <div className="flex gap-2">
+                <div 
+                  className="overflow-x-auto overflow-y-hidden scrollbar-hide scroll-smooth" 
+                  style={{ 
+                    WebkitOverflowScrolling: 'touch',
+                    scrollbarWidth: 'none',
+                    msOverflowStyle: 'none'
+                  }}
+                >
+                  <div className="flex gap-2 min-w-max">
                     {quickStats.map((stat, index) => {
                       const Icon = stat.icon;
                       return (
                         <motion.div
                           key={index}
-                          className="flex-shrink-0 bg-background/80 backdrop-blur-sm rounded-lg px-3 py-1.5 border border-border/50 min-w-[100px] will-change-transform"
+                          className="flex-shrink-0 bg-background/80 backdrop-blur-sm rounded-lg px-2.5 py-1.5 border border-border/50 min-w-[95px] will-change-transform"
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 0.1 + index * 0.05 }}
+                          transition={{ delay: 0.05 + index * 0.03 }}
                           whileTap={{ scale: 0.98 }}
                         >
                           <div className="flex items-center gap-1.5">
-                            <Icon className="w-3 h-3 text-primary" />
-                            <div>
-                              <p className="text-[8px] text-muted-foreground uppercase tracking-wide">{stat.label}</p>
-                              <p className="text-xs font-bold text-foreground">{stat.value}</p>
+                            <Icon className="w-3 h-3 text-primary flex-shrink-0" />
+                            <div className="min-w-0">
+                              <p className="text-[8px] text-muted-foreground uppercase tracking-wide truncate">{stat.label}</p>
+                              <p className="text-xs font-bold text-foreground truncate">{stat.value}</p>
                             </div>
                           </div>
                         </motion.div>
@@ -355,19 +362,19 @@ export default function Home() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.3 }}
-              className="h-full flex flex-col p-5 pt-8 relative z-10"
+              className="h-full flex flex-col p-4 pt-7 relative z-10"
             >
               {/* Header - Max 2 Lines */}
-              <div className="mb-4">
-                {/* Line 1: Greeting + Farmer Name */}
-                <div className="flex items-center gap-2 mb-1">
+              <div className="mb-3">
+                {/* Line 1: Namaste + Farmer Name */}
+                <div className="flex items-center gap-2 mb-0.5">
                   <motion.h2 
-                    className="text-xl font-bold text-primary-foreground"
+                    className="text-lg font-bold text-primary-foreground"
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.1 }}
                   >
-                    {t('home.greeting')}
+                    🙏 Namaste
                   </motion.h2>
                   <div className="bg-background/20 backdrop-blur-sm rounded-full px-2.5 py-0.5">
                     <p className="text-primary-foreground/90 text-[10px] font-medium">
@@ -376,47 +383,47 @@ export default function Home() {
                   </div>
                 </div>
                 {/* Line 2: Date + Time + Last Sync */}
-                <div className="flex items-center gap-3 text-[10px] text-primary-foreground/70">
+                <div className="flex items-center gap-2.5 text-[9px] text-primary-foreground/70">
                   <div className="flex items-center gap-1">
-                    <Calendar className="w-3 h-3" />
-                    <span>{currentTime.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}</span>
+                    <Calendar className="w-2.5 h-2.5" />
+                    <span>{currentTime.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Activity className="w-3 h-3" />
+                    <Activity className="w-2.5 h-2.5" />
                     <span>{currentTime.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" />
+                    <Sparkles className="w-2.5 h-2.5" />
                     <span>Synced</span>
                   </div>
                 </div>
               </div>
 
               {/* Weather Stats Grid - 2x2 layout, max 2 lines per card */}
-              <div className="grid grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-2 gap-2">
                 {quickStats.map((stat, index) => {
                   const Icon = stat.icon;
                   return (
                     <motion.div 
                       key={index} 
-                      className="bg-card/90 backdrop-blur-sm rounded-xl p-2.5 border border-border/50 hover:border-primary/50 transition-all will-change-transform"
+                      className="bg-card/90 backdrop-blur-sm rounded-xl p-2 border border-border/50 hover:border-primary/50 transition-all will-change-transform"
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      transition={{ delay: 0.1 + index * 0.05, type: 'spring', stiffness: 400, damping: 17 }}
+                      transition={{ delay: 0.1 + index * 0.04, type: 'spring', stiffness: 400, damping: 17 }}
                       whileHover={{ scale: 1.03, y: -2 }}
                       whileTap={{ scale: 0.98 }}
                     >
                       {/* Line 1: Icon + Label + Trend */}
                       <div className="flex items-center justify-between mb-0.5">
                         <div className="flex items-center gap-1">
-                          <Icon className="w-3 h-3 text-primary" />
-                          <span className="text-[9px] text-muted-foreground uppercase tracking-wide">{stat.label}</span>
+                          <Icon className="w-3 h-3 text-primary flex-shrink-0" />
+                          <span className="text-[8px] text-muted-foreground uppercase tracking-wide truncate">{stat.label}</span>
                         </div>
-                        {stat.trend === 'up' && <ArrowUpRight className="w-2.5 h-2.5 text-success" />}
-                        {stat.trend === 'down' && <ArrowDownRight className="w-2.5 h-2.5 text-destructive" />}
+                        {stat.trend === 'up' && <ArrowUpRight className="w-2.5 h-2.5 text-success flex-shrink-0" />}
+                        {stat.trend === 'down' && <ArrowDownRight className="w-2.5 h-2.5 text-destructive flex-shrink-0" />}
                       </div>
                       {/* Line 2: Value */}
-                      <p className="text-base font-bold tracking-tight text-foreground">{stat.value}</p>
+                      <p className="text-sm font-bold tracking-tight text-foreground truncate">{stat.value}</p>
                     </motion.div>
                   );
                 })}
