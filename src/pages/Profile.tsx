@@ -126,14 +126,24 @@ export default function Profile() {
         <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-primary/10 rounded-2xl blur-2xl" />
         <Card className="relative border-0 bg-gradient-to-br from-card to-card/95 shadow-xl">
           <CardContent className="p-6">
+            {/* Edit Button - Top Right Corner */}
+            <Button 
+              onClick={handleEditProfile} 
+              size="icon"
+              variant="ghost"
+              className="absolute top-4 right-4 w-8 h-8 rounded-full hover:bg-primary/10"
+            >
+              <Edit className="w-4 h-4" />
+            </Button>
+            
             <div className="flex items-start gap-4">
               <div className="relative">
                 <AvatarUpload 
                   currentAvatarUrl={user?.avatarUrl}
-                  size="xl"
-                  editable={false}
+                  size="lg"
+                  editable={true}
                 />
-                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-success rounded-full border-2 border-card" />
+                <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-success rounded-full border-2 border-card" />
               </div>
               <div className="flex-1">
                 <h1 className="text-2xl font-bold text-foreground">
@@ -148,15 +158,6 @@ export default function Profile() {
                   </Badge>
                 </div>
               </div>
-              <Button 
-                onClick={handleEditProfile} 
-                size="sm"
-                variant="ghost"
-                className="shrink-0"
-              >
-                <Edit className="w-4 h-4 mr-1" />
-                Edit
-              </Button>
             </div>
 
             {/* Profile Completion */}

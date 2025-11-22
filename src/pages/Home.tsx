@@ -330,7 +330,7 @@ export default function Home() {
                   >
                     <div className="flex items-center gap-1.5">
                       <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
-                      <span className="text-xs font-semibold text-foreground">🙏 Namaste, {farmerName}</span>
+                      <span className="text-xs font-semibold text-foreground">Namaste, {farmerName}</span>
                     </div>
                     <span className="text-[10px] text-muted-foreground">Last synced: {formattedTime}</span>
                   </motion.div>
@@ -411,7 +411,7 @@ export default function Home() {
                   <div className="flex flex-col gap-0.5 bg-primary/10 backdrop-blur-sm rounded-xl px-2.5 py-1.5">
                     <div className="flex items-center gap-1.5">
                       <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
-                      <span className="text-xs font-semibold text-primary">🙏 Namaste, {farmerName}</span>
+                      <span className="text-xs font-semibold text-primary">Namaste, {farmerName}</span>
                     </div>
                     <span className="text-[10px] text-muted-foreground">Last synced: {formattedTime}</span>
                   </div>
