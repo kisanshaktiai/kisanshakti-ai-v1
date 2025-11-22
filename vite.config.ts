@@ -42,7 +42,7 @@ export default defineConfig(({ mode }) => ({
       strategies: 'injectManifest',
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff,woff2}'],
-        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // Increased to 10MB
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MB
       },
       includeAssets: ['favicon.ico', 'icon-192x192.png', 'icon-512x512.png', '.htaccess', '_redirects'],
       manifest: {
@@ -71,7 +71,7 @@ export default defineConfig(({ mode }) => ({
         ]
       },
       devOptions: {
-        enabled: true,
+        enabled: false, // Disable in development to prevent conflicts
         type: 'module',
       }
     })
