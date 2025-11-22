@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { VoiceService } from '@/services/voice/voiceService';
 import { VoiceConfig, ASRResult, VoiceUtterance } from '@/services/voice/types';
@@ -21,6 +20,7 @@ interface ModernVoiceContextType {
   showOnboarding: boolean;
   completeOnboarding: (config: Partial<VoiceConfig>) => void;
   skipOnboarding: () => void;
+  setNavigationCallback: (callback: (route: string) => void) => void;
 }
 
 const ModernVoiceContext = createContext<ModernVoiceContextType | undefined>(undefined);
@@ -34,7 +34,7 @@ export const useModernVoice = () => {
 };
 
 export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const navigate = useNavigate();
+  const [navigationCallback, setNavigationCallback] = useState<((route: string) => void) | null>(null);
   const { toast } = useToast();
   
   const [voiceService, setVoiceService] = useState<VoiceService | null>(null);
@@ -134,7 +134,9 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     if (intent.action === 'navigate' && intent.route) {
       voiceService?.speak({ text: `Opening ${intent.id.split('.')[1]}`, language: utterance.language })
         .then(() => {
-          navigate(intent.route!);
+          if (navigationCallback) {
+            navigationCallback(intent.route!);
+          }
           setTranscript('');
         });
     } else if (intent.action === 'query') {
@@ -144,7 +146,7 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         description: `Processing: ${utterance.text}`,
       });
     }
-  }, [voiceService, navigate, toast]);
+  }, [voiceService, navigationCallback, toast]);
 
   const startListening = useCallback(() => {
     if (!voiceService || !voiceService.isSupported()) {
@@ -219,6 +221,7 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         showOnboarding,
         completeOnboarding,
         skipOnboarding,
+        setNavigationCallback: (callback: (route: string) => void) => setNavigationCallback(() => callback),
       }}
     >
       {children}
