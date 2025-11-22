@@ -554,6 +554,14 @@ class SyncService {
         console.log(`✅ [Sync] Fetched ${lands?.length || 0} lands from server`);
       }
 
+      // CRITICAL: Clear existing lands before saving new data from server
+      console.log('🗑️ [Sync] Clearing existing lands before server data download...');
+      const existingLands = await localDB.getLands(undefined, userId);
+      for (const land of existingLands) {
+        await localDB.deleteLand(land.id);
+      }
+      console.log(`✅ [Sync] Cleared ${existingLands.length} existing lands`);
+
       if (lands && lands.length > 0) {
         console.log('💾 [Sync] Saving lands to localDB...');
         await localDB.bulkSave({
@@ -631,6 +639,9 @@ class SyncService {
             syncStatus: 'synced' as const,
           })),
         });
+        console.log(`✅ [Sync] Saved ${lands.length} lands to localDB`);
+      } else {
+        console.log('ℹ️ [Sync] No lands to save from server');
       }
 
       // Download schedules data
@@ -648,6 +659,14 @@ class SyncService {
       } else {
         console.log(`✅ [Sync] Fetched ${schedules?.length || 0} schedules from server`);
       }
+
+      // Clear existing schedules before saving
+      console.log('🗑️ [Sync] Clearing existing schedules before server data download...');
+      const existingSchedules = await localDB.getAllSchedules(userId);
+      for (const schedule of existingSchedules) {
+        await localDB.deleteSchedule(schedule.id);
+      }
+      console.log(`✅ [Sync] Cleared ${existingSchedules.length} existing schedules`);
 
       if (schedules && schedules.length > 0) {
         console.log('💾 [Sync] Saving schedules to localDB...');
@@ -677,32 +696,45 @@ class SyncService {
             syncStatus: 'synced' as const,
           })),
         });
-        console.log('✅ [Sync] Schedules saved to localDB');
+        console.log(`✅ [Sync] Saved ${schedules.length} schedules to localDB`);
+      } else {
+        console.log('ℹ️ [Sync] No schedules to save from server');
       }
       
-      // VERIFY data was actually saved
+      // VERIFY data was actually saved correctly
       const verifyLands = await localDB.getLands(undefined, userId);
       const verifySchedules = await localDB.getAllSchedules(userId);
+      
+      const expectedLands = lands?.length || 0;
+      const expectedSchedules = schedules?.length || 0;
+      
       console.log('🔍 [Sync] Data verification:', {
         landsInDB: verifyLands.length,
         schedulesInDB: verifySchedules.length,
-        landsSaved: lands?.length || 0,
-        schedulesSaved: schedules?.length || 0,
+        expectedLands,
+        expectedSchedules,
         userId,
         tenant,
       });
 
-      if (verifyLands.length !== (lands?.length || 0)) {
-        console.error('❌ [Sync] Land save mismatch!');
-        throw new Error('LocalDB save verification failed for lands');
+      // Verify that what we saved matches what we fetched
+      if (verifyLands.length !== expectedLands) {
+        console.error('❌ [Sync] Land save mismatch!', {
+          expected: expectedLands,
+          actual: verifyLands.length
+        });
+        throw new Error(`LocalDB save verification failed for lands: expected ${expectedLands}, got ${verifyLands.length}`);
       }
 
-      if (verifySchedules.length < (schedules?.length || 0)) {
-        console.error('❌ [Sync] Schedule save mismatch!');
-        throw new Error('LocalDB save verification failed for schedules');
+      if (verifySchedules.length !== expectedSchedules) {
+        console.error('❌ [Sync] Schedule save mismatch!', {
+          expected: expectedSchedules,
+          actual: verifySchedules.length
+        });
+        throw new Error(`LocalDB save verification failed for schedules: expected ${expectedSchedules}, got ${verifySchedules.length}`);
       }
       
-      console.log('✅ [Sync] Data verification passed');
+      console.log('✅ [Sync] Data verification passed - LocalDB matches server data');
       console.log('✅ [Sync] Server data download complete');
     } catch (error) {
       console.error('❌ [Sync] Failed to download server data:', error);
