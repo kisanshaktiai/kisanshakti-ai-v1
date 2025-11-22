@@ -605,36 +605,37 @@ export default function ProfileEdit() {
         </CardContent>
       </Card>
 
-      {/* Fixed Bottom Action Bar */}
-      <div className="fixed bottom-16 left-0 right-0 p-4 bg-background/95 backdrop-blur-sm border-t z-10">
-        <div className="max-w-2xl mx-auto flex gap-3">
-          <Button
-            onClick={() => navigate('/app/profile')}
-            variant="outline"
-            className="flex-1"
-            disabled={loading}
-          >
-            Cancel
-          </Button>
-          
-          <Button
-            onClick={handleSave}
-            className="flex-1"
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Save
-              </>
-            )}
-          </Button>
-         </div>
+            {/* Fixed Bottom Action Bar */}
+            <div className="fixed bottom-16 left-0 right-0 p-4 bg-background/95 backdrop-blur-sm border-t z-10">
+              <div className="max-w-2xl mx-auto flex gap-3">
+                <Button
+                  onClick={() => navigate('/app/profile')}
+                  variant="outline"
+                  className="flex-1"
+                  disabled={loading}
+                >
+                  Cancel
+                </Button>
+                
+                <Button
+                  onClick={handleSave}
+                  className="flex-1"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
           </>
         )}
       </div>
