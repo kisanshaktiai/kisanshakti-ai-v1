@@ -145,15 +145,14 @@ export function AvatarUpload({
 
     setUploading(true);
     try {
-      // Get authenticated user directly from Supabase to ensure ID matches
-      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+      // Use farmerId from custom auth store (not Supabase Auth)
+      const farmerId = user.id;
       
-      if (authError || !authUser) {
+      if (!farmerId) {
         throw new Error('Not authenticated. Please log in again.');
       }
       
-      console.log('Auth user ID:', authUser.id);
-      console.log('Store user ID:', user.id);
+      console.log('Using farmer ID for upload:', farmerId);
       
       // Crop and compress the image
       const croppedImageBlob = await getCroppedImg(imageSrc, croppedAreaPixels);
@@ -162,8 +161,8 @@ export function AvatarUpload({
       const fileSizeMB = croppedImageBlob.size / (1024 * 1024);
       console.log('Compressed image size:', fileSizeMB.toFixed(2), 'MB');
       
-      // Create file name with authenticated user ID for RLS
-      const fileName = `${authUser.id}/avatar-${Date.now()}.jpg`;
+      // Create file name with farmer ID for RLS
+      const fileName = `${farmerId}/avatar-${Date.now()}.jpg`;
       console.log('Uploading to path:', fileName);
       
       // Delete old avatar if exists
@@ -202,12 +201,12 @@ export function AvatarUpload({
 
       console.log('Public URL:', publicUrl);
 
-      // Update user_profiles table using authenticated user ID
-      console.log('Updating user_profiles for farmer_id:', authUser.id);
+      // Update user_profiles table using farmer ID
+      console.log('Updating user_profiles for farmer_id:', farmerId);
       const { data: updateData, error: updateError } = await supabase
         .from('user_profiles')
         .update({ avatar_url: publicUrl })
-        .eq('farmer_id', authUser.id)
+        .eq('farmer_id', farmerId)
         .select();
 
       if (updateError) {

@@ -30,8 +30,14 @@ export default function ProfileEdit() {
     displayName: user?.displayName || '',
     dateOfBirth: user?.dateOfBirth || '',
     gender: user?.gender || '',
+    email: '',
+    bio: '',
+    aadhaarNumber: '',
+    preferredContactMethod: 'phone',
     
     // Address
+    addressLine1: '',
+    addressLine2: '',
     village: user?.village || '',
     taluka: user?.taluka || '',
     district: user?.district || '',
@@ -43,6 +49,8 @@ export default function ProfileEdit() {
     primaryCrops: user?.primaryCrops?.join(', ') || '',
     farmingExperienceYears: user?.farmingExperienceYears || 0,
     farmType: user?.farmType || '',
+    hasLoan: false,
+    loanAmount: 0,
     
     // Facilities
     hasTractor: user?.hasTractor || false,
@@ -52,7 +60,8 @@ export default function ProfileEdit() {
     
     // Other
     annualIncomeRange: user?.annualIncomeRange || '',
-    preferredLanguage: user?.preferredLanguage || 'hi'
+    preferredLanguage: user?.preferredLanguage || 'hi',
+    notes: ''
   });
 
   // Fetch fresh data from database on mount
@@ -91,6 +100,12 @@ export default function ProfileEdit() {
             displayName: profileData?.display_name || user.displayName || '',
             dateOfBirth: profileData?.date_of_birth || user.dateOfBirth || '',
             gender: profileData?.gender || user.gender || '',
+            email: profileData?.email || '',
+            bio: profileData?.bio || '',
+            aadhaarNumber: profileData?.aadhaar_number || farmerData?.aadhaar_number || '',
+            preferredContactMethod: farmerData?.preferred_contact_method || 'phone',
+            addressLine1: profileData?.address_line1 || '',
+            addressLine2: profileData?.address_line2 || '',
             village: profileData?.village || user.village || '',
             taluka: profileData?.taluka || user.taluka || '',
             district: profileData?.district || user.district || '',
@@ -100,12 +115,15 @@ export default function ProfileEdit() {
             primaryCrops: (profileData?.primary_crops || farmerData?.primary_crops || user.primaryCrops || []).join(', '),
             farmingExperienceYears: profileData?.farming_experience_years || farmerData?.farming_experience_years || user.farmingExperienceYears || 0,
             farmType: farmerData?.farm_type || user.farmType || '',
+            hasLoan: farmerData?.has_loan ?? false,
+            loanAmount: farmerData?.loan_amount || 0,
             hasTractor: profileData?.has_tractor ?? farmerData?.has_tractor ?? user.hasTractor ?? false,
             hasIrrigation: profileData?.has_irrigation ?? farmerData?.has_irrigation ?? user.hasIrrigation ?? false,
             irrigationType: farmerData?.irrigation_type || user.irrigationType || '',
             hasStorage: profileData?.has_storage ?? farmerData?.has_storage ?? user.hasStorage ?? false,
             annualIncomeRange: profileData?.annual_income_range || farmerData?.annual_income_range || user.annualIncomeRange || '',
-            preferredLanguage: profileData?.preferred_language || farmerData?.language_preference || user.preferredLanguage || 'hi'
+            preferredLanguage: profileData?.preferred_language || farmerData?.language_preference || user.preferredLanguage || 'hi',
+            notes: farmerData?.notes || ''
           };
 
           setFormData(mergedData);
@@ -163,12 +181,17 @@ export default function ProfileEdit() {
           primary_crops: cropsArray,
           farming_experience_years: formData.farmingExperienceYears,
           farm_type: formData.farmType,
+          has_loan: formData.hasLoan,
+          loan_amount: formData.loanAmount,
           has_tractor: formData.hasTractor,
           has_irrigation: formData.hasIrrigation,
           irrigation_type: formData.irrigationType,
           has_storage: formData.hasStorage,
           annual_income_range: formData.annualIncomeRange,
           language_preference: formData.preferredLanguage,
+          preferred_contact_method: formData.preferredContactMethod,
+          aadhaar_number: formData.aadhaarNumber,
+          notes: formData.notes,
           updated_at: new Date().toISOString()
         })
         .eq('id', user.id);
@@ -194,6 +217,11 @@ export default function ProfileEdit() {
             display_name: formData.displayName,
             date_of_birth: formData.dateOfBirth || null,
             gender: formData.gender || null,
+            email: formData.email || null,
+            bio: formData.bio || null,
+            aadhaar_number: formData.aadhaarNumber || null,
+            address_line1: formData.addressLine1 || null,
+            address_line2: formData.addressLine2 || null,
             village: formData.village || null,
             taluka: formData.taluka || null,
             district: formData.district || null,
@@ -226,6 +254,11 @@ export default function ProfileEdit() {
             display_name: formData.displayName,
             date_of_birth: formData.dateOfBirth || null,
             gender: formData.gender || null,
+            email: formData.email || null,
+            bio: formData.bio || null,
+            aadhaar_number: formData.aadhaarNumber || null,
+            address_line1: formData.addressLine1 || null,
+            address_line2: formData.addressLine2 || null,
             village: formData.village || null,
             taluka: formData.taluka || null,
             district: formData.district || null,
@@ -379,15 +412,68 @@ export default function ProfileEdit() {
                     </SelectContent>
                   </Select>
                 </div>
+
+                <div>
+                  <Label htmlFor="email">Email (Optional)</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => handleInputChange('email', e.target.value)}
+                    placeholder="your.email@example.com"
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="aadhaarNumber">Aadhaar Number (Optional)</Label>
+                  <Input
+                    id="aadhaarNumber"
+                    value={formData.aadhaarNumber}
+                    onChange={(e) => handleInputChange('aadhaarNumber', e.target.value)}
+                    placeholder="XXXX-XXXX-XXXX"
+                    maxLength={12}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="bio">Bio (Optional)</Label>
+                  <Textarea
+                    id="bio"
+                    value={formData.bio}
+                    onChange={(e) => handleInputChange('bio', e.target.value)}
+                    placeholder="Tell us about yourself"
+                    rows={3}
+                  />
+                </div>
               </CardContent>
             </Card>
 
-            {/* Address Information */}
+      {/* Address Information */}
             <Card>
         <CardHeader>
           <CardTitle className="text-base">Address</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div>
+            <Label htmlFor="addressLine1">Address Line 1</Label>
+            <Input
+              id="addressLine1"
+              value={formData.addressLine1}
+              onChange={(e) => handleInputChange('addressLine1', e.target.value)}
+              placeholder="House/Plot number, Street"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="addressLine2">Address Line 2 (Optional)</Label>
+            <Input
+              id="addressLine2"
+              value={formData.addressLine2}
+              onChange={(e) => handleInputChange('addressLine2', e.target.value)}
+              placeholder="Landmark"
+            />
+          </div>
+
           <div>
             <Label htmlFor="village">Village</Label>
             <Input
@@ -519,6 +605,29 @@ export default function ProfileEdit() {
               </SelectContent>
             </Select>
           </div>
+
+          <div className="flex items-center justify-between">
+            <Label htmlFor="hasLoan">Has Agricultural Loan</Label>
+            <Switch
+              id="hasLoan"
+              checked={formData.hasLoan}
+              onCheckedChange={(checked) => handleInputChange('hasLoan', checked)}
+            />
+          </div>
+
+          {formData.hasLoan && (
+            <div>
+              <Label htmlFor="loanAmount">Loan Amount (₹)</Label>
+              <Input
+                id="loanAmount"
+                type="number"
+                value={formData.loanAmount}
+                onChange={(e) => handleInputChange('loanAmount', parseFloat(e.target.value) || 0)}
+                placeholder="Enter loan amount"
+                min="0"
+              />
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -581,9 +690,9 @@ export default function ProfileEdit() {
       {/* Preferences */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Preferences</CardTitle>
+          <CardTitle className="text-base">Preferences & Notes</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <div>
             <Label htmlFor="language">Preferred Language</Label>
             <Select
@@ -601,6 +710,35 @@ export default function ProfileEdit() {
                 <SelectItem value="ta">தமிழ்</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="contactMethod">Preferred Contact Method</Label>
+            <Select
+              value={formData.preferredContactMethod}
+              onValueChange={(value) => handleInputChange('preferredContactMethod', value)}
+            >
+              <SelectTrigger id="contactMethod">
+                <SelectValue placeholder="Select contact method" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="phone">Phone</SelectItem>
+                <SelectItem value="sms">SMS</SelectItem>
+                <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                <SelectItem value="email">Email</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label htmlFor="notes">Additional Notes (Optional)</Label>
+            <Textarea
+              id="notes"
+              value={formData.notes}
+              onChange={(e) => handleInputChange('notes', e.target.value)}
+              placeholder="Any additional information..."
+              rows={3}
+            />
           </div>
         </CardContent>
       </Card>
