@@ -36,10 +36,12 @@ serve(async (req) => {
     // SECURITY: Extract and validate tenant and farmer IDs from headers
     const tenantId = req.headers.get('x-tenant-id');
     const farmerId = req.headers.get('x-farmer-id');
+    const sessionToken = req.headers.get('x-session-token');
 
     console.log('🔐 [Security] Request headers:', {
       tenantId,
       farmerId,
+      hasSessionToken: !!sessionToken,
       timestamp: new Date().toISOString()
     });
     
