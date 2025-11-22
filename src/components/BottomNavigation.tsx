@@ -1,8 +1,8 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { Home, Users, TrendingUp, User, Scan, Mic, Grid3x3, MicOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { InstaScanFlow } from '@/components/InstaScan/InstaScanFlow';
 import { useModernVoice } from '@/contexts/ModernVoiceContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -28,12 +28,19 @@ export function BottomNavigation({
 }: BottomNavigationProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const [showInstaScan, setShowInstaScan] = useState(false);
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(false);
   const [lastTapTime, setLastTapTime] = useState(0);
   const { startListening, stopListening, isListening } = useModernVoice();
   const { enabledFeatures } = useFeatures();
+
+  // Close menus when route changes
+  useEffect(() => {
+    setIsActionMenuOpen(false);
+    setShowQuickActions(false);
+  }, [location.pathname]);
 
   // If navigation is hidden, return null
   if (hideNav) return null;
