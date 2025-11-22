@@ -114,11 +114,24 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           }
         };
         
-        // Set dynamic manifest link (non-blocking)
+        // Set dynamic manifest link with caching (non-blocking)
         runInBackground(() => {
+          const manifestCacheKey = 'manifest-url-cache';
+          const cachedManifestUrl = sessionStorage.getItem(manifestCacheKey);
           const manifestLink = document.querySelector('link[rel="manifest"]') as HTMLLinkElement;
+          
           if (manifestLink) {
-            manifestLink.href = `https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/generate-manifest?domain=${encodeURIComponent(currentDomain)}`;
+            if (cachedManifestUrl) {
+              // Use cached manifest URL to avoid rate limiting
+              manifestLink.href = cachedManifestUrl;
+              console.log('📱 [Manifest] Using cached manifest URL');
+            } else {
+              // Generate and cache new manifest URL
+              const manifestUrl = `https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/generate-manifest?domain=${encodeURIComponent(currentDomain)}`;
+              manifestLink.href = manifestUrl;
+              sessionStorage.setItem(manifestCacheKey, manifestUrl);
+              console.log('📱 [Manifest] Set and cached manifest URL');
+            }
           }
         });
         
