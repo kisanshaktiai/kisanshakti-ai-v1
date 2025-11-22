@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useAuthStore } from '@/stores/authStore';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { AvatarUpload } from '@/components/profile/AvatarUpload';
@@ -67,12 +67,16 @@ export default function ProfileEdit() {
   // Fetch fresh data from database on mount
   useEffect(() => {
     const loadProfileData = async () => {
-      if (!user?.id) return;
+      if (!user?.id || !user?.tenantId) return;
       
       setDataLoading(true);
       try {
+        // Create authenticated client with custom headers
+        const authClient = supabaseWithAuth(user.id, user.tenantId);
+        console.log('🔐 Loading profile with authenticated client:', { userId: user.id, tenantId: user.tenantId });
+        
         // Fetch from farmers table
-        const { data: farmerData, error: farmerError } = await supabase
+        const { data: farmerData, error: farmerError } = await authClient
           .from('farmers')
           .select('*')
           .eq('id', user.id)
@@ -83,7 +87,7 @@ export default function ProfileEdit() {
         }
 
         // Fetch from user_profiles table
-        const { data: profileData, error: profileError } = await supabase
+        const { data: profileData, error: profileError } = await authClient
           .from('user_profiles')
           .select('*')
           .eq('farmer_id', user.id)
@@ -163,10 +167,14 @@ export default function ProfileEdit() {
   };
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!user || !user.tenantId) return;
     
     setLoading(true);
     try {
+      // Create authenticated client with custom headers
+      const authClient = supabaseWithAuth(user.id, user.tenantId);
+      console.log('🔐 Saving profile with authenticated client:', { userId: user.id, tenantId: user.tenantId });
+      
       // Parse crops string to array
       const cropsArray = formData.primaryCrops
         .split(',')
@@ -174,7 +182,7 @@ export default function ProfileEdit() {
         .filter(crop => crop.length > 0);
 
       // Update farmers table
-      const { error: farmerError } = await supabase
+      const { error: farmerError } = await authClient
         .from('farmers')
         .update({
           total_land_acres: formData.totalLandAcres,
@@ -202,7 +210,7 @@ export default function ProfileEdit() {
       }
 
       // Check if profile exists
-      const { data: existingProfile } = await supabase
+      const { data: existingProfile } = await authClient
         .from('user_profiles')
         .select('id')
         .eq('farmer_id', user.id)
@@ -210,7 +218,7 @@ export default function ProfileEdit() {
 
       // Update or create user_profiles
       if (existingProfile) {
-        const { error: profileError } = await supabase
+        const { error: profileError } = await authClient
           .from('user_profiles')
           .update({
             full_name: formData.fullName,
@@ -244,7 +252,7 @@ export default function ProfileEdit() {
           throw profileError;
         }
       } else {
-        const { error: profileError } = await supabase
+        const { error: profileError } = await authClient
           .from('user_profiles')
           .insert({
             id: user.id,
