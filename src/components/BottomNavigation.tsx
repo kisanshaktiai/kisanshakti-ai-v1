@@ -1,18 +1,17 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Home, Users, TrendingUp, User, Scan, Mic, Grid3x3 } from 'lucide-react';
+import { Home, Users, TrendingUp, User, Scan, Mic, Grid3x3, MicOff } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import { InstaScanFlow } from '@/components/InstaScan/InstaScanFlow';
 import { useModernVoice } from '@/contexts/ModernVoiceContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useFeatures } from '@/hooks/useFeatures';
 
 interface BottomNavigationProps {
   onMenuOpen: () => void;
   hideNav?: boolean;
   hideAction?: boolean;
-  onVoiceClick?: () => void;
-  onQuickActionsClick?: () => void;
 }
 
 const navItems = [
@@ -25,16 +24,16 @@ const navItems = [
 export function BottomNavigation({ 
   onMenuOpen, 
   hideNav = false, 
-  hideAction = false,
-  onVoiceClick,
-  onQuickActionsClick 
+  hideAction = false
 }: BottomNavigationProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [showInstaScan, setShowInstaScan] = useState(false);
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+  const [showQuickActions, setShowQuickActions] = useState(false);
   const [lastTapTime, setLastTapTime] = useState(0);
-  const { startListening } = useModernVoice();
+  const { startListening, stopListening, isListening } = useModernVoice();
+  const { enabledFeatures } = useFeatures();
 
   // If navigation is hidden, return null
   if (hideNav) return null;
@@ -60,9 +59,9 @@ export function BottomNavigation({
     setIsActionMenuOpen(false);
   };
 
-  const handleVoiceOpen = () => {
-    if (onVoiceClick) {
-      onVoiceClick();
+  const handleVoiceToggle = () => {
+    if (isListening) {
+      stopListening();
     } else {
       startListening();
     }
@@ -70,10 +69,14 @@ export function BottomNavigation({
   };
 
   const handleQuickActionsOpen = () => {
-    if (onQuickActionsClick) {
-      onQuickActionsClick();
-    }
+    setShowQuickActions(!showQuickActions);
     setIsActionMenuOpen(false);
+  };
+
+  const handleFeatureClick = (path: string, enabled: boolean, comingSoon?: boolean) => {
+    if (!enabled || comingSoon) return;
+    navigate(path);
+    setShowQuickActions(false);
   };
 
   return (
@@ -185,19 +188,26 @@ export function BottomNavigation({
                 <div className="flex justify-around items-center gap-3">
                   {/* Voice Assistant Button */}
                   <button
-                    onClick={handleVoiceOpen}
+                    onClick={handleVoiceToggle}
                     className={cn(
                       "flex flex-col items-center justify-center flex-1 gap-2",
                       "transition-all duration-300",
                       "group"
                     )}
-                    aria-label="Voice Assistant"
+                    aria-label={isListening ? "Stop Voice" : "Start Voice"}
                   >
-                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--primary)/0.6)]">
-                      <Mic className="w-6 h-6 text-primary-foreground" strokeWidth={2} />
+                    <div className={cn(
+                      "w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--primary)/0.6)]",
+                      isListening && "animate-pulse shadow-glow"
+                    )}>
+                      {isListening ? (
+                        <MicOff className="w-6 h-6 text-primary-foreground" strokeWidth={2} />
+                      ) : (
+                        <Mic className="w-6 h-6 text-primary-foreground" strokeWidth={2} />
+                      )}
                     </div>
                     <span className="text-[10px] font-medium text-muted-foreground">
-                      {t('voice.title', 'Voice')}
+                      {isListening ? t('voice.stop', 'Stop') : t('voice.start', 'Voice')}
                     </span>
                   </button>
 
@@ -236,6 +246,51 @@ export function BottomNavigation({
                       {t('nav.scan', 'Scan')}
                     </span>
                   </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Quick Actions Menu Popup */}
+        <AnimatePresence>
+          {showQuickActions && !hideAction && enabledFeatures && enabledFeatures.length > 0 && (
+            <motion.div
+              initial={{ y: 100, opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 100, opacity: 0, scale: 0.95 }}
+              transition={{ 
+                type: "spring",
+                stiffness: 300,
+                damping: 30
+              }}
+              className="absolute bottom-full left-0 right-0 pb-4"
+            >
+              <div className="glassmorphism-nav-menu rounded-t-3xl mx-4 p-4 border border-border/20 max-h-[60vh] overflow-y-auto">
+                <div className="grid grid-cols-3 gap-3">
+                  {enabledFeatures.map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => handleFeatureClick(item.path, item.enabled, item.comingSoon)}
+                      disabled={!item.enabled || item.comingSoon}
+                      className={cn(
+                        "flex flex-col items-center gap-2 p-3 rounded-xl transition-all",
+                        item.enabled && !item.comingSoon
+                          ? "hover:bg-muted/50 active:scale-95"
+                          : "opacity-50 cursor-not-allowed"
+                      )}
+                    >
+                      <div className={cn(
+                        "w-12 h-12 rounded-xl flex items-center justify-center",
+                        "bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--primary)/0.6)]"
+                      )}>
+                        {item.icon && <item.icon className="w-6 h-6 text-primary-foreground" />}
+                      </div>
+                      <span className="text-[10px] font-medium text-muted-foreground text-center line-clamp-2">
+                        {t(item.labelKey)}
+                      </span>
+                    </button>
+                  ))}
                 </div>
               </div>
             </motion.div>
