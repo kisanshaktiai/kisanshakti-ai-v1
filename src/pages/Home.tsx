@@ -58,6 +58,7 @@ export default function Home() {
   const { currentWeather } = useWeather();
   const [isWeatherExpanded, setIsWeatherExpanded] = useState(true);
   const [hasAutoCollapsed, setHasAutoCollapsed] = useState(false);
+  const [currentMetricIndex, setCurrentMetricIndex] = useState(0);
 
   // Update current time every minute
   useEffect(() => {
@@ -77,6 +78,16 @@ export default function Home() {
       return () => clearTimeout(collapseTimer);
     }
   }, [hasAutoCollapsed]);
+
+  // Rotate metrics in minimized view every 3 seconds
+  useEffect(() => {
+    if (!isWeatherExpanded) {
+      const rotateInterval = setInterval(() => {
+        setCurrentMetricIndex((prev) => (prev + 1) % 3);
+      }, 3000);
+      return () => clearInterval(rotateInterval);
+    }
+  }, [isWeatherExpanded]);
   
   // Use consistent data fetching hook (handles online/offline automatically)
   const { lands, isLoading: loading } = useLands();
@@ -311,72 +322,71 @@ export default function Home() {
                 className="h-[68px] flex items-center relative z-10 px-4 py-2.5"
               >
                 <div className="flex items-center justify-between w-full gap-3">
-                  {/* Farmer Name with Namaste */}
+                  {/* Farmer Name with Namaste - 2 lines */}
                   <motion.div 
-                    className="flex flex-col gap-0.5 bg-primary/10 backdrop-blur-sm rounded-xl px-2.5 py-1.5"
+                    className="flex flex-col gap-0.5 bg-primary/10 backdrop-blur-sm rounded-xl px-2.5 py-1.5 flex-1"
                     initial={{ scale: 0.8 }}
                     animate={{ scale: 1 }}
                   >
                     <div className="flex items-center gap-1.5">
                       <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
-                      <span className="text-xs font-semibold text-primary">🙏 {farmerName}</span>
+                      <span className="text-xs font-semibold text-foreground">🙏 Namaste, {farmerName}</span>
                     </div>
-                    <span className="text-[10px] text-muted-foreground">Synced {formattedTime}</span>
+                    <span className="text-[10px] text-muted-foreground">Last synced: {formattedTime}</span>
                   </motion.div>
 
-                  {/* Key Stats with morphing animations */}
-                  <div className="flex items-center gap-3 flex-1 justify-end">
-                    {/* Temperature */}
-                    <motion.div 
-                      className="flex items-center gap-1.5 bg-background/60 backdrop-blur-sm rounded-xl px-2.5 py-1.5"
-                      whileHover={{ scale: 1.05 }}
+                  {/* Rotating Single Metric */}
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={currentMetricIndex}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.3 }}
+                      className="flex items-center gap-1.5 bg-background/60 backdrop-blur-sm rounded-xl px-3 py-2"
                     >
-                      <Thermometer className="w-3.5 h-3.5 text-accent" />
-                      <span className="text-xs font-bold text-foreground">
-                        {currentWeather?.temp ? Math.round(currentWeather.temp) : '--'}°
-                      </span>
+                      {currentMetricIndex === 0 && (
+                        <>
+                          <Thermometer className="w-4 h-4 text-primary" />
+                          <div className="flex flex-col">
+                            <span className="text-[9px] text-muted-foreground">Temp</span>
+                            <span className="text-sm font-bold text-foreground">
+                              {currentWeather?.temp ? Math.round(currentWeather.temp) : '--'}°C
+                            </span>
+                          </div>
+                        </>
+                      )}
+                      {currentMetricIndex === 1 && (
+                        <>
+                          <Droplets className="w-4 h-4 text-primary" />
+                          <div className="flex flex-col">
+                            <span className="text-[9px] text-muted-foreground">Humidity</span>
+                            <span className="text-sm font-bold text-foreground">
+                              {currentWeather?.humidity || '--'}%
+                            </span>
+                          </div>
+                        </>
+                      )}
+                      {currentMetricIndex === 2 && (
+                        <>
+                          <Activity className="w-4 h-4 text-primary" />
+                          <div className="flex flex-col">
+                            <span className="text-[9px] text-muted-foreground">Pressure</span>
+                            <span className="text-sm font-bold text-foreground">
+                              {currentWeather?.pressure || '--'} hPa
+                            </span>
+                          </div>
+                        </>
+                      )}
                     </motion.div>
-
-                    {/* Wind */}
-                    <motion.div 
-                      className="flex items-center gap-1.5 bg-background/60 backdrop-blur-sm rounded-xl px-2.5 py-1.5"
-                      whileHover={{ scale: 1.05 }}
-                    >
-                      <Wind className="w-3.5 h-3.5 text-primary" />
-                      <span className="text-xs font-bold text-foreground">
-                        {currentWeather?.wind_speed ? Math.round(currentWeather.wind_speed * 3.6) : '--'}
-                      </span>
-                    </motion.div>
-
-                    {/* Humidity */}
-                    <motion.div 
-                      className="flex items-center gap-1.5 bg-background/60 backdrop-blur-sm rounded-xl px-2.5 py-1.5"
-                      whileHover={{ scale: 1.05 }}
-                    >
-                      <Droplets className="w-3.5 h-3.5 text-primary" />
-                      <span className="text-xs font-bold text-foreground">
-                        {currentWeather?.humidity || '--'}%
-                      </span>
-                    </motion.div>
-
-                    {/* Pressure */}
-                    <motion.div 
-                      className="flex items-center gap-1.5 bg-background/60 backdrop-blur-sm rounded-xl px-2.5 py-1.5"
-                      whileHover={{ scale: 1.05 }}
-                    >
-                      <Activity className="w-3.5 h-3.5 text-accent" />
-                      <span className="text-xs font-bold text-foreground">
-                        {currentWeather?.pressure || '--'}
-                      </span>
-                    </motion.div>
-                  </div>
+                  </AnimatePresence>
 
                   {/* Expand indicator */}
                   <motion.div
                     animate={{ y: [0, 3, 0] }}
                     transition={{ duration: 2, repeat: Infinity }}
                   >
-                    <ChevronDown className="w-5 h-5 text-primary/60" />
+                    <ChevronDown className="w-5 h-5 text-muted-foreground" />
                   </motion.div>
                 </div>
               </motion.div>
@@ -443,7 +453,7 @@ export default function Home() {
                     className="relative flex flex-col items-center gap-1"
                   >
                     <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl" />
-                    {currentWeather?.main === 'Clear' && <Sun className="w-12 h-12 text-accent relative z-10" />}
+                    {currentWeather?.main === 'Clear' && <Sun className="w-12 h-12 text-primary relative z-10" />}
                     {currentWeather?.main === 'Clouds' && <Cloud className="w-12 h-12 text-muted-foreground relative z-10" />}
                     {(currentWeather?.main === 'Rain' || currentWeather?.main === 'Drizzle') && <CloudRain className="w-12 h-12 text-primary relative z-10" />}
                     {currentWeather?.main === 'Snow' && <CloudSnow className="w-12 h-12 text-primary relative z-10" />}
@@ -494,7 +504,7 @@ export default function Home() {
                     whileHover={{ scale: 1.05, y: -2 }}
                     transition={{ type: "spring", stiffness: 300 }}
                   >
-                    <Activity className="w-3.5 h-3.5 text-accent" />
+                    <Activity className="w-3.5 h-3.5 text-primary" />
                     <span className="text-[10px] text-muted-foreground font-medium">Pressure</span>
                     <span className="text-sm font-bold text-foreground">
                       {currentWeather?.pressure || '--'} <span className="text-[10px] font-normal">hPa</span>
@@ -522,11 +532,11 @@ export default function Home() {
                     </div>
                   </motion.div>
                   <motion.div 
-                    className="flex items-center gap-2 bg-gradient-to-br from-accent/5 to-accent/10 backdrop-blur-sm rounded-xl p-2 border border-accent/20"
+                    className="flex items-center gap-2 bg-gradient-to-br from-primary/5 to-primary/10 backdrop-blur-sm rounded-xl p-2 border border-primary/20"
                     whileHover={{ scale: 1.03, x: 2 }}
                   >
-                    <div className="w-7 h-7 rounded-lg bg-accent/20 flex items-center justify-center">
-                      <Leaf className="w-3.5 h-3.5 text-accent" />
+                    <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center">
+                      <Leaf className="w-3.5 h-3.5 text-primary" />
                     </div>
                     <div>
                       <p className="text-[10px] text-muted-foreground font-medium">Area</p>
@@ -701,8 +711,8 @@ export default function Home() {
                     <div className="flex items-center gap-3">
                       <div className={cn(
                         "w-2 h-2 rounded-full",
-                        index === 0 ? "bg-success animate-pulse" : 
-                        index === 1 ? "bg-accent" : "bg-primary"
+                        index === 0 ? "bg-primary animate-pulse" : 
+                        index === 1 ? "bg-primary" : "bg-primary"
                       )} />
                       <div>
                         <p className="text-sm font-medium">{land.name || 'Unnamed Land'}</p>
@@ -721,7 +731,7 @@ export default function Home() {
               <>
                 <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                   <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 bg-success rounded-full animate-pulse" />
+                    <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
                     <div>
                       <p className="text-sm font-medium">No lands added yet</p>
                       <p className="text-xs text-muted-foreground">Add your first land to get started</p>
@@ -732,7 +742,7 @@ export default function Home() {
                 {currentWeather && currentWeather.description && (
                   <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                     <div className="flex items-center gap-3">
-                      <div className="w-2 h-2 bg-accent rounded-full" />
+                      <div className="w-2 h-2 bg-primary rounded-full" />
                       <div>
                         <p className="text-sm font-medium">Current Weather</p>
                         <p className="text-xs text-muted-foreground">{currentWeather.description}</p>
