@@ -1,7 +1,6 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import { BottomNavigation } from './BottomNavigation';
 import { HindenburgMenu } from './HindenburgMenu';
-import { FloatingActionButton } from './FloatingActionButton';
 import { LanguageSelector } from './LanguageSelector';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/stores/authStore';
@@ -11,7 +10,6 @@ import { useEffect, useState } from 'react';
 import { SyncButton } from '@/components/sync/SyncButton';
 import { ConnectionStatusIcon } from '@/components/ConnectionStatusIcon';
 import { ModernVoiceProvider } from '@/contexts/ModernVoiceContext';
-import { ModernVoiceAssistant } from '@/components/voice/ModernVoiceAssistant';
 
 export function AppLayout() {
   const { tenant, branding } = useTenant();
@@ -92,12 +90,6 @@ export function AppLayout() {
           hideNav={isAIChat || isCommunityChat}
           hideAction={false}
         />
-        
-        {/* Floating Action Button - Hidden on full-screen routes */}
-        {!isAIChat && !isCommunityChat && <FloatingActionButton />}
-        
-        {/* Modern Voice Assistant - Hidden on chat pages */}
-        {!isAIChat && !isCommunityChat && <ModernVoiceAssistant />}
         
         {/* Hindenburg Menu */}
         <HindenburgMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />

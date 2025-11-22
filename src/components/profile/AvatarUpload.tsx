@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Camera, Upload, X, ZoomIn, ZoomOut, Loader2, User } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -35,10 +35,10 @@ export function AvatarUpload({
   const [uploading, setUploading] = useState(false);
 
   const sizeClasses = {
-    sm: 'w-16 h-16',
-    md: 'w-20 h-20',
-    lg: 'w-24 h-24',
-    xl: 'w-32 h-32'
+    sm: 'w-12 h-12',
+    md: 'w-16 h-16',
+    lg: 'w-20 h-20',
+    xl: 'w-24 h-24'
   };
 
   const onCropComplete = useCallback((croppedArea: Area, croppedAreaPixels: Area) => {
@@ -97,11 +97,26 @@ export function AvatarUpload({
       throw new Error('No 2d context');
     }
 
-    // Set canvas size to cropped size
-    canvas.width = pixelCrop.width;
-    canvas.height = pixelCrop.height;
+    // Resize to max 512x512 for profile pictures to reduce file size
+    const maxSize = 512;
+    let width = pixelCrop.width;
+    let height = pixelCrop.height;
 
-    // Draw the cropped image
+    if (width > maxSize || height > maxSize) {
+      if (width > height) {
+        height = (height / width) * maxSize;
+        width = maxSize;
+      } else {
+        width = (width / height) * maxSize;
+        height = maxSize;
+      }
+    }
+
+    // Set canvas size to resized dimensions
+    canvas.width = width;
+    canvas.height = height;
+
+    // Draw the cropped and resized image
     ctx.drawImage(
       image,
       pixelCrop.x,
@@ -110,8 +125,8 @@ export function AvatarUpload({
       pixelCrop.height,
       0,
       0,
-      pixelCrop.width,
-      pixelCrop.height
+      width,
+      height
     );
 
     return new Promise((resolve, reject) => {
@@ -121,7 +136,7 @@ export function AvatarUpload({
           return;
         }
         resolve(blob);
-      }, 'image/jpeg', 0.95);
+      }, 'image/jpeg', 0.85); // Reduced quality to 85% for smaller file size
     });
   };
 
@@ -130,40 +145,80 @@ export function AvatarUpload({
 
     setUploading(true);
     try {
-      // Crop the image
+      // Use farmerId from custom auth store (not Supabase Auth)
+      const farmerId = user.id;
+      const tenantId = user.tenantId;
+      
+      if (!farmerId || !tenantId) {
+        throw new Error('Not authenticated. Please log in again.');
+      }
+      
+      console.log('🔐 Using authenticated client with:', { farmerId, tenantId });
+      
+      // Create authenticated Supabase client with custom headers
+      const authClient = supabaseWithAuth(farmerId, tenantId);
+      
+      // Crop and compress the image
       const croppedImageBlob = await getCroppedImg(imageSrc, croppedAreaPixels);
       
-      // Create file name
-      const fileName = `${user.id}/avatar-${Date.now()}.jpg`;
+      // Check compressed file size
+      const fileSizeMB = croppedImageBlob.size / (1024 * 1024);
+      console.log('Compressed image size:', fileSizeMB.toFixed(2), 'MB');
+      
+      // Create file name with farmer ID for RLS
+      const fileName = `${farmerId}/avatar-${Date.now()}.jpg`;
+      console.log('Uploading to path:', fileName);
       
       // Delete old avatar if exists
       if (currentAvatarUrl) {
-        const oldPath = currentAvatarUrl.split('/').slice(-2).join('/');
-        await supabase.storage.from('avatars').remove([oldPath]);
+        try {
+          const oldPath = currentAvatarUrl.split('/').slice(-2).join('/');
+          console.log('Deleting old avatar:', oldPath);
+          await authClient.storage.from('avatars').remove([oldPath]);
+        } catch (error) {
+          console.warn('Failed to delete old avatar:', error);
+          // Continue even if deletion fails
+        }
       }
 
-      // Upload to Supabase Storage
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      // Upload to Supabase Storage with authenticated client
+      console.log('Starting upload with authenticated client...');
+      const { data: uploadData, error: uploadError } = await authClient.storage
         .from('avatars')
         .upload(fileName, croppedImageBlob, {
           contentType: 'image/jpeg',
-          upsert: true
+          upsert: true,
+          cacheControl: '3600'
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        throw uploadError;
+      }
+
+      console.log('Upload successful:', uploadData);
 
       // Get public URL
-      const { data: { publicUrl } } = supabase.storage
+      const { data: { publicUrl } } = authClient.storage
         .from('avatars')
         .getPublicUrl(uploadData.path);
 
-      // Update user_profiles table
-      const { error: updateError } = await supabase
+      console.log('Public URL:', publicUrl);
+
+      // Update user_profiles table using authenticated client
+      console.log('Updating user_profiles for farmer_id:', farmerId);
+      const { data: updateData, error: updateError } = await authClient
         .from('user_profiles')
         .update({ avatar_url: publicUrl })
-        .eq('farmer_id', user.id);
+        .eq('farmer_id', farmerId)
+        .select();
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('Update error:', updateError);
+        throw updateError;
+      }
+
+      console.log('Profile updated:', updateData);
 
       toast({
         title: 'Success!',
@@ -174,11 +229,29 @@ export function AvatarUpload({
       setShowCropDialog(false);
       setImageSrc(null);
       setZoom(1);
-    } catch (error) {
+      
+      // Refresh the page to show updated avatar
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (error: any) {
       console.error('Error uploading avatar:', error);
+      
+      let errorMessage = 'Failed to update profile picture. Please try again.';
+      
+      if (error.message?.includes('Not authenticated')) {
+        errorMessage = error.message;
+      } else if (error.message?.includes('row-level security')) {
+        errorMessage = 'Permission denied. Please log in again.';
+      } else if (error.message?.includes('size')) {
+        errorMessage = 'Image file is too large. Please use a smaller image.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: 'Upload failed',
-        description: 'Failed to update profile picture. Please try again.',
+        description: errorMessage,
         variant: 'destructive'
       });
     } finally {
