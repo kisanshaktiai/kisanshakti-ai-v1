@@ -97,11 +97,26 @@ export function AvatarUpload({
       throw new Error('No 2d context');
     }
 
-    // Set canvas size to cropped size
-    canvas.width = pixelCrop.width;
-    canvas.height = pixelCrop.height;
+    // Resize to max 512x512 for profile pictures to reduce file size
+    const maxSize = 512;
+    let width = pixelCrop.width;
+    let height = pixelCrop.height;
 
-    // Draw the cropped image
+    if (width > maxSize || height > maxSize) {
+      if (width > height) {
+        height = (height / width) * maxSize;
+        width = maxSize;
+      } else {
+        width = (width / height) * maxSize;
+        height = maxSize;
+      }
+    }
+
+    // Set canvas size to resized dimensions
+    canvas.width = width;
+    canvas.height = height;
+
+    // Draw the cropped and resized image
     ctx.drawImage(
       image,
       pixelCrop.x,
@@ -110,8 +125,8 @@ export function AvatarUpload({
       pixelCrop.height,
       0,
       0,
-      pixelCrop.width,
-      pixelCrop.height
+      width,
+      height
     );
 
     return new Promise((resolve, reject) => {
@@ -121,7 +136,7 @@ export function AvatarUpload({
           return;
         }
         resolve(blob);
-      }, 'image/jpeg', 0.95);
+      }, 'image/jpeg', 0.85); // Reduced quality to 85% for smaller file size
     });
   };
 
@@ -130,40 +145,77 @@ export function AvatarUpload({
 
     setUploading(true);
     try {
-      // Crop the image
+      // Get authenticated user directly from Supabase to ensure ID matches
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !authUser) {
+        throw new Error('Not authenticated. Please log in again.');
+      }
+      
+      console.log('Auth user ID:', authUser.id);
+      console.log('Store user ID:', user.id);
+      
+      // Crop and compress the image
       const croppedImageBlob = await getCroppedImg(imageSrc, croppedAreaPixels);
       
-      // Create file name
-      const fileName = `${user.id}/avatar-${Date.now()}.jpg`;
+      // Check compressed file size
+      const fileSizeMB = croppedImageBlob.size / (1024 * 1024);
+      console.log('Compressed image size:', fileSizeMB.toFixed(2), 'MB');
+      
+      // Create file name with authenticated user ID for RLS
+      const fileName = `${authUser.id}/avatar-${Date.now()}.jpg`;
+      console.log('Uploading to path:', fileName);
       
       // Delete old avatar if exists
       if (currentAvatarUrl) {
-        const oldPath = currentAvatarUrl.split('/').slice(-2).join('/');
-        await supabase.storage.from('avatars').remove([oldPath]);
+        try {
+          const oldPath = currentAvatarUrl.split('/').slice(-2).join('/');
+          console.log('Deleting old avatar:', oldPath);
+          await supabase.storage.from('avatars').remove([oldPath]);
+        } catch (error) {
+          console.warn('Failed to delete old avatar:', error);
+          // Continue even if deletion fails
+        }
       }
 
       // Upload to Supabase Storage
+      console.log('Starting upload...');
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from('avatars')
         .upload(fileName, croppedImageBlob, {
           contentType: 'image/jpeg',
-          upsert: true
+          upsert: true,
+          cacheControl: '3600'
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        throw uploadError;
+      }
+
+      console.log('Upload successful:', uploadData);
 
       // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')
         .getPublicUrl(uploadData.path);
 
-      // Update user_profiles table
-      const { error: updateError } = await supabase
+      console.log('Public URL:', publicUrl);
+
+      // Update user_profiles table using authenticated user ID
+      console.log('Updating user_profiles for farmer_id:', authUser.id);
+      const { data: updateData, error: updateError } = await supabase
         .from('user_profiles')
         .update({ avatar_url: publicUrl })
-        .eq('farmer_id', user.id);
+        .eq('farmer_id', authUser.id)
+        .select();
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('Update error:', updateError);
+        throw updateError;
+      }
+
+      console.log('Profile updated:', updateData);
 
       toast({
         title: 'Success!',
@@ -174,11 +226,29 @@ export function AvatarUpload({
       setShowCropDialog(false);
       setImageSrc(null);
       setZoom(1);
-    } catch (error) {
+      
+      // Refresh the page to show updated avatar
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
+    } catch (error: any) {
       console.error('Error uploading avatar:', error);
+      
+      let errorMessage = 'Failed to update profile picture. Please try again.';
+      
+      if (error.message?.includes('Not authenticated')) {
+        errorMessage = error.message;
+      } else if (error.message?.includes('row-level security')) {
+        errorMessage = 'Permission denied. Please log in again.';
+      } else if (error.message?.includes('size')) {
+        errorMessage = 'Image file is too large. Please use a smaller image.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: 'Upload failed',
-        description: 'Failed to update profile picture. Please try again.',
+        description: errorMessage,
         variant: 'destructive'
       });
     } finally {
