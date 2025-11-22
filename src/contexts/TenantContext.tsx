@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { localDB } from '@/services/localDB';
 import { tenantIsolationService } from '@/services/tenantIsolationService';
 import { resetTenantStores } from '@/utils/resetStores';
+import { getEnvironment, logEnvironmentInfo } from '@/utils/environment';
 
 // ============= Types =============
 
@@ -214,9 +215,15 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setError(null);
 
       const domain = getCurrentDomain();
-      console.log('🔍 [TenantProvider] Fetching tenant config from API...');
+      const env = getEnvironment();
+      
+      // Log environment info for debugging
+      logEnvironmentInfo();
+      
+      console.log('🔍 [TenantProvider] Fetching tenant config...');
       console.log('🌐 [TenantProvider] Current domain:', domain);
       console.log('🌐 [TenantProvider] Current URL:', window.location.href);
+      console.log('🔧 [TenantProvider] Environment:', env.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION');
 
       // Check localStorage cache first (1 hour TTL)
       const cachedTenant = localStorage.getItem('tenant_config_cache');
@@ -314,15 +321,31 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       // OPTION 2: Fallback to direct database access (for development/testing)
-      // Development mode: Use stored tenant or default
-      if (domain === 'localhost' || domain.includes('lovable.app')) {
+      // Development mode: Use environment variable, stored tenant, or default
+      if (env.isDevelopment) {
+        console.log('🔧 [TenantProvider] Development mode - using fallback resolution');
+        
+        // Priority 1: Environment variable (VITE_DEFAULT_TENANT_ID)
+        const envTenantId = env.defaultTenantId;
+        
+        // Priority 2: Stored tenant ID from localStorage
         const storedTenantId = localStorage.getItem('tenantId');
         
-        if (storedTenantId) {
+        const targetTenantId = envTenantId || storedTenantId;
+        
+        console.log('🔍 [TenantProvider] Tenant ID resolution:', {
+          envTenantId,
+          storedTenantId,
+          targetTenantId,
+          priority: envTenantId ? 'ENVIRONMENT' : storedTenantId ? 'LOCALSTORAGE' : 'DEFAULT'
+        });
+        
+        if (targetTenantId) {
+          console.log('✅ [TenantProvider] Loading tenant by ID:', targetTenantId);
           const { data: tenantData } = await supabase
             .from('tenants')
             .select('id, name, slug, subdomain, custom_domain, is_default, settings, status')
-            .eq('id', storedTenantId)
+            .eq('id', targetTenantId)
             .maybeSingle();
 
           if (tenantData) {
@@ -430,13 +453,11 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
 
-      // Fallback to default tenant
-      console.warn('⚠️ [TenantProvider] No tenant found for domain, checking if development...');
+      // Fallback to default tenant (only in development)
+      console.warn('⚠️ [TenantProvider] No tenant found for domain, checking environment...');
       
-      const isDevelopment = domain.includes('localhost') || domain.includes('lovable.app') || domain.includes('lovableproject.com');
-      
-      if (isDevelopment) {
-        console.log('✅ [TenantProvider] Development mode detected, fetching default tenant from database');
+      if (env.isDevelopment) {
+        console.log('✅ [TenantProvider] Development mode - fetching default tenant from database');
         
         // First try to get the tenant marked as default
         let { data: defaultTenantData, error: tenantError } = await supabase
@@ -509,30 +530,38 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           
           return;
         } else {
-          throw new Error('No active tenants found in database. Please create at least one tenant.');
+          console.error('❌ [TenantProvider] No active tenants found in database');
+          throw new Error('No active tenants found in database. Please create at least one tenant with status="active".');
         }
       } else {
-        // In production with custom domain, this is an error
-        throw new Error('No tenant found for domain: ' + domain);
+        // In production with custom domain, this is a critical error
+        console.error('❌ [TenantProvider] No tenant found for production domain:', domain);
+        throw new Error(`No tenant configured for domain: ${domain}. Please check your DNS and tenant configuration.`);
       }
 
     } catch (err) {
       const domain = getCurrentDomain();
+      const env = getEnvironment();
+      
       console.error('❌ [TenantProvider] Error fetching tenant:', err);
+      console.error('❌ [TenantProvider] Error details:', {
+        message: (err as Error)?.message,
+        domain,
+        environment: env.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION',
+      });
       
-      // In development, don't set error - try offline cache and continue
-      const isDevelopment = domain.includes('localhost') || domain.includes('lovable.app') || domain.includes('lovableproject.com');
-      
-      if (!isDevelopment) {
+      // In development, try offline cache and continue (don't block the app)
+      // In production, this is a critical error
+      if (!env.isDevelopment) {
         setError(err as Error);
       }
 
-      // Try to load from offline cache
+      // Try to load from offline cache as last resort
       try {
         const storedTenantId = localStorage.getItem('tenantId');
         if (!storedTenantId) {
-          console.warn('⚠️ [TenantProvider] No cached tenant ID found');
-          if (isDevelopment) {
+          console.warn('⚠️ [TenantProvider] No cached tenant ID found in localStorage');
+          if (env.isDevelopment) {
             // In development, create a fallback tenant to keep the app running
             const fallbackTenant: TenantConfig = {
               id: 'development',
