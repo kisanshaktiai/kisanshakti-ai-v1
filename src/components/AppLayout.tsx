@@ -1,7 +1,6 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import { BottomNavigation } from './BottomNavigation';
 import { HindenburgMenu } from './HindenburgMenu';
-import { FloatingActionButton } from './FloatingActionButton';
 import { LanguageSelector } from './LanguageSelector';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/stores/authStore';
@@ -11,16 +10,12 @@ import { useEffect, useState } from 'react';
 import { SyncButton } from '@/components/sync/SyncButton';
 import { ConnectionStatusIcon } from '@/components/ConnectionStatusIcon';
 import { ModernVoiceProvider } from '@/contexts/ModernVoiceContext';
-import { ModernVoiceAssistant } from '@/components/voice/ModernVoiceAssistant';
-import { Sheet, SheetContent } from '@/components/ui/sheet';
 
 export function AppLayout() {
   const { tenant, branding } = useTenant();
   const { user } = useAuthStore();
   const { t } = useTranslation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [showVoiceAssistant, setShowVoiceAssistant] = useState(false);
-  const [showQuickActions, setShowQuickActions] = useState(false);
   const location = useLocation();
   
   // Check if we're on the AI chat page or community chat
@@ -94,23 +89,7 @@ export function AppLayout() {
           onMenuOpen={() => setIsMenuOpen(true)} 
           hideNav={isAIChat || isCommunityChat}
           hideAction={false}
-          onVoiceClick={() => setShowVoiceAssistant(true)}
-          onQuickActionsClick={() => setShowQuickActions(true)}
         />
-        
-        {/* Voice Assistant Sheet */}
-        <Sheet open={showVoiceAssistant} onOpenChange={setShowVoiceAssistant}>
-          <SheetContent side="bottom" className="h-[90vh] p-0">
-            <ModernVoiceAssistant />
-          </SheetContent>
-        </Sheet>
-
-        {/* Quick Actions Sheet */}
-        <Sheet open={showQuickActions} onOpenChange={setShowQuickActions}>
-          <SheetContent side="bottom" className="h-auto">
-            <FloatingActionButton />
-          </SheetContent>
-        </Sheet>
         
         {/* Hindenburg Menu */}
         <HindenburgMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
