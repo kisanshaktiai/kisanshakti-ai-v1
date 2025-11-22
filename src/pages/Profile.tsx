@@ -126,34 +126,33 @@ export default function Profile() {
         <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-primary/10 rounded-2xl blur-2xl" />
         <Card className="relative border-0 bg-gradient-to-br from-card to-card/95 shadow-xl">
           <CardContent className="p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-4">
-                <div className="relative">
-                  <AvatarUpload 
-                    currentAvatarUrl={user?.avatarUrl}
-                    size="xl"
-                    editable={false}
-                  />
-                  <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-success rounded-full border-2 border-card" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-foreground">
-                    {user?.farmerName || user?.fullName || user?.name || 'Farmer'}
-                  </h1>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Badge variant="secondary" className="bg-primary/10 text-primary">
-                      Farmer
-                    </Badge>
-                    <Badge variant="outline">
-                      {user?.farmType || 'General'}
-                    </Badge>
-                  </div>
+            <div className="flex items-start gap-4">
+              <div className="relative">
+                <AvatarUpload 
+                  currentAvatarUrl={user?.avatarUrl}
+                  size="xl"
+                  editable={false}
+                />
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-success rounded-full border-2 border-card" />
+              </div>
+              <div className="flex-1">
+                <h1 className="text-2xl font-bold text-foreground">
+                  {user?.farmerName || user?.fullName || user?.name || 'Farmer'}
+                </h1>
+                <div className="flex items-center gap-2 mt-1">
+                  <Badge variant="secondary" className="bg-primary/10 text-primary">
+                    Farmer
+                  </Badge>
+                  <Badge variant="outline">
+                    {user?.farmType || 'General'}
+                  </Badge>
                 </div>
               </div>
               <Button 
                 onClick={handleEditProfile} 
                 size="sm"
-                className="bg-primary/10 text-primary hover:bg-primary/20 border-0"
+                variant="ghost"
+                className="shrink-0"
               >
                 <Edit className="w-4 h-4 mr-1" />
                 Edit

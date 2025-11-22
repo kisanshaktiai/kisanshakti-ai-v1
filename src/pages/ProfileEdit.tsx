@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,6 +20,7 @@ export default function ProfileEdit() {
   const { user, setUser } = useAuthStore();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
   const [avatarUrl, setAvatarUrl] = useState(user?.avatarUrl || '');
 
   // Initialize form with user data
@@ -53,6 +54,81 @@ export default function ProfileEdit() {
     annualIncomeRange: user?.annualIncomeRange || '',
     preferredLanguage: user?.preferredLanguage || 'hi'
   });
+
+  // Fetch fresh data from database on mount
+  useEffect(() => {
+    const loadProfileData = async () => {
+      if (!user?.id) return;
+      
+      setDataLoading(true);
+      try {
+        // Fetch from farmers table
+        const { data: farmerData, error: farmerError } = await supabase
+          .from('farmers')
+          .select('*')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (farmerError) {
+          console.error('Error loading farmer data:', farmerError);
+        }
+
+        // Fetch from user_profiles table
+        const { data: profileData, error: profileError } = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('farmer_id', user.id)
+          .maybeSingle();
+
+        if (profileError && profileError.code !== 'PGRST116') {
+          console.error('Error loading profile data:', profileError);
+        }
+
+        // Merge data and update form
+        if (farmerData || profileData) {
+          const mergedData = {
+            fullName: profileData?.full_name || farmerData?.farmer_name || user.fullName || '',
+            displayName: profileData?.display_name || user.displayName || '',
+            dateOfBirth: profileData?.date_of_birth || user.dateOfBirth || '',
+            gender: profileData?.gender || user.gender || '',
+            village: profileData?.village || user.village || '',
+            taluka: profileData?.taluka || user.taluka || '',
+            district: profileData?.district || user.district || '',
+            state: profileData?.state || user.state || '',
+            pincode: profileData?.pincode || user.pincode || '',
+            totalLandAcres: profileData?.total_land_acres || farmerData?.total_land_acres || user.totalLandAcres || 0,
+            primaryCrops: (profileData?.primary_crops || farmerData?.primary_crops || user.primaryCrops || []).join(', '),
+            farmingExperienceYears: profileData?.farming_experience_years || farmerData?.farming_experience_years || user.farmingExperienceYears || 0,
+            farmType: farmerData?.farm_type || user.farmType || '',
+            hasTractor: profileData?.has_tractor ?? farmerData?.has_tractor ?? user.hasTractor ?? false,
+            hasIrrigation: profileData?.has_irrigation ?? farmerData?.has_irrigation ?? user.hasIrrigation ?? false,
+            irrigationType: farmerData?.irrigation_type || user.irrigationType || '',
+            hasStorage: profileData?.has_storage ?? farmerData?.has_storage ?? user.hasStorage ?? false,
+            annualIncomeRange: profileData?.annual_income_range || farmerData?.annual_income_range || user.annualIncomeRange || '',
+            preferredLanguage: profileData?.preferred_language || farmerData?.language_preference || user.preferredLanguage || 'hi'
+          };
+
+          setFormData(mergedData);
+          
+          // Update avatar if available
+          if (profileData?.avatar_url) {
+            setAvatarUrl(profileData.avatar_url);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading profile:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load profile data',
+          variant: 'destructive'
+        });
+      } finally {
+        setDataLoading(false);
+      }
+    };
+
+    loadProfileData();
+  }, [user?.id]);
 
   const handleAvatarUpdate = (url: string) => {
     setAvatarUrl(url);
@@ -217,91 +293,97 @@ export default function ProfileEdit() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="p-4 space-y-4 pb-24">
-        <div className="flex items-center gap-2 sticky top-0 bg-background/95 backdrop-blur-sm z-10 -mx-4 px-4 py-3 border-b">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate('/app/profile')}
-            className="shrink-0"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <h1 className="text-xl font-bold text-foreground truncate">Edit Profile</h1>
-        </div>
-
-        {/* Profile Picture Section */}
-        <Card>
-          <CardContent className="pt-6 flex flex-col items-center gap-4">
-            <AvatarUpload 
-              currentAvatarUrl={avatarUrl}
-              onAvatarUpdate={handleAvatarUpdate}
-              size="xl"
-              editable={true}
-            />
-            <div className="text-center">
-              <p className="text-sm font-medium">{user?.fullName || user?.name}</p>
-              <p className="text-xs text-muted-foreground">Click to change profile picture</p>
+        {dataLoading ? (
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 sticky top-0 bg-background/95 backdrop-blur-sm z-10 -mx-4 px-4 py-3 border-b">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate('/app/profile')}
+                className="shrink-0"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </Button>
+              <h1 className="text-xl font-bold text-foreground truncate">Edit Profile</h1>
             </div>
-          </CardContent>
-        </Card>
 
-      {/* Personal Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Personal Information</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label htmlFor="fullName">Full Name</Label>
-            <Input
-              id="fullName"
-              value={formData.fullName}
-              onChange={(e) => handleInputChange('fullName', e.target.value)}
-              placeholder="Enter your full name"
-            />
-          </div>
-          
-          <div>
-            <Label htmlFor="displayName">Display Name</Label>
-            <Input
-              id="displayName"
-              value={formData.displayName}
-              onChange={(e) => handleInputChange('displayName', e.target.value)}
-              placeholder="Name to display in app"
-            />
-          </div>
+            {/* Profile Picture Section */}
+            <Card>
+              <CardContent className="pt-6 flex flex-col items-center gap-4">
+                <AvatarUpload 
+                  currentAvatarUrl={avatarUrl}
+                  onAvatarUpdate={handleAvatarUpdate}
+                  size="xl"
+                  editable={true}
+                />
+                <div className="text-center">
+                  <p className="text-sm font-medium">{user?.fullName || user?.name}</p>
+                  <p className="text-xs text-muted-foreground">Click to change profile picture</p>
+                </div>
+              </CardContent>
+            </Card>
 
-          <div>
-            <Label htmlFor="dateOfBirth">Date of Birth</Label>
-            <Input
-              id="dateOfBirth"
-              type="date"
-              value={formData.dateOfBirth}
-              onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
-            />
-          </div>
+            {/* Personal Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Personal Information</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label htmlFor="fullName">Full Name</Label>
+                  <Input
+                    id="fullName"
+                    value={formData.fullName}
+                    onChange={(e) => handleInputChange('fullName', e.target.value)}
+                    placeholder="Enter your full name"
+                  />
+                </div>
+                
+                <div>
+                  <Label htmlFor="displayName">Display Name</Label>
+                  <Input
+                    id="displayName"
+                    value={formData.displayName}
+                    onChange={(e) => handleInputChange('displayName', e.target.value)}
+                    placeholder="Name to display in app"
+                  />
+                </div>
 
-          <div>
-            <Label htmlFor="gender">Gender</Label>
-            <Select
-              value={formData.gender}
-              onValueChange={(value) => handleInputChange('gender', value)}
-            >
-              <SelectTrigger id="gender">
-                <SelectValue placeholder="Select gender" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Male">Male</SelectItem>
-                <SelectItem value="Female">Female</SelectItem>
-                <SelectItem value="Other">Other</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+                <div>
+                  <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                  <Input
+                    id="dateOfBirth"
+                    type="date"
+                    value={formData.dateOfBirth}
+                    onChange={(e) => handleInputChange('dateOfBirth', e.target.value)}
+                  />
+                </div>
 
-      {/* Address Information */}
-      <Card>
+                <div>
+                  <Label htmlFor="gender">Gender</Label>
+                  <Select
+                    value={formData.gender}
+                    onValueChange={(value) => handleInputChange('gender', value)}
+                  >
+                    <SelectTrigger id="gender">
+                      <SelectValue placeholder="Select gender" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Male">Male</SelectItem>
+                      <SelectItem value="Female">Female</SelectItem>
+                      <SelectItem value="Other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Address Information */}
+            <Card>
         <CardHeader>
           <CardTitle className="text-base">Address</CardTitle>
         </CardHeader>
@@ -552,8 +634,9 @@ export default function ProfileEdit() {
               </>
             )}
           </Button>
-        </div>
-      </div>
+         </div>
+          </>
+        )}
       </div>
     </div>
   );
