@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AIScheduleAlerts } from '@/components/schedule/AIScheduleAlerts';
@@ -8,10 +8,19 @@ import { Button } from '@/components/ui/button';
 import { Brain, TrendingUp, Bell, RefreshCw, Database } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { tenantIsolationService } from '@/services/tenantIsolationService';
 
 export default function AIScheduleDashboard() {
   const { t } = useTranslation();
   const [monitoring, setMonitoring] = useState(false);
+  const [tenantId, setTenantId] = useState<string>('');
+
+  useEffect(() => {
+    const tid = tenantIsolationService.getTenantId();
+    if (tid) {
+      setTenantId(tid);
+    }
+  }, []);
 
   const runMonitoring = async () => {
     try {
@@ -120,7 +129,7 @@ export default function AIScheduleDashboard() {
           </TabsContent>
 
           <TabsContent value="insights">
-            <MarketingInsightsDashboard tenantId="default" />
+            {tenantId && <MarketingInsightsDashboard tenantId={tenantId} />}
           </TabsContent>
 
           <TabsContent value="docs">

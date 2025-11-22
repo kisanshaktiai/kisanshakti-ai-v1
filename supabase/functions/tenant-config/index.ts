@@ -309,13 +309,32 @@ serve(async (req: Request) => {
       
       // Load default tenant as fallback
       const supabase = createClient(supabaseUrl, supabaseKey);
-      const { data: defaultTenant } = await supabase
+      
+      // First try to get tenant marked as default
+      let { data: defaultTenant } = await supabase
         .from('tenants')
         .select('id, name, slug, subdomain, custom_domain, status, settings')
         .eq('is_default', true)
+        .eq('status', 'active')
         .maybeSingle();
+
+      // If no default tenant, get first active tenant
+      if (!defaultTenant) {
+        console.log('🔧 [TenantConfig] No default tenant found, using first active tenant');
+        const { data: firstTenant } = await supabase
+          .from('tenants')
+          .select('id, name, slug, subdomain, custom_domain, status, settings')
+          .eq('status', 'active')
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        
+        defaultTenant = firstTenant;
+      }
       
       if (defaultTenant) {
+        console.log('✅ [TenantConfig] Using tenant:', defaultTenant.name, `(${defaultTenant.id})`);
+        
         // Fetch branding for default tenant
         const { data: whiteLabel } = await supabase
           .from('white_label_configs')
@@ -339,13 +358,12 @@ serve(async (req: Request) => {
           } : undefined,
           features: defaultTenant.settings?.features || [],
         };
-        console.log('✅ [TenantConfig] Using default tenant:', defaultTenant.name);
       } else {
-        console.error('❌ [TenantConfig] No tenant found and no default tenant available');
+        console.error('❌ [TenantConfig] No active tenants found in database');
         return new Response(
           JSON.stringify({ 
             error: 'Tenant not found',
-            message: 'No tenant configuration found for this domain and no default tenant available.'
+            message: 'No tenant configuration found for this domain and no active tenants in database. Please create at least one active tenant.'
           }),
           { 
             status: 404, 
