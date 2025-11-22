@@ -438,14 +438,27 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (isDevelopment) {
         console.log('✅ [TenantProvider] Development mode detected, fetching default tenant from database');
         
-        // Fetch a real default tenant from database (prefer is_default=true, fallback to first active tenant)
-        const { data: defaultTenantData } = await supabase
+        // First try to get the tenant marked as default
+        let { data: defaultTenantData, error: tenantError } = await supabase
           .from('tenants')
           .select('id, name, slug, subdomain, custom_domain, status, settings')
+          .eq('is_default', true)
           .eq('status', 'active')
-          .order('is_default', { ascending: false, nullsFirst: false })
-          .limit(1)
           .maybeSingle();
+
+        // If no default tenant, get the first active tenant
+        if (!defaultTenantData && !tenantError) {
+          console.log('🔍 [TenantProvider] No default tenant found, fetching first active tenant');
+          const { data: firstActiveTenant } = await supabase
+            .from('tenants')
+            .select('id, name, slug, subdomain, custom_domain, status, settings')
+            .eq('status', 'active')
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          
+          defaultTenantData = firstActiveTenant;
+        }
 
         if (defaultTenantData) {
           console.log('✅ [TenantProvider] Found default tenant:', defaultTenantData.name, defaultTenantData.id);
@@ -504,13 +517,44 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
     } catch (err) {
+      const domain = getCurrentDomain();
       console.error('❌ [TenantProvider] Error fetching tenant:', err);
-      setError(err as Error);
+      
+      // In development, don't set error - try offline cache and continue
+      const isDevelopment = domain.includes('localhost') || domain.includes('lovable.app') || domain.includes('lovableproject.com');
+      
+      if (!isDevelopment) {
+        setError(err as Error);
+      }
 
       // Try to load from offline cache
       try {
         const storedTenantId = localStorage.getItem('tenantId');
-        if (!storedTenantId) return;
+        if (!storedTenantId) {
+          console.warn('⚠️ [TenantProvider] No cached tenant ID found');
+          if (isDevelopment) {
+            // In development, create a fallback tenant to keep the app running
+            const fallbackTenant: TenantConfig = {
+              id: 'development',
+              name: 'Development Mode',
+              domain: domain,
+              branding: {
+                company_name: 'KisanShakti',
+                primary_color: '#10b981',
+                secondary_color: '#059669',
+                accent_color: '#14b8a6'
+              },
+              features: ['lands', 'schedule', 'chat', 'market', 'weather', 'social'],
+              settings: {
+                languages: ['en', 'hi'],
+                defaultLanguage: 'en',
+              },
+            };
+            setTenant(fallbackTenant);
+            applyThemeToDOM(fallbackTenant.branding);
+          }
+          return;
+        }
 
         const cachedConfig = await localDB.getTenantConfig(storedTenantId);
         if (cachedConfig?.tenant_data) {
