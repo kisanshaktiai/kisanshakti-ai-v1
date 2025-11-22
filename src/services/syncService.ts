@@ -48,18 +48,22 @@ class SyncService {
       clearInterval(this.syncInterval);
     }
 
-    // Auto sync every 1 hour when online
+    // Auto sync every 1 hour when online AND authenticated
     this.syncInterval = setInterval(() => {
-      if (this.isOnline && !this.syncInProgress) {
+      const authState = useAuthStore.getState();
+      const isAuthenticated = authState.user?.id && authState.user?.tenantId;
+      
+      if (this.isOnline && !this.syncInProgress && isAuthenticated) {
         console.log('🔄 [Sync] Auto-sync triggered (hourly)');
         this.performSync();
+      } else if (!isAuthenticated && this.isOnline) {
+        console.log('⏸️ [Sync] Auto-sync deferred - waiting for authentication');
       }
     }, 60 * 60 * 1000); // 1 hour
 
-    // Initial sync if online
-    if (this.isOnline) {
-      this.performSync();
-    }
+    // REMOVED: Initial sync - now controlled by useOfflineData hook
+    // This prevents premature sync attempts before authentication
+    console.log('🔄 [Sync] Auto-sync initialized (waiting for authentication)');
   }
 
   async performSync(showToast: boolean = false): Promise<SyncResult> {
@@ -94,22 +98,24 @@ class SyncService {
         // Re-validate after fixing
         const revalidated = tenantIsolationService.validateContext(true);
         if (!revalidated.valid) {
-          console.error('❌ [Sync] Tenant isolation context not ready:', revalidated.error);
-          return { success: false, message: 'Tenant context not initialized' };
+          console.log('⏸️ [Sync] Tenant context not ready - sync deferred:', revalidated.error);
+          return { success: false, message: 'Waiting for tenant context' };
         }
       } else {
-        console.error('❌ [Sync] Tenant isolation context not ready:', tenantContext.error);
-        return { success: false, message: 'Tenant context not initialized' };
+        console.log('⏸️ [Sync] Tenant context not ready - sync deferred:', tenantContext.error);
+        return { success: false, message: 'Waiting for tenant context' };
       }
     }
     
     // CRITICAL: Strict validation - prevent sync without complete auth context
     if (!tenantId || !userId) {
-      console.error('❌ [Sync] Missing auth data - cannot sync:', { 
-        userId: userId || 'undefined',
-        tenantId: tenantId || 'undefined'
+      console.log('⏸️ [Sync] Waiting for authentication - sync deferred', { 
+        userId: userId || 'not set',
+        tenantId: tenantId || 'not set',
+        hasUser: !!userId,
+        hasTenant: !!tenantId
       });
-      return { success: false, message: 'User not authenticated with tenant' };
+      return { success: false, message: 'Waiting for authentication' };
     }
     
     // Additional validation: Check for empty strings
