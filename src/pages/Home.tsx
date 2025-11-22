@@ -385,11 +385,11 @@ export default function Home() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.3 }}
-                className="relative z-10 p-6 pt-8"
+                className="relative z-10 p-4 pt-7"
               >
                 {/* Farmer Info & Date - Small at top */}
                 <motion.div 
-                  className="flex items-center justify-between mb-5"
+                  className="flex items-center justify-between mb-3"
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 }}
@@ -405,7 +405,7 @@ export default function Home() {
                 </motion.div>
 
                 {/* Header */}
-                <div className="flex items-start justify-between mb-5">
+                <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
                     <motion.div
                       initial={{ scale: 0.8, opacity: 0 }}
@@ -453,13 +453,13 @@ export default function Home() {
 
                 {/* Weather Details Grid - Enhanced */}
                 <motion.div 
-                  className="grid grid-cols-3 gap-3 pt-5 mt-5 border-t border-border/20"
+                  className="grid grid-cols-3 gap-2 pt-3 mt-3 border-t border-border/20"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3 }}
                 >
                   <motion.div 
-                    className="flex flex-col items-center gap-2 bg-background/40 backdrop-blur-sm rounded-2xl p-3 border border-border/20"
+                    className="flex flex-col items-center gap-1.5 bg-background/40 backdrop-blur-sm rounded-2xl p-2.5 border border-border/20"
                     whileHover={{ scale: 1.05, y: -2 }}
                     transition={{ type: "spring", stiffness: 300 }}
                   >
@@ -473,7 +473,7 @@ export default function Home() {
                   </motion.div>
 
                   <motion.div 
-                    className="flex flex-col items-center gap-2 bg-background/40 backdrop-blur-sm rounded-2xl p-3 border border-border/20"
+                    className="flex flex-col items-center gap-1.5 bg-background/40 backdrop-blur-sm rounded-2xl p-2.5 border border-border/20"
                     whileHover={{ scale: 1.05, y: -2 }}
                     transition={{ type: "spring", stiffness: 300 }}
                   >
@@ -487,7 +487,7 @@ export default function Home() {
                   </motion.div>
 
                   <motion.div 
-                    className="flex flex-col items-center gap-2 bg-background/40 backdrop-blur-sm rounded-2xl p-3 border border-border/20"
+                    className="flex flex-col items-center gap-1.5 bg-background/40 backdrop-blur-sm rounded-2xl p-2.5 border border-border/20"
                     whileHover={{ scale: 1.05, y: -2 }}
                     transition={{ type: "spring", stiffness: 300 }}
                   >
@@ -503,13 +503,13 @@ export default function Home() {
 
                 {/* Farm Stats */}
                 <motion.div 
-                  className="grid grid-cols-2 gap-3 mt-5 pt-5 border-t border-border/20"
+                  className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-border/20"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.35 }}
                 >
                   <motion.div 
-                    className="flex items-center gap-3 bg-gradient-to-br from-primary/5 to-primary/10 backdrop-blur-sm rounded-2xl p-3 border border-primary/20"
+                    className="flex items-center gap-2.5 bg-gradient-to-br from-primary/5 to-primary/10 backdrop-blur-sm rounded-2xl p-2.5 border border-primary/20"
                     whileHover={{ scale: 1.03, x: 2 }}
                   >
                     <div className="w-9 h-9 rounded-xl bg-primary/20 flex items-center justify-center">
@@ -521,7 +521,7 @@ export default function Home() {
                     </div>
                   </motion.div>
                   <motion.div 
-                    className="flex items-center gap-3 bg-gradient-to-br from-accent/5 to-accent/10 backdrop-blur-sm rounded-2xl p-3 border border-accent/20"
+                    className="flex items-center gap-2.5 bg-gradient-to-br from-accent/5 to-accent/10 backdrop-blur-sm rounded-2xl p-2.5 border border-accent/20"
                     whileHover={{ scale: 1.03, x: 2 }}
                   >
                     <div className="w-9 h-9 rounded-xl bg-accent/20 flex items-center justify-center">
@@ -544,7 +544,7 @@ export default function Home() {
         className="px-4"
         initial={false}
         animate={{ 
-          paddingTop: isWeatherExpanded ? "340px" : "110px"
+          paddingTop: isWeatherExpanded ? "280px" : "110px"
         }}
         transition={{ 
           type: "spring",
@@ -554,7 +554,7 @@ export default function Home() {
       >
         {/* Main Features Grid */}
         <motion.div 
-          className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"
+          className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
@@ -617,7 +617,7 @@ export default function Home() {
 
         {/* Secondary Features */}
         <motion.div 
-          className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8"
+          className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
