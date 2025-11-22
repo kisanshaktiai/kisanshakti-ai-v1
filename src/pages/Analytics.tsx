@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useAuthStore } from '@/stores/authStore';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { landsApi } from '@/services/landsApi';
 import { supabase } from '@/utils/supabase';
 import { AnalyticsSkeleton } from '@/components/skeletons';
@@ -164,7 +164,7 @@ export default function Analytics() {
   });
   
   const { user } = useAuthStore();
-  const { tenant } = useTenantStore();
+  const { tenant } = useTenant();
   const [isLoading, setIsLoading] = useState(true);
   const [analyticsData, setAnalyticsData] = useState<any>({
     lands: [],

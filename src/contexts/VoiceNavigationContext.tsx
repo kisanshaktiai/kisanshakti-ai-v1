@@ -43,9 +43,7 @@ export const VoiceNavigationProvider: React.FC<{ children: React.ReactNode }> = 
   const navigate = useNavigate();
   const { currentLanguage } = useLanguageStore();
   const { toast } = useToast();
-  const [isEnabled, setIsEnabled] = useState(() => {
-    return localStorage.getItem('voiceNavigationEnabled') === 'true';
-  });
+  const [isEnabled] = useState(true); // Always enabled for simplified UX
 
   const { speak, stop: stopSpeech, isSpeaking } = useTextToSpeech({
     language: currentLanguage,
@@ -102,23 +100,8 @@ export const VoiceNavigationProvider: React.FC<{ children: React.ReactNode }> = 
   }, [isSupported]);
 
   const toggleVoiceNavigation = useCallback(() => {
-    const newState = !isEnabled;
-    setIsEnabled(newState);
-    localStorage.setItem('voiceNavigationEnabled', String(newState));
-    
-    if (newState) {
-      speak('Voice navigation enabled');
-      toast({
-        title: "Voice Navigation Enabled",
-        description: "You can now use voice commands to navigate",
-      });
-    } else {
-      toast({
-        title: "Voice Navigation Disabled",
-        description: "Voice commands are now turned off",
-      });
-    }
-  }, [isEnabled, speak, toast]);
+    // Simplified - no toggle needed, always enabled
+  }, []);
 
   const announceElement = useCallback((element: string) => {
     if (isEnabled) {
@@ -129,10 +112,10 @@ export const VoiceNavigationProvider: React.FC<{ children: React.ReactNode }> = 
   const value: VoiceNavigationContextType = {
     isListening,
     isSpeaking,
-    isEnabled,
-    startListening: isEnabled ? startListening : () => {},
+    isEnabled: true, // Always enabled
+    startListening,
     stopListening,
-    speak: isEnabled ? speak : () => {},
+    speak,
     stopSpeaking: stopSpeech,
     toggleVoiceNavigation,
     announceElement,

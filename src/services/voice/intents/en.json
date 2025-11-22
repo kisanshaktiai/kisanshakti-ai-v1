@@ -1,0 +1,151 @@
+{
+  "language": "en",
+  "intents": [
+    {
+      "id": "navigate.home",
+      "patterns": [
+        "go home",
+        "take me home",
+        "open home",
+        "home screen",
+        "main page"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app"
+    },
+    {
+      "id": "navigate.lands",
+      "patterns": [
+        "show my lands",
+        "open lands",
+        "view my farms",
+        "my fields",
+        "land management"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/lands"
+    },
+    {
+      "id": "navigate.weather",
+      "patterns": [
+        "show weather",
+        "what's the weather",
+        "weather forecast",
+        "check weather",
+        "open weather"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/weather"
+    },
+    {
+      "id": "navigate.schedule",
+      "patterns": [
+        "show schedule",
+        "my tasks",
+        "open calendar",
+        "what's on schedule",
+        "farming schedule"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/schedule"
+    },
+    {
+      "id": "navigate.chat",
+      "patterns": [
+        "open chat",
+        "talk to assistant",
+        "ai assistant",
+        "help me",
+        "ask question"
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "navigate",
+      "route": "/chat"
+    },
+    {
+      "id": "navigate.market",
+      "patterns": [
+        "open market",
+        "marketplace",
+        "buy products",
+        "sell crops",
+        "market prices"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "navigate",
+      "route": "/market"
+    },
+    {
+      "id": "navigate.profile",
+      "patterns": [
+        "my profile",
+        "open profile",
+        "account settings",
+        "user profile"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "navigate",
+      "route": "/profile"
+    },
+    {
+      "id": "navigate.community",
+      "patterns": [
+        "open community",
+        "social feed",
+        "farmer community",
+        "connect with farmers"
+      ],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/social"
+    },
+    {
+      "id": "query.weather_today",
+      "patterns": [
+        "how's the weather today",
+        "today's weather",
+        "will it rain today",
+        "temperature today"
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "query",
+      "params": {
+        "type": "weather",
+        "timeframe": "today"
+      }
+    },
+    {
+      "id": "action.add_land",
+      "patterns": [
+        "add new land",
+        "register new field",
+        "add farm",
+        "create new land"
+      ],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/add-land"
+    }
+  ],
+  "examples": [
+    "Go home",
+    "Show my lands",
+    "What's the weather?",
+    "Open my schedule",
+    "Talk to assistant"
+  ]
+}

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useLanguageStore } from '@/stores/languageStore';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { useAuthFlowStore } from '@/stores/authFlowStore';
 import { useReverseGeocoding } from '@/hooks/useReverseGeocoding';
 import { MapPin, Check, Leaf, Loader2 } from 'lucide-react';
@@ -47,7 +47,7 @@ export default function LanguageSelection() {
   const navigate = useNavigate();
   const { i18n } = useTranslation();
   const { availableLanguages, setLanguage, fetchLanguages } = useLanguageStore();
-  const { tenant, fetchTenant } = useTenantStore();
+  const { tenant, refetch: fetchTenant } = useTenant();
   const { reverseGeocode, isLoading: isGeocodingLoading } = useReverseGeocoding();
   const [selectedLanguage, setSelectedLanguage] = useState<string>('');
   const [userState, setUserState] = useState<string>('');
@@ -233,10 +233,10 @@ export default function LanguageSelection() {
         <div className="flex flex-col items-center py-2 px-4 space-y-2">
           {/* App Logo */}
           <div className="flex items-center justify-center">
-            {tenant?.whiteLabel?.brand_identity?.logo_url ? (
+            {tenant?.branding?.logo_url ? (
               <img 
-                src={tenant.whiteLabel.brand_identity.logo_url} 
-                alt={tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name || 'App Logo'}
+                src={tenant.branding.logo_url} 
+                alt={tenant?.branding?.company_name || tenant?.name || 'App Logo'}
                 className="h-10 w-auto object-contain"
                 onError={(e) => {
                   // Fallback if image fails to load
@@ -245,10 +245,10 @@ export default function LanguageSelection() {
                 }}
               />
             ) : null}
-            <div className={`flex items-center space-x-2 ${tenant?.whiteLabel?.brand_identity?.logo_url ? 'hidden' : ''}`}>
+            <div className={`flex items-center space-x-2 ${tenant?.branding?.logo_url ? 'hidden' : ''}`}>
               <Leaf className="h-10 w-10 text-primary" />
               <span className="text-xl font-bold text-primary">
-                {tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name || 'KisanShakti'}
+                {tenant?.branding?.company_name || tenant?.name || 'KisanShakti'}
               </span>
             </div>
           </div>

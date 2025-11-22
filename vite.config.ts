@@ -18,6 +18,20 @@ export default defineConfig(({ mode }) => ({
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(APP_VERSION),
     'import.meta.env.VITE_BUILD_TIMESTAMP': JSON.stringify(BUILD_TIMESTAMP),
   },
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-select'],
+          'map-vendor': ['@react-google-maps/api', '@turf/turf'],
+          'chart-vendor': ['chart.js', 'react-chartjs-2', 'recharts'],
+          'supabase': ['@supabase/supabase-js'],
+        },
+      },
+    },
+  },
   plugins: [
     react(),
     mode === "development" && componentTagger(),
@@ -28,7 +42,7 @@ export default defineConfig(({ mode }) => ({
       strategies: 'injectManifest',
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff,woff2}'],
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // Increased to 10MB
       },
       includeAssets: ['favicon.ico', 'icon-192x192.png', 'icon-512x512.png', '.htaccess', '_redirects'],
       manifest: {

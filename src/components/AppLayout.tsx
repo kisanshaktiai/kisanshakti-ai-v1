@@ -10,8 +10,8 @@ import { Leaf } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { SyncButton } from '@/components/sync/SyncButton';
 import { ConnectionStatusIcon } from '@/components/ConnectionStatusIcon';
-import { VoiceNavigationProvider } from '@/contexts/VoiceNavigationContext';
-import { VoiceAssistant } from '@/components/voice/VoiceAssistant';
+import { ModernVoiceProvider } from '@/contexts/ModernVoiceContext';
+import { ModernVoiceAssistant } from '@/components/voice/ModernVoiceAssistant';
 
 export function AppLayout() {
   const { tenant, branding } = useTenant();
@@ -41,7 +41,7 @@ export function AppLayout() {
   }, [logoUrl, companyName, tagline, tenant, branding]);
 
   return (
-    <VoiceNavigationProvider>
+    <ModernVoiceProvider>
       <div className="min-h-mobile-screen bg-background">
         {/* Header - Hidden on AI Chat and Community Chat */}
         {!isAIChat && !isCommunityChat && (
@@ -96,12 +96,12 @@ export function AppLayout() {
         {/* Floating Action Button - Hidden on full-screen routes */}
         {!isAIChat && !isCommunityChat && <FloatingActionButton />}
         
-        {/* Voice Assistant - Available on all routes */}
-        <VoiceAssistant />
+        {/* Modern Voice Assistant - Hidden on chat pages */}
+        {!isAIChat && !isCommunityChat && <ModernVoiceAssistant />}
         
         {/* Hindenburg Menu */}
         <HindenburgMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
       </div>
-    </VoiceNavigationProvider>
+    </ModernVoiceProvider>
   );
 }

@@ -1,0 +1,151 @@
+{
+  "language": "hi",
+  "intents": [
+    {
+      "id": "navigate.home",
+      "patterns": [
+        "घर जाओ",
+        "होम खोलो",
+        "मुख्य पेज",
+        "घर पर जाओ",
+        "मुख्य स्क्रीन"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app"
+    },
+    {
+      "id": "navigate.lands",
+      "patterns": [
+        "मेरी जमीन दिखाओ",
+        "खेत खोलो",
+        "मेरे खेत",
+        "भूमि प्रबंधन",
+        "जमीन देखो"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/lands"
+    },
+    {
+      "id": "navigate.weather",
+      "patterns": [
+        "मौसम दिखाओ",
+        "मौसम कैसा है",
+        "मौसम का पूर्वानुमान",
+        "मौसम देखो",
+        "आज का मौसम"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/weather"
+    },
+    {
+      "id": "navigate.schedule",
+      "patterns": [
+        "कार्यक्रम दिखाओ",
+        "मेरे काम",
+        "समय सारिणी खोलो",
+        "खेती का कार्यक्रम",
+        "आज के काम"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/schedule"
+    },
+    {
+      "id": "navigate.chat",
+      "patterns": [
+        "चैट खोलो",
+        "सहायक से बात करो",
+        "एआई सहायक",
+        "मदद करो",
+        "सवाल पूछो"
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "navigate",
+      "route": "/chat"
+    },
+    {
+      "id": "navigate.market",
+      "patterns": [
+        "बाजार खोलो",
+        "बाजार दिखाओ",
+        "उत्पाद खरीदो",
+        "फसल बेचो",
+        "बाजार के भाव"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "navigate",
+      "route": "/market"
+    },
+    {
+      "id": "navigate.profile",
+      "patterns": [
+        "मेरी प्रोफ़ाइल",
+        "प्रोफ़ाइल खोलो",
+        "खाता सेटिंग",
+        "उपयोगकर्ता प्रोफ़ाइल"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "navigate",
+      "route": "/profile"
+    },
+    {
+      "id": "navigate.community",
+      "patterns": [
+        "समुदाय खोलो",
+        "सोशल फीड",
+        "किसान समुदाय",
+        "किसानों से जुड़ो"
+      ],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/social"
+    },
+    {
+      "id": "query.weather_today",
+      "patterns": [
+        "आज मौसम कैसा है",
+        "आज का मौसम",
+        "क्या आज बारिश होगी",
+        "आज का तापमान"
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "query",
+      "params": {
+        "type": "weather",
+        "timeframe": "today"
+      }
+    },
+    {
+      "id": "action.add_land",
+      "patterns": [
+        "नई जमीन जोड़ो",
+        "नया खेत जोड़ो",
+        "नई भूमि जोड़ो",
+        "जमीन रजिस्टर करो"
+      ],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/add-land"
+    }
+  ],
+  "examples": [
+    "घर जाओ",
+    "मेरी जमीन दिखाओ",
+    "मौसम कैसा है?",
+    "कार्यक्रम खोलो",
+    "सहायक से बात करो"
+  ]
+}

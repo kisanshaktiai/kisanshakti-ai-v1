@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { supabase } from '@/integrations/supabase/client';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { useAuthFlowStore } from '@/stores/authFlowStore';
 import { useAuthStore } from '@/stores/authStore';
 import { Loader2, Phone, ArrowLeft, ChevronRight, WifiOff } from 'lucide-react';
@@ -16,7 +16,7 @@ import { offlineAuthService } from '@/services/offlineAuthService';
 export default function AuthScreen() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { tenant, isLoading: tenantLoading } = useTenantStore();
+  const { tenant, isLoading: tenantLoading } = useTenant();
   const { setStep } = useAuthFlowStore();
   const { createSession } = useAuthStore();
   const [mobile, setMobile] = useState('');
@@ -138,8 +138,8 @@ export default function AuthScreen() {
   }
 
   // Get branding from tenant
-  const brandName = tenant?.whiteLabel?.brand_identity?.company_name || tenant?.name || 'KisanShakti';
-  const primaryColor = tenant?.whiteLabel?.brand_identity?.primary_color;
+  const brandName = tenant?.branding?.company_name || tenant?.name || 'KisanShakti';
+  const primaryColor = tenant?.branding?.primary_color;
 
   return (
     <div className="min-h-screen bg-gradient-primary flex flex-col items-center justify-center p-4">
