@@ -193,8 +193,8 @@ export function BottomNavigation({
                     )}
                     aria-label="Voice Assistant"
                   >
-                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-voice shadow-lg hover:scale-105 active:scale-95 transition-transform">
-                      <Mic className="w-6 h-6 text-white" />
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--primary)/0.6)]">
+                      <Mic className="w-6 h-6 text-primary-foreground" strokeWidth={2} />
                     </div>
                     <span className="text-[10px] font-medium text-muted-foreground">
                       {t('voice.title', 'Voice')}
@@ -211,8 +211,8 @@ export function BottomNavigation({
                     )}
                     aria-label="Quick Actions"
                   >
-                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-actions shadow-lg hover:scale-105 active:scale-95 transition-transform">
-                      <Grid3x3 className="w-6 h-6 text-white" />
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform bg-gradient-to-br from-[hsl(var(--accent))] to-[hsl(var(--accent)/0.6)]">
+                      <Grid3x3 className="w-6 h-6 text-accent-foreground" strokeWidth={2} />
                     </div>
                     <span className="text-[10px] font-medium text-muted-foreground">
                       {t('actions.title', 'Actions')}
@@ -229,8 +229,8 @@ export function BottomNavigation({
                     )}
                     aria-label="InstaScan"
                   >
-                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-scan shadow-lg hover:scale-105 active:scale-95 transition-transform">
-                      <Scan className="w-6 h-6 text-white" />
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform bg-gradient-to-br from-[hsl(var(--secondary))] to-[hsl(var(--secondary)/0.6)]">
+                      <Scan className="w-6 h-6 text-secondary-foreground" strokeWidth={2} />
                     </div>
                     <span className="text-[10px] font-medium text-muted-foreground">
                       {t('nav.scan', 'Scan')}
