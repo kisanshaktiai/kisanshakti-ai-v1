@@ -1,9 +1,11 @@
 import { useTranslation } from 'react-i18next';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useAuthStore } from '@/stores/authStore';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   User, 
   Phone, 
@@ -17,9 +19,12 @@ import {
   Award,
   Tractor,
   Package,
-  Activity
+  Activity,
+  BarChart3,
+  Clock
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { format, formatDistanceToNow } from 'date-fns';
 import { 
   AreaChart, 
   Area, 
@@ -44,6 +49,26 @@ export default function Profile() {
   const { t } = useTranslation();
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const [analyticsData, setAnalyticsData] = useState<any>(null);
+
+  // Fetch analytics data
+  useEffect(() => {
+    const fetchAnalytics = async () => {
+      if (!user?.id) return;
+      
+      const { data, error } = await supabase
+        .from('farmers')
+        .select('app_install_date, last_app_open, total_app_opens, total_queries, created_at, last_login_at')
+        .eq('id', user.id)
+        .maybeSingle();
+      
+      if (!error && data) {
+        setAnalyticsData(data);
+      }
+    };
+    
+    fetchAnalytics();
+  }, [user?.id]);
 
   const handleLogout = async () => {
     await logout();
@@ -189,6 +214,61 @@ export default function Profile() {
           </CardContent>
         </Card>
       </div>
+
+      {/* App Usage Analytics */}
+      {analyticsData && (
+        <Card className="border-0 shadow-lg">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-primary" />
+              App Usage Statistics
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Activity className="w-3 h-3" />
+                  <p className="text-xs">Total Opens</p>
+                </div>
+                <p className="text-2xl font-bold text-primary">{analyticsData.total_app_opens || 0}</p>
+              </div>
+              
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Clock className="w-3 h-3" />
+                  <p className="text-xs">Last Active</p>
+                </div>
+                <p className="text-sm font-semibold">
+                  {analyticsData.last_app_open 
+                    ? formatDistanceToNow(new Date(analyticsData.last_app_open), { addSuffix: true })
+                    : 'Never'}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Calendar className="w-3 h-3" />
+                  <p className="text-xs">Member Since</p>
+                </div>
+                <p className="text-xs font-medium">
+                  {analyticsData.created_at 
+                    ? format(new Date(analyticsData.created_at), 'MMM yyyy')
+                    : 'Unknown'}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <TrendingUp className="w-3 h-3" />
+                  <p className="text-xs">AI Queries</p>
+                </div>
+                <p className="text-2xl font-bold text-success">{analyticsData.total_queries || 0}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Farm Analytics Section */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
