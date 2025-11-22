@@ -436,39 +436,68 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const isDevelopment = domain.includes('localhost') || domain.includes('lovable.app') || domain.includes('lovableproject.com');
       
       if (isDevelopment) {
-        console.log('✅ [TenantProvider] Development mode detected, using default fallback tenant');
+        console.log('✅ [TenantProvider] Development mode detected, fetching default tenant from database');
         
-        // Create minimal default tenant for development
-        const defaultTenant: TenantConfig = {
-          id: 'dev-default-tenant',
-          name: 'KisanShakti Ai',
-          domain: domain,
-          status: 'active',
-          settings: {
-            languages: ['en', 'hi'],
-            defaultLanguage: 'en',
-            timezone: 'Asia/Kolkata',
-            currency: 'INR'
-          },
-          branding: {
-            company_name: 'KisanShakti Ai',
-            logo_url: null,
-            primary_color: '#22c55e',
-            secondary_color: '#16a34a',
-            accent_color: '#84cc16'
-          },
-          features: ['ai_chat', 'weather', 'marketplace', 'social', 'analytics']
-        };
-        
-        setTenant(defaultTenant);
-        setLastUpdated(new Date());
-        applyThemeToDOM(defaultTenant.branding, {});
-        
-        // Cache the development fallback
-        localStorage.setItem('tenantId', defaultTenant.id);
-        localStorage.setItem('lastTenantFetch', Date.now().toString());
-        
-        return;
+        // Fetch a real default tenant from database (prefer is_default=true, fallback to first active tenant)
+        const { data: defaultTenantData } = await supabase
+          .from('tenants')
+          .select('id, name, slug, subdomain, custom_domain, status, settings')
+          .eq('status', 'active')
+          .order('is_default', { ascending: false, nullsFirst: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (defaultTenantData) {
+          console.log('✅ [TenantProvider] Found default tenant:', defaultTenantData.name, defaultTenantData.id);
+          
+          // Fetch white label config for the default tenant
+          const { data: whiteLabel } = await supabase
+            .from('white_label_configs')
+            .select('brand_identity, mobile_theme, theme_colors, pwa_config, domain_config')
+            .eq('tenant_id', defaultTenantData.id)
+            .maybeSingle();
+
+          const defaultTenant: TenantConfig = {
+            id: defaultTenantData.id,
+            name: defaultTenantData.name,
+            slug: defaultTenantData.slug || undefined,
+            domain: domain,
+            subdomain: defaultTenantData.subdomain || undefined,
+            custom_domain: defaultTenantData.custom_domain || undefined,
+            status: defaultTenantData.status || 'active',
+            settings: {
+              languages: (defaultTenantData.settings as any)?.languages || ['en', 'hi'],
+              defaultLanguage: (defaultTenantData.settings as any)?.defaultLanguage || 'en',
+              timezone: (defaultTenantData.settings as any)?.timezone || 'Asia/Kolkata',
+              currency: (defaultTenantData.settings as any)?.currency || 'INR'
+            },
+            branding: (whiteLabel?.brand_identity as BrandingConfig) || {
+              company_name: defaultTenantData.name,
+              primary_color: '#22c55e',
+              secondary_color: '#16a34a',
+              accent_color: '#84cc16'
+            },
+            theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
+            pwa: whiteLabel?.pwa_config as PWAConfig,
+            features: (defaultTenantData.settings as any)?.features || ['ai_chat', 'weather', 'marketplace', 'social', 'analytics']
+          };
+          
+          setTenant(defaultTenant);
+          setLastUpdated(new Date());
+          tenantIsolationService.setTenantContext(defaultTenant.id, domain);
+          applyThemeToDOM(defaultTenant.branding, defaultTenant.theme);
+          
+          // Cache the development tenant
+          localStorage.setItem('tenantId', defaultTenant.id);
+          localStorage.setItem('tenant_config_cache', JSON.stringify({
+            data: defaultTenant,
+            timestamp: Date.now()
+          }));
+          
+          return;
+        } else {
+          throw new Error('No active tenants found in database. Please create at least one tenant.');
+        }
       } else {
         // In production with custom domain, this is an error
         throw new Error('No tenant found for domain: ' + domain);
