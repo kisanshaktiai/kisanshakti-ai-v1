@@ -7,7 +7,8 @@ import { useLanguageStore } from '@/stores/languageStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthFlowStore } from '@/stores/authFlowStore';
 import { useReverseGeocoding } from '@/hooks/useReverseGeocoding';
-import { MapPin, Check, Leaf, Loader2 } from 'lucide-react';
+import { MapPin, Check, Leaf, Loader2, Sparkles, Globe } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 // State-wise language preferences with more comprehensive mapping
 const stateLanguages: Record<string, string[]> = {
@@ -227,17 +228,22 @@ export default function LanguageSelection() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-primary flex flex-col">
-      {/* Fixed Header with Logo */}
-      <header className="sticky top-0 z-50 bg-background/90 backdrop-blur-sm border-b border-border">
-        <div className="flex flex-col items-center py-2 px-4 space-y-2">
+    <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex flex-col">
+      {/* Fixed Header with Logo - Modern Glassmorphism */}
+      <header className="sticky top-0 z-50 glassmorphism-strong border-b border-border/30 shadow-lg">
+        <div className="flex flex-col items-center py-4 px-4 space-y-3">
           {/* App Logo */}
-          <div className="flex items-center justify-center">
+          <motion.div 
+            className="flex items-center justify-center"
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.5 }}
+          >
             {tenant?.branding?.logo_url ? (
               <img 
                 src={tenant.branding.logo_url} 
                 alt={tenant?.branding?.company_name || tenant?.name || 'App Logo'}
-                className="h-10 w-auto object-contain"
+                className="h-12 w-auto object-contain drop-shadow-lg"
                 onError={(e) => {
                   // Fallback if image fails to load
                   e.currentTarget.style.display = 'none';
@@ -246,100 +252,139 @@ export default function LanguageSelection() {
               />
             ) : null}
             <div className={`flex items-center space-x-2 ${tenant?.branding?.logo_url ? 'hidden' : ''}`}>
-              <Leaf className="h-10 w-10 text-primary" />
-              <span className="text-xl font-bold text-primary">
+              <div className="relative">
+                <Leaf className="h-12 w-12 text-primary drop-shadow-lg" />
+                <Sparkles className="absolute -top-1 -right-1 h-5 w-5 text-primary animate-pulse" />
+              </div>
+              <span className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
                 {tenant?.branding?.company_name || tenant?.name || 'KisanShakti'}
               </span>
             </div>
-          </div>
+          </motion.div>
           
           {/* Title */}
-          <div className="text-center">
-            <h1 className="text-lg font-semibold text-foreground">
+          <div className="text-center space-y-1">
+            <h1 className="text-xl font-bold text-foreground flex items-center justify-center gap-2">
+              <Globe className="w-5 h-5 text-primary" />
               Select Your Language
             </h1>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground font-medium">
               अपनी भाषा चुनें | Choose your language
             </p>
           </div>
 
-      {/* Location Status - Single Line */}
-      {detectingLocation && (
-        <div className="flex items-center space-x-2 text-muted-foreground animate-pulse">
-          <Loader2 className="w-3 h-3 animate-spin" />
-          <span className="text-xs">Detecting your location...</span>
-        </div>
-      )}
-      
-      {!detectingLocation && locationDenied && (
-        <div className="flex items-center space-x-1 text-xs text-status-warning">
-          <MapPin className="w-3 h-3" />
-          <span>Location access denied, showing default</span>
-        </div>
-      )}
-      
-      {userState && userState !== 'default' && !detectingLocation && !locationDenied && (
-        <div className="flex items-center space-x-1 text-xs text-muted-foreground">
-          <MapPin className="w-3 h-3 text-primary" />
-          <span className="font-medium">{userState}</span>
-          {userDistrict && (
-            <>
-              <span>•</span>
-              <span>{userDistrict}</span>
-            </>
-          )}
-        </div>
-      )}
+          {/* Location Status - Compact */}
+          <AnimatePresence mode="wait">
+            {detectingLocation && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="flex items-center space-x-2 text-muted-foreground bg-primary/10 px-3 py-1.5 rounded-full"
+              >
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span className="text-xs font-medium">Detecting location...</span>
+              </motion.div>
+            )}
+            
+            {!detectingLocation && locationDenied && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex items-center space-x-1.5 text-xs text-warning bg-warning/10 px-3 py-1.5 rounded-full"
+              >
+                <MapPin className="w-3 h-3" />
+                <span className="font-medium">Location access denied</span>
+              </motion.div>
+            )}
+            
+            {userState && userState !== 'default' && !detectingLocation && !locationDenied && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex items-center space-x-1.5 text-xs bg-primary/10 text-primary px-3 py-1.5 rounded-full border border-primary/20"
+              >
+                <MapPin className="w-3 h-3" />
+                <span className="font-bold">{userState}</span>
+                {userDistrict && (
+                  <>
+                    <span className="text-muted-foreground">•</span>
+                    <span className="font-medium text-muted-foreground">{userDistrict}</span>
+                  </>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </header>
 
       {/* Scrollable Language List */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-md mx-auto px-4 py-6 space-y-3">
+      <main className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="max-w-md mx-auto space-y-3">
           {sortedLanguages.map((lang, index) => (
-            <Button
+            <motion.div
               key={lang.code}
-              variant={selectedLanguage === lang.code ? "default" : "outline"}
-              className="w-full h-16 flex items-center justify-between px-4 relative transition-all hover:scale-[1.02]"
-              onClick={() => handleLanguageSelect(lang.code)}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: index * 0.05 }}
             >
-              <div className="flex items-center space-x-3">
-                <span className="text-xl font-medium">{lang.nativeName}</span>
-                <span className="text-sm text-muted-foreground">({lang.name})</span>
-              </div>
-              
-              {selectedLanguage === lang.code && (
-                <div className="bg-primary text-primary-foreground rounded-full p-1">
-                  <Check className="w-4 h-4" />
+              <Button
+                variant={selectedLanguage === lang.code ? "pill-gradient" : "outline"}
+                className={`w-full h-auto py-4 px-5 flex items-center justify-between relative transition-all hover:scale-[1.02] ${
+                  selectedLanguage === lang.code ? 'shadow-glow' : ''
+                }`}
+                onClick={() => handleLanguageSelect(lang.code)}
+              >
+                <div className="flex items-center space-x-3">
+                  <span className="text-2xl font-bold">{lang.nativeName}</span>
+                  <span className="text-sm text-muted-foreground font-medium">({lang.name})</span>
                 </div>
-              )}
-              
-        {/* Show badge for recommended language */}
-        {index === 0 && hasDetectedLocation && userState && userState !== 'default' && (
-          <span className="absolute -top-2 left-4 text-[10px] bg-primary text-primary-foreground px-2 py-0.5 rounded-full animate-pulse">
-            Recommended for {userState}
-          </span>
-        )}
-            </Button>
+                
+                {selectedLanguage === lang.code && (
+                  <motion.div 
+                    className="bg-white/20 backdrop-blur-sm rounded-full p-1.5"
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                  >
+                    <Check className="w-5 h-5" />
+                  </motion.div>
+                )}
+                
+                {/* Recommended badge */}
+                {index === 0 && hasDetectedLocation && userState && userState !== 'default' && (
+                  <motion.span 
+                    className="absolute -top-2 left-4 text-[10px] bg-primary text-primary-foreground px-3 py-1 rounded-full font-bold shadow-lg"
+                    initial={{ y: -10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.3 }}
+                  >
+                    ✨ Recommended
+                  </motion.span>
+                )}
+              </Button>
+            </motion.div>
           ))}
         </div>
       </main>
 
-      {/* Fixed Continue Button */}
-      <footer className="sticky bottom-0 bg-background/90 backdrop-blur-sm border-t border-border">
+      {/* Fixed Continue Button - Modern Glassmorphism */}
+      <footer className="sticky bottom-0 glassmorphism-strong border-t border-border/30 shadow-float">
         <div className="max-w-md mx-auto p-4">
           <Button
             onClick={handleContinue}
             disabled={!selectedLanguage}
-            className="w-full h-12"
+            variant="pill-gradient"
             size="lg"
+            className="w-full group"
           >
             Continue
             {selectedLanguage && (
-              <span className="ml-2 text-sm opacity-80">
+              <span className="ml-2 text-sm opacity-90 font-medium">
                 ({sortedLanguages.find(l => l.code === selectedLanguage)?.nativeName})
               </span>
             )}
+            <Sparkles className="w-4 h-4 ml-2 group-hover:rotate-12 transition-transform" />
           </Button>
         </div>
       </footer>
