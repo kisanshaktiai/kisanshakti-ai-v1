@@ -1,0 +1,151 @@
+{
+  "language": "ta",
+  "intents": [
+    {
+      "id": "navigate.home",
+      "patterns": [
+        "வீட்டிற்கு செல்",
+        "முகப்பை திற",
+        "முதன்மை பக்கம்",
+        "வீட்டுக்கு போ",
+        "முதன்மை திரை"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app"
+    },
+    {
+      "id": "navigate.lands",
+      "patterns": [
+        "என் நிலங்களை காட்டு",
+        "வயல்களை திற",
+        "என் நிலங்கள்",
+        "நில மேலாண்மை",
+        "நிலத்தை பார்"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/lands"
+    },
+    {
+      "id": "navigate.weather",
+      "patterns": [
+        "வானிலையை காட்டு",
+        "வானிலை எப்படி",
+        "வானிலை முன்னறிவிப்பு",
+        "வானிலையை பார்",
+        "இன்றைய வானிலை"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/weather"
+    },
+    {
+      "id": "navigate.schedule",
+      "patterns": [
+        "அட்டவணையை காட்டு",
+        "என் பணிகள்",
+        "அட்டவணையை திற",
+        "விவசாய அட்டவணை",
+        "இன்றைய பணிகள்"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/schedule"
+    },
+    {
+      "id": "navigate.chat",
+      "patterns": [
+        "அரட்டையை திற",
+        "உதவியாளருடன் பேசு",
+        "ஏஐ உதவியாளர்",
+        "உதவி செய்",
+        "கேள்வி கேள்"
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "navigate",
+      "route": "/chat"
+    },
+    {
+      "id": "navigate.market",
+      "patterns": [
+        "சந்தையை திற",
+        "சந்தையை காட்டு",
+        "பொருட்களை வாங்கு",
+        "பயிர்களை விற்",
+        "சந்தை விலை"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "navigate",
+      "route": "/market"
+    },
+    {
+      "id": "navigate.profile",
+      "patterns": [
+        "என் விவரக்குறிப்பு",
+        "விவரக்குறிப்பை திற",
+        "கணக்கு அமைப்புகள்",
+        "பயனர் விவரக்குறிப்பு"
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "navigate",
+      "route": "/profile"
+    },
+    {
+      "id": "navigate.community",
+      "patterns": [
+        "சமூகத்தை திற",
+        "சமூக ஊட்டம்",
+        "விவசாயி சமூகம்",
+        "விவசாயிகளுடன் இணை"
+      ],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/social"
+    },
+    {
+      "id": "query.weather_today",
+      "patterns": [
+        "இன்று வானிலை எப்படி",
+        "இன்றைய வானிலை",
+        "இன்று மழை பெய்யுமா",
+        "இன்றைய வெப்பநிலை"
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "query",
+      "params": {
+        "type": "weather",
+        "timeframe": "today"
+      }
+    },
+    {
+      "id": "action.add_land",
+      "patterns": [
+        "புதிய நிலத்தை சேர்",
+        "புதிய வயலை சேர்",
+        "புதிய நிலத்தை பதிவு செய்",
+        "நிலத்தை பதிவு செய்"
+      ],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/add-land"
+    }
+  ],
+  "examples": [
+    "வீட்டிற்கு செல்",
+    "என் நிலங்களை காட்டு",
+    "வானிலை எப்படி?",
+    "அட்டவணையை திற",
+    "உதவியாளருடன் பேசு"
+  ]
+}
