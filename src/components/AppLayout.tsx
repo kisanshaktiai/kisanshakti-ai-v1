@@ -12,6 +12,7 @@ import { SyncButton } from '@/components/sync/SyncButton';
 import { ConnectionStatusIcon } from '@/components/ConnectionStatusIcon';
 import { VoiceNavigationProvider } from '@/contexts/VoiceNavigationContext';
 import { VoiceAssistant } from '@/components/voice/VoiceAssistant';
+import { ModernVoiceAssistant } from '@/components/voice/ModernVoiceAssistant';
 
 export function AppLayout() {
   const { tenant, branding } = useTenant();
