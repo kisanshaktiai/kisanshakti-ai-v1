@@ -117,6 +117,11 @@
     --gradient-danger: linear-gradient(135deg, hsl(0 85% 60%), hsl(38 95% 58%));
     --gradient-cyber: linear-gradient(135deg, hsl(180 100% 45%), hsl(210 100% 56%), hsl(270 75% 60%));
     
+    /* Action Button Gradients - 2030 UI */
+    --gradient-voice: linear-gradient(135deg, hsl(270 75% 60%), hsl(280 85% 65%));
+    --gradient-scan: linear-gradient(135deg, hsl(330 85% 60%), hsl(340 90% 65%));
+    --gradient-actions: linear-gradient(135deg, hsl(180 100% 45%), hsl(200 100% 55%));
+    
     /* Agricultural Theme Gradients for Chat */
     --gradient-agri-green: linear-gradient(135deg, hsl(142 76% 45%), hsl(100 70% 50%));
     --gradient-agri-yellow: linear-gradient(135deg, hsl(45 95% 55%), hsl(38 95% 58%));
@@ -272,6 +277,11 @@
     --gradient-warning: linear-gradient(135deg, hsl(38 95% 62%), hsl(45 95% 60%));
     --gradient-danger: linear-gradient(135deg, hsl(0 85% 65%), hsl(38 95% 62%));
     --gradient-cyber: linear-gradient(135deg, hsl(180 100% 50%), hsl(210 100% 60%), hsl(270 75% 65%));
+    
+    /* Action Button Gradients - 2030 UI Dark */
+    --gradient-voice: linear-gradient(135deg, hsl(270 75% 65%), hsl(280 85% 70%));
+    --gradient-scan: linear-gradient(135deg, hsl(330 85% 65%), hsl(340 90% 70%));
+    --gradient-actions: linear-gradient(135deg, hsl(180 100% 50%), hsl(200 100% 60%));
     
     /* Agricultural Theme Gradients for Chat - Dark Mode */
     --gradient-agri-green: linear-gradient(135deg, hsl(142 76% 50%), hsl(100 70% 55%));
@@ -688,6 +698,33 @@
   }
   
   /* Fade in animation */
+  /* Action Menu Popup Animation */
+  @keyframes slide-up-spring {
+    0% {
+      transform: translateY(100%) scale(0.95);
+      opacity: 0;
+    }
+    60% {
+      transform: translateY(-5%) scale(1.02);
+    }
+    100% {
+      transform: translateY(0) scale(1);
+      opacity: 1;
+    }
+  }
+  
+  .animate-slide-up-spring {
+    animation: slide-up-spring 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  }
+  
+  /* Glassmorphism for Action Menu */
+  .glassmorphism-nav-menu {
+    @apply bg-background/90 dark:bg-background/80 backdrop-blur-xl;
+    box-shadow: 
+      0 -8px 32px 0 rgba(0, 0, 0, 0.12),
+      0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  }
+  
   @keyframes fade-in {
     from {
       opacity: 0;

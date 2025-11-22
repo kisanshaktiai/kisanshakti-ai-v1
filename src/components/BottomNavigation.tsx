@@ -1,69 +1,96 @@
-import { NavLink } from 'react-router-dom';
-import { Home, Users, TrendingUp, User, Scan } from 'lucide-react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { Home, Users, TrendingUp, User, Scan, Mic, Grid3x3 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 import { InstaScanFlow } from '@/components/InstaScan/InstaScanFlow';
+import { useModernVoice } from '@/contexts/ModernVoiceContext';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface BottomNavigationProps {
   onMenuOpen: () => void;
   hideNav?: boolean;
   hideAction?: boolean;
+  onVoiceClick?: () => void;
+  onQuickActionsClick?: () => void;
 }
 
 const navItems = [
   { path: '/app', icon: Home, labelKey: 'nav.home' },
   { path: '/app/social', icon: Users, labelKey: 'nav.community' },
-  { path: null, icon: Scan, labelKey: 'nav.scan', isAction: true },
   { path: '/app/analytics', icon: TrendingUp, labelKey: 'nav.analytics' },
   { path: '/app/profile', icon: User, labelKey: 'nav.profile' },
 ];
 
-export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = false }: BottomNavigationProps) {
+export function BottomNavigation({ 
+  onMenuOpen, 
+  hideNav = false, 
+  hideAction = false,
+  onVoiceClick,
+  onQuickActionsClick 
+}: BottomNavigationProps) {
   const { t } = useTranslation();
-  const [isPulsing, setIsPulsing] = useState(false);
+  const navigate = useNavigate();
   const [showInstaScan, setShowInstaScan] = useState(false);
-
-  const handleActionClick = () => {
-    setIsPulsing(true);
-    setShowInstaScan(true);
-    setTimeout(() => setIsPulsing(false), 600);
-  };
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+  const [lastTapTime, setLastTapTime] = useState(0);
+  const { startListening } = useModernVoice();
 
   // If navigation is hidden, return null
   if (hideNav) return null;
 
-  // Filter nav items to exclude action if needed
-  const displayNavItems = hideAction 
-    ? navItems.filter(item => !item.isAction)
-    : navItems;
+  const handleScanClick = () => {
+    const now = Date.now();
+    const timeDiff = now - lastTapTime;
+    
+    // Double tap detection (< 300ms)
+    if (timeDiff < 300 && isActionMenuOpen) {
+      // Double tap - minimize menu
+      setIsActionMenuOpen(false);
+    } else {
+      // Single tap - toggle menu
+      setIsActionMenuOpen(!isActionMenuOpen);
+    }
+    
+    setLastTapTime(now);
+  };
 
-  // Calculate dynamic spacing based on FAB presence
-  const hasAction = !hideAction && displayNavItems.some(item => item.isAction);
-  
-  // Get non-action items only
-  const regularNavItems = displayNavItems.filter(item => !item.isAction);
-  
-  // Split nav items around the action button
-  const navItemsBeforeAction = regularNavItems.slice(0, 2);
-  const navItemsAfterAction = regularNavItems.slice(2);
+  const handleInstaScanOpen = () => {
+    setShowInstaScan(true);
+    setIsActionMenuOpen(false);
+  };
+
+  const handleVoiceOpen = () => {
+    if (onVoiceClick) {
+      onVoiceClick();
+    } else {
+      startListening();
+    }
+    setIsActionMenuOpen(false);
+  };
+
+  const handleQuickActionsOpen = () => {
+    if (onQuickActionsClick) {
+      onQuickActionsClick();
+    }
+    setIsActionMenuOpen(false);
+  };
 
   return (
     <>
       <nav className="fixed bottom-0 left-0 right-0 glassmorphism-nav border-t border-border/10 z-50 backdrop-blur-xl pb-safe">
         <div className="h-20 flex justify-around items-center px-3 relative">
-          {/* Nav items before the action button */}
-          {navItemsBeforeAction.map(({ path, icon: Icon, labelKey }) => (
+          {/* Regular navigation items */}
+          {navItems.map(({ path, icon: Icon, labelKey }) => (
             <NavLink
               key={path}
-              to={path!}
-              end={path === '/'} // Add 'end' prop for exact matching on home route
+              to={path}
+              end={path === '/app'}
               className={({ isActive }) =>
                 cn(
                   'flex flex-col items-center justify-center flex-1 h-full py-2',
                   'transition-all duration-300 ease-out',
-                  'relative group',
-                  hasAction && 'pr-4' // Dynamic spacing when FAB exists
+                  'relative group'
                 )
               }
             >
@@ -101,80 +128,119 @@ export function BottomNavigation({ onMenuOpen, hideNav = false, hideAction = fal
             </NavLink>
           ))}
 
-          {/* Central action button */}
-          {hasAction && !hideAction && (
+          {/* Central Scan Button - Opens action menu */}
+          {!hideAction && (
             <button
-              onClick={handleActionClick}
+              onClick={handleScanClick}
               className={cn(
-                "absolute left-1/2 -translate-x-1/2 -top-4",
-                "w-16 h-16 rounded-full",
-                "bg-gradient-primary",
-                "shadow-elegant shadow-primary/30",
-                "flex items-center justify-center",
-                "transition-smooth",
-                "hover:scale-110 hover:shadow-glow",
-                "active:scale-95",
-                isPulsing && "animate-pulse"
+                "flex flex-col items-center justify-center flex-1 h-full py-2",
+                "transition-all duration-300 ease-out",
+                "relative group"
               )}
+              aria-label={t('nav.scan')}
             >
-              <div className="w-14 h-14 rounded-full bg-background/10 backdrop-blur-sm flex items-center justify-center">
-                <Scan className="w-7 h-7 text-primary-foreground drop-shadow-lg" />
+              <div className={cn(
+                "w-12 h-12 rounded-2xl flex items-center justify-center",
+                "transition-all duration-300",
+                isActionMenuOpen 
+                  ? "bg-primary scale-110 shadow-glow" 
+                  : "hover:bg-muted/60 hover:scale-105",
+                "group-active:scale-95"
+              )}>
+                <Scan className={cn(
+                  'w-5 h-5 transition-all duration-300',
+                  isActionMenuOpen 
+                    ? 'text-primary-foreground' 
+                    : 'text-muted-foreground',
+                  'group-hover:scale-110'
+                )} />
               </div>
+              <span className={cn(
+                "text-[11px] mt-1 font-medium transition-all duration-300 leading-tight",
+                isActionMenuOpen 
+                  ? 'text-primary font-semibold' 
+                  : 'text-muted-foreground/80'
+              )}>
+                {t('nav.scan')}
+              </span>
             </button>
           )}
-
-          {/* Empty space for FAB */}
-          {hasAction && <div className="flex-1" />}
-
-          {/* Nav items after the action button */}
-          {navItemsAfterAction.map(({ path, icon: Icon, labelKey }) => (
-            <NavLink
-              key={path}
-              to={path!}
-              end={path === '/'} // Add 'end' prop for exact matching on home route
-              className={({ isActive }) =>
-                cn(
-                  'flex flex-col items-center justify-center flex-1 h-full py-2',
-                  'transition-all duration-300 ease-out',
-                  'relative group',
-                  hasAction && 'pl-4' // Dynamic spacing when FAB exists
-                )
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <div className={cn(
-                    "w-12 h-12 rounded-2xl flex items-center justify-center",
-                    "transition-all duration-300",
-                    isActive 
-                      ? "bg-primary/15 scale-110 shadow-lg shadow-primary/20" 
-                      : "hover:bg-muted/60 hover:scale-105",
-                    "group-active:scale-95"
-                  )}>
-                    <Icon className={cn(
-                      'w-5 h-5 transition-all duration-300',
-                      isActive 
-                        ? 'text-primary drop-shadow-glow animate-slide-up' 
-                        : 'text-muted-foreground',
-                      'group-hover:scale-110'
-                    )} />
-                  </div>
-                  <span className={cn(
-                    "text-[11px] mt-1 font-medium transition-all duration-300 leading-tight",
-                    isActive 
-                      ? 'text-primary font-semibold' 
-                      : 'text-muted-foreground/80'
-                  )}>
-                    {t(labelKey)}
-                  </span>
-                  {isActive && (
-                    <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-gradient-primary animate-fade-in" />
-                  )}
-                </>
-              )}
-            </NavLink>
-          ))}
         </div>
+
+        {/* 3-Button Action Menu Popup */}
+        <AnimatePresence>
+          {isActionMenuOpen && !hideAction && (
+            <motion.div
+              initial={{ y: 100, opacity: 0, scale: 0.95 }}
+              animate={{ y: 0, opacity: 1, scale: 1 }}
+              exit={{ y: 100, opacity: 0, scale: 0.95 }}
+              transition={{ 
+                type: "spring",
+                stiffness: 300,
+                damping: 30
+              }}
+              className="absolute bottom-full left-0 right-0 pb-4"
+            >
+              <div className="glassmorphism-nav-menu rounded-t-3xl mx-4 p-4 border border-border/20">
+                <div className="flex justify-around items-center gap-3">
+                  {/* Voice Assistant Button */}
+                  <button
+                    onClick={handleVoiceOpen}
+                    className={cn(
+                      "flex flex-col items-center justify-center flex-1 gap-2",
+                      "transition-all duration-300",
+                      "group"
+                    )}
+                    aria-label="Voice Assistant"
+                  >
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-voice shadow-lg hover:scale-105 active:scale-95 transition-transform">
+                      <Mic className="w-6 h-6 text-white" />
+                    </div>
+                    <span className="text-[10px] font-medium text-muted-foreground">
+                      {t('voice.title', 'Voice')}
+                    </span>
+                  </button>
+
+                  {/* Quick Actions Button */}
+                  <button
+                    onClick={handleQuickActionsOpen}
+                    className={cn(
+                      "flex flex-col items-center justify-center flex-1 gap-2",
+                      "transition-all duration-300",
+                      "group"
+                    )}
+                    aria-label="Quick Actions"
+                  >
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-actions shadow-lg hover:scale-105 active:scale-95 transition-transform">
+                      <Grid3x3 className="w-6 h-6 text-white" />
+                    </div>
+                    <span className="text-[10px] font-medium text-muted-foreground">
+                      {t('actions.title', 'Actions')}
+                    </span>
+                  </button>
+
+                  {/* InstaScan Button */}
+                  <button
+                    onClick={handleInstaScanOpen}
+                    className={cn(
+                      "flex flex-col items-center justify-center flex-1 gap-2",
+                      "transition-all duration-300",
+                      "group"
+                    )}
+                    aria-label="InstaScan"
+                  >
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-scan shadow-lg hover:scale-105 active:scale-95 transition-transform">
+                      <Scan className="w-6 h-6 text-white" />
+                    </div>
+                    <span className="text-[10px] font-medium text-muted-foreground">
+                      {t('nav.scan', 'Scan')}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </nav>
       
       {/* InstaScan Flow */}
