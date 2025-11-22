@@ -42,6 +42,11 @@ export function BottomNavigation({
     const now = Date.now();
     const timeDiff = now - lastTapTime;
     
+    // Close Quick Actions if open
+    if (showQuickActions) {
+      setShowQuickActions(false);
+    }
+    
     // Double tap detection (< 300ms)
     if (timeDiff < 300 && isActionMenuOpen) {
       // Double tap - minimize menu
@@ -83,8 +88,8 @@ export function BottomNavigation({
     <>
       <nav className="fixed bottom-0 left-0 right-0 glassmorphism-nav border-t border-border/10 z-50 backdrop-blur-xl pb-safe">
         <div className="h-20 flex justify-around items-center px-3 relative">
-          {/* Regular navigation items */}
-          {navItems.map(({ path, icon: Icon, labelKey }) => (
+          {/* First two navigation items */}
+          {navItems.slice(0, 2).map(({ path, icon: Icon, labelKey }) => (
             <NavLink
               key={path}
               to={path}
@@ -131,7 +136,7 @@ export function BottomNavigation({
             </NavLink>
           ))}
 
-          {/* Central Scan Button - Opens action menu */}
+          {/* Scan Button - After Community */}
           {!hideAction && (
             <button
               onClick={handleScanClick}
@@ -146,14 +151,14 @@ export function BottomNavigation({
                 "w-12 h-12 rounded-2xl flex items-center justify-center",
                 "transition-all duration-300",
                 isActionMenuOpen 
-                  ? "bg-primary scale-110 shadow-glow" 
+                  ? "bg-primary/15 scale-110 shadow-lg shadow-primary/20" 
                   : "hover:bg-muted/60 hover:scale-105",
                 "group-active:scale-95"
               )}>
                 <Scan className={cn(
                   'w-5 h-5 transition-all duration-300',
                   isActionMenuOpen 
-                    ? 'text-primary-foreground' 
+                    ? 'text-primary drop-shadow-glow' 
                     : 'text-muted-foreground',
                   'group-hover:scale-110'
                 )} />
@@ -168,6 +173,54 @@ export function BottomNavigation({
               </span>
             </button>
           )}
+
+          {/* Remaining navigation items */}
+          {navItems.slice(2).map(({ path, icon: Icon, labelKey }) => (
+            <NavLink
+              key={path}
+              to={path}
+              end={path === '/app'}
+              className={({ isActive }) =>
+                cn(
+                  'flex flex-col items-center justify-center flex-1 h-full py-2',
+                  'transition-all duration-300 ease-out',
+                  'relative group'
+                )
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <div className={cn(
+                    "w-12 h-12 rounded-2xl flex items-center justify-center",
+                    "transition-all duration-300",
+                    isActive 
+                      ? "bg-primary/15 scale-110 shadow-lg shadow-primary/20" 
+                      : "hover:bg-muted/60 hover:scale-105",
+                    "group-active:scale-95"
+                  )}>
+                    <Icon className={cn(
+                      'w-5 h-5 transition-all duration-300',
+                      isActive 
+                        ? 'text-primary drop-shadow-glow animate-slide-up' 
+                        : 'text-muted-foreground',
+                      'group-hover:scale-110'
+                    )} />
+                  </div>
+                  <span className={cn(
+                    "text-[11px] mt-1 font-medium transition-all duration-300 leading-tight",
+                    isActive 
+                      ? 'text-primary font-semibold' 
+                      : 'text-muted-foreground/80'
+                  )}>
+                    {t(labelKey)}
+                  </span>
+                  {isActive && (
+                    <div className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-gradient-primary animate-fade-in" />
+                  )}
+                </>
+              )}
+            </NavLink>
+          ))}
         </div>
 
         {/* 3-Button Action Menu Popup */}
@@ -211,24 +264,6 @@ export function BottomNavigation({
                     </span>
                   </button>
 
-                  {/* Quick Actions Button */}
-                  <button
-                    onClick={handleQuickActionsOpen}
-                    className={cn(
-                      "flex flex-col items-center justify-center flex-1 gap-2",
-                      "transition-all duration-300",
-                      "group"
-                    )}
-                    aria-label="Quick Actions"
-                  >
-                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform bg-gradient-to-br from-[hsl(var(--accent))] to-[hsl(var(--accent)/0.6)]">
-                      <Grid3x3 className="w-6 h-6 text-accent-foreground" strokeWidth={2} />
-                    </div>
-                    <span className="text-[10px] font-medium text-muted-foreground">
-                      {t('actions.title', 'Actions')}
-                    </span>
-                  </button>
-
                   {/* InstaScan Button */}
                   <button
                     onClick={handleInstaScanOpen}
@@ -244,6 +279,24 @@ export function BottomNavigation({
                     </div>
                     <span className="text-[10px] font-medium text-muted-foreground">
                       {t('nav.scan', 'Scan')}
+                    </span>
+                  </button>
+
+                  {/* Feature Button */}
+                  <button
+                    onClick={handleQuickActionsOpen}
+                    className={cn(
+                      "flex flex-col items-center justify-center flex-1 gap-2",
+                      "transition-all duration-300",
+                      "group"
+                    )}
+                    aria-label="Features"
+                  >
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform bg-gradient-to-br from-[hsl(var(--accent))] to-[hsl(var(--accent)/0.6)]">
+                      <Grid3x3 className="w-6 h-6 text-accent-foreground" strokeWidth={2} />
+                    </div>
+                    <span className="text-[10px] font-medium text-muted-foreground">
+                      {t('feature.title', 'Feature')}
                     </span>
                   </button>
                 </div>
