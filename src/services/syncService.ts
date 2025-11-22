@@ -557,10 +557,21 @@ class SyncService {
       // CRITICAL: Clear existing lands before saving new data from server
       console.log('🗑️ [Sync] Clearing existing lands before server data download...');
       const existingLands = await localDB.getLands(undefined, userId);
-      for (const land of existingLands) {
-        await localDB.deleteLand(land.id);
+      console.log(`📊 [Sync] Found ${existingLands.length} existing lands to clear`);
+      
+      // Clear all lands from the store
+      if (existingLands.length > 0) {
+        const db = (localDB as any).db;
+        if (db) {
+          const tx = db.transaction('lands', 'readwrite');
+          const store = tx.objectStore('lands');
+          for (const land of existingLands) {
+            await store.delete(land.id);
+          }
+          await tx.done;
+          console.log(`✅ [Sync] Cleared ${existingLands.length} existing lands`);
+        }
       }
-      console.log(`✅ [Sync] Cleared ${existingLands.length} existing lands`);
 
       if (lands && lands.length > 0) {
         console.log('💾 [Sync] Saving lands to localDB...');
@@ -663,10 +674,21 @@ class SyncService {
       // Clear existing schedules before saving
       console.log('🗑️ [Sync] Clearing existing schedules before server data download...');
       const existingSchedules = await localDB.getAllSchedules(userId);
-      for (const schedule of existingSchedules) {
-        await localDB.deleteSchedule(schedule.id);
+      console.log(`📊 [Sync] Found ${existingSchedules.length} existing schedules to clear`);
+      
+      // Clear all schedules from the store
+      if (existingSchedules.length > 0) {
+        const db = (localDB as any).db;
+        if (db) {
+          const tx = db.transaction('cropSchedules', 'readwrite');
+          const store = tx.objectStore('cropSchedules');
+          for (const schedule of existingSchedules) {
+            await store.delete(schedule.id);
+          }
+          await tx.done;
+          console.log(`✅ [Sync] Cleared ${existingSchedules.length} existing schedules`);
+        }
       }
-      console.log(`✅ [Sync] Cleared ${existingSchedules.length} existing schedules`);
 
       if (schedules && schedules.length > 0) {
         console.log('💾 [Sync] Saving schedules to localDB...');
