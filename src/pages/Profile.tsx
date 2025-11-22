@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useAuthStore } from '@/stores/authStore';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { 
   User, 
   Phone, 
@@ -54,9 +54,13 @@ export default function Profile() {
   // Fetch analytics data
   useEffect(() => {
     const fetchAnalytics = async () => {
-      if (!user?.id) return;
+      if (!user?.id || !user?.tenantId) return;
       
-      const { data, error } = await supabase
+      // Create authenticated client with custom headers
+      const authClient = supabaseWithAuth(user.id, user.tenantId);
+      console.log('🔐 Fetching analytics with authenticated client:', { userId: user.id, tenantId: user.tenantId });
+      
+      const { data, error } = await authClient
         .from('farmers')
         .select('app_install_date, last_app_open, total_app_opens, total_queries, created_at, last_login_at')
         .eq('id', user.id)
@@ -68,7 +72,7 @@ export default function Profile() {
     };
     
     fetchAnalytics();
-  }, [user?.id]);
+  }, [user?.id, user?.tenantId]);
 
   const handleLogout = async () => {
     await logout();
