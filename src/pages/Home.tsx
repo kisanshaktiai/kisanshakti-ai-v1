@@ -211,6 +211,7 @@ export default function Home() {
 
   const farmerName = user?.fullName?.split(' ')[0] || user?.farmerName?.split(' ')[0] || user?.name?.split(' ')[0] || t('home.farmer');
   const formattedDate = currentTime.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
+  const formattedTime = currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
   return (
     <div className="relative bg-gradient-subtle min-h-screen">
@@ -222,7 +223,7 @@ export default function Home() {
           opacity: 1, 
           y: 0,
           scale: 1,
-          height: isWeatherExpanded ? "auto" : "72px"
+          height: isWeatherExpanded ? "auto" : "68px"
         }}
         transition={{ 
           type: "spring",
@@ -307,17 +308,20 @@ export default function Home() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 10 }}
                 transition={{ duration: 0.3 }}
-                className="h-[72px] flex items-center relative z-10 px-5 py-3"
+                className="h-[68px] flex items-center relative z-10 px-4 py-2.5"
               >
-                <div className="flex items-center justify-between w-full gap-4">
-                  {/* Farmer Name */}
+                <div className="flex items-center justify-between w-full gap-3">
+                  {/* Farmer Name with Namaste */}
                   <motion.div 
-                    className="flex items-center gap-2 bg-primary/10 backdrop-blur-sm rounded-full px-3 py-1.5"
+                    className="flex flex-col gap-0.5 bg-primary/10 backdrop-blur-sm rounded-xl px-2.5 py-1.5"
                     initial={{ scale: 0.8 }}
                     animate={{ scale: 1 }}
                   >
-                    <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
-                    <span className="text-xs font-semibold text-primary">{farmerName}</span>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+                      <span className="text-xs font-semibold text-primary">🙏 {farmerName}</span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">Synced {formattedTime}</span>
                   </motion.div>
 
                   {/* Key Stats with morphing animations */}
@@ -385,151 +389,148 @@ export default function Home() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ duration: 0.3 }}
-                className="relative z-10 p-4 pt-7"
+                className="relative z-10 p-3 pt-6"
               >
                 {/* Farmer Info & Date - Small at top */}
                 <motion.div 
-                  className="flex items-center justify-between mb-3"
+                  className="flex items-center justify-between mb-2.5"
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.1 }}
                 >
-                  <div className="flex items-center gap-2 bg-primary/10 backdrop-blur-sm rounded-full px-3 py-1.5">
-                    <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-                    <span className="text-sm font-semibold text-primary">{farmerName}</span>
+                  <div className="flex flex-col gap-0.5 bg-primary/10 backdrop-blur-sm rounded-xl px-2.5 py-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+                      <span className="text-xs font-semibold text-primary">🙏 Namaste, {farmerName}</span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">Last synced: {formattedTime}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 bg-background/50 backdrop-blur-sm rounded-full px-3 py-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span className="text-xs font-medium text-muted-foreground">{formattedDate}</span>
+                  <div className="flex items-center gap-1 bg-background/50 backdrop-blur-sm rounded-xl px-2.5 py-1.5">
+                    <Calendar className="w-3 h-3 text-muted-foreground" />
+                    <span className="text-[10px] font-medium text-muted-foreground">{formattedDate}</span>
                   </div>
                 </motion.div>
 
-                {/* Header */}
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <motion.div
+                {/* Header - Compact */}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-baseline gap-2">
+                    <motion.span
                       initial={{ scale: 0.8, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
                       transition={{ delay: 0.15, type: "spring", stiffness: 200 }}
-                      className="flex items-baseline gap-2 mb-2"
+                      className="text-5xl font-bold bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent"
                     >
-                      <span className="text-6xl font-bold bg-gradient-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
-                        {currentWeather?.temp ? Math.round(currentWeather.temp) : '--'}
-                      </span>
-                      <span className="text-3xl text-muted-foreground font-light">°C</span>
-                    </motion.div>
-                    <motion.p 
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.2 }}
-                      className="text-base font-semibold text-foreground/90 capitalize mb-1.5"
-                    >
-                      {currentWeather?.description || 'Loading...'}
-                    </motion.p>
-                    <motion.p 
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.25 }}
-                      className="text-sm text-muted-foreground flex items-center gap-1.5"
-                    >
-                      <Thermometer className="w-3.5 h-3.5" />
-                      Feels like {currentWeather?.feels_like ? Math.round(currentWeather.feels_like) : '--'}°C
-                    </motion.p>
+                      {currentWeather?.temp ? Math.round(currentWeather.temp) : '--'}
+                    </motion.span>
+                    <div className="flex flex-col">
+                      <span className="text-2xl text-muted-foreground font-light">°C</span>
+                      <motion.span 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.2 }}
+                        className="text-[10px] text-muted-foreground flex items-center gap-1"
+                      >
+                        <Thermometer className="w-2.5 h-2.5" />
+                        {currentWeather?.feels_like ? Math.round(currentWeather.feels_like) : '--'}°
+                      </motion.span>
+                    </div>
                   </div>
 
                   <motion.div
                     initial={{ rotate: -20, scale: 0.7, opacity: 0 }}
                     animate={{ rotate: 0, scale: 1, opacity: 1 }}
                     transition={{ delay: 0.2, type: "spring", stiffness: 150 }}
-                    className="relative"
+                    className="relative flex flex-col items-center gap-1"
                   >
-                    <div className="absolute inset-0 bg-primary/20 rounded-full blur-2xl" />
-                    {currentWeather?.main === 'Clear' && <Sun className="w-16 h-16 text-accent relative z-10" />}
-                    {currentWeather?.main === 'Clouds' && <Cloud className="w-16 h-16 text-muted-foreground relative z-10" />}
-                    {(currentWeather?.main === 'Rain' || currentWeather?.main === 'Drizzle') && <CloudRain className="w-16 h-16 text-primary relative z-10" />}
-                    {currentWeather?.main === 'Snow' && <CloudSnow className="w-16 h-16 text-primary relative z-10" />}
+                    <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl" />
+                    {currentWeather?.main === 'Clear' && <Sun className="w-12 h-12 text-accent relative z-10" />}
+                    {currentWeather?.main === 'Clouds' && <Cloud className="w-12 h-12 text-muted-foreground relative z-10" />}
+                    {(currentWeather?.main === 'Rain' || currentWeather?.main === 'Drizzle') && <CloudRain className="w-12 h-12 text-primary relative z-10" />}
+                    {currentWeather?.main === 'Snow' && <CloudSnow className="w-12 h-12 text-primary relative z-10" />}
+                    <motion.p 
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.25 }}
+                      className="text-[10px] font-medium text-foreground/80 capitalize relative z-10"
+                    >
+                      {currentWeather?.description || 'Loading...'}
+                    </motion.p>
                   </motion.div>
                 </div>
 
-                {/* Weather Details Grid - Enhanced */}
+                {/* Weather Details Grid - Compact */}
                 <motion.div 
-                  className="grid grid-cols-3 gap-2 pt-3 mt-3 border-t border-border/20"
+                  className="grid grid-cols-3 gap-1.5 pt-2 mt-2 border-t border-border/20"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.3 }}
                 >
                   <motion.div 
-                    className="flex flex-col items-center gap-1.5 bg-background/40 backdrop-blur-sm rounded-2xl p-2.5 border border-border/20"
+                    className="flex flex-col items-center gap-1 bg-background/40 backdrop-blur-sm rounded-xl p-2 border border-border/20"
                     whileHover={{ scale: 1.05, y: -2 }}
                     transition={{ type: "spring", stiffness: 300 }}
                   >
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Wind className="w-4 h-4 text-primary" />
-                    </div>
-                    <span className="text-xs text-muted-foreground font-medium">Wind Speed</span>
-                    <span className="text-base font-bold text-foreground">
-                      {currentWeather?.wind_speed ? Math.round(currentWeather.wind_speed * 3.6) : '--'} <span className="text-xs font-normal">km/h</span>
+                    <Wind className="w-3.5 h-3.5 text-primary" />
+                    <span className="text-[10px] text-muted-foreground font-medium">Wind</span>
+                    <span className="text-sm font-bold text-foreground">
+                      {currentWeather?.wind_speed ? Math.round(currentWeather.wind_speed * 3.6) : '--'}<span className="text-[10px] font-normal"> km/h</span>
                     </span>
                   </motion.div>
 
                   <motion.div 
-                    className="flex flex-col items-center gap-1.5 bg-background/40 backdrop-blur-sm rounded-2xl p-2.5 border border-border/20"
+                    className="flex flex-col items-center gap-1 bg-background/40 backdrop-blur-sm rounded-xl p-2 border border-border/20"
                     whileHover={{ scale: 1.05, y: -2 }}
                     transition={{ type: "spring", stiffness: 300 }}
                   >
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Droplets className="w-4 h-4 text-primary" />
-                    </div>
-                    <span className="text-xs text-muted-foreground font-medium">Humidity</span>
-                    <span className="text-base font-bold text-foreground">
-                      {currentWeather?.humidity || '--'}<span className="text-xs font-normal">%</span>
+                    <Droplets className="w-3.5 h-3.5 text-primary" />
+                    <span className="text-[10px] text-muted-foreground font-medium">Humidity</span>
+                    <span className="text-sm font-bold text-foreground">
+                      {currentWeather?.humidity || '--'}<span className="text-[10px] font-normal">%</span>
                     </span>
                   </motion.div>
 
                   <motion.div 
-                    className="flex flex-col items-center gap-1.5 bg-background/40 backdrop-blur-sm rounded-2xl p-2.5 border border-border/20"
+                    className="flex flex-col items-center gap-1 bg-background/40 backdrop-blur-sm rounded-xl p-2 border border-border/20"
                     whileHover={{ scale: 1.05, y: -2 }}
                     transition={{ type: "spring", stiffness: 300 }}
                   >
-                    <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
-                      <Activity className="w-4 h-4 text-accent" />
-                    </div>
-                    <span className="text-xs text-muted-foreground font-medium">Pressure</span>
-                    <span className="text-base font-bold text-foreground">
-                      {currentWeather?.pressure || '--'} <span className="text-xs font-normal">hPa</span>
+                    <Activity className="w-3.5 h-3.5 text-accent" />
+                    <span className="text-[10px] text-muted-foreground font-medium">Pressure</span>
+                    <span className="text-sm font-bold text-foreground">
+                      {currentWeather?.pressure || '--'} <span className="text-[10px] font-normal">hPa</span>
                     </span>
                   </motion.div>
                 </motion.div>
 
-                {/* Farm Stats */}
+                {/* Farm Stats - Compact */}
                 <motion.div 
-                  className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-border/20"
+                  className="grid grid-cols-2 gap-1.5 mt-2 pt-2 border-t border-border/20"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.35 }}
                 >
                   <motion.div 
-                    className="flex items-center gap-2.5 bg-gradient-to-br from-primary/5 to-primary/10 backdrop-blur-sm rounded-2xl p-2.5 border border-primary/20"
+                    className="flex items-center gap-2 bg-gradient-to-br from-primary/5 to-primary/10 backdrop-blur-sm rounded-xl p-2 border border-primary/20"
                     whileHover={{ scale: 1.03, x: 2 }}
                   >
-                    <div className="w-9 h-9 rounded-xl bg-primary/20 flex items-center justify-center">
-                      <MapPin className="w-4.5 h-4.5 text-primary" />
+                    <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center">
+                      <MapPin className="w-3.5 h-3.5 text-primary" />
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground font-medium">Farm Plots</p>
-                      <p className="text-base font-bold text-foreground">{lands.length}</p>
+                      <p className="text-[10px] text-muted-foreground font-medium">Plots</p>
+                      <p className="text-sm font-bold text-foreground">{lands.length}</p>
                     </div>
                   </motion.div>
                   <motion.div 
-                    className="flex items-center gap-2.5 bg-gradient-to-br from-accent/5 to-accent/10 backdrop-blur-sm rounded-2xl p-2.5 border border-accent/20"
+                    className="flex items-center gap-2 bg-gradient-to-br from-accent/5 to-accent/10 backdrop-blur-sm rounded-xl p-2 border border-accent/20"
                     whileHover={{ scale: 1.03, x: 2 }}
                   >
-                    <div className="w-9 h-9 rounded-xl bg-accent/20 flex items-center justify-center">
-                      <Leaf className="w-4.5 h-4.5 text-accent" />
+                    <div className="w-7 h-7 rounded-lg bg-accent/20 flex items-center justify-center">
+                      <Leaf className="w-3.5 h-3.5 text-accent" />
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground font-medium">Total Area</p>
-                      <p className="text-base font-bold text-foreground">{totalArea.toFixed(1)} <span className="text-xs font-normal">acres</span></p>
+                      <p className="text-[10px] text-muted-foreground font-medium">Area</p>
+                      <p className="text-sm font-bold text-foreground">{totalArea.toFixed(1)} <span className="text-[10px] font-normal">ac</span></p>
                     </div>
                   </motion.div>
                 </motion.div>
@@ -544,7 +545,7 @@ export default function Home() {
         className="px-4"
         initial={false}
         animate={{ 
-          paddingTop: isWeatherExpanded ? "280px" : "110px"
+          paddingTop: isWeatherExpanded ? "240px" : "100px"
         }}
         transition={{ 
           type: "spring",
