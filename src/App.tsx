@@ -15,6 +15,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { LocationPermissionDialog } from "@/components/LocationPermissionDialog";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
+import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 import { AppLoadingProgress } from "@/components/AppLoadingProgress";
 
 // Pages
@@ -377,6 +378,8 @@ export default function App() {
               </AppInitializer>
               <Toaster />
               <Sonner />
+              <PWAUpdatePrompt />
+              <PWAInstallPrompt />
             </TooltipProvider>
           </QueryClientProvider>
         </TenantProvider>
