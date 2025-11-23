@@ -4,6 +4,7 @@ import { useToast } from '@/hooks/use-toast';
 import LocationService from '@/services/LocationService';
 import { useLocation } from '@/hooks/useLocation';
 import { useTenant } from '@/contexts/TenantContext';
+import { useAuthStore } from '@/stores/authStore';
 
 interface WeatherData {
   temp: number;
@@ -92,6 +93,7 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   const { tenant, isLoading: tenantLoading } = useTenant();
+  const { user } = useAuthStore();
   
   // Use the centralized location service
   const { location: deviceLocation } = useLocation();
@@ -147,8 +149,9 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
           lat: weatherLocation.lat,
           lon: weatherLocation.lon,
         },
-        headers: tenant?.id ? {
-          'x-tenant-id': tenant.id
+        headers: (tenant?.id && user?.id) ? {
+          'x-tenant-id': tenant.id,
+          'x-farmer-id': user.id,
         } : undefined,
       });
 
@@ -187,8 +190,9 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
             lat: weatherLocation.lat,
             lon: weatherLocation.lon,
           },
-          headers: tenant?.id ? {
-            'x-tenant-id': tenant.id
+          headers: (tenant?.id && user?.id) ? {
+            'x-tenant-id': tenant.id,
+            'x-farmer-id': user.id,
           } : undefined,
         });
 

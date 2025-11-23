@@ -29,6 +29,13 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // SECURITY: Extract tenant and farmer IDs from headers
+    const tenantId = req.headers.get('x-tenant-id');
+    const farmerId = req.headers.get('x-farmer-id');
+    
+    // Log headers for monitoring (optional validation for background jobs)
+    console.log('🔐 [Climate Monitor] Headers:', { tenantId, farmerId });
+
     const { scheduleId, climateData } = await req.json() as {
       scheduleId: string;
       climateData: ClimateData;
