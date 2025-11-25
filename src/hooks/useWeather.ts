@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supabaseWithAuth } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import LocationService from '@/services/LocationService';
 import { useLocation } from '@/hooks/useLocation';
@@ -118,6 +118,21 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
       setLoading(true);
       setError(null);
 
+      // Clear stale caches older than 1 hour
+      const clearStaleCaches = () => {
+        const keys = Object.keys(localStorage).filter(k => k.startsWith('weather_cache_'));
+        keys.forEach(key => {
+          try {
+            const cached = JSON.parse(localStorage.getItem(key) || '{}');
+            if (cached.timestamp && Date.now() - cached.timestamp > 3600000) { // 1 hour
+              localStorage.removeItem(key);
+              console.log('🗑️ [useWeather] Cleared stale cache:', key);
+            }
+          } catch {}
+        });
+      };
+      clearStaleCaches();
+
       // Try to get cached data from localStorage for instant display (reduced cache time)
       const cacheKey = `weather_cache_${weatherLocation.lat}_${weatherLocation.lon}`;
       const cachedDataStr = localStorage.getItem(cacheKey);
@@ -143,22 +158,45 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
         }
       }
 
-      // Fetch fresh data from edge function
-      console.log('📡 [useWeather] Fetching current weather from API...');
-      const { data, error: fetchError } = await supabase.functions.invoke('weather', {
-        body: {
-          action: 'current',
-          lat: weatherLocation.lat,
-          lon: weatherLocation.lon,
-        },
-        headers: (tenant?.id && user?.id) ? {
-          'x-tenant-id': tenant.id,
-          'x-farmer-id': user.id,
-        } : undefined,
-      });
+      // Fetch fresh data from edge function using authenticated client
+      console.log('📡 [useWeather] Fetching current weather from API with auth...');
+      
+      // Use authenticated client for better RLS support
+      const weatherClient = user?.id && tenant?.id 
+        ? supabaseWithAuth(user.id, tenant.id)
+        : supabase;
+      
+      // Retry logic for transient network failures
+      let retries = 2;
+      let data: any = null;
+      let fetchError: any = null;
+      
+      while (retries >= 0) {
+        const result = await weatherClient.functions.invoke('weather', {
+          body: {
+            action: 'current',
+            lat: weatherLocation.lat,
+            lon: weatherLocation.lon,
+          },
+        });
+        
+        data = result.data;
+        fetchError = result.error;
+        
+        if (!fetchError) {
+          console.log('✅ [useWeather] Weather fetch successful');
+          break;
+        }
+        
+        retries--;
+        if (retries >= 0) {
+          console.warn(`⚠️ [useWeather] Fetch failed, retrying... (${retries} retries left)`);
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
 
       if (fetchError) {
-        console.error('❌ [useWeather] Weather fetch error:', fetchError);
+        console.error('❌ [useWeather] Weather fetch error after retries:', fetchError);
         throw fetchError;
       }
 
@@ -184,18 +222,14 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
         
         setCurrentWeather(currentData);
         
-        // Fetch forecast data
+        // Fetch forecast data using same authenticated client
         console.log('📡 [useWeather] Fetching forecast data from API...');
-        const { data: forecastData, error: forecastError } = await supabase.functions.invoke('weather', {
+        const { data: forecastData, error: forecastError } = await weatherClient.functions.invoke('weather', {
           body: {
             action: 'forecast',
             lat: weatherLocation.lat,
             lon: weatherLocation.lon,
           },
-          headers: (tenant?.id && user?.id) ? {
-            'x-tenant-id': tenant.id,
-            'x-farmer-id': user.id,
-          } : undefined,
         });
 
         let dailyData: any[] = [];
