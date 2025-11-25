@@ -183,7 +183,7 @@ export default function EditLand() {
           </div>
           
           {/* Map component with preloaded boundary */}
-          <div className="pt-16 h-full">
+          <div className="pt-16 h-[calc(100%-4rem)]">
             <GoogleMapBoundaryDrawer
               onSave={handleMapSave}
               onCancel={handleCancel}
