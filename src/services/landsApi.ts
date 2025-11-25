@@ -127,18 +127,35 @@ class LandsApiService {
   // Fetch a specific land by ID - uses the Edge Function
   async fetchLandById(id: string): Promise<LandData | null> {
     try {
+      const headers = this.getHeaders();
+      
+      console.log('🌐 [LandsAPI] Fetching land by ID:', {
+        landId: id,
+        headers: {
+          'x-tenant-id': headers['x-tenant-id'],
+          'x-farmer-id': headers['x-farmer-id'],
+          'x-session-token': headers['x-session-token'] ? '***' : 'null'
+        }
+      });
+      
       const response = await fetch(`${LANDS_API_URL}/${id}`, {
         method: 'GET',
-        headers: this.getHeaders(),
+        headers,
       });
+
+      console.log('🌐 [LandsAPI] Response status:', response.status);
 
       if (!response.ok) {
         const error = await response.json();
-        console.error('Error fetching land by ID:', error);
+        console.error('❌ [LandsAPI] Error fetching land by ID:', {
+          status: response.status,
+          error,
+          landId: id
+        });
         
         // Return null for 404 errors (land not found)
         if (response.status === 404) {
-          console.log('Land not found with ID:', id);
+          console.log('⚠️ [LandsAPI] Land not found with ID:', id);
           return null;
         }
         
@@ -146,9 +163,14 @@ class LandsApiService {
       }
 
       const result = await response.json();
+      console.log('✅ [LandsAPI] Land fetched successfully:', {
+        landId: result.data?.id,
+        landName: result.data?.name
+      });
+      
       return result.data || null;
     } catch (error) {
-      console.error('Error fetching land by ID:', error);
+      console.error('❌ [LandsAPI] Exception fetching land by ID:', error);
       return null;
     }
   }
