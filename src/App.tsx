@@ -344,7 +344,7 @@ const router = createBrowserRouter([
       { path: "profile/edit", element: <ProfileEdit /> },
       { path: "lands", element: <LandManagement /> },
       { path: "lands/add", element: <AddLand /> },
-      { path: "lands/edit/:id", element: <EditLand /> },
+      { path: "lands/:id/edit", element: <EditLand /> },
       { path: "lands/:id", element: <LandDetails /> },
       { path: "lands/:id/soil", element: <SoilHealthReport /> },
       { path: "lands/:id/ndvi", element: <NDVIAnalysis /> },
