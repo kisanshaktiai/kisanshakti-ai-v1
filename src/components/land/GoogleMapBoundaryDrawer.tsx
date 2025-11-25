@@ -108,7 +108,21 @@ export function GoogleMapBoundaryDrawer({
   };
 
   // Get user's current location on mount using LocationService
+  // BUT: If initialCenter is provided (editing mode), use that instead
   useEffect(() => {
+    // CRITICAL FIX: When editing a land, use the land's coordinates, not GPS
+    // Only fetch GPS location if no initial center is provided (new land creation)
+    if (initialCenter) {
+      console.log('Edit mode detected - using land coordinates:', initialCenter);
+      setCenter(initialCenter);
+      setCurrentPosition(initialCenter);
+      setLocationSource('land_data');
+      // Mark map as initialized so we don't override with GPS
+      setIsMapInitialized(true);
+      return; // Skip GPS fetch when editing
+    }
+
+    // Only fetch GPS for new land creation
     const fetchLocation = async () => {
       try {
         const location = await LocationService.getCurrentLocation();
@@ -147,7 +161,7 @@ export function GoogleMapBoundaryDrawer({
     };
     
     fetchLocation();
-  }, [map, toast, isMapInitialized]);
+  }, [map, toast, isMapInitialized, initialCenter]);
 
   // Calculate area and validate boundary whenever boundary changes
   useEffect(() => {
@@ -212,40 +226,53 @@ export function GoogleMapBoundaryDrawer({
     // Set initial map type to hybrid
     mapInstance.setMapTypeId('hybrid');
     
-    // Only set zoom on the very first load
-    if (!initialZoomSet.current && currentPosition) {
-      mapInstance.panTo(currentPosition);
-      const zoom = locationSource === 'gps' ? 18 : 
-                  locationSource === 'village' ? 16 :
-                  locationSource === 'taluka' ? 14 :
-                  locationSource === 'district' ? 12 : 10;
-      mapInstance.setZoom(zoom);
-      initialZoomSet.current = true;
-    } else if (!initialZoomSet.current) {
-      // If no position, try to get location again (only on first load)
-      LocationService.getCurrentLocation().then(location => {
-        if (location) {
-          const newCenter = {
-            lat: location.lat,
-            lng: location.lon,
-          };
-          mapInstance.panTo(newCenter);
-          const zoom = location.source === 'gps' ? 18 : 
-                      location.source === 'village' ? 16 :
-                      location.source === 'taluka' ? 14 :
-                      location.source === 'district' ? 12 : 10;
-          mapInstance.setZoom(zoom);
-          initialZoomSet.current = true;
-          setCurrentPosition(newCenter);
-          setCenter(newCenter);
+    // CRITICAL FIX: When editing (initialCenter provided), use land coordinates
+    if (!initialZoomSet.current) {
+      if (initialCenter) {
+        // Edit mode: Center on land's location with appropriate zoom
+        console.log('Centering map on land location:', initialCenter);
+        mapInstance.panTo(initialCenter);
+        // Use zoom 18 for land editing for better precision
+        mapInstance.setZoom(18);
+        initialZoomSet.current = true;
+        setIsMapInitialized(true);
+      } else if (currentPosition) {
+        // New land: Use GPS location
+        mapInstance.panTo(currentPosition);
+        const zoom = locationSource === 'gps' ? 18 : 
+                    locationSource === 'village' ? 16 :
+                    locationSource === 'taluka' ? 14 :
+                    locationSource === 'district' ? 12 : 10;
+        mapInstance.setZoom(zoom);
+        initialZoomSet.current = true;
+      } else {
+        // No initial center and no GPS yet, try to get location (only for new land)
+        if (!initialCenter) {
+          LocationService.getCurrentLocation().then(location => {
+            if (location) {
+              const newCenter = {
+                lat: location.lat,
+                lng: location.lon,
+              };
+              mapInstance.panTo(newCenter);
+              const zoom = location.source === 'gps' ? 18 : 
+                          location.source === 'village' ? 16 :
+                          location.source === 'taluka' ? 14 :
+                          location.source === 'district' ? 12 : 10;
+              mapInstance.setZoom(zoom);
+              initialZoomSet.current = true;
+              setCurrentPosition(newCenter);
+              setCenter(newCenter);
+            }
+          }).catch(error => {
+            console.error('Error getting location on map load:', error);
+          });
         }
-      }).catch(error => {
-        console.error('Error getting location on map load:', error);
-      });
+      }
     }
     
     setIsMapInitialized(true);
-  }, [currentPosition, locationSource]);
+  }, [currentPosition, locationSource, initialCenter]);
 
   const handleMapClick = useCallback((e: google.maps.MapMouseEvent) => {
     if (mode !== 'draw' || !e.latLng) return;
