@@ -132,18 +132,37 @@ async function fetchTomorrowIoWeather(
   lon: number,
   apiKey: string,
   units: string
-): Promise<{ current: CurrentWeatherData; forecast: DailyForecast[] }> {
+): Promise<{ current: CurrentWeatherData; forecast: DailyForecast[]; hourly?: ForecastItem[] }> {
   const unitSystem = units === 'imperial' ? 'imperial' : 'metric'
-  const url = `https://api.tomorrow.io/v4/weather/forecast?location=${lat},${lon}&apikey=${apiKey}&units=${unitSystem}&timesteps=1d,1h,current`
+  
+  // Fix: Tomorrow.io v4 requires timesteps as separate parameters
+  const baseUrl = `https://api.tomorrow.io/v4/weather/forecast`
+  const params = new URLSearchParams({
+    location: `${lat},${lon}`,
+    apikey: apiKey,
+    units: unitSystem,
+    timesteps: '1d,1h,current'
+  })
+  
+  const url = `${baseUrl}?${params.toString()}`
+  console.log(`🌤️ Tomorrow.io request: ${baseUrl}?location=${lat},${lon}&timesteps=1d,1h,current`)
   
   const response = await fetch(url)
   if (!response.ok) {
-    throw new Error(`Tomorrow.io API error: ${response.status}`)
+    const errorText = await response.text()
+    console.error(`❌ Tomorrow.io API error ${response.status}:`, errorText)
+    throw new Error(`Tomorrow.io API error: ${response.status} - ${errorText}`)
   }
   
   const data = await response.json()
-  const current = data.timelines.current
-  const daily = data.timelines.daily
+  console.log('✅ Tomorrow.io response received')
+  const current = data.timelines?.find((t: any) => t.timestep === 'current')?.intervals?.[0]
+  const daily = data.timelines?.find((t: any) => t.timestep === '1d')?.intervals || []
+  const hourly = data.timelines?.find((t: any) => t.timestep === '1h')?.intervals || []
+  
+  if (!current) {
+    throw new Error('Tomorrow.io API returned invalid data structure')
+  }
   
   // Map Tomorrow.io data to our format
   const currentWeather: CurrentWeatherData = {
@@ -169,6 +188,22 @@ async function fetchTomorrowIoWeather(
     dew_point: current.values.dewPoint ?? 0
   }
   
+  // Map hourly forecast (next 24 hours)
+  const hourlyForecast: ForecastItem[] = hourly.slice(0, 24).map((hour: any) => ({
+    dt: new Date(hour.startTime).getTime() / 1000,
+    temp: hour.values.temperature ?? 0,
+    feels_like: hour.values.temperatureApparent ?? 0,
+    humidity: hour.values.humidity ?? 0,
+    wind_speed: hour.values.windSpeed ?? 0,
+    weather: [{
+      description: getWeatherDescription(hour.values.weatherCode),
+      main: getWeatherMain(hour.values.weatherCode),
+      icon: getWeatherIcon(hour.values.weatherCode)
+    }],
+    pop: (hour.values.precipitationProbability || 0) / 100,
+    uv_index: hour.values.uvIndex ?? 0
+  }))
+  
   // Map forecast data (14 days)
   const forecastData: DailyForecast[] = daily.slice(0, 14).map((day: any) => ({
     dt: new Date(day.time).getTime() / 1000,
@@ -187,12 +222,12 @@ async function fetchTomorrowIoWeather(
       main: getWeatherMain(day.values.weatherCodeMax),
       icon: getWeatherIcon(day.values.weatherCodeMax)
     }],
-    pop: day.values.precipitationProbabilityAvg / 100 ?? 0,
+    pop: (day.values.precipitationProbabilityAvg || 0) / 100,
     uv_index: day.values.uvIndexMax ?? 0,
     moon_phase: day.values.moonPhase ?? 0
   }))
   
-  return { current: currentWeather, forecast: forecastData }
+  return { current: currentWeather, forecast: forecastData, hourly: hourlyForecast }
 }
 
 // Weather code mapping for Tomorrow.io
@@ -280,15 +315,31 @@ async function fetchOpenWeatherCurrent(lat: number, lon: number, apiKey: string,
   }
 }
 
-async function fetchOpenWeatherForecast(lat: number, lon: number, apiKey: string, units: string): Promise<DailyForecast[]> {
+async function fetchOpenWeatherForecast(lat: number, lon: number, apiKey: string, units: string): Promise<{ daily: DailyForecast[]; hourly: ForecastItem[] }> {
   const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${apiKey}&units=${units}`
   const response = await fetch(url)
   if (!response.ok) throw new Error(`OpenWeather forecast API error: ${response.status}`)
   
   const data = await response.json()
   const dailyMap = new Map<string, any>()
+  const hourlyForecast: ForecastItem[] = []
   
-  data.list?.forEach((item: any) => {
+  data.list?.forEach((item: any, index: number) => {
+    // Extract hourly data (next 24 hours = 8 items at 3-hour intervals)
+    if (index < 8) {
+      hourlyForecast.push({
+        dt: item.dt,
+        temp: item.main.temp ?? 0,
+        feels_like: item.main.feels_like ?? 0,
+        humidity: item.main.humidity ?? 0,
+        wind_speed: item.wind.speed ?? 0,
+        weather: item.weather || [],
+        pop: item.pop ?? 0,
+        uv_index: 0
+      })
+    }
+    
+    // Aggregate daily data
     const date = new Date(item.dt * 1000).toDateString()
     if (!dailyMap.has(date)) {
       dailyMap.set(date, {
@@ -307,7 +358,7 @@ async function fetchOpenWeatherForecast(lat: number, lon: number, apiKey: string
     daily.wind_speed.push(item.wind.speed)
   })
   
-  return Array.from(dailyMap.values()).slice(0, 5).map(day => ({
+  const dailyData = Array.from(dailyMap.values()).slice(0, 7).map(day => ({
     dt: day.dt,
     temp: {
       day: day.temps.reduce((a: number, b: number) => a + b, 0) / day.temps.length,
@@ -322,43 +373,48 @@ async function fetchOpenWeatherForecast(lat: number, lon: number, apiKey: string
     weather: day.weather,
     pop: Math.max(...day.pop)
   }))
+  
+  return { daily: dailyData, hourly: hourlyForecast }
 }
 
 async function fetchWeatherWithFallback(
   lat: number, lon: number, tomorrowIoKey: string | undefined, openWeatherKey: string, units: string, action: string
-): Promise<{ current?: CurrentWeatherData; forecast?: DailyForecast[] }> {
+): Promise<{ current?: CurrentWeatherData; forecast?: DailyForecast[]; hourly?: ForecastItem[] }> {
   let lastError: Error | null = null
   
   if (tomorrowIoKey) {
     try {
-      console.log('Attempting to fetch from Tomorrow.io...')
-      const { current, forecast } = await fetchTomorrowIoWeather(lat, lon, tomorrowIoKey, units)
+      console.log('🌤️ Attempting to fetch from Tomorrow.io...')
+      const { current, forecast, hourly } = await fetchTomorrowIoWeather(lat, lon, tomorrowIoKey, units)
+      console.log('✅ Tomorrow.io fetch successful')
       if (action === 'current') return { current }
-      else if (action === 'forecast') return { forecast }
-      else return { current, forecast }
+      else if (action === 'forecast') return { forecast, hourly }
+      else return { current, forecast, hourly }
     } catch (error) {
-      console.error('Tomorrow.io failed:', error)
+      console.error('❌ Tomorrow.io failed:', error)
       lastError = error as Error
     }
+  } else {
+    console.log('⚠️ Tomorrow.io API key not configured, skipping')
   }
   
   try {
-    console.log('Falling back to OpenWeather...')
+    console.log('🌦️ Falling back to OpenWeather...')
     if (action === 'current') {
       const current = await fetchOpenWeatherCurrent(lat, lon, openWeatherKey, units)
       return { current }
     } else if (action === 'forecast') {
-      const forecast = await fetchOpenWeatherForecast(lat, lon, openWeatherKey, units)
-      return { forecast }
+      const { daily, hourly } = await fetchOpenWeatherForecast(lat, lon, openWeatherKey, units)
+      return { forecast: daily, hourly }
     } else {
-      const [current, forecast] = await Promise.all([
+      const [current, forecastData] = await Promise.all([
         fetchOpenWeatherCurrent(lat, lon, openWeatherKey, units),
         fetchOpenWeatherForecast(lat, lon, openWeatherKey, units)
       ])
-      return { current, forecast }
+      return { current, forecast: forecastData.daily, hourly: forecastData.hourly }
     }
   } catch (error) {
-    console.error('OpenWeather also failed:', error)
+    console.error('❌ OpenWeather also failed:', error)
     throw lastError || error
   }
 }
