@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/stores/authStore';
@@ -62,12 +62,14 @@ export const useWeatherSync = () => {
 
   // Save weather observation to database
   const saveWeatherObservation = async (weatherData: any, rainfallMm: number = 0) => {
-    if (!tenant?.id) return;
+    if (!tenant?.id || !user?.id) return;
 
     try {
+      const authClient = supabaseWithAuth(user.id, tenant.id);
+      
       const observation: WeatherObservation = {
         tenant_id: tenant.id,
-        farmer_id: user?.id,
+        farmer_id: user.id,
         observation_date: new Date().toISOString().split('T')[0],
         observation_time: new Date().toISOString(),
         temperature_celsius: weatherData.temp,
@@ -90,7 +92,7 @@ export const useWeatherSync = () => {
         }
       };
 
-      const { error } = await supabase
+      const { error } = await authClient
         .from('weather_observations')
         .upsert(observation, {
           onConflict: 'tenant_id,observation_date,observation_time,land_id'
@@ -112,13 +114,14 @@ export const useWeatherSync = () => {
 
   // Update daily aggregate
   const updateDailyAggregate = async (observation: WeatherObservation) => {
-    if (!tenant?.id) return;
+    if (!tenant?.id || !user?.id) return;
 
     try {
+      const authClient = supabaseWithAuth(user.id, tenant.id);
       const today = new Date().toISOString().split('T')[0];
       
       // Fetch existing aggregate for today
-      const { data: existing } = await supabase
+      const { data: existing } = await authClient
         .from('weather_aggregates')
         .select('*')
         .eq('tenant_id', tenant.id)
@@ -150,7 +153,7 @@ export const useWeatherSync = () => {
         agricultural_alerts: generateAgriculturalAlerts(observation, existing)
       };
 
-      const { error } = await supabase
+      const { error } = await authClient
         .from('weather_aggregates')
         .upsert(aggregate, {
           onConflict: 'tenant_id,aggregate_date,land_id'
@@ -242,11 +245,12 @@ export const useWeatherSync = () => {
 
   // Fetch today's rainfall
   const fetchTodayRainfall = async () => {
-    if (!tenant?.id) return;
+    if (!tenant?.id || !user?.id) return;
 
     try {
+      const authClient = supabaseWithAuth(user.id, tenant.id);
       const today = new Date().toISOString().split('T')[0];
-      const { data } = await supabase
+      const { data } = await authClient
         .from('weather_aggregates')
         .select('rain_mm_total')
         .eq('tenant_id', tenant.id)
@@ -261,13 +265,14 @@ export const useWeatherSync = () => {
 
   // Fetch weekly rainfall
   const fetchWeeklyRainfall = async () => {
-    if (!tenant?.id) return;
+    if (!tenant?.id || !user?.id) return;
 
     try {
+      const authClient = supabaseWithAuth(user.id, tenant.id);
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);
       
-      const { data } = await supabase
+      const { data } = await authClient
         .from('weather_aggregates')
         .select('rain_mm_total')
         .eq('tenant_id', tenant.id)
@@ -310,14 +315,16 @@ export const useWeatherSync = () => {
 
   // Set up real-time subscription
   useEffect(() => {
-    if (!tenant?.id) return;
+    if (!tenant?.id || !user?.id) return;
 
     // Initial fetch
     fetchTodayRainfall();
     fetchWeeklyRainfall();
 
+    const authClient = supabaseWithAuth(user.id, tenant.id);
+
     // Subscribe to real-time updates
-    const observationsChannel = supabase
+    const observationsChannel = authClient
       .channel('weather-observations')
       .on(
         'postgres_changes',
@@ -334,7 +341,7 @@ export const useWeatherSync = () => {
       )
       .subscribe();
 
-    const aggregatesChannel = supabase
+    const aggregatesChannel = authClient
       .channel('weather-aggregates')
       .on(
         'postgres_changes',
@@ -353,10 +360,10 @@ export const useWeatherSync = () => {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(observationsChannel);
-      supabase.removeChannel(aggregatesChannel);
+      authClient.removeChannel(observationsChannel);
+      authClient.removeChannel(aggregatesChannel);
     };
-  }, [tenant?.id]);
+  }, [tenant?.id, user?.id]);
 
   return {
     lastSyncTime,
