@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
 import { 
   MapPin, 
   Mountain, 
@@ -53,12 +54,11 @@ interface LandCardProps {
 export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
   const navigate = useNavigate();
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
+  const { apiKey, isLoaded } = useGoogleMapsApi();
   
   // Generate static map URL with boundary polygon
   const getStaticMapUrl = () => {
-    if (!land.boundary || land.boundary.length === 0) return null;
-    
-    const API_KEY = 'AIzaSyA7T__VHsi2H8km-jRytv4Mdjzae7Uokjg'; // Google Maps API key from edge function
+    if (!land.boundary || land.boundary.length === 0 || !apiKey) return null;
     
     // Create path from boundary points
     const path = land.boundary
@@ -77,7 +77,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
       `&size=400x200` +
       `&maptype=satellite` +
       `&path=color:0x00ff00|weight:3|fillcolor:0x00ff0033|${path}` +
-      `&key=${API_KEY}`;
+      `&key=${apiKey}`;
   };
 
   const mapUrl = getStaticMapUrl();
