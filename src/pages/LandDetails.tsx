@@ -11,8 +11,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
+import { landsApi } from '@/services/landsApi';
+import { isolatedSupabase } from '@/services/dataIsolationService';
 import { Progress } from '@/components/ui/progress';
 import { LandDetailsSkeleton } from '@/components/skeletons';
 import {
@@ -108,15 +109,19 @@ export default function LandDetails() {
     if (!id || !user?.id) return;
     
     try {
-      const { data, error } = await supabase
-        .from('lands')
-        .select('*')
-        .eq('id', id)
-        .eq('farmer_id', user.id)
-        .single();
-
-      if (error) throw error;
-      setLand(data);
+      const data = await landsApi.fetchLandById(id);
+      
+      if (!data) {
+        toast({
+          title: 'Error',
+          description: 'Land not found or access denied',
+          variant: 'destructive',
+        });
+        navigate('/app/lands');
+        return;
+      }
+      
+      setLand(data as Land);
     } catch (error) {
       console.error('Error fetching land details:', error);
       toast({
@@ -133,7 +138,7 @@ export default function LandDetails() {
     if (!id) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await isolatedSupabase
         .from('land_activities')
         .select('*')
         .eq('land_id', id)
@@ -151,7 +156,7 @@ export default function LandDetails() {
     if (!id) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await isolatedSupabase
         .from('crop_history')
         .select('*')
         .eq('land_id', id)
@@ -168,12 +173,7 @@ export default function LandDetails() {
     if (!id) return;
     
     try {
-      const { error } = await supabase
-        .from('lands')
-        .update({ is_active: false })
-        .eq('id', id);
-
-      if (error) throw error;
+      await landsApi.deleteLand(id);
 
       toast({
         title: 'Success',
