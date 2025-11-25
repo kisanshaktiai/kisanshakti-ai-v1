@@ -29,49 +29,43 @@ export const HourlyTimeline: React.FC<HourlyTimelineProps> = ({ hourlyForecast }
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.5 }}
-      className="px-4 py-6"
+      transition={{ delay: 0.4 }}
+      className="px-4 py-3"
     >
-      <h3 className="text-xl font-bold mb-4">Hourly Forecast</h3>
+      <h3 className="text-base font-bold mb-3">Hourly Forecast</h3>
       
-      <ScrollArea className="w-full whitespace-nowrap rounded-lg border">
-        <div className="flex gap-3 p-4">
-          {hourlyForecast.slice(0, 24).map((hour, index) => (
-            <motion.div
-              key={hour.dt}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.6 + index * 0.05 }}
-            >
-              <Card className="min-w-[100px] p-4 text-center hover:shadow-lg transition-all">
-                <p className="text-xs font-semibold text-muted-foreground mb-2">
-                  {index === 0 ? 'Now' : format(new Date(hour.dt * 1000), 'ha')}
+      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
+        {hourlyForecast.slice(0, 12).map((hour, index) => (
+          <motion.div
+            key={hour.dt}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.5 + index * 0.03 }}
+            className="flex-none w-[70px] snap-center"
+          >
+            <Card className="p-2 text-center hover:shadow-md transition-all bg-background/60 backdrop-blur-sm border">
+              <p className="text-[10px] font-semibold text-muted-foreground mb-1">
+                {index === 0 ? 'Now' : format(new Date(hour.dt * 1000), 'ha')}
+              </p>
+              
+              <div className="flex justify-center mb-1">
+                {getWeatherIcon(hour.weather[0]?.main || 'Clear')}
+              </div>
+              
+              <p className="text-lg font-bold mb-1">
+                {Math.round(hour.temp)}°
+              </p>
+              
+              {hour.pop > 0.2 && (
+                <p className="text-[10px] text-blue-500 flex items-center justify-center gap-0.5">
+                  <CloudRain className="h-2.5 w-2.5" />
+                  {Math.round(hour.pop * 100)}%
                 </p>
-                
-                <div className="flex justify-center mb-2">
-                  {getWeatherIcon(hour.weather[0]?.main || 'Clear')}
-                </div>
-                
-                <p className="text-2xl font-bold mb-1">
-                  {Math.round(hour.temp)}°
-                </p>
-                
-                {hour.pop > 0 && (
-                  <p className="text-xs text-blue-500 flex items-center justify-center gap-1">
-                    <CloudRain className="h-3 w-3" />
-                    {Math.round(hour.pop * 100)}%
-                  </p>
-                )}
-                
-                <p className="text-xs text-muted-foreground mt-1 flex items-center justify-center gap-1">
-                  <Wind className="h-3 w-3" />
-                  {Math.round(hour.wind_speed * 3.6)}
-                </p>
-              </Card>
-            </motion.div>
-          ))}
-        </div>
-      </ScrollArea>
+              )}
+            </Card>
+          </motion.div>
+        ))}
+      </div>
     </motion.div>
   );
 };
