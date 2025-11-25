@@ -71,38 +71,32 @@ export const VoiceWeatherSummary: React.FC<VoiceWeatherSummaryProps> = ({
   };
 
   return (
-    <motion.div
+    <motion.button
       initial={{ scale: 0.9, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      className={cn("relative", className)}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      onClick={handleToggleSpeech}
+      className={cn(
+        "relative p-3 rounded-full transition-all duration-300 shadow-lg backdrop-blur-sm",
+        isSpeaking 
+          ? "bg-primary text-primary-foreground animate-pulse" 
+          : "bg-background/80 hover:bg-background border border-border",
+        className
+      )}
+      title={isSpeaking ? t('weather.voice.stop', 'Stop Reading') : t('weather.voice.read', 'Read Aloud')}
     >
-      <Button
-        onClick={handleToggleSpeech}
-        size="lg"
-        variant={isSpeaking ? "default" : "secondary"}
-        className={cn(
-          "relative gap-2 min-w-[160px] shadow-lg transition-all duration-300",
-          isSpeaking && "animate-pulse bg-primary text-primary-foreground"
-        )}
-      >
-        {isSpeaking ? (
-          <>
-            <VolumeX className="h-5 w-5" />
-            <span className="font-semibold">{t('weather.voice.stop', 'Stop Reading')}</span>
-          </>
-        ) : (
-          <>
-            <Volume2 className={cn("h-5 w-5", hasSpoken && "text-primary")} />
-            <span className="font-semibold">{t('weather.voice.read', 'Read Aloud')}</span>
-          </>
-        )}
-      </Button>
+      {isSpeaking ? (
+        <VolumeX className="h-5 w-5" />
+      ) : (
+        <Volume2 className={cn("h-5 w-5", hasSpoken && "text-primary")} />
+      )}
 
       {isSpeaking && (
         <motion.div
-          className="absolute -inset-1 bg-primary/20 rounded-lg -z-10"
+          className="absolute -inset-1 bg-primary/20 rounded-full -z-10"
           animate={{
-            scale: [1, 1.1, 1],
+            scale: [1, 1.2, 1],
             opacity: [0.5, 0.8, 0.5]
           }}
           transition={{
@@ -112,6 +106,6 @@ export const VoiceWeatherSummary: React.FC<VoiceWeatherSummaryProps> = ({
           }}
         />
       )}
-    </motion.div>
+    </motion.button>
   );
 };

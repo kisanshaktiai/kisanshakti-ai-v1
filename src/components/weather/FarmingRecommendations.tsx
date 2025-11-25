@@ -92,48 +92,47 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.4 }}
-      className="px-4 py-6"
+      transition={{ delay: 0.3 }}
+      className="px-4 py-3"
     >
-      <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-        <Sprout className="h-6 w-6 text-primary" />
+      <h3 className="text-base font-bold mb-3 flex items-center gap-2">
+        <Sprout className="h-4 w-4 text-primary" />
         {t('weather.farming.title', 'Farming Recommendations')}
-      </h2>
+      </h3>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
         {recommendations.map((rec, index) => (
           <motion.div
             key={rec.title}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.5 + index * 0.1 }}
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.98 }}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.4 + index * 0.1 }}
+            className="flex-none w-[140px] snap-center"
           >
-            <Card className="relative overflow-hidden border-2 hover:shadow-lg transition-all">
-              <div className={cn("absolute top-0 right-0 w-32 h-32 rounded-full -translate-y-16 translate-x-16", rec.bgColor)} />
+            <Card className={cn(
+              "relative overflow-hidden border-2 h-full transition-all hover:shadow-md",
+              "bg-gradient-to-br from-background to-background/50"
+            )}>
+              <div className={cn("absolute top-0 right-0 w-20 h-20 rounded-full -translate-y-10 translate-x-10 opacity-20", rec.bgColor)} />
               
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center justify-between">
-                  <span className="flex items-center gap-2 text-lg">
-                    <rec.icon className={cn("h-5 w-5", rec.color)} />
-                    {rec.title}
-                  </span>
-                  <rec.icon className={cn("h-6 w-6", rec.color)} />
-                </CardTitle>
-              </CardHeader>
-
-              <CardContent>
-                <Badge
-                  variant="secondary"
-                  className={cn(
-                    "text-sm font-bold px-3 py-1",
-                    rec.color,
-                    rec.bgColor
-                  )}
-                >
-                  {rec.label}
-                </Badge>
+              <CardContent className="p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <rec.icon className={cn("h-8 w-8", rec.color)} />
+                </div>
+                
+                <div>
+                  <p className="text-sm font-semibold mb-1">{rec.title}</p>
+                  <Badge
+                    variant="secondary"
+                    className={cn(
+                      "text-xs font-bold px-2 py-0.5",
+                      rec.color,
+                      rec.bgColor
+                    )}
+                  >
+                    {rec.label}
+                  </Badge>
+                </div>
               </CardContent>
             </Card>
           </motion.div>

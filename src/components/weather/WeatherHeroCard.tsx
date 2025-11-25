@@ -41,16 +41,16 @@ export const WeatherHeroCard: React.FC<WeatherHeroCardProps> = ({
         <WeatherAnimation condition={weatherCondition} className="w-full h-full" />
       </motion.div>
 
-      <div className="relative z-10 px-6 pt-6 pb-8">
+      <div className="relative z-10 px-4 pt-4 pb-5">
         {/* Location and Sync Row */}
-        <div className="flex justify-between items-start mb-6">
+        <div className="flex justify-between items-start mb-4">
           <div>
-            <h1 className="text-lg font-bold text-foreground flex items-center gap-2">
-              <MapPin className="h-5 w-5 text-primary" />
+            <h1 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+              <MapPin className="h-3.5 w-3.5 text-primary" />
               {location || 'Current Location'}
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              {format(new Date(), 'EEEE, MMM d, yyyy')}
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {format(new Date(), 'EEE, MMM d')}
             </p>
           </div>
 
@@ -58,23 +58,14 @@ export const WeatherHeroCard: React.FC<WeatherHeroCardProps> = ({
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={onRefresh}
-            className="relative p-3 rounded-xl bg-background/20 backdrop-blur-sm border border-white/10 hover:bg-background/30 transition-all shadow-lg"
+            className="relative p-2 rounded-full bg-background/20 backdrop-blur-sm border border-white/10 hover:bg-background/30 transition-all"
           >
             <RefreshCw
               className={cn(
-                "h-5 w-5 text-foreground",
+                "h-4 w-4 text-foreground",
                 isRefreshing && "animate-spin"
               )}
             />
-            {lastSyncTime && (
-              <motion.span
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="absolute -bottom-7 right-0 text-xs text-muted-foreground whitespace-nowrap bg-background/80 px-2 py-1 rounded-md"
-              >
-                {format(new Date(lastSyncTime), 'h:mm a')}
-              </motion.span>
-            )}
           </motion.button>
         </div>
 
@@ -87,18 +78,18 @@ export const WeatherHeroCard: React.FC<WeatherHeroCardProps> = ({
         >
           <div className="flex-1">
             <motion.div
-              className="flex items-baseline gap-2"
+              className="flex items-baseline gap-1.5"
               animate={{ opacity: [0.8, 1, 0.8] }}
               transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
             >
-              <span className="text-7xl sm:text-8xl font-bold text-foreground tracking-tight">
+              <span className="text-6xl font-bold text-foreground tracking-tight">
                 {Math.round(currentWeather.temp)}
               </span>
-              <span className="text-3xl text-muted-foreground">°C</span>
+              <span className="text-2xl text-muted-foreground">°C</span>
             </motion.div>
 
             <motion.p
-              className="text-xl font-semibold capitalize text-foreground/90 mt-2"
+              className="text-base font-semibold capitalize text-foreground/90 mt-1"
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: 0.2 }}
@@ -107,12 +98,12 @@ export const WeatherHeroCard: React.FC<WeatherHeroCardProps> = ({
             </motion.p>
 
             <motion.p
-              className="text-sm text-muted-foreground flex items-center gap-2 mt-2"
+              className="text-xs text-muted-foreground flex items-center gap-1 mt-1"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.3 }}
             >
-              <Thermometer className="h-4 w-4" />
+              <Thermometer className="h-3 w-3" />
               Feels like {Math.round(currentWeather.feels_like)}°C
             </motion.p>
           </div>
@@ -125,15 +116,15 @@ export const WeatherHeroCard: React.FC<WeatherHeroCardProps> = ({
           >
             <motion.div
               animate={{
-                y: [0, -5, 0],
-                rotate: [0, 3, -3, 0]
+                y: [0, -3, 0],
+                rotate: [0, 2, -2, 0]
               }}
               transition={{
                 duration: 4,
                 repeat: Infinity,
                 ease: "easeInOut"
               }}
-              className="p-6 rounded-3xl bg-white/10 backdrop-blur-sm shadow-xl"
+              className="p-4 rounded-2xl bg-white/10 backdrop-blur-sm shadow-lg"
             >
               {weatherIcon}
             </motion.div>
