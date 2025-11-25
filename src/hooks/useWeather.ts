@@ -118,7 +118,7 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
       setLoading(true);
       setError(null);
 
-      // Try to get cached data from localStorage first (more reliable than DB)
+      // Try to get cached data from localStorage for instant display (reduced cache time)
       const cacheKey = `weather_cache_${weatherLocation.lat}_${weatherLocation.lon}`;
       const cachedDataStr = localStorage.getItem(cacheKey);
       
@@ -127,14 +127,16 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
           const cached = JSON.parse(cachedDataStr);
           const cacheAge = Date.now() - cached.timestamp;
           
-          // Use cache if less than 10 minutes old
-          if (cacheAge < 600000) {
+          // Use cache only if less than 2 minutes old (reduced from 10 minutes)
+          if (cacheAge < 120000) {
             console.log('✅ [useWeather] Using cached weather data from localStorage');
             setCurrentWeather(cached.current);
             setForecast(cached.forecast || []);
             setHourlyForecast(cached.hourly || []);
             setLoading(false);
             return;
+          } else {
+            console.log('📡 [useWeather] Cache expired, fetching fresh data');
           }
         } catch (e) {
           console.warn('⚠️ [useWeather] Failed to parse cached weather data:', e);
