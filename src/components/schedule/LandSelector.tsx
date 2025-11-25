@@ -25,7 +25,8 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseWithAuth } from '@/integrations/supabase/client';
+import { useAuthStore } from '@/stores/authStore';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -97,26 +98,43 @@ const getCropIcon = (crop?: string) => {
 export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEditSchedule }: LandSelectorProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuthStore();
   const [scheduleStatuses, setScheduleStatuses] = useState<LandScheduleStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [scheduleToDelete, setScheduleToDelete] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchScheduleStatuses();
-  }, [lands]);
+    if (user?.id && user?.tenantId && lands.length > 0) {
+      fetchScheduleStatuses();
+    }
+  }, [lands, user?.id, user?.tenantId]);
 
   const fetchScheduleStatuses = async () => {
+    if (!user?.id || !user?.tenantId) {
+      console.warn('Cannot fetch schedules: Missing user authentication');
+      setLoading(false);
+      return;
+    }
+
     try {
       const landIds = lands.map(l => l.id);
+      const client = supabaseWithAuth(user.id, user.tenantId);
       
-      const { data, error } = await supabase
+      console.log('Fetching schedules with auth:', { userId: user.id, tenantId: user.tenantId, landIds });
+      
+      const { data, error } = await client
         .from('crop_schedules')
         .select('id, land_id, crop_name')
         .in('land_id', landIds)
         .eq('is_active', true);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching schedules:', error);
+        throw error;
+      }
+      
+      console.log('Fetched schedules:', data);
 
       const statuses: LandScheduleStatus[] = lands.map(land => {
         const schedule = data?.find(s => s.land_id === land.id);
@@ -174,14 +192,16 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
   };
 
   const confirmDeleteSchedule = async () => {
-    if (!scheduleToDelete) return;
+    if (!scheduleToDelete || !user?.id || !user?.tenantId) return;
 
     try {
       const status = scheduleStatuses.find(s => s.landId === scheduleToDelete);
       if (!status?.scheduleId) return;
 
+      const client = supabaseWithAuth(user.id, user.tenantId);
+
       // Delete all tasks for this schedule
-      const { error: tasksError } = await supabase
+      const { error: tasksError } = await client
         .from('schedule_tasks')
         .delete()
         .eq('schedule_id', status.scheduleId);
@@ -189,7 +209,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
       if (tasksError) throw tasksError;
 
       // Delete the schedule
-      const { error: scheduleError } = await supabase
+      const { error: scheduleError } = await client
         .from('crop_schedules')
         .delete()
         .eq('id', status.scheduleId);
