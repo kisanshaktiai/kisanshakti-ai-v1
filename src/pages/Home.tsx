@@ -723,93 +723,89 @@ export default function Home() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
         >
-          <Card className="mb-4 border-border/40 backdrop-blur-sm">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Activity className="w-5 h-5 text-primary" />
-                Recent Activity
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-hidden relative">
-                <AnimatePresence mode="wait">
-                  {lands.length > 0 ? (
-                    <motion.div
-                      key={currentActivityIndex}
-                      initial={{ opacity: 0, x: 50 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -50 }}
-                      transition={{ duration: 0.5, ease: "easeInOut" }}
-                      className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-muted/30 rounded-2xl"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
-                        <div>
-                          <p className="text-sm font-medium">{lands[currentActivityIndex]?.name || 'Unnamed Land'}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {lands[currentActivityIndex]?.area_acres} acres • {lands[currentActivityIndex]?.village || 'Location not set'}
-                          </p>
-                        </div>
+          <Card className="mb-4 border-border/40 backdrop-blur-sm p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <Activity className="w-4 h-4 text-primary" />
+              <span className="text-sm font-semibold">Recent Activity</span>
+            </div>
+            <div className="overflow-hidden relative">
+              <AnimatePresence mode="wait">
+                {lands.length > 0 ? (
+                  <motion.div
+                    key={currentActivityIndex}
+                    initial={{ opacity: 0, x: 50 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -50 }}
+                    transition={{ duration: 0.5, ease: "easeInOut" }}
+                    className="flex items-center justify-between p-2.5 bg-gradient-to-r from-muted/50 to-muted/30 rounded-2xl"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
+                      <div>
+                        <p className="text-sm font-medium">{lands[currentActivityIndex]?.name || 'Unnamed Land'}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {lands[currentActivityIndex]?.area_acres} acres • {lands[currentActivityIndex]?.village || 'Location not set'}
+                        </p>
                       </div>
-                      <Badge variant="secondary" className="text-xs">
-                        {lands[currentActivityIndex]?.current_crop || 'No crop'}
-                      </Badge>
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key={`default-${currentActivityIndex}`}
-                      initial={{ opacity: 0, x: 50 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -50 }}
-                      transition={{ duration: 0.5, ease: "easeInOut" }}
-                      className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-muted/30 rounded-2xl"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-2.5 h-2.5 rounded-full bg-primary" />
-                        <div>
-                          {currentActivityIndex === 0 && (
-                            <>
-                              <p className="text-sm font-medium">No lands added yet</p>
-                              <p className="text-xs text-muted-foreground">Add your first land to get started</p>
-                            </>
-                          )}
-                          {currentActivityIndex === 1 && (
-                            <>
-                              <p className="text-sm font-medium">Current Weather</p>
-                              <p className="text-xs text-muted-foreground">{currentWeather?.description || 'Loading...'}</p>
-                            </>
-                          )}
-                          {currentActivityIndex === 2 && (
-                            <>
-                              <p className="text-sm font-medium">Government Schemes</p>
-                              <p className="text-xs text-muted-foreground">Check available subsidies</p>
-                            </>
-                          )}
-                        </div>
+                    </div>
+                    <Badge variant="secondary" className="text-xs">
+                      {lands[currentActivityIndex]?.current_crop || 'No crop'}
+                    </Badge>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key={`default-${currentActivityIndex}`}
+                    initial={{ opacity: 0, x: 50 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -50 }}
+                    transition={{ duration: 0.5, ease: "easeInOut" }}
+                    className="flex items-center justify-between p-2.5 bg-gradient-to-r from-muted/50 to-muted/30 rounded-2xl"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-2.5 h-2.5 rounded-full bg-primary" />
+                      <div>
+                        {currentActivityIndex === 0 && (
+                          <>
+                            <p className="text-sm font-medium">No lands added yet</p>
+                            <p className="text-xs text-muted-foreground">Add your first land to get started</p>
+                          </>
+                        )}
+                        {currentActivityIndex === 1 && (
+                          <>
+                            <p className="text-sm font-medium">Current Weather</p>
+                            <p className="text-xs text-muted-foreground">{currentWeather?.description || 'Loading...'}</p>
+                          </>
+                        )}
+                        {currentActivityIndex === 2 && (
+                          <>
+                            <p className="text-sm font-medium">Government Schemes</p>
+                            <p className="text-xs text-muted-foreground">Check available subsidies</p>
+                          </>
+                        )}
                       </div>
-                      {currentActivityIndex === 0 && <Link to="/app/lands/add" className="text-xs text-primary">Add Land</Link>}
-                      {currentActivityIndex === 1 && currentWeather && <span className="text-xs text-muted-foreground">{Math.round(currentWeather.temp)}°C</span>}
-                      {currentActivityIndex === 2 && <Link to="/app/schemes" className="text-xs text-primary">View</Link>}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-                
-                {/* Dot Indicators */}
-                <div className="flex justify-center gap-1.5 mt-3">
-                  {(lands.length > 0 ? lands.slice(0, 5) : [1, 2, 3]).map((_, idx) => (
-                    <div 
-                      key={idx}
-                      className={cn(
-                        "h-1.5 rounded-full transition-all duration-300",
-                        idx === currentActivityIndex 
-                          ? "w-4 bg-primary" 
-                          : "w-1.5 bg-muted-foreground/30"
-                      )}
-                    />
-                  ))}
-                </div>
+                    </div>
+                    {currentActivityIndex === 0 && <Link to="/app/lands/add" className="text-xs text-primary">Add Land</Link>}
+                    {currentActivityIndex === 1 && currentWeather && <span className="text-xs text-muted-foreground">{Math.round(currentWeather.temp)}°C</span>}
+                    {currentActivityIndex === 2 && <Link to="/app/schemes" className="text-xs text-primary">View</Link>}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              
+              {/* Dot Indicators */}
+              <div className="flex justify-center gap-1.5 mt-2">
+                {(lands.length > 0 ? lands.slice(0, 5) : [1, 2, 3]).map((_, idx) => (
+                  <div 
+                    key={idx}
+                    className={cn(
+                      "h-1.5 rounded-full transition-all duration-300",
+                      idx === currentActivityIndex 
+                        ? "w-4 bg-primary" 
+                        : "w-1.5 bg-muted-foreground/30"
+                    )}
+                  />
+                ))}
               </div>
-            </CardContent>
+            </div>
           </Card>
         </motion.div>
 
