@@ -363,10 +363,9 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               subdomain: tenantData.subdomain || undefined,
               custom_domain: tenantData.custom_domain || undefined,
               status: tenantData.status || 'active',
-              branding: (whiteLabel?.brand_identity as BrandingConfig) || {
-                company_name: tenantData.name,
-                primary_color: '#10b981',
-              },
+            branding: (whiteLabel?.brand_identity as BrandingConfig) || {
+              company_name: tenantData.name,
+            },
               theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
               pwa: whiteLabel?.pwa_config as PWAConfig,
               features: (tenantData.settings as any)?.features || [
@@ -424,7 +423,6 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             status: tenantData.status || 'active',
             branding: (matchedConfig.brand_identity as BrandingConfig) || {
               company_name: tenantData.name,
-              primary_color: '#10b981',
             },
             theme: (matchedConfig.mobile_theme || matchedConfig.theme_colors) as ThemeConfig,
             pwa: matchedConfig.pwa_config as PWAConfig,

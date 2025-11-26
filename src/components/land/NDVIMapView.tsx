@@ -345,9 +345,9 @@ export function NDVIMapView({
                     <Polygon
                       paths={boundary}
                       options={{
-                        fillColor: selectedIndex === 'ndvi' ? '#10b981' : 
-                                  selectedIndex === 'evi' ? '#3b82f6' :
-                                  selectedIndex === 'ndwi' ? '#06b6d4' : '#8b5cf6',
+                        fillColor: selectedIndex === 'ndvi' ? 'hsl(142 76% 45%)' : 
+                                  selectedIndex === 'evi' ? 'hsl(210 100% 56%)' :
+                                  selectedIndex === 'ndwi' ? 'hsl(180 100% 45%)' : 'hsl(270 75% 60%)',
                         fillOpacity: showOverlay ? 0.4 : 0.2,
                         strokeColor: '#ffffff',
                         strokeOpacity: 1,

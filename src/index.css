@@ -29,24 +29,24 @@
 
 @layer base {
   :root {
-    /* Core Colors - Neural Network Inspired */
-    --background: 220 25% 98%;
-    --foreground: 220 15% 12%;
+    /* Core Colors - Neutral defaults (will be overridden by tenant theme) */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 9%;
     
     /* Card & Surfaces - Advanced Layering */
     --card: 0 0% 100%;
-    --card-foreground: 220 15% 12%;
+    --card-foreground: 0 0% 9%;
     
     /* Popover */
     --popover: 0 0% 100%;
-    --popover-foreground: 220 15% 12%;
+    --popover-foreground: 0 0% 9%;
     
-    /* Primary - AI Electric Blue */
-    --primary: 210 100% 56%;
+    /* Primary - Neutral gray (will be overridden by tenant brand color) */
+    --primary: 0 0% 45%;
     --primary-foreground: 0 0% 100%;
-    --primary-hover: 210 100% 48%;
-    --primary-glow: 210 100% 70%;
-    --primary-dim: 210 100% 35%;
+    --primary-hover: 0 0% 35%;
+    --primary-glow: 0 0% 60%;
+    --primary-dim: 0 0% 30%;
     
     /* Secondary - Quantum Purple */
     --secondary: 270 75% 60%;

@@ -19,11 +19,11 @@ export function NDVITrendChart({ data, selectedIndex }: NDVITrendChartProps) {
 
   const getStrokeColor = (index: string) => {
     switch (index) {
-      case 'ndvi': return '#10b981';
-      case 'evi': return '#3b82f6';
-      case 'ndwi': return '#06b6d4';
-      case 'savi': return '#8b5cf6';
-      default: return '#6b7280';
+      case 'ndvi': return 'hsl(142 76% 45%)'; // success
+      case 'evi': return 'hsl(210 100% 56%)'; // info/primary
+      case 'ndwi': return 'hsl(180 100% 45%)'; // accent
+      case 'savi': return 'hsl(270 75% 60%)'; // secondary
+      default: return 'hsl(220 10% 45%)'; // muted-foreground
     }
   };
 

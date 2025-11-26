@@ -87,10 +87,7 @@ export default function SplashScreen() {
     }
   };
 
-  // Get theme colors and branding from TenantProvider
-  const primaryColor = branding?.primary_color || '#10b981';
-  const secondaryColor = branding?.secondary_color || '#059669';
-  const backgroundColor = branding?.background_color || '#ffffff';
+  // Get branding from TenantProvider - colors are already applied to DOM via CSS variables
   const logoUrl = branding?.logo_url;
   const companyName = branding?.company_name || tenant?.name || 'KisanShakti';
   const tagline = branding?.tagline || 'Empowering Farmers with Technology';
@@ -98,10 +95,7 @@ export default function SplashScreen() {
   
   return (
     <div 
-      className="min-h-screen flex flex-col items-center justify-between p-8 relative overflow-hidden"
-      style={{
-        background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)`
-      }}
+      className="min-h-screen flex flex-col items-center justify-between p-8 relative overflow-hidden bg-gradient-to-br from-primary via-primary-hover to-secondary"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
@@ -159,14 +153,21 @@ export default function SplashScreen() {
                   className="w-24 h-24 object-contain drop-shadow-2xl"
                   onError={(e) => {
                     console.error('❌ [SplashScreen] Failed to load logo:', logoUrl);
-                    e.currentTarget.style.display = 'none';
+                    // Hide image and show fallback
+                    const target = e.currentTarget;
+                    target.style.display = 'none';
+                    const fallback = target.nextElementSibling as HTMLElement;
+                    if (fallback) fallback.style.display = 'block';
                   }}
                 />
-              ) : (
-                <div className="text-white text-6xl font-bold drop-shadow-lg">
-                  {companyName.charAt(0)}
-                </div>
-              )}
+              ) : null}
+              {/* Fallback: Company Initial */}
+              <div 
+                className="text-white text-6xl font-bold drop-shadow-lg"
+                style={{ display: logoUrl ? 'none' : 'block' }}
+              >
+                {companyName.charAt(0)}
+              </div>
               
               {/* Floating sparkle */}
               <motion.div
