@@ -24,26 +24,27 @@ export class DatabaseIntentMatcher {
     }
 
     try {
+      // Use any type temporarily until types are regenerated
       const { data, error } = await supabase
-        .from('voice_navigation_intents')
+        .from('voice_navigation_intents' as any)
         .select('*')
         .eq('tenant_id', tenantId)
         .eq('language_code', language)
         .eq('is_active', true)
-        .order('priority', { ascending: false });
+        .order('priority', { ascending: false }) as any;
 
       if (error) throw error;
 
       if (data && data.length > 0) {
-        this.intents = data.map(row => ({
+        this.intents = data.map((row: any) => ({
           id: row.intent_id,
-          patterns: row.patterns as string[],
+          patterns: Array.isArray(row.patterns) ? row.patterns : [],
           slots: [],
-          priority: row.priority as 'high' | 'medium' | 'low',
-          offline: row.is_offline,
-          action: row.action,
+          priority: (row.priority || 'medium') as 'high' | 'medium' | 'low',
+          offline: row.is_offline !== false,
+          action: row.action || 'navigate',
           route: row.route || undefined,
-          params: row.params as Record<string, any> | undefined,
+          params: row.params || undefined,
         }));
 
         // Cache intents
@@ -63,12 +64,25 @@ export class DatabaseIntentMatcher {
   private async loadFromJSON(language: string): Promise<void> {
     try {
       const module = await import(`./intents/${language}.json`);
-      this.intents = module.default?.intents || [];
+      const intents = module.default?.intents || [];
+      // Ensure proper typing
+      this.intents = intents.map((intent: any) => ({
+        ...intent,
+        priority: intent.priority || 'medium',
+        offline: intent.offline !== false,
+        slots: intent.slots || [],
+      }));
     } catch (error) {
       console.warn(`No intent file found for language: ${language}, falling back to English`);
       try {
         const module = await import('./intents/en.json');
-        this.intents = module.default?.intents || [];
+        const intents = module.default?.intents || [];
+        this.intents = intents.map((intent: any) => ({
+          ...intent,
+          priority: intent.priority || 'medium',
+          offline: intent.offline !== false,
+          slots: intent.slots || [],
+        }));
       } catch {
         this.intents = [];
       }
