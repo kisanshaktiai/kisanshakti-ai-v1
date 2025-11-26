@@ -505,9 +505,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             },
             branding: (whiteLabel?.brand_identity as BrandingConfig) || {
               company_name: defaultTenantData.name,
-              primary_color: '#22c55e',
-              secondary_color: '#16a34a',
-              accent_color: '#84cc16'
+              // No fallback colors - let CSS defaults handle it until theme loads
             },
             theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
             pwa: whiteLabel?.pwa_config as PWAConfig,
@@ -566,11 +564,9 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               name: 'Development Mode',
               domain: domain,
               branding: {
-                company_name: 'KisanShakti',
-                primary_color: '#10b981',
-                secondary_color: '#059669',
-                accent_color: '#14b8a6'
-              },
+              company_name: 'KisanShakti',
+              // No fallback colors - let CSS defaults handle it
+            },
               features: ['lands', 'schedule', 'chat', 'market', 'weather', 'social'],
               settings: {
                 languages: ['en', 'hi'],
@@ -592,7 +588,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             domain: cachedConfig.tenant_data.domain,
             branding: (cachedConfig.white_label_config?.brand_identity as BrandingConfig) || {
               company_name: cachedConfig.tenant_data.name,
-              primary_color: '#10b981',
+              // No fallback colors - let CSS defaults handle it
             },
             theme: (cachedConfig.white_label_config?.mobile_theme || cachedConfig.white_label_config?.theme_colors) as ThemeConfig,
             features: [],
