@@ -1,0 +1,43 @@
+{
+  "intents": [
+    {
+      "id": "navigate.home",
+      "patterns": [
+        "ಮನೆ ತೋರಿಸಿ",
+        "ಮುಖ್ಯ ಪುಟ",
+        "ಮನೆಗೆ ಹೋಗು",
+        "ಡ್ಯಾಶ್‌ಬೋರ್ಡ್ ತೆರೆಯಿರಿ"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app"
+    },
+    {
+      "id": "navigate.lands",
+      "patterns": [
+        "ನನ್ನ ಭೂಮಿ",
+        "ಭೂಮಿ ತೋರಿಸಿ",
+        "ಹೊಲ ತೋರಿಸಿ",
+        "ನನ್ನ ಹೊಲಗಳು"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/lands"
+    },
+    {
+      "id": "navigate.weather",
+      "patterns": [
+        "ಹವಾಮಾನ ತೋರಿಸಿ",
+        "ಹವಾಮಾನ ಹೇಗಿದೆ",
+        "ಮಳೆ ಬರುತ್ತದೆಯೇ",
+        "ಇಂದಿನ ಹವಾಮಾನ"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/weather"
+    }
+  ]
+}
