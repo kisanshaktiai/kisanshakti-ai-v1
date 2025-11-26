@@ -87,6 +87,22 @@ export default function SplashScreen() {
     }
   };
 
+  // Show neutral loading screen until tenant theme is ready
+  if (isLoading || !tenant) {
+    return (
+      <div className="min-h-mobile-screen bg-gradient-to-br from-neutral-50 via-white to-neutral-100 flex items-center justify-center overflow-hidden">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center space-y-4"
+        >
+          <Loader2 className="w-12 h-12 animate-spin text-neutral-400 mx-auto" />
+          <p className="text-sm text-neutral-500">Loading...</p>
+        </motion.div>
+      </div>
+    );
+  }
+
   // Get branding from TenantProvider - colors are already applied to DOM via CSS variables
   const logoUrl = branding?.logo_url;
   const companyName = branding?.company_name || tenant?.name || 'KisanShakti';

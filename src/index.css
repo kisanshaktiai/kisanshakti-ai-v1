@@ -41,15 +41,15 @@
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 9%;
     
-    /* Primary - Neutral gray (will be overridden by tenant brand color) */
-    --primary: 0 0% 45%;
+    /* Primary - Truly neutral (will be immediately overridden by tenant theme) */
+    --primary: 0 0% 50%;
     --primary-foreground: 0 0% 100%;
-    --primary-hover: 0 0% 35%;
-    --primary-glow: 0 0% 60%;
-    --primary-dim: 0 0% 30%;
+    --primary-hover: 0 0% 40%;
+    --primary-glow: 0 0% 65%;
+    --primary-dim: 0 0% 35%;
     
-    /* Secondary - Quantum Purple */
-    --secondary: 270 75% 60%;
+    /* Secondary - Truly neutral (will be immediately overridden by tenant theme) */
+    --secondary: 0 0% 45%;
     --secondary-foreground: 0 0% 100%;
     
     /* Accent - Cyber Cyan */

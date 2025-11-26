@@ -23,13 +23,13 @@ export const RainfallChart: React.FC<RainfallChartProps> = ({ data, className })
         >
           <defs>
             <linearGradient id="rainfallGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#60A5FA" stopOpacity={0.5}/>
-              <stop offset="30%" stopColor="#93C5FD" stopOpacity={0.3}/>
-              <stop offset="100%" stopColor="#DBEAFE" stopOpacity={0.05}/>
+              <stop offset="0%" stopColor="hsl(var(--info))" stopOpacity={0.5}/>
+              <stop offset="30%" stopColor="hsl(var(--info))" stopOpacity={0.3}/>
+              <stop offset="100%" stopColor="hsl(var(--info))" stopOpacity={0.05}/>
             </linearGradient>
             <linearGradient id="rainfallStroke" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#2563EB" />
-              <stop offset="100%" stopColor="#60A5FA" />
+              <stop offset="0%" stopColor="hsl(var(--primary))" />
+              <stop offset="100%" stopColor="hsl(var(--info))" />
             </linearGradient>
           </defs>
           <CartesianGrid 
@@ -70,7 +70,7 @@ export const RainfallChart: React.FC<RainfallChartProps> = ({ data, className })
               marginBottom: '4px'
             }}
             itemStyle={{
-              color: '#3B82F6',
+              color: 'hsl(var(--info))',
               fontSize: '11px'
             }}
             formatter={(value: number) => [`${value.toFixed(1)} mm`, 'Rainfall']}
