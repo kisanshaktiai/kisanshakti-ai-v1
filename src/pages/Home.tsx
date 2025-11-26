@@ -27,7 +27,7 @@ import {
   CloudSnow
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { landsApi } from '@/services/landsApi';
@@ -37,7 +37,6 @@ import { HomeSkeleton } from '@/components/skeletons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { VideoHelpCard } from '@/components/home/VideoHelpCard';
-import { VideoReelsViewer } from '@/components/video/VideoReelsViewer';
 import { useVideoTutorials } from '@/hooks/useVideoTutorials';
 
 interface FeatureCard {
@@ -57,13 +56,13 @@ interface FeatureCard {
 export default function Home() {
   const { t } = useTranslation();
   const { user } = useAuthStore();
+  const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(new Date());
   const { currentWeather } = useWeather();
   const [isWeatherExpanded, setIsWeatherExpanded] = useState(true);
   const [hasAutoCollapsed, setHasAutoCollapsed] = useState(false);
   const [currentMetricIndex, setCurrentMetricIndex] = useState(0);
   const [currentActivityIndex, setCurrentActivityIndex] = useState(0);
-  const [showVideoReels, setShowVideoReels] = useState(false);
   
   // Fetch featured videos for video reels
   const { data: featuredVideos = [] } = useVideoTutorials({ category: 'Featured' });
@@ -823,17 +822,9 @@ export default function Home() {
         >
           <VideoHelpCard 
             videos={featuredVideos}
-            onClick={() => setShowVideoReels(true)} 
+            onClick={() => navigate('/app/videos')} 
           />
         </motion.div>
-
-        {/* Video Reels Viewer Modal */}
-        {showVideoReels && (
-          <VideoReelsViewer 
-            videos={featuredVideos}
-            onClose={() => setShowVideoReels(false)}
-          />
-        )}
       </motion.div>
     </div>
   );
