@@ -223,9 +223,9 @@ export default function LandDetails() {
   const soilHealthScore = getSoilHealthScore();
   
   const soilHealthData = [
-    { name: 'pH', value: land?.soil_ph ? (land.soil_ph / 14) * 100 : 0, fill: '#10b981' },
-    { name: 'Organic Carbon', value: land?.organic_carbon_percent ? land.organic_carbon_percent * 100 : 0, fill: '#f59e0b' },
-    { name: 'NPK', value: land?.nitrogen_kg_per_ha ? Math.min((land.nitrogen_kg_per_ha / 400) * 100, 100) : 0, fill: '#3b82f6' },
+    { name: 'pH', value: land?.soil_ph ? (land.soil_ph / 14) * 100 : 0, fill: 'hsl(var(--success))' },
+    { name: 'Organic Carbon', value: land?.organic_carbon_percent ? land.organic_carbon_percent * 100 : 0, fill: 'hsl(var(--warning))' },
+    { name: 'NPK', value: land?.nitrogen_kg_per_ha ? Math.min((land.nitrogen_kg_per_ha / 400) * 100, 100) : 0, fill: 'hsl(var(--info))' },
   ];
 
   const activityData = activities.reduce((acc: any[], activity) => {

@@ -112,14 +112,14 @@ export default function Profile() {
   ];
 
   const cropDistribution = [
-    { name: 'Wheat', value: 40, color: '#10b981' },
-    { name: 'Rice', value: 30, color: '#3b82f6' },
-    { name: 'Cotton', value: 20, color: '#f59e0b' },
-    { name: 'Others', value: 10, color: '#8b5cf6' },
+    { name: 'Wheat', value: 40, color: 'hsl(var(--success))' },
+    { name: 'Rice', value: 30, color: 'hsl(var(--info))' },
+    { name: 'Cotton', value: 20, color: 'hsl(var(--warning))' },
+    { name: 'Others', value: 10, color: 'hsl(var(--accent))' },
   ];
 
   const farmScore = [
-    { name: 'Farm Score', value: 78, fill: '#10b981' }
+    { name: 'Farm Score', value: 78, fill: 'hsl(var(--success))' }
   ];
 
   // Calculate profile completion
@@ -292,7 +292,7 @@ export default function Profile() {
           <CardContent>
             <ResponsiveContainer width="100%" height={150}>
               <RadialBarChart cx="50%" cy="50%" innerRadius="60%" outerRadius="90%" data={farmScore}>
-                <RadialBar dataKey="value" cornerRadius={10} fill="#10b981" />
+                <RadialBar dataKey="value" cornerRadius={10} fill="hsl(var(--success))" />
                 <text x="50%" y="50%" textAnchor="middle" dominantBaseline="middle" className="text-2xl font-bold">
                   78%
                 </text>
@@ -367,18 +367,18 @@ export default function Profile() {
             <AreaChart data={yieldData}>
               <defs>
                 <linearGradient id="colorYield" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                  <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                  <stop offset="5%" stopColor="hsl(var(--success))" stopOpacity={0.3}/>
+                  <stop offset="95%" stopColor="hsl(var(--success))" stopOpacity={0}/>
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis dataKey="month" stroke="#6b7280" fontSize={12} />
-              <YAxis stroke="#6b7280" fontSize={12} />
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis dataKey="month" className="text-muted-foreground" fontSize={12} />
+              <YAxis className="text-muted-foreground" fontSize={12} />
               <Tooltip />
               <Area 
                 type="monotone" 
                 dataKey="yield" 
-                stroke="#10b981" 
+                stroke="hsl(var(--success))" 
                 strokeWidth={2}
                 fillOpacity={1} 
                 fill="url(#colorYield)" 

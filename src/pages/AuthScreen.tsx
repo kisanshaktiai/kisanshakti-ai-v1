@@ -142,10 +142,6 @@ export default function AuthScreen() {
     );
   }
 
-  // Get branding from tenant
-  const brandName = tenant?.branding?.company_name || tenant?.name || 'KisanShakti';
-  const primaryColor = tenant?.branding?.primary_color;
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex flex-col items-center justify-center p-4 relative overflow-hidden">
       {/* Animated background elements */}

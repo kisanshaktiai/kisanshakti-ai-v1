@@ -153,9 +153,9 @@ async function buildTenantConfig(
     tagline: brandIdentity.tagline,
     logo_url: brandIdentity.logo_url,
     favicon_url: brandIdentity.favicon_url,
-    primary_color: brandIdentity.primary_color || '#10b981',
-    secondary_color: brandIdentity.secondary_color || '#059669',
-    accent_color: brandIdentity.accent_color || '#14b8a6',
+    primary_color: brandIdentity.primary_color, // No fallback - will use CSS defaults
+    secondary_color: brandIdentity.secondary_color,
+    accent_color: brandIdentity.accent_color,
     background_color: brandIdentity.background_color,
     text_color: brandIdentity.text_color,
     font_family: brandIdentity.font_family,
