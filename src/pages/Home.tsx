@@ -36,7 +36,9 @@ import { useLands } from '@/hooks/useLands';
 import { HomeSkeleton } from '@/components/skeletons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-
+import { VideoHelpCard } from '@/components/home/VideoHelpCard';
+import { VideoReelsViewer } from '@/components/video/VideoReelsViewer';
+import { useVideoTutorials } from '@/hooks/useVideoTutorials';
 
 interface FeatureCard {
   title: string;
@@ -47,6 +49,7 @@ interface FeatureCard {
   trend?: 'up' | 'down';
   trendValue?: string;
   color: string;
+  iconColor?: string;
   badge?: string;
   progress?: number;
 }
@@ -59,6 +62,11 @@ export default function Home() {
   const [isWeatherExpanded, setIsWeatherExpanded] = useState(true);
   const [hasAutoCollapsed, setHasAutoCollapsed] = useState(false);
   const [currentMetricIndex, setCurrentMetricIndex] = useState(0);
+  const [currentActivityIndex, setCurrentActivityIndex] = useState(0);
+  const [showVideoReels, setShowVideoReels] = useState(false);
+  
+  // Fetch featured videos for video reels
+  const { data: featuredVideos = [] } = useVideoTutorials({ category: 'Featured' });
 
   // Update current time every minute
   useEffect(() => {
@@ -184,6 +192,7 @@ export default function Home() {
       description: 'Connect with farmers',
       stats: '1.2k active',
       color: 'bg-secondary/10',
+      iconColor: 'text-secondary',
       badge: 'New'
     },
     {
@@ -193,6 +202,7 @@ export default function Home() {
       description: 'Crop health monitoring',
       stats: avgNdvi > 0 ? `Score: ${avgNdvi}` : 'No data',
       color: 'bg-primary/10',
+      iconColor: 'text-primary',
       progress: avgNdvi > 0 ? avgNdvi * 100 : 0
     },
     {
@@ -202,6 +212,7 @@ export default function Home() {
       description: 'Latest schemes & subsidies',
       stats: '5 Active',
       color: 'bg-success/10',
+      iconColor: 'text-success',
       badge: 'Updated'
     },
     {
@@ -211,10 +222,28 @@ export default function Home() {
       description: 'Farm performance metrics',
       stats: 'View Report',
       color: 'bg-destructive/10',
+      iconColor: 'text-destructive',
       trend: 'up',
       trendValue: '+12%'
     }
   ];
+  
+  // Auto-scroll Recent Activity every 5 seconds
+  useEffect(() => {
+    const activities = lands.length > 0 ? lands.slice(0, 5) : [
+      { id: 'default-1', name: 'No lands added yet', description: 'Add your first land to get started' },
+      { id: 'default-2', name: 'Current Weather', description: currentWeather?.description || 'Loading weather...' },
+      { id: 'default-3', name: 'Government Schemes', description: 'Check available subsidies' }
+    ];
+    
+    if (activities.length <= 1) return;
+    
+    const interval = setInterval(() => {
+      setCurrentActivityIndex((prev) => (prev + 1) % activities.length);
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [lands, currentWeather]);
 
   if (loading) {
     return <HomeSkeleton />;
@@ -647,7 +676,7 @@ export default function Home() {
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between mb-2">
                         <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center shadow-sm", feature.color)}>
-                          <Icon className="w-5 h-5 text-primary-foreground" />
+                          <Icon className={cn("w-5 h-5", feature.iconColor || "text-primary")} />
                         </div>
                         {feature.badge && (
                           <Badge variant="outline" className="text-xs">
@@ -689,83 +718,122 @@ export default function Home() {
           })}
         </motion.div>
 
-        {/* Recent Activity */}
+        {/* Recent Activity - Auto Scroll Carousel */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
         >
-          <Card className="mb-8 border-border/40 backdrop-blur-sm">
-
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <Activity className="w-5 h-5 text-primary" />
-              Recent Activity
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {lands.length > 0 ? (
-              <>
-                {lands.slice(0, 3).map((land, index) => (
-                  <div key={land.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "w-2 h-2 rounded-full",
-                        index === 0 ? "bg-primary animate-pulse" : 
-                        index === 1 ? "bg-primary" : "bg-primary"
-                      )} />
-                      <div>
-                        <p className="text-sm font-medium">{land.name || 'Unnamed Land'}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {land.area_acres} acres • {land.village || 'Location not set'}
-                        </p>
+          <Card className="mb-4 border-border/40 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Activity className="w-5 h-5 text-primary" />
+                Recent Activity
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-hidden relative">
+                <AnimatePresence mode="wait">
+                  {lands.length > 0 ? (
+                    <motion.div
+                      key={currentActivityIndex}
+                      initial={{ opacity: 0, x: 50 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -50 }}
+                      transition={{ duration: 0.5, ease: "easeInOut" }}
+                      className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-muted/30 rounded-2xl"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
+                        <div>
+                          <p className="text-sm font-medium">{lands[currentActivityIndex]?.name || 'Unnamed Land'}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {lands[currentActivityIndex]?.area_acres} acres • {lands[currentActivityIndex]?.village || 'Location not set'}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {land.current_crop || 'No crop'}
-                    </span>
-                  </div>
-                ))}
-              </>
-            ) : (
-              <>
-                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-                    <div>
-                      <p className="text-sm font-medium">No lands added yet</p>
-                      <p className="text-xs text-muted-foreground">Add your first land to get started</p>
-                    </div>
-                  </div>
-                  <Link to="/app/lands/add" className="text-xs text-primary">Add Land</Link>
-                </div>
-                {currentWeather && currentWeather.description && (
-                  <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-2 h-2 bg-primary rounded-full" />
-                      <div>
-                        <p className="text-sm font-medium">Current Weather</p>
-                        <p className="text-xs text-muted-foreground">{currentWeather.description}</p>
+                      <Badge variant="secondary" className="text-xs">
+                        {lands[currentActivityIndex]?.current_crop || 'No crop'}
+                      </Badge>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key={`default-${currentActivityIndex}`}
+                      initial={{ opacity: 0, x: 50 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -50 }}
+                      transition={{ duration: 0.5, ease: "easeInOut" }}
+                      className="flex items-center justify-between p-4 bg-gradient-to-r from-muted/50 to-muted/30 rounded-2xl"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-2.5 h-2.5 rounded-full bg-primary" />
+                        <div>
+                          {currentActivityIndex === 0 && (
+                            <>
+                              <p className="text-sm font-medium">No lands added yet</p>
+                              <p className="text-xs text-muted-foreground">Add your first land to get started</p>
+                            </>
+                          )}
+                          {currentActivityIndex === 1 && (
+                            <>
+                              <p className="text-sm font-medium">Current Weather</p>
+                              <p className="text-xs text-muted-foreground">{currentWeather?.description || 'Loading...'}</p>
+                            </>
+                          )}
+                          {currentActivityIndex === 2 && (
+                            <>
+                              <p className="text-sm font-medium">Government Schemes</p>
+                              <p className="text-xs text-muted-foreground">Check available subsidies</p>
+                            </>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <span className="text-xs text-muted-foreground">{currentWeather.temp}°C</span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 bg-primary rounded-full" />
-                    <div>
-                      <p className="text-sm font-medium">Government Schemes</p>
-                      <p className="text-xs text-muted-foreground">Check available subsidies</p>
-                    </div>
-                  </div>
-                  <Link to="/app/schemes" className="text-xs text-primary">View</Link>
+                      {currentActivityIndex === 0 && <Link to="/app/lands/add" className="text-xs text-primary">Add Land</Link>}
+                      {currentActivityIndex === 1 && currentWeather && <span className="text-xs text-muted-foreground">{Math.round(currentWeather.temp)}°C</span>}
+                      {currentActivityIndex === 2 && <Link to="/app/schemes" className="text-xs text-primary">View</Link>}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                
+                {/* Dot Indicators */}
+                <div className="flex justify-center gap-1.5 mt-3">
+                  {(lands.length > 0 ? lands.slice(0, 5) : [1, 2, 3]).map((_, idx) => (
+                    <div 
+                      key={idx}
+                      className={cn(
+                        "h-1.5 rounded-full transition-all duration-300",
+                        idx === currentActivityIndex 
+                          ? "w-4 bg-primary" 
+                          : "w-1.5 bg-muted-foreground/30"
+                      )}
+                    />
+                  ))}
                 </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
+              </div>
+            </CardContent>
+          </Card>
         </motion.div>
+
+        {/* Video Help Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="mb-8"
+        >
+          <VideoHelpCard 
+            videos={featuredVideos}
+            onClick={() => setShowVideoReels(true)} 
+          />
+        </motion.div>
+
+        {/* Video Reels Viewer Modal */}
+        {showVideoReels && (
+          <VideoReelsViewer 
+            videos={featuredVideos}
+            onClose={() => setShowVideoReels(false)}
+          />
+        )}
       </motion.div>
     </div>
   );
