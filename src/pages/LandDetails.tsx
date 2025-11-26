@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { landsApi } from '@/services/landsApi';
 import { isolatedSupabase } from '@/services/dataIsolationService';
+import { supabase } from '@/integrations/supabase/client';
 import { Progress } from '@/components/ui/progress';
 import { LandDetailsSkeleton } from '@/components/skeletons';
 import {
@@ -103,6 +104,50 @@ export default function LandDetails() {
       fetchActivities();
       fetchCropHistory();
     }
+  }, [id]);
+
+  // Real-time subscription for land data
+  useEffect(() => {
+    if (!id) return;
+
+    const landChannel = supabase
+      .channel(`land-${id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'lands',
+        filter: `id=eq.${id}`
+      }, () => {
+        console.log('🔄 Land data changed, refetching...');
+        fetchLandDetails();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(landChannel);
+    };
+  }, [id]);
+
+  // Real-time subscription for land activities
+  useEffect(() => {
+    if (!id) return;
+
+    const activitiesChannel = supabase
+      .channel(`land-activities-${id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'land_activities',
+        filter: `land_id=eq.${id}`
+      }, () => {
+        console.log('🔄 Land activities changed, refetching...');
+        fetchActivities();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(activitiesChannel);
+    };
   }, [id]);
 
   const fetchLandDetails = async () => {
@@ -272,13 +317,13 @@ export default function LandDetails() {
       {/* Modern Mobile-First Header */}
       <div className="sticky top-0 z-20 glassmorphism-strong border-b">
         <div className="container max-w-7xl">
-          <div className="flex items-center justify-between py-4">
-            {/* Back Button - Large Touch Target */}
+          <div className="flex items-center justify-between py-3">
+            {/* Back Button - Compact Touch Target */}
             <Button
               variant="ghost"
-              size="lg"
+              size="default"
               onClick={() => navigate('/app/lands')}
-              className="min-h-[48px] min-w-[48px] rounded-xl"
+              className="min-h-[40px] min-w-[40px] rounded-xl"
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
@@ -296,23 +341,23 @@ export default function LandDetails() {
               </div>
             </div>
 
-            {/* Action Buttons - Large Touch Targets */}
+            {/* Action Buttons - Compact Touch Targets */}
             <div className="flex gap-2">
               <Button 
                 variant="outline"
-                size="lg"
+                size="icon"
                 onClick={() => navigate(`/app/lands/${id}/edit`)}
-                className="min-h-[48px] min-w-[48px] rounded-xl bg-primary/5 border-primary/20 hover:bg-primary/10"
+                className="min-h-[40px] min-w-[40px] rounded-xl bg-primary/5 border-primary/20 hover:bg-primary/10"
               >
-                <Edit className="h-5 w-5 text-primary" />
+                <Edit className="h-4 w-4 text-primary" />
               </Button>
               <Button 
                 variant="outline"
-                size="lg"
+                size="icon"
                 onClick={() => setShowDeleteDialog(true)}
-                className="min-h-[48px] min-w-[48px] rounded-xl bg-destructive/5 border-destructive/20 hover:bg-destructive/10"
+                className="min-h-[40px] min-w-[40px] rounded-xl bg-destructive/5 border-destructive/20 hover:bg-destructive/10"
               >
-                <Trash2 className="h-5 w-5 text-destructive" />
+                <Trash2 className="h-4 w-4 text-destructive" />
               </Button>
             </div>
           </div>
@@ -324,7 +369,7 @@ export default function LandDetails() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {/* Total Area Card */}
           <Card className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-gradient-to-br from-card to-card/80 overflow-hidden">
-            <CardContent className="p-5 relative">
+            <CardContent className="p-4 relative">
               <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-primary/5 blur-2xl" />
               <div className="relative space-y-2">
                 <div className="flex items-center gap-2">
@@ -347,7 +392,7 @@ export default function LandDetails() {
 
           {/* Current Crop Card */}
           <Card className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-gradient-to-br from-card to-card/80 overflow-hidden">
-            <CardContent className="p-5 relative">
+            <CardContent className="p-4 relative">
               <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-success/5 blur-2xl" />
               <div className="relative space-y-2">
                 <div className="flex items-center gap-2">
@@ -372,7 +417,7 @@ export default function LandDetails() {
 
           {/* Soil Health Card */}
           <Card className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-gradient-to-br from-card to-card/80 overflow-hidden">
-            <CardContent className="p-5 relative">
+            <CardContent className="p-4 relative">
               <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-warning/5 blur-2xl" />
               <div className="relative space-y-2">
                 <div className="flex items-center gap-2">
@@ -401,7 +446,7 @@ export default function LandDetails() {
 
           {/* Irrigation Card */}
           <Card className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-gradient-to-br from-card to-card/80 overflow-hidden">
-            <CardContent className="p-5 relative">
+            <CardContent className="p-4 relative">
               <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-info/5 blur-2xl" />
               <div className="relative space-y-2">
                 <div className="flex items-center gap-2">
@@ -775,7 +820,7 @@ export default function LandDetails() {
                     <Tooltip />
                     <Legend />
                     <Line yAxisId="left" type="monotone" dataKey="yield" stroke="hsl(var(--primary))" name="Yield" />
-                    <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="#10b981" name="Revenue (₹)" />
+                    <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="hsl(var(--success))" name="Revenue (₹)" />
                   </LineChart>
                 </ResponsiveContainer>
               )}

@@ -220,7 +220,7 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
         <Card className="overflow-hidden cursor-pointer group relative bg-card hover:shadow-2xl transition-all duration-300 border-border/50 h-full flex flex-col">
           {/* Map Image Section */}
           <div className="relative h-40 sm:h-48 overflow-hidden bg-muted">
-            <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent z-10" />
+            <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-background/20 to-transparent z-10" />
             
             {imageLoading && (
               <Skeleton className="absolute inset-0" />
@@ -277,13 +277,13 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
             </div>
             
             {/* Utilized Percentage Badge */}
-            <Badge className="absolute top-2 left-2 bg-primary/90 backdrop-blur text-primary-foreground border-primary/20 z-20 text-xs sm:text-sm">
+            <Badge className="absolute top-2 left-2 bg-black/70 text-white border-white/20 backdrop-blur-sm shadow-lg z-20 text-xs sm:text-sm">
               <Percent className="h-3 w-3 mr-1" />
               {land.current_crop ? '85% Utilized' : '0% Utilized'}
             </Badge>
             
             {/* Area Badge */}
-            <Badge className="absolute bottom-2 left-2 bg-background/90 backdrop-blur border-primary/20 z-20 text-xs sm:text-sm">
+            <Badge className="absolute bottom-2 left-2 bg-black/70 text-white border-white/20 backdrop-blur-sm shadow-lg z-20 text-xs sm:text-sm">
               <Mountain className="h-3 w-3 mr-1" />
               {formatArea()}
             </Badge>
