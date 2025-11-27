@@ -107,11 +107,22 @@ export default function SplashScreen() {
   const logoUrl = branding?.logo_url;
   const companyName = branding?.company_name || tenant?.name || 'KisanShakti';
   const tagline = branding?.tagline || 'Empowering Farmers with Technology';
-  const appVersion = '2.0';
+  const appVersion = '2.1.0';
+  
+  // Use tenant background color if available, otherwise use CSS variable
+  const backgroundColor = branding?.background_color 
+    ? (branding.background_color.startsWith('#') 
+        ? branding.background_color 
+        : `hsl(${branding.background_color})`)
+    : undefined;
   
   return (
     <div 
-      className="min-h-screen flex flex-col items-center justify-center p-8 relative overflow-hidden bg-gradient-to-br from-background via-background to-muted/30"
+      className="min-h-screen flex flex-col items-center justify-center p-8 relative overflow-hidden"
+      style={{ 
+        backgroundColor: backgroundColor || undefined,
+        background: !backgroundColor ? 'hsl(var(--background))' : undefined
+      }}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >

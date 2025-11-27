@@ -194,8 +194,12 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // Fallback to branding colors
     if (branding.primary_color) {
-      root.style.setProperty('--primary', ensureHSL(branding.primary_color));
+      const primaryHSL = ensureHSL(branding.primary_color);
+      root.style.setProperty('--primary', primaryHSL);
       root.style.setProperty('--primary-foreground', '0 0% 100%');
+      
+      // Cache primary color in HSL format for loader (with version)
+      localStorage.setItem('tenant_primary_color', `hsl(${primaryHSL})`);
     }
 
     if (branding.secondary_color) {
@@ -236,17 +240,32 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.log('🌐 [TenantProvider] Current URL:', window.location.href);
       console.log('🔧 [TenantProvider] Environment:', env.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION');
 
-      // Check localStorage cache first (1 hour TTL)
+      // Check localStorage cache first (5 minutes TTL for faster updates)
+      const APP_VERSION = '2.1.0'; // Match with index.html version
+      const cachedVersion = localStorage.getItem('app_version');
+      
+      // Clear cache if version changed
+      if (cachedVersion !== APP_VERSION) {
+        console.log('🔄 [TenantProvider] App version changed, clearing cache...');
+        localStorage.removeItem('tenant_config_cache');
+        localStorage.removeItem('tenant_primary_color');
+        localStorage.setItem('app_version', APP_VERSION);
+      }
+      
       const cachedTenant = localStorage.getItem('tenant_config_cache');
       if (cachedTenant) {
         try {
           const parsed = JSON.parse(cachedTenant);
-          if (Date.now() - parsed.timestamp < 3600000) { // 1 hour cache
+          if (Date.now() - parsed.timestamp < 300000) { // 5 minutes cache (faster updates)
             console.log('📦 [TenantProvider] Using cached tenant config');
             setTenant(parsed.data);
             tenantIsolationService.setTenantContext(parsed.data.id, domain);
             applyThemeToDOM(parsed.data.branding, parsed.data.theme);
+            setLastUpdated(new Date(parsed.timestamp));
+            setIsLoading(false);
             return;
+          } else {
+            console.log('⏰ [TenantProvider] Cache expired, fetching fresh config');
           }
         } catch (e) {
           console.warn('⚠️ [TenantProvider] Failed to parse cache:', e);
