@@ -25,8 +25,15 @@
     <meta name="twitter:description" content="Empowering Indian farmers digitally" />
     <meta name="twitter:image" content="/og-image.png" />
     
-    <!-- Manifest -->
-    <link rel="manifest" id="app-manifest" />
+    <!-- Manifest - Dynamically loaded for tenant branding -->
+    <link rel="manifest" id="app-manifest" href="/manifest.json" crossorigin="use-credentials" />
+    
+    <!-- Android/Chrome PWA -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    
+    <!-- Microsoft Windows/Edge PWA -->
+    <meta name="msapplication-TileColor" content="#22c55e" />
+    <meta name="msapplication-tap-highlight" content="no" />
   </head>
 
   <body>
