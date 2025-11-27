@@ -14,6 +14,7 @@ declare global {
 
 // Signal that React is loaded
 window.__REACT_LOADED__ = true;
+window.dispatchEvent(new Event('__REACT_LOADED__'));
 
 // Update manifest link dynamically with tenant-specific manifest
 const updateManifestLink = async () => {
@@ -35,19 +36,24 @@ updateManifestLink();
 
 const rootElement = document.getElementById("root")!;
 
-// Remove initial loader when React is ready
+// Remove initial loader when React is ready (minimum 800ms display for animations)
 const removeInitialLoader = () => {
-  const loader = document.getElementById('initial-loader');
+  const loader = document.getElementById('ks-main-loader');
   if (loader) {
-    loader.style.opacity = '0';
-    loader.style.transition = 'opacity 0.3s ease-out';
-    setTimeout(() => loader.remove(), 300);
+    loader.classList.add('fade-out');
+    setTimeout(() => loader.remove(), 500);
   }
 };
 
 createRoot(rootElement).render(<App />);
 
-// Remove loader after first paint
+// Signal React is ready and remove loader after minimum animation time
+const minDisplayTime = 800; // Minimum time to show HTML loader animations
+const startTime = performance.now();
+
 requestAnimationFrame(() => {
-  setTimeout(removeInitialLoader, 100);
+  const elapsedTime = performance.now() - startTime;
+  const remainingTime = Math.max(0, minDisplayTime - elapsedTime);
+  
+  setTimeout(removeInitialLoader, remainingTime);
 });

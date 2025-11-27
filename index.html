@@ -1478,21 +1478,25 @@
       document.addEventListener('DOMContentLoaded', () => {
         createParticles();
 
-        // Start animation rotation
+        // Start animation rotation immediately
         setTimeout(() => {
           rotateScenes();
         }, 500);
 
-        // Simulate loading completion (remove this in production)
-        setTimeout(() => {
+        // Fallback timeout if React fails to load (10 seconds)
+        const fallbackTimeout = setTimeout(() => {
+          console.warn('⚠️ React loader timeout - removing HTML loader');
           const loader = document.getElementById('ks-main-loader');
-          loader.classList.add('fade-out');
+          if (loader && loader.style.display !== 'none') {
+            loader.classList.add('fade-out');
+            setTimeout(() => loader.remove(), 500);
+          }
+        }, 10000);
 
-          setTimeout(() => {
-            loader.style.display = 'none';
-            // Your main app initialization here
-          }, 500);
-        }, 25000); // 25 seconds to show all animations
+        // Clear fallback if React successfully loads
+        window.addEventListener('__REACT_LOADED__', () => {
+          clearTimeout(fallbackTimeout);
+        });
       });
 
       // Performance optimization: Reduce particles on slower devices
