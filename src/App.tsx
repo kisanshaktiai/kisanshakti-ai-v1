@@ -75,7 +75,7 @@ const queryClient = new QueryClient({
 });
 
 function AppInitializer({ children }: { children: React.ReactNode }) {
-  const { tenant, isLoading: tenantLoading } = useTenant();
+  const { tenant, branding, isLoading: tenantLoading } = useTenant();
   const { checkAuth, requirePin, session } = useAuthStore();
   const { currentLanguage } = useLanguageStore();
   const { permissionStatus, requestPermission } = useLocationPermission();
@@ -140,6 +140,11 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         // STEP 1: Set tenant isolation context for all services (fast)
         setCurrentStep('Preparing your workspace...');
         tenantIsolationService.setTenantContext(tenant.id, currentDomain);
+        
+        // Cache tenant primary color for initial loader
+        if (branding?.primary_color) {
+          localStorage.setItem('tenant_primary_color', branding.primary_color);
+        }
         
         // STEP 2: Initialize tenant-scoped local storage (fast)
         await localDB.initializeWithTenant(tenant.id);

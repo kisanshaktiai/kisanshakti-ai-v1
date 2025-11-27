@@ -7,12 +7,11 @@ import { Loader2, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { AgriSplashAnimation } from '@/components/splash/AgriSplashAnimation';
 
 export default function SplashScreen() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { tenant, branding, splashScreens, isLoading, error } = useTenant();
+  const { tenant, branding, isLoading, error } = useTenant();
   const { checkAuth, isAuthenticated } = useAuthStore();
   const { markSplashCompleted, hasCompletedSplash, hasSelectedLanguage } = useAuthFlowStore();
   const [isReady, setIsReady] = useState(false);
@@ -146,7 +145,7 @@ export default function SplashScreen() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col items-center justify-center z-10">
         <div className="text-center space-y-8">
-          {/* Agricultural Animation - Rotates on each load */}
+          {/* App Logo */}
           <motion.div 
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -157,7 +156,32 @@ export default function SplashScreen() {
               duration: 0.8 
             }}
           >
-            <AgriSplashAnimation splashConfig={splashScreens || undefined} />
+            <div 
+              className="w-32 h-32 rounded-3xl flex items-center justify-center mb-6 shadow-2xl mx-auto"
+              style={{
+                background: `linear-gradient(135deg, ${branding?.primary_color || 'hsl(142, 76%, 36%)'} 0%, ${branding?.secondary_color || 'hsl(142, 76%, 26%)'} 100%)`,
+                backdropFilter: 'blur(10px)',
+                border: '3px solid rgba(255, 255, 255, 0.2)'
+              }}
+            >
+              {logoUrl ? (
+                <img 
+                  src={logoUrl} 
+                  alt={companyName} 
+                  className="w-20 h-20 object-contain"
+                />
+              ) : (
+                <svg 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="white" 
+                  strokeWidth="2"
+                  className="w-16 h-16"
+                >
+                  <path d="M12 2v20M2 12h20M6.5 6.5l11 11M6.5 17.5l11-11" />
+                </svg>
+              )}
+            </div>
           </motion.div>
 
           {/* App Name */}
