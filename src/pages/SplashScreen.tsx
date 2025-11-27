@@ -18,7 +18,7 @@ export default function SplashScreen() {
   const [startX, setStartX] = useState(0);
 
   useEffect(() => {
-    console.log('🚀 [SplashScreen] Tenant data:', { 
+    console.log('🚀 [SplashScreen] Mounted. Tenant data:', { 
       hasTenant: !!tenant, 
       hasBranding: !!branding,
       isLoading,
@@ -31,6 +31,12 @@ export default function SplashScreen() {
       if (isLoading || !tenant) {
         console.log('⏳ [SplashScreen] Waiting for tenant to load...');
         return;
+      }
+
+      // Once tenant is loaded, remove HTML loader
+      if (window.__removeHtmlLoader) {
+        console.log('🎯 [SplashScreen] Tenant loaded, removing HTML loader');
+        window.__removeHtmlLoader();
       }
 
       // Check if we're in development mode
@@ -53,11 +59,11 @@ export default function SplashScreen() {
       // Quick ready state
       setTimeout(() => {
         setIsReady(true);
-      }, 800);
+      }, 500);
     };
 
     initializeApp();
-  }, [tenant, isLoading, checkAuth]);
+  }, [tenant, isLoading, checkAuth, error]);
 
   const handleContinue = () => {
     markSplashCompleted();
@@ -87,9 +93,13 @@ export default function SplashScreen() {
     }
   };
 
-  // If tenant is still loading, return null - HTML loader is already showing
+  // Show minimal content while tenant loads (HTML loader still visible behind)
   if (isLoading || !tenant) {
-    return null;
+    return (
+      <div className="min-h-screen bg-background" style={{ opacity: 0 }}>
+        {/* Hidden placeholder to prevent blank screen */}
+      </div>
+    );
   }
 
   // Get branding from TenantProvider - colors are already applied to DOM via CSS variables
