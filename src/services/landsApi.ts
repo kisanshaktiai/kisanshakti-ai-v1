@@ -36,6 +36,14 @@ interface LandData {
 
 class LandsApiService {
   private getHeaders(): HeadersInit {
+    // Validate isolation context before making API calls
+    const { tenantId, farmerId, isValid } = dataIsolation.getIsolationContext();
+    
+    if (!isValid || !tenantId || !farmerId) {
+      console.error('[LandsAPI] ❌ Invalid context:', { tenantId, farmerId, isValid });
+      throw new Error('Authentication required: Please ensure you are logged in and tenant is loaded');
+    }
+    
     // Use centralized data isolation service for headers
     const headers = dataIsolation.getIsolationHeaders();
     
