@@ -111,174 +111,149 @@ export default function SplashScreen() {
   
   return (
     <div 
-      className="min-h-screen flex flex-col items-center justify-between p-8 relative overflow-hidden bg-gradient-to-br from-primary via-primary-hover to-secondary"
+      className="min-h-screen flex flex-col items-center justify-center p-8 relative overflow-hidden bg-gradient-to-br from-background via-background to-muted/30"
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {[...Array(6)].map((_, i) => (
-          <motion.div
-            key={i}
-            className="absolute rounded-full bg-white/5"
-            style={{
-              width: `${Math.random() * 200 + 100}px`,
-              height: `${Math.random() * 200 + 100}px`,
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-            }}
-            animate={{
-              y: [0, Math.random() * 50 - 25],
-              x: [0, Math.random() * 50 - 25],
-              scale: [1, 1.1, 1],
-              opacity: [0.1, 0.2, 0.1],
-            }}
-            transition={{
-              duration: 8 + Math.random() * 4,
-              repeat: Infinity,
-              ease: "easeInOut",
+      {/* Subtle Grid Background */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--border))_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border))_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_50%,black_40%,transparent_100%)] opacity-20" />
+      
+      {/* Main Content */}
+      <div className="flex flex-col items-center justify-center z-10 max-w-md mx-auto space-y-12">
+        {/* App Logo with Glass Morphism */}
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.8, y: 20 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ 
+            type: "spring", 
+            stiffness: 200, 
+            damping: 20,
+            duration: 0.6
+          }}
+          className="relative"
+        >
+          {/* Glow Effect */}
+          <div 
+            className="absolute inset-0 rounded-[2rem] blur-2xl opacity-20"
+            style={{ 
+              background: `hsl(var(--primary))`,
+              transform: 'scale(1.1)'
             }}
           />
-        ))}
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col items-center justify-center z-10">
-        <div className="text-center space-y-8">
-          {/* App Logo */}
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ 
-              type: "spring", 
-              stiffness: 150, 
-              damping: 15,
-              duration: 0.8 
-            }}
-          >
-            <div 
-              className="w-32 h-32 rounded-3xl flex items-center justify-center mb-6 shadow-2xl mx-auto"
-              style={{
-                background: `linear-gradient(135deg, ${branding?.primary_color || 'hsl(142, 76%, 36%)'} 0%, ${branding?.secondary_color || 'hsl(142, 76%, 26%)'} 100%)`,
-                backdropFilter: 'blur(10px)',
-                border: '3px solid rgba(255, 255, 255, 0.2)'
-              }}
-            >
-              {logoUrl ? (
-                <img 
-                  src={logoUrl} 
-                  alt={companyName} 
-                  className="w-20 h-20 object-contain"
-                />
-              ) : (
-                <svg 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="white" 
-                  strokeWidth="2"
-                  className="w-16 h-16"
-                >
-                  <path d="M12 2v20M2 12h20M6.5 6.5l11 11M6.5 17.5l11-11" />
-                </svg>
-              )}
-            </div>
-          </motion.div>
-
-          {/* App Name */}
-          <motion.div 
-            className="space-y-3"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.6 }}
-          >
-            <h1 className="text-4xl font-bold text-white drop-shadow-lg tracking-tight">
-              {companyName}
-            </h1>
-            <p className="text-white/90 text-base px-8 font-medium">
-              {tagline}
-            </p>
-          </motion.div>
-
-          {/* Loading or Ready State */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.6 }}
-          >
-            {error ? (
-              <div className="text-warning-foreground text-sm px-8 bg-white/10 backdrop-blur-sm rounded-full py-3 border border-white/20">
-                {error.message || 'Loading error'}
-              </div>
-            ) : !isReady ? (
-              <div className="flex items-center justify-center space-x-3 text-white/80 bg-white/10 backdrop-blur-sm rounded-full px-6 py-3 border border-white/20">
-                <Loader2 className="w-5 h-5 animate-spin" />
-                <span className="font-medium">
-                  {t('common.loading') || 'Initializing...'}
-                </span>
-              </div>
+          
+          {/* Logo Container with White Background */}
+          <div className="relative w-28 h-28 rounded-[2rem] bg-white shadow-2xl flex items-center justify-center border border-border/50 overflow-hidden">
+            {logoUrl ? (
+              <img 
+                src={logoUrl} 
+                alt={companyName} 
+                className="w-16 h-16 object-contain"
+              />
             ) : (
-              <div className="space-y-5">
-                <motion.div
-                  initial={{ scale: 0.9, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: 0.8, type: "spring", stiffness: 200 }}
-                >
-                  <Button
-                    onClick={handleContinue}
-                    variant="pill-gradient"
-                    size="lg"
-                    className="bg-white/20 hover:bg-white/30 text-white border-white/40 backdrop-blur-md shadow-2xl hover:shadow-[0_0_40px_rgba(255,255,255,0.4)] group min-w-[220px]"
-                  >
-                    {t('common.getStarted') || 'Get Started'}
-                    <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
-                  </Button>
-                </motion.div>
-                
-                <motion.p 
-                  className="text-white/70 text-sm font-medium flex items-center justify-center gap-2"
-                  animate={{ x: [-5, 5, -5] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-                >
-                  <span>←</span>
-                  {t('common.swipeLeft') || 'Swipe left to continue'}
-                </motion.p>
-              </div>
+              <svg 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                className="w-14 h-14"
+              >
+                <path 
+                  d="M12 2L2 7v10c0 5.5 3.8 10.7 10 12 6.2-1.3 10-6.5 10-12V7l-10-5z" 
+                  fill="hsl(var(--primary))"
+                  opacity="0.1"
+                />
+                <path 
+                  d="M12 2L2 7v10c0 5.5 3.8 10.7 10 12 6.2-1.3 10-6.5 10-12V7l-10-5z" 
+                  stroke="hsl(var(--primary))"
+                  strokeWidth="2"
+                  fill="none"
+                />
+                <path 
+                  d="M8 12l3 3 5-6" 
+                  stroke="hsl(var(--primary))"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
             )}
-          </motion.div>
-        </div>
-      </div>
+          </div>
+        </motion.div>
 
-      {/* Bottom Section */}
-      <motion.div 
-        className="space-y-6 z-10"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 1 }}
-      >
-        {/* Progress Dots */}
-        <div className="flex justify-center space-x-3">
-          {[1, 0.5, 0.3, 0.2].map((opacity, i) => (
-            <motion.div
-              key={i}
-              className="w-2.5 h-2.5 rounded-full bg-white shadow-lg"
-              style={{ opacity }}
-              animate={{
-                scale: i === 0 ? [1, 1.3, 1] : 1,
-              }}
-              transition={{
-                duration: 1.5,
-                repeat: Infinity,
-                delay: i * 0.2,
-              }}
-            />
-          ))}
-        </div>
-        
-        {/* Version */}
-        <div className="text-center text-white/60 text-xs font-medium tracking-wider">
-          VERSION {appVersion}
-        </div>
-      </motion.div>
+        {/* App Name & Tagline */}
+        <motion.div 
+          className="text-center space-y-3"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.6 }}
+        >
+          <h1 className="text-4xl font-bold text-foreground tracking-tight">
+            {companyName}
+          </h1>
+          <p className="text-muted-foreground text-base font-medium max-w-xs mx-auto">
+            {tagline}
+          </p>
+        </motion.div>
+
+        {/* Loading or Ready State */}
+        <motion.div
+          className="w-full"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+        >
+          {error ? (
+            <div className="text-warning-foreground text-sm text-center px-6 py-4 bg-warning/10 border border-warning/20 rounded-2xl backdrop-blur-sm">
+              {error.message || 'Loading error'}
+            </div>
+          ) : !isReady ? (
+            <div className="flex items-center justify-center space-x-3 text-muted-foreground px-6 py-4 bg-muted/50 rounded-2xl backdrop-blur-sm border border-border/50">
+              <Loader2 className="w-5 h-5 animate-spin text-primary" />
+              <span className="font-medium">
+                {t('common.loading') || 'Initializing...'}
+              </span>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <motion.div
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ delay: 0.6, type: "spring", stiffness: 200 }}
+              >
+                <Button
+                  onClick={handleContinue}
+                  size="lg"
+                  className="w-full bg-primary hover:bg-primary-hover text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-300 group rounded-2xl h-14 text-base font-semibold"
+                >
+                  {t('common.getStarted') || 'Get Started'}
+                  <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
+                </Button>
+              </motion.div>
+              
+              <motion.p 
+                className="text-muted-foreground text-sm text-center font-medium"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.8 }}
+              >
+                {t('common.swipeLeft') || 'Swipe left to continue'} →
+              </motion.p>
+            </div>
+          )}
+        </motion.div>
+
+        {/* Version Badge */}
+        <motion.div 
+          className="absolute bottom-8"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1 }}
+        >
+          <div className="px-4 py-2 bg-muted/50 backdrop-blur-sm border border-border/50 rounded-full">
+            <span className="text-xs font-medium text-muted-foreground tracking-wider">
+              VERSION {appVersion}
+            </span>
+          </div>
+        </motion.div>
+      </div>
     </div>
   );
 }
