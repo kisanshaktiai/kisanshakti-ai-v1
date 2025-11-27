@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/stores/authStore';
 import { useAuthFlowStore } from '@/stores/authFlowStore';
-import { Loader2, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
@@ -87,20 +87,9 @@ export default function SplashScreen() {
     }
   };
 
-  // Show neutral loading screen until tenant theme is ready
+  // Show nothing while tenant is loading - let index.html loader show
   if (isLoading || !tenant) {
-    return (
-      <div className="min-h-mobile-screen bg-gradient-to-br from-neutral-50 via-white to-neutral-100 flex items-center justify-center overflow-hidden">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="text-center space-y-4"
-        >
-          <Loader2 className="w-12 h-12 animate-spin text-neutral-400 mx-auto" />
-          <p className="text-sm text-neutral-500">Loading...</p>
-        </motion.div>
-      </div>
-    );
+    return null;
   }
 
   // Get branding from TenantProvider - colors are already applied to DOM via CSS variables
@@ -217,7 +206,7 @@ export default function SplashScreen() {
             </div>
           ) : !isReady ? (
             <div className="flex items-center justify-center space-x-3 text-muted-foreground px-6 py-4 bg-muted/50 rounded-2xl backdrop-blur-sm border border-border/50">
-              <Loader2 className="w-5 h-5 animate-spin text-primary" />
+              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               <span className="font-medium">
                 {t('common.loading') || 'Initializing...'}
               </span>

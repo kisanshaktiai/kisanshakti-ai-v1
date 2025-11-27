@@ -9,6 +9,8 @@ import "@/utils/debugAuth";
 declare global {
   interface Window {
     __REACT_LOADED__?: boolean;
+    __TENANT_LOADED__?: boolean;
+    __TENANT_BRANDING__?: any;
   }
 }
 
@@ -35,19 +37,5 @@ updateManifestLink();
 
 const rootElement = document.getElementById("root")!;
 
-// Remove initial loader when React is ready
-const removeInitialLoader = () => {
-  const loader = document.getElementById('initial-loader');
-  if (loader) {
-    loader.style.opacity = '0';
-    loader.style.transition = 'opacity 0.3s ease-out';
-    setTimeout(() => loader.remove(), 300);
-  }
-};
-
+// Signal that React is mounting (loader removal is handled by index.html event listener)
 createRoot(rootElement).render(<App />);
-
-// Remove loader after first paint
-requestAnimationFrame(() => {
-  setTimeout(removeInitialLoader, 100);
-});

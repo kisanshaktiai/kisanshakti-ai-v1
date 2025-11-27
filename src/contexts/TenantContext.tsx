@@ -5,6 +5,14 @@ import { tenantIsolationService } from '@/services/tenantIsolationService';
 import { resetTenantStores } from '@/utils/resetStores';
 import { getEnvironment, logEnvironmentInfo } from '@/utils/environment';
 
+// Extend Window interface
+declare global {
+  interface Window {
+    __TENANT_LOADED__?: boolean;
+    __TENANT_BRANDING__?: any;
+  }
+}
+
 // ============= Types =============
 
 export interface BrandingConfig {
@@ -324,6 +332,11 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           console.log('✅ [TenantProvider] Applying theme to DOM with branding and theme');
           applyThemeToDOM(config.branding, config.theme);
           setLastUpdated(new Date());
+          
+          // Signal to index.html loader that tenant is ready
+          window.__TENANT_LOADED__ = true;
+          window.__TENANT_BRANDING__ = config.branding;
+          console.log('🎯 [TenantProvider] Tenant loaded signal sent to loader');
 
           // Cache for offline in IndexedDB
           await localDB.saveTenantConfig(config.id, { 
@@ -420,7 +433,12 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               domain
             });
 
+            // Signal tenant ready
+            window.__TENANT_LOADED__ = true;
+            window.__TENANT_BRANDING__ = config.branding;
+            
             console.log('✅ [TenantProvider] Tenant loaded:', config.name);
+            console.log('🎯 [TenantProvider] Tenant loaded signal sent to loader');
             return;
           }
         }
@@ -479,7 +497,12 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             domain
           });
 
+          // Signal tenant ready
+          window.__TENANT_LOADED__ = true;
+          window.__TENANT_BRANDING__ = config.branding;
+
           console.log('✅ [TenantProvider] Tenant loaded:', config.name);
+          console.log('🎯 [TenantProvider] Tenant loaded signal sent to loader');
           return;
         }
       }
@@ -556,6 +579,11 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             data: defaultTenant,
             timestamp: Date.now()
           }));
+          
+          // Signal tenant ready
+          window.__TENANT_LOADED__ = true;
+          window.__TENANT_BRANDING__ = defaultTenant.branding;
+          console.log('🎯 [TenantProvider] Default tenant loaded signal sent to loader');
           
           return;
         } else {
