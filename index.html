@@ -42,8 +42,7 @@
       <style>
         :root {
           --loader-primary: #10b981;
-          --loader-dark: #059669;
-          --loader-light: #34d399;
+          --loader-accent: #34d399;
         }
         
         .app-loader {
@@ -53,9 +52,9 @@
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          background: linear-gradient(135deg, var(--loader-primary) 0%, var(--loader-dark) 100%);
+          background: var(--loader-primary);
           z-index: 9999;
-          animation: fadeIn 0.2s ease-out;
+          animation: fadeIn 0.3s ease-out;
         }
         @keyframes fadeIn {
           from { opacity: 0; }
@@ -100,7 +99,7 @@
           display: block;
         }
         
-        /* Animation 1: Seed to Sprout */
+        /* Animation 1: Seed to Sprout - Enhanced with glow */
         .anim-seed-sprout .soil {
           position: absolute;
           bottom: 0;
@@ -108,9 +107,10 @@
           transform: translateX(-50%);
           width: 140px;
           height: 40px;
-          background: #92400e;
+          background: #78350f;
           border-radius: 20px 20px 0 0;
           animation: soil-appear 0.5s ease-out forwards;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
         }
         .anim-seed-sprout .seed {
           position: absolute;
@@ -122,6 +122,7 @@
           background: #d97706;
           border-radius: 50%;
           animation: seed-crack 1s 0.5s ease-out forwards;
+          box-shadow: 0 2px 8px rgba(217, 119, 6, 0.4);
         }
         .anim-seed-sprout .stem {
           position: absolute;
@@ -130,16 +131,18 @@
           transform: translateX(-50%);
           width: 4px;
           height: 0;
-          background: var(--loader-primary);
+          background: linear-gradient(180deg, var(--loader-accent), var(--loader-primary));
           animation: stem-grow 1.5s 1s ease-out forwards;
+          filter: drop-shadow(0 0 8px rgba(52, 211, 153, 0.6));
         }
         .anim-seed-sprout .leaf {
           position: absolute;
           width: 20px;
           height: 30px;
-          background: var(--loader-primary);
+          background: var(--loader-accent);
           border-radius: 0 100% 0 100%;
           opacity: 0;
+          filter: drop-shadow(0 2px 6px rgba(52, 211, 153, 0.4));
         }
         .anim-seed-sprout .leaf-left {
           top: 20px;
@@ -174,18 +177,21 @@
         .anim-tractor .tractor-body {
           width: 35px;
           height: 25px;
-          background: var(--loader-primary);
+          background: linear-gradient(135deg, var(--loader-accent), var(--loader-primary));
           border-radius: 5px;
           position: relative;
+          box-shadow: 0 4px 12px rgba(52, 211, 153, 0.4);
         }
         .anim-tractor .tractor-cabin {
           width: 20px;
           height: 15px;
-          background: var(--loader-dark);
+          background: rgba(255, 255, 255, 0.2);
+          backdrop-filter: blur(10px);
           position: absolute;
           top: -15px;
           right: 5px;
           border-radius: 3px;
+          border: 1px solid rgba(255, 255, 255, 0.3);
         }
         .anim-tractor .wheel {
           position: absolute;
@@ -232,9 +238,10 @@
           position: absolute;
           bottom: 40px;
           width: 6px;
-          background: var(--loader-primary);
+          background: linear-gradient(180deg, var(--loader-accent), var(--loader-primary));
           transform-origin: bottom;
           animation: crop-grow 2s ease-out forwards;
+          filter: drop-shadow(0 0 6px rgba(52, 211, 153, 0.5));
         }
         .anim-water .crop-1 { left: 60px; height: 0; animation-delay: 0.5s; }
         .anim-water .crop-2 { left: 90px; height: 0; animation-delay: 0.8s; }
@@ -252,13 +259,13 @@
         .anim-water .drop-2 { top: 20px; left: 90px; animation-delay: 0.3s; }
         .anim-water .drop-3 { top: 20px; left: 120px; animation-delay: 0.6s; }
         
-        /* Animation 4: Sunrise Fields */
+        /* Animation 4: Sunrise Fields - Enhanced with glow */
         .anim-sunrise .field {
           position: absolute;
           bottom: 0;
           width: 100%;
           height: 60px;
-          background: linear-gradient(180deg, var(--loader-primary) 0%, #92400e 100%);
+          background: linear-gradient(180deg, var(--loader-accent) 0%, #78350f 100%);
           border-radius: 10px 10px 0 0;
         }
         .anim-sunrise .sun {
@@ -268,9 +275,10 @@
           transform: translateX(-50%);
           width: 80px;
           height: 80px;
-          background: radial-gradient(circle, #fbbf24 0%, #f59e0b 100%);
+          background: radial-gradient(circle, #fde047 0%, #fbbf24 50%, #f59e0b 100%);
           border-radius: 50%;
           animation: sun-rise 3s ease-out forwards;
+          box-shadow: 0 0 40px rgba(251, 191, 36, 0.6), 0 0 80px rgba(251, 191, 36, 0.3);
         }
         .anim-sunrise .ray {
           position: absolute;
@@ -490,19 +498,30 @@
         // Increment for next time
         localStorage.setItem(STORAGE_KEY, nextIndex.toString());
         
-        // Apply cached tenant color if available
+        // Apply cached tenant color if available (with cache version check)
+        const APP_VERSION = '2.1.0'; // Increment this to force cache clear
+        const cachedVersion = localStorage.getItem('app_version');
+        
+        // Clear cache if version changed
+        if (cachedVersion !== APP_VERSION) {
+          console.log('🔄 App version changed, clearing caches...');
+          localStorage.removeItem(COLOR_CACHE_KEY);
+          localStorage.removeItem('tenant_config_cache');
+          localStorage.setItem('app_version', APP_VERSION);
+        }
+        
         const cachedColor = localStorage.getItem(COLOR_CACHE_KEY);
         if (cachedColor) {
           console.log('🎨 Applying cached color:', cachedColor);
           document.documentElement.style.setProperty('--loader-primary', cachedColor);
-          // Calculate darker shade for gradient
+          // Calculate lighter shade for accent
           const hslMatch = cachedColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
           if (hslMatch) {
-            const [, h, s, l] = hslMatch;
-            const darkerL = Math.max(0, parseInt(l) - 10);
-            const lighterL = Math.min(100, parseInt(l) + 15);
-            document.documentElement.style.setProperty('--loader-dark', `hsl(${h}, ${s}%, ${darkerL}%)`);
-            document.documentElement.style.setProperty('--loader-light', `hsl(${h}, ${s}%, ${lighterL}%)`);
+            const h = hslMatch[1];
+            const s = hslMatch[2];
+            const l = parseInt(hslMatch[3]);
+            const lighterL = Math.min(l + 15, 90);
+            document.documentElement.style.setProperty('--loader-accent', `hsl(${h}, ${s}%, ${lighterL}%)`);
           }
         }
       })();
