@@ -45,6 +45,15 @@ export interface PWAConfig {
   background_color?: string;
 }
 
+export interface SplashScreenConfig {
+  enabled?: boolean;
+  active_animations?: number[]; // [1,2,3,4,5] - which animations to show
+  rotation_mode?: 'sequential' | 'random';
+  custom_message?: string;
+  show_logo?: boolean;
+  animation_duration?: number;
+}
+
 export interface TenantConfig {
   id: string;
   name: string;
@@ -56,6 +65,7 @@ export interface TenantConfig {
   branding: BrandingConfig;
   theme?: ThemeConfig;
   pwa?: PWAConfig;
+  splashScreens?: SplashScreenConfig;
   features: string[];
   settings: {
     languages: string[];
@@ -69,6 +79,7 @@ export interface TenantContextValue {
   tenant: TenantConfig | null;
   branding: BrandingConfig | null;
   theme: ThemeConfig | null;
+  splashScreens: SplashScreenConfig | null;
   features: string[];
   isLoading: boolean;
   error: Error | null;
@@ -282,6 +293,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             branding: apiConfig.branding,
             theme: apiConfig.theme,
             pwa: apiConfig.pwa,
+            splashScreens: apiConfig.splash_screens,
             features: apiConfig.features,
             settings: apiConfig.settings,
           };
@@ -355,27 +367,28 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               .eq('tenant_id', tenantData.id)
               .maybeSingle();
 
-            const config: TenantConfig = {
-              id: tenantData.id,
-              name: tenantData.name,
-              slug: tenantData.slug || undefined,
-              domain,
-              subdomain: tenantData.subdomain || undefined,
-              custom_domain: tenantData.custom_domain || undefined,
-              status: tenantData.status || 'active',
+          const config: TenantConfig = {
+            id: tenantData.id,
+            name: tenantData.name,
+            slug: tenantData.slug || undefined,
+            domain,
+            subdomain: tenantData.subdomain || undefined,
+            custom_domain: tenantData.custom_domain || undefined,
+            status: tenantData.status || 'active',
             branding: (whiteLabel?.brand_identity as BrandingConfig) || {
               company_name: tenantData.name,
             },
-              theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
-              pwa: whiteLabel?.pwa_config as PWAConfig,
-              features: (tenantData.settings as any)?.features || [
-                'lands', 'schedule', 'chat', 'market', 'weather', 'social'
-              ],
-              settings: {
-                languages: (tenantData.settings as any)?.languages || ['en', 'hi'],
-                defaultLanguage: (tenantData.settings as any)?.defaultLanguage || 'hi',
-              },
-            };
+            theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
+            pwa: whiteLabel?.pwa_config as PWAConfig,
+            splashScreens: (whiteLabel as any)?.splash_screens as SplashScreenConfig,
+            features: (tenantData.settings as any)?.features || [
+              'lands', 'schedule', 'chat', 'market', 'weather', 'social'
+            ],
+            settings: {
+              languages: (tenantData.settings as any)?.languages || ['en', 'hi'],
+              defaultLanguage: (tenantData.settings as any)?.defaultLanguage || 'hi',
+            },
+          };
 
             setTenant(config);
             tenantIsolationService.setTenantContext(config.id, domain);
@@ -426,6 +439,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             },
             theme: (matchedConfig.mobile_theme || matchedConfig.theme_colors) as ThemeConfig,
             pwa: matchedConfig.pwa_config as PWAConfig,
+            splashScreens: (matchedConfig as any)?.splash_screens as SplashScreenConfig,
             features: (tenantData.settings as any)?.features || [
               'lands', 'schedule', 'chat', 'market', 'weather', 'social'
             ],
@@ -671,6 +685,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     tenant,
     branding: tenant?.branding || null,
     theme: tenant?.theme || null,
+    splashScreens: tenant?.splashScreens || null,
     features: tenant?.features || [],
     isLoading,
     error,

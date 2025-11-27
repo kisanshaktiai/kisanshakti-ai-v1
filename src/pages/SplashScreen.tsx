@@ -3,15 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/stores/authStore';
 import { useAuthFlowStore } from '@/stores/authFlowStore';
-import { Loader2, ArrowRight, Sparkles } from 'lucide-react';
+import { Loader2, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
+import { AgriSplashAnimation } from '@/components/splash/AgriSplashAnimation';
 
 export default function SplashScreen() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { tenant, branding, isLoading, error } = useTenant();
+  const { tenant, branding, splashScreens, isLoading, error } = useTenant();
   const { checkAuth, isAuthenticated } = useAuthStore();
   const { markSplashCompleted, hasCompletedSplash, hasSelectedLanguage } = useAuthFlowStore();
   const [isReady, setIsReady] = useState(false);
@@ -144,63 +145,19 @@ export default function SplashScreen() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col items-center justify-center z-10">
-        <div className="text-center space-y-10">
-          {/* App Icon with Glow */}
+        <div className="text-center space-y-8">
+          {/* Agricultural Animation - Rotates on each load */}
           <motion.div 
-            className="relative w-36 h-36 mx-auto"
-            initial={{ scale: 0, rotate: -180 }}
-            animate={{ scale: 1, rotate: 0 }}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
             transition={{ 
               type: "spring", 
-              stiffness: 200, 
-              damping: 20,
+              stiffness: 150, 
+              damping: 15,
               duration: 0.8 
             }}
           >
-            {/* Glow effect */}
-            <div className="absolute inset-0 rounded-[2rem] bg-white/30 blur-3xl animate-pulse" />
-            
-            {/* Icon container */}
-            <div className="relative w-full h-full rounded-[2rem] bg-white/15 backdrop-blur-xl border border-white/30 flex items-center justify-center shadow-2xl">
-              {logoUrl ? (
-                <img 
-                  src={logoUrl} 
-                  alt={companyName}
-                  className="w-24 h-24 object-contain drop-shadow-2xl"
-                  onError={(e) => {
-                    console.error('❌ [SplashScreen] Failed to load logo:', logoUrl);
-                    // Hide image and show fallback
-                    const target = e.currentTarget;
-                    target.style.display = 'none';
-                    const fallback = target.nextElementSibling as HTMLElement;
-                    if (fallback) fallback.style.display = 'block';
-                  }}
-                />
-              ) : null}
-              {/* Fallback: Company Initial */}
-              <div 
-                className="text-white text-6xl font-bold drop-shadow-lg"
-                style={{ display: logoUrl ? 'none' : 'block' }}
-              >
-                {companyName.charAt(0)}
-              </div>
-              
-              {/* Floating sparkle */}
-              <motion.div
-                className="absolute -top-2 -right-2"
-                animate={{
-                  scale: [1, 1.2, 1],
-                  rotate: [0, 180, 360],
-                }}
-                transition={{
-                  duration: 3,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
-              >
-                <Sparkles className="w-8 h-8 text-white/80" />
-              </motion.div>
-            </div>
+            <AgriSplashAnimation splashConfig={splashScreens || undefined} />
           </motion.div>
 
           {/* App Name */}
@@ -210,10 +167,10 @@ export default function SplashScreen() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.6 }}
           >
-            <h1 className="text-5xl font-bold text-white drop-shadow-lg tracking-tight">
+            <h1 className="text-4xl font-bold text-white drop-shadow-lg tracking-tight">
               {companyName}
             </h1>
-            <p className="text-white/90 text-lg px-8 font-medium">
+            <p className="text-white/90 text-base px-8 font-medium">
               {tagline}
             </p>
           </motion.div>
