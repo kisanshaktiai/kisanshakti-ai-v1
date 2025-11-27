@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
  */
 export function useLands() {
   const { user } = useAuthStore();
+  const tenantId = user?.tenantId;
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -154,7 +155,7 @@ export function useLands() {
       console.log(`📦 [useLands] Local DB has ${localData?.length || 0} lands for farmer ${user.id}`);
       return localData || [];
     },
-    enabled: !!user?.id, // No sync blocking - fetch immediately
+    enabled: !!(user?.id && tenantId), // Wait for both user and tenant
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
