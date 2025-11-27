@@ -467,29 +467,35 @@
         
         // Get next animation index
         let lastIndex = parseInt(localStorage.getItem(STORAGE_KEY) || '0');
-        let nextIndex = (lastIndex % TOTAL_ANIMATIONS);
+        let nextIndex = (lastIndex + 1) % TOTAL_ANIMATIONS;
+        
+        console.log('🎬 Initial Loader Animation:', { lastIndex, nextIndex });
         
         // Show only the selected animation
         const animations = document.querySelectorAll('.agri-animation');
         animations.forEach((el, i) => {
           if (i === nextIndex) {
             el.classList.add('active');
+            console.log('✅ Showing animation:', i);
           }
         });
         
         // Increment for next time
-        localStorage.setItem(STORAGE_KEY, ((nextIndex + 1) % TOTAL_ANIMATIONS).toString());
+        localStorage.setItem(STORAGE_KEY, nextIndex.toString());
         
         // Apply cached tenant color if available
         const cachedColor = localStorage.getItem(COLOR_CACHE_KEY);
         if (cachedColor) {
+          console.log('🎨 Applying cached color:', cachedColor);
           document.documentElement.style.setProperty('--loader-primary', cachedColor);
           // Calculate darker shade for gradient
           const hslMatch = cachedColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
           if (hslMatch) {
             const [, h, s, l] = hslMatch;
             const darkerL = Math.max(0, parseInt(l) - 10);
+            const lighterL = Math.min(100, parseInt(l) + 15);
             document.documentElement.style.setProperty('--loader-dark', `hsl(${h}, ${s}%, ${darkerL}%)`);
+            document.documentElement.style.setProperty('--loader-light', `hsl(${h}, ${s}%, ${lighterL}%)`);
           }
         }
       })();
