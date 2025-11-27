@@ -9,9 +9,11 @@ import "@/utils/debugAuth";
 declare global {
   interface Window {
     __REACT_LOADED__?: boolean;
-    __removeHtmlLoader?: () => void;
   }
 }
+
+// Signal that React is loaded
+window.__REACT_LOADED__ = true;
 
 // Update manifest link dynamically with tenant-specific manifest
 const updateManifestLink = async () => {
@@ -33,22 +35,19 @@ updateManifestLink();
 
 const rootElement = document.getElementById("root")!;
 
-// Provide HTML loader removal function to React components
-window.__removeHtmlLoader = () => {
-  const loader = document.getElementById('ks-main-loader');
+// Remove initial loader when React is ready
+const removeInitialLoader = () => {
+  const loader = document.getElementById('initial-loader');
   if (loader) {
-    console.log('✅ Removing HTML loader');
-    loader.classList.add('fade-out');
-    setTimeout(() => loader.remove(), 500);
+    loader.style.opacity = '0';
+    loader.style.transition = 'opacity 0.3s ease-out';
+    setTimeout(() => loader.remove(), 300);
   }
 };
 
-// Render React app
 createRoot(rootElement).render(<App />);
 
-// Signal that React has loaded successfully
+// Remove loader after first paint
 requestAnimationFrame(() => {
-  window.__REACT_LOADED__ = true;
-  window.dispatchEvent(new Event('__REACT_LOADED__'));
-  console.log('✅ React loaded successfully');
+  setTimeout(removeInitialLoader, 100);
 });

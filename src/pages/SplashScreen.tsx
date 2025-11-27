@@ -18,7 +18,7 @@ export default function SplashScreen() {
   const [startX, setStartX] = useState(0);
 
   useEffect(() => {
-    console.log('🚀 [SplashScreen] Mounted. Tenant data:', { 
+    console.log('🚀 [SplashScreen] Tenant data:', { 
       hasTenant: !!tenant, 
       hasBranding: !!branding,
       isLoading,
@@ -31,12 +31,6 @@ export default function SplashScreen() {
       if (isLoading || !tenant) {
         console.log('⏳ [SplashScreen] Waiting for tenant to load...');
         return;
-      }
-
-      // Once tenant is loaded, remove HTML loader
-      if (window.__removeHtmlLoader) {
-        console.log('🎯 [SplashScreen] Tenant loaded, removing HTML loader');
-        window.__removeHtmlLoader();
       }
 
       // Check if we're in development mode
@@ -59,11 +53,11 @@ export default function SplashScreen() {
       // Quick ready state
       setTimeout(() => {
         setIsReady(true);
-      }, 500);
+      }, 800);
     };
 
     initializeApp();
-  }, [tenant, isLoading, checkAuth, error]);
+  }, [tenant, isLoading, checkAuth]);
 
   const handleContinue = () => {
     markSplashCompleted();
@@ -93,11 +87,18 @@ export default function SplashScreen() {
     }
   };
 
-  // Show minimal content while tenant loads (HTML loader still visible behind)
+  // Show neutral loading screen until tenant theme is ready
   if (isLoading || !tenant) {
     return (
-      <div className="min-h-screen bg-background" style={{ opacity: 0 }}>
-        {/* Hidden placeholder to prevent blank screen */}
+      <div className="min-h-mobile-screen bg-gradient-to-br from-neutral-50 via-white to-neutral-100 flex items-center justify-center overflow-hidden">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center space-y-4"
+        >
+          <Loader2 className="w-12 h-12 animate-spin text-neutral-400 mx-auto" />
+          <p className="text-sm text-neutral-500">Loading...</p>
+        </motion.div>
       </div>
     );
   }
