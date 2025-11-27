@@ -48,6 +48,8 @@ import NDVIAnalysis from "./pages/NDVIAnalysis";
 import SoilHealthReport from "./pages/SoilHealthReport";
 import AIScheduleDashboard from "./pages/AIScheduleDashboard";
 import VideoReels from "./pages/VideoReels";
+import InstallPWA from "./pages/InstallPWA";
+import NotificationSettingsPage from "./pages/NotificationSettingsPage";
 
 // Stores and Services
 import { useAuthStore } from "@/stores/authStore";
@@ -365,7 +367,13 @@ const router = createBrowserRouter([
       { path: "ai-dashboard", element: <AIScheduleDashboard /> },
       { path: "ndvi", element: <NDVIAnalysis /> },
       { path: "videos", element: <VideoReels /> },
+      { path: "notifications/settings", element: <NotificationSettingsPage /> },
     ],
+  },
+  {
+    path: "/install",
+    element: <InstallPWA />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: "*",
