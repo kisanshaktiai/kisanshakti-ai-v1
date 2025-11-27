@@ -1,5 +1,7 @@
 import { useAuthStore } from '@/stores/authStore';
 import { localDB } from '@/services/localDB';
+import { testEdgeFunctionHeaders } from './debugHeaders';
+import { dataIsolation } from '@/services/dataIsolationService';
 
 /**
  * Debug utility to inspect authentication state and database access
@@ -103,6 +105,29 @@ export async function debugAuthState() {
     }
   });
   
+  // 6. Check isolation headers
+  console.log('\n🔒 Data Isolation Headers:');
+  const isolationHeaders = dataIsolation.getIsolationHeaders();
+  const headersRecord: Record<string, string> = {};
+  if (Array.isArray(isolationHeaders)) {
+    isolationHeaders.forEach(([key, value]) => {
+      headersRecord[key] = value;
+    });
+  } else if (isolationHeaders instanceof Headers) {
+    isolationHeaders.forEach((value, key) => {
+      headersRecord[key] = value;
+    });
+  } else if (isolationHeaders) {
+    Object.assign(headersRecord, isolationHeaders);
+  }
+  Object.entries(headersRecord).forEach(([key, value]) => {
+    console.log(`  ${key}:`, value);
+  });
+  
+  console.log('\n📋 Available Commands:');
+  console.log('  window.__testHeaders(functionName, body) - Test edge function headers');
+  console.log('  Example: window.__testHeaders("weather", { location: "Mumbai" })');
+  
   console.groupEnd();
   
   return {
@@ -113,7 +138,9 @@ export async function debugAuthState() {
       farmers: (await localDB.getFarmers()).length,
       lands: (await localDB.getLands()).length,
       schedules: (await localDB.getAllSchedules()).length,
-    }
+    },
+    isolationHeaders: headersRecord,
+    testHeaders: testEdgeFunctionHeaders,
   };
 }
 

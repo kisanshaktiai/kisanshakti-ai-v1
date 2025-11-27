@@ -1,23 +1,27 @@
 import { ASRResult, TTSOptions, VoiceConfig, VoiceMetrics, ASRProvider } from './types';
-import { IntentMatcher } from './intentMatcher';
+import { DatabaseIntentMatcher } from './databaseIntentMatcher';
 import { VoiceAnalytics } from './voiceAnalytics';
 
 export class VoiceService {
   private config: VoiceConfig;
-  private intentMatcher: IntentMatcher;
+  private intentMatcher: DatabaseIntentMatcher;
   private analytics: VoiceAnalytics;
+  private tenantId: string = '';
   private recognition: any = null;
   private synthesis: SpeechSynthesis;
   private isOnline: boolean = navigator.onLine;
 
-  constructor(config: VoiceConfig) {
+  constructor(config: VoiceConfig, tenantId?: string) {
     this.config = config;
-    this.intentMatcher = new IntentMatcher();
+    this.tenantId = tenantId || '';
+    this.intentMatcher = new DatabaseIntentMatcher();
     this.analytics = new VoiceAnalytics(config);
     this.synthesis = window.speechSynthesis;
 
     // Load intents for current language
-    this.intentMatcher.loadIntents(config.language);
+    if (this.tenantId) {
+      this.intentMatcher.loadIntents(config.language, this.tenantId);
+    }
 
     // Listen for online/offline events
     window.addEventListener('online', () => {
@@ -50,6 +54,15 @@ export class VoiceService {
       'mr': 'mr-IN',
       'ta': 'ta-IN',
       'pa': 'pa-IN',
+      'te': 'te-IN',
+      'bn': 'bn-IN',
+      'gu': 'gu-IN',
+      'kn': 'kn-IN',
+      'ml': 'ml-IN',
+      'or': 'or-IN',
+      'as': 'as-IN',
+      'ur': 'ur-IN',
+      'sa': 'sa-IN',
     };
     return langMap[this.config.language] || 'en-US';
   }
@@ -175,14 +188,16 @@ export class VoiceService {
 
   async changeLanguage(language: string): Promise<void> {
     this.config.language = language;
-    await this.intentMatcher.loadIntents(language);
+    if (this.tenantId) {
+      await this.intentMatcher.loadIntents(language, this.tenantId);
+    }
     
     if (this.recognition) {
       this.recognition.lang = this.getLanguageCode();
     }
   }
 
-  getIntentMatcher(): IntentMatcher {
+  getIntentMatcher(): DatabaseIntentMatcher {
     return this.intentMatcher;
   }
 
@@ -193,7 +208,16 @@ export class VoiceService {
   isSupported(): boolean {
     const SpeechRecognition = (window as any).SpeechRecognition || 
                              (window as any).webkitSpeechRecognition;
-    return !!(SpeechRecognition && window.speechSynthesis);
+    const supported = !!(SpeechRecognition && window.speechSynthesis);
+    
+    console.log('[VoiceService] Browser support check:', {
+      hasSpeechRecognition: !!SpeechRecognition,
+      hasSpeechSynthesis: !!window.speechSynthesis,
+      supported,
+      userAgent: navigator.userAgent
+    });
+    
+    return supported;
   }
 
   getConfig(): VoiceConfig {

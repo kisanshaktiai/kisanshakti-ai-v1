@@ -15,6 +15,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { LocationPermissionDialog } from "@/components/LocationPermissionDialog";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
+import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 import { AppLoadingProgress } from "@/components/AppLoadingProgress";
 
 // Pages
@@ -46,6 +47,7 @@ import MobileAuth from "./pages/MobileAuth";
 import NDVIAnalysis from "./pages/NDVIAnalysis";
 import SoilHealthReport from "./pages/SoilHealthReport";
 import AIScheduleDashboard from "./pages/AIScheduleDashboard";
+import VideoReels from "./pages/VideoReels";
 
 // Stores and Services
 import { useAuthStore } from "@/stores/authStore";
@@ -73,7 +75,7 @@ const queryClient = new QueryClient({
 });
 
 function AppInitializer({ children }: { children: React.ReactNode }) {
-  const { tenant, isLoading: tenantLoading } = useTenant();
+  const { tenant, branding, isLoading: tenantLoading } = useTenant();
   const { checkAuth, requirePin, session } = useAuthStore();
   const { currentLanguage } = useLanguageStore();
   const { permissionStatus, requestPermission } = useLocationPermission();
@@ -138,6 +140,11 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         // STEP 1: Set tenant isolation context for all services (fast)
         setCurrentStep('Preparing your workspace...');
         tenantIsolationService.setTenantContext(tenant.id, currentDomain);
+        
+        // Cache tenant primary color for initial loader
+        if (branding?.primary_color) {
+          localStorage.setItem('tenant_primary_color', branding.primary_color);
+        }
         
         // STEP 2: Initialize tenant-scoped local storage (fast)
         await localDB.initializeWithTenant(tenant.id);
@@ -343,7 +350,7 @@ const router = createBrowserRouter([
       { path: "profile/edit", element: <ProfileEdit /> },
       { path: "lands", element: <LandManagement /> },
       { path: "lands/add", element: <AddLand /> },
-      { path: "lands/edit/:id", element: <EditLand /> },
+      { path: "lands/:id/edit", element: <EditLand /> },
       { path: "lands/:id", element: <LandDetails /> },
       { path: "lands/:id/soil", element: <SoilHealthReport /> },
       { path: "lands/:id/ndvi", element: <NDVIAnalysis /> },
@@ -357,6 +364,7 @@ const router = createBrowserRouter([
       { path: "schedule", element: <Schedule /> },
       { path: "ai-dashboard", element: <AIScheduleDashboard /> },
       { path: "ndvi", element: <NDVIAnalysis /> },
+      { path: "videos", element: <VideoReels /> },
     ],
   },
   {
@@ -377,6 +385,8 @@ export default function App() {
               </AppInitializer>
               <Toaster />
               <Sonner />
+              <PWAUpdatePrompt />
+              <PWAInstallPrompt />
             </TooltipProvider>
           </QueryClientProvider>
         </TenantProvider>

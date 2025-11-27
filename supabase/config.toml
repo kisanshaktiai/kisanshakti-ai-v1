@@ -32,3 +32,6 @@ verify_jwt = true
 
 [functions.ai-schedule-climate-monitor]
 verify_jwt = true
+
+[functions.voice-navigation-agent]
+verify_jwt = true

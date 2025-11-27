@@ -45,6 +45,15 @@ export interface PWAConfig {
   background_color?: string;
 }
 
+export interface SplashScreenConfig {
+  enabled?: boolean;
+  active_animations?: number[]; // [1,2,3,4,5] - which animations to show
+  rotation_mode?: 'sequential' | 'random';
+  custom_message?: string;
+  show_logo?: boolean;
+  animation_duration?: number;
+}
+
 export interface TenantConfig {
   id: string;
   name: string;
@@ -56,6 +65,7 @@ export interface TenantConfig {
   branding: BrandingConfig;
   theme?: ThemeConfig;
   pwa?: PWAConfig;
+  splashScreens?: SplashScreenConfig;
   features: string[];
   settings: {
     languages: string[];
@@ -69,6 +79,7 @@ export interface TenantContextValue {
   tenant: TenantConfig | null;
   branding: BrandingConfig | null;
   theme: ThemeConfig | null;
+  splashScreens: SplashScreenConfig | null;
   features: string[];
   isLoading: boolean;
   error: Error | null;
@@ -282,6 +293,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             branding: apiConfig.branding,
             theme: apiConfig.theme,
             pwa: apiConfig.pwa,
+            splashScreens: apiConfig.splash_screens,
             features: apiConfig.features,
             settings: apiConfig.settings,
           };
@@ -355,28 +367,28 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               .eq('tenant_id', tenantData.id)
               .maybeSingle();
 
-            const config: TenantConfig = {
-              id: tenantData.id,
-              name: tenantData.name,
-              slug: tenantData.slug || undefined,
-              domain,
-              subdomain: tenantData.subdomain || undefined,
-              custom_domain: tenantData.custom_domain || undefined,
-              status: tenantData.status || 'active',
-              branding: (whiteLabel?.brand_identity as BrandingConfig) || {
-                company_name: tenantData.name,
-                primary_color: '#10b981',
-              },
-              theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
-              pwa: whiteLabel?.pwa_config as PWAConfig,
-              features: (tenantData.settings as any)?.features || [
-                'lands', 'schedule', 'chat', 'market', 'weather', 'social'
-              ],
-              settings: {
-                languages: (tenantData.settings as any)?.languages || ['en', 'hi'],
-                defaultLanguage: (tenantData.settings as any)?.defaultLanguage || 'hi',
-              },
-            };
+          const config: TenantConfig = {
+            id: tenantData.id,
+            name: tenantData.name,
+            slug: tenantData.slug || undefined,
+            domain,
+            subdomain: tenantData.subdomain || undefined,
+            custom_domain: tenantData.custom_domain || undefined,
+            status: tenantData.status || 'active',
+            branding: (whiteLabel?.brand_identity as BrandingConfig) || {
+              company_name: tenantData.name,
+            },
+            theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
+            pwa: whiteLabel?.pwa_config as PWAConfig,
+            splashScreens: (whiteLabel as any)?.splash_screens as SplashScreenConfig,
+            features: (tenantData.settings as any)?.features || [
+              'lands', 'schedule', 'chat', 'market', 'weather', 'social'
+            ],
+            settings: {
+              languages: (tenantData.settings as any)?.languages || ['en', 'hi'],
+              defaultLanguage: (tenantData.settings as any)?.defaultLanguage || 'hi',
+            },
+          };
 
             setTenant(config);
             tenantIsolationService.setTenantContext(config.id, domain);
@@ -424,10 +436,10 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             status: tenantData.status || 'active',
             branding: (matchedConfig.brand_identity as BrandingConfig) || {
               company_name: tenantData.name,
-              primary_color: '#10b981',
             },
             theme: (matchedConfig.mobile_theme || matchedConfig.theme_colors) as ThemeConfig,
             pwa: matchedConfig.pwa_config as PWAConfig,
+            splashScreens: (matchedConfig as any)?.splash_screens as SplashScreenConfig,
             features: (tenantData.settings as any)?.features || [
               'lands', 'schedule', 'chat', 'market', 'weather', 'social'
             ],
@@ -507,9 +519,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             },
             branding: (whiteLabel?.brand_identity as BrandingConfig) || {
               company_name: defaultTenantData.name,
-              primary_color: '#22c55e',
-              secondary_color: '#16a34a',
-              accent_color: '#84cc16'
+              // No fallback colors - let CSS defaults handle it until theme loads
             },
             theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
             pwa: whiteLabel?.pwa_config as PWAConfig,
@@ -568,11 +578,9 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               name: 'Development Mode',
               domain: domain,
               branding: {
-                company_name: 'KisanShakti',
-                primary_color: '#10b981',
-                secondary_color: '#059669',
-                accent_color: '#14b8a6'
-              },
+              company_name: 'KisanShakti',
+              // No fallback colors - let CSS defaults handle it
+            },
               features: ['lands', 'schedule', 'chat', 'market', 'weather', 'social'],
               settings: {
                 languages: ['en', 'hi'],
@@ -594,7 +602,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             domain: cachedConfig.tenant_data.domain,
             branding: (cachedConfig.white_label_config?.brand_identity as BrandingConfig) || {
               company_name: cachedConfig.tenant_data.name,
-              primary_color: '#10b981',
+              // No fallback colors - let CSS defaults handle it
             },
             theme: (cachedConfig.white_label_config?.mobile_theme || cachedConfig.white_label_config?.theme_colors) as ThemeConfig,
             features: [],
@@ -677,6 +685,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     tenant,
     branding: tenant?.branding || null,
     theme: tenant?.theme || null,
+    splashScreens: tenant?.splashScreens || null,
     features: tenant?.features || [],
     isLoading,
     error,

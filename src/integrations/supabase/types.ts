@@ -13590,6 +13590,33 @@ export type Database = {
           },
         ]
       }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       push_subscriptions: {
         Row: {
           auth_key: string
@@ -18940,6 +18967,320 @@ export type Database = {
             columns: ["taluka_id"]
             isOneToOne: false
             referencedRelation: "talukas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_error_corrections: {
+        Row: {
+          created_at: string | null
+          farmer_id: string | null
+          id: string
+          intended_action: string | null
+          language_code: string | null
+          original_transcript: string
+          session_id: string | null
+          suggested_phrases: Json | null
+          tenant_id: string
+          was_helpful: boolean | null
+        }
+        Insert: {
+          created_at?: string | null
+          farmer_id?: string | null
+          id?: string
+          intended_action?: string | null
+          language_code?: string | null
+          original_transcript: string
+          session_id?: string | null
+          suggested_phrases?: Json | null
+          tenant_id: string
+          was_helpful?: boolean | null
+        }
+        Update: {
+          created_at?: string | null
+          farmer_id?: string | null
+          id?: string
+          intended_action?: string | null
+          language_code?: string | null
+          original_transcript?: string
+          session_id?: string | null
+          suggested_phrases?: Json | null
+          tenant_id?: string
+          was_helpful?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_error_corrections_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_error_corrections_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "voice_error_corrections_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "voice_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_error_corrections_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_navigation_intents: {
+        Row: {
+          action: string
+          created_at: string | null
+          id: string
+          intent_id: string
+          is_active: boolean | null
+          is_offline: boolean | null
+          language_code: string
+          params: Json | null
+          patterns: Json
+          priority: string | null
+          response_template: Json | null
+          route: string | null
+          synonyms: Json | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          id?: string
+          intent_id: string
+          is_active?: boolean | null
+          is_offline?: boolean | null
+          language_code: string
+          params?: Json | null
+          patterns?: Json
+          priority?: string | null
+          response_template?: Json | null
+          route?: string | null
+          synonyms?: Json | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          id?: string
+          intent_id?: string
+          is_active?: boolean | null
+          is_offline?: boolean | null
+          language_code?: string
+          params?: Json | null
+          patterns?: Json
+          priority?: string | null
+          response_template?: Json | null
+          route?: string | null
+          synonyms?: Json | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_navigation_intents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_sessions: {
+        Row: {
+          created_at: string | null
+          device_info: Json | null
+          failed_commands: number | null
+          farmer_id: string | null
+          id: string
+          language_code: string | null
+          metadata: Json | null
+          session_end: string | null
+          session_start: string | null
+          successful_commands: number | null
+          tenant_id: string
+          total_commands: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          device_info?: Json | null
+          failed_commands?: number | null
+          farmer_id?: string | null
+          id?: string
+          language_code?: string | null
+          metadata?: Json | null
+          session_end?: string | null
+          session_start?: string | null
+          successful_commands?: number | null
+          tenant_id: string
+          total_commands?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          device_info?: Json | null
+          failed_commands?: number | null
+          farmer_id?: string | null
+          id?: string
+          language_code?: string | null
+          metadata?: Json | null
+          session_end?: string | null
+          session_start?: string | null
+          successful_commands?: number | null
+          tenant_id?: string
+          total_commands?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_sessions_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_sessions_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "voice_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_suggestions: {
+        Row: {
+          category: string
+          created_at: string | null
+          display_order: number | null
+          id: string
+          is_active: boolean | null
+          language_code: string
+          phonetic_hint: string | null
+          suggestion_text: string
+          tenant_id: string
+        }
+        Insert: {
+          category: string
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          language_code: string
+          phonetic_hint?: string | null
+          suggestion_text: string
+          tenant_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          language_code?: string
+          phonetic_hint?: string | null
+          suggestion_text?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_suggestions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_training_samples: {
+        Row: {
+          audio_url: string
+          confidence_score: number | null
+          consent_given: boolean | null
+          corrected_intent: string | null
+          created_at: string | null
+          detected_language: string | null
+          duration_ms: number | null
+          farmer_id: string
+          id: string
+          intent_matched: string | null
+          metadata: Json | null
+          tenant_id: string
+          transcript: string | null
+          was_correct: boolean | null
+        }
+        Insert: {
+          audio_url: string
+          confidence_score?: number | null
+          consent_given?: boolean | null
+          corrected_intent?: string | null
+          created_at?: string | null
+          detected_language?: string | null
+          duration_ms?: number | null
+          farmer_id: string
+          id?: string
+          intent_matched?: string | null
+          metadata?: Json | null
+          tenant_id: string
+          transcript?: string | null
+          was_correct?: boolean | null
+        }
+        Update: {
+          audio_url?: string
+          confidence_score?: number | null
+          consent_given?: boolean | null
+          corrected_intent?: string | null
+          created_at?: string | null
+          detected_language?: string | null
+          duration_ms?: number | null
+          farmer_id?: string
+          id?: string
+          intent_matched?: string | null
+          metadata?: Json | null
+          tenant_id?: string
+          transcript?: string | null
+          was_correct?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_training_samples_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_training_samples_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "voice_training_samples_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]

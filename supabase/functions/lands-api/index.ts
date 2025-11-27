@@ -65,6 +65,13 @@ serve(async (req) => {
       case 'GET': {
         // Check if fetching a specific land by ID
         if (landId) {
+          console.log('🔍 [LandsAPI] Fetching specific land:', { 
+            landId, 
+            tenantId, 
+            farmerId,
+            hasSessionToken: !!sessionToken
+          });
+          
           // Fetch specific land by ID
           const { data, error } = await supabase
             .from('lands')
@@ -77,14 +84,48 @@ serve(async (req) => {
             .single();
 
           if (error) {
-            console.error('Error fetching land by ID:', error);
+            console.error('❌ [LandsAPI] Database error fetching land:', {
+              error: error.message,
+              code: error.code,
+              details: error.details,
+              hint: error.hint
+            });
             return new Response(
-              JSON.stringify({ error: error.message }),
+              JSON.stringify({ 
+                error: error.message,
+                details: error.details,
+                hint: error.hint 
+              }),
               { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
           }
 
           if (!data) {
+            console.warn('⚠️ [LandsAPI] No land found matching criteria:', {
+              landId,
+              tenantId,
+              farmerId
+            });
+            
+            // Query without farmer_id to check if land exists but with different farmer
+            const { data: anyLand } = await supabase
+              .from('lands')
+              .select('id, farmer_id, tenant_id')
+              .eq('id', landId)
+              .eq('tenant_id', tenantId)
+              .maybeSingle();
+            
+            if (anyLand) {
+              console.error('❌ [LandsAPI] PERMISSION ISSUE: Land exists but farmer_id mismatch:', {
+                requestedFarmerId: farmerId,
+                actualFarmerId: anyLand.farmer_id,
+                landId,
+                tenantId
+              });
+            } else {
+              console.warn('⚠️ [LandsAPI] Land does not exist in this tenant');
+            }
+            
             return new Response(
               JSON.stringify({ 
                 error: 'Land not found', 
@@ -93,6 +134,11 @@ serve(async (req) => {
               { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
           }
+
+          console.log('✅ [LandsAPI] Land fetched successfully:', {
+            landId: data.id,
+            landName: data.name
+          });
 
           return new Response(
             JSON.stringify({ data, success: true }),

@@ -53,7 +53,7 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
       ctx.clearRect(0, 0, width, height);
 
       ctx.lineWidth = 3;
-      ctx.strokeStyle = '#10b981'; // emerald-500
+      ctx.strokeStyle = 'hsl(142 76% 45%)'; // success color
       ctx.beginPath();
 
       const sliceWidth = width / dataArray.length;
@@ -102,7 +102,7 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
             {[0, 0.1, 0.2].map((delay, i) => (
               <motion.div
                 key={i}
-                className="w-1 h-8 bg-emerald-500 rounded-full"
+                className="w-1 h-8 bg-success rounded-full"
                 animate={{
                   height: ['16px', '32px', '16px'],
                 }}
