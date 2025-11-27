@@ -208,7 +208,16 @@ export class VoiceService {
   isSupported(): boolean {
     const SpeechRecognition = (window as any).SpeechRecognition || 
                              (window as any).webkitSpeechRecognition;
-    return !!(SpeechRecognition && window.speechSynthesis);
+    const supported = !!(SpeechRecognition && window.speechSynthesis);
+    
+    console.log('[VoiceService] Browser support check:', {
+      hasSpeechRecognition: !!SpeechRecognition,
+      hasSpeechSynthesis: !!window.speechSynthesis,
+      supported,
+      userAgent: navigator.userAgent
+    });
+    
+    return supported;
   }
 
   getConfig(): VoiceConfig {

@@ -13,6 +13,7 @@ interface ModernVoiceContextType {
   currentLanguage: string;
   isOnline: boolean;
   isSupported: boolean;
+  isReady: boolean;
   examples: string[];
   error: string | null;
   startListening: () => void;
@@ -50,31 +51,9 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [error, setError] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
-  // Check if onboarding was completed
-  useEffect(() => {
-    const completed = localStorage.getItem('voice_onboarding_completed');
-    if (!completed) {
-      setShowOnboarding(true);
-    } else {
-      initializeVoiceService();
-    }
-  }, []);
-
-  // Listen for online/offline events
-  useEffect(() => {
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
   const initializeVoiceService = useCallback((config?: Partial<VoiceConfig>) => {
+    console.log('[Voice] Initializing voice service with tenant:', tenant?.id);
+    
     const savedConfig = localStorage.getItem('voice_config');
     const defaultConfig: VoiceConfig = {
       language: 'en',
@@ -87,11 +66,23 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     };
 
     const service = new VoiceService(defaultConfig, tenant?.id || '');
+    console.log('[Voice] Service initialized. Supported:', service.isSupported());
     setVoiceService(service);
 
     // Save config
     localStorage.setItem('voice_config', JSON.stringify(defaultConfig));
   }, [tenant]);
+
+  // Check if onboarding was completed
+  useEffect(() => {
+    const completed = localStorage.getItem('voice_onboarding_completed');
+    if (!completed) {
+      setShowOnboarding(true);
+    } else if (tenant?.id) {
+      // Only initialize once tenant is loaded
+      initializeVoiceService();
+    }
+  }, [initializeVoiceService, tenant]);
 
   const completeOnboarding = useCallback((config: Partial<VoiceConfig>) => {
     localStorage.setItem('voice_onboarding_completed', 'true');
@@ -180,23 +171,39 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [voiceService, navigationCallback, toast]);
 
   const startListening = useCallback(() => {
-    if (!voiceService || !voiceService.isSupported()) {
+    // Check if voice service is initialized
+    if (!voiceService) {
+      console.warn('[Voice] Service not initialized yet. Tenant:', tenant?.id, 'User:', user?.id);
+      toast({
+        title: "Initializing...",
+        description: "Voice assistant is starting up. Please try again in a moment.",
+      });
+      return;
+    }
+
+    // Check browser support
+    if (!voiceService.isSupported()) {
+      console.error('[Voice] Browser does not support Web Speech API');
       toast({
         title: "Not Supported",
-        description: "Voice recognition is not supported on this device.",
+        description: "Your browser doesn't support voice recognition. Try Chrome, Edge, or Safari.",
         variant: "destructive",
       });
       return;
     }
 
+    console.log('[Voice] Starting listening...');
     setError(null);
     setIsListening(true);
     
     voiceService.startListening(
       handleASRResult,
-      () => setIsListening(false)
+      () => {
+        console.log('[Voice] Stopped listening');
+        setIsListening(false);
+      }
     );
-  }, [voiceService, handleASRResult, toast]);
+  }, [voiceService, handleASRResult, toast, tenant, user]);
 
   const stopListening = useCallback(() => {
     voiceService?.stopListening();
@@ -232,6 +239,7 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const examples = voiceService?.getIntentMatcher().getAllIntents().slice(0, 5).flatMap(i => i.patterns.slice(0, 1)) || [];
   const currentLanguage = voiceService?.getConfig().language || 'en';
   const isSupported = voiceService?.isSupported() || false;
+  const isReady = !!voiceService && isSupported;
 
   return (
     <ModernVoiceContext.Provider
@@ -243,6 +251,7 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         currentLanguage,
         isOnline,
         isSupported,
+        isReady,
         examples,
         error,
         startListening,
