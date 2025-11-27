@@ -9,12 +9,9 @@ import "@/utils/debugAuth";
 declare global {
   interface Window {
     __REACT_LOADED__?: boolean;
+    __removeHtmlLoader?: () => void;
   }
 }
-
-// Signal that React is loaded
-window.__REACT_LOADED__ = true;
-window.dispatchEvent(new Event('__REACT_LOADED__'));
 
 // Update manifest link dynamically with tenant-specific manifest
 const updateManifestLink = async () => {
@@ -36,24 +33,22 @@ updateManifestLink();
 
 const rootElement = document.getElementById("root")!;
 
-// Remove initial loader when React is ready (minimum 800ms display for animations)
-const removeInitialLoader = () => {
+// Provide HTML loader removal function to React components
+window.__removeHtmlLoader = () => {
   const loader = document.getElementById('ks-main-loader');
   if (loader) {
+    console.log('✅ Removing HTML loader');
     loader.classList.add('fade-out');
     setTimeout(() => loader.remove(), 500);
   }
 };
 
+// Render React app
 createRoot(rootElement).render(<App />);
 
-// Signal React is ready and remove loader after minimum animation time
-const minDisplayTime = 800; // Minimum time to show HTML loader animations
-const startTime = performance.now();
-
+// Signal that React has loaded successfully
 requestAnimationFrame(() => {
-  const elapsedTime = performance.now() - startTime;
-  const remainingTime = Math.max(0, minDisplayTime - elapsedTime);
-  
-  setTimeout(removeInitialLoader, remainingTime);
+  window.__REACT_LOADED__ = true;
+  window.dispatchEvent(new Event('__REACT_LOADED__'));
+  console.log('✅ React loaded successfully');
 });
