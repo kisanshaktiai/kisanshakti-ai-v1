@@ -2,6 +2,8 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { useToast } from '@/hooks/use-toast';
 import { VoiceService } from '@/services/voice/voiceService';
 import { VoiceConfig, ASRResult, VoiceUtterance } from '@/services/voice/types';
+import { useTenant } from '@/hooks/useTenant';
+import { useAuthStore } from '@/stores/authStore';
 
 interface ModernVoiceContextType {
   isListening: boolean;
@@ -36,6 +38,8 @@ export const useModernVoice = () => {
 export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [navigationCallback, setNavigationCallback] = useState<((route: string) => void) | null>(null);
   const { toast } = useToast();
+  const { tenant } = useTenant();
+  const { user } = useAuthStore();
   
   const [voiceService, setVoiceService] = useState<VoiceService | null>(null);
   const [isListening, setIsListening] = useState(false);
@@ -82,12 +86,12 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       ...(savedConfig ? JSON.parse(savedConfig) : {}),
     };
 
-    const service = new VoiceService(defaultConfig);
+    const service = new VoiceService(defaultConfig, tenant?.id || '');
     setVoiceService(service);
 
     // Save config
     localStorage.setItem('voice_config', JSON.stringify(defaultConfig));
-  }, []);
+  }, [tenant]);
 
   const completeOnboarding = useCallback((config: Partial<VoiceConfig>) => {
     localStorage.setItem('voice_onboarding_completed', 'true');
@@ -106,7 +110,7 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setShowOnboarding(false);
   }, [initializeVoiceService]);
 
-  const handleASRResult = useCallback((result: ASRResult) => {
+  const handleASRResult = useCallback(async (result: ASRResult) => {
     setTranscript(result.transcript);
     setConfidence(result.confidence);
 
@@ -117,11 +121,38 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       if (utterance) {
         handleIntent(utterance);
       } else {
-        setError('Command not recognized. Try again or say "help" for examples.');
-        setTimeout(() => setError(null), 3000);
+        // Try AI fallback
+        try {
+          const aiResponse = await intentMatcher.callAIFallback(
+            result.transcript,
+            voiceService.getConfig().language,
+            { farmerId: user?.id }
+          );
+
+          if (aiResponse?.action === 'navigate' && aiResponse.route) {
+            await voiceService.speak({ 
+              text: aiResponse.response, 
+              language: voiceService.getConfig().language 
+            });
+            if (navigationCallback) {
+              navigationCallback(aiResponse.route);
+            }
+            setTranscript('');
+          } else if (aiResponse?.response) {
+            await voiceService.speak({ 
+              text: aiResponse.response, 
+              language: voiceService.getConfig().language 
+            });
+            setTranscript('');
+          }
+        } catch (error) {
+          console.error('AI fallback error:', error);
+          setError('Command not recognized. Try again or say "help" for examples.');
+          setTimeout(() => setError(null), 3000);
+        }
       }
     }
-  }, [voiceService, isOnline]);
+  }, [voiceService, isOnline, navigationCallback, user]);
 
   const handleIntent = useCallback((utterance: VoiceUtterance) => {
     const intentMatcher = voiceService?.getIntentMatcher();
@@ -198,7 +229,7 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     });
   }, [voiceService, toast]);
 
-  const examples = voiceService?.getIntentMatcher().getExamples() || [];
+  const examples = voiceService?.getIntentMatcher().getAllIntents().slice(0, 5).flatMap(i => i.patterns.slice(0, 1)) || [];
   const currentLanguage = voiceService?.getConfig().language || 'en';
   const isSupported = voiceService?.isSupported() || false;
 
