@@ -15,6 +15,7 @@ export const ModernVoiceAssistant: React.FC = () => {
     confidence,
     examples,
     isOnline,
+    isReady,
     error,
     startListening,
     stopListening,
@@ -30,8 +31,15 @@ export const ModernVoiceAssistant: React.FC = () => {
     setNavigationCallback((route: string) => navigate(route));
   }, [navigate, setNavigationCallback]);
 
+  // Don't render anything if onboarding is needed
   if (showOnboarding) {
     return <VoiceOnboarding onComplete={completeOnboarding} onSkip={skipOnboarding} />;
+  }
+
+  // Show loading state if voice service is still initializing
+  if (!isReady) {
+    console.log('[ModernVoiceAssistant] Voice service not ready yet');
+    return null;
   }
 
   return (
