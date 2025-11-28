@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Volume2 } from 'lucide-react';
+import { Mic, Volume2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -26,6 +26,7 @@ interface SimpleVoiceMicButtonProps {
   isSupported: boolean;
   onStartListening: () => void;
   onStopListening: () => void;
+  onClose: () => void;
   error?: string;
 }
 
@@ -37,6 +38,7 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
   isSupported,
   onStartListening,
   onStopListening,
+  onClose,
   error,
 }) => {
   const navigate = useNavigate();
@@ -245,6 +247,20 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
 
   return (
     <>
+      {/* Close Button - Top Right */}
+      <motion.button
+        key="voice-close-button"
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0, opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        onClick={onClose}
+        className="fixed top-6 right-6 z-50 w-10 h-10 rounded-full bg-background/80 backdrop-blur-sm border border-border/20 shadow-lg flex items-center justify-center hover:bg-muted/80 transition-colors"
+        aria-label="Close voice navigation"
+      >
+        <X className="w-5 h-5 text-muted-foreground" />
+      </motion.button>
+
       {/* Floating Mic Button - Fixed Position Bottom Right */}
       <motion.div
         key="voice-mic-button"

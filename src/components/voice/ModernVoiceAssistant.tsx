@@ -15,6 +15,7 @@ export const ModernVoiceAssistant: React.FC = () => {
     isReady,
     isSupported,
     error,
+    isVoiceModeActive,
     startListening,
     stopListening,
     changeLanguage,
@@ -22,6 +23,7 @@ export const ModernVoiceAssistant: React.FC = () => {
     completeOnboarding,
     skipOnboarding,
     setNavigationCallback,
+    hideVoiceMode,
   } = useModernVoice();
 
   // Memoize navigation callback to prevent infinite loop
@@ -46,7 +48,11 @@ export const ModernVoiceAssistant: React.FC = () => {
     return <VoiceOnboarding onComplete={completeOnboarding} onSkip={skipOnboarding} />;
   }
 
-  // Always render the mic button, pass isReady state
+  // Only render mic button when voice mode is active
+  if (!isVoiceModeActive) {
+    return null;
+  }
+
   return (
     <SimpleVoiceMicButton
       isListening={isListening}
@@ -56,6 +62,7 @@ export const ModernVoiceAssistant: React.FC = () => {
       isSupported={isSupported}
       onStartListening={startListening}
       onStopListening={stopListening}
+      onClose={hideVoiceMode}
       error={error || undefined}
     />
   );

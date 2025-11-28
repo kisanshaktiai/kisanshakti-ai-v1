@@ -16,10 +16,13 @@ interface ModernVoiceContextType {
   isReady: boolean;
   examples: string[];
   error: string | null;
+  isVoiceModeActive: boolean;
   startListening: () => void;
   stopListening: () => void;
   speak: (text: string, ssml?: boolean) => Promise<void>;
   changeLanguage: (language: string) => void;
+  showVoiceMode: () => void;
+  hideVoiceMode: () => void;
   showOnboarding: boolean;
   completeOnboarding: (config: Partial<VoiceConfig>) => void;
   skipOnboarding: () => void;
@@ -50,6 +53,7 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [error, setError] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [isVoiceModeActive, setIsVoiceModeActive] = useState(false);
 
   const initializeVoiceService = useCallback((config?: Partial<VoiceConfig>) => {
     console.log('[Voice] Initializing voice service with tenant:', tenant?.id);
@@ -246,6 +250,20 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     });
   }, [voiceService, toast]);
 
+  const showVoiceMode = useCallback(() => {
+    console.log('[Voice] Showing voice mode');
+    setIsVoiceModeActive(true);
+  }, []);
+
+  const hideVoiceMode = useCallback(() => {
+    console.log('[Voice] Hiding voice mode');
+    setIsVoiceModeActive(false);
+    // Also stop listening if active
+    if (isListening) {
+      stopListening();
+    }
+  }, [isListening, stopListening]);
+
   const examples = voiceService?.getIntentMatcher().getAllIntents().slice(0, 5).flatMap(i => i.patterns.slice(0, 1)) || [];
   const currentLanguage = voiceService?.getConfig().language || 'en';
   const isSupported = voiceService?.isSupported() || false;
@@ -264,10 +282,13 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         isReady,
         examples,
         error,
+        isVoiceModeActive,
         startListening,
         stopListening,
         speak,
         changeLanguage,
+        showVoiceMode,
+        hideVoiceMode,
         showOnboarding,
         completeOnboarding,
         skipOnboarding,
