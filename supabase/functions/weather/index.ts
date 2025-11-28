@@ -728,8 +728,12 @@ serve(async (req: Request): Promise<Response> => {
     console.log(`🌐 [Weather] Cache miss - checking rate limit before API call`)
     
     // Location-based rate limiting (only for actual API calls)
+    // Increased from 4 to 12 requests due to:
+    // - 1-hour cache duration
+    // - Hybrid OpenWeather → Tomorrow.io fallback
+    // - Better stale cache handling
     const rateLimit = await checkRateLimit(rounded.key, 'weather', { 
-      maxRequests: 4, // Only 4 fresh fetches per 15 min per ~1km area
+      maxRequests: 12, // Allow 12 fresh fetches per 15 min per ~1km area
       windowMs: 900000 // 15 minutes
     })
     
