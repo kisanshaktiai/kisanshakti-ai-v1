@@ -732,6 +732,19 @@ serve(async (req: Request): Promise<Response> => {
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
     
+    // Extract user from auth header (optional - for tracking purposes)
+    const authHeader = req.headers.get('Authorization')
+    let userId: string | undefined
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.replace('Bearer ', '')
+        const { data: { user } } = await supabase.auth.getUser(token)
+        userId = user?.id
+      } catch (error) {
+        console.log('ℹ️ [Weather] No valid user token - proceeding without user tracking')
+      }
+    }
+    
     // Parse request
     const body = await req.json() as WeatherRequest
     const { action, lat, lon, units = 'metric' } = body
@@ -884,7 +897,7 @@ serve(async (req: Request): Promise<Response> => {
           forecast, 
           hourly,
           tenant.id,
-          user?.id
+          userId
         )
       }
       
