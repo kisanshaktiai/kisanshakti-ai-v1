@@ -19740,11 +19740,13 @@ export type Database = {
           created_at: string
           data_source: string
           evapotranspiration_mm: number | null
+          expires_at: string | null
           feels_like_celsius: number | null
           growing_degree_days: number | null
           humidity_percent: number | null
           id: string
           latitude: number
+          location_key: string | null
           longitude: number
           moon_phase: number | null
           observation_time: string
@@ -19772,11 +19774,13 @@ export type Database = {
           created_at?: string
           data_source: string
           evapotranspiration_mm?: number | null
+          expires_at?: string | null
           feels_like_celsius?: number | null
           growing_degree_days?: number | null
           humidity_percent?: number | null
           id?: string
           latitude: number
+          location_key?: string | null
           longitude: number
           moon_phase?: number | null
           observation_time: string
@@ -19804,11 +19808,13 @@ export type Database = {
           created_at?: string
           data_source?: string
           evapotranspiration_mm?: number | null
+          expires_at?: string | null
           feels_like_celsius?: number | null
           growing_degree_days?: number | null
           humidity_percent?: number | null
           id?: string
           latitude?: number
+          location_key?: string | null
           longitude?: number
           moon_phase?: number | null
           observation_time?: string
@@ -19854,6 +19860,7 @@ export type Database = {
           humidity_percent: number | null
           id: string
           latitude: number
+          location_key: string | null
           longitude: number
           pressure_hpa: number | null
           rain_amount_mm: number | null
@@ -19884,6 +19891,7 @@ export type Database = {
           humidity_percent?: number | null
           id?: string
           latitude: number
+          location_key?: string | null
           longitude: number
           pressure_hpa?: number | null
           rain_amount_mm?: number | null
@@ -19914,6 +19922,7 @@ export type Database = {
           humidity_percent?: number | null
           id?: string
           latitude?: number
+          location_key?: string | null
           longitude?: number
           pressure_hpa?: number | null
           rain_amount_mm?: number | null
@@ -21346,6 +21355,7 @@ export type Database = {
       cleanup_bootstrap_state: { Args: never; Returns: undefined }
       cleanup_expired_registrations: { Args: never; Returns: number }
       cleanup_expired_sessions: { Args: never; Returns: undefined }
+      cleanup_expired_weather_cache: { Args: never; Returns: number }
       cleanup_old_dashboard_updates: { Args: never; Returns: number }
       cleanup_old_data_with_retention: {
         Args: never

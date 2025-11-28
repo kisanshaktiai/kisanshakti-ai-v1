@@ -2,7 +2,6 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 import { checkRateLimit } from '../_shared/rateLimiter.ts'
 import { resolveTenantFromRequest } from '../_shared/tenantMiddleware.ts'
-import { validateTenantAuth } from '../_shared/authMiddleware.ts'
 import { withTenantBlocker } from '../_shared/tenantBlocker.ts'
 
 const corsHeaders = {
@@ -12,7 +11,7 @@ const corsHeaders = {
 
 // Type definitions
 interface WeatherRequest {
-  action: 'current' | 'forecast' | 'agricultural'
+  action: 'current' | 'forecast' | 'agricultural' | 'all' // NEW: 'all' for single combined call
   lat: number
   lon: number
   units?: 'metric' | 'imperial' | 'standard'
@@ -63,171 +62,15 @@ interface DailyForecast {
   moon_phase?: number
 }
 
-interface AgricultureInsights {
-  temperature: number
-  humidity: number
-  windSpeed: number
-  recommendations: string[]
-}
-
-// Helper functions for weather APIs
-// Helper function to convert weather codes to descriptions
-const weatherCodeMap: { [key: number]: string } = {
-  0: "Clear",
-  1: "Mostly Clear",
-  2: "Partly Cloudy",
-  3: "Cloudy",
-  45: "Fog",
-  48: "Depositing Rime Fog",
-  51: "Light Drizzle",
-  53: "Moderate Drizzle",
-  55: "Dense Drizzle",
-  56: "Light Freezing Drizzle",
-  57: "Dense Freezing Drizzle",
-  61: "Slight Rain",
-  63: "Moderate Rain",
-  65: "Heavy Rain",
-  66: "Light Freezing Rain",
-  67: "Heavy Freezing Rain",
-  71: "Slight Snow Fall",
-  73: "Moderate Snow Fall",
-  75: "Heavy Snow Fall",
-  77: "Snow Grains",
-  80: "Slight Rain Showers",
-  81: "Moderate Rain Showers",
-  82: "Violent Rain Showers",
-  85: "Slight Snow Showers",
-  86: "Heavy Snow Showers",
-  95: "Thunderstorm",
-  96: "Thunderstorm with Slight Hail",
-  99: "Thunderstorm with Heavy Hail",
-};
-
-// Function to get weather recommendation for agriculture
-function getWeatherRecommendation(temperature: number, humidity: number, windSpeed: number): string[] {
-  const recommendations: string[] = [];
-
-  if (temperature > 30) {
-    recommendations.push("High temperature detected. Ensure adequate irrigation.");
-  } else if (temperature < 10) {
-    recommendations.push("Low temperature detected. Protect crops from frost.");
+// Helper to round coordinates to 2 decimal places (~1km precision)
+function roundCoordinates(lat: number, lon: number): { lat: number; lon: number; key: string } {
+  const roundedLat = Math.round(lat * 100) / 100
+  const roundedLon = Math.round(lon * 100) / 100
+  return {
+    lat: roundedLat,
+    lon: roundedLon,
+    key: `${roundedLat},${roundedLon}`
   }
-
-  if (humidity > 80) {
-    recommendations.push("High humidity detected. Monitor for fungal diseases.");
-  } else if (humidity < 30) {
-    recommendations.push("Low humidity detected. Increase irrigation.");
-  }
-
-  if (windSpeed > 50) {
-    recommendations.push("High wind speed detected. Provide windbreaks for crops.");
-  }
-
-  return recommendations;
-}
-
-// Helper functions for Tomorrow.io API
-async function fetchTomorrowIoWeather(
-  lat: number,
-  lon: number,
-  apiKey: string,
-  units: string
-): Promise<{ current: CurrentWeatherData; forecast: DailyForecast[]; hourly?: ForecastItem[] }> {
-  const unitSystem = units === 'imperial' ? 'imperial' : 'metric'
-  
-  // Fix: Tomorrow.io v4 requires timesteps as separate parameters
-  const baseUrl = `https://api.tomorrow.io/v4/weather/forecast`
-  const params = new URLSearchParams({
-    location: `${lat},${lon}`,
-    apikey: apiKey,
-    units: unitSystem,
-    timesteps: '1d,1h,current'
-  })
-  
-  const url = `${baseUrl}?${params.toString()}`
-  console.log(`🌤️ Tomorrow.io request: ${baseUrl}?location=${lat},${lon}&timesteps=1d,1h,current`)
-  
-  const response = await fetch(url)
-  if (!response.ok) {
-    const errorText = await response.text()
-    console.error(`❌ Tomorrow.io API error ${response.status}:`, errorText)
-    throw new Error(`Tomorrow.io API error: ${response.status} - ${errorText}`)
-  }
-  
-  const data = await response.json()
-  console.log('✅ Tomorrow.io response received')
-  const current = data.timelines?.find((t: any) => t.timestep === 'current')?.intervals?.[0]
-  const daily = data.timelines?.find((t: any) => t.timestep === '1d')?.intervals || []
-  const hourly = data.timelines?.find((t: any) => t.timestep === '1h')?.intervals || []
-  
-  if (!current) {
-    throw new Error('Tomorrow.io API returned invalid data structure')
-  }
-  
-  // Map Tomorrow.io data to our format
-  const currentWeather: CurrentWeatherData = {
-    temp: current.values.temperature ?? 0,
-    feels_like: current.values.temperatureApparent ?? 0,
-    temp_min: daily[0]?.values.temperatureMin ?? 0,
-    temp_max: daily[0]?.values.temperatureMax ?? 0,
-    humidity: current.values.humidity ?? 0,
-    pressure: current.values.pressureSurfaceLevel ?? 0,
-    wind_speed: current.values.windSpeed ?? 0,
-    wind_deg: current.values.windDirection ?? 0,
-    description: getWeatherDescription(current.values.weatherCode),
-    main: getWeatherMain(current.values.weatherCode),
-    icon: getWeatherIcon(current.values.weatherCode),
-    clouds: current.values.cloudCover ?? 0,
-    visibility: current.values.visibility ?? 10000,
-    sunrise: new Date(daily[0]?.values.sunriseTime).getTime() / 1000 ?? 0,
-    sunset: new Date(daily[0]?.values.sunsetTime).getTime() / 1000 ?? 0,
-    location: `${lat.toFixed(2)}, ${lon.toFixed(2)}`,
-    dt: new Date(current.time).getTime() / 1000,
-    provider: 'Tomorrow.io',
-    uv_index: current.values.uvIndex ?? 0,
-    dew_point: current.values.dewPoint ?? 0
-  }
-  
-  // Map hourly forecast (next 24 hours)
-  const hourlyForecast: ForecastItem[] = hourly.slice(0, 24).map((hour: any) => ({
-    dt: new Date(hour.startTime).getTime() / 1000,
-    temp: hour.values.temperature ?? 0,
-    feels_like: hour.values.temperatureApparent ?? 0,
-    humidity: hour.values.humidity ?? 0,
-    wind_speed: hour.values.windSpeed ?? 0,
-    weather: [{
-      description: getWeatherDescription(hour.values.weatherCode),
-      main: getWeatherMain(hour.values.weatherCode),
-      icon: getWeatherIcon(hour.values.weatherCode)
-    }],
-    pop: (hour.values.precipitationProbability || 0) / 100,
-    uv_index: hour.values.uvIndex ?? 0
-  }))
-  
-  // Map forecast data (14 days)
-  const forecastData: DailyForecast[] = daily.slice(0, 14).map((day: any) => ({
-    dt: new Date(day.time).getTime() / 1000,
-    temp: {
-      day: day.values.temperatureAvg ?? 0,
-      min: day.values.temperatureMin ?? 0,
-      max: day.values.temperatureMax ?? 0,
-      night: day.values.temperatureMin ?? 0,
-      eve: day.values.temperatureAvg ?? 0,
-      morn: day.values.temperatureAvg ?? 0
-    },
-    humidity: day.values.humidityAvg ?? 0,
-    wind_speed: day.values.windSpeedAvg ?? 0,
-    weather: [{
-      description: getWeatherDescription(day.values.weatherCodeMax),
-      main: getWeatherMain(day.values.weatherCodeMax),
-      icon: getWeatherIcon(day.values.weatherCodeMax)
-    }],
-    pop: (day.values.precipitationProbabilityAvg || 0) / 100,
-    uv_index: day.values.uvIndexMax ?? 0,
-    moon_phase: day.values.moonPhase ?? 0
-  }))
-  
-  return { current: currentWeather, forecast: forecastData, hourly: hourlyForecast }
 }
 
 // Weather code mapping for Tomorrow.io
@@ -286,140 +129,370 @@ function getWeatherIcon(code: number): string {
   return '01d'
 }
 
-async function fetchOpenWeatherCurrent(lat: number, lon: number, apiKey: string, units: string): Promise<CurrentWeatherData> {
-  const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=${units}`
-  const response = await fetch(url)
-  
-  if (!response.ok) throw new Error(`OpenWeather API error: ${response.status}`)
-  
-  const data = await response.json()
-  return {
-    temp: data.main?.temp ?? 0,
-    feels_like: data.main?.feels_like ?? 0,
-    temp_min: data.main?.temp_min ?? 0,
-    temp_max: data.main?.temp_max ?? 0,
-    humidity: data.main?.humidity ?? 0,
-    pressure: data.main?.pressure ?? 0,
-    wind_speed: data.wind?.speed ?? 0,
-    wind_deg: data.wind?.deg ?? 0,
-    description: data.weather?.[0]?.description ?? 'Unknown',
-    main: data.weather?.[0]?.main ?? 'Unknown',
-    icon: data.weather?.[0]?.icon ?? '01d',
-    clouds: data.clouds?.all ?? 0,
-    visibility: data.visibility ?? 10000,
-    sunrise: data.sys?.sunrise ?? 0,
-    sunset: data.sys?.sunset ?? 0,
-    location: data.name ?? 'Unknown',
-    dt: data.dt ?? Date.now() / 1000,
-    provider: 'OpenWeather'
+// Check cache for valid weather data
+async function checkCache(
+  supabase: any,
+  locationKey: string,
+  action: string
+): Promise<{ current?: CurrentWeatherData; forecast?: DailyForecast[]; hourly?: ForecastItem[] } | null> {
+  try {
+    // Check current weather cache
+    const { data: cachedCurrent, error: cacheError } = await supabase
+      .from('weather_current')
+      .select('*')
+      .eq('location_key', locationKey)
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle()
+
+    if (cacheError) {
+      console.warn('⚠️ Cache check error:', cacheError)
+      return null
+    }
+
+    if (!cachedCurrent) {
+      console.log(`❌ [Weather] Cache MISS for ${locationKey}`)
+      return null
+    }
+
+    console.log(`✅ [Weather] Cache HIT for ${locationKey}`)
+    
+    // Map cached data to CurrentWeatherData format
+    const current: CurrentWeatherData = {
+      temp: cachedCurrent.temperature_celsius || 0,
+      feels_like: cachedCurrent.feels_like_celsius || 0,
+      temp_min: cachedCurrent.temp_min || 0,
+      temp_max: cachedCurrent.temp_max || 0,
+      humidity: cachedCurrent.humidity_percent || 0,
+      pressure: cachedCurrent.pressure_hpa || 0,
+      wind_speed: cachedCurrent.wind_speed_kph || 0,
+      wind_deg: cachedCurrent.wind_direction_degrees || 0,
+      description: cachedCurrent.description || 'Unknown',
+      main: cachedCurrent.condition || 'Unknown',
+      icon: cachedCurrent.icon_code || '01d',
+      clouds: cachedCurrent.cloud_cover_percent || 0,
+      visibility: cachedCurrent.visibility_meters || 10000,
+      sunrise: 0, // Not cached in current schema
+      sunset: 0,
+      location: `${cachedCurrent.latitude}, ${cachedCurrent.longitude}`,
+      dt: Math.floor(new Date(cachedCurrent.observation_time).getTime() / 1000),
+      provider: cachedCurrent.data_source || 'Cache',
+      uv_index: cachedCurrent.uv_index || 0,
+      dew_point: cachedCurrent.dew_point_celsius || 0
+    }
+
+    // If only current weather needed, return now
+    if (action === 'current') {
+      return { current }
+    }
+
+    // Fetch cached forecasts if needed
+    if (action === 'forecast' || action === 'all') {
+      const { data: cachedForecasts } = await supabase
+        .from('weather_forecasts')
+        .select('*')
+        .eq('location_key', locationKey)
+        .gte('forecast_time', new Date().toISOString())
+        .order('forecast_time', { ascending: true })
+
+      const hourly: ForecastItem[] = []
+      const daily: DailyForecast[] = []
+
+      if (cachedForecasts && cachedForecasts.length > 0) {
+        // Group by date for daily forecast
+        const dailyMap = new Map<string, any>()
+
+        cachedForecasts.forEach((forecast: any) => {
+          const forecastDate = new Date(forecast.forecast_time)
+          const dateKey = forecastDate.toDateString()
+
+          // Add to hourly (first 24 hours)
+          if (hourly.length < 24 && forecast.forecast_type === 'hourly') {
+            hourly.push({
+              dt: Math.floor(forecastDate.getTime() / 1000),
+              temp: forecast.temperature_celsius || 0,
+              feels_like: forecast.feels_like_celsius || 0,
+              humidity: forecast.humidity_percent || 0,
+              wind_speed: forecast.wind_speed_kph || 0,
+              weather: [{
+                description: forecast.description || 'Unknown',
+                main: forecast.condition || 'Unknown',
+                icon: forecast.icon_code || '01d'
+              }],
+              pop: (forecast.precipitation_probability || 0) / 100,
+              uv_index: forecast.uv_index || 0
+            })
+          }
+
+          // Aggregate for daily
+          if (forecast.forecast_type === 'daily' || !dailyMap.has(dateKey)) {
+            if (!dailyMap.has(dateKey)) {
+              dailyMap.set(dateKey, {
+                dt: Math.floor(forecastDate.getTime() / 1000),
+                temps: [],
+                humidity: [],
+                wind_speed: [],
+                weather: [{
+                  description: forecast.description || 'Unknown',
+                  main: forecast.condition || 'Unknown',
+                  icon: forecast.icon_code || '01d'
+                }],
+                pop: (forecast.precipitation_probability || 0) / 100,
+                uv_index: forecast.uv_index || 0
+              })
+            }
+            const dayData = dailyMap.get(dateKey)!
+            dayData.temps.push(forecast.temperature_celsius || 0)
+            dayData.humidity.push(forecast.humidity_percent || 0)
+            dayData.wind_speed.push(forecast.wind_speed_kph || 0)
+          }
+        })
+
+        // Convert daily map to array
+        dailyMap.forEach(day => {
+          if (daily.length < 14) {
+            daily.push({
+              dt: day.dt,
+              temp: {
+                day: day.temps.reduce((a: number, b: number) => a + b, 0) / day.temps.length,
+                min: Math.min(...day.temps),
+                max: Math.max(...day.temps),
+                night: Math.min(...day.temps),
+                eve: day.temps[day.temps.length - 1] || day.temps[0],
+                morn: day.temps[0]
+              },
+              humidity: day.humidity.reduce((a: number, b: number) => a + b, 0) / day.humidity.length,
+              wind_speed: day.wind_speed.reduce((a: number, b: number) => a + b, 0) / day.wind_speed.length,
+              weather: day.weather,
+              pop: day.pop,
+              uv_index: day.uv_index
+            })
+          }
+        })
+      }
+
+      return { current, forecast: daily, hourly }
+    }
+
+    return { current }
+  } catch (error) {
+    console.error('❌ [Weather] Cache check failed:', error)
+    return null
   }
 }
 
-async function fetchOpenWeatherForecast(lat: number, lon: number, apiKey: string, units: string): Promise<{ daily: DailyForecast[]; hourly: ForecastItem[] }> {
-  const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${apiKey}&units=${units}`
-  const response = await fetch(url)
-  if (!response.ok) throw new Error(`OpenWeather forecast API error: ${response.status}`)
+// Fetch from Tomorrow.io using REALTIME endpoint for current weather
+async function fetchTomorrowIoRealtime(
+  lat: number,
+  lon: number,
+  apiKey: string
+): Promise<CurrentWeatherData> {
+  // Use /realtime endpoint as per Tomorrow.io sample code
+  const url = `https://api.tomorrow.io/v4/weather/realtime?location=${lat},${lon}&apikey=${apiKey}`
+  console.log(`🌤️ [Weather] Fetching from Tomorrow.io /realtime: ${lat},${lon}`)
   
-  const data = await response.json()
-  const dailyMap = new Map<string, any>()
-  const hourlyForecast: ForecastItem[] = []
-  
-  data.list?.forEach((item: any, index: number) => {
-    // Extract hourly data (next 24 hours = 8 items at 3-hour intervals)
-    if (index < 8) {
-      hourlyForecast.push({
-        dt: item.dt,
-        temp: item.main.temp ?? 0,
-        feels_like: item.main.feels_like ?? 0,
-        humidity: item.main.humidity ?? 0,
-        wind_speed: item.wind.speed ?? 0,
-        weather: item.weather || [],
-        pop: item.pop ?? 0,
-        uv_index: 0
-      })
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: {
+      'accept': 'application/json',
+      'accept-encoding': 'deflate, gzip, br'
     }
-    
-    // Aggregate daily data
-    const date = new Date(item.dt * 1000).toDateString()
-    if (!dailyMap.has(date)) {
-      dailyMap.set(date, {
-        dt: item.dt,
-        temps: [] as number[],
-        humidity: [] as number[],
-        weather: item.weather,
-        pop: [] as number[],
-        wind_speed: [] as number[]
-      })
-    }
-    const daily = dailyMap.get(date)!
-    daily.temps.push(item.main.temp)
-    daily.humidity.push(item.main.humidity)
-    daily.pop.push(item.pop ?? 0)
-    daily.wind_speed.push(item.wind.speed)
   })
   
-  const dailyData = Array.from(dailyMap.values()).slice(0, 7).map(day => ({
-    dt: day.dt,
-    temp: {
-      day: day.temps.reduce((a: number, b: number) => a + b, 0) / day.temps.length,
-      min: Math.min(...day.temps),
-      max: Math.max(...day.temps),
-      night: Math.min(...day.temps),
-      eve: day.temps[day.temps.length - 1] || day.temps[0],
-      morn: day.temps[0]
-    },
-    humidity: day.humidity.reduce((a: number, b: number) => a + b, 0) / day.humidity.length,
-    wind_speed: day.wind_speed.reduce((a: number, b: number) => a + b, 0) / day.wind_speed.length,
-    weather: day.weather,
-    pop: Math.max(...day.pop)
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Tomorrow.io API error: ${response.status} - ${errorText}`)
+  }
+  
+  const data = await response.json()
+  const values = data.data?.values
+  
+  if (!values) {
+    throw new Error('Tomorrow.io returned invalid data structure')
+  }
+  
+  return {
+    temp: values.temperature ?? 0,
+    feels_like: values.temperatureApparent ?? 0,
+    temp_min: values.temperature ?? 0,
+    temp_max: values.temperature ?? 0,
+    humidity: values.humidity ?? 0,
+    pressure: values.pressureSurfaceLevel ?? 0,
+    wind_speed: values.windSpeed ?? 0,
+    wind_deg: values.windDirection ?? 0,
+    description: getWeatherDescription(values.weatherCode),
+    main: getWeatherMain(values.weatherCode),
+    icon: getWeatherIcon(values.weatherCode),
+    clouds: values.cloudCover ?? 0,
+    visibility: values.visibility ?? 10000,
+    sunrise: 0,
+    sunset: 0,
+    location: `${lat.toFixed(2)}, ${lon.toFixed(2)}`,
+    dt: Math.floor(new Date(data.data.time).getTime() / 1000),
+    provider: 'Tomorrow.io',
+    uv_index: values.uvIndex ?? 0,
+    dew_point: values.dewPoint ?? 0
+  }
+}
+
+// Fetch forecast from Tomorrow.io using combined endpoint
+async function fetchTomorrowIoForecast(
+  lat: number,
+  lon: number,
+  apiKey: string
+): Promise<{ forecast: DailyForecast[]; hourly: ForecastItem[] }> {
+  // Single combined call for hourly + daily
+  const url = `https://api.tomorrow.io/v4/weather/forecast?location=${lat},${lon}&apikey=${apiKey}&timesteps=1h,1d&units=metric`
+  console.log(`🌤️ [Weather] Fetching forecast from Tomorrow.io: ${lat},${lon}`)
+  
+  const response = await fetch(url)
+  
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Tomorrow.io forecast API error: ${response.status} - ${errorText}`)
+  }
+  
+  const data = await response.json()
+  const hourlyTimeline = data.timelines?.daily?.find((t: any) => t.timestep === '1h' || t === 'hourly')?.intervals || 
+                         data.timelines?.find((t: any) => t.timestep === '1h')?.intervals || []
+  const dailyTimeline = data.timelines?.daily || 
+                        data.timelines?.find((t: any) => t.timestep === '1d')?.intervals || []
+  
+  // Map hourly data (next 24 hours)
+  const hourly: ForecastItem[] = hourlyTimeline.slice(0, 24).map((hour: any) => ({
+    dt: Math.floor(new Date(hour.startTime || hour.time).getTime() / 1000),
+    temp: hour.values.temperature ?? 0,
+    feels_like: hour.values.temperatureApparent ?? 0,
+    humidity: hour.values.humidity ?? 0,
+    wind_speed: hour.values.windSpeed ?? 0,
+    weather: [{
+      description: getWeatherDescription(hour.values.weatherCode),
+      main: getWeatherMain(hour.values.weatherCode),
+      icon: getWeatherIcon(hour.values.weatherCode)
+    }],
+    pop: (hour.values.precipitationProbability || 0) / 100,
+    uv_index: hour.values.uvIndex ?? 0
   }))
   
-  return { daily: dailyData, hourly: hourlyForecast }
+  // Map daily data (next 14 days)
+  const forecast: DailyForecast[] = dailyTimeline.slice(0, 14).map((day: any) => ({
+    dt: Math.floor(new Date(day.time || day.startTime).getTime() / 1000),
+    temp: {
+      day: day.values.temperatureAvg ?? day.values.temperature ?? 0,
+      min: day.values.temperatureMin ?? day.values.temperature ?? 0,
+      max: day.values.temperatureMax ?? day.values.temperature ?? 0,
+      night: day.values.temperatureMin ?? day.values.temperature ?? 0,
+      eve: day.values.temperatureAvg ?? day.values.temperature ?? 0,
+      morn: day.values.temperatureAvg ?? day.values.temperature ?? 0
+    },
+    humidity: day.values.humidityAvg ?? day.values.humidity ?? 0,
+    wind_speed: day.values.windSpeedAvg ?? day.values.windSpeed ?? 0,
+    weather: [{
+      description: getWeatherDescription(day.values.weatherCodeMax || day.values.weatherCode),
+      main: getWeatherMain(day.values.weatherCodeMax || day.values.weatherCode),
+      icon: getWeatherIcon(day.values.weatherCodeMax || day.values.weatherCode)
+    }],
+    pop: (day.values.precipitationProbabilityAvg || day.values.precipitationProbability || 0) / 100,
+    uv_index: day.values.uvIndexMax ?? day.values.uvIndex ?? 0,
+    moon_phase: day.values.moonPhase ?? 0
+  }))
+  
+  return { forecast, hourly }
 }
 
-async function fetchWeatherWithFallback(
-  lat: number, lon: number, tomorrowIoKey: string | undefined, openWeatherKey: string, units: string, action: string
-): Promise<{ current?: CurrentWeatherData; forecast?: DailyForecast[]; hourly?: ForecastItem[] }> {
-  let lastError: Error | null = null
-  
-  if (tomorrowIoKey) {
-    try {
-      console.log('🌤️ Attempting to fetch from Tomorrow.io...')
-      const { current, forecast, hourly } = await fetchTomorrowIoWeather(lat, lon, tomorrowIoKey, units)
-      console.log('✅ Tomorrow.io fetch successful')
-      if (action === 'current') return { current }
-      else if (action === 'forecast') return { forecast, hourly }
-      else return { current, forecast, hourly }
-    } catch (error) {
-      console.error('❌ Tomorrow.io failed:', error)
-      lastError = error as Error
-    }
-  } else {
-    console.log('⚠️ Tomorrow.io API key not configured, skipping')
-  }
-  
+// Store weather data in cache
+async function cacheWeatherData(
+  supabase: any,
+  locationKey: string,
+  rounded: { lat: number; lon: number },
+  current: CurrentWeatherData,
+  forecast?: DailyForecast[],
+  hourly?: ForecastItem[]
+) {
   try {
-    console.log('🌦️ Falling back to OpenWeather...')
-    if (action === 'current') {
-      const current = await fetchOpenWeatherCurrent(lat, lon, openWeatherKey, units)
-      return { current }
-    } else if (action === 'forecast') {
-      const { daily, hourly } = await fetchOpenWeatherForecast(lat, lon, openWeatherKey, units)
-      return { forecast: daily, hourly }
-    } else {
-      const [current, forecastData] = await Promise.all([
-        fetchOpenWeatherCurrent(lat, lon, openWeatherKey, units),
-        fetchOpenWeatherForecast(lat, lon, openWeatherKey, units)
-      ])
-      return { current, forecast: forecastData.daily, hourly: forecastData.hourly }
+    const now = new Date()
+    const expiresAt = new Date(now.getTime() + 15 * 60 * 1000) // 15 minutes for current weather
+    
+    // Upsert current weather to cache
+    await supabase.from('weather_current').upsert({
+      location_key: locationKey,
+      latitude: rounded.lat,
+      longitude: rounded.lon,
+      temperature_celsius: current.temp,
+      feels_like_celsius: current.feels_like,
+      temp_min: current.temp_min,
+      temp_max: current.temp_max,
+      humidity_percent: current.humidity,
+      pressure_hpa: current.pressure,
+      wind_speed_kph: current.wind_speed,
+      wind_direction_degrees: current.wind_deg,
+      description: current.description,
+      condition: current.main,
+      icon_code: current.icon,
+      cloud_cover_percent: current.clouds,
+      visibility_meters: current.visibility,
+      uv_index: current.uv_index,
+      dew_point_celsius: current.dew_point,
+      observation_time: new Date(current.dt * 1000).toISOString(),
+      data_source: current.provider || 'Tomorrow.io',
+      expires_at: expiresAt.toISOString(),
+      created_at: now.toISOString(),
+      updated_at: now.toISOString()
+    }, { onConflict: 'location_key' })
+    
+    console.log(`💾 [Weather] Cached current weather for ${locationKey}`)
+    
+    // Cache forecasts if provided
+    if (forecast && forecast.length > 0) {
+      const forecastRecords = forecast.map(day => ({
+        location_key: locationKey,
+        forecast_time: new Date(day.dt * 1000).toISOString(),
+        forecast_type: 'daily',
+        temperature_celsius: day.temp.day,
+        feels_like_celsius: day.temp.day,
+        temp_min: day.temp.min,
+        temp_max: day.temp.max,
+        humidity_percent: day.humidity,
+        wind_speed_kph: day.wind_speed,
+        description: day.weather[0]?.description || 'Unknown',
+        condition: day.weather[0]?.main || 'Unknown',
+        icon_code: day.weather[0]?.icon || '01d',
+        precipitation_probability: day.pop * 100,
+        uv_index: day.uv_index,
+        data_source: current.provider || 'Tomorrow.io'
+      }))
+      
+      await supabase.from('weather_forecasts').upsert(forecastRecords)
+      console.log(`💾 [Weather] Cached ${forecast.length} daily forecasts`)
+    }
+    
+    // Cache hourly forecasts if provided
+    if (hourly && hourly.length > 0) {
+      const hourlyRecords = hourly.map(hour => ({
+        location_key: locationKey,
+        forecast_time: new Date(hour.dt * 1000).toISOString(),
+        forecast_type: 'hourly',
+        temperature_celsius: hour.temp,
+        feels_like_celsius: hour.feels_like,
+        humidity_percent: hour.humidity,
+        wind_speed_kph: hour.wind_speed,
+        description: hour.weather[0]?.description || 'Unknown',
+        condition: hour.weather[0]?.main || 'Unknown',
+        icon_code: hour.weather[0]?.icon || '01d',
+        precipitation_probability: hour.pop * 100,
+        uv_index: hour.uv_index,
+        data_source: current.provider || 'Tomorrow.io'
+      }))
+      
+      await supabase.from('weather_forecasts').upsert(hourlyRecords)
+      console.log(`💾 [Weather] Cached ${hourly.length} hourly forecasts`)
     }
   } catch (error) {
-    console.error('❌ OpenWeather also failed:', error)
-    throw lastError || error
+    console.error('❌ [Weather] Failed to cache data:', error)
+    // Don't throw - caching is best-effort
   }
 }
 
-// Main handler with middleware
+// Main handler
 serve(async (req: Request): Promise<Response> => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -441,7 +514,7 @@ serve(async (req: Request): Promise<Response> => {
       throw new Error('No weather API keys configured')
     }
 
-    // ===== STEP 1: Resolve Tenant from Domain =====
+    // Resolve tenant
     console.log('🔍 [Weather] Resolving tenant from request...')
     const tenant = await resolveTenantFromRequest(req, supabaseUrl, supabaseServiceKey)
     
@@ -454,15 +527,12 @@ serve(async (req: Request): Promise<Response> => {
 
     console.log(`✅ [Weather] Tenant resolved: ${tenant.name} (${tenant.id})`)
 
-    // ===== STEP 2: Block Inactive Tenants =====
+    // Block inactive tenants
     const blockResponse = await withTenantBlocker(tenant, corsHeaders)
     if (blockResponse) {
       console.warn(`🚫 [Weather] Tenant blocked: ${tenant.status}`)
       return blockResponse
     }
-
-    // ===== STEP 3: No Authentication Required (Public Weather Endpoint) =====
-    console.log('🌐 [Weather] Public endpoint - no authentication required')
     
     // Initialize Supabase client
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
@@ -475,14 +545,21 @@ serve(async (req: Request): Promise<Response> => {
       throw new Error('Latitude and longitude are required')
     }
     
-    // Rate limiting
-    const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown'
-    const rateLimit = await checkRateLimit(clientIp, 'weather', { maxRequests: 100, windowMs: 60000 })
+    // Round coordinates for caching (~1km precision)
+    const rounded = roundCoordinates(lat, lon)
+    console.log(`📍 [Weather] Rounded location: ${rounded.key} (original: ${lat},${lon})`)
+    
+    // Location-based rate limiting (not per-IP)
+    const rateLimit = await checkRateLimit(rounded.key, 'weather', { 
+      maxRequests: 4, // Only 4 fresh fetches per 15 min per ~1km area
+      windowMs: 900000 // 15 minutes
+    })
     
     if (!rateLimit.allowed) {
+      console.warn(`⚠️ [Weather] Rate limit exceeded for ${rounded.key}`)
       return new Response(
         JSON.stringify({ 
-          error: 'Rate limit exceeded',
+          error: 'Rate limit exceeded for this location',
           resetTime: new Date(rateLimit.resetTime).toISOString()
         }),
         { 
@@ -496,38 +573,93 @@ serve(async (req: Request): Promise<Response> => {
       )
     }
     
-    console.log(`🌤️ [Weather] Processing request for tenant ${tenant.id}:`, { action, lat, lon })
+    console.log(`🌤️ [Weather] Processing request for tenant ${tenant.id}:`, { action, location: rounded.key })
     
-    // Fetch weather data
-    const weatherData = await fetchWeatherWithFallback(
-      lat, lon, tomorrowIoApiKey, openWeatherApiKey, units, action
-    )
+    // STEP 1: Check cache first (cache-first strategy)
+    const cached = await checkCache(supabase, rounded.key, action)
+    if (cached) {
+      console.log(`✅ [Weather] Returning cached data (${Object.keys(cached).join(', ')})`)
+      return new Response(
+        JSON.stringify({ 
+          ...cached,
+          tenant: { id: tenant.id, name: tenant.name },
+          cached: true,
+          timestamp: new Date().toISOString()
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
     
-    // Return response with tenant context
+    // STEP 2: Cache miss - fetch from API
+    console.log(`🌐 [Weather] Cache miss - fetching from Tomorrow.io API`)
+    
+    if (!tomorrowIoApiKey) {
+      throw new Error('Tomorrow.io API key not configured')
+    }
+    
+    let current: CurrentWeatherData | undefined
+    let forecast: DailyForecast[] | undefined
+    let hourly: ForecastItem[] | undefined
+    
+    if (action === 'current' || action === 'all') {
+      // Fetch current weather using /realtime endpoint
+      current = await fetchTomorrowIoRealtime(rounded.lat, rounded.lon, tomorrowIoApiKey)
+    }
+    
+    if (action === 'forecast' || action === 'all') {
+      // Fetch forecast data
+      const forecastData = await fetchTomorrowIoForecast(rounded.lat, rounded.lon, tomorrowIoApiKey)
+      forecast = forecastData.forecast
+      hourly = forecastData.hourly
+    }
+    
+    // STEP 3: Cache the fresh data
+    if (current) {
+      await cacheWeatherData(supabase, rounded.key, rounded, current, forecast, hourly)
+    }
+    
+    // STEP 4: Return response based on action
+    const response: any = {
+      tenant: { id: tenant.id, name: tenant.name },
+      cached: false,
+      timestamp: new Date().toISOString()
+    }
+    
+    if (action === 'current') {
+      response.current = current
+    } else if (action === 'forecast') {
+      response.forecast = forecast
+      response.hourly = hourly
+    } else if (action === 'all') {
+      response.current = current
+      response.forecast = forecast
+      response.hourly = hourly
+    }
+    
+    console.log(`✅ [Weather] Successfully fetched and cached data for ${rounded.key}`)
+    
     return new Response(
-      JSON.stringify({ 
-        ...weatherData,
-        tenant: {
-          id: tenant.id,
-          name: tenant.name
-        },
-        timestamp: new Date().toISOString()
-      }),
+      JSON.stringify(response),
       { 
         status: 200, 
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json',
-          'X-Tenant-ID': tenant.id
-        } 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     )
     
-  } catch (error: any) {
+  } catch (error) {
     console.error('❌ [Weather] Error:', error)
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : 'Internal server error',
+        timestamp: new Date().toISOString()
+      }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
     )
   }
 })
