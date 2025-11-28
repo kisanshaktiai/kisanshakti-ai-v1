@@ -353,19 +353,27 @@ async function fetchTomorrowIoForecast(
   
   const data = await response.json()
   
-  // Tomorrow.io returns timelines as an array, not an object with daily property
-  const hourlyTimeline = data.timelines?.find((t: any) => t.timestep === '1h')?.intervals || []
-  const dailyTimeline = data.timelines?.find((t: any) => t.timestep === '1d')?.intervals || []
+  // Debug: Log the actual API response structure
+  console.log('📊 [Weather] Tomorrow.io forecast response structure:', {
+    hasTimelines: !!data.timelines,
+    timelinesType: typeof data.timelines,
+    timelinesKeys: data.timelines ? Object.keys(data.timelines) : [],
+    isArray: Array.isArray(data.timelines)
+  })
+  
+  // Tomorrow.io returns timelines as an OBJECT with hourly/daily properties when using timesteps=1h,1d
+  const hourlyTimeline = data.timelines?.hourly || []
+  const dailyTimeline = data.timelines?.daily || []
   
   console.log(`📊 [Weather] Received forecast data - hourly: ${hourlyTimeline.length} items, daily: ${dailyTimeline.length} items`)
   
   // Map hourly data (next 24 hours)
   const hourly: ForecastItem[] = hourlyTimeline.slice(0, 24).map((hour: any) => ({
-    dt: Math.floor(new Date(hour.startTime || hour.time).getTime() / 1000),
+    dt: Math.floor(new Date(hour.time).getTime() / 1000), // Use 'time' property
     temp: hour.values.temperature ?? 0,
     feels_like: hour.values.temperatureApparent ?? 0,
     humidity: hour.values.humidity ?? 0,
-    wind_speed: hour.values.windSpeed ?? 0,
+    wind_speed: hour.values.windSpeed ?? 0, // m/s (Tomorrow.io default with metric)
     weather: [{
       description: getWeatherDescription(hour.values.weatherCode),
       main: getWeatherMain(hour.values.weatherCode),
@@ -377,7 +385,7 @@ async function fetchTomorrowIoForecast(
   
   // Map daily data (next 14 days)
   const forecast: DailyForecast[] = dailyTimeline.slice(0, 14).map((day: any) => ({
-    dt: Math.floor(new Date(day.time || day.startTime).getTime() / 1000),
+    dt: Math.floor(new Date(day.time).getTime() / 1000), // Use 'time' property
     temp: {
       day: day.values.temperatureAvg ?? day.values.temperature ?? 0,
       min: day.values.temperatureMin ?? day.values.temperature ?? 0,
@@ -387,13 +395,14 @@ async function fetchTomorrowIoForecast(
       morn: day.values.temperatureAvg ?? day.values.temperature ?? 0
     },
     humidity: day.values.humidityAvg ?? day.values.humidity ?? 0,
-    wind_speed: day.values.windSpeedAvg ?? day.values.windSpeed ?? 0,
+    wind_speed: day.values.windSpeedAvg ?? day.values.windSpeed ?? 0, // m/s
     weather: [{
       description: getWeatherDescription(day.values.weatherCodeMax || day.values.weatherCode),
       main: getWeatherMain(day.values.weatherCodeMax || day.values.weatherCode),
       icon: getWeatherIcon(day.values.weatherCodeMax || day.values.weatherCode)
     }],
     pop: (day.values.precipitationProbabilityAvg || day.values.precipitationProbability || 0) / 100,
+    rain: day.values.rainAccumulationAvg ?? day.values.rainAccumulation ?? 0, // mm
     uv_index: day.values.uvIndexMax ?? day.values.uvIndex ?? 0,
     moon_phase: day.values.moonPhase ?? 0
   }))
