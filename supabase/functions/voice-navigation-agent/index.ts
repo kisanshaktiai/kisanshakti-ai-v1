@@ -113,35 +113,26 @@ Deno.serve(async (req) => {
       );
     }
 
-    const aiPrompt = `
-You are a voice navigation assistant for a farming app in ${language} language.
-The user said: "${transcript}"
-Current context: ${JSON.stringify(context || {})}
+    // Optimized prompt - shorter to save tokens
+    const aiPrompt = `User said in ${language}: "${transcript}"
 
-Available features in the app:
-- Home (घर): Dashboard with overview - route: /app
-- Lands (ज़मीन): View and manage farm lands - route: /app/lands
-- Weather (मौसम): Weather forecast and farming insights - route: /app/weather
-- Schedule (कार्यक्रम): Crop schedules and tasks - route: /app/schedule
-- AI Chat (AI बातचीत): Ask farming questions - route: /app/chat
-- Market (बाज़ार): Buy/sell farming products - route: /app/market
-- Profile (प्रोफाइल): User profile and settings - route: /app/profile
-- Community (समुदाय): Social features - route: /app/social
+App routes:
+/app - Home
+/app/lands - Lands (add:/app/lands/add)
+/app/weather - Weather
+/app/schedule - Schedule
+/app/chat - AI Chat
+/app/market - Market
+/app/profile - Profile
+/app/social - Community
+/app/analytics - Analytics
+/app/soil-health - Soil Health
+/app/ndvi - NDVI Analysis
+/app/schemes - Government Schemes
+/app/advisory - Advisory
 
-Your task:
-1. Identify what the user wants to do
-2. Suggest the closest matching feature
-3. Provide 3 example phrases they could say in ${language}
-4. Respond in ${language} language
-
-Return JSON:
-{
-  "intent": "navigate.feature_name",
-  "route": "/app/route",
-  "suggestions": ["phrase1", "phrase2", "phrase3"],
-  "response": "helpful message in ${language}"
-}
-`;
+Match intent and return JSON:
+{"intent":"navigate.X","route":"/app/X","suggestions":["p1","p2","p3"],"response":"msg in ${language}"}`;
 
     const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -150,12 +141,12 @@ Return JSON:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model: 'google/gemini-2.5-flash-lite',
         messages: [
-          { role: 'system', content: 'You are a helpful voice assistant for rural Indian farmers.' },
           { role: 'user', content: aiPrompt }
         ],
-        temperature: 0.3,
+        temperature: 0.2,
+        max_tokens: 150,
       }),
     });
 
