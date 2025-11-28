@@ -3,6 +3,7 @@ import { localDB } from './localDB';
 import { toast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { tenantIsolationService } from './tenantIsolationService';
+import { networkStatusService } from './networkStatusService';
 
 interface SyncResult {
   success: boolean;
@@ -13,7 +14,6 @@ interface SyncResult {
 
 class SyncService {
   private syncInterval: NodeJS.Timeout | null = null;
-  private isOnline: boolean = navigator.onLine;
   private syncInProgress: boolean = false;
 
   constructor() {
@@ -22,21 +22,19 @@ class SyncService {
   }
 
   private initializeListeners(): void {
-    // Listen for online/offline events
-    window.addEventListener('online', () => {
-      this.isOnline = true;
-      console.log('Network: Online - Starting auto sync');
-      this.performSync();
-    });
-
-    window.addEventListener('offline', () => {
-      this.isOnline = false;
-      console.log('Network: Offline');
+    // Subscribe to centralized network status
+    networkStatusService.subscribe((isOnline) => {
+      console.log(`🔄 [Sync] Network status: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+      if (isOnline) {
+        console.log('🔄 [Sync] Starting auto sync after coming online');
+        this.performSync();
+      }
     });
 
     // Sync on app visibility change
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && this.isOnline) {
+      if (!document.hidden && networkStatusService.getStatus()) {
+        console.log('👁️ [Sync] Tab visible - performing sync');
         this.performSync();
       }
     });
@@ -52,11 +50,12 @@ class SyncService {
     this.syncInterval = setInterval(() => {
       const authState = useAuthStore.getState();
       const isAuthenticated = authState.user?.id && authState.user?.tenantId;
+      const isOnline = networkStatusService.getStatus();
       
-      if (this.isOnline && !this.syncInProgress && isAuthenticated) {
+      if (isOnline && !this.syncInProgress && isAuthenticated) {
         console.log('🔄 [Sync] Auto-sync triggered (hourly)');
         this.performSync();
-      } else if (!isAuthenticated && this.isOnline) {
+      } else if (!isAuthenticated && isOnline) {
         console.log('⏸️ [Sync] Auto-sync deferred - waiting for authentication');
       }
     }, 60 * 60 * 1000); // 1 hour
@@ -72,7 +71,7 @@ class SyncService {
       return { success: false, message: 'Sync already in progress' };
     }
 
-    if (!this.isOnline) {
+    if (!networkStatusService.getStatus()) {
       console.log('📴 [Sync] Device offline, skipping sync');
       if (showToast) {
         toast({
@@ -775,7 +774,7 @@ class SyncService {
   }
 
   isNetworkAvailable(): boolean {
-    return this.isOnline;
+    return networkStatusService.getStatus();
   }
 
   stopAutoSync(): void {

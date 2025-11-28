@@ -91,6 +91,7 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
   const [hourlyForecast, setHourlyForecast] = useState<HourlyData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const { toast } = useToast();
   const { tenant, isLoading: tenantLoading } = useTenant();
   const { user } = useAuthStore();
@@ -102,7 +103,7 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
   const defaultLocation = { lat: 28.6139, lon: 77.2090 };
 
 
-  const fetchWeatherData = async () => {
+  const fetchWeatherData = async (forceRefresh: boolean = false) => {
     // Don't fetch if tenant isn't loaded yet
     if (!tenant?.id) {
       console.log('⏳ [useWeather] Waiting for tenant to load before fetching weather');
@@ -113,50 +114,39 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
     
     console.log('🌤️ [useWeather] Fetching weather with tenant:', tenant.id);
     console.log('📍 [useWeather] Location:', weatherLocation);
+    console.log('🔄 [useWeather] Force refresh:', forceRefresh);
     
     try {
-      setLoading(true);
-      setError(null);
-
-      // Clear stale caches older than 1 hour
-      const clearStaleCaches = () => {
-        const keys = Object.keys(localStorage).filter(k => k.startsWith('weather_cache_'));
-        keys.forEach(key => {
-          try {
-            const cached = JSON.parse(localStorage.getItem(key) || '{}');
-            if (cached.timestamp && Date.now() - cached.timestamp > 3600000) { // 1 hour
-              localStorage.removeItem(key);
-              console.log('🗑️ [useWeather] Cleared stale cache:', key);
-            }
-          } catch {}
-        });
-      };
-      clearStaleCaches();
-
-      // Try to get cached data from localStorage for instant display (reduced cache time)
+      // Don't show loading spinner if we have cached data (stale-while-revalidate pattern)
       const cacheKey = `weather_cache_${weatherLocation.lat}_${weatherLocation.lon}`;
       const cachedDataStr = localStorage.getItem(cacheKey);
+      let hasCache = false;
       
-      if (cachedDataStr) {
+      if (cachedDataStr && !forceRefresh) {
         try {
           const cached = JSON.parse(cachedDataStr);
           const cacheAge = Date.now() - cached.timestamp;
           
-          // Use cache only if less than 2 minutes old (reduced from 10 minutes)
-          if (cacheAge < 120000) {
-            console.log('✅ [useWeather] Using cached weather data from localStorage');
+          // Show cached data immediately for better UX (stale-while-revalidate)
+          if (cacheAge < 3600000) { // 1 hour
+            console.log('✅ [useWeather] Showing cached data while fetching fresh data');
             setCurrentWeather(cached.current);
             setForecast(cached.forecast || []);
             setHourlyForecast(cached.hourly || []);
+            setLastUpdated(cached.timestamp);
             setLoading(false);
-            return;
-          } else {
-            console.log('📡 [useWeather] Cache expired, fetching fresh data');
+            hasCache = true;
           }
         } catch (e) {
           console.warn('⚠️ [useWeather] Failed to parse cached weather data:', e);
         }
       }
+
+      // ALWAYS fetch fresh data in background (world-class weather app pattern)
+      if (!hasCache) {
+        setLoading(true);
+      }
+      setError(null);
 
       // Fetch fresh data from edge function using authenticated client
       console.log('📡 [useWeather] Fetching current weather from API with auth...');
@@ -247,13 +237,15 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
         }
         
         // Cache the complete data in localStorage
+        const now = Date.now();
         const cacheData = {
           current: currentData,
           forecast: dailyData,
           hourly: hourlyData,
-          timestamp: Date.now()
+          timestamp: now
         };
         localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+        setLastUpdated(now);
         console.log('💾 [useWeather] Cached weather data in localStorage');
         
         // Also try to cache in database (optional, don't fail if it doesn't work)
@@ -314,9 +306,14 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
     // Fetch weather data when tenant is available (location will use default if not available)
     if (tenant?.id) {
       console.log('✅ [useWeather] Tenant loaded, fetching weather data');
-      fetchWeatherData();
-      // Refresh every 30 minutes
-      const interval = setInterval(fetchWeatherData, 1800000);
+      fetchWeatherData(false);
+      
+      // World-class weather app pattern: Refresh every 10 minutes for real-time data
+      const interval = setInterval(() => {
+        console.log('🔄 [useWeather] Auto-refresh triggered (10-minute interval)');
+        fetchWeatherData(false);
+      }, 600000); // 10 minutes
+      
       return () => clearInterval(interval);
     } else if (!tenant?.id && !tenantLoading) {
       console.warn('⚠️ [useWeather] No tenant ID available after loading completed');
@@ -339,7 +336,8 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
     hourlyForecast,
     loading,
     error,
-    refetch: fetchWeatherData,
+    lastUpdated,
+    refetch: () => fetchWeatherData(true), // Force refresh on manual refetch
     location: location || (deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : defaultLocation),
   };
 };

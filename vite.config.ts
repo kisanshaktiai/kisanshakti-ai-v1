@@ -8,6 +8,10 @@ import { VitePWA } from 'vite-plugin-pwa';
 const APP_VERSION = process.env.npm_package_version || '1.0.0';
 const BUILD_TIMESTAMP = new Date().toISOString();
 
+// Generate unique build hash for every deploy (timestamp + random string)
+// This ensures automatic cache invalidation on every deployment
+const BUILD_HASH = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   server: {
@@ -17,6 +21,7 @@ export default defineConfig(({ mode }) => ({
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(APP_VERSION),
     'import.meta.env.VITE_BUILD_TIMESTAMP': JSON.stringify(BUILD_TIMESTAMP),
+    'import.meta.env.VITE_BUILD_HASH': JSON.stringify(BUILD_HASH),
   },
   build: {
     chunkSizeWarningLimit: 1000,
