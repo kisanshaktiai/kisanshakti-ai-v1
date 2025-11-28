@@ -133,6 +133,7 @@ export const WeatherHeroCard: React.FC<WeatherHeroCardProps> = ({
             initial={{ scale: 0, rotate: -180 }}
             animate={{ scale: 1, rotate: 0 }}
             transition={{ type: "spring", stiffness: 200, damping: 15 }}
+            className="flex flex-col items-center gap-2"
           >
             <motion.div
               animate={{
@@ -148,6 +149,14 @@ export const WeatherHeroCard: React.FC<WeatherHeroCardProps> = ({
             >
               {weatherIcon}
             </motion.div>
+            {/* Provider badge */}
+            {currentWeather.provider && (
+              <div className="px-2 py-0.5 rounded-full bg-background/60 backdrop-blur-sm border border-white/10">
+                <p className="text-[10px] text-muted-foreground font-medium">
+                  {currentWeather.provider}
+                </p>
+              </div>
+            )}
           </motion.div>
         </motion.div>
       </div>
