@@ -61,7 +61,7 @@ export class VoiceAnalytics {
     }
   }
 
-  private async sendToCloud(metric: VoiceMetrics): Promise<void> {
+  private async sendToCloud(metric: VoiceMetrics | Record<string, any>): Promise<void> {
     // Implement cloud analytics sending here
     // For now, just log
     console.log('Would send to cloud:', metric);
@@ -130,5 +130,38 @@ export class VoiceAnalytics {
   clearMetrics(): void {
     this.metrics = [];
     localStorage.removeItem('voice_metrics');
+  }
+
+  /**
+   * Track voice-specific events with privacy protection
+   */
+  trackVoiceEvent(eventType: string, data: Record<string, any>): void {
+    if (!this.config.telemetryEnabled) return;
+
+    // Privacy: Never store raw transcripts
+    const sanitized = { ...data };
+    delete sanitized.transcript;
+
+    const event = {
+      type: eventType,
+      timestamp: Date.now(),
+      language: this.config.language,
+      offline: !navigator.onLine,
+      ...sanitized
+    };
+
+    console.log(`[VoiceAnalytics] Event: ${eventType}`, event);
+
+    // Store locally or send to cloud based on privacy mode
+    if (this.config.privacyMode === 'cloud-opt-in') {
+      this.sendToCloud(event);
+    } else {
+      // Store locally only for aggregation
+      const localEvents = JSON.parse(localStorage.getItem('voice_events') || '[]');
+      localEvents.push(event);
+      // Keep only last 100 events
+      if (localEvents.length > 100) localEvents.shift();
+      localStorage.setItem('voice_events', JSON.stringify(localEvents));
+    }
   }
 }
