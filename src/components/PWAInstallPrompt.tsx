@@ -26,6 +26,7 @@ export const PWAInstallPrompt: React.FC = () => {
     setIsStandalone(standalone);
 
     if (standalone) {
+      console.log('✅ [PWA] App already installed (standalone mode)');
       return; // Don't show prompt if already installed
     }
 
@@ -37,10 +38,13 @@ export const PWAInstallPrompt: React.FC = () => {
     
     if (isIOS && isSafari) {
       setPlatform('ios');
+      console.log('📱 [PWA] Platform detected: iOS Safari');
     } else if (isAndroid) {
       setPlatform('android');
+      console.log('📱 [PWA] Platform detected: Android');
     } else if (!isIOS && !isAndroid) {
       setPlatform('desktop');
+      console.log('💻 [PWA] Platform detected: Desktop');
     }
 
     // Check localStorage for dismissal
@@ -57,13 +61,38 @@ export const PWAInstallPrompt: React.FC = () => {
       const daysToWait = dismissCount === 1 ? 3 : dismissCount === 2 ? 7 : 30;
       
       if (daysSinceDismiss < daysToWait) {
+        console.log(`⏸️ [PWA] Install prompt dismissed ${dismissCount} times, waiting ${daysToWait} days`);
         return; // Don't show if dismissed recently
       }
     }
 
-    // Listen for beforeinstallprompt event (Android/Desktop)
+    // Check if App.tsx already captured the event
+    const checkStoredEvent = () => {
+      const storedEvent = (window as any).__pwaInstallPromptEvent;
+      if (storedEvent) {
+        console.log('📦 [PWA] Using stored beforeinstallprompt event from App.tsx');
+        setDeferredPrompt(storedEvent as BeforeInstallPromptEvent);
+        setTimeout(() => {
+          setShowPrompt(true);
+        }, 10000);
+      }
+    };
+
+    // Listen for custom event from App.tsx
+    const handleCustomPromptReady = () => {
+      console.log('🎯 [PWA] Custom event received from App.tsx');
+      checkStoredEvent();
+    };
+
+    window.addEventListener('pwa-install-prompt-ready', handleCustomPromptReady);
+
+    // Also check immediately in case event fired before component mounted
+    checkStoredEvent();
+
+    // Listen for beforeinstallprompt event (fallback)
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
+      console.log('🎯 [PWA] beforeinstallprompt event captured in component');
       setDeferredPrompt(e as BeforeInstallPromptEvent);
       
       // Show prompt after 10 seconds on page
@@ -76,13 +105,15 @@ export const PWAInstallPrompt: React.FC = () => {
 
     // For iOS, show prompt after 10 seconds if not dismissed
     if (isIOS && isSafari && !dismissedDate) {
+      console.log('🍎 [PWA] iOS detected, will show instructions after 10 seconds');
       setTimeout(() => {
         setShowPrompt(true);
       }, 10000);
     }
 
     // Listen for app installed event
-    window.addEventListener('appinstalled', () => {
+    const handleAppInstalled = () => {
+      console.log('✅ [PWA] App installed successfully!');
       setShowPrompt(false);
       setShowSuccess(true);
       localStorage.removeItem('pwa-install-dismissed');
@@ -91,10 +122,14 @@ export const PWAInstallPrompt: React.FC = () => {
       setTimeout(() => {
         setShowSuccess(false);
       }, 5000);
-    });
+    };
+
+    window.addEventListener('appinstalled', handleAppInstalled);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('pwa-install-prompt-ready', handleCustomPromptReady);
+      window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
 
