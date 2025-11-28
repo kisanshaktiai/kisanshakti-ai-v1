@@ -98,21 +98,35 @@ Deno.serve(async (req) => {
     // AI Fallback: Use Lovable AI to understand natural language
     console.log('[Voice Agent] Using AI fallback for:', transcript);
 
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!LOVABLE_API_KEY) {
+      console.error('LOVABLE_API_KEY not configured');
+      return new Response(
+        JSON.stringify({ 
+          matched: false,
+          error: 'AI service not configured',
+          response: getErrorMessage(language),
+          suggestions: getSuggestions(language),
+          confidence: 0
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const aiPrompt = `
 You are a voice navigation assistant for a farming app in ${language} language.
 The user said: "${transcript}"
 Current context: ${JSON.stringify(context || {})}
 
 Available features in the app:
-- Home (घर): Dashboard with overview
-- Lands (ज़मीन): View and manage farm lands
-- Weather (मौसम): Weather forecast and farming insights  
-- Schedule (कार्यक्रम): Crop schedules and tasks
-- AI Chat (AI बातचीत): Ask farming questions
-- Market (बाज़ार): Buy/sell farming products
-- Profile (प्रोफाइल): User profile and settings
-- Analytics (विश्लेषण): Farm analytics and reports
-- Soil Health (मिट्टी स्वास्थ्य): Soil test results
+- Home (घर): Dashboard with overview - route: /app
+- Lands (ज़मीन): View and manage farm lands - route: /app/lands
+- Weather (मौसम): Weather forecast and farming insights - route: /app/weather
+- Schedule (कार्यक्रम): Crop schedules and tasks - route: /app/schedule
+- AI Chat (AI बातचीत): Ask farming questions - route: /app/chat
+- Market (बाज़ार): Buy/sell farming products - route: /app/market
+- Profile (प्रोफाइल): User profile and settings - route: /app/profile
+- Community (समुदाय): Social features - route: /app/social
 
 Your task:
 1. Identify what the user wants to do
@@ -129,14 +143,14 @@ Return JSON:
 }
 `;
 
-    const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: 'You are a helpful voice assistant for rural Indian farmers.' },
           { role: 'user', content: aiPrompt }
@@ -144,6 +158,39 @@ Return JSON:
         temperature: 0.3,
       }),
     });
+
+    if (!aiResponse.ok) {
+      const errorText = await aiResponse.text();
+      console.error('Lovable AI error:', aiResponse.status, errorText);
+      
+      if (aiResponse.status === 429) {
+        return new Response(
+          JSON.stringify({ 
+            matched: false,
+            error: 'Rate limit exceeded',
+            response: getErrorMessage(language),
+            suggestions: getSuggestions(language),
+            confidence: 0
+          }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      if (aiResponse.status === 402) {
+        return new Response(
+          JSON.stringify({ 
+            matched: false,
+            error: 'Payment required',
+            response: getErrorMessage(language),
+            suggestions: getSuggestions(language),
+            confidence: 0
+          }),
+          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      throw new Error(`AI API error: ${aiResponse.status}`);
+    }
 
     const aiData = await aiResponse.json();
     const aiContent = aiData.choices[0].message.content;
