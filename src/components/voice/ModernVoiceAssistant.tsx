@@ -45,14 +45,24 @@ export const ModernVoiceAssistant: React.FC = () => {
 
   // Don't render anything if onboarding is needed
   if (showOnboarding) {
+    console.log('[ModernVoiceAssistant] Showing onboarding');
     return <VoiceOnboarding onComplete={completeOnboarding} onSkip={skipOnboarding} />;
   }
 
   // Only render mic button when voice mode is active
+  console.log('[ModernVoiceAssistant] Render check:', { 
+    isVoiceModeActive, 
+    isReady, 
+    isSupported,
+    willRender: isVoiceModeActive 
+  });
+  
   if (!isVoiceModeActive) {
+    console.log('[ModernVoiceAssistant] Voice mode not active - not rendering mic');
     return null;
   }
 
+  console.log('[ModernVoiceAssistant] Rendering SimpleVoiceMicButton');
   return (
     <SimpleVoiceMicButton
       isListening={isListening}

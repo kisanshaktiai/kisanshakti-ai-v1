@@ -251,18 +251,23 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   }, [voiceService, toast]);
 
   const showVoiceMode = useCallback(() => {
-    console.log('[Voice] Showing voice mode');
+    console.log('[Voice] Showing voice mode, setting isVoiceModeActive = true');
     setIsVoiceModeActive(true);
   }, []);
 
   const hideVoiceMode = useCallback(() => {
-    console.log('[Voice] Hiding voice mode');
+    console.log('[Voice] Hiding voice mode, setting isVoiceModeActive = false');
     setIsVoiceModeActive(false);
     // Also stop listening if active
     if (isListening) {
       stopListening();
     }
   }, [isListening, stopListening]);
+
+  // Debug log whenever isVoiceModeActive changes
+  useEffect(() => {
+    console.log('[Voice Context] isVoiceModeActive changed to:', isVoiceModeActive);
+  }, [isVoiceModeActive]);
 
   const examples = voiceService?.getIntentMatcher().getAllIntents().slice(0, 5).flatMap(i => i.patterns.slice(0, 1)) || [];
   const currentLanguage = voiceService?.getConfig().language || 'en';
