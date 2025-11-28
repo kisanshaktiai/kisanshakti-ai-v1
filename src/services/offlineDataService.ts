@@ -2,24 +2,17 @@ import { localDB } from './localDB';
 import { landsApi } from './landsApi';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
+import { networkStatusService } from './networkStatusService';
 
 /**
  * Offline-first data service
  * Provides a unified interface for data access that works both online and offline
  */
 class OfflineDataService {
-  private isOnline: boolean = navigator.onLine;
-
   constructor() {
-    // Monitor network status
-    window.addEventListener('online', () => {
-      this.isOnline = true;
-      console.log('📡 Network: Online');
-    });
-
-    window.addEventListener('offline', () => {
-      this.isOnline = false;
-      console.log('📴 Network: Offline - Using local database');
+    // Monitor network status via centralized service
+    networkStatusService.subscribe((isOnline) => {
+      console.log(`📡 [OfflineData] Network: ${isOnline ? 'Online' : 'Offline - Using local database'}`);
     });
   }
 
@@ -27,7 +20,7 @@ class OfflineDataService {
    * Fetch lands with offline fallback
    */
   async fetchLands(): Promise<any[]> {
-    if (this.isOnline) {
+    if (networkStatusService.getStatus()) {
       try {
         // Try to fetch from API
         const data = await landsApi.fetchLands();
@@ -136,7 +129,7 @@ class OfflineDataService {
    * Fetch schedules with offline fallback
    */
   async fetchSchedules(landId?: string): Promise<any[]> {
-    if (this.isOnline) {
+    if (networkStatusService.getStatus()) {
       try {
         // Try to fetch from Supabase
         let query = supabase
@@ -215,7 +208,7 @@ class OfflineDataService {
     // Save to local DB immediately
     await localDB.saveLand(landData);
 
-    if (this.isOnline) {
+    if (networkStatusService.getStatus()) {
       try {
         // Try to sync with server
         return await landsApi.createLand(landData);
@@ -234,7 +227,7 @@ class OfflineDataService {
     // Save to local DB immediately
     await localDB.saveSchedule(scheduleData);
 
-    if (this.isOnline) {
+    if (networkStatusService.getStatus()) {
       try {
         // Try to sync with server
         const { data, error } = await supabase
@@ -268,7 +261,7 @@ class OfflineDataService {
    * Check if device is online
    */
   isDeviceOnline(): boolean {
-    return this.isOnline;
+    return networkStatusService.getStatus();
   }
 }
 
