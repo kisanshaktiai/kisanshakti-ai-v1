@@ -7,6 +7,7 @@ import { useLanguageStore } from '@/stores/languageStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/stores/authStore';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '@/hooks/use-toast';
 
 interface VoiceSuggestion {
   id: string;
@@ -21,6 +22,8 @@ interface SimpleVoiceMicButtonProps {
   isListening: boolean;
   isSpeaking: boolean;
   transcript: string;
+  isReady: boolean;
+  isSupported: boolean;
   onStartListening: () => void;
   onStopListening: () => void;
   error?: string;
@@ -30,11 +33,14 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
   isListening,
   isSpeaking,
   transcript,
+  isReady,
+  isSupported,
   onStartListening,
   onStopListening,
   error,
 }) => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const { currentLanguage } = useLanguageStore();
   const { tenant } = useTenant();
   const { user } = useAuthStore();
@@ -177,7 +183,26 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
 
   const handlePressStart = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
-    console.log('[Voice] Press START');
+    console.log('[Voice] Press START, isReady:', isReady, 'isSupported:', isSupported);
+    
+    // Check if service is ready
+    if (!isReady || !isSupported) {
+      console.warn('[VoiceMic] Service not ready or not supported');
+      toast({
+        title: "Voice Not Ready",
+        description: isSupported 
+          ? "Voice service is initializing. Please wait a moment..."
+          : "Your browser doesn't support voice recognition. Try Chrome, Edge, or Safari.",
+        variant: isSupported ? "default" : "destructive",
+      });
+      return;
+    }
+    
+    if (isPressedRef.current) {
+      console.log('[VoiceMic] Already pressed, ignoring duplicate event');
+      return;
+    }
+    
     isPressedRef.current = true;
     
     // Show panel immediately since suggestions are pre-loaded
@@ -277,16 +302,21 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
               "relative w-14 h-14 rounded-full shadow-lg transition-all duration-300",
               "flex items-center justify-center",
               "focus:outline-none focus:ring-4 focus:ring-primary/30",
-              showPanel
-                ? "bg-primary scale-110 shadow-primary/50" 
-                : "bg-gradient-to-br from-primary/90 to-primary/70 hover:scale-105 active:scale-95"
+              !isReady || !isSupported
+                ? "bg-muted opacity-50 cursor-not-allowed"
+                : showPanel
+                  ? "bg-primary scale-110 shadow-primary/50" 
+                  : "bg-gradient-to-br from-primary/90 to-primary/70 hover:scale-105 active:scale-95"
             )}
-            aria-label="Voice navigation"
+            aria-label={!isReady ? "Voice service loading..." : "Voice navigation"}
+            disabled={!isReady || !isSupported}
           >
             <Mic 
               className={cn(
                 "relative z-10 transition-all duration-300",
-                showPanel ? "w-6 h-6 text-white" : "w-5 h-5 text-white"
+                !isReady || !isSupported
+                  ? "text-muted-foreground"
+                  : showPanel ? "w-6 h-6 text-white" : "w-5 h-5 text-white"
               )} 
               strokeWidth={2.5}
             />

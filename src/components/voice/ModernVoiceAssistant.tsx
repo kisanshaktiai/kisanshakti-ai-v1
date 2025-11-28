@@ -13,6 +13,7 @@ export const ModernVoiceAssistant: React.FC = () => {
     isSpeaking,
     transcript,
     isReady,
+    isSupported,
     error,
     startListening,
     stopListening,
@@ -45,17 +46,14 @@ export const ModernVoiceAssistant: React.FC = () => {
     return <VoiceOnboarding onComplete={completeOnboarding} onSkip={skipOnboarding} />;
   }
 
-  // Show loading state if voice service is still initializing
-  if (!isReady) {
-    console.log('[ModernVoiceAssistant] Voice service not ready yet');
-    return null;
-  }
-
+  // Always render the mic button, pass isReady state
   return (
     <SimpleVoiceMicButton
       isListening={isListening}
       isSpeaking={isSpeaking}
       transcript={transcript}
+      isReady={isReady}
+      isSupported={isSupported}
       onStartListening={startListening}
       onStopListening={stopListening}
       error={error || undefined}
