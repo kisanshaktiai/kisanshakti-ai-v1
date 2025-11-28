@@ -1,64 +1,44 @@
 import { useState, useEffect } from 'react';
 import { toast } from '@/hooks/use-toast';
+import { networkStatusService } from '@/services/networkStatusService';
 
+/**
+ * Hook to track online/offline status using centralized network service
+ * 
+ * Features:
+ * - Reliable detection using navigator.onLine + verification
+ * - No false positives from single network failures
+ * - Quick recovery when connection is restored
+ */
 export function useOfflineStatus() {
-  const [isOnline, setIsOnline] = useState(true); // Start optimistic
+  const [isOnline, setIsOnline] = useState(networkStatusService.getStatus());
   const [hasShownToast, setHasShownToast] = useState(false);
 
   useEffect(() => {
-    // Verify actual connectivity with a quick test
-    const checkConnectivity = async () => {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
-        
-        await fetch('/manifest.json', { 
-          method: 'HEAD',
-          cache: 'no-cache',
-          signal: controller.signal
+    // Subscribe to network status changes
+    const unsubscribe = networkStatusService.subscribe((online) => {
+      setIsOnline(online);
+
+      // Show toast when going offline
+      if (!online) {
+        setHasShownToast(true);
+        toast({
+          title: 'You are offline',
+          description: 'Some features may be limited. Your changes will sync when connection is restored.',
+          variant: 'destructive',
         });
-        
-        clearTimeout(timeoutId);
-        setIsOnline(true);
-      } catch {
-        setIsOnline(false);
       }
-    };
 
-    // Initial check
-    checkConnectivity();
-
-    const handleOnline = () => {
-      setIsOnline(true);
-      if (hasShownToast) {
+      // Show toast when coming back online (only if we previously showed offline toast)
+      if (online && hasShownToast) {
         toast({
           title: 'Back online',
-          description: 'Your connection has been restored',
+          description: 'Your connection has been restored. Syncing data...',
         });
       }
-    };
+    });
 
-    const handleOffline = () => {
-      setIsOnline(false);
-      setHasShownToast(true);
-      toast({
-        title: 'You are offline',
-        description: 'Some features may be limited',
-        variant: 'destructive',
-      });
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    // Periodic check every 5 minutes (reduced battery drain for mobile)
-    const interval = setInterval(checkConnectivity, 5 * 60 * 1000);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      clearInterval(interval);
-    };
+    return unsubscribe;
   }, [hasShownToast]);
 
   return isOnline;
