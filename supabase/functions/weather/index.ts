@@ -302,7 +302,128 @@ async function checkCache(
   }
 }
 
-// Fetch from Tomorrow.io using REALTIME endpoint for current weather
+// ========== WEATHER API INTEGRATIONS ==========
+
+// Fetch current weather from OpenWeather API (PRIMARY SOURCE - 1,000 calls/day free)
+async function fetchOpenWeatherCurrent(
+  lat: number,
+  lon: number,
+  apiKey: string
+): Promise<CurrentWeatherData> {
+  const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`
+  console.log(`🌤️ [Weather] Fetching current from OpenWeather: ${lat},${lon}`)
+  
+  const response = await fetch(url)
+  
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`OpenWeather API error: ${response.status} - ${errorText}`)
+  }
+  
+  const data = await response.json()
+  
+  return {
+    temp: data.main.temp,
+    feels_like: data.main.feels_like,
+    temp_min: data.main.temp_min,
+    temp_max: data.main.temp_max,
+    humidity: data.main.humidity,
+    pressure: data.main.pressure,
+    wind_speed: data.wind.speed,
+    wind_deg: data.wind.deg || 0,
+    description: data.weather[0].description,
+    main: data.weather[0].main,
+    icon: data.weather[0].icon,
+    clouds: data.clouds.all,
+    visibility: data.visibility || 10000,
+    sunrise: data.sys.sunrise,
+    sunset: data.sys.sunset,
+    location: `${lat}, ${lon}`,
+    dt: data.dt,
+    provider: 'OpenWeather',
+    uv_index: 0,
+    dew_point: 0
+  }
+}
+
+// Fetch forecast from OpenWeather API (PRIMARY SOURCE)
+async function fetchOpenWeatherForecast(
+  lat: number,
+  lon: number,
+  apiKey: string
+): Promise<{ forecast: DailyForecast[]; hourly: ForecastItem[] }> {
+  const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`
+  console.log(`🌤️ [Weather] Fetching forecast from OpenWeather: ${lat},${lon}`)
+  
+  const response = await fetch(url)
+  
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`OpenWeather forecast API error: ${response.status} - ${errorText}`)
+  }
+  
+  const data = await response.json()
+  
+  // Map hourly data (next 24 hours = 8 intervals of 3-hour forecasts)
+  const hourly: ForecastItem[] = data.list.slice(0, 8).map((item: any) => ({
+    dt: item.dt,
+    temp: item.main.temp,
+    feels_like: item.main.feels_like,
+    humidity: item.main.humidity,
+    wind_speed: item.wind.speed,
+    weather: [{
+      description: item.weather[0].description,
+      main: item.weather[0].main,
+      icon: item.weather[0].icon
+    }],
+    pop: item.pop || 0,
+    uv_index: 0
+  }))
+  
+  // Aggregate daily forecasts (group by day)
+  const dailyMap = new Map<string, any[]>()
+  data.list.forEach((item: any) => {
+    const date = new Date(item.dt * 1000).toDateString()
+    if (!dailyMap.has(date)) {
+      dailyMap.set(date, [])
+    }
+    dailyMap.get(date)!.push(item)
+  })
+  
+  const forecast: DailyForecast[] = Array.from(dailyMap.entries()).slice(0, 7).map(([date, items]) => {
+    const temps = items.map(i => i.main.temp)
+    const maxTemp = Math.max(...temps)
+    const minTemp = Math.min(...temps)
+    const avgTemp = temps.reduce((a, b) => a + b) / temps.length
+    
+    return {
+      dt: items[0].dt,
+      temp: {
+        day: avgTemp,
+        min: minTemp,
+        max: maxTemp,
+        night: minTemp,
+        eve: avgTemp,
+        morn: avgTemp
+      },
+      humidity: items[0].main.humidity,
+      wind_speed: items[0].wind.speed,
+      weather: [{
+        description: items[0].weather[0].description,
+        main: items[0].weather[0].main,
+        icon: items[0].weather[0].icon
+      }],
+      pop: Math.max(...items.map((i: any) => i.pop || 0)),
+      rain: items.reduce((sum: number, i: any) => sum + (i.rain?.['3h'] || 0), 0),
+      uv_index: 0,
+      moon_phase: 0
+    }
+  })
+  
+  return { forecast, hourly }
+}
+
+// Fetch from Tomorrow.io using REALTIME endpoint (FALLBACK SOURCE - 500 calls/day free)
 async function fetchTomorrowIoRealtime(
   lat: number,
   lon: number,
@@ -592,6 +713,8 @@ serve(async (req: Request): Promise<Response> => {
           ...cached,
           tenant: { id: tenant.id, name: tenant.name },
           cached: true,
+          provider: 'Cache', // Indicate data is from cache
+          stale: cached.stale || false,
           timestamp: new Date().toISOString()
         }),
         { 
@@ -639,17 +762,71 @@ serve(async (req: Request): Promise<Response> => {
     let current: CurrentWeatherData | undefined
     let forecast: DailyForecast[] | undefined
     let hourly: ForecastItem[] | undefined
+    let dataProvider = 'unknown'
     
     try {
-      // Try to fetch fresh data from Tomorrow.io
-      if (action === 'current' || action === 'all') {
-        current = await fetchTomorrowIoRealtime(rounded.lat, rounded.lon, tomorrowIoApiKey)
-      }
+      // HYBRID STRATEGY: Try OpenWeather first (1,000/day), then Tomorrow.io (500/day)
       
-      if (action === 'forecast' || action === 'all') {
-        const forecastData = await fetchTomorrowIoForecast(rounded.lat, rounded.lon, tomorrowIoApiKey)
-        forecast = forecastData.forecast
-        hourly = forecastData.hourly
+      // Try OpenWeather first if API key is available
+      if (openWeatherApiKey) {
+        try {
+          console.log(`🔄 [Weather] Trying OpenWeather API first (primary source)`)
+          
+          if (action === 'current' || action === 'all') {
+            current = await fetchOpenWeatherCurrent(rounded.lat, rounded.lon, openWeatherApiKey)
+            dataProvider = 'OpenWeather'
+          }
+          
+          if (action === 'forecast' || action === 'all') {
+            const forecastData = await fetchOpenWeatherForecast(rounded.lat, rounded.lon, openWeatherApiKey)
+            forecast = forecastData.forecast
+            hourly = forecastData.hourly
+            dataProvider = 'OpenWeather'
+          }
+          
+          console.log(`✅ [Weather] OpenWeather API succeeded`)
+          
+        } catch (openWeatherError: any) {
+          // OpenWeather failed - try Tomorrow.io as fallback
+          const isOpenWeather429 = openWeatherError.message?.includes('429')
+          console.warn(`⚠️ [Weather] OpenWeather failed (${isOpenWeather429 ? 'rate limited' : 'error'}), trying Tomorrow.io fallback`)
+          
+          if (!tomorrowIoApiKey) {
+            throw new Error('Both OpenWeather and Tomorrow.io APIs unavailable')
+          }
+          
+          // Fallback to Tomorrow.io
+          if (action === 'current' || action === 'all') {
+            current = await fetchTomorrowIoRealtime(rounded.lat, rounded.lon, tomorrowIoApiKey)
+            dataProvider = 'Tomorrow.io'
+          }
+          
+          if (action === 'forecast' || action === 'all') {
+            const forecastData = await fetchTomorrowIoForecast(rounded.lat, rounded.lon, tomorrowIoApiKey)
+            forecast = forecastData.forecast
+            hourly = forecastData.hourly
+            dataProvider = 'Tomorrow.io'
+          }
+          
+          console.log(`✅ [Weather] Tomorrow.io fallback succeeded`)
+        }
+      } else if (tomorrowIoApiKey) {
+        // No OpenWeather key, use Tomorrow.io directly
+        console.log(`🔄 [Weather] Using Tomorrow.io (OpenWeather not configured)`)
+        
+        if (action === 'current' || action === 'all') {
+          current = await fetchTomorrowIoRealtime(rounded.lat, rounded.lon, tomorrowIoApiKey)
+          dataProvider = 'Tomorrow.io'
+        }
+        
+        if (action === 'forecast' || action === 'all') {
+          const forecastData = await fetchTomorrowIoForecast(rounded.lat, rounded.lon, tomorrowIoApiKey)
+          forecast = forecastData.forecast
+          hourly = forecastData.hourly
+          dataProvider = 'Tomorrow.io'
+        }
+      } else {
+        throw new Error('No weather API keys configured')
       }
       
       // STEP 3: Cache the fresh data
@@ -657,7 +834,7 @@ serve(async (req: Request): Promise<Response> => {
         await cacheWeatherData(supabase, rounded.key, rounded, current, forecast, hourly)
       }
       
-      console.log(`✅ [Weather] Successfully fetched and cached data for ${rounded.key}`)
+      console.log(`✅ [Weather] Successfully fetched and cached data from ${dataProvider} for ${rounded.key}`)
       
     } catch (apiError: any) {
       // Check if it's a Tomorrow.io rate limit error (429)
@@ -712,6 +889,7 @@ serve(async (req: Request): Promise<Response> => {
     const response: any = {
       tenant: { id: tenant.id, name: tenant.name },
       cached: false,
+      provider: dataProvider, // Include data source
       timestamp: new Date().toISOString()
     }
     

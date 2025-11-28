@@ -183,7 +183,9 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
           hasCurrent: !!data.current,
           hasForecast: !!data.forecast,
           hasHourly: !!data.hourly,
-          cached: data.cached
+          cached: data.cached,
+          provider: data.provider || 'Unknown', // Log provider
+          isStale: data.stale
         });
         
         // Extract all data from single response
@@ -202,6 +204,9 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
             currentData.location = `${rounded.lat.toFixed(2)}°N, ${rounded.lon.toFixed(2)}°E`;
           }
           
+          // Include provider in current weather data
+          currentData.provider = data.provider || currentData.provider || 'Unknown';
+          
           setCurrentWeather(currentData);
         }
         
@@ -214,11 +219,21 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
           current: currentData,
           forecast: dailyData,
           hourly: hourlyData,
+          provider: data.provider, // Store provider in cache
           timestamp: now
         };
         localStorage.setItem(cacheKey, JSON.stringify(cacheData));
         setLastUpdated(now);
-        console.log('💾 [useWeather] Cached complete weather data in localStorage');
+        console.log(`💾 [useWeather] Cached complete weather data from ${data.provider || 'API'} in localStorage`);
+        
+        // Show warning if using stale data
+        if (data.stale && data.warning) {
+          toast({
+            title: 'Using Cached Weather',
+            description: data.warning,
+            variant: 'default'
+          });
+        }
       }
     } catch (err) {
       console.error('❌ [useWeather] Weather fetch error:', err);
