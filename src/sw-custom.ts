@@ -17,11 +17,25 @@ precacheAndRoute(self.__WB_MANIFEST);
 // Take control of all pages immediately
 clientsClaim();
 
-// Handle messages from clients (for manual update triggering)
+// Handle messages from clients (for manual update triggering and cache clearing)
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     console.log('Service Worker: Received SKIP_WAITING message - activating update');
     self.skipWaiting();
+  }
+  
+  // Handle cache clearing for new deploys
+  if (event.data && event.data.type === 'CLEAR_CACHES') {
+    console.log('Service Worker: Received CLEAR_CACHES message - clearing tenant caches');
+    event.waitUntil(
+      Promise.all([
+        caches.delete('tenant-config'),
+        caches.delete('api-cache'),
+        caches.delete('images-cache'),
+      ]).then(() => {
+        console.log('Service Worker: Tenant caches cleared successfully');
+      })
+    );
   }
 });
 
@@ -92,7 +106,7 @@ registerRoute(
   })
 );
 
-// Images - Cache first
+// Images - Cache first with shorter expiration for theme updates
 registerRoute(
   ({ request }) => request.destination === 'image',
   new CacheFirst({
@@ -100,7 +114,7 @@ registerRoute(
     plugins: [
       new ExpirationPlugin({
         maxEntries: 100,
-        maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+        maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days (reduced from 30 for faster theme updates)
       }),
     ],
   })

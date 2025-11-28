@@ -1447,6 +1447,57 @@ export type Database = {
           },
         ]
       }
+      app_versions: {
+        Row: {
+          breaking_changes: Json | null
+          bugs_fixed: Json | null
+          build_hash: string
+          created_at: string | null
+          created_by: string | null
+          deployed_at: string | null
+          features_added: Json | null
+          force_update: boolean | null
+          id: string
+          is_current: boolean | null
+          metadata: Json | null
+          min_supported_version: string | null
+          release_notes: string | null
+          version: string
+        }
+        Insert: {
+          breaking_changes?: Json | null
+          bugs_fixed?: Json | null
+          build_hash: string
+          created_at?: string | null
+          created_by?: string | null
+          deployed_at?: string | null
+          features_added?: Json | null
+          force_update?: boolean | null
+          id?: string
+          is_current?: boolean | null
+          metadata?: Json | null
+          min_supported_version?: string | null
+          release_notes?: string | null
+          version: string
+        }
+        Update: {
+          breaking_changes?: Json | null
+          bugs_fixed?: Json | null
+          build_hash?: string
+          created_at?: string | null
+          created_by?: string | null
+          deployed_at?: string | null
+          features_added?: Json | null
+          force_update?: boolean | null
+          id?: string
+          is_current?: boolean | null
+          metadata?: Json | null
+          min_supported_version?: string | null
+          release_notes?: string | null
+          version?: string
+        }
+        Relationships: []
+      }
       appearance_settings: {
         Row: {
           accent_color: string
