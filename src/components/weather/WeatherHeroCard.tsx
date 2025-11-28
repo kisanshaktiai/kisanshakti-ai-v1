@@ -14,6 +14,7 @@ interface WeatherHeroCardProps {
   weatherIcon: React.ReactNode;
   weatherCondition: 'sun' | 'rain' | 'clouds' | 'storm' | 'snow' | 'fog' | 'night';
   gradient: string;
+  lastUpdated?: number | null;
 }
 
 export const WeatherHeroCard: React.FC<WeatherHeroCardProps> = ({
@@ -24,7 +25,8 @@ export const WeatherHeroCard: React.FC<WeatherHeroCardProps> = ({
   onRefresh,
   weatherIcon,
   weatherCondition,
-  gradient
+  gradient,
+  lastUpdated
 }) => {
   return (
     <motion.div
@@ -44,14 +46,32 @@ export const WeatherHeroCard: React.FC<WeatherHeroCardProps> = ({
       <div className="relative z-10 px-4 pt-4 pb-5">
         {/* Location and Sync Row */}
         <div className="flex justify-between items-start mb-4">
-          <div>
+          <div className="flex flex-col gap-1">
             <h1 className="text-sm font-bold text-foreground flex items-center gap-1.5">
               <MapPin className="h-3.5 w-3.5 text-primary" />
               {location || 'Current Location'}
             </h1>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {format(new Date(), 'EEE, MMM d')}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-muted-foreground">
+                {format(new Date(), 'EEE, MMM d')}
+              </p>
+              {lastUpdated && (
+                <>
+                  <span className="text-xs text-muted-foreground">•</span>
+                  <div className="flex items-center gap-1">
+                    <div className="w-1 h-1 bg-primary rounded-full animate-pulse" />
+                    <p className="text-[10px] text-muted-foreground">
+                      Updated {(() => {
+                        const minutesAgo = Math.round((Date.now() - lastUpdated) / 60000);
+                        if (minutesAgo < 1) return 'just now';
+                        if (minutesAgo === 1) return '1m ago';
+                        return `${minutesAgo}m ago`;
+                      })()}
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
           <motion.button

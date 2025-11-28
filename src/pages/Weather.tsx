@@ -36,7 +36,7 @@ import { toast } from 'sonner';
 import { WeatherSkeleton } from '@/components/skeletons';
 
 export default function Weather() {
-  const { currentWeather, forecast, hourlyForecast, loading, error, refetch } = useWeather();
+  const { currentWeather, forecast, hourlyForecast, loading, error, refetch, lastUpdated } = useWeather();
   const { 
     lastSyncTime, 
     isSyncing, 
@@ -248,9 +248,10 @@ export default function Weather() {
             isRefreshing={isRefreshing || isSyncing}
             onRefresh={handleManualSync}
             weatherIcon={getWeatherIcon(currentWeather.main, 'large')}
-            weatherCondition={getWeatherCondition()}
-            gradient={getWeatherGradient()}
-          />
+          weatherCondition={getWeatherCondition()}
+          gradient={getWeatherGradient()}
+          lastUpdated={lastUpdated}
+        />
         </div>
 
         {/* Quick Stats Grid with Voice Icon */}

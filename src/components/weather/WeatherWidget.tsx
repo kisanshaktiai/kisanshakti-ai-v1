@@ -7,7 +7,7 @@ import { AnimatedWeatherBackground } from './AnimatedWeatherBackground';
 
 export const WeatherWidget: React.FC = () => {
   const navigate = useNavigate();
-  const { currentWeather, loading } = useWeather();
+  const { currentWeather, loading, lastUpdated } = useWeather();
 
   const getWeatherIcon = (condition: string) => {
     const iconMap: Record<string, React.ReactNode> = {
@@ -45,9 +45,9 @@ export const WeatherWidget: React.FC = () => {
               <p className="text-sm text-muted-foreground mt-1">
                 {currentWeather?.description || 'Loading...'}
               </p>
-              {currentWeather?.provider && (
+              {lastUpdated && (
                 <p className="text-xs opacity-50 mt-1">
-                  {currentWeather.provider}
+                  Updated {Math.round((Date.now() - lastUpdated) / 60000)}m ago
                 </p>
               )}
             </div>
