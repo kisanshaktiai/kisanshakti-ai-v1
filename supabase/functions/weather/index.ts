@@ -133,15 +133,24 @@ function getWeatherIcon(code: number): string {
 async function checkCache(
   supabase: any,
   locationKey: string,
-  action: string
-): Promise<{ current?: CurrentWeatherData; forecast?: DailyForecast[]; hourly?: ForecastItem[] } | null> {
+  action: string,
+  allowStale: boolean = false // NEW: Allow returning expired cache as fallback
+): Promise<{ current?: CurrentWeatherData; forecast?: DailyForecast[]; hourly?: ForecastItem[]; stale?: boolean } | null> {
   try {
     // Check current weather cache
-    const { data: cachedCurrent, error: cacheError } = await supabase
+    const cacheQuery = supabase
       .from('weather_current')
       .select('*')
       .eq('location_key', locationKey)
-      .gt('expires_at', new Date().toISOString())
+    
+    // If we don't allow stale, filter by expiration
+    if (!allowStale) {
+      cacheQuery.gt('expires_at', new Date().toISOString())
+    }
+    
+    const { data: cachedCurrent, error: cacheError } = await cacheQuery
+      .order('observation_time', { ascending: false })
+      .limit(1)
       .maybeSingle()
 
     if (cacheError) {
@@ -153,8 +162,15 @@ async function checkCache(
       console.log(`❌ [Weather] Cache MISS for ${locationKey}`)
       return null
     }
-
-    console.log(`✅ [Weather] Cache HIT for ${locationKey}`)
+    
+    // Check if data is stale
+    const isStale = allowStale && new Date(cachedCurrent.expires_at) < new Date()
+    
+    if (isStale) {
+      console.log(`⚠️ [Weather] Returning STALE cache for ${locationKey} (age: ${Math.round((Date.now() - new Date(cachedCurrent.observation_time).getTime()) / 60000)} minutes)`)
+    } else {
+      console.log(`✅ [Weather] Cache HIT for ${locationKey}`)
+    }
     
     // Map cached data to CurrentWeatherData format
     const current: CurrentWeatherData = {
@@ -182,17 +198,23 @@ async function checkCache(
 
     // If only current weather needed, return now
     if (action === 'current') {
-      return { current }
+      return { current, stale: isStale }
     }
 
     // Fetch cached forecasts if needed
     if (action === 'forecast' || action === 'all') {
-      const { data: cachedForecasts } = await supabase
+      const forecastQuery = supabase
         .from('weather_forecasts')
         .select('*')
         .eq('location_key', locationKey)
-        .gte('forecast_time', new Date().toISOString())
         .order('forecast_time', { ascending: true })
+      
+      // If allowing stale, get all forecasts; otherwise filter by time
+      if (!allowStale) {
+        forecastQuery.gte('forecast_time', new Date().toISOString())
+      }
+      
+      const { data: cachedForecasts } = await forecastQuery
 
       const hourly: ForecastItem[] = []
       const daily: DailyForecast[] = []
@@ -270,10 +292,10 @@ async function checkCache(
         })
       }
 
-      return { current, forecast: daily, hourly }
+      return { current, forecast: daily, hourly, stale: isStale }
     }
 
-    return { current }
+    return { current, stale: isStale }
   } catch (error) {
     console.error('❌ [Weather] Cache check failed:', error)
     return null
@@ -421,7 +443,7 @@ async function cacheWeatherData(
 ) {
   try {
     const now = new Date()
-    const expiresAt = new Date(now.getTime() + 15 * 60 * 1000) // 15 minutes for current weather
+    const expiresAt = new Date(now.getTime() + 60 * 60 * 1000) // 1 hour for current weather (increased from 15 min)
     
     // Upsert current weather to cache
     await supabase.from('weather_current').upsert({
@@ -618,21 +640,72 @@ serve(async (req: Request): Promise<Response> => {
     let forecast: DailyForecast[] | undefined
     let hourly: ForecastItem[] | undefined
     
-    if (action === 'current' || action === 'all') {
-      // Fetch current weather using /realtime endpoint
-      current = await fetchTomorrowIoRealtime(rounded.lat, rounded.lon, tomorrowIoApiKey)
-    }
-    
-    if (action === 'forecast' || action === 'all') {
-      // Fetch forecast data
-      const forecastData = await fetchTomorrowIoForecast(rounded.lat, rounded.lon, tomorrowIoApiKey)
-      forecast = forecastData.forecast
-      hourly = forecastData.hourly
-    }
-    
-    // STEP 3: Cache the fresh data
-    if (current) {
-      await cacheWeatherData(supabase, rounded.key, rounded, current, forecast, hourly)
+    try {
+      // Try to fetch fresh data from Tomorrow.io
+      if (action === 'current' || action === 'all') {
+        current = await fetchTomorrowIoRealtime(rounded.lat, rounded.lon, tomorrowIoApiKey)
+      }
+      
+      if (action === 'forecast' || action === 'all') {
+        const forecastData = await fetchTomorrowIoForecast(rounded.lat, rounded.lon, tomorrowIoApiKey)
+        forecast = forecastData.forecast
+        hourly = forecastData.hourly
+      }
+      
+      // STEP 3: Cache the fresh data
+      if (current) {
+        await cacheWeatherData(supabase, rounded.key, rounded, current, forecast, hourly)
+      }
+      
+      console.log(`✅ [Weather] Successfully fetched and cached data for ${rounded.key}`)
+      
+    } catch (apiError: any) {
+      // Check if it's a Tomorrow.io rate limit error (429)
+      const is429 = apiError.message?.includes('429') || apiError.message?.includes('rate limit')
+      
+      if (is429) {
+        console.warn(`⚠️ [Weather] Tomorrow.io API rate limited - attempting stale cache fallback`)
+        
+        // Try to get stale cache data as fallback
+        const staleCache = await checkCache(supabase, rounded.key, action, true)
+        
+        if (staleCache) {
+          console.log(`✅ [Weather] Returning stale cache data (better than nothing!)`)
+          return new Response(
+            JSON.stringify({
+              ...(action === 'current' ? { current: staleCache.current } :
+                  action === 'forecast' ? { forecast: staleCache.forecast, hourly: staleCache.hourly } :
+                  { current: staleCache.current, forecast: staleCache.forecast, hourly: staleCache.hourly }),
+              tenant: { id: tenant.id, name: tenant.name },
+              cached: true,
+              stale: true,
+              warning: 'Weather API rate limited. Showing cached data.',
+              timestamp: new Date().toISOString()
+            }),
+            { 
+              status: 200, 
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+            }
+          )
+        }
+        
+        // No stale cache available either
+        console.error(`❌ [Weather] No stale cache available for fallback`)
+        return new Response(
+          JSON.stringify({ 
+            error: 'Weather service temporarily unavailable. Please try again later.',
+            details: 'API rate limit reached and no cached data available',
+            timestamp: new Date().toISOString()
+          }),
+          { 
+            status: 503, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        )
+      }
+      
+      // Not a 429 error, rethrow
+      throw apiError
     }
     
     // STEP 4: Return response based on action
