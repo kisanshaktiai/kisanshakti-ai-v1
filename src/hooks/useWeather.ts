@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { supabase, supabaseWithAuth } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useLocation } from '@/hooks/useLocation';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/stores/authStore';
+import { useWeatherStore } from '@/stores/weatherStore';
 
 interface WeatherData {
   temp: number;
@@ -93,12 +94,22 @@ function roundCoordinates(lat: number, lon: number): { lat: number; lon: number 
 }
 
 export const useWeather = (location?: { lat: number; lon: number }) => {
-  const [currentWeather, setCurrentWeather] = useState<WeatherData | null>(null);
-  const [forecast, setForecast] = useState<ForecastData[]>([]);
-  const [hourlyForecast, setHourlyForecast] = useState<HourlyData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  // Use centralized weather store for single source of truth
+  const {
+    currentWeather,
+    forecast,
+    hourlyForecast,
+    loading,
+    error,
+    lastUpdated,
+    dataSource,
+    setWeatherData,
+    setLoading,
+    setError,
+    setLocation,
+    isStale,
+  } = useWeatherStore();
+
   const { toast } = useToast();
   const { tenant, isLoading: tenantLoading } = useTenant();
   const { user } = useAuthStore();
@@ -126,33 +137,16 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
     console.log('🔄 [useWeather] Force refresh:', forceRefresh);
     
     try {
-      // Use rounded coordinates for cache key
-      const cacheKey = `weather_cache_${rounded.lat}_${rounded.lon}`;
-      const cachedDataStr = localStorage.getItem(cacheKey);
-      let hasCache = false;
-      
-      if (cachedDataStr && !forceRefresh) {
-        try {
-          const cached = JSON.parse(cachedDataStr);
-          const cacheAge = Date.now() - cached.timestamp;
-          
-          // Show cached data immediately for better UX (stale-while-revalidate)
-          if (cacheAge < 900000) { // 15 minutes (match backend cache TTL)
-            console.log('✅ [useWeather] Showing cached data while fetching fresh data');
-            setCurrentWeather(cached.current);
-            setForecast(cached.forecast || []);
-            setHourlyForecast(cached.hourly || []);
-            setLastUpdated(cached.timestamp);
-            setLoading(false);
-            hasCache = true;
-          }
-        } catch (e) {
-          console.warn('⚠️ [useWeather] Failed to parse cached weather data:', e);
-        }
+      // Check if store has recent data and not forcing refresh
+      if (!forceRefresh && !isStale() && currentWeather) {
+        console.log('✅ [useWeather] Using fresh data from store (age:', Date.now() - (lastUpdated || 0), 'ms)');
+        return;
       }
 
-      // ALWAYS fetch fresh data in background (world-class weather app pattern)
-      if (!hasCache) {
+      // Show existing data while fetching fresh data (stale-while-revalidate)
+      if (currentWeather && !forceRefresh) {
+        console.log('✅ [useWeather] Showing stale data while fetching fresh data');
+      } else {
         setLoading(true);
       }
       setError(null);
@@ -184,7 +178,8 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
           hasForecast: !!data.forecast,
           hasHourly: !!data.hourly,
           cached: data.cached,
-          provider: data.provider || 'Unknown', // Log provider
+          provider: data.provider || 'Unknown',
+          source: data.source || 'api',
           isStale: data.stale
         });
         
@@ -206,25 +201,18 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
           
           // Include provider in current weather data
           currentData.provider = data.provider || currentData.provider || 'Unknown';
-          
-          setCurrentWeather(currentData);
         }
         
-        setForecast(dailyData);
-        setHourlyForecast(hourlyData);
-        
-        // Cache the complete data in localStorage with rounded coordinates
-        const now = Date.now();
-        const cacheData = {
+        // Update centralized store (single source of truth for all components)
+        setWeatherData({
           current: currentData,
           forecast: dailyData,
           hourly: hourlyData,
-          provider: data.provider, // Store provider in cache
-          timestamp: now
-        };
-        localStorage.setItem(cacheKey, JSON.stringify(cacheData));
-        setLastUpdated(now);
-        console.log(`💾 [useWeather] Cached complete weather data from ${data.provider || 'API'} in localStorage`);
+          provider: data.provider,
+          source: data.cached ? 'database' : 'api'
+        });
+        
+        console.log(`💾 [useWeather] Updated weather store from ${data.provider || 'API'} (source: ${data.cached ? 'database' : 'api'})`);
         
         // Show warning if using stale data
         if (data.stale && data.warning) {
@@ -239,29 +227,14 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
       console.error('❌ [useWeather] Weather fetch error:', err);
       setError('Failed to fetch weather data');
       
-      // Try to use localStorage cache even if expired
-      const rounded = roundCoordinates(
-        (location || deviceLocation || defaultLocation).lat,
-        (location || deviceLocation || defaultLocation).lon
-      );
-      const cacheKey = `weather_cache_${rounded.lat}_${rounded.lon}`;
-      const fallbackDataStr = localStorage.getItem(cacheKey);
-      
-      if (fallbackDataStr) {
-        try {
-          const cached = JSON.parse(fallbackDataStr);
-          setCurrentWeather(cached.current);
-          setForecast(cached.forecast || []);
-          setHourlyForecast(cached.hourly || []);
-          console.log('📦 [useWeather] Using expired cache due to fetch error');
-          toast({
-            title: "Using cached weather data",
-            description: "Unable to fetch latest weather. Showing cached data.",
-            variant: "default",
-          });
-        } catch (parseError) {
-          console.error('❌ [useWeather] Failed to use cached data:', parseError);
-        }
+      // If store has old data, keep showing it as fallback
+      if (currentWeather) {
+        console.log('📦 [useWeather] Keeping existing weather data from store due to fetch error');
+        toast({
+          title: "Using cached weather data",
+          description: "Unable to fetch latest weather. Showing previous data.",
+          variant: "default",
+        });
       }
     } finally {
       setLoading(false);
@@ -302,6 +275,13 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
     }
   }, [deviceLocation]);
 
+  // Update store location
+  useEffect(() => {
+    const actualLocation = location || (deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : defaultLocation);
+    const rounded = roundCoordinates(actualLocation.lat, actualLocation.lon);
+    setLocation(rounded);
+  }, [location?.lat, location?.lon, deviceLocation?.lat, deviceLocation?.lon]);
+
   const actualLocation = location || (deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : defaultLocation);
   const roundedLocation = roundCoordinates(actualLocation.lat, actualLocation.lon);
 
@@ -312,7 +292,9 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
     loading,
     error,
     lastUpdated,
+    dataSource, // NEW: Return data source
     refetch: () => fetchWeatherData(true), // Force refresh on manual refetch
     location: roundedLocation, // Return rounded location for consistency
+    isStale: isStale(), // NEW: Return staleness status
   };
 };
