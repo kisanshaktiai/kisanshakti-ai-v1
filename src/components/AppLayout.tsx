@@ -11,6 +11,7 @@ import { SyncButton } from '@/components/sync/SyncButton';
 import { ConnectionStatusIcon } from '@/components/ConnectionStatusIcon';
 import { ModernVoiceProvider } from '@/contexts/ModernVoiceContext';
 import { ModernVoiceAssistant } from '@/components/voice';
+import { VoiceIndicator } from '@/components/VoiceIndicator';
 
 export function AppLayout() {
   const { tenant, branding } = useTenant();
@@ -87,6 +88,7 @@ export function AppLayout() {
 
         {/* Voice Assistant */}
         <ModernVoiceAssistant />
+        <VoiceIndicator />
 
         {/* Bottom Navigation - Hidden on full-screen routes */}
         <BottomNavigation 
