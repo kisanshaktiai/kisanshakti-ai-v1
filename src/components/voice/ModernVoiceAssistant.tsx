@@ -1,20 +1,17 @@
 import React, { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useModernVoice } from '@/contexts/ModernVoiceContext';
-import { VoiceHUD } from './VoiceHUD';
+import { SimpleVoiceMicButton } from './SimpleVoiceMicButton';
 import { VoiceOnboarding } from './VoiceOnboarding';
-import { VoiceSuggestions } from './VoiceSuggestions';
+import { useLanguageStore } from '@/stores/languageStore';
 
 export const ModernVoiceAssistant: React.FC = () => {
   const navigate = useNavigate();
+  const { currentLanguage: appLanguage } = useLanguageStore();
   const {
     isListening,
     isSpeaking,
-    currentLanguage,
     transcript,
-    confidence,
-    examples,
-    isOnline,
     isReady,
     error,
     startListening,
@@ -31,6 +28,13 @@ export const ModernVoiceAssistant: React.FC = () => {
     setNavigationCallback((route: string) => navigate(route));
   }, [navigate, setNavigationCallback]);
 
+  // Sync voice language with app language
+  useEffect(() => {
+    if (appLanguage && isReady) {
+      changeLanguage(appLanguage);
+    }
+  }, [appLanguage, isReady, changeLanguage]);
+
   // Don't render anything if onboarding is needed
   if (showOnboarding) {
     return <VoiceOnboarding onComplete={completeOnboarding} onSkip={skipOnboarding} />;
@@ -43,37 +47,13 @@ export const ModernVoiceAssistant: React.FC = () => {
   }
 
   return (
-    <>
-      <VoiceHUD
-        isListening={isListening}
-        isSpeaking={isSpeaking}
-        currentLanguage={currentLanguage}
-        transcript={transcript}
-        confidence={confidence}
-        examples={examples}
-        onStartListening={startListening}
-        onStopListening={stopListening}
-        onChangeLanguage={() => {
-          // Cycle through all 14 Indian languages + English
-          const languages = ['en', 'hi', 'mr', 'ta', 'pa', 'te', 'bn', 'gu', 'kn', 'ml', 'or', 'as', 'ur', 'sa'];
-          const currentIndex = languages.indexOf(currentLanguage);
-          const nextIndex = (currentIndex + 1) % languages.length;
-          changeLanguage(languages[nextIndex]);
-        }}
-        isOnline={isOnline}
-        error={error || undefined}
-      />
-      {!isListening && examples.length > 0 && (
-        <VoiceSuggestions 
-          suggestions={examples} 
-          language={currentLanguage}
-          onSuggestionClick={(suggestion) => {
-            // Trigger voice recognition with this suggestion
-            startListening();
-          }}
-          show={!isListening}
-        />
-      )}
-    </>
+    <SimpleVoiceMicButton
+      isListening={isListening}
+      isSpeaking={isSpeaking}
+      transcript={transcript}
+      onStartListening={startListening}
+      onStopListening={stopListening}
+      error={error || undefined}
+    />
   );
 };
