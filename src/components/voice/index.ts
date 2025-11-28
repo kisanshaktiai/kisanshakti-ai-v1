@@ -8,3 +8,4 @@ export { VoiceOnboarding } from './VoiceOnboarding';
 export { VoiceConversationPanel } from './VoiceConversationPanel';
 export { VoiceQuickActions } from './VoiceQuickActions';
 export { VoiceConfirmDialog } from './VoiceConfirmDialog';
+export { SimpleVoiceMicButton } from './SimpleVoiceMicButton';
