@@ -38,15 +38,15 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
   const [suggestions, setSuggestions] = useState<VoiceSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isSpeakingSuggestion, setIsSpeakingSuggestion] = useState(false);
-  const [isPressed, setIsPressed] = useState(false);
+  const [isHolding, setIsHolding] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch suggestions from database when user starts listening
+  // Fetch suggestions from database when user holds the mic
   useEffect(() => {
-    if (isListening && !showSuggestions) {
+    if (isHolding && !showSuggestions) {
       fetchSuggestions();
     }
-  }, [isListening]);
+  }, [isHolding, showSuggestions]);
 
   const fetchSuggestions = async () => {
     try {
@@ -121,7 +121,7 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
     
     // Close suggestions
     setShowSuggestions(false);
-    setIsPressed(false);
+    setIsHolding(false);
     onStopListening();
     
     // Navigate after a short delay
@@ -133,28 +133,30 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
   };
 
   const handlePressStart = () => {
-    setIsPressed(true);
+    setIsHolding(true);
     onStartListening();
   };
 
   const handlePressEnd = () => {
-    setIsPressed(false);
+    setIsHolding(false);
+    setShowSuggestions(false);
+    window.speechSynthesis.cancel();
+    
     // Small delay before stopping to ensure last words are captured
     timeoutRef.current = setTimeout(() => {
       onStopListening();
-      setShowSuggestions(false);
-      window.speechSynthesis.cancel();
     }, 300);
   };
 
   const handlePressCancel = () => {
-    setIsPressed(false);
+    setIsHolding(false);
+    setShowSuggestions(false);
+    window.speechSynthesis.cancel();
+    
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
     onStopListening();
-    setShowSuggestions(false);
-    window.speechSynthesis.cancel();
   };
 
   return (
@@ -169,7 +171,7 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
         <div className="relative">
           {/* Pulse Animation */}
           <AnimatePresence>
-            {(isListening || isPressed) && (
+            {isHolding && (
               <>
                 <motion.div
                   initial={{ scale: 0, opacity: 0 }}
@@ -209,7 +211,7 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
               "relative w-14 h-14 rounded-full shadow-lg transition-all duration-300",
               "flex items-center justify-center",
               "focus:outline-none focus:ring-4 focus:ring-primary/30",
-              isPressed || isListening 
+              isHolding
                 ? "bg-primary scale-110 shadow-primary/50" 
                 : "bg-gradient-to-br from-primary/90 to-primary/70 hover:scale-105 active:scale-95"
             )}
@@ -219,7 +221,7 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
             <Mic 
               className={cn(
                 "relative z-10 transition-all duration-300",
-                isListening ? "w-6 h-6 text-white" : "w-5 h-5 text-white"
+                isHolding ? "w-6 h-6 text-white" : "w-5 h-5 text-white"
               )} 
               strokeWidth={2.5}
             />
@@ -227,9 +229,9 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
         </div>
       </motion.div>
 
-      {/* Suggestions Panel - Shows when listening */}
+      {/* Suggestions Panel - Shows when holding mic */}
       <AnimatePresence>
-        {showSuggestions && suggestions.length > 0 && (
+        {isHolding && showSuggestions && suggestions.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
