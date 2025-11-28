@@ -7,11 +7,13 @@
     <meta name="description" content="Digital platform empowering Indian farmers with weather updates, market prices, advisory services, and government schemes" />
     <meta name="author" content="KisanShakti" />
     
-    <!-- PWA Meta Tags -->
-    <meta name="theme-color" content="#22c55e" />
+    <!-- PWA manifest (single canonical link) -->
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#22c55e">
+
+    <!-- Apple / iOS -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="KisanShakti" />
     <link rel="apple-touch-icon" href="/icon-192x192.png" />
     
     <!-- Open Graph / Social Media Tags -->
@@ -24,9 +26,6 @@
     <meta name="twitter:title" content="KisanShakti" />
     <meta name="twitter:description" content="Empowering Indian farmers digitally" />
     <meta name="twitter:image" content="/og-image.png" />
-    
-    <!-- Manifest - Dynamically loaded for tenant branding -->
-    <link rel="manifest" id="app-manifest" href="/manifest.json" />
     
     <!-- Android/Chrome PWA -->
     <meta name="mobile-web-app-capable" content="yes" />
@@ -905,6 +904,35 @@
           }, 10000);
         }
       })();
+    </script>
+
+    <!-- Service Worker Registration -->
+    <script src="/registerSW.js" defer></script>
+
+    <!-- PWA Install Prompt Capture -->
+    <script>
+      window.deferredPwaPrompt = null;
+
+      window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        window.deferredPwaPrompt = e;
+        document.dispatchEvent(new CustomEvent('pwa:can-install'));
+        console.log('beforeinstallprompt captured');
+      });
+
+      async function triggerPwaInstall() {
+        const e = window.deferredPwaPrompt;
+        if (!e) {
+          console.warn('No PWA prompt available');
+          return;
+        }
+        e.prompt();
+        const choice = await e.userChoice;
+        console.log('PWA install result:', choice.outcome);
+        window.deferredPwaPrompt = null;
+        document.dispatchEvent(new CustomEvent('pwa:install-completed', { detail: choice }));
+      }
+      window.triggerPwaInstall = triggerPwaInstall;
     </script>
   </body>
 </html>
