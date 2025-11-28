@@ -560,14 +560,16 @@ async function cacheWeatherData(
   rounded: { lat: number; lon: number },
   current: CurrentWeatherData,
   forecast?: DailyForecast[],
-  hourly?: ForecastItem[]
+  hourly?: ForecastItem[],
+  tenantId?: string,
+  farmerId?: string
 ) {
   try {
     const now = new Date()
-    const expiresAt = new Date(now.getTime() + 60 * 60 * 1000) // 1 hour for current weather (increased from 15 min)
+    const expiresAt = new Date(now.getTime() + 60 * 60 * 1000) // 1 hour cache
     
-    // Upsert current weather to cache
-    await supabase.from('weather_current').upsert({
+    // 1. Store in weather_current (cache table)
+    const { error: currentError } = await supabase.from('weather_current').upsert({
       location_key: locationKey,
       latitude: rounded.lat,
       longitude: rounded.lon,
@@ -586,63 +588,102 @@ async function cacheWeatherData(
       visibility_meters: current.visibility,
       uv_index: current.uv_index,
       dew_point_celsius: current.dew_point,
+      sunrise: current.sunrise ? new Date(current.sunrise * 1000).toISOString() : null,
+      sunset: current.sunset ? new Date(current.sunset * 1000).toISOString() : null,
       observation_time: new Date(current.dt * 1000).toISOString(),
-      data_source: current.provider || 'Tomorrow.io',
+      data_source: current.provider || 'API',
       expires_at: expiresAt.toISOString(),
-      created_at: now.toISOString(),
-      updated_at: now.toISOString()
+      created_at: now.toISOString()
     }, { onConflict: 'location_key' })
     
-    console.log(`💾 [Weather] Cached current weather for ${locationKey}`)
+    if (currentError) {
+      console.error('❌ [Weather] Failed to cache current weather:', currentError)
+    } else {
+      console.log(`💾 [Weather] ✅ Cached current weather for ${locationKey}`)
+    }
     
-    // Cache forecasts if provided
+    // 2. Store forecasts with proper unique constraints
     if (forecast && forecast.length > 0) {
       const forecastRecords = forecast.map(day => ({
         location_key: locationKey,
+        latitude: rounded.lat,
+        longitude: rounded.lon,
         forecast_time: new Date(day.dt * 1000).toISOString(),
-        forecast_type: 'daily',
+        forecast_type: 'daily' as const,
         temperature_celsius: day.temp.day,
+        temperature_min_celsius: day.temp.min,
+        temperature_max_celsius: day.temp.max,
         feels_like_celsius: day.temp.day,
-        temp_min: day.temp.min,
-        temp_max: day.temp.max,
-        humidity_percent: day.humidity,
+        humidity_percent: Math.round(day.humidity),
+        pressure_hpa: day.pressure || null,
         wind_speed_kph: day.wind_speed,
+        wind_direction_degrees: day.wind_deg || null,
         description: day.weather[0]?.description || 'Unknown',
         condition: day.weather[0]?.main || 'Unknown',
         icon_code: day.weather[0]?.icon || '01d',
-        precipitation_probability: day.pop * 100,
+        rain_probability_percent: Math.round(day.pop * 100),
+        rain_amount_mm: day.rain || null,
         uv_index: day.uv_index,
-        data_source: current.provider || 'Tomorrow.io'
+        moon_phase: day.moon_phase,
+        data_source: current.provider || 'API'
       }))
       
-      await supabase.from('weather_forecasts').upsert(forecastRecords)
-      console.log(`💾 [Weather] Cached ${forecast.length} daily forecasts`)
+      // Insert forecasts one by one to handle conflicts better
+      let successCount = 0
+      for (const record of forecastRecords) {
+        const { error: forecastError } = await supabase
+          .from('weather_forecasts')
+          .upsert(record, {
+            onConflict: 'location_key,forecast_time,forecast_type'
+          })
+        
+        if (!forecastError) {
+          successCount++
+        } else {
+          console.warn('⚠️ [Weather] Forecast upsert failed:', forecastError.message)
+        }
+      }
+      
+      console.log(`💾 [Weather] ✅ Cached ${successCount}/${forecast.length} daily forecasts`)
     }
     
-    // Cache hourly forecasts if provided
+    // 3. Store hourly forecasts
     if (hourly && hourly.length > 0) {
       const hourlyRecords = hourly.map(hour => ({
         location_key: locationKey,
+        latitude: rounded.lat,
+        longitude: rounded.lon,
         forecast_time: new Date(hour.dt * 1000).toISOString(),
-        forecast_type: 'hourly',
+        forecast_type: 'hourly' as const,
         temperature_celsius: hour.temp,
         feels_like_celsius: hour.feels_like,
-        humidity_percent: hour.humidity,
+        humidity_percent: Math.round(hour.humidity),
         wind_speed_kph: hour.wind_speed,
         description: hour.weather[0]?.description || 'Unknown',
         condition: hour.weather[0]?.main || 'Unknown',
         icon_code: hour.weather[0]?.icon || '01d',
-        precipitation_probability: hour.pop * 100,
-        uv_index: hour.uv_index,
-        data_source: current.provider || 'Tomorrow.io'
+        rain_probability_percent: Math.round(hour.pop * 100),
+        uv_index: hour.uv_index || null,
+        data_source: current.provider || 'API'
       }))
       
-      await supabase.from('weather_forecasts').upsert(hourlyRecords)
-      console.log(`💾 [Weather] Cached ${hourly.length} hourly forecasts`)
+      let successCount = 0
+      for (const record of hourlyRecords) {
+        const { error: hourlyError } = await supabase
+          .from('weather_forecasts')
+          .upsert(record, {
+            onConflict: 'location_key,forecast_time,forecast_type'
+          })
+        
+        if (!hourlyError) {
+          successCount++
+        }
+      }
+      
+      console.log(`💾 [Weather] ✅ Cached ${successCount}/${hourly.length} hourly forecasts`)
     }
   } catch (error) {
-    console.error('❌ [Weather] Failed to cache data:', error)
-    // Don't throw - caching is best-effort
+    console.error('❌ [Weather] Cache storage error:', error)
   }
 }
 
@@ -835,7 +876,16 @@ serve(async (req: Request): Promise<Response> => {
       
       // STEP 3: Cache the fresh data
       if (current) {
-        await cacheWeatherData(supabase, rounded.key, rounded, current, forecast, hourly)
+        await cacheWeatherData(
+          supabase, 
+          rounded.key, 
+          rounded, 
+          current, 
+          forecast, 
+          hourly,
+          tenant.id,
+          user?.id
+        )
       }
       
       console.log(`✅ [Weather] Successfully fetched and cached data from ${dataProvider} for ${rounded.key}`)
