@@ -73,16 +73,26 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     localStorage.setItem('voice_config', JSON.stringify(defaultConfig));
   }, [tenant]);
 
+  // Update tenant when it becomes available
+  useEffect(() => {
+    if (voiceService && tenant?.id) {
+      console.log('[Voice] Updating service with tenant:', tenant.id);
+      const intentMatcher = voiceService.getIntentMatcher();
+      intentMatcher.loadIntents(voiceService.getConfig().language, tenant.id);
+    }
+  }, [voiceService, tenant?.id]);
+
   // Check if onboarding was completed
   useEffect(() => {
     const completed = localStorage.getItem('voice_onboarding_completed');
     if (!completed) {
       setShowOnboarding(true);
-    } else if (tenant?.id) {
-      // Only initialize once tenant is loaded
+    } else {
+      // Initialize immediately after onboarding, tenant can be updated later
+      console.log('[Voice] Onboarding completed, initializing service...');
       initializeVoiceService();
     }
-  }, [initializeVoiceService, tenant]);
+  }, [initializeVoiceService]);
 
   const completeOnboarding = useCallback((config: Partial<VoiceConfig>) => {
     localStorage.setItem('voice_onboarding_completed', 'true');
