@@ -41,6 +41,13 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
   onClose,
   error,
 }) => {
+  console.log('[SimpleVoiceMicButton] Component rendering with props:', {
+    isListening,
+    isSpeaking,
+    isReady,
+    isSupported
+  });
+
   const navigate = useNavigate();
   const { toast } = useToast();
   const { currentLanguage } = useLanguageStore();
@@ -54,7 +61,7 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
 
   // Pre-fetch suggestions on mount to avoid race conditions
   useEffect(() => {
-    console.log('[Voice] Component mounted, pre-fetching suggestions');
+    console.log('[SimpleVoiceMicButton] Component mounted, pre-fetching suggestions');
     fetchSuggestions();
   }, []);
 
@@ -245,8 +252,12 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
     onStopListening();
   };
 
+  console.log('[SimpleVoiceMicButton] About to render JSX');
+  
   return (
     <>
+      {console.log('[SimpleVoiceMicButton] Rendering close button and mic button')}
+      
       {/* Close Button - Top Right */}
       <motion.button
         key="voice-close-button"
