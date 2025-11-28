@@ -1,5 +1,8 @@
 project_id = "qfklkkzxemsbeniyugiz"
 
+[functions.app-version]
+verify_jwt = false
+
 [functions.generate-manifest]
 verify_jwt = false
 

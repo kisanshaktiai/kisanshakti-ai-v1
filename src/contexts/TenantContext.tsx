@@ -248,16 +248,30 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.log('🌐 [TenantProvider] Current URL:', window.location.href);
       console.log('🔧 [TenantProvider] Environment:', env.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION');
 
-      // Check localStorage cache first (5 minutes TTL for faster updates)
-      const APP_VERSION = '2.1.0'; // Match with index.html version
-      const cachedVersion = localStorage.getItem('app_version');
+      // Check for new deploy using build hash
+      const BUILD_HASH = import.meta.env.VITE_BUILD_HASH || Date.now().toString();
+      const storedHash = localStorage.getItem('build_hash');
       
-      // Clear cache if version changed
-      if (cachedVersion !== APP_VERSION) {
-        console.log('🔄 [TenantProvider] App version changed, clearing cache...');
+      // Clear cache if build hash changed (new deploy detected)
+      if (storedHash && storedHash !== BUILD_HASH) {
+        console.log('🔄 [TenantProvider] New deploy detected, clearing caches...', {
+          oldHash: storedHash.substring(0, 10),
+          newHash: BUILD_HASH.substring(0, 10)
+        });
         localStorage.removeItem('tenant_config_cache');
+        localStorage.removeItem('white_label_config');
         localStorage.removeItem('tenant_primary_color');
-        localStorage.setItem('app_version', APP_VERSION);
+        localStorage.setItem('build_hash', BUILD_HASH);
+        
+        // Signal service worker to clear caches
+        if (navigator.serviceWorker?.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHES' });
+          console.log('📡 [TenantProvider] Sent cache clear signal to service worker');
+        }
+      } else if (!storedHash) {
+        // First load - store build hash
+        localStorage.setItem('build_hash', BUILD_HASH);
+        console.log('🔖 [TenantProvider] Baseline build hash stored:', BUILD_HASH.substring(0, 10));
       }
       
       const cachedTenant = localStorage.getItem('tenant_config_cache');
@@ -676,15 +690,25 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     fetchTenantConfig();
   }, [fetchTenantConfig]);
 
-  // Listen for theme update events
+  // Listen for theme update events from WhiteLabelService and PWA silent updates
   useEffect(() => {
     const handleThemeUpdate = () => {
       console.log('[TenantProvider] 🎨 Theme update event received');
       clearCache();
     };
+
+    const handleSilentThemeUpdate = () => {
+      console.log('[TenantProvider] 🎨 Silent theme update event received from PWA');
+      clearCache();
+    };
     
     window.addEventListener('theme-updated', handleThemeUpdate);
-    return () => window.removeEventListener('theme-updated', handleThemeUpdate);
+    window.addEventListener('tenant-theme-update', handleSilentThemeUpdate);
+    
+    return () => {
+      window.removeEventListener('theme-updated', handleThemeUpdate);
+      window.removeEventListener('tenant-theme-update', handleSilentThemeUpdate);
+    };
   }, [clearCache]);
 
   // Initial load
