@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useModernVoice } from '@/contexts/ModernVoiceContext';
 import { SimpleVoiceMicButton } from './SimpleVoiceMicButton';
@@ -23,10 +23,15 @@ export const ModernVoiceAssistant: React.FC = () => {
     setNavigationCallback,
   } = useModernVoice();
 
-  // Set navigation callback on mount
+  // Memoize navigation callback to prevent infinite loop
+  const handleNavigation = useCallback((route: string) => {
+    navigate(route);
+  }, [navigate]);
+
+  // Set navigation callback on mount only
   useEffect(() => {
-    setNavigationCallback((route: string) => navigate(route));
-  }, [navigate, setNavigationCallback]);
+    setNavigationCallback(handleNavigation);
+  }, [handleNavigation, setNavigationCallback]);
 
   // Sync voice language with app language
   useEffect(() => {
