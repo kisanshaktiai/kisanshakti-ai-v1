@@ -40,25 +40,45 @@ export default function InstallPWA() {
       setPlatform('desktop');
     }
 
-    // Listen for install prompt
-    const handleBeforeInstallPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferredPrompt(e as BeforeInstallPromptEvent);
+    // Check global prompt from index.html script
+    const globalPrompt = (window as any).deferredPwaPrompt;
+    if (globalPrompt) {
+      setDeferredPrompt(globalPrompt as BeforeInstallPromptEvent);
+    }
+
+    // Listen for custom event
+    const handleCanInstall = () => {
+      const prompt = (window as any).deferredPwaPrompt;
+      if (prompt) {
+        setDeferredPrompt(prompt as BeforeInstallPromptEvent);
+      }
     };
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    document.addEventListener('pwa:can-install', handleCanInstall);
     
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      document.removeEventListener('pwa:can-install', handleCanInstall);
     };
   }, []);
 
   const handleInstall = async () => {
-    if (!deferredPrompt) return;
-
     setInstalling(true);
     
     try {
+      // Use global install helper if available
+      const globalInstall = (window as any).triggerPwaInstall;
+      if (globalInstall) {
+        await globalInstall();
+        setIsInstalled(true);
+        return;
+      }
+
+      // Fallback to component prompt
+      if (!deferredPrompt) {
+        setInstalling(false);
+        return;
+      }
+
       await deferredPrompt.prompt();
       const choiceResult = await deferredPrompt.userChoice;
       
