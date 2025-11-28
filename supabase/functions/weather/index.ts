@@ -24,13 +24,13 @@ interface CurrentWeatherData {
   temp_max: number
   humidity: number
   pressure: number
-  wind_speed: number
+  wind_speed: number // m/s (API standard)
   wind_deg: number
   description: string
   main: string
   icon: string
   clouds: number
-  visibility: number
+  visibility: number // meters (API standard)
   sunrise: number
   sunset: number
   location: string
@@ -38,6 +38,8 @@ interface CurrentWeatherData {
   provider?: string
   uv_index?: number
   dew_point?: number
+  rain_1h?: number // mm
+  rain_3h?: number // mm
 }
 
 interface ForecastItem {
@@ -180,20 +182,22 @@ async function checkCache(
       temp_max: cachedCurrent.temp_max || 0,
       humidity: cachedCurrent.humidity_percent || 0,
       pressure: cachedCurrent.pressure_hpa || 0,
-      wind_speed: cachedCurrent.wind_speed_kph || 0,
+      wind_speed: (cachedCurrent.wind_speed_kmh || 0) / 3.6, // FIXED: Convert km/h back to m/s
       wind_deg: cachedCurrent.wind_direction_degrees || 0,
-      description: cachedCurrent.description || 'Unknown',
-      main: cachedCurrent.condition || 'Unknown',
+      description: cachedCurrent.weather_description || 'Unknown', // FIXED: column name
+      main: cachedCurrent.weather_main || 'Unknown', // FIXED: column name
       icon: cachedCurrent.icon_code || '01d',
       clouds: cachedCurrent.cloud_cover_percent || 0,
-      visibility: cachedCurrent.visibility_meters || 10000,
-      sunrise: 0, // Not cached in current schema
-      sunset: 0,
+      visibility: (cachedCurrent.visibility_km || 10) * 1000, // FIXED: Convert km back to meters
+      sunrise: cachedCurrent.sunrise ? Math.floor(new Date(cachedCurrent.sunrise).getTime() / 1000) : 0,
+      sunset: cachedCurrent.sunset ? Math.floor(new Date(cachedCurrent.sunset).getTime() / 1000) : 0,
       location: `${cachedCurrent.latitude}, ${cachedCurrent.longitude}`,
       dt: Math.floor(new Date(cachedCurrent.observation_time).getTime() / 1000),
       provider: cachedCurrent.data_source || 'Cache',
       uv_index: cachedCurrent.uv_index || 0,
-      dew_point: cachedCurrent.dew_point_celsius || 0
+      dew_point: cachedCurrent.dew_point_celsius || 0,
+      rain_1h: cachedCurrent.rain_1h_mm || 0, // Return rainfall data
+      rain_3h: (cachedCurrent.rain_24h_mm || 0) / 8 // Estimate 3h from 24h
     }
 
     // If only current weather needed, return now
@@ -233,15 +237,15 @@ async function checkCache(
               dt: Math.floor(forecastDate.getTime() / 1000),
               temp: forecast.temperature_celsius || 0,
               feels_like: forecast.feels_like_celsius || 0,
-              humidity: forecast.humidity_percent || 0,
-              wind_speed: forecast.wind_speed_kph || 0,
-              weather: [{
-                description: forecast.description || 'Unknown',
-                main: forecast.condition || 'Unknown',
-                icon: forecast.icon_code || '01d'
-              }],
-              pop: (forecast.precipitation_probability || 0) / 100,
-              uv_index: forecast.uv_index || 0
+          humidity: forecast.humidity_percent || 0,
+          wind_speed: (forecast.wind_speed_kmh || 0) / 3.6, // FIXED: Convert km/h back to m/s for frontend
+          weather: [{
+            description: forecast.weather_description || 'Unknown', // FIXED: column name
+            main: forecast.weather_main || 'Unknown', // FIXED: column name
+            icon: forecast.icon_code || '01d'
+          }],
+          pop: (forecast.precipitation_probability || 0) / 100,
+          uv_index: forecast.uv_index || 0
             })
           }
 
@@ -253,11 +257,11 @@ async function checkCache(
                 temps: [],
                 humidity: [],
                 wind_speed: [],
-                weather: [{
-                  description: forecast.description || 'Unknown',
-                  main: forecast.condition || 'Unknown',
-                  icon: forecast.icon_code || '01d'
-                }],
+              weather: [{
+                description: forecast.weather_description || 'Unknown', // FIXED: column name
+                main: forecast.weather_main || 'Unknown', // FIXED: column name
+                icon: forecast.icon_code || '01d'
+              }],
                 pop: (forecast.precipitation_probability || 0) / 100,
                 uv_index: forecast.uv_index || 0
               })
@@ -265,7 +269,7 @@ async function checkCache(
             const dayData = dailyMap.get(dateKey)!
             dayData.temps.push(forecast.temperature_celsius || 0)
             dayData.humidity.push(forecast.humidity_percent || 0)
-            dayData.wind_speed.push(forecast.wind_speed_kph || 0)
+            dayData.wind_speed.push((forecast.wind_speed_kmh || 0) / 3.6) // FIXED: Convert to m/s
           }
         })
 
@@ -322,6 +326,12 @@ async function fetchOpenWeatherCurrent(
   
   const data = await response.json()
   
+  console.log('📊 [Weather] OpenWeather current response:', {
+    temp: data.main.temp,
+    rain: data.rain,
+    wind_speed_ms: data.wind.speed
+  })
+  
   return {
     temp: data.main.temp,
     feels_like: data.main.feels_like,
@@ -329,20 +339,22 @@ async function fetchOpenWeatherCurrent(
     temp_max: data.main.temp_max,
     humidity: data.main.humidity,
     pressure: data.main.pressure,
-    wind_speed: data.wind.speed,
+    wind_speed: data.wind.speed, // m/s from OpenWeather
     wind_deg: data.wind.deg || 0,
     description: data.weather[0].description,
     main: data.weather[0].main,
     icon: data.weather[0].icon,
     clouds: data.clouds.all,
-    visibility: data.visibility || 10000,
+    visibility: data.visibility || 10000, // meters
     sunrise: data.sys.sunrise,
     sunset: data.sys.sunset,
     location: `${lat}, ${lon}`,
     dt: data.dt,
     provider: 'OpenWeather',
-    uv_index: 0,
-    dew_point: 0
+    uv_index: 0, // OpenWeather current doesn't provide UV
+    dew_point: 0,
+    rain_1h: data.rain?.['1h'] || 0, // Extract 1-hour rainfall in mm
+    rain_3h: data.rain?.['3h'] || 0  // Extract 3-hour rainfall in mm
   }
 }
 
@@ -569,6 +581,7 @@ async function cacheWeatherData(
     const expiresAt = new Date(now.getTime() + 60 * 60 * 1000) // 1 hour cache
     
     // 1. Store in weather_current (cache table)
+    // CRITICAL: Use correct column names and unit conversions
     const { error: currentError } = await supabase.from('weather_current').upsert({
       location_key: locationKey,
       latitude: rounded.lat,
@@ -579,15 +592,17 @@ async function cacheWeatherData(
       temp_max: current.temp_max,
       humidity_percent: current.humidity,
       pressure_hpa: current.pressure,
-      wind_speed_kph: current.wind_speed,
+      wind_speed_kmh: current.wind_speed * 3.6, // Convert m/s to km/h
       wind_direction_degrees: current.wind_deg,
-      description: current.description,
-      condition: current.main,
+      weather_description: current.description, // FIXED: Use correct column name
+      weather_main: current.main, // FIXED: Use correct column name
       icon_code: current.icon,
       cloud_cover_percent: current.clouds,
-      visibility_meters: current.visibility,
-      uv_index: current.uv_index,
-      dew_point_celsius: current.dew_point,
+      visibility_km: current.visibility / 1000, // Convert meters to km
+      uv_index: current.uv_index || 0,
+      dew_point_celsius: current.dew_point || 0,
+      rain_1h_mm: current.rain_1h || 0, // Store rainfall data
+      rain_24h_mm: (current.rain_3h || 0) * 8, // Estimate 24h from 3h
       sunrise: current.sunrise ? new Date(current.sunrise * 1000).toISOString() : null,
       sunset: current.sunset ? new Date(current.sunset * 1000).toISOString() : null,
       observation_time: new Date(current.dt * 1000).toISOString(),
@@ -599,7 +614,11 @@ async function cacheWeatherData(
     if (currentError) {
       console.error('❌ [Weather] Failed to cache current weather:', currentError)
     } else {
-      console.log(`💾 [Weather] ✅ Cached current weather for ${locationKey}`)
+      console.log(`💾 [Weather] ✅ Cached current weather for ${locationKey}`, {
+        temp: current.temp,
+        rainfall_1h: current.rain_1h,
+        wind_speed_kmh: current.wind_speed * 3.6
+      })
     }
     
     // 2. Store forecasts with proper unique constraints
@@ -616,15 +635,15 @@ async function cacheWeatherData(
         feels_like_celsius: day.temp.day,
         humidity_percent: Math.round(day.humidity),
         pressure_hpa: day.pressure || null,
-        wind_speed_kph: day.wind_speed,
+        wind_speed_kmh: day.wind_speed * 3.6, // FIXED: Convert m/s to km/h
         wind_direction_degrees: day.wind_deg || null,
-        description: day.weather[0]?.description || 'Unknown',
-        condition: day.weather[0]?.main || 'Unknown',
+        weather_description: day.weather[0]?.description || 'Unknown', // FIXED: column name
+        weather_main: day.weather[0]?.main || 'Unknown', // FIXED: column name
         icon_code: day.weather[0]?.icon || '01d',
-        rain_probability_percent: Math.round(day.pop * 100),
-        rain_amount_mm: day.rain || null,
-        uv_index: day.uv_index,
-        moon_phase: day.moon_phase,
+        precipitation_probability: Math.round(day.pop * 100), // FIXED: column name
+        rain_amount_mm: day.rain || 0, // Store rainfall
+        uv_index: day.uv_index || 0,
+        moon_phase: day.moon_phase || 0,
         data_source: current.provider || 'API'
       }))
       
@@ -658,11 +677,11 @@ async function cacheWeatherData(
         temperature_celsius: hour.temp,
         feels_like_celsius: hour.feels_like,
         humidity_percent: Math.round(hour.humidity),
-        wind_speed_kph: hour.wind_speed,
-        description: hour.weather[0]?.description || 'Unknown',
-        condition: hour.weather[0]?.main || 'Unknown',
+        wind_speed_kmh: hour.wind_speed * 3.6, // FIXED: Convert m/s to km/h
+        weather_description: hour.weather[0]?.description || 'Unknown', // FIXED: column name
+        weather_main: hour.weather[0]?.main || 'Unknown', // FIXED: column name
         icon_code: hour.weather[0]?.icon || '01d',
-        rain_probability_percent: Math.round(hour.pop * 100),
+        precipitation_probability: Math.round(hour.pop * 100), // FIXED: column name
         uv_index: hour.uv_index || null,
         data_source: current.provider || 'API'
       }))
