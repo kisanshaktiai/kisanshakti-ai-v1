@@ -352,10 +352,12 @@ async function fetchTomorrowIoForecast(
   }
   
   const data = await response.json()
-  const hourlyTimeline = data.timelines?.daily?.find((t: any) => t.timestep === '1h' || t === 'hourly')?.intervals || 
-                         data.timelines?.find((t: any) => t.timestep === '1h')?.intervals || []
-  const dailyTimeline = data.timelines?.daily || 
-                        data.timelines?.find((t: any) => t.timestep === '1d')?.intervals || []
+  
+  // Tomorrow.io returns timelines as an array, not an object with daily property
+  const hourlyTimeline = data.timelines?.find((t: any) => t.timestep === '1h')?.intervals || []
+  const dailyTimeline = data.timelines?.find((t: any) => t.timestep === '1d')?.intervals || []
+  
+  console.log(`📊 [Weather] Received forecast data - hourly: ${hourlyTimeline.length} items, daily: ${dailyTimeline.length} items`)
   
   // Map hourly data (next 24 hours)
   const hourly: ForecastItem[] = hourlyTimeline.slice(0, 24).map((hour: any) => ({
