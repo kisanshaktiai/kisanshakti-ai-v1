@@ -92,6 +92,24 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   // Initialize global real-time sync
   useGlobalRealtimeSync();
 
+  // Global beforeinstallprompt handler - captures event at app level
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      console.log('🎯 [PWA] beforeinstallprompt event captured at app level');
+      // Store event in window for PWAInstallPrompt component to access
+      (window as any).__pwaInstallPromptEvent = e;
+      // Dispatch custom event to notify PWAInstallPrompt
+      window.dispatchEvent(new CustomEvent('pwa-install-prompt-ready'));
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    console.log('👂 [PWA] Global beforeinstallprompt listener attached');
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
   useEffect(() => {
     const initializeApp = async () => {
       try {
