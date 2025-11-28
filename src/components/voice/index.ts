@@ -5,3 +5,6 @@ export { VoiceCard } from './VoiceCard';
 export { ModernVoiceAssistant } from './ModernVoiceAssistant';
 export { VoiceHUD } from './VoiceHUD';
 export { VoiceOnboarding } from './VoiceOnboarding';
+export { VoiceConversationPanel } from './VoiceConversationPanel';
+export { VoiceQuickActions } from './VoiceQuickActions';
+export { VoiceConfirmDialog } from './VoiceConfirmDialog';

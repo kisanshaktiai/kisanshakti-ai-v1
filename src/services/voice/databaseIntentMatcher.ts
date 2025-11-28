@@ -236,12 +236,20 @@ export class DatabaseIntentMatcher {
     context?: Record<string, any>
   ): Promise<any> {
     try {
+      // Get tenant and user context
+      const tenantId = context?.tenantId || localStorage.getItem('tenant_id');
+      const userId = context?.userId || localStorage.getItem('user_id');
+
       const { data, error } = await supabase.functions.invoke('voice-navigation-agent', {
         body: {
           transcript,
           language,
           context,
         },
+        headers: {
+          ...(tenantId && { 'x-tenant-id': tenantId }),
+          ...(userId && { 'x-farmer-id': userId })
+        }
       });
 
       if (error) throw error;
