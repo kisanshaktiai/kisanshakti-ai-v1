@@ -559,31 +559,6 @@ serve(async (req: Request): Promise<Response> => {
     // Round coordinates for caching (~1km precision)
     const rounded = roundCoordinates(lat, lon)
     console.log(`📍 [Weather] Rounded location: ${rounded.key} (original: ${lat},${lon})`)
-    
-    // Location-based rate limiting (not per-IP)
-    const rateLimit = await checkRateLimit(rounded.key, 'weather', { 
-      maxRequests: 4, // Only 4 fresh fetches per 15 min per ~1km area
-      windowMs: 900000 // 15 minutes
-    })
-    
-    if (!rateLimit.allowed) {
-      console.warn(`⚠️ [Weather] Rate limit exceeded for ${rounded.key}`)
-      return new Response(
-        JSON.stringify({ 
-          error: 'Rate limit exceeded for this location',
-          resetTime: new Date(rateLimit.resetTime).toISOString()
-        }),
-        { 
-          status: 429, 
-          headers: { 
-            ...corsHeaders, 
-            'Content-Type': 'application/json',
-            'X-RateLimit-Remaining': String(rateLimit.remaining)
-          } 
-        }
-      )
-    }
-    
     console.log(`🌤️ [Weather] Processing request for tenant ${tenant.id}:`, { action, location: rounded.key })
     
     // STEP 1: Check cache first (cache-first strategy)
@@ -604,8 +579,36 @@ serve(async (req: Request): Promise<Response> => {
       )
     }
     
-    // STEP 2: Cache miss - fetch from API
-    console.log(`🌐 [Weather] Cache miss - fetching from Tomorrow.io API`)
+    // STEP 2: Cache miss - check rate limit before fetching from API
+    console.log(`🌐 [Weather] Cache miss - checking rate limit before API call`)
+    
+    // Location-based rate limiting (only for actual API calls)
+    const rateLimit = await checkRateLimit(rounded.key, 'weather', { 
+      maxRequests: 4, // Only 4 fresh fetches per 15 min per ~1km area
+      windowMs: 900000 // 15 minutes
+    })
+    
+    if (!rateLimit.allowed) {
+      console.warn(`⚠️ [Weather] Rate limit exceeded for ${rounded.key}`)
+      return new Response(
+        JSON.stringify({ 
+          error: 'Rate limit exceeded for this location. Try again later or use cached data.',
+          resetTime: new Date(rateLimit.resetTime).toISOString(),
+          remaining: rateLimit.remaining
+        }),
+        { 
+          status: 429, 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json',
+            'X-RateLimit-Remaining': String(rateLimit.remaining),
+            'X-RateLimit-Reset': new Date(rateLimit.resetTime).toISOString()
+          } 
+        }
+      )
+    }
+    
+    console.log(`✅ [Weather] Rate limit check passed - fetching from Tomorrow.io API`)
     
     if (!tomorrowIoApiKey) {
       throw new Error('Tomorrow.io API key not configured')
