@@ -62,10 +62,13 @@ export default function SplashScreen() {
   const handleContinue = () => {
     markSplashCompleted();
     
+    // Skip language selection if language is already stored
+    const storedLanguage = localStorage.getItem('language-storage');
+    
     // Check if user is fully authenticated (session exists and PIN is verified)
     if (isAuthenticated) {
       navigate('/app');
-    } else if (hasSelectedLanguage) {
+    } else if (storedLanguage || hasSelectedLanguage) {
       navigate('/auth');
     } else {
       navigate('/language-selection');
