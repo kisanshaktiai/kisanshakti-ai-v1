@@ -10,6 +10,15 @@
     "generate": "अनुसूची बनाएं",
     "ai_schedule": "AI स्मार्ट अनुसूची",
     "manual_entry": "मैन्युअल एंट्री",
+    "steps": {
+      "land_selection": "चरण 1: अपनी भूमि चुनें",
+      "crop_input": "चरण 2: फसल विवरण",
+      "schedule_view": "चरण 3: AI अनुसूची",
+      "of_total": "चरण {{current}} / {{total}}"
+    },
+    "loading": {
+      "syncing": "सर्वर से डेटा सिंक हो रहा है..."
+    },
     "filters": {
       "all": "सभी कार्य",
       "pending": "लंबित",

@@ -120,8 +120,8 @@ export default function Market() {
   const addToCart = async (productId: string, quantity: number = 1) => {
     if (!user) {
       toast({
-        title: "Please login",
-        description: "You need to login to add items to cart",
+        title: t('market.auth.login_required.title'),
+        description: t('market.auth.login_required.cart'),
         variant: "destructive"
       });
       return;
@@ -140,8 +140,8 @@ export default function Market() {
 
     if (!error) {
       toast({
-        title: "Added to cart",
-        description: "Product has been added to your cart"
+        title: t('market.cart.added.title'),
+        description: t('market.cart.added.message')
       });
       fetchCartItems();
     }
@@ -150,8 +150,8 @@ export default function Market() {
   const toggleWishlist = async (productId: string) => {
     if (!user) {
       toast({
-        title: "Please login",
-        description: "You need to login to add items to wishlist",
+        title: t('market.auth.login_required.title'),
+        description: t('market.auth.login_required.wishlist'),
         variant: "destructive"
       });
       return;
@@ -199,19 +199,19 @@ export default function Market() {
           <TabsList className="grid w-full grid-cols-4 mb-6">
             <TabsTrigger value="browse" className="flex items-center gap-2">
               <ShoppingBag className="w-4 h-4" />
-              Browse
+              {t('market.tabs.browse')}
             </TabsTrigger>
             <TabsTrigger value="orders" className="flex items-center gap-2">
               <Package className="w-4 h-4" />
-              My Orders
+              {t('market.tabs.my_orders')}
             </TabsTrigger>
             <TabsTrigger value="sell" className="flex items-center gap-2">
               <Store className="w-4 h-4" />
-              Sell
+              {t('market.tabs.sell')}
             </TabsTrigger>
             <TabsTrigger value="analytics" className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4" />
-              Analytics
+              {t('market.tabs.analytics')}
             </TabsTrigger>
           </TabsList>
 
@@ -242,8 +242,8 @@ export default function Market() {
 
           <TabsContent value="analytics">
             <div className="text-center py-12">
-              <h3 className="text-lg font-semibold mb-2">Analytics Dashboard</h3>
-              <p className="text-muted-foreground">View your sales analytics and performance metrics</p>
+              <h3 className="text-lg font-semibold mb-2">{t('market.analytics.title')}</h3>
+              <p className="text-muted-foreground">{t('market.analytics.description')}</p>
             </div>
           </TabsContent>
         </Tabs>

@@ -10,6 +10,15 @@
     "generate": "Generate Schedule",
     "ai_schedule": "AI Smart Schedule",
     "manual_entry": "Manual Entry",
+    "steps": {
+      "land_selection": "Step 1: Select Your Land",
+      "crop_input": "Step 2: Crop Details",
+      "schedule_view": "Step 3: AI Schedule",
+      "of_total": "Step {{current}} of {{total}}"
+    },
+    "loading": {
+      "syncing": "Syncing data from server..."
+    },
     "filters": {
       "all": "All Tasks",
       "pending": "Pending",

@@ -10,6 +10,15 @@
     "generate": "वेळापत्रक तयार करा",
     "ai_schedule": "AI स्मार्ट वेळापत्रक",
     "manual_entry": "मॅन्युअल एंट्री",
+    "steps": {
+      "land_selection": "पायरी 1: तुमची जमीन निवडा",
+      "crop_input": "पायरी 2: पीक तपशील",
+      "schedule_view": "पायरी 3: AI वेळापत्रक",
+      "of_total": "पायरी {{current}} / {{total}}"
+    },
+    "loading": {
+      "syncing": "सर्व्हरवरून डेटा सिंक होत आहे..."
+    },
     "filters": {
       "all": "सर्व कामे",
       "pending": "प्रलंबित",

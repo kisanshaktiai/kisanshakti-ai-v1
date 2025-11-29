@@ -63,6 +63,16 @@ import enSync from './locales/en/sync.json';
 import hiSync from './locales/hi/sync.json';
 import mrSync from './locales/mr/sync.json';
 
+// Helper function to dynamically merge base and page-level translations
+// This makes adding new languages in the future seamless - just add JSON files!
+const mergeTranslations = (base: any, pageModules: Record<string, any>) => {
+  const result = { ...base };
+  for (const [key, module] of Object.entries(pageModules)) {
+    result[key] = { ...(base[key] || {}), ...(module[key] || {}) };
+  }
+  return result;
+};
+
 // Read persisted language from localStorage before initializing i18n
 const getInitialLanguage = (): string => {
   try {
@@ -87,80 +97,74 @@ i18n
   .init({
     resources: {
       en: { 
-        translation: { 
-          ...en,
-          // Merge base and page-level namespaces (with fallbacks)
-          auth: { ...((en as any).auth || {}), ...enAuth.auth },
-          toast: enToast.toast,
-          weather: enWeather.weather,
-          home: { ...((en as any).home || {}), ...enHome.home },
-          lands: enLands.lands,
-          profile: enProfile.profile,
-          market: enMarket.market,
-          social: enSocial.social,
-          schedule: enSchedule.schedule,
-          analytics: enAnalytics.analytics,
-          chat: enChat.chat,
-          instascan: enInstascan.instascan,
-          pwa: enPwa.pwa,
-          ndvi: enNdvi.ndvi,
-          schemes: enSchemes.schemes,
-          advisory: enAdvisory.advisory,
-          video: enVideo.video,
-          error: enError.error,
-          sync: enSync.sync,
-        } 
+        translation: mergeTranslations(en, {
+          auth: enAuth,
+          toast: enToast,
+          weather: enWeather,
+          home: enHome,
+          lands: enLands,
+          profile: enProfile,
+          market: enMarket,
+          social: enSocial,
+          schedule: enSchedule,
+          analytics: enAnalytics,
+          chat: enChat,
+          instascan: enInstascan,
+          pwa: enPwa,
+          ndvi: enNdvi,
+          schemes: enSchemes,
+          advisory: enAdvisory,
+          video: enVideo,
+          error: enError,
+          sync: enSync,
+        })
       },
       hi: { 
-        translation: { 
-          ...hi,
-          // Merge base and page-level namespaces (with fallbacks)
-          auth: { ...((hi as any).auth || {}), ...hiAuth.auth },
-          toast: hiToast.toast,
-          weather: hiWeather.weather,
-          home: { ...((hi as any).home || {}), ...hiHome.home },
-          lands: hiLands.lands,
-          profile: hiProfile.profile,
-          market: hiMarket.market,
-          social: hiSocial.social,
-          schedule: hiSchedule.schedule,
-          analytics: hiAnalytics.analytics,
-          chat: hiChat.chat,
-          instascan: hiInstascan.instascan,
-          pwa: hiPwa.pwa,
-          ndvi: hiNdvi.ndvi,
-          schemes: hiSchemes.schemes,
-          advisory: hiAdvisory.advisory,
-          video: hiVideo.video,
-          error: hiError.error,
-          sync: hiSync.sync,
-        } 
+        translation: mergeTranslations(hi, {
+          auth: hiAuth,
+          toast: hiToast,
+          weather: hiWeather,
+          home: hiHome,
+          lands: hiLands,
+          profile: hiProfile,
+          market: hiMarket,
+          social: hiSocial,
+          schedule: hiSchedule,
+          analytics: hiAnalytics,
+          chat: hiChat,
+          instascan: hiInstascan,
+          pwa: hiPwa,
+          ndvi: hiNdvi,
+          schemes: hiSchemes,
+          advisory: hiAdvisory,
+          video: hiVideo,
+          error: hiError,
+          sync: hiSync,
+        })
       },
       pa: { translation: pa },
       mr: { 
-        translation: { 
-          ...mr,
-          // Merge base and page-level namespaces (with fallbacks)
-          auth: { ...((mr as any).auth || {}), ...mrAuth.auth },
-          toast: mrToast.toast,
-          weather: mrWeather.weather,
-          home: { ...((mr as any).home || {}), ...mrHome.home },
-          lands: mrLands.lands,
-          profile: mrProfile.profile,
-          market: mrMarket.market,
-          social: mrSocial.social,
-          schedule: mrSchedule.schedule,
-          analytics: mrAnalytics.analytics,
-          chat: mrChat.chat,
-          instascan: mrInstascan.instascan,
-          pwa: mrPwa.pwa,
-          ndvi: mrNdvi.ndvi,
-          schemes: mrSchemes.schemes,
-          advisory: mrAdvisory.advisory,
-          video: mrVideo.video,
-          error: mrError.error,
-          sync: mrSync.sync,
-        } 
+        translation: mergeTranslations(mr, {
+          auth: mrAuth,
+          toast: mrToast,
+          weather: mrWeather,
+          home: mrHome,
+          lands: mrLands,
+          profile: mrProfile,
+          market: mrMarket,
+          social: mrSocial,
+          schedule: mrSchedule,
+          analytics: mrAnalytics,
+          chat: mrChat,
+          instascan: mrInstascan,
+          pwa: mrPwa,
+          ndvi: mrNdvi,
+          schemes: mrSchemes,
+          advisory: mrAdvisory,
+          video: mrVideo,
+          error: mrError,
+          sync: mrSync,
+        })
       },
       ta: { translation: ta },
     },

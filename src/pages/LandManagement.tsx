@@ -133,8 +133,8 @@ export default function LandManagement() {
     linkElement.click();
     
     toast({
-      title: 'Exported Successfully',
-      description: `${filteredLands.length} land records exported`,
+      title: t('lands.export.success_title'),
+      description: t('lands.export.success_message', { count: filteredLands.length }),
     });
   };
 
@@ -204,19 +204,19 @@ export default function LandManagement() {
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 <MapPin className="h-3.5 w-3.5 text-primary" />
                 <span className="text-sm font-semibold">{lands.length}</span>
-                <span className="text-xs text-muted-foreground">lands</span>
+                <span className="text-xs text-muted-foreground">{t('lands.stats.count', { count: lands.length }).split(' ')[1]}</span>
               </div>
               
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 <Grid3x3 className="h-3.5 w-3.5 text-primary" />
                 <span className="text-sm font-semibold">{totalArea.toFixed(1)}</span>
-                <span className="text-xs text-muted-foreground">acres</span>
+                <span className="text-xs text-muted-foreground">{t('lands.stats.total_area', { area: totalArea.toFixed(1) }).split(' ')[1]}</span>
               </div>
               
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 <Sprout className="h-3.5 w-3.5 text-primary" />
                 <span className="text-sm font-semibold">{cultivatedLands}</span>
-                <span className="text-xs text-muted-foreground">active</span>
+                <span className="text-xs text-muted-foreground">{t('lands.stats.cultivated', { count: cultivatedLands }).split(' ')[1]}</span>
               </div>
             </div>
             
@@ -238,7 +238,7 @@ export default function LandManagement() {
         {!isOnline && (
           <div className="mx-4 mt-2 mb-3 bg-warning/10 border-l-4 border-warning rounded-md p-2 flex items-center gap-2">
             <AlertCircle className="h-3.5 w-3.5 text-warning flex-shrink-0" />
-            <p className="text-xs text-warning-foreground">Offline - changes will sync later</p>
+            <p className="text-xs text-warning-foreground">{t('lands.offline_warning')}</p>
           </div>
         )}
 
@@ -248,7 +248,7 @@ export default function LandManagement() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search lands..."
+                placeholder={t('lands.search.placeholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10 h-9"
@@ -264,39 +264,39 @@ export default function LandManagement() {
               </SheetTrigger>
               <SheetContent side="bottom" className="h-auto">
                 <SheetHeader>
-                  <SheetTitle>Filters & Sort</SheetTitle>
+                  <SheetTitle>{t('lands.filter.sheet_title')}</SheetTitle>
                 </SheetHeader>
                 <div className="space-y-4 mt-4">
                   <div>
-                    <label className="text-sm font-medium mb-2 block">Filter by</label>
+                    <label className="text-sm font-medium mb-2 block">{t('lands.filter.by_label')}</label>
                     <Select value={filterBy} onValueChange={setFilterBy}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">All Lands</SelectItem>
-                        <SelectItem value="withCrop">With Crop</SelectItem>
-                        <SelectItem value="noCrop">No Crop</SelectItem>
+                        <SelectItem value="all">{t('lands.filter.all')}</SelectItem>
+                        <SelectItem value="withCrop">{t('lands.filter.with_crop')}</SelectItem>
+                        <SelectItem value="noCrop">{t('lands.filter.no_crop')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   
                   <div>
-                    <label className="text-sm font-medium mb-2 block">Sort by</label>
+                    <label className="text-sm font-medium mb-2 block">{t('lands.sort.label')}</label>
                     <Select value={sortBy} onValueChange={setSortBy}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="name">Name</SelectItem>
-                        <SelectItem value="area">Area</SelectItem>
-                        <SelectItem value="date">Date</SelectItem>
+                        <SelectItem value="name">{t('lands.sort.by_name')}</SelectItem>
+                        <SelectItem value="area">{t('lands.sort.by_area')}</SelectItem>
+                        <SelectItem value="date">{t('lands.sort.by_date')}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   
                   <div>
-                    <label className="text-sm font-medium mb-2 block">View mode</label>
+                    <label className="text-sm font-medium mb-2 block">{t('lands.view_mode.label')}</label>
                     <div className="flex gap-2">
                       <Button
                         variant={viewMode === 'grid' ? 'default' : 'outline'}
@@ -304,7 +304,7 @@ export default function LandManagement() {
                         className="flex-1"
                       >
                         <Grid3x3 className="h-4 w-4 mr-2" />
-                        Grid
+                        {t('lands.view_mode.grid')}
                       </Button>
                       <Button
                         variant={viewMode === 'list' ? 'default' : 'outline'}
@@ -312,7 +312,7 @@ export default function LandManagement() {
                         className="flex-1"
                       >
                         <List className="h-4 w-4 mr-2" />
-                        List
+                        {t('lands.view_mode.list')}
                       </Button>
                     </div>
                   </div>
@@ -327,22 +327,22 @@ export default function LandManagement() {
                   <Filter className="h-4 w-4 mr-2" />
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Lands</SelectItem>
-                  <SelectItem value="withCrop">With Crop</SelectItem>
-                  <SelectItem value="noCrop">No Crop</SelectItem>
-                </SelectContent>
+                  <SelectContent>
+                    <SelectItem value="all">{t('lands.filter.all')}</SelectItem>
+                    <SelectItem value="withCrop">{t('lands.filter.with_crop')}</SelectItem>
+                    <SelectItem value="noCrop">{t('lands.filter.no_crop')}</SelectItem>
+                  </SelectContent>
               </Select>
               
               <Select value={sortBy} onValueChange={setSortBy}>
                 <SelectTrigger className="w-[120px] h-9">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="name">Name</SelectItem>
-                  <SelectItem value="area">Area</SelectItem>
-                  <SelectItem value="date">Date</SelectItem>
-                </SelectContent>
+                  <SelectContent>
+                    <SelectItem value="name">{t('lands.sort.by_name')}</SelectItem>
+                    <SelectItem value="area">{t('lands.sort.by_area')}</SelectItem>
+                    <SelectItem value="date">{t('lands.sort.by_date')}</SelectItem>
+                  </SelectContent>
               </Select>
               
               <Button
@@ -367,14 +367,14 @@ export default function LandManagement() {
             <Card className="border-dashed mx-auto mt-8">
               <CardContent className="p-8 text-center">
                 <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No Lands Found</h3>
+                <h3 className="text-lg font-semibold mb-2">{t('lands.empty.title')}</h3>
                 <p className="text-muted-foreground mb-6 text-sm">
-                  {searchQuery ? 'Try adjusting your search or filters' : 'Start by adding your first land parcel'}
+                  {searchQuery ? t('lands.empty.search_message') : t('lands.empty.add_first')}
                 </p>
                 {!searchQuery && (
                   <Button onClick={() => navigate('/app/lands/add')} className="mx-auto">
                     <Plus className="h-4 w-4 mr-2" />
-                    Add Your First Land
+                    {t('lands.cta.add_first')}
                   </Button>
                 )}
               </CardContent>
@@ -407,7 +407,7 @@ export default function LandManagement() {
           size="lg"
         >
           <Plus className="h-5 w-5" />
-          <span className="font-medium">Add Land</span>
+          <span className="font-medium">{t('lands.cta.add')}</span>
         </Button>
       </div>
     </div>
