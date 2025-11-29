@@ -1,19 +1,23 @@
 import { supabase } from '@/integrations/supabase/client';
 import { VoiceIntent, VoiceUtterance } from './types';
+import { SlotExtractor } from './SlotExtractor';
 
 export class DatabaseIntentMatcher {
   private intents: VoiceIntent[] = [];
   private currentLanguage: string = 'hi';
   private tenantId: string = '';
   private cachedIntents: Map<string, VoiceIntent[]> = new Map();
+  private slotExtractor: SlotExtractor;
 
   constructor() {
+    this.slotExtractor = new SlotExtractor('hi');
     this.loadFromCache();
   }
 
   async loadIntents(language: string, tenantId: string): Promise<void> {
     this.currentLanguage = language;
     this.tenantId = tenantId;
+    this.slotExtractor.setLanguage(language);
 
     const cacheKey = `${tenantId}-${language}`;
 
@@ -113,11 +117,16 @@ export class DatabaseIntentMatcher {
 
     // Require at least 60% confidence
     if (bestMatch && highestConfidence >= 0.6) {
+      // Extract slots if intent has slot definitions
+      const extractedSlots = bestMatch.slots && bestMatch.slots.length > 0
+        ? this.slotExtractor.extractSlots(transcript, bestMatch.slots)
+        : this.slotExtractor.extractAll(transcript); // Fallback to extract all common slots
+
       return {
         text: transcript,
         intent: bestMatch.id,
         confidence: highestConfidence,
-        slots: {},
+        slots: extractedSlots,
         language: this.currentLanguage,
         timestamp: Date.now(),
       };
