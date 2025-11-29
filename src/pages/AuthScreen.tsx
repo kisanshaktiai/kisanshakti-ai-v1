@@ -135,7 +135,7 @@ export default function AuthScreen() {
         >
           <div className="flex items-center space-x-3">
             <Loader2 className="w-5 h-5 animate-spin text-primary" />
-            <span className="text-muted-foreground">{t('common.loading')}</span>
+            <span className="text-muted-foreground">{t('toast.loading')}</span>
           </div>
         </motion.div>
       </div>
@@ -187,7 +187,7 @@ export default function AuthScreen() {
               className="mb-2 hover:bg-primary/5"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
-              {t('common.back')}
+              {t('auth.back')}
             </Button>
             
             <div className="text-center space-y-4">
@@ -222,8 +222,8 @@ export default function AuthScreen() {
                 </h1>
                 <p className="text-base text-muted-foreground px-4">
                   {mode === 'register' 
-                    ? t('auth.registerDescription') || 'Create your account to get started'
-                    : t('auth.enterPhoneDescription') || 'Enter your mobile number to continue'}
+                    ? t('auth.registerDescription')
+                    : t('auth.enterPhoneDescription')}
                 </p>
               </div>
             </div>
@@ -262,7 +262,7 @@ export default function AuthScreen() {
                 />
               </div>
               <p className="text-xs text-muted-foreground pl-2">
-                {t('auth.mobileHint') || "We'll use this number to identify you"}
+                {t('auth.mobileHint')}
               </p>
             </div>
 
@@ -280,7 +280,7 @@ export default function AuthScreen() {
                 </>
               ) : (
                 <>
-                  {mode === 'register' ? t('common.next') : t('common.continue')}
+                  {mode === 'register' ? t('auth.continue') : t('auth.continue')}
                   <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
                 </>
               )}

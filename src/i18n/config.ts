@@ -35,6 +35,33 @@ import mrChat from './locales/mr/chat.json';
 import enInstascan from './locales/en/instascan.json';
 import hiInstascan from './locales/hi/instascan.json';
 import mrInstascan from './locales/mr/instascan.json';
+import enAuth from './locales/en/auth.json';
+import hiAuth from './locales/hi/auth.json';
+import mrAuth from './locales/mr/auth.json';
+import enToast from './locales/en/toast.json';
+import hiToast from './locales/hi/toast.json';
+import mrToast from './locales/mr/toast.json';
+import enPwa from './locales/en/pwa.json';
+import hiPwa from './locales/hi/pwa.json';
+import mrPwa from './locales/mr/pwa.json';
+import enNdvi from './locales/en/ndvi.json';
+import hiNdvi from './locales/hi/ndvi.json';
+import mrNdvi from './locales/mr/ndvi.json';
+import enSchemes from './locales/en/schemes.json';
+import hiSchemes from './locales/hi/schemes.json';
+import mrSchemes from './locales/mr/schemes.json';
+import enAdvisory from './locales/en/advisory.json';
+import hiAdvisory from './locales/hi/advisory.json';
+import mrAdvisory from './locales/mr/advisory.json';
+import enVideo from './locales/en/video.json';
+import hiVideo from './locales/hi/video.json';
+import mrVideo from './locales/mr/video.json';
+import enError from './locales/en/error.json';
+import hiError from './locales/hi/error.json';
+import mrError from './locales/mr/error.json';
+import enSync from './locales/en/sync.json';
+import hiSync from './locales/hi/sync.json';
+import mrSync from './locales/mr/sync.json';
 
 i18n
   .use(initReactI18next)
@@ -52,7 +79,16 @@ i18n
           ...enSchedule.schedule,
           ...enAnalytics.analytics,
           ...enChat.chat,
-          ...enInstascan.instascan
+          ...enInstascan.instascan,
+          ...enAuth.auth,
+          ...enToast.toast,
+          ...enPwa.pwa,
+          ...enNdvi.ndvi,
+          ...enSchemes.schemes,
+          ...enAdvisory.advisory,
+          ...enVideo.video,
+          ...enError.error,
+          ...enSync.sync
         } 
       },
       hi: { 
@@ -67,7 +103,16 @@ i18n
           ...hiSchedule.schedule,
           ...hiAnalytics.analytics,
           ...hiChat.chat,
-          ...hiInstascan.instascan
+          ...hiInstascan.instascan,
+          ...hiAuth.auth,
+          ...hiToast.toast,
+          ...hiPwa.pwa,
+          ...hiNdvi.ndvi,
+          ...hiSchemes.schemes,
+          ...hiAdvisory.advisory,
+          ...hiVideo.video,
+          ...hiError.error,
+          ...hiSync.sync
         } 
       },
       pa: { translation: pa },
@@ -83,7 +128,16 @@ i18n
           ...mrSchedule.schedule,
           ...mrAnalytics.analytics,
           ...mrChat.chat,
-          ...mrInstascan.instascan
+          ...mrInstascan.instascan,
+          ...mrAuth.auth,
+          ...mrToast.toast,
+          ...mrPwa.pwa,
+          ...mrNdvi.ndvi,
+          ...mrSchemes.schemes,
+          ...mrAdvisory.advisory,
+          ...mrVideo.video,
+          ...mrError.error,
+          ...mrSync.sync
         } 
       },
       ta: { translation: ta },

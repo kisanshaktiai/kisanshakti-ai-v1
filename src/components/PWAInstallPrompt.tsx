@@ -4,6 +4,7 @@ import { X, Download, Share, Plus, Smartphone, Monitor } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useTranslation } from 'react-i18next';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -11,6 +12,7 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 export const PWAInstallPrompt: React.FC = () => {
+  const { t } = useTranslation();
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [platform, setPlatform] = useState<'ios' | 'android' | 'desktop' | null>(null);
@@ -234,10 +236,10 @@ export const PWAInstallPrompt: React.FC = () => {
                   </div>
                   <div className="flex-1">
                     <h3 className="font-semibold text-foreground mb-1">
-                      Install KisanShakti App
+                      {t('pwa.prompt.title')}
                     </h3>
                     <p className="text-sm text-muted-foreground">
-                      Access faster, work offline, get notifications
+                      {t('pwa.prompt.subtitle')}
                     </p>
                   </div>
                 </div>
@@ -246,19 +248,19 @@ export const PWAInstallPrompt: React.FC = () => {
                 {platform === 'ios' && (
                   <Alert className="mb-3 bg-info/10 border-info/20">
                     <AlertDescription className="text-xs space-y-2">
-                      <p className="font-medium text-info-foreground">To install on iPhone/iPad:</p>
+                      <p className="font-medium text-info-foreground">{t('pwa.prompt.to_install_iphone')}</p>
                       <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
                         <li className="flex items-start gap-2">
                           <Share className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                          <span>Tap the Share button in Safari</span>
+                          <span>{t('pwa.prompt.tap_share_safari')}</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <Plus className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                          <span>Select "Add to Home Screen"</span>
+                          <span>{t('pwa.prompt.select_add_home')}</span>
                         </li>
                         <li className="flex items-start gap-2">
                           <Smartphone className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                          <span>Tap "Add" to confirm</span>
+                          <span>{t('pwa.prompt.tap_add_confirm')}</span>
                         </li>
                       </ol>
                     </AlertDescription>
@@ -293,14 +295,14 @@ export const PWAInstallPrompt: React.FC = () => {
                         size="sm"
                       >
                         <Download className="w-4 h-4 mr-2" />
-                        Install Now
+                        {t('pwa.prompt.install_now')}
                       </Button>
                       <Button
                         onClick={handleLater}
                         variant="outline"
                         size="sm"
                       >
-                        Later
+                        {t('pwa.prompt.later')}
                       </Button>
                     </>
                   ) : (
@@ -310,7 +312,7 @@ export const PWAInstallPrompt: React.FC = () => {
                       size="sm"
                       className="w-full"
                     >
-                      Got it
+                      {t('pwa.prompt.got_it')}
                     </Button>
                   )}
                 </div>
@@ -335,7 +337,7 @@ export const PWAInstallPrompt: React.FC = () => {
             <Alert className="bg-success border-success shadow-lg">
               <Download className="w-4 h-4 text-success-foreground" />
               <AlertDescription className="text-success-foreground ml-2">
-                <strong>App installed successfully!</strong> You can now access KisanShakti from your home screen.
+                <strong>{t('pwa.success.installed')}</strong> {t('pwa.success.access_from_home')}
               </AlertDescription>
             </Alert>
           </motion.div>

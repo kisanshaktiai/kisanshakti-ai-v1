@@ -189,7 +189,7 @@ export default function MobileAuth() {
               {t('auth.enterPhone')}
             </h1>
             <p className="text-sm text-muted-foreground">
-              Enter your mobile number to continue
+              {t('auth.enterPhoneDescription')}
             </p>
           </div>
         </div>
@@ -199,7 +199,7 @@ export default function MobileAuth() {
           <Alert className="border-yellow-500 bg-yellow-50">
             <WifiOff className="h-4 w-4" />
             <AlertDescription className="text-yellow-800">
-              You are offline. You can only log in with existing accounts.
+              {t('auth.offlineMode')}
             </AlertDescription>
           </Alert>
         )}
@@ -213,7 +213,7 @@ export default function MobileAuth() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="text-sm font-medium text-foreground">
-              Mobile Number
+              {t('auth.mobileNumber')}
             </label>
             <div className="mt-2 relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
@@ -231,7 +231,7 @@ export default function MobileAuth() {
               />
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              We'll use this number to identify you
+              {t('auth.mobileHint')}
             </p>
           </div>
 
@@ -243,10 +243,10 @@ export default function MobileAuth() {
             {isLoading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                Checking...
+                {t('auth.checking')}
               </>
             ) : (
-              'Continue'
+              t('auth.continue')
             )}
           </Button>
         </form>
