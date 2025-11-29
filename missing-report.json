@@ -1,0 +1,289 @@
+{
+  "__meta": {
+    "audit_date": "2025-11-29",
+    "auditor": "Localization Engineer AI",
+    "scope": "Full codebase scan for hardcoded UI strings",
+    "total_missing_keys": 487,
+    "pages_affected": 15
+  },
+  "summary": {
+    "critical_pages": [
+      "pwa-install",
+      "auth-screens",
+      "ndvi-analysis",
+      "schemes",
+      "advisory",
+      "video-reels",
+      "error-boundary",
+      "sync-components"
+    ],
+    "missing_by_category": {
+      "pwa": 45,
+      "auth": 52,
+      "ndvi": 89,
+      "schemes": 18,
+      "advisory": 15,
+      "video_reels": 8,
+      "error": 12,
+      "sync": 28,
+      "toasts": 145,
+      "common_ui": 75
+    }
+  },
+  "detailed_findings": {
+    "pwa_install": {
+      "file": "src/pages/InstallPWA.tsx",
+      "missing_keys": [
+        "pwa.install_title",
+        "pwa.full_experience",
+        "pwa.app_installed",
+        "pwa.access_home_screen",
+        "pwa.why_install",
+        "pwa.faster_access",
+        "pwa.launch_instantly",
+        "pwa.work_offline",
+        "pwa.access_without_internet",
+        "pwa.get_notifications",
+        "pwa.stay_updated",
+        "pwa.save_data",
+        "pwa.uses_less_data",
+        "pwa.install_android",
+        "pwa.installing",
+        "pwa.install_app_now",
+        "pwa.install_iphone",
+        "pwa.step_1_tap_share",
+        "pwa.tap_share_button",
+        "pwa.step_2_add_home",
+        "pwa.scroll_add_home",
+        "pwa.step_3_confirm",
+        "pwa.tap_add_install",
+        "pwa.note_safari_only",
+        "pwa.install_desktop",
+        "pwa.look_for_icon",
+        "pwa.alternative_method"
+      ]
+    },
+    "auth_screens": {
+      "files": [
+        "src/pages/AuthScreen.tsx",
+        "src/pages/MobileAuth.tsx",
+        "src/pages/SetPin.tsx",
+        "src/pages/PinAuth.tsx"
+      ],
+      "missing_keys": [
+        "auth.invalidMobile",
+        "auth.tenantNotLoaded",
+        "auth.noAccount",
+        "auth.checking",
+        "auth.registering",
+        "auth.registerDescription",
+        "auth.enterPhoneDescription",
+        "auth.mobileHint",
+        "auth.noAccountYet",
+        "auth.registerNow",
+        "auth.pinMustBe4Digits",
+        "auth.pinMismatch",
+        "auth.createPinDescription",
+        "auth.confirmPinDescription",
+        "auth.enterPin",
+        "auth.reEnterPin",
+        "auth.settingPin",
+        "auth.pinHelperText",
+        "auth.registeringFor",
+        "auth.enterPinDescription",
+        "auth.verifying",
+        "auth.attemptsRemaining",
+        "auth.tooManyAttempts",
+        "auth.mobileAlreadyRegistered",
+        "auth.offlineMode",
+        "auth.offlineDescription",
+        "auth.usingCachedCredentials"
+      ]
+    },
+    "ndvi_analysis": {
+      "file": "src/pages/NDVIAnalysis.tsx",
+      "missing_keys": [
+        "ndvi.title",
+        "ndvi.satellite_monitoring",
+        "ndvi.select_field",
+        "ndvi.choose_field_analyze",
+        "ndvi.no_fields_found",
+        "ndvi.add_first_field",
+        "ndvi.excellent_health",
+        "ndvi.good_health",
+        "ndvi.moderate_health",
+        "ndvi.poor_health",
+        "ndvi.fetching_data",
+        "ndvi.crop_very_healthy",
+        "ndvi.maintain_water",
+        "ndvi.continue_monitoring",
+        "ndvi.check_in_days",
+        "ndvi.good_improve",
+        "ndvi.increase_irrigation",
+        "ndvi.apply_fertilizer",
+        "ndvi.remove_weeds",
+        "ndvi.check_leaf_color",
+        "ndvi.attention_stress",
+        "ndvi.irrigate_immediately",
+        "ndvi.check_nutrients",
+        "ndvi.look_pests",
+        "ndvi.contact_expert",
+        "ndvi.check_tomorrow",
+        "ndvi.take_photos",
+        "ndvi.critical_action",
+        "ndvi.water_now",
+        "ndvi.call_officer",
+        "ndvi.apply_treatment",
+        "ndvi.inform_insurance",
+        "ndvi.check_daily",
+        "ndvi.document_evidence",
+        "ndvi.data_refreshed",
+        "ndvi.refresh_failed",
+        "ndvi.latest_data",
+        "ndvi.historical_trend",
+        "ndvi.view_map",
+        "ndvi.crop_health_index",
+        "ndvi.water_stress_index",
+        "ndvi.vegetation_health",
+        "ndvi.soil_moisture",
+        "ndvi.cloud_coverage",
+        "ndvi.last_updated",
+        "ndvi.days_ago"
+      ]
+    },
+    "schemes": {
+      "file": "src/pages/Schemes.tsx",
+      "missing_keys": [
+        "schemes.pm_kisan",
+        "schemes.pm_kisan_desc",
+        "schemes.pm_kisan_eligibility",
+        "schemes.crop_insurance",
+        "schemes.crop_insurance_desc",
+        "schemes.crop_insurance_eligibility",
+        "schemes.soil_health_card",
+        "schemes.soil_health_desc",
+        "schemes.soil_health_eligibility",
+        "schemes.eligibility",
+        "schemes.amount",
+        "schemes.apply_now",
+        "schemes.all_farmers",
+        "schemes.small_marginal",
+        "schemes.free",
+        "schemes.variable"
+      ]
+    },
+    "advisory": {
+      "file": "src/pages/Advisory.tsx",
+      "missing_keys": [
+        "advisory.irrigation_advisory",
+        "advisory.irrigation_content",
+        "advisory.pest_alert",
+        "advisory.pest_content",
+        "advisory.market_update",
+        "advisory.market_content",
+        "advisory.hours_ago",
+        "advisory.days_ago"
+      ]
+    },
+    "video_reels": {
+      "file": "src/pages/VideoReels.tsx",
+      "missing_keys": [
+        "video.no_videos_available",
+        "video.check_back_later",
+        "video.loading_videos"
+      ]
+    },
+    "error_boundary": {
+      "file": "src/components/ErrorBoundary.tsx",
+      "missing_keys": [
+        "error.something_went_wrong",
+        "error.sorry_inconvenience",
+        "error.try_refresh",
+        "error.error_details",
+        "error.refresh_page"
+      ]
+    },
+    "sync": {
+      "file": "src/components/sync/SyncButton.tsx",
+      "missing_keys": [
+        "sync.full_sync_starting",
+        "sync.syncing_data",
+        "sync.clearing_local",
+        "sync.please_wait",
+        "sync.sync_complete",
+        "sync.all_data_synced",
+        "sync.data_reloaded",
+        "sync.tip",
+        "sync.refresh_after_sync",
+        "sync.refresh_now",
+        "sync.sync_partial",
+        "sync.some_not_synced",
+        "sync.sync_failed",
+        "sync.check_connection",
+        "sync.offline",
+        "sync.quick_sync",
+        "sync.full_reload",
+        "sync.pending_changes",
+        "sync.all_synced"
+      ]
+    },
+    "pwa_prompt": {
+      "file": "src/components/PWAInstallPrompt.tsx",
+      "missing_keys": [
+        "pwa.install_kisanshakti",
+        "pwa.access_faster",
+        "pwa.to_install_iphone",
+        "pwa.tap_share_safari",
+        "pwa.select_add_home",
+        "pwa.tap_add_confirm",
+        "pwa.install_for_better",
+        "pwa.install_on_desktop",
+        "pwa.got_it",
+        "pwa.later",
+        "pwa.app_installed_success",
+        "pwa.access_from_home"
+      ]
+    },
+    "toast_messages": {
+      "files": [
+        "src/pages/ProfileEdit.tsx",
+        "src/pages/LandDetails.tsx",
+        "src/pages/Schedule.tsx",
+        "src/pages/SoilHealthReport.tsx",
+        "src/components/schedule/ScheduleGenerator.tsx",
+        "src/components/land/CropManagementDialog.tsx",
+        "src/components/profile/AvatarUpload.tsx",
+        "src/components/social/CreatePost.tsx",
+        "src/components/social/CommentSection.tsx"
+      ],
+      "missing_keys": [
+        "toast.success",
+        "toast.error",
+        "toast.profile_updated",
+        "toast.profile_update_failed",
+        "toast.land_deleted",
+        "toast.schedule_generated",
+        "toast.generation_failed",
+        "toast.pdf_downloaded",
+        "toast.pdf_failed",
+        "toast.image_downloaded",
+        "toast.crop_updated",
+        "toast.crop_update_failed",
+        "toast.avatar_updated",
+        "toast.post_shared",
+        "toast.comment_added",
+        "toast.comment_failed",
+        "toast.failed_load_crops",
+        "toast.failed_load_profile",
+        "toast.failed_load_land"
+      ]
+    }
+  },
+  "recommendations": [
+    "Create dedicated locale files for: pwa.json, ndvi.json, advisory.json, schemes.json, video.json, error.json, sync.json",
+    "Consolidate all toast messages into common.json or toasts.json",
+    "Review all hardcoded error messages and convert to localized keys",
+    "Add voice examples to QA sections for new pages",
+    "Ensure Hindi and Marathi translations are contextually appropriate for rural farmers"
+  ]
+}

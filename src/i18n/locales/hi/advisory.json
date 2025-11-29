@@ -1,0 +1,44 @@
+{
+  "__meta": {
+    "page": "advisory",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29",
+    "translation_status": "MACHINE_ASSISTED"
+  },
+  "advisory": {
+    "title": "सलाह",
+    "subtitle": "विशेषज्ञ खेती मार्गदर्शन",
+    "irrigation_advisory": "सिंचाई सलाह",
+    "irrigation_content": "अगले 2 दिनों में गेहूं की फसल के लिए हल्की सिंचाई की सिफारिश की जाती है",
+    "pest_alert": "कीट अलर्ट",
+    "pest_content": "आस-पास के क्षेत्रों में एफिड हमले की सूचना मिली है। निवारक उपाय करें",
+    "market_update": "बाजार अपडेट",
+    "market_content": "गेहूं बेचने का अच्छा समय। अगले सप्ताह कीमतों में गिरावट की उम्मीद",
+    "hours_ago": "{{count}} घंटे पहले",
+    "days_ago": "{{count}} दिन पहले",
+    "type": {
+      "info": "जानकारी",
+      "warning": "चेतावनी",
+      "success": "सफलता",
+      "urgent": "तत्काल"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show advisory",
+      "Check farming advice",
+      "What are the alerts"
+    ],
+    "voice_examples_hi": [
+      "सलाह दिखाएं",
+      "खेती सलाह जांचें",
+      "अलर्ट क्या हैं"
+    ],
+    "voice_examples_mr": [
+      "सल्ला दाखवा",
+      "शेती सल्ला तपासा",
+      "अलर्ट काय आहेत"
+    ]
+  }
+}
