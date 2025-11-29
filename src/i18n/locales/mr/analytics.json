@@ -1,0 +1,118 @@
+{
+  "__meta": {
+    "page": "analytics",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "analytics": {
+    "title": "शेत विश्लेषण",
+    "subtitle": "तुमची शेती कामगिरी ट्रॅक करा",
+    "tabs": {
+      "overview": "आढावा",
+      "crops": "पिके",
+      "weather": "हवामान",
+      "tasks": "कामे",
+      "financial": "आर्थिक"
+    },
+    "overview": {
+      "title": "कामगिरी आढावा",
+      "total_land": "एकूण जमीन",
+      "active_crops": "सक्रिय पिके",
+      "completed_tasks": "पूर्ण कामे",
+      "pending_tasks": "प्रलंबित कामे",
+      "this_month": "या महिन्यात",
+      "vs_last_month": "गेल्या महिन्याच्या तुलनेत"
+    },
+    "crops": {
+      "title": "पीक विश्लेषण",
+      "by_type": "प्रकारानुसार पिके",
+      "by_season": "हंगामानुसार पिके",
+      "yield_comparison": "उत्पन्न तुलना",
+      "expected_yield": "अपेक्षित उत्पन्न",
+      "actual_yield": "वास्तविक उत्पन्न",
+      "area_hectares": "क्षेत्र (हेक्टर)",
+      "avg_yield": "सरासरी उत्पन्न (क्विंटल/हेक्टर)"
+    },
+    "weather": {
+      "title": "हवामान पॅटर्न",
+      "rainfall_trend": "पाऊस प्रवृत्ती",
+      "temperature_trend": "तापमान प्रवृत्ती",
+      "humidity_avg": "सरासरी आर्द्रता",
+      "rainfall_total": "एकूण पाऊस",
+      "rainfall_unit": "मिमी",
+      "temp_unit": "°C",
+      "month": "महिना"
+    },
+    "tasks": {
+      "title": "काम कामगिरी",
+      "completion_rate": "पूर्णता दर",
+      "on_time": "वेळेवर",
+      "delayed": "विलंबित",
+      "pending": "प्रलंबित",
+      "by_stage": "टप्प्यानुसार कामे",
+      "stage": "टप्पा",
+      "count": "संख्या"
+    },
+    "financial": {
+      "title": "आर्थिक सारांश",
+      "total_revenue": "एकूण उत्पन्न",
+      "total_expenses": "एकूण खर्च",
+      "net_profit": "निव्वळ नफा",
+      "profit_margin": "नफा मार्जिन",
+      "by_category": "श्रेणीनुसार खर्च",
+      "seeds": "बियाणे",
+      "fertilizers": "खते",
+      "pesticides": "कीटकनाशके",
+      "labor": "श्रम",
+      "equipment": "उपकरणे",
+      "other": "इतर"
+    },
+    "filters": {
+      "date_range": "तारीख श्रेणी",
+      "last_7_days": "गेले 7 दिवस",
+      "last_30_days": "गेले 30 दिवस",
+      "last_3_months": "गेले 3 महिने",
+      "last_6_months": "गेले 6 महिने",
+      "last_year": "गेले वर्ष",
+      "custom": "सानुकूल श्रेणी",
+      "apply": "लागू करा",
+      "reset": "रीसेट करा"
+    },
+    "export": {
+      "button": "निर्यात करा",
+      "pdf": "PDF म्हणून निर्यात करा",
+      "csv": "CSV म्हणून निर्यात करा",
+      "success": "विश्लेषण यशस्वीरित्या निर्यात केले",
+      "error": "विश्लेषण निर्यात करण्यात अयशस्वी"
+    },
+    "empty": {
+      "title": "डेटा उपलब्ध नाही",
+      "message": "विश्लेषण पाहण्यासाठी तुमच्या शेती क्रियाकलाप ट्रॅक करणे सुरू करा",
+      "cta": "जमीन जोडा"
+    },
+    "loading": {
+      "message": "विश्लेषण लोड होत आहे..."
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show farm analytics",
+      "View crop performance",
+      "Check task completion rate",
+      "Show financial summary"
+    ],
+    "voice_examples_hi": [
+      "खेत विश्लेषण दिखाओ",
+      "फसल प्रदर्शन देखें",
+      "कार्य पूर्णता दर जांचें",
+      "वित्तीय सारांश दिखाओ"
+    ],
+    "voice_examples_mr": [
+      "शेत विश्लेषण दाखवा",
+      "पीक कामगिरी पहा",
+      "कार्य पूर्णता दर तपासा",
+      "आर्थिक सारांश दाखवा"
+    ]
+  }
+}
