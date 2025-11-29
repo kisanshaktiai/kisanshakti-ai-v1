@@ -12,7 +12,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { LocationPermissionDialog } from "@/components/LocationPermissionDialog";
+import { FirstRunOnboardingController } from "@/components/onboarding/FirstRunOnboardingController";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
@@ -56,7 +56,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useLanguageStore } from "@/stores/languageStore";
 import { toast } from "@/hooks/use-toast";
 import LocationService from "@/services/LocationService";
-import { useLocationPermission } from "@/hooks/useLocationPermission";
+// Removed: useLocationPermission - now using contextual PermissionManager
 import { WhiteLabelService } from "@/services/WhiteLabelService";
 import { useLocationPreloader } from "@/hooks/useLocationPreloader";
 import { syncService } from "@/services/syncService";
@@ -80,9 +80,6 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   const { tenant, branding, isLoading: tenantLoading } = useTenant();
   const { checkAuth, requirePin, session } = useAuthStore();
   const { currentLanguage } = useLanguageStore();
-  const { permissionStatus, requestPermission } = useLocationPermission();
-  const [showLocationDialog, setShowLocationDialog] = useState(false);
-  const [hasRequestedPermission, setHasRequestedPermission] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [currentStep, setCurrentStep] = useState('Initializing...');
   
@@ -259,58 +256,17 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
     }
   }, [currentLanguage]);
 
-  // Check and request location permission after auth (only once per session)
-  useEffect(() => {
-    const checkPermissions = async () => {
-      // Check if we've already shown the dialog in this browser session
-      const hasShownDialog = sessionStorage.getItem('location-dialog-shown');
-      if (hasShownDialog) return;
-
-      const storedSession = localStorage.getItem('auth-storage');
-      
-      if (storedSession) {
-        try {
-          const sessionData = JSON.parse(storedSession);
-          if (sessionData?.state?.session?.farmerId && 
-              sessionData?.state?.session?.isPinVerified &&
-              !hasRequestedPermission) {
-            
-            // Wait a bit to ensure app is loaded
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // Check if we need to show location permission dialog
-            if (permissionStatus === 'prompt' || permissionStatus === 'denied') {
-              setShowLocationDialog(true);
-              setHasRequestedPermission(true);
-              sessionStorage.setItem('location-dialog-shown', 'true');
-            }
-          }
-        } catch (error) {
-          console.error('Error parsing session:', error);
-        }
-      }
-    };
-
-    checkPermissions();
-  }, [permissionStatus, hasRequestedPermission]);
-
-  const handleLocationPermissionRequest = async () => {
-    const result = await requestPermission();
-    setShowLocationDialog(false);
-  };
+  // REMOVED: Automatic location permission request
+  // Location permission is now requested contextually when user accesses location-dependent features
+  // See PermissionManager service and usePermission hook for on-demand permission requests
 
   return (
     <>
       <AppLoadingProgress isLoading={isInitializing} currentStep={currentStep} />
       <OfflineIndicator />
       <PWAUpdatePrompt />
+      <FirstRunOnboardingController />
       {children}
-      <LocationPermissionDialog 
-        open={showLocationDialog}
-        onOpenChange={setShowLocationDialog}
-        onAllow={handleLocationPermissionRequest}
-        onDeny={() => setShowLocationDialog(false)}
-      />
     </>
   );
 }
