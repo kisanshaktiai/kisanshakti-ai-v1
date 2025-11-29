@@ -81,6 +81,7 @@
     "settings_saved": "Settings saved successfully",
     "settings_save_failed": "Failed to save settings",
     "language_changed": "Language changed successfully",
+    "language_changed_to": "Language changed to {{language}}",
     "theme_changed": "Theme changed successfully",
     "logout_success": "Logged out successfully",
     "logout_failed": "Failed to log out",
