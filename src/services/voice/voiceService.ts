@@ -75,6 +75,12 @@ export class VoiceService {
       await this.initializeASR();
     }
 
+    // Check if already listening to prevent duplicate starts
+    if (this.recognition && this.recognition.started) {
+      console.warn('[VoiceService] Recognition already started, skipping');
+      return;
+    }
+
     const startTime = Date.now();
     const provider: ASRProvider = this.isOnline && this.config.asrProvider === 'hybrid' 
       ? 'browser' 
@@ -124,15 +130,30 @@ export class VoiceService {
     };
 
     this.recognition.onend = () => {
+      this.recognition.started = false;
       onEnd();
     };
 
-    this.recognition.start();
+    this.recognition.onstart = () => {
+      this.recognition.started = true;
+    };
+
+    try {
+      this.recognition.start();
+    } catch (error) {
+      console.error('[VoiceService] Error starting recognition:', error);
+      onEnd();
+    }
   }
 
   stopListening(): void {
     if (this.recognition) {
-      this.recognition.stop();
+      try {
+        this.recognition.stop();
+        this.recognition.started = false;
+      } catch (error) {
+        console.error('[VoiceService] Error stopping recognition:', error);
+      }
     }
   }
 

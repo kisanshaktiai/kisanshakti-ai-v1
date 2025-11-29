@@ -98,52 +98,90 @@ Deno.serve(async (req) => {
     // AI Fallback: Use Lovable AI to understand natural language
     console.log('[Voice Agent] Using AI fallback for:', transcript);
 
-    const aiPrompt = `
-You are a voice navigation assistant for a farming app in ${language} language.
-The user said: "${transcript}"
-Current context: ${JSON.stringify(context || {})}
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!LOVABLE_API_KEY) {
+      console.error('LOVABLE_API_KEY not configured');
+      return new Response(
+        JSON.stringify({ 
+          matched: false,
+          error: 'AI service not configured',
+          response: getErrorMessage(language),
+          suggestions: getSuggestions(language),
+          confidence: 0
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-Available features in the app:
-- Home (घर): Dashboard with overview
-- Lands (ज़मीन): View and manage farm lands
-- Weather (मौसम): Weather forecast and farming insights  
-- Schedule (कार्यक्रम): Crop schedules and tasks
-- AI Chat (AI बातचीत): Ask farming questions
-- Market (बाज़ार): Buy/sell farming products
-- Profile (प्रोफाइल): User profile and settings
-- Analytics (विश्लेषण): Farm analytics and reports
-- Soil Health (मिट्टी स्वास्थ्य): Soil test results
+    // Optimized prompt - shorter to save tokens
+    const aiPrompt = `User said in ${language}: "${transcript}"
 
-Your task:
-1. Identify what the user wants to do
-2. Suggest the closest matching feature
-3. Provide 3 example phrases they could say in ${language}
-4. Respond in ${language} language
+App routes:
+/app - Home
+/app/lands - Lands (add:/app/lands/add)
+/app/weather - Weather
+/app/schedule - Schedule
+/app/chat - AI Chat
+/app/market - Market
+/app/profile - Profile
+/app/social - Community
+/app/analytics - Analytics
+/app/soil-health - Soil Health
+/app/ndvi - NDVI Analysis
+/app/schemes - Government Schemes
+/app/advisory - Advisory
 
-Return JSON:
-{
-  "intent": "navigate.feature_name",
-  "route": "/app/route",
-  "suggestions": ["phrase1", "phrase2", "phrase3"],
-  "response": "helpful message in ${language}"
-}
-`;
+Match intent and return JSON:
+{"intent":"navigate.X","route":"/app/X","suggestions":["p1","p2","p3"],"response":"msg in ${language}"}`;
 
-    const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'google/gemini-2.5-flash-lite',
         messages: [
-          { role: 'system', content: 'You are a helpful voice assistant for rural Indian farmers.' },
           { role: 'user', content: aiPrompt }
         ],
-        temperature: 0.3,
+        temperature: 0.2,
+        max_tokens: 150,
       }),
     });
+
+    if (!aiResponse.ok) {
+      const errorText = await aiResponse.text();
+      console.error('Lovable AI error:', aiResponse.status, errorText);
+      
+      if (aiResponse.status === 429) {
+        return new Response(
+          JSON.stringify({ 
+            matched: false,
+            error: 'Rate limit exceeded',
+            response: getErrorMessage(language),
+            suggestions: getSuggestions(language),
+            confidence: 0
+          }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      if (aiResponse.status === 402) {
+        return new Response(
+          JSON.stringify({ 
+            matched: false,
+            error: 'Payment required',
+            response: getErrorMessage(language),
+            suggestions: getSuggestions(language),
+            confidence: 0
+          }),
+          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      throw new Error(`AI API error: ${aiResponse.status}`);
+    }
 
     const aiData = await aiResponse.json();
     const aiContent = aiData.choices[0].message.content;

@@ -42,41 +42,36 @@ export default defineConfig(({ mode }) => ({
     mode === "development" && componentTagger(),
     VitePWA({
       registerType: 'prompt',
-      srcDir: 'src',
-      filename: 'sw-custom.ts',
-      strategies: 'injectManifest',
-      injectManifest: {
+      filename: 'sw.js',
+      manifestFilename: 'manifest.webmanifest',
+      strategies: 'generateSW',
+      workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff,woff2}'],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MB
-      },
-      includeAssets: ['favicon.ico', 'icon-192x192.png', 'icon-512x512.png', '.htaccess', '_redirects'],
-      manifest: {
-        name: 'KisanShakti',
-        short_name: 'KisanShakti',
-        description: 'Empowering Farmers with Digital Solutions',
-        theme_color: '#22c55e',
-        background_color: '#f9fafb',
-        display: 'standalone',
-        orientation: 'portrait',
-        start_url: '/',
-        scope: '/',
-        icons: [
+        runtimeCaching: [
           {
-            src: '/icon-192x192.png',
-            sizes: '192x192',
-            type: 'image/png',
-            purpose: 'any'
+            urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'api-cache',
+              networkTimeoutSeconds: 10,
+              expiration: { maxEntries: 50, maxAgeSeconds: 300 }
+            }
           },
           {
-            src: '/icon-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any'
+            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'images-cache',
+              expiration: { maxEntries: 100, maxAgeSeconds: 7 * 24 * 60 * 60 }
+            }
           }
         ]
       },
+      includeAssets: ['favicon.ico', 'icon-192x192.png', 'icon-512x512.png', '.htaccess', '_redirects'],
+      manifest: false, // Use static manifest.webmanifest instead
       devOptions: {
-        enabled: false, // Disable in development to prevent conflicts
+        enabled: false,
         type: 'module',
       }
     })

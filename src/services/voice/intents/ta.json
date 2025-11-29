@@ -27,7 +27,7 @@
       "priority": "high",
       "offline": true,
       "action": "navigate",
-      "route": "/lands"
+      "route": "/app/lands"
     },
     {
       "id": "navigate.weather",
@@ -41,7 +41,7 @@
       "priority": "high",
       "offline": true,
       "action": "navigate",
-      "route": "/weather"
+      "route": "/app/weather"
     },
     {
       "id": "navigate.schedule",
@@ -55,7 +55,7 @@
       "priority": "high",
       "offline": true,
       "action": "navigate",
-      "route": "/schedule"
+      "route": "/app/schedule"
     },
     {
       "id": "navigate.chat",
@@ -69,7 +69,7 @@
       "priority": "high",
       "offline": false,
       "action": "navigate",
-      "route": "/chat"
+      "route": "/app/chat"
     },
     {
       "id": "navigate.market",
@@ -83,7 +83,7 @@
       "priority": "medium",
       "offline": true,
       "action": "navigate",
-      "route": "/market"
+      "route": "/app/market"
     },
     {
       "id": "navigate.profile",
@@ -96,7 +96,7 @@
       "priority": "medium",
       "offline": true,
       "action": "navigate",
-      "route": "/profile"
+      "route": "/app/profile"
     },
     {
       "id": "navigate.community",
@@ -109,7 +109,7 @@
       "priority": "medium",
       "offline": false,
       "action": "navigate",
-      "route": "/social"
+      "route": "/app/social"
     },
     {
       "id": "query.weather_today",
@@ -138,7 +138,7 @@
       "priority": "medium",
       "offline": false,
       "action": "navigate",
-      "route": "/add-land"
+      "route": "/app/add-land"
     }
   ],
   "examples": [

@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 
 interface UseSpeechRecognitionProps {
-  onTranscript: (transcript: string) => void;
+  onTranscript: (transcript: string, confidence?: number) => void;
+  onPartial?: (transcript: string) => void;
   language?: string;
 }
 
-export function useSpeechRecognition({ onTranscript, language = 'hi-IN' }: UseSpeechRecognitionProps) {
+export function useSpeechRecognition({ onTranscript, onPartial, language = 'hi-IN' }: UseSpeechRecognitionProps) {
   const [isListening, setIsListening] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const recognitionRef = useRef<any>(null);
@@ -29,13 +30,20 @@ export function useSpeechRecognition({ onTranscript, language = 'hi-IN' }: UseSp
       }
       
       recognition.onresult = (event: any) => {
+        const lastResult = event.results[event.results.length - 1];
         const transcript = Array.from(event.results)
           .map((result: any) => result[0])
           .map((result: any) => result.transcript)
           .join('');
         
-        if (event.results[0].isFinal) {
-          onTranscript(transcript);
+        const confidence = typeof lastResult[0].confidence === 'number' 
+          ? lastResult[0].confidence 
+          : undefined;
+        
+        if (lastResult.isFinal) {
+          onTranscript(transcript, confidence);
+        } else if (onPartial) {
+          onPartial(transcript);
         }
       };
       

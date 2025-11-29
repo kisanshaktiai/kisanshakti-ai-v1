@@ -31,7 +31,7 @@ export const WeatherWidget: React.FC = () => {
 
   return (
     <Card 
-      className="overflow-hidden cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-[1.02]"
+      className="overflow-hidden cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-[1.02] relative"
       onClick={() => navigate('/app/weather')}
     >
       <AnimatedWeatherBackground condition={currentWeather?.main || 'Clear'} className="h-full">
@@ -58,6 +58,14 @@ export const WeatherWidget: React.FC = () => {
               </p>
             </div>
           </div>
+          {/* Provider badge */}
+          {currentWeather?.provider && (
+            <div className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm px-2 py-0.5 rounded-full">
+              <p className="text-[10px] text-muted-foreground font-medium">
+                {currentWeather.provider}
+              </p>
+            </div>
+          )}
         </div>
       </AnimatedWeatherBackground>
     </Card>

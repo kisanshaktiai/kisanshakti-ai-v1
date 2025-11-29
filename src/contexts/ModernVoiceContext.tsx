@@ -16,10 +16,13 @@ interface ModernVoiceContextType {
   isReady: boolean;
   examples: string[];
   error: string | null;
+  isVoiceModeActive: boolean;
   startListening: () => void;
   stopListening: () => void;
   speak: (text: string, ssml?: boolean) => Promise<void>;
   changeLanguage: (language: string) => void;
+  showVoiceMode: () => void;
+  hideVoiceMode: () => void;
   showOnboarding: boolean;
   completeOnboarding: (config: Partial<VoiceConfig>) => void;
   skipOnboarding: () => void;
@@ -50,6 +53,7 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [error, setError] = useState<string | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [isVoiceModeActive, setIsVoiceModeActive] = useState(false);
 
   const initializeVoiceService = useCallback((config?: Partial<VoiceConfig>) => {
     console.log('[Voice] Initializing voice service with tenant:', tenant?.id);
@@ -73,16 +77,26 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     localStorage.setItem('voice_config', JSON.stringify(defaultConfig));
   }, [tenant]);
 
+  // Update tenant when it becomes available
+  useEffect(() => {
+    if (voiceService && tenant?.id) {
+      console.log('[Voice] Updating service with tenant:', tenant.id);
+      const intentMatcher = voiceService.getIntentMatcher();
+      intentMatcher.loadIntents(voiceService.getConfig().language, tenant.id);
+    }
+  }, [voiceService, tenant?.id]);
+
   // Check if onboarding was completed
   useEffect(() => {
     const completed = localStorage.getItem('voice_onboarding_completed');
     if (!completed) {
       setShowOnboarding(true);
-    } else if (tenant?.id) {
-      // Only initialize once tenant is loaded
+    } else {
+      // Initialize immediately after onboarding, tenant can be updated later
+      console.log('[Voice] Onboarding completed, initializing service...');
       initializeVoiceService();
     }
-  }, [initializeVoiceService, tenant]);
+  }, [initializeVoiceService]);
 
   const completeOnboarding = useCallback((config: Partial<VoiceConfig>) => {
     localStorage.setItem('voice_onboarding_completed', 'true');
@@ -236,6 +250,25 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
     });
   }, [voiceService, toast]);
 
+  const showVoiceMode = useCallback(() => {
+    console.log('[Voice] Showing voice mode, setting isVoiceModeActive = true');
+    setIsVoiceModeActive(true);
+  }, []);
+
+  const hideVoiceMode = useCallback(() => {
+    console.log('[Voice] Hiding voice mode, setting isVoiceModeActive = false');
+    setIsVoiceModeActive(false);
+    // Also stop listening if active
+    if (isListening) {
+      stopListening();
+    }
+  }, [isListening, stopListening]);
+
+  // Debug log whenever isVoiceModeActive changes
+  useEffect(() => {
+    console.log('[Voice Context] isVoiceModeActive changed to:', isVoiceModeActive);
+  }, [isVoiceModeActive]);
+
   const examples = voiceService?.getIntentMatcher().getAllIntents().slice(0, 5).flatMap(i => i.patterns.slice(0, 1)) || [];
   const currentLanguage = voiceService?.getConfig().language || 'en';
   const isSupported = voiceService?.isSupported() || false;
@@ -254,10 +287,13 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         isReady,
         examples,
         error,
+        isVoiceModeActive,
         startListening,
         stopListening,
         speak,
         changeLanguage,
+        showVoiceMode,
+        hideVoiceMode,
         showOnboarding,
         completeOnboarding,
         skipOnboarding,

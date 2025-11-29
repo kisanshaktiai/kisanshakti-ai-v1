@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { supabase, supabaseWithAuth } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import LocationService from '@/services/LocationService';
 import { useLocation } from '@/hooks/useLocation';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/stores/authStore';
+import { useWeatherStore } from '@/stores/weatherStore';
 
 interface WeatherData {
   temp: number;
@@ -85,13 +85,31 @@ interface HourlyData {
   };
 }
 
+// Helper to round coordinates to 2 decimal places (~1km precision)
+function roundCoordinates(lat: number, lon: number): { lat: number; lon: number } {
+  return {
+    lat: Math.round(lat * 100) / 100,
+    lon: Math.round(lon * 100) / 100
+  };
+}
+
 export const useWeather = (location?: { lat: number; lon: number }) => {
-  const [currentWeather, setCurrentWeather] = useState<WeatherData | null>(null);
-  const [forecast, setForecast] = useState<ForecastData[]>([]);
-  const [hourlyForecast, setHourlyForecast] = useState<HourlyData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  // Use centralized weather store for single source of truth
+  const {
+    currentWeather,
+    forecast,
+    hourlyForecast,
+    loading,
+    error,
+    lastUpdated,
+    dataSource,
+    setWeatherData,
+    setLoading,
+    setError,
+    setLocation,
+    isStale,
+  } = useWeatherStore();
+
   const { toast } = useToast();
   const { tenant, isLoading: tenantLoading } = useTenant();
   const { user } = useAuthStore();
@@ -102,7 +120,6 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
   // Default location (India - New Delhi)
   const defaultLocation = { lat: 28.6139, lon: 77.2090 };
 
-
   const fetchWeatherData = async (forceRefresh: boolean = false) => {
     // Don't fetch if tenant isn't loaded yet
     if (!tenant?.id) {
@@ -112,184 +129,112 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
 
     const weatherLocation = location || (deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : defaultLocation);
     
+    // Round coordinates for consistent caching (~1km precision)
+    const rounded = roundCoordinates(weatherLocation.lat, weatherLocation.lon);
+    
     console.log('🌤️ [useWeather] Fetching weather with tenant:', tenant.id);
-    console.log('📍 [useWeather] Location:', weatherLocation);
+    console.log('📍 [useWeather] Rounded location:', rounded);
     console.log('🔄 [useWeather] Force refresh:', forceRefresh);
     
     try {
-      // Don't show loading spinner if we have cached data (stale-while-revalidate pattern)
-      const cacheKey = `weather_cache_${weatherLocation.lat}_${weatherLocation.lon}`;
-      const cachedDataStr = localStorage.getItem(cacheKey);
-      let hasCache = false;
-      
-      if (cachedDataStr && !forceRefresh) {
-        try {
-          const cached = JSON.parse(cachedDataStr);
-          const cacheAge = Date.now() - cached.timestamp;
-          
-          // Show cached data immediately for better UX (stale-while-revalidate)
-          if (cacheAge < 3600000) { // 1 hour
-            console.log('✅ [useWeather] Showing cached data while fetching fresh data');
-            setCurrentWeather(cached.current);
-            setForecast(cached.forecast || []);
-            setHourlyForecast(cached.hourly || []);
-            setLastUpdated(cached.timestamp);
-            setLoading(false);
-            hasCache = true;
-          }
-        } catch (e) {
-          console.warn('⚠️ [useWeather] Failed to parse cached weather data:', e);
-        }
+      // Check if store has recent data and not forcing refresh
+      if (!forceRefresh && !isStale() && currentWeather) {
+        console.log('✅ [useWeather] Using fresh data from store (age:', Date.now() - (lastUpdated || 0), 'ms)');
+        return;
       }
 
-      // ALWAYS fetch fresh data in background (world-class weather app pattern)
-      if (!hasCache) {
+      // Show existing data while fetching fresh data (stale-while-revalidate)
+      if (currentWeather && !forceRefresh) {
+        console.log('✅ [useWeather] Showing stale data while fetching fresh data');
+      } else {
         setLoading(true);
       }
       setError(null);
 
-      // Fetch fresh data from edge function using authenticated client
-      console.log('📡 [useWeather] Fetching current weather from API with auth...');
-      
       // Use authenticated client for better RLS support
       const weatherClient = user?.id && tenant?.id 
         ? supabaseWithAuth(user.id, tenant.id)
         : supabase;
       
-      // Retry logic for transient network failures
-      let retries = 2;
-      let data: any = null;
-      let fetchError: any = null;
+      // NEW: Single combined API call for all weather data
+      console.log('📡 [useWeather] Fetching ALL weather data (current + forecast + hourly) in one call...');
       
-      while (retries >= 0) {
-        const result = await weatherClient.functions.invoke('weather', {
-          body: {
-            action: 'current',
-            lat: weatherLocation.lat,
-            lon: weatherLocation.lon,
-          },
-        });
-        
-        data = result.data;
-        fetchError = result.error;
-        
-        if (!fetchError) {
-          console.log('✅ [useWeather] Weather fetch successful');
-          break;
-        }
-        
-        retries--;
-        if (retries >= 0) {
-          console.warn(`⚠️ [useWeather] Fetch failed, retrying... (${retries} retries left)`);
-          await new Promise(r => setTimeout(r, 1000));
-        }
-      }
+      const { data, error: fetchError } = await weatherClient.functions.invoke('weather', {
+        body: {
+          action: 'all', // NEW: Get everything at once
+          lat: rounded.lat,
+          lon: rounded.lon,
+        },
+      });
 
       if (fetchError) {
-        console.error('❌ [useWeather] Weather fetch error after retries:', fetchError);
+        console.error('❌ [useWeather] Weather fetch error:', fetchError);
         throw fetchError;
       }
 
       if (data) {
-        // Extract current weather from response (API returns { current: {...}, tenant: {...} })
-        const currentData = data.current || data;
-        
-        console.log('✅ [useWeather] Received current weather data:', {
-          temp: currentData.temp,
-          description: currentData.description,
-          provider: currentData.provider
+        console.log('✅ [useWeather] Received complete weather data:', {
+          hasCurrent: !!data.current,
+          hasForecast: !!data.forecast,
+          hasHourly: !!data.hourly,
+          cached: data.cached,
+          provider: data.provider || 'Unknown',
+          source: data.source || 'api',
+          isStale: data.stale
         });
+        
+        // Extract all data from single response
+        const currentData = data.current;
+        const dailyData = data.forecast || [];
+        const hourlyData = data.hourly || [];
         
         // Add location name from localStorage or use coordinates
-        const storedLocationName = localStorage.getItem('weatherLocationName');
-        if (storedLocationName) {
-          currentData.location = storedLocationName;
-        } else if (currentData.location) {
-          currentData.location = currentData.location;
-        } else {
-          currentData.location = `${weatherLocation.lat.toFixed(2)}°N, ${weatherLocation.lon.toFixed(2)}°E`;
+        if (currentData) {
+          const storedLocationName = localStorage.getItem('weatherLocationName');
+          if (storedLocationName) {
+            currentData.location = storedLocationName;
+          } else if (currentData.location) {
+            currentData.location = currentData.location;
+          } else {
+            currentData.location = `${rounded.lat.toFixed(2)}°N, ${rounded.lon.toFixed(2)}°E`;
+          }
+          
+          // Include provider in current weather data
+          currentData.provider = data.provider || currentData.provider || 'Unknown';
         }
         
-        setCurrentWeather(currentData);
-        
-        // Fetch forecast data using same authenticated client
-        console.log('📡 [useWeather] Fetching forecast data from API...');
-        const { data: forecastData, error: forecastError } = await weatherClient.functions.invoke('weather', {
-          body: {
-            action: 'forecast',
-            lat: weatherLocation.lat,
-            lon: weatherLocation.lon,
-          },
-        });
-
-        let dailyData: any[] = [];
-        let hourlyData: any[] = [];
-
-        if (forecastError) {
-          console.error('❌ [useWeather] Forecast fetch error:', forecastError);
-        } else if (forecastData) {
-          console.log('✅ [useWeather] Received forecast data');
-          // Extract forecast from response (API returns { forecast: [...], tenant: {...} })
-          dailyData = forecastData.forecast || forecastData.daily || [];
-          hourlyData = forecastData.hourly || [];
-          setForecast(dailyData);
-          setHourlyForecast(hourlyData);
-        }
-        
-        // Cache the complete data in localStorage
-        const now = Date.now();
-        const cacheData = {
+        // Update centralized store (single source of truth for all components)
+        setWeatherData({
           current: currentData,
           forecast: dailyData,
           hourly: hourlyData,
-          timestamp: now
-        };
-        localStorage.setItem(cacheKey, JSON.stringify(cacheData));
-        setLastUpdated(now);
-        console.log('💾 [useWeather] Cached weather data in localStorage');
+          provider: data.provider,
+          source: data.cached ? 'database' : 'api'
+        });
         
-        // Also try to cache in database (optional, don't fail if it doesn't work)
-        try {
-          await supabase.from('weather_alerts').upsert({
-            area_name: `${weatherLocation.lat},${weatherLocation.lon}`,
-            cache_data: cacheData,
-            last_fetched: new Date().toISOString(),
-            alert_id: 'weather-cache',
-            event_type: 'cache',
-            severity: 'info',
-            urgency: 'future',
-            certainty: 'observed',
-            title: 'Weather Cache',
-            data_source: data.provider || 'openweathermap',
-            start_time: new Date().toISOString(),
+        console.log(`💾 [useWeather] Updated weather store from ${data.provider || 'API'} (source: ${data.cached ? 'database' : 'api'})`);
+        
+        // Show warning if using stale data
+        if (data.stale && data.warning) {
+          toast({
+            title: 'Using Cached Weather',
+            description: data.warning,
+            variant: 'default'
           });
-        } catch (dbError) {
-          console.warn('⚠️ [useWeather] Failed to cache in DB (non-critical):', dbError);
         }
       }
     } catch (err) {
       console.error('❌ [useWeather] Weather fetch error:', err);
       setError('Failed to fetch weather data');
       
-      // Try to use localStorage cache even if expired
-      const cacheKey = `weather_cache_${weatherLocation.lat}_${weatherLocation.lon}`;
-      const fallbackDataStr = localStorage.getItem(cacheKey);
-      
-      if (fallbackDataStr) {
-        try {
-          const cached = JSON.parse(fallbackDataStr);
-          setCurrentWeather(cached.current);
-          setForecast(cached.forecast || []);
-          setHourlyForecast(cached.hourly || []);
-          console.log('📦 [useWeather] Using expired cache due to fetch error');
-          toast({
-            title: "Using cached weather data",
-            description: "Unable to fetch latest weather. Showing cached data.",
-            variant: "default",
-          });
-        } catch (parseError) {
-          console.error('❌ [useWeather] Failed to use cached data:', parseError);
-        }
+      // If store has old data, keep showing it as fallback
+      if (currentWeather) {
+        console.log('📦 [useWeather] Keeping existing weather data from store due to fetch error');
+        toast({
+          title: "Using cached weather data",
+          description: "Unable to fetch latest weather. Showing previous data.",
+          variant: "default",
+        });
       }
     } finally {
       setLoading(false);
@@ -330,6 +275,16 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
     }
   }, [deviceLocation]);
 
+  // Update store location
+  useEffect(() => {
+    const actualLocation = location || (deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : defaultLocation);
+    const rounded = roundCoordinates(actualLocation.lat, actualLocation.lon);
+    setLocation(rounded);
+  }, [location?.lat, location?.lon, deviceLocation?.lat, deviceLocation?.lon]);
+
+  const actualLocation = location || (deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : defaultLocation);
+  const roundedLocation = roundCoordinates(actualLocation.lat, actualLocation.lon);
+
   return {
     currentWeather,
     forecast,
@@ -337,7 +292,9 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
     loading,
     error,
     lastUpdated,
+    dataSource, // NEW: Return data source
     refetch: () => fetchWeatherData(true), // Force refresh on manual refetch
-    location: location || (deviceLocation ? { lat: deviceLocation.lat, lon: deviceLocation.lon } : defaultLocation),
+    location: roundedLocation, // Return rounded location for consistency
+    isStale: isStale(), // NEW: Return staleness status
   };
 };

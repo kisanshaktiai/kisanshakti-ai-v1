@@ -66,28 +66,19 @@ export const PWAInstallPrompt: React.FC = () => {
       }
     }
 
-    // Check if App.tsx already captured the event
-    const checkStoredEvent = () => {
-      const storedEvent = (window as any).__pwaInstallPromptEvent;
-      if (storedEvent) {
-        console.log('📦 [PWA] Using stored beforeinstallprompt event from App.tsx');
-        setDeferredPrompt(storedEvent as BeforeInstallPromptEvent);
+    // Listen for custom event from global script
+    const handleCanInstall = () => {
+      console.log('🎯 [PWA] pwa:can-install event received from global script');
+      const globalPrompt = (window as any).deferredPwaPrompt;
+      if (globalPrompt) {
+        setDeferredPrompt(globalPrompt as BeforeInstallPromptEvent);
         setTimeout(() => {
           setShowPrompt(true);
         }, 10000);
       }
     };
 
-    // Listen for custom event from App.tsx
-    const handleCustomPromptReady = () => {
-      console.log('🎯 [PWA] Custom event received from App.tsx');
-      checkStoredEvent();
-    };
-
-    window.addEventListener('pwa-install-prompt-ready', handleCustomPromptReady);
-
-    // Also check immediately in case event fired before component mounted
-    checkStoredEvent();
+    document.addEventListener('pwa:can-install', handleCanInstall);
 
     // Listen for beforeinstallprompt event (fallback)
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -128,22 +119,34 @@ export const PWAInstallPrompt: React.FC = () => {
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-      window.removeEventListener('pwa-install-prompt-ready', handleCustomPromptReady);
+      document.removeEventListener('pwa:can-install', handleCanInstall);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
 
   const handleInstall = async () => {
+    // Use global install helper if available
+    const globalInstall = (window as any).triggerPwaInstall;
+    if (globalInstall) {
+      try {
+        await globalInstall();
+        setShowSuccess(true);
+        localStorage.removeItem('pwa-install-dismissed');
+        localStorage.removeItem('pwa-install-dismiss-count');
+        setShowPrompt(false);
+      } catch (error) {
+        console.error('Error installing PWA:', error);
+      }
+      return;
+    }
+
+    // Fallback to component prompt
     if (!deferredPrompt) {
-      // For iOS, just show instructions (can't trigger programmatically)
       return;
     }
 
     try {
-      // Show the install prompt
       await deferredPrompt.prompt();
-      
-      // Wait for user choice
       const choiceResult = await deferredPrompt.userChoice;
       
       if (choiceResult.outcome === 'accepted') {

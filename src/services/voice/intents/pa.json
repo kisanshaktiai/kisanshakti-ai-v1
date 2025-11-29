@@ -2,12 +2,7 @@
   "intents": [
     {
       "id": "navigate.home",
-      "patterns": [
-        "ਘਰ ਦਿਖਾਓ",
-        "ਮੁੱਖ ਪੰਨਾ",
-        "ਘਰ ਜਾਓ",
-        "ਡੈਸ਼ਬੋਰਡ ਖੋਲ੍ਹੋ"
-      ],
+      "patterns": ["ਘਰ ਦਿਖਾਓ", "ਮੁੱਖ ਪੰਨਾ", "ਘਰ ਜਾਓ", "ਡੈਸ਼ਬੋਰਡ ਖੋਲ੍ਹੋ"],
       "priority": "high",
       "offline": true,
       "action": "navigate",
@@ -15,12 +10,7 @@
     },
     {
       "id": "navigate.lands",
-      "patterns": [
-        "ਮੇਰੀ ਜ਼ਮੀਨ",
-        "ਜ਼ਮੀਨ ਦਿਖਾਓ",
-        "ਖੇਤ ਦਿਖਾਓ",
-        "ਜ਼ਮੀਨਾਂ ਖੋਲ੍ਹੋ"
-      ],
+      "patterns": ["ਮੇਰੀ ਜ਼ਮੀਨ", "ਜ਼ਮੀਨ ਦਿਖਾਓ", "ਖੇਤ ਦਿਖਾਓ", "ਜ਼ਮੀਨਾਂ ਖੋਲ੍ਹੋ"],
       "priority": "high",
       "offline": true,
       "action": "navigate",
@@ -28,12 +18,7 @@
     },
     {
       "id": "navigate.weather",
-      "patterns": [
-        "ਮੌਸਮ ਦੱਸੋ",
-        "ਮੌਸਮ ਦਿਖਾਓ",
-        "ਹਵਾ ਕਿਵੇਂ ਹੈ",
-        "ਬਾਰਿਸ਼ ਹੋਵੇਗੀ"
-      ],
+      "patterns": ["ਮੌਸਮ ਦੱਸੋ", "ਮੌਸਮ ਦਿਖਾਓ", "ਹਵਾ ਕਿਵੇਂ ਹੈ", "ਬਾਰਿਸ਼ ਹੋਵੇਗੀ"],
       "priority": "high",
       "offline": true,
       "action": "navigate",
@@ -41,12 +26,7 @@
     },
     {
       "id": "navigate.schedule",
-      "patterns": [
-        "ਕਾਰਜਕ੍ਰਮ ਦਿਖਾਓ",
-        "ਮੇਰੇ ਕੰਮ",
-        "ਫਸਲ ਦਾ ਕਾਰਜਕ੍ਰਮ",
-        "ਅੱਜ ਦੇ ਕੰਮ"
-      ],
+      "patterns": ["ਕਾਰਜਕ੍ਰਮ ਦਿਖਾਓ", "ਮੇਰੇ ਕੰਮ", "ਫਸਲ ਦਾ ਕਾਰਜਕ੍ਰਮ", "ਅੱਜ ਦੇ ਕੰਮ"],
       "priority": "high",
       "offline": true,
       "action": "navigate",
@@ -54,12 +34,7 @@
     },
     {
       "id": "navigate.chat",
-      "patterns": [
-        "AI ਨਾਲ ਗੱਲ ਕਰੋ",
-        "ਸਵਾਲ ਪੁੱਛੋ",
-        "ਚੈਟ ਖੋਲ੍ਹੋ",
-        "ਮਦਦ ਚਾਹੀਦੀ ਹੈ"
-      ],
+      "patterns": ["AI ਨਾਲ ਗੱਲ ਕਰੋ", "ਸਵਾਲ ਪੁੱਛੋ", "ਚੈਟ ਖੋਲ੍ਹੋ", "ਮਦਦ ਚਾਹੀਦੀ ਹੈ"],
       "priority": "high",
       "offline": false,
       "action": "navigate",
@@ -67,12 +42,7 @@
     },
     {
       "id": "navigate.market",
-      "patterns": [
-        "ਬਾਜ਼ਾਰ ਦਿਖਾਓ",
-        "ਖਰੀਦਣਾ ਹੈ",
-        "ਵੇਚਣਾ ਹੈ",
-        "ਉਤਪਾਦ ਦੇਖੋ"
-      ],
+      "patterns": ["ਬਾਜ਼ਾਰ ਦਿਖਾਓ", "ਖਰੀਦਣਾ ਹੈ", "ਵੇਚਣਾ ਹੈ", "ਉਤਪਾਦ ਦੇਖੋ"],
       "priority": "medium",
       "offline": true,
       "action": "navigate",
@@ -80,12 +50,7 @@
     },
     {
       "id": "navigate.profile",
-      "patterns": [
-        "ਪ੍ਰੋਫਾਈਲ ਦਿਖਾਓ",
-        "ਮੇਰੀ ਜਾਣਕਾਰੀ",
-        "ਸੈਟਿੰਗਜ਼",
-        "ਖਾਤਾ"
-      ],
+      "patterns": ["ਪ੍ਰੋਫਾਈਲ ਦਿਖਾਓ", "ਮੇਰੀ ਜਾਣਕਾਰੀ", "ਸੈਟਿੰਗਜ਼", "ਖਾਤਾ"],
       "priority": "medium",
       "offline": true,
       "action": "navigate",

@@ -29,7 +29,7 @@ import { WeatherHeroCard } from '@/components/weather/WeatherHeroCard';
 import { FarmingRecommendations } from '@/components/weather/FarmingRecommendations';
 import { HourlyTimeline } from '@/components/weather/HourlyTimeline';
 import { useWeather } from '@/hooks/useWeather';
-import { useWeatherSync } from '@/hooks/useWeatherSync';
+// Weather sync now handled by backend edge function
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -37,16 +37,8 @@ import { WeatherSkeleton } from '@/components/skeletons';
 
 export default function Weather() {
   const { currentWeather, forecast, hourlyForecast, loading, error, refetch, lastUpdated } = useWeather();
-  const { 
-    lastSyncTime, 
-    isSyncing, 
-    syncStatus, 
-    todayRainfall, 
-    weeklyRainfall,
-    saveWeatherObservation,
-    triggerManualSync 
-  } = useWeatherSync();
-
+  
+  // Weather sync and observations now handled automatically by backend
   const [activeTab, setActiveTab] = useState('today');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -56,18 +48,11 @@ export default function Weather() {
   const [startY, setStartY] = useState(0);
   const [pullDistance, setPullDistance] = useState(0);
 
-  useEffect(() => {
-    if (currentWeather && forecast) {
-      const rainfallMm = forecast[0]?.rain || 0;
-      saveWeatherObservation(currentWeather, rainfallMm);
-    }
-  }, [currentWeather, forecast]);
-
-  // Manual sync function
+  // Manual refresh function
   const handleManualSync = async () => {
     setIsRefreshing(true);
     try {
-      await Promise.all([refetch(), triggerManualSync()]);
+      await refetch();
       toast.success('Weather data synced successfully');
     } catch (err) {
       toast.error('Failed to sync weather data');
@@ -244,8 +229,8 @@ export default function Weather() {
           <WeatherHeroCard
             currentWeather={currentWeather}
             location={currentWeather.location || 'Current Location'}
-            lastSyncTime={lastSyncTime}
-            isRefreshing={isRefreshing || isSyncing}
+            lastSyncTime={lastUpdated ? new Date(lastUpdated) : null}
+            isRefreshing={isRefreshing}
             onRefresh={handleManualSync}
             weatherIcon={getWeatherIcon(currentWeather.main, 'large')}
           weatherCondition={getWeatherCondition()}
@@ -344,11 +329,15 @@ export default function Weather() {
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <p className="text-[10px] text-muted-foreground">Today</p>
-                    <p className="text-lg font-bold text-primary">{todayRainfall.toFixed(1)} mm</p>
+                    <p className="text-lg font-bold text-primary">
+                      {forecast && forecast[0]?.rain ? forecast[0].rain.toFixed(1) : '0.0'} mm
+                    </p>
                   </div>
                   <div>
                     <p className="text-[10px] text-muted-foreground">Week</p>
-                    <p className="text-lg font-bold text-primary">{weeklyRainfall.toFixed(1)} mm</p>
+                    <p className="text-lg font-bold text-primary">
+                      {forecast ? forecast.slice(0, 7).reduce((sum, day) => sum + (day.rain || 0), 0).toFixed(1) : '0.0'} mm
+                    </p>
                   </div>
                 </div>
                 

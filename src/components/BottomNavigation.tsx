@@ -33,7 +33,7 @@ export function BottomNavigation({
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(false);
   const [lastTapTime, setLastTapTime] = useState(0);
-  const { startListening, stopListening, isListening } = useModernVoice();
+  const { showVoiceMode, hideVoiceMode, isVoiceModeActive } = useModernVoice();
   const { enabledFeatures } = useFeatures();
 
   // Close menus when route changes
@@ -72,10 +72,10 @@ export function BottomNavigation({
   };
 
   const handleVoiceToggle = () => {
-    if (isListening) {
-      stopListening();
+    if (isVoiceModeActive) {
+      hideVoiceMode();
     } else {
-      startListening();
+      showVoiceMode();
     }
     setIsActionMenuOpen(false);
   };
@@ -254,20 +254,20 @@ export function BottomNavigation({
                       "transition-all duration-300",
                       "group"
                     )}
-                    aria-label={isListening ? "Stop Voice" : "Start Voice"}
+                    aria-label={isVoiceModeActive ? "Close Voice" : "Voice"}
                   >
                     <div className={cn(
                       "w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg hover:scale-105 active:scale-95 transition-transform bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--primary)/0.6)]",
-                      isListening && "animate-pulse shadow-glow"
+                      isVoiceModeActive && "animate-pulse shadow-glow"
                     )}>
-                      {isListening ? (
+                      {isVoiceModeActive ? (
                         <MicOff className="w-6 h-6 text-primary-foreground" strokeWidth={2} />
                       ) : (
                         <Mic className="w-6 h-6 text-primary-foreground" strokeWidth={2} />
                       )}
                     </div>
                     <span className="text-[10px] font-medium text-muted-foreground">
-                      {isListening ? t('voice.stop', 'Stop') : t('voice.start', 'Voice')}
+                      {isVoiceModeActive ? t('voice.close', 'Close') : t('voice.start', 'Voice')}
                     </span>
                   </button>
 
