@@ -125,44 +125,64 @@ export const PWAInstallPrompt: React.FC = () => {
   }, []);
 
   const handleInstall = async () => {
-    // Use global install helper if available
+    console.log('🚀 [PWA Component] Install button clicked');
+    console.log('🔍 [PWA Component] deferredPrompt:', !!deferredPrompt);
+    console.log('🔍 [PWA Component] window.deferredPwaPrompt:', !!(window as any).deferredPwaPrompt);
+    
+    // Try global install helper first
     const globalInstall = (window as any).triggerPwaInstall;
     if (globalInstall) {
+      console.log('📲 [PWA Component] Using global install helper');
       try {
-        await globalInstall();
-        setShowSuccess(true);
-        localStorage.removeItem('pwa-install-dismissed');
-        localStorage.removeItem('pwa-install-dismiss-count');
-        setShowPrompt(false);
+        const result = await globalInstall();
+        if (result) {
+          console.log('✅ [PWA Component] Install successful');
+          setShowSuccess(true);
+          localStorage.removeItem('pwa-install-dismissed');
+          localStorage.removeItem('pwa-install-dismiss-count');
+          setShowPrompt(false);
+          setTimeout(() => setShowSuccess(false), 5000);
+        } else {
+          console.log('❌ [PWA Component] Install failed or dismissed');
+        }
       } catch (error) {
-        console.error('Error installing PWA:', error);
+        console.error('❌ [PWA Component] Install error:', error);
       }
       return;
     }
 
     // Fallback to component prompt
-    if (!deferredPrompt) {
+    const promptToUse = deferredPrompt || (window as any).deferredPwaPrompt;
+    
+    if (!promptToUse) {
+      console.error('❌ [PWA Component] No prompt available');
+      alert('Install prompt not available. Please try:\n1. Opening in Chrome/Edge\n2. Making sure app is not already installed\n3. Refreshing the page');
       return;
     }
 
     try {
-      await deferredPrompt.prompt();
-      const choiceResult = await deferredPrompt.userChoice;
+      console.log('📲 [PWA Component] Showing install prompt');
+      await promptToUse.prompt();
+      const choiceResult = await promptToUse.userChoice;
+      
+      console.log('👤 [PWA Component] User choice:', choiceResult.outcome);
       
       if (choiceResult.outcome === 'accepted') {
-        console.log('PWA install accepted');
+        console.log('✅ [PWA Component] Install accepted');
         setShowSuccess(true);
         localStorage.removeItem('pwa-install-dismissed');
         localStorage.removeItem('pwa-install-dismiss-count');
+        setShowPrompt(false);
+        setTimeout(() => setShowSuccess(false), 5000);
       } else {
-        console.log('PWA install dismissed');
+        console.log('❌ [PWA Component] Install dismissed by user');
         handleDismiss();
       }
       
-      setShowPrompt(false);
       setDeferredPrompt(null);
     } catch (error) {
-      console.error('Error installing PWA:', error);
+      console.error('❌ [PWA Component] Install error:', error);
+      alert('Installation error: ' + (error as Error).message);
     }
   };
 
@@ -190,11 +210,11 @@ export const PWAInstallPrompt: React.FC = () => {
       <AnimatePresence>
         {showPrompt && (
           <motion.div
-            initial={{ opacity: 0, y: 100 }}
+            initial={{ opacity: 0, y: -100 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 100 }}
+            exit={{ opacity: 0, y: -100 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed bottom-20 left-4 right-4 z-50 md:left-auto md:right-6 md:bottom-6 md:w-96"
+            className="fixed top-4 left-4 right-4 z-50 md:left-auto md:right-6 md:top-6 md:w-96"
           >
             <Card className="border-2 border-primary/20 bg-card shadow-glow overflow-hidden">
               {/* Close Button */}
