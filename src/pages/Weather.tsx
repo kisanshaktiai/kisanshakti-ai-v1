@@ -32,73 +32,31 @@ import { useWeather } from '@/hooks/useWeather';
 // Weather sync now handled by backend edge function
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
-import { toast } from 'sonner';
+import { toastManager } from '@/utils/ToastManager';
 import { WeatherSkeleton } from '@/components/skeletons';
+import { PullRefreshController } from '@/components/weather/PullRefreshController';
+import { HourlyForecastChart } from '@/components/weather/HourlyForecastChart';
 
 export default function Weather() {
   const { currentWeather, forecast, hourlyForecast, loading, error, refetch, lastUpdated } = useWeather();
   
-  // Weather sync and observations now handled automatically by backend
-  const [activeTab, setActiveTab] = useState('today');
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const controls = useAnimation();
-  
-  // Pull-to-refresh state
-  const [startY, setStartY] = useState(0);
-  const [pullDistance, setPullDistance] = useState(0);
+  /**
+   * FIX: Removed problematic useEffect with touch listeners
+   * ROOT CAUSE: useEffect dependencies [startY, pullDistance] caused constant re-runs,
+   * re-attaching listeners and triggering multiple refresh calls
+   * SOLUTION: Use PullRefreshController component instead
+   */
 
-  // Manual refresh function
+  // Manual refresh function with toast deduplication
   const handleManualSync = async () => {
-    setIsRefreshing(true);
     try {
       await refetch();
-      toast.success('Weather data synced successfully');
+      toastManager.success('Weather data synced successfully', 'weather-sync-success');
     } catch (err) {
-      toast.error('Failed to sync weather data');
-    } finally {
-      setTimeout(() => setIsRefreshing(false), 500);
+      toastManager.error('Failed to sync weather data', 'weather-sync-error');
+      throw err; // Re-throw for PullRefreshController to handle
     }
   };
-
-  // Pull-to-refresh implementation
-  useEffect(() => {
-    const handleTouchStart = (e: TouchEvent) => {
-      setStartY(e.touches[0].clientY);
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      const currentY = e.touches[0].clientY;
-      const diff = currentY - startY;
-      
-      if (diff > 0 && containerRef.current?.scrollTop === 0) {
-        e.preventDefault();
-        setPullDistance(Math.min(diff, 100));
-      }
-    };
-
-    const handleTouchEnd = async () => {
-      if (pullDistance > 60) {
-        await handleManualSync();
-      }
-      setPullDistance(0);
-    };
-
-    const container = containerRef.current;
-    if (container) {
-      container.addEventListener('touchstart', handleTouchStart, { passive: true });
-      container.addEventListener('touchmove', handleTouchMove, { passive: false });
-      container.addEventListener('touchend', handleTouchEnd);
-    }
-
-    return () => {
-      if (container) {
-        container.removeEventListener('touchstart', handleTouchStart);
-        container.removeEventListener('touchmove', handleTouchMove);
-        container.removeEventListener('touchend', handleTouchEnd);
-      }
-    };
-  }, [startY, pullDistance]);
 
   const getWeatherCondition = (): 'sun' | 'rain' | 'clouds' | 'storm' | 'snow' | 'fog' | 'night' => {
     if (!currentWeather) return 'clouds';
@@ -217,20 +175,19 @@ export default function Weather() {
   };
 
   return (
-    <div 
-      className="h-screen relative bg-gradient-to-br from-background to-background/95 flex flex-col overflow-hidden" 
-      ref={containerRef}
-    >
+    <div className="h-screen relative bg-gradient-to-br from-background to-background/95 flex flex-col overflow-hidden">
       <AnimatedWeatherBackground condition={currentWeather.main || 'clear'} className="opacity-30" />
       
-      <div className="relative z-10 flex flex-col h-full overflow-hidden">
+      {/* FIX: Wrap content in PullRefreshController for proper refresh handling */}
+      <PullRefreshController onRefresh={handleManualSync} threshold={80}>
+        <div className="relative z-10 flex flex-col h-full">
         {/* Hero Section with Weather Info */}
         <div className="flex-none">
           <WeatherHeroCard
             currentWeather={currentWeather}
             location={currentWeather.location || 'Current Location'}
             lastSyncTime={lastUpdated ? new Date(lastUpdated) : null}
-            isRefreshing={isRefreshing}
+            isRefreshing={false}
             onRefresh={handleManualSync}
             weatherIcon={getWeatherIcon(currentWeather.main, 'large')}
           weatherCondition={getWeatherCondition()}
@@ -294,17 +251,17 @@ export default function Weather() {
           </motion.div>
         </div>
 
-        {/* Scrollable Content Area */}
-        <div className="flex-1 overflow-y-auto pb-20 scrollbar-hide">
+        {/* Scrollable Content Area - FIX: Single scroll container */}
+        <div className="flex-1 pb-20 space-y-1">
           {/* Farming Recommendations */}
           <FarmingRecommendations
             currentWeather={currentWeather}
             forecast={forecast}
           />
 
-          {/* Hourly Timeline */}
+          {/* Hourly Forecast Chart - NEW: Line chart instead of cards */}
           {hourlyForecast && hourlyForecast.length > 0 && (
-            <HourlyTimeline hourlyForecast={hourlyForecast} />
+            <HourlyForecastChart hourlyForecast={hourlyForecast} />
           )}
 
           {/* Rainfall Summary */}
@@ -380,6 +337,7 @@ export default function Weather() {
           </div>
         </div>
       </div>
+      </PullRefreshController>
     </div>
   );
 };

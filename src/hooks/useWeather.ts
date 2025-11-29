@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { supabase, supabaseWithAuth } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { toastManager } from '@/utils/ToastManager';
 import { useLocation } from '@/hooks/useLocation';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/stores/authStore';
@@ -110,7 +110,6 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
     isStale,
   } = useWeatherStore();
 
-  const { toast } = useToast();
   const { tenant, isLoading: tenantLoading } = useTenant();
   const { user } = useAuthStore();
   
@@ -214,10 +213,10 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
         
         console.log(`💾 [useWeather] Updated weather store from ${data.provider || 'API'} (source: ${data.cached ? 'database' : 'api'})`);
         
-        // Show warning if using stale data
+        // Show warning if using stale data (with dedup to prevent spam)
         if (data.stale && data.warning) {
-          toast({
-            title: 'Using Cached Weather',
+          toastManager.show({
+            id: 'weather-stale-data',
             description: data.warning,
             variant: 'default'
           });
@@ -227,13 +226,13 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
       console.error('❌ [useWeather] Weather fetch error:', err);
       setError('Failed to fetch weather data');
       
-      // If store has old data, keep showing it as fallback
+      // If store has old data, keep showing it as fallback (with dedup)
       if (currentWeather) {
         console.log('📦 [useWeather] Keeping existing weather data from store due to fetch error');
-        toast({
-          title: "Using cached weather data",
+        toastManager.show({
+          id: 'weather-cached-fallback',
           description: "Unable to fetch latest weather. Showing previous data.",
-          variant: "default",
+          variant: 'default'
         });
       }
     } finally {
