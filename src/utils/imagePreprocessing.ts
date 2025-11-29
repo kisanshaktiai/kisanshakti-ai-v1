@@ -101,30 +101,102 @@ export function calculateQualityMetrics(canvas: HTMLCanvasElement): ImageQuality
 }
 
 /**
- * Validate image quality and generate warnings
+ * Validate image quality and generate warnings (RELAXED for rural farmers)
  */
 export function validateImageQuality(metrics: ImageQualityMetrics): string[] {
   const warnings: string[] = [];
   
-  if (metrics.brightness < 50) {
-    warnings.push('Image is too dark - consider better lighting');
-  } else if (metrics.brightness > 230) {
-    warnings.push('Image is overexposed - avoid direct sunlight');
+  // Much more relaxed thresholds
+  if (metrics.brightness < 25) {
+    warnings.push('Very dark image - may affect accuracy');
+  } else if (metrics.brightness > 250) {
+    warnings.push('Very bright image - may affect accuracy');
   }
   
-  if (metrics.contrast < 60) {
-    warnings.push('Low contrast detected - image may be blurry');
+  if (metrics.contrast < 30) {
+    warnings.push('Low image quality detected');
   }
   
-  if (metrics.sharpness < 30) {
-    warnings.push('Image appears blurry - hold camera steady');
-  }
+  // Removed blur warning - let AI handle sub-optimal images
   
-  if (metrics.fileSize > 1024 * 1024) { // 1MB
+  if (metrics.fileSize > 2 * 1024 * 1024) { // 2MB
     warnings.push('Large file size - compression recommended');
   }
   
   return warnings;
+}
+
+/**
+ * Auto-enhance image brightness and contrast
+ */
+export function autoEnhanceImage(canvas: HTMLCanvasElement): void {
+  const ctx = canvas.getContext('2d')!;
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const pixels = imageData.data;
+  
+  // Calculate current brightness
+  let totalBrightness = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    const brightness = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
+    totalBrightness += brightness;
+  }
+  const avgBrightness = totalBrightness / (pixels.length / 4);
+  
+  // Auto-adjust if too dark or too bright
+  let adjustment = 0;
+  if (avgBrightness < 60) {
+    adjustment = 40; // Brighten dark images
+  } else if (avgBrightness > 220) {
+    adjustment = -30; // Darken bright images
+  }
+  
+  if (adjustment !== 0) {
+    for (let i = 0; i < pixels.length; i += 4) {
+      pixels[i] = Math.max(0, Math.min(255, pixels[i] + adjustment));
+      pixels[i + 1] = Math.max(0, Math.min(255, pixels[i + 1] + adjustment));
+      pixels[i + 2] = Math.max(0, Math.min(255, pixels[i + 2] + adjustment));
+    }
+    ctx.putImageData(imageData, 0, 0);
+    console.log('🎨 Auto-enhanced image brightness by', adjustment);
+  }
+}
+
+/**
+ * Select best frame from multi-frame burst based on sharpness
+ */
+export function selectBestFrame(frames: string[]): Promise<string> {
+  return new Promise((resolve) => {
+    if (frames.length === 1) {
+      resolve(frames[0]);
+      return;
+    }
+    
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d')!;
+    const scores: { frame: string; sharpness: number }[] = [];
+    let processed = 0;
+    
+    frames.forEach(frame => {
+      const img = new Image();
+      img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        
+        const metrics = calculateQualityMetrics(canvas);
+        scores.push({ frame, sharpness: metrics.sharpness });
+        
+        processed++;
+        if (processed === frames.length) {
+          // Return frame with highest sharpness
+          scores.sort((a, b) => b.sharpness - a.sharpness);
+          console.log('🎯 Selected best frame with sharpness:', scores[0].sharpness);
+          resolve(scores[0].frame);
+        }
+      };
+      img.src = frame;
+    });
+  });
 }
 
 /**
@@ -182,6 +254,9 @@ export async function preprocessImage(
         
         // Draw resized image
         ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+        
+        // Auto-enhance if needed
+        autoEnhanceImage(canvas);
         
         // Calculate quality metrics
         const qualityMetrics = calculateQualityMetrics(canvas);

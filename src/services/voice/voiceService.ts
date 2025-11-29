@@ -1,21 +1,31 @@
 import { ASRResult, TTSOptions, VoiceConfig, VoiceMetrics, ASRProvider } from './types';
 import { DatabaseIntentMatcher } from './databaseIntentMatcher';
 import { VoiceAnalytics } from './voiceAnalytics';
+import { DialogManager } from './DialogManager';
+import { SlotExtractor } from './SlotExtractor';
+import { LanguageDetector } from './LanguageDetector';
 
 export class VoiceService {
   private config: VoiceConfig;
   private intentMatcher: DatabaseIntentMatcher;
   private analytics: VoiceAnalytics;
+  private dialogManager: DialogManager;
+  private slotExtractor: SlotExtractor;
+  private languageDetector: LanguageDetector;
   private tenantId: string = '';
   private recognition: any = null;
   private synthesis: SpeechSynthesis;
   private isOnline: boolean = navigator.onLine;
+  private lastSpokenText: string = '';
 
   constructor(config: VoiceConfig, tenantId?: string) {
     this.config = config;
     this.tenantId = tenantId || '';
     this.intentMatcher = new DatabaseIntentMatcher();
     this.analytics = new VoiceAnalytics(config);
+    this.dialogManager = new DialogManager();
+    this.slotExtractor = new SlotExtractor(config.language);
+    this.languageDetector = new LanguageDetector();
     this.synthesis = window.speechSynthesis;
 
     // Load intents for current language
@@ -159,6 +169,7 @@ export class VoiceService {
 
   async speak(options: TTSOptions): Promise<void> {
     const startTime = Date.now();
+    this.lastSpokenText = options.text;
 
     return new Promise((resolve, reject) => {
       if (options.ssml) {
@@ -209,6 +220,8 @@ export class VoiceService {
 
   async changeLanguage(language: string): Promise<void> {
     this.config.language = language;
+    this.slotExtractor.setLanguage(language);
+    
     if (this.tenantId) {
       await this.intentMatcher.loadIntents(language, this.tenantId);
     }
@@ -222,8 +235,40 @@ export class VoiceService {
     return this.intentMatcher;
   }
 
+  getDialogManager(): DialogManager {
+    return this.dialogManager;
+  }
+
+  getSlotExtractor(): SlotExtractor {
+    return this.slotExtractor;
+  }
+
+  getLanguageDetector(): LanguageDetector {
+    return this.languageDetector;
+  }
+
   getAnalytics(): VoiceAnalytics {
     return this.analytics;
+  }
+
+  getLastSpokenText(): string {
+    return this.lastSpokenText;
+  }
+
+  /**
+   * Auto-detect language from transcript
+   */
+  detectLanguage(transcript: string): string {
+    const detection = this.languageDetector.detectLanguage(transcript);
+    return detection.primaryLanguage;
+  }
+
+  /**
+   * Check if transcript is code-switching (mixed languages)
+   */
+  isCodeSwitching(transcript: string): boolean {
+    const detection = this.languageDetector.detectLanguage(transcript);
+    return detection.isCodeSwitching;
   }
 
   isSupported(): boolean {

@@ -13,6 +13,7 @@ interface ScanRequest {
   language?: string;
   farmerId?: string;
   tenantId?: string;
+  mode?: 'quick' | 'full'; // quick = fast detection only, full = complete analysis
 }
 
 interface ScanResponse {
@@ -117,7 +118,7 @@ serve(async (req) => {
     }
 
     const requestData: ScanRequest = await req.json();
-    const { images, userNotes, language = 'en', farmerId, tenantId } = requestData;
+    const { images, userNotes, language = 'en', farmerId, tenantId, mode = 'full' } = requestData;
 
     if (!images || images.length === 0) {
       return new Response(
@@ -136,17 +137,28 @@ serve(async (req) => {
     });
 
     // Build comprehensive agricultural analysis prompt
-    const systemPrompt = `You are an expert agricultural scientist and plant pathologist with deep knowledge of crops, diseases, pests, weeds, and nutrient deficiencies. Analyze the provided images with precision and provide actionable farming advice.
+    const systemPrompt = mode === 'quick' 
+      ? `You are an expert agricultural scientist. Quickly identify the plant/crop from the image. Be specific and concise.`
+      : `You are an expert agricultural scientist and plant pathologist with deep knowledge of crops, diseases, pests, weeds, and nutrient deficiencies. 
+
+CRITICAL INSTRUCTIONS:
+- You are analyzing images from rural Indian farmers using basic smartphones
+- Images may be blurry, poorly lit, or taken from awkward angles
+- DO NOT reject images for quality issues - work with what you have
+- Even sub-optimal images contain valuable diagnostic information
+- Focus on visible symptoms and patterns, not image perfection
+- If image quality limits confidence, say so but still provide your best analysis
 
 Key Analysis Areas:
-1. IDENTIFICATION: Precisely identify the plant/crop/weed/pest/disease
-2. HEALTH ASSESSMENT: Evaluate overall plant health and stress indicators
-3. DISEASE DETECTION: Identify visible diseases, pathogens, or infections
-4. PEST DETECTION: Spot insect damage, infestations, or pest presence
-5. NUTRIENT ANALYSIS: Detect deficiency symptoms (yellowing, stunting, discoloration)
-6. ENVIRONMENTAL STRESS: Identify drought, heat, cold, or waterlogging damage
+1. IDENTIFICATION: Identify the plant/crop/weed/pest/disease from visible features
+2. HEALTH ASSESSMENT: Evaluate overall plant health from visible indicators
+3. DISEASE DETECTION: Identify diseases from symptoms (spots, discoloration, wilting)
+4. PEST DETECTION: Spot insect damage, holes, or pest presence
+5. NUTRIENT ANALYSIS: Detect deficiency symptoms (yellowing, stunting, patterns)
+6. ENVIRONMENTAL STRESS: Identify drought, heat, or waterlogging damage
 
-Be specific, actionable, and farmer-friendly. Prioritize immediate actions that prevent crop loss.`;
+Be specific, actionable, and farmer-friendly. Prioritize immediate actions that prevent crop loss.
+Accept all image qualities and provide the best analysis possible.`;
 
     const userPrompt = `Analyze these agricultural images and provide a comprehensive diagnosis.
 

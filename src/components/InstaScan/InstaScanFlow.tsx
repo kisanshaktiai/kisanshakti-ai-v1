@@ -39,16 +39,22 @@ export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
 
   if (!isOpen) return null;
 
-  const handleImageCapture = async (imageData: string) => {
+  const handleImageCapture = async (imageFrames: string[]) => {
     setShowCamera(false);
     setIsAnalyzing(true);
     setErrorMessage(null);
 
     try {
-      console.log('📷 Starting image preprocessing...');
+      console.log('📷 Starting image preprocessing...', imageFrames.length, 'frames');
+      
+      // Import selectBestFrame function
+      const { selectBestFrame } = await import('@/utils/imagePreprocessing');
+      
+      // Select best frame from burst
+      const bestFrame = await selectBestFrame(imageFrames);
       
       // Preprocess image: resize, compress, validate quality
-      const preprocessed = await preprocessImage(imageData, {
+      const preprocessed = await preprocessImage(bestFrame, {
         maxDimension: 1536,
         targetQuality: 0.85,
         targetSizeKB: 500
@@ -148,7 +154,7 @@ export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
 
       // Transform AI result to InstaScanResult format
       const result: InstaScanResult = {
-        imageUrl: imageData,
+        imageUrl: bestFrame,
         detectedItem: aiResult.detectedItem,
         healthStatus: aiResult.healthStatus,
         diagnosis: aiResult.diagnosis,

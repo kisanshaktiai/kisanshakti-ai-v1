@@ -9,3 +9,8 @@ export { VoiceConversationPanel } from './VoiceConversationPanel';
 export { VoiceQuickActions } from './VoiceQuickActions';
 export { VoiceConfirmDialog } from './VoiceConfirmDialog';
 export { SimpleVoiceMicButton } from './SimpleVoiceMicButton';
+export { VoiceFAB } from './VoiceFAB';
+export { VoiceTranscriptOverlay } from './VoiceTranscriptOverlay';
+export { VoiceFocusHighlight, useVoiceFocus } from './VoiceFocusHighlight';
+export { VoiceContextualHints } from './VoiceContextualHints';
+export { UnifiedVoiceOrchestrator } from './UnifiedVoiceOrchestrator';

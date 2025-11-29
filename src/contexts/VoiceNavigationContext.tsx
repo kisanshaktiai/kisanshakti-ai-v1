@@ -1,3 +1,15 @@
+/**
+ * @deprecated This context is deprecated. Use ModernVoiceContext instead.
+ * 
+ * VoiceNavigationContext is kept for backward compatibility but will be removed in future versions.
+ * Please migrate to ModernVoiceContext which provides:
+ * - Stateful dialog management with context tracking
+ * - Slot extraction and parameter handling
+ * - Multi-turn corrections and confirmations
+ * - Comprehensive intent catalog (CRUD, forms, navigation, help)
+ * - Better offline support
+ */
+
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLanguageStore } from '@/stores/languageStore';
