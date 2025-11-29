@@ -1,0 +1,114 @@
+{
+  "__meta": {
+    "page": "schedule",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "schedule": {
+    "title": "पीक वेळापत्रक",
+    "generate": "वेळापत्रक तयार करा",
+    "ai_schedule": "AI स्मार्ट वेळापत्रक",
+    "manual_entry": "मॅन्युअल एंट्री",
+    "steps": {
+      "land_selection": "पायरी 1: तुमची जमीन निवडा",
+      "crop_input": "पायरी 2: पीक तपशील",
+      "schedule_view": "पायरी 3: AI वेळापत्रक",
+      "of_total": "पायरी {{current}} / {{total}}"
+    },
+    "loading": {
+      "syncing": "सर्व्हरवरून डेटा सिंक होत आहे..."
+    },
+    "filters": {
+      "all": "सर्व कामे",
+      "pending": "प्रलंबित",
+      "completed": "पूर्ण",
+      "overdue": "मुदत संपली",
+      "upcoming": "येणारे"
+    },
+    "time_view": {
+      "today": "आज",
+      "week": "आठवडा",
+      "month": "महिना",
+      "all": "सर्व"
+    },
+    "task": {
+      "mark_complete": "पूर्ण म्हणून चिन्हांकित करा",
+      "skip": "काम वगळा",
+      "reschedule": "पुन्हा शेड्यूल करा",
+      "details": "काम तपशील",
+      "priority": "प्राधान्य",
+      "high": "उच्च",
+      "medium": "मध्यम",
+      "low": "कमी",
+      "status": {
+        "pending": "प्रलंबित",
+        "completed": "पूर्ण",
+        "skipped": "वगळले",
+        "overdue": "मुदत संपली"
+      }
+    },
+    "stages": {
+      "land_prep": "जमीन तयारी",
+      "sowing": "पेरणी",
+      "irrigation": "पाणी पुरवठा",
+      "fertilizer": "खत",
+      "pest_control": "कीड नियंत्रण",
+      "weeding": "तण काढणे",
+      "harvest": "कापणी"
+    },
+    "badges": {
+      "weather": "हवामान",
+      "ai_adjusted": "AI समायोजित",
+      "critical": "गंभीर",
+      "optimal": "इष्टतम"
+    },
+    "empty": {
+      "title": "कोणतीही कामे शेड्यूल नाहीत",
+      "message": "AI वेळापत्रक तयार करा किंवा मॅन्युअल कामे जोडा",
+      "no_tasks_period": "या कालावधीसाठी कामे नाहीत"
+    },
+    "stats": {
+      "total_tasks": "एकूण कामे",
+      "completed": "पूर्ण",
+      "pending": "प्रलंबित",
+      "completion_rate": "पूर्णता दर"
+    },
+    "alerts": {
+      "weather_warning": "हवामान सूचना: {{message}}",
+      "task_due": "काम {{hours}} तासांत देय आहे",
+      "overdue_tasks": "तुमच्याकडे {{count}} मुदत संपलेली कामे आहेत"
+    },
+    "cta": {
+      "add_task": "काम जोडा",
+      "view_calendar": "कॅलेंडर पहा",
+      "refresh": "वेळापत्रक रीफ्रेश करा"
+    },
+    "toast": {
+      "task_completed": "काम पूर्ण म्हणून चिन्हांकित",
+      "task_skipped": "काम वगळले",
+      "schedule_generated": "वेळापत्रक यशस्वीरित्या तयार केले",
+      "error": "काम अपडेट करण्यात अयशस्वी"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show today's tasks",
+      "Mark task as complete",
+      "Generate crop schedule",
+      "Show pending tasks"
+    ],
+    "voice_examples_hi": [
+      "आज के कार्य दिखाओ",
+      "कार्य पूर्ण के रूप में चिह्नित करें",
+      "फसल अनुसूची बनाएं",
+      "लंबित कार्य दिखाओ"
+    ],
+    "voice_examples_mr": [
+      "आजची कामे दाखवा",
+      "काम पूर्ण म्हणून चिन्हांकित करा",
+      "पीक वेळापत्रक तयार करा",
+      "प्रलंबित कामे दाखवा"
+    ]
+  }
+}

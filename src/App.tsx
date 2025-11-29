@@ -249,10 +249,18 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
 
   // Note: Theme is now applied by TenantProvider automatically
 
-  // Apply language changes
+  // Apply language changes - only if different from current i18n language
   useEffect(() => {
     if (currentLanguage && i18n.language !== currentLanguage) {
-      i18n.changeLanguage(currentLanguage);
+      console.log('🌐 [AppInitializer] Syncing language:', {
+        from: i18n.language,
+        to: currentLanguage
+      });
+      i18n.changeLanguage(currentLanguage).then(() => {
+        console.log('✅ [AppInitializer] Language synced successfully');
+      });
+    } else if (currentLanguage) {
+      console.log('✅ [AppInitializer] Language already in sync:', currentLanguage);
     }
   }, [currentLanguage]);
 

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -40,6 +41,7 @@ interface Land {
 type FlowStep = 'land-selection' | 'crop-input' | 'schedule-view';
 
 export default function Schedule() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, session } = useAuthStore();
@@ -312,7 +314,7 @@ export default function Schedule() {
             {/* Syncing message */}
             <div className="flex items-center justify-center gap-2 text-muted-foreground">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
-              <p className="text-sm font-medium">Syncing data from server...</p>
+              <p className="text-sm font-medium">{t('schedule.loading.syncing')}</p>
             </div>
           </div>
         </div>
@@ -337,9 +339,9 @@ export default function Schedule() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No Lands Found</h3>
+            <h3 className="text-lg font-semibold mb-2">{t('schedule.empty.title')}</h3>
             <p className="text-muted-foreground text-center mb-6">
-              Add your land first to generate AI-powered crop schedules
+              {t('schedule.empty.message')}
             </p>
             <Button onClick={() => navigate('/app/lands/add')}>
               <Plus className="h-4 w-4 mr-2" />
@@ -368,12 +370,12 @@ export default function Schedule() {
               </Button>
               <div>
                 <h1 className="text-lg font-bold bg-gradient-to-r from-primary via-primary/80 to-accent bg-clip-text text-transparent animate-gradient">
-                  AI Crop Schedule
+                  {t('schedule.ai_schedule')}
                 </h1>
                 <p className="text-xs text-muted-foreground font-medium">
-                  {flowStep === 'land-selection' && 'Step 1: Select Your Land'}
-                  {flowStep === 'crop-input' && 'Step 2: Crop Details'}
-                  {flowStep === 'schedule-view' && 'Step 3: AI Schedule'}
+                  {flowStep === 'land-selection' && t('schedule.steps.land_selection')}
+                  {flowStep === 'crop-input' && t('schedule.steps.crop_input')}
+                  {flowStep === 'schedule-view' && t('schedule.steps.schedule_view')}
                 </p>
               </div>
             </div>
@@ -415,7 +417,7 @@ export default function Schedule() {
                   ))}
                 </div>
                 <span className="text-[10px] text-muted-foreground font-medium">
-                  Step {['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep) + 1} of 3
+                  {t('schedule.steps.of_total', { current: ['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep) + 1, total: 3 })}
                 </span>
               </div>
             </div>

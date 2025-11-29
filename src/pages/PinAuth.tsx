@@ -220,7 +220,7 @@ export default function PinAuth() {
             className="mb-2"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            {t('common.back')}
+            {t('auth.back')}
           </Button>
           
           <div className="text-center space-y-3">
@@ -248,7 +248,7 @@ export default function PinAuth() {
           <Alert>
             <WifiOff className="h-4 w-4" />
             <AlertDescription>
-              You are offline. Using cached credentials.
+              {t('auth.usingCachedCredentials')}
             </AlertDescription>
           </Alert>
         )}
@@ -295,7 +295,7 @@ export default function PinAuth() {
             
             {attempts > 0 && attempts < 3 && (
               <p className="text-xs text-muted-foreground">
-                {3 - attempts} {t('auth.attemptsRemaining')}
+                {t('auth.attemptsRemaining', { count: 3 - attempts })}
               </p>
             )}
           </div>

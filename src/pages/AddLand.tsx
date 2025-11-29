@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
 import { GoogleMapBoundaryDrawer } from '@/components/land/GoogleMapBoundaryDrawer';
 import { ModernLandWizard } from '@/components/land/ModernLandWizard';
 import { LandInstructionDialog } from '@/components/land/LandInstructionDialog';
 import { Card } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Loader2, MapPin } from 'lucide-react';
 
 interface LatLng {
   lat: number;
@@ -14,6 +16,7 @@ interface LatLng {
 
 export default function AddLand() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const { isLoaded, loadError, isLoading } = useGoogleMapsApi();
   
   const [showInstructions, setShowInstructions] = useState(true);
@@ -47,13 +50,20 @@ export default function AddLand() {
     navigate('/app/lands');
   };
 
-  // Loading state
+  // Loading state with animated skeleton
   if (isLoading || !isLoaded) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background z-50">
-        <Card className="p-6 space-y-4 text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-          <p className="text-muted-foreground">Loading Google Maps...</p>
+        <Card className="p-8 space-y-6 text-center max-w-sm mx-4">
+          <div className="relative">
+            <div className="h-20 w-20 mx-auto rounded-full bg-primary/10 animate-pulse" />
+            <MapPin className="absolute inset-0 m-auto h-8 w-8 text-primary animate-bounce" />
+          </div>
+          <div className="space-y-2">
+            <p className="font-medium text-foreground">{t('lands.add_land.loading.maps')}</p>
+            <p className="text-sm text-muted-foreground">{t('lands.add_land.loading.location')}</p>
+          </div>
+          <Progress value={33} className="h-2" />
         </Card>
       </div>
     );
@@ -64,9 +74,9 @@ export default function AddLand() {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background p-4 z-50">
         <Card className="p-6 max-w-md w-full space-y-4">
-          <h2 className="text-xl font-semibold text-destructive">Failed to Load Maps</h2>
+          <h2 className="text-xl font-semibold text-destructive">{t('lands.add_land.error.maps_failed.title')}</h2>
           <p className="text-muted-foreground">
-            Could not load Google Maps. Please check your internet connection and try again.
+            {t('lands.add_land.error.maps_failed.message')}
           </p>
         </Card>
       </div>

@@ -44,8 +44,30 @@ export const useLanguageStore = create<LanguageState>()(
       isLoading: false,
 
       setLanguage: (language) => {
+        console.log('🌐 [Language] Changing language to:', language);
         set({ currentLanguage: language });
-        i18n.changeLanguage(language);
+        
+        // Change i18n language immediately
+        i18n.changeLanguage(language).then(() => {
+          console.log('✅ [Language] i18n language changed successfully');
+          
+          // Show confirmation toast (only in browser, not during SSR)
+          if (typeof window !== 'undefined') {
+            // Dynamic import to avoid circular dependency
+            import('@/hooks/use-toast').then(({ toast }) => {
+              const languageName = get().availableLanguages.find(l => l.code === language)?.nativeName || language;
+              toast({
+                title: i18n.t('toast.language_changed') || 'Language Changed',
+                description: i18n.t('toast.language_changed_to', { language: languageName }) || `Language changed to ${languageName}`,
+              });
+            }).catch(() => {
+              // Silent fail if toast import fails
+              console.log('⚠️ [Language] Toast notification unavailable');
+            });
+          }
+        }).catch((error) => {
+          console.error('❌ [Language] Failed to change i18n language:', error);
+        });
       },
 
       toggleLanguage: () => {

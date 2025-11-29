@@ -1,9 +1,11 @@
 import { VideoReelsViewer } from '@/components/video/VideoReelsViewer';
 import { useVideoTutorials } from '@/hooks/useVideoTutorials';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 
 export default function VideoReels() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { data: videos = [], isLoading } = useVideoTutorials();
 
@@ -23,8 +25,8 @@ export default function VideoReels() {
     return (
       <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
         <div className="text-center text-white">
-          <p className="text-lg font-semibold mb-2">No videos available</p>
-          <p className="text-sm text-white/70">Check back later for new content</p>
+          <p className="text-lg font-semibold mb-2">{t('video.no_videos')}</p>
+          <p className="text-sm text-white/70">{t('video.check_back_later')}</p>
         </div>
       </div>
     );

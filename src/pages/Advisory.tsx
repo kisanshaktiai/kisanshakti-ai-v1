@@ -7,22 +7,22 @@ export default function Advisory() {
 
   const advisories = [
     {
-      title: 'Irrigation Advisory',
-      content: 'Light irrigation recommended for wheat crop in next 2 days',
+      title: t('advisory.irrigation_title'),
+      content: t('advisory.irrigation_content'),
       type: 'info',
-      date: '2 hours ago',
+      date: t('advisory.time_2h_ago'),
     },
     {
-      title: 'Pest Alert',
-      content: 'Aphid attack reported in nearby areas. Apply preventive measures',
+      title: t('advisory.pest_alert_title'),
+      content: t('advisory.pest_alert_content'),
       type: 'warning',
-      date: '5 hours ago',
+      date: t('advisory.time_5h_ago'),
     },
     {
-      title: 'Market Update',
-      content: 'Good time to sell wheat. Prices expected to drop next week',
+      title: t('advisory.market_update_title'),
+      content: t('advisory.market_update_content'),
       type: 'success',
-      date: '1 day ago',
+      date: t('advisory.time_1d_ago'),
     },
   ];
 

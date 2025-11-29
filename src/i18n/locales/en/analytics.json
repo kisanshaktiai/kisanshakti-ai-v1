@@ -1,0 +1,118 @@
+{
+  "__meta": {
+    "page": "analytics",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "analytics": {
+    "title": "Farm Analytics",
+    "subtitle": "Track your farming performance",
+    "tabs": {
+      "overview": "Overview",
+      "crops": "Crops",
+      "weather": "Weather",
+      "tasks": "Tasks",
+      "financial": "Financial"
+    },
+    "overview": {
+      "title": "Performance Overview",
+      "total_land": "Total Land",
+      "active_crops": "Active Crops",
+      "completed_tasks": "Completed Tasks",
+      "pending_tasks": "Pending Tasks",
+      "this_month": "This Month",
+      "vs_last_month": "vs last month"
+    },
+    "crops": {
+      "title": "Crop Analytics",
+      "by_type": "Crops by Type",
+      "by_season": "Crops by Season",
+      "yield_comparison": "Yield Comparison",
+      "expected_yield": "Expected Yield",
+      "actual_yield": "Actual Yield",
+      "area_hectares": "Area (Hectares)",
+      "avg_yield": "Avg Yield (Quintal/Hectare)"
+    },
+    "weather": {
+      "title": "Weather Patterns",
+      "rainfall_trend": "Rainfall Trend",
+      "temperature_trend": "Temperature Trend",
+      "humidity_avg": "Avg Humidity",
+      "rainfall_total": "Total Rainfall",
+      "rainfall_unit": "mm",
+      "temp_unit": "°C",
+      "month": "Month"
+    },
+    "tasks": {
+      "title": "Task Performance",
+      "completion_rate": "Completion Rate",
+      "on_time": "On Time",
+      "delayed": "Delayed",
+      "pending": "Pending",
+      "by_stage": "Tasks by Stage",
+      "stage": "Stage",
+      "count": "Count"
+    },
+    "financial": {
+      "title": "Financial Summary",
+      "total_revenue": "Total Revenue",
+      "total_expenses": "Total Expenses",
+      "net_profit": "Net Profit",
+      "profit_margin": "Profit Margin",
+      "by_category": "Expenses by Category",
+      "seeds": "Seeds",
+      "fertilizers": "Fertilizers",
+      "pesticides": "Pesticides",
+      "labor": "Labor",
+      "equipment": "Equipment",
+      "other": "Other"
+    },
+    "filters": {
+      "date_range": "Date Range",
+      "last_7_days": "Last 7 Days",
+      "last_30_days": "Last 30 Days",
+      "last_3_months": "Last 3 Months",
+      "last_6_months": "Last 6 Months",
+      "last_year": "Last Year",
+      "custom": "Custom Range",
+      "apply": "Apply",
+      "reset": "Reset"
+    },
+    "export": {
+      "button": "Export",
+      "pdf": "Export as PDF",
+      "csv": "Export as CSV",
+      "success": "Analytics exported successfully",
+      "error": "Failed to export analytics"
+    },
+    "empty": {
+      "title": "No Data Available",
+      "message": "Start tracking your farm activities to see analytics",
+      "cta": "Add Land"
+    },
+    "loading": {
+      "message": "Loading analytics..."
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show farm analytics",
+      "View crop performance",
+      "Check task completion rate",
+      "Show financial summary"
+    ],
+    "voice_examples_hi": [
+      "खेत विश्लेषण दिखाओ",
+      "फसल प्रदर्शन देखें",
+      "कार्य पूर्णता दर जांचें",
+      "वित्तीय सारांश दिखाओ"
+    ],
+    "voice_examples_mr": [
+      "शेत विश्लेषण दाखवा",
+      "पीक कामगिरी पहा",
+      "कार्य पूर्णता दर तपासा",
+      "आर्थिक सारांश दाखवा"
+    ]
+  }
+}

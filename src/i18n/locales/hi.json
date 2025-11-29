@@ -11,7 +11,11 @@
     "advisory": "सलाह",
     "schemes": "योजनाएं",
     "profile": "प्रोफ़ाइल",
-    "chat": "AI चैट"
+    "chat": "AI चैट",
+    "social": "समुदाय",
+    "community": "समुदाय",
+    "analytics": "विश्लेषण",
+    "scan": "स्कैन"
   },
   "auth": {
     "welcome": "स्वागत है",
@@ -32,7 +36,9 @@
     "search": "खोजें",
     "filter": "फ़िल्टर",
     "online": "ऑनलाइन",
-    "offline": "ऑफलाइन"
+    "offline": "ऑफलाइन",
+    "getStarted": "शुरू करें",
+    "swipeLeft": "जारी रखने के लिए बाएं स्वाइप करें"
   },
   "home": {
     "greeting": "नमस्ते, {{name}}",
@@ -190,6 +196,8 @@
     "enableVoiceNav": "आवाज नेविगेशन सक्षम करें",
     "disableVoiceNav": "आवाज नेविगेशन अक्षम करें",
     "voiceInputActive": "आवाज इनपुट सक्रिय",
+    "close": "आवाज बंद करें",
+    "start": "आवाज सहायक",
     "commands": {
       "home": "होम",
       "lands": "मेरी जमीन",
@@ -201,5 +209,43 @@
       "community": "समुदाय",
       "analytics": "विश्लेषण"
     }
+  },
+  "menu": {
+    "all": "सभी",
+    "main": "मुख्य",
+    "ai": "AI और विश्लेषण",
+    "social": "समुदाय",
+    "resources": "संसाधन",
+    "farm": "खेत",
+    "account": "खाता",
+    "support": "सहायता",
+    "allFeatures": "सभी सुविधाएं",
+    "search": "सुविधाएं खोजें...",
+    "noResults": "कोई सुविधा नहीं मिली",
+    "home": "होम",
+    "lands": "मेरी भूमि",
+    "weather": "मौसम",
+    "schedule": "समय सारिणी",
+    "aiChat": "AI सहायक",
+    "analytics": "विश्लेषण",
+    "advisory": "सलाह",
+    "community": "समुदाय",
+    "market": "बाज़ार",
+    "messages": "संदेश",
+    "finance": "वित्त",
+    "schemes": "योजनाएं",
+    "resources": "संसाधन",
+    "machinery": "मशीनरी",
+    "irrigation": "सिंचाई",
+    "solar": "सौर",
+    "profile": "प्रोफ़ाइल",
+    "achievements": "उपलब्धियां",
+    "notifications": "सूचनाएं",
+    "settings": "सेटिंग्स",
+    "help": "सहायता केंद्र",
+    "contact": "संपर्क करें"
+  },
+  "feature": {
+    "title": "सुविधाएं"
   }
 }

@@ -1,0 +1,116 @@
+{
+  "__meta": {
+    "page": "market",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "market": {
+    "tabs": {
+      "browse": "ब्राउज़ करें",
+      "my_orders": "मेरे ऑर्डर",
+      "sell": "बेचें",
+      "analytics": "विश्लेषण"
+    },
+    "analytics": {
+      "title": "विश्लेषण डैशबोर्ड",
+      "description": "अपने बिक्री विश्लेषण और प्रदर्शन मेट्रिक्स देखें"
+    },
+    "auth": {
+      "login_required": {
+        "title": "कृपया लॉगिन करें",
+        "cart": "कार्ट में आइटम जोड़ने के लिए लॉगिन करें",
+        "wishlist": "विशलिस्ट में जोड़ने के लिए लॉगिन करें"
+      }
+    },
+    "cart": {
+      "added": {
+        "title": "कार्ट में जोड़ा गया",
+        "message": "उत्पाद आपके कार्ट में जोड़ा गया है"
+      },
+      "title": "शॉपिंग कार्ट",
+      "empty": "आपका कार्ट खाली है",
+      "total": "कुल",
+      "checkout": "चेकआउट",
+      "continue_shopping": "खरीदारी जारी रखें"
+    },
+    "search": {
+      "placeholder": "उत्पाद खोजें..."
+    },
+    "categories": {
+      "all": "सभी श्रेणियां",
+      "seeds": "बीज",
+      "fertilizers": "उर्वरक",
+      "pesticides": "कीटनाशक",
+      "equipment": "उपकरण",
+      "organic": "जैविक"
+    },
+    "product": {
+      "add_to_cart": "कार्ट में जोड़ें",
+      "buy_now": "अभी खरीदें",
+      "out_of_stock": "स्टॉक में नहीं",
+      "in_stock": "स्टॉक में",
+      "seller": "विक्रेता",
+      "price": "कीमत",
+      "quantity": "मात्रा",
+      "description": "विवरण",
+      "reviews": "समीक्षाएं",
+      "rating": "रेटिंग"
+    },
+    "order": {
+      "status": {
+        "pending": "लंबित",
+        "confirmed": "पुष्टि",
+        "shipped": "भेजा गया",
+        "delivered": "डिलीवर",
+        "cancelled": "रद्द"
+      },
+      "placed_on": "{{date}} को प्लेस किया गया",
+      "total_amount": "कुल: ₹{{amount}}",
+      "track": "ऑर्डर ट्रैक करें",
+      "cancel": "ऑर्डर रद्द करें",
+      "view_details": "विवरण देखें"
+    },
+    "seller": {
+      "dashboard_title": "विक्रेता डैशबोर्ड",
+      "add_product": "उत्पाद जोड़ें",
+      "my_products": "मेरे उत्पाद",
+      "orders_received": "प्राप्त ऑर्डर",
+      "earnings": "कमाई",
+      "pending_orders": "लंबित ऑर्डर"
+    },
+    "filters": {
+      "price_range": "मूल्य सीमा",
+      "sort_by": "क्रमबद्ध करें",
+      "low_to_high": "कीमत: कम से अधिक",
+      "high_to_low": "कीमत: अधिक से कम",
+      "newest": "नवीनतम पहले",
+      "popular": "सबसे लोकप्रिय"
+    },
+    "toast": {
+      "product_added": "उत्पाद सफलतापूर्वक जोड़ा गया",
+      "order_placed": "ऑर्डर सफलतापूर्वक प्लेस किया गया",
+      "error": "कुछ गलत हो गया"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show fertilizers",
+      "Add to cart",
+      "Check my orders",
+      "Search for seeds"
+    ],
+    "voice_examples_hi": [
+      "उर्वरक दिखाओ",
+      "कार्ट में जोड़ें",
+      "मेरे ऑर्डर देखें",
+      "बीज खोजें"
+    ],
+    "voice_examples_mr": [
+      "खते दाखवा",
+      "कार्टमध्ये जोडा",
+      "माझे ऑर्डर पहा",
+      "बियाणे शोधा"
+    ]
+  }
+}
