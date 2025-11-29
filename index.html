@@ -8,7 +8,7 @@
     <meta name="author" content="KisanShakti" />
     
     <!-- PWA manifest (single canonical link) -->
-    <link rel="manifest" href="/manifest.webmanifest">
+    <link id="app-manifest" rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#22c55e">
 
     <!-- Apple / iOS -->
@@ -33,6 +33,101 @@
     <!-- Microsoft Windows/Edge PWA -->
     <meta name="msapplication-TileColor" content="#22c55e" />
     <meta name="msapplication-tap-highlight" content="no" />
+    
+    <!-- ============================================= -->
+    <!-- PWA beforeinstallprompt GLOBAL HANDLER -->
+    <!-- ============================================= -->
+    <script>
+      (function() {
+        console.log('🔧 [PWA Global] Install prompt handler initialized');
+        
+        // Store the prompt event globally so React can use it
+        window.deferredPwaPrompt = null;
+        window.pwaInstallable = false;
+        
+        // Capture the beforeinstallprompt event
+        window.addEventListener('beforeinstallprompt', (e) => {
+          console.log('🎯 [PWA Global] beforeinstallprompt captured!');
+          
+          // Prevent the default browser install prompt
+          e.preventDefault();
+          
+          // Store the event for later use
+          window.deferredPwaPrompt = e;
+          window.pwaInstallable = true;
+          
+          // Dispatch a custom event so React components can listen
+          const event = new CustomEvent('pwa:can-install', { 
+            detail: { prompt: e } 
+          });
+          document.dispatchEvent(event);
+          console.log('📢 [PWA Global] pwa:can-install event dispatched');
+          
+          // Debug: Log that event is available
+          setTimeout(() => {
+            console.log('🔍 [PWA Debug] deferredPwaPrompt available:', !!window.deferredPwaPrompt);
+          }, 100);
+        });
+        
+        // Helper function to trigger install
+        window.triggerPwaInstall = async function() {
+          console.log('🔧 [PWA Global] triggerPwaInstall called');
+          console.log('🔍 [PWA Global] deferredPwaPrompt exists:', !!window.deferredPwaPrompt);
+          
+          if (!window.deferredPwaPrompt) {
+            console.error('❌ [PWA Global] No deferred prompt available');
+            alert('Install prompt not available. Make sure:\\n1. You\\'re on HTTPS\\n2. App is not already installed\\n3. Service worker is registered');
+            return false;
+          }
+          
+          try {
+            console.log('📲 [PWA Global] Showing install prompt...');
+            await window.deferredPwaPrompt.prompt();
+            
+            const choiceResult = await window.deferredPwaPrompt.userChoice;
+            console.log('👤 [PWA Global] User choice:', choiceResult.outcome);
+            
+            if (choiceResult.outcome === 'accepted') {
+              console.log('✅ [PWA Global] Installation accepted');
+              window.deferredPwaPrompt = null;
+              window.pwaInstallable = false;
+              return true;
+            } else {
+              console.log('❌ [PWA Global] Installation dismissed by user');
+              return false;
+            }
+          } catch (error) {
+            console.error('❌ [PWA Global] Install error:', error);
+            alert('Installation failed: ' + error.message);
+            return false;
+          }
+        };
+        
+        // Listen for app installed
+        window.addEventListener('appinstalled', () => {
+          console.log('✅ [PWA Global] App installed successfully!');
+          window.deferredPwaPrompt = null;
+          window.pwaInstallable = false;
+        });
+        
+        console.log('✅ [PWA Global] Handler ready');
+        
+        // Debug: Check PWA install criteria
+        setTimeout(() => {
+          console.log('🔍 [PWA Debug] Checking install criteria...');
+          console.log('  - HTTPS:', location.protocol === 'https:' || location.hostname === 'localhost');
+          console.log('  - Service Worker:', 'serviceWorker' in navigator);
+          console.log('  - Manifest:', document.querySelector('link[rel=\"manifest\"]') !== null);
+          console.log('  - beforeinstallprompt supported:', 'onbeforeinstallprompt' in window);
+          
+          if (navigator.serviceWorker) {
+            navigator.serviceWorker.getRegistration().then(reg => {
+              console.log('  - SW registered:', !!reg);
+            });
+          }
+        }, 2000);
+      })();
+    </script>
   </head>
 
   <body>
