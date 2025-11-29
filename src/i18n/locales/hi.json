@@ -32,7 +32,9 @@
     "search": "खोजें",
     "filter": "फ़िल्टर",
     "online": "ऑनलाइन",
-    "offline": "ऑफलाइन"
+    "offline": "ऑफलाइन",
+    "getStarted": "शुरू करें",
+    "swipeLeft": "जारी रखने के लिए बाएं स्वाइप करें"
   },
   "home": {
     "greeting": "नमस्ते, {{name}}",

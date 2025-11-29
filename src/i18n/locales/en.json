@@ -73,7 +73,9 @@
     "online": "Online",
     "copied": "Copied!",
     "offline": "Offline",
-    "comingSoon": "Coming Soon"
+    "comingSoon": "Coming Soon",
+    "getStarted": "Get Started",
+    "swipeLeft": "Swipe left to continue"
   },
   "fab": {
     "myLands": "My Lands",
