@@ -1,5 +1,8 @@
 project_id = "qfklkkzxemsbeniyugiz"
 
+[functions.app-version]
+verify_jwt = false
+
 [functions.generate-manifest]
 verify_jwt = false
 
@@ -10,6 +13,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.ai-agriculture-chat]
+verify_jwt = true
+
+[functions.ai-crop-scan]
 verify_jwt = true
 
 [functions.google-maps-config]
@@ -31,4 +37,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.ai-schedule-climate-monitor]
+verify_jwt = true
+
+[functions.voice-navigation-agent]
 verify_jwt = true

@@ -36,10 +36,24 @@ serve(async (req) => {
     // SECURITY: Extract and validate tenant and farmer IDs from headers
     const tenantId = req.headers.get('x-tenant-id');
     const farmerId = req.headers.get('x-farmer-id');
+    const sessionToken = req.headers.get('x-session-token');
+
+    // Validate required headers immediately
+    if (!tenantId || !farmerId) {
+      console.error('🚨 [Security] Missing required headers:', { tenantId, farmerId });
+      return new Response(
+        JSON.stringify({ 
+          error: 'Authentication required',
+          details: 'x-tenant-id and x-farmer-id headers are required'
+        }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     console.log('🔐 [Security] Request headers:', {
       tenantId,
       farmerId,
+      hasSessionToken: !!sessionToken,
       timestamp: new Date().toISOString()
     });
     

@@ -164,9 +164,16 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       setLoadingTasks(true);
       console.log('🔍 [CropScheduleView] Fetching tasks for schedule:', scheduleId);
       
-      // Try to fetch from API first
+      // Guard: Ensure user is authenticated
+      if (!user?.id || !user?.tenantId) {
+        console.warn('⚠️ [CropScheduleView] Cannot fetch tasks: Missing user authentication');
+        setLoadingTasks(false);
+        return;
+      }
+      
+      // Try to fetch from API first with authenticated client
       const { supabaseWithAuth } = await import('@/integrations/supabase/client');
-      const client = supabaseWithAuth();
+      const client = supabaseWithAuth(user.id, user.tenantId);
       
       const { data: tasksData, error: tasksError } = await client
         .from('schedule_tasks')

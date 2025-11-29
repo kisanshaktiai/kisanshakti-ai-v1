@@ -1,0 +1,43 @@
+{
+  "intents": [
+    {
+      "id": "navigate.home",
+      "patterns": [
+        "ଘର ଦେଖାଅ",
+        "ମୁଖ୍ୟ ପୃଷ୍ଠା",
+        "ଘରକୁ ଯାଅ",
+        "ଡ୍ୟାସବୋର୍ଡ ଖୋଲନ୍ତୁ"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app"
+    },
+    {
+      "id": "navigate.lands",
+      "patterns": [
+        "ମୋର ଜମି",
+        "ଜମି ଦେଖାଅ",
+        "କ୍ଷେତ୍ର ଦେଖାଅ",
+        "ମୋର କ୍ଷେତ୍ରଗୁଡିକ"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/lands"
+    },
+    {
+      "id": "navigate.weather",
+      "patterns": [
+        "ପାଗ ଦେଖାଅ",
+        "ପାଗ କେମିତି ଅଛି",
+        "ବର୍ଷା ହେବ",
+        "ଆଜିର ପାଗ"
+      ],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/weather"
+    }
+  ]
+}

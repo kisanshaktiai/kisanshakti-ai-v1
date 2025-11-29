@@ -1,0 +1,28 @@
+{
+  "intents": [
+    {
+      "id": "navigate.home",
+      "patterns": ["ഹോം കാണിക്കുക", "പ്രധാന പേജ്", "ഹോമിലേക്ക് പോകുക", "ഡാഷ്ബോർഡ് തുറക്കുക"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app"
+    },
+    {
+      "id": "navigate.lands",
+      "patterns": ["എന്റെ ഭൂമി", "ഭൂമി കാണിക്കുക", "കൃഷിഭൂമി കാണിക്കുക", "എന്റെ കൃഷിഭൂമികൾ"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/lands"
+    },
+    {
+      "id": "navigate.weather",
+      "patterns": ["കാലാവസ്ഥ കാണിക്കുക", "കാലാവസ്ഥ എങ്ങനെയുണ്ട്", "മഴ പെയ്യുമോ", "ഇന്നത്തെ കാലാവസ്ഥ"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/weather"
+    }
+  ]
+}

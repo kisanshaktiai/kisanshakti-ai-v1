@@ -1,0 +1,28 @@
+{
+  "intents": [
+    {
+      "id": "navigate.home",
+      "patterns": ["गृहं दर्शयतु", "मुख्यपृष्ठम्", "गृहं गच्छतु", "नियन्त्रणपट्टिका"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app"
+    },
+    {
+      "id": "navigate.lands",
+      "patterns": ["मम भूमिः", "भूमिं दर्शयतु", "क्षेत्रं दर्शयतु", "मम क्षेत्राणि"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/lands"
+    },
+    {
+      "id": "navigate.weather",
+      "patterns": ["वातावरणं दर्शयतु", "वातावरणं कथम् अस्ति", "वर्षा भविष्यति", "अद्य वातावरणम्"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/weather"
+    }
+  ]
+}

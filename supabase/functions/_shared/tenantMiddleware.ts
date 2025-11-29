@@ -158,21 +158,43 @@ export async function resolveTenantFromRequest(
       }
     }
 
-    // STAGE 4: Fallback for development (localhost) or edge-runtime
+    // STAGE 4: Fallback for development (localhost, lovable.app, lovableproject.com) or edge-runtime
     if (!tenant && (
       domain === 'localhost' || 
-      domain.includes('127.0.0.1') || 
+      domain.includes('127.0.0.1') ||
+      domain.includes('lovable.app') ||
+      domain.includes('lovableproject.com') ||
       domain.includes('edge-runtime.supabase.com')
     )) {
-      console.log('🔧 [Stage 4] Development/Edge Runtime mode - using default tenant');
-      const { data: defaultTenant } = await supabase
+      console.log('🔧 [Stage 4] Development/Edge Runtime mode - fetching default tenant');
+      
+      // First try to get tenant marked as default
+      let { data: defaultTenant } = await supabase
         .from('tenants')
         .select('id, name, slug, subdomain, custom_domain, status, settings')
         .eq('is_default', true)
+        .eq('status', 'active')
         .maybeSingle();
 
+      // If no default tenant, get first active tenant
+      if (!defaultTenant) {
+        console.log('🔧 [Stage 4] No default tenant found, using first active tenant');
+        const { data: firstTenant } = await supabase
+          .from('tenants')
+          .select('id, name, slug, subdomain, custom_domain, status, settings')
+          .eq('status', 'active')
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        
+        defaultTenant = firstTenant;
+      }
+
       if (defaultTenant) {
+        console.log('✅ [Stage 4] Using tenant:', defaultTenant.name, `(${defaultTenant.id})`);
         tenant = await enrichTenantData(defaultTenant, supabase);
+      } else {
+        console.error('❌ [Stage 4] No active tenants found in database');
       }
     }
 

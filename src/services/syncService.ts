@@ -3,6 +3,7 @@ import { localDB } from './localDB';
 import { toast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { tenantIsolationService } from './tenantIsolationService';
+import { networkStatusService } from './networkStatusService';
 
 interface SyncResult {
   success: boolean;
@@ -13,7 +14,6 @@ interface SyncResult {
 
 class SyncService {
   private syncInterval: NodeJS.Timeout | null = null;
-  private isOnline: boolean = navigator.onLine;
   private syncInProgress: boolean = false;
 
   constructor() {
@@ -22,21 +22,19 @@ class SyncService {
   }
 
   private initializeListeners(): void {
-    // Listen for online/offline events
-    window.addEventListener('online', () => {
-      this.isOnline = true;
-      console.log('Network: Online - Starting auto sync');
-      this.performSync();
-    });
-
-    window.addEventListener('offline', () => {
-      this.isOnline = false;
-      console.log('Network: Offline');
+    // Subscribe to centralized network status
+    networkStatusService.subscribe((isOnline) => {
+      console.log(`🔄 [Sync] Network status: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+      if (isOnline) {
+        console.log('🔄 [Sync] Starting auto sync after coming online');
+        this.performSync();
+      }
     });
 
     // Sync on app visibility change
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && this.isOnline) {
+      if (!document.hidden && networkStatusService.getStatus()) {
+        console.log('👁️ [Sync] Tab visible - performing sync');
         this.performSync();
       }
     });
@@ -48,18 +46,23 @@ class SyncService {
       clearInterval(this.syncInterval);
     }
 
-    // Auto sync every 1 hour when online
+    // Auto sync every 1 hour when online AND authenticated
     this.syncInterval = setInterval(() => {
-      if (this.isOnline && !this.syncInProgress) {
+      const authState = useAuthStore.getState();
+      const isAuthenticated = authState.user?.id && authState.user?.tenantId;
+      const isOnline = networkStatusService.getStatus();
+      
+      if (isOnline && !this.syncInProgress && isAuthenticated) {
         console.log('🔄 [Sync] Auto-sync triggered (hourly)');
         this.performSync();
+      } else if (!isAuthenticated && isOnline) {
+        console.log('⏸️ [Sync] Auto-sync deferred - waiting for authentication');
       }
     }, 60 * 60 * 1000); // 1 hour
 
-    // Initial sync if online
-    if (this.isOnline) {
-      this.performSync();
-    }
+    // REMOVED: Initial sync - now controlled by useOfflineData hook
+    // This prevents premature sync attempts before authentication
+    console.log('🔄 [Sync] Auto-sync initialized (waiting for authentication)');
   }
 
   async performSync(showToast: boolean = false): Promise<SyncResult> {
@@ -68,7 +71,7 @@ class SyncService {
       return { success: false, message: 'Sync already in progress' };
     }
 
-    if (!this.isOnline) {
+    if (!networkStatusService.getStatus()) {
       console.log('📴 [Sync] Device offline, skipping sync');
       if (showToast) {
         toast({
@@ -94,22 +97,24 @@ class SyncService {
         // Re-validate after fixing
         const revalidated = tenantIsolationService.validateContext(true);
         if (!revalidated.valid) {
-          console.error('❌ [Sync] Tenant isolation context not ready:', revalidated.error);
-          return { success: false, message: 'Tenant context not initialized' };
+          console.log('⏸️ [Sync] Tenant context not ready - sync deferred:', revalidated.error);
+          return { success: false, message: 'Waiting for tenant context' };
         }
       } else {
-        console.error('❌ [Sync] Tenant isolation context not ready:', tenantContext.error);
-        return { success: false, message: 'Tenant context not initialized' };
+        console.log('⏸️ [Sync] Tenant context not ready - sync deferred:', tenantContext.error);
+        return { success: false, message: 'Waiting for tenant context' };
       }
     }
     
     // CRITICAL: Strict validation - prevent sync without complete auth context
     if (!tenantId || !userId) {
-      console.error('❌ [Sync] Missing auth data - cannot sync:', { 
-        userId: userId || 'undefined',
-        tenantId: tenantId || 'undefined'
+      console.log('⏸️ [Sync] Waiting for authentication - sync deferred', { 
+        userId: userId || 'not set',
+        tenantId: tenantId || 'not set',
+        hasUser: !!userId,
+        hasTenant: !!tenantId
       });
-      return { success: false, message: 'User not authenticated with tenant' };
+      return { success: false, message: 'Waiting for authentication' };
     }
     
     // Additional validation: Check for empty strings
@@ -554,6 +559,25 @@ class SyncService {
         console.log(`✅ [Sync] Fetched ${lands?.length || 0} lands from server`);
       }
 
+      // CRITICAL: Clear existing lands before saving new data from server
+      console.log('🗑️ [Sync] Clearing existing lands before server data download...');
+      const existingLands = await localDB.getLands(undefined, userId);
+      console.log(`📊 [Sync] Found ${existingLands.length} existing lands to clear`);
+      
+      // Clear all lands from the store
+      if (existingLands.length > 0) {
+        const db = (localDB as any).db;
+        if (db) {
+          const tx = db.transaction('lands', 'readwrite');
+          const store = tx.objectStore('lands');
+          for (const land of existingLands) {
+            await store.delete(land.id);
+          }
+          await tx.done;
+          console.log(`✅ [Sync] Cleared ${existingLands.length} existing lands`);
+        }
+      }
+
       if (lands && lands.length > 0) {
         console.log('💾 [Sync] Saving lands to localDB...');
         await localDB.bulkSave({
@@ -631,6 +655,9 @@ class SyncService {
             syncStatus: 'synced' as const,
           })),
         });
+        console.log(`✅ [Sync] Saved ${lands.length} lands to localDB`);
+      } else {
+        console.log('ℹ️ [Sync] No lands to save from server');
       }
 
       // Download schedules data
@@ -647,6 +674,25 @@ class SyncService {
         console.error('❌ [Sync] Failed to fetch schedules:', schedulesError);
       } else {
         console.log(`✅ [Sync] Fetched ${schedules?.length || 0} schedules from server`);
+      }
+
+      // Clear existing schedules before saving
+      console.log('🗑️ [Sync] Clearing existing schedules before server data download...');
+      const existingSchedules = await localDB.getAllSchedules(userId);
+      console.log(`📊 [Sync] Found ${existingSchedules.length} existing schedules to clear`);
+      
+      // Clear all schedules from the store
+      if (existingSchedules.length > 0) {
+        const db = (localDB as any).db;
+        if (db) {
+          const tx = db.transaction('cropSchedules', 'readwrite');
+          const store = tx.objectStore('cropSchedules');
+          for (const schedule of existingSchedules) {
+            await store.delete(schedule.id);
+          }
+          await tx.done;
+          console.log(`✅ [Sync] Cleared ${existingSchedules.length} existing schedules`);
+        }
       }
 
       if (schedules && schedules.length > 0) {
@@ -677,32 +723,45 @@ class SyncService {
             syncStatus: 'synced' as const,
           })),
         });
-        console.log('✅ [Sync] Schedules saved to localDB');
+        console.log(`✅ [Sync] Saved ${schedules.length} schedules to localDB`);
+      } else {
+        console.log('ℹ️ [Sync] No schedules to save from server');
       }
       
-      // VERIFY data was actually saved
+      // VERIFY data was actually saved correctly
       const verifyLands = await localDB.getLands(undefined, userId);
       const verifySchedules = await localDB.getAllSchedules(userId);
+      
+      const expectedLands = lands?.length || 0;
+      const expectedSchedules = schedules?.length || 0;
+      
       console.log('🔍 [Sync] Data verification:', {
         landsInDB: verifyLands.length,
         schedulesInDB: verifySchedules.length,
-        landsSaved: lands?.length || 0,
-        schedulesSaved: schedules?.length || 0,
+        expectedLands,
+        expectedSchedules,
         userId,
         tenant,
       });
 
-      if (verifyLands.length !== (lands?.length || 0)) {
-        console.error('❌ [Sync] Land save mismatch!');
-        throw new Error('LocalDB save verification failed for lands');
+      // Verify that what we saved matches what we fetched
+      if (verifyLands.length !== expectedLands) {
+        console.error('❌ [Sync] Land save mismatch!', {
+          expected: expectedLands,
+          actual: verifyLands.length
+        });
+        throw new Error(`LocalDB save verification failed for lands: expected ${expectedLands}, got ${verifyLands.length}`);
       }
 
-      if (verifySchedules.length < (schedules?.length || 0)) {
-        console.error('❌ [Sync] Schedule save mismatch!');
-        throw new Error('LocalDB save verification failed for schedules');
+      if (verifySchedules.length !== expectedSchedules) {
+        console.error('❌ [Sync] Schedule save mismatch!', {
+          expected: expectedSchedules,
+          actual: verifySchedules.length
+        });
+        throw new Error(`LocalDB save verification failed for schedules: expected ${expectedSchedules}, got ${verifySchedules.length}`);
       }
       
-      console.log('✅ [Sync] Data verification passed');
+      console.log('✅ [Sync] Data verification passed - LocalDB matches server data');
       console.log('✅ [Sync] Server data download complete');
     } catch (error) {
       console.error('❌ [Sync] Failed to download server data:', error);
@@ -715,7 +774,7 @@ class SyncService {
   }
 
   isNetworkAvailable(): boolean {
-    return this.isOnline;
+    return networkStatusService.getStatus();
   }
 
   stopAutoSync(): void {

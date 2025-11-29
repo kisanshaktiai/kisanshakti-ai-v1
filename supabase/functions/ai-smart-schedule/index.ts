@@ -27,7 +27,23 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     
-    const { landId, cropName, cropVariety, sowingDate, isReadyMadePlant = false, weather, regenerate, tenantId, farmerId, language = 'hi', country = 'India' } = await req.json();
+    // SECURITY: Extract tenant and farmer IDs from headers (not body)
+    const tenantId = req.headers.get('x-tenant-id');
+    const farmerId = req.headers.get('x-farmer-id');
+    
+    // Validate required headers
+    if (!tenantId || !farmerId) {
+      console.error('Missing required headers:', { tenantId, farmerId });
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing required headers',
+          details: 'x-tenant-id and x-farmer-id headers are required'
+        }),
+        { status: 401, headers: corsHeaders }
+      );
+    }
+    
+    const { landId, cropName, cropVariety, sowingDate, isReadyMadePlant = false, weather, regenerate, language = 'hi', country = 'India' } = await req.json();
 
     // Rate limiting: 30 requests per minute per farmer
     const rateLimitKey = `${tenantId}:${farmerId}`;

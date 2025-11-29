@@ -25,7 +25,7 @@ import { TrendingTopics } from '@/components/social/TrendingTopics';
 import { CreatePost } from '@/components/social/CreatePost';
 import { NotificationCenter } from '@/components/social/NotificationCenter';
 import { useAuthStore } from '@/stores/authStore';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
@@ -35,7 +35,7 @@ export default function Social() {
   const { t } = useTranslation();
   const { toast } = useToast();
   const { user } = useAuthStore();
-  const { tenant } = useTenantStore();
+  const { tenant } = useTenant();
   const [activeTab, setActiveTab] = useState('feed');
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);

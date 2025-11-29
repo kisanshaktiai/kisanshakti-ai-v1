@@ -139,14 +139,14 @@ export function NDVIMapView({
 
   const getIndexColor = (value: number, type: string) => {
     if (type === 'ndvi' || type === 'evi') {
-      if (value > 0.6) return 'text-green-600 bg-green-100';
-      if (value > 0.3) return 'text-yellow-600 bg-yellow-100';
-      return 'text-red-600 bg-red-100';
+      if (value > 0.6) return 'text-success-foreground bg-success';
+      if (value > 0.3) return 'text-warning-foreground bg-warning';
+      return 'text-destructive-foreground bg-destructive';
     }
     if (type === 'ndwi') {
-      if (value > 0.3) return 'text-blue-600 bg-blue-100';
-      if (value > 0) return 'text-cyan-600 bg-cyan-100';
-      return 'text-orange-600 bg-orange-100';
+      if (value > 0.3) return 'text-info-foreground bg-info';
+      if (value > 0) return 'text-accent-foreground bg-accent';
+      return 'text-warning-foreground bg-warning';
     }
     return 'text-gray-600 bg-gray-100';
   };
@@ -276,7 +276,7 @@ export function NDVIMapView({
               {getTrendIcon(mockNDVIData.current.savi, mockNDVIData.previous.savi)}
             </div>
             <p className="text-2xl font-bold">{mockNDVIData.current.savi.toFixed(2)}</p>
-            <Badge className="mt-2 bg-purple-100 text-purple-600">
+            <Badge className="mt-2 bg-secondary text-secondary-foreground">
               Soil Adjusted
             </Badge>
           </CardContent>
@@ -345,11 +345,11 @@ export function NDVIMapView({
                     <Polygon
                       paths={boundary}
                       options={{
-                        fillColor: selectedIndex === 'ndvi' ? '#10b981' : 
-                                  selectedIndex === 'evi' ? '#3b82f6' :
-                                  selectedIndex === 'ndwi' ? '#06b6d4' : '#8b5cf6',
+                        fillColor: selectedIndex === 'ndvi' ? 'hsl(var(--success))' : 
+                                  selectedIndex === 'evi' ? 'hsl(var(--info))' :
+                                  selectedIndex === 'ndwi' ? 'hsl(var(--accent))' : 'hsl(var(--secondary))',
                         fillOpacity: showOverlay ? 0.4 : 0.2,
-                        strokeColor: '#ffffff',
+                        strokeColor: 'hsl(var(--background))',
                         strokeOpacity: 1,
                         strokeWeight: 2,
                       }}
@@ -358,20 +358,20 @@ export function NDVIMapView({
                 </GoogleMap>
 
                 {/* Legend */}
-                <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm rounded-lg p-3 shadow-lg">
-                  <p className="text-xs font-semibold mb-2">{selectedIndex.toUpperCase()} Scale</p>
+                <div className="absolute bottom-4 left-4 bg-background/90 backdrop-blur-sm rounded-lg p-3 shadow-lg border border-border">
+                  <p className="text-xs font-semibold mb-2 text-foreground">{selectedIndex.toUpperCase()} Scale</p>
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 bg-green-500 rounded"></div>
-                      <span className="text-xs">High (&gt;0.6)</span>
+                      <div className="w-4 h-4 bg-success rounded"></div>
+                      <span className="text-xs text-foreground">High (&gt;0.6)</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 bg-yellow-500 rounded"></div>
-                      <span className="text-xs">Medium (0.3-0.6)</span>
+                      <div className="w-4 h-4 bg-warning rounded"></div>
+                      <span className="text-xs text-foreground">Medium (0.3-0.6)</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 bg-red-500 rounded"></div>
-                      <span className="text-xs">Low (&lt;0.3)</span>
+                      <div className="w-4 h-4 bg-destructive rounded"></div>
+                      <span className="text-xs text-foreground">Low (&lt;0.3)</span>
                     </div>
                   </div>
                 </div>

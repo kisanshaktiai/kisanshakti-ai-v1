@@ -15,6 +15,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { LocationPermissionDialog } from "@/components/LocationPermissionDialog";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
+import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import { AppLoadingProgress } from "@/components/AppLoadingProgress";
 
 // Pages
@@ -46,6 +47,9 @@ import MobileAuth from "./pages/MobileAuth";
 import NDVIAnalysis from "./pages/NDVIAnalysis";
 import SoilHealthReport from "./pages/SoilHealthReport";
 import AIScheduleDashboard from "./pages/AIScheduleDashboard";
+import VideoReels from "./pages/VideoReels";
+import InstallPWA from "./pages/InstallPWA";
+import NotificationSettingsPage from "./pages/NotificationSettingsPage";
 
 // Stores and Services
 import { useAuthStore } from "@/stores/authStore";
@@ -73,7 +77,7 @@ const queryClient = new QueryClient({
 });
 
 function AppInitializer({ children }: { children: React.ReactNode }) {
-  const { tenant, isLoading: tenantLoading } = useTenant();
+  const { tenant, branding, isLoading: tenantLoading } = useTenant();
   const { checkAuth, requirePin, session } = useAuthStore();
   const { currentLanguage } = useLanguageStore();
   const { permissionStatus, requestPermission } = useLocationPermission();
@@ -87,6 +91,24 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
 
   // Initialize global real-time sync
   useGlobalRealtimeSync();
+
+  // Global beforeinstallprompt handler - captures event at app level
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      console.log('🎯 [PWA] beforeinstallprompt event captured at app level');
+      // Store event in window for PWAInstallPrompt component to access
+      (window as any).__pwaInstallPromptEvent = e;
+      // Dispatch custom event to notify PWAInstallPrompt
+      window.dispatchEvent(new CustomEvent('pwa-install-prompt-ready'));
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    console.log('👂 [PWA] Global beforeinstallprompt listener attached');
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
 
   useEffect(() => {
     const initializeApp = async () => {
@@ -114,17 +136,35 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           }
         };
         
-        // Set dynamic manifest link (non-blocking)
+        // Set dynamic manifest link with caching (non-blocking)
         runInBackground(() => {
+          const manifestCacheKey = 'manifest-url-cache';
+          const cachedManifestUrl = sessionStorage.getItem(manifestCacheKey);
           const manifestLink = document.querySelector('link[rel="manifest"]') as HTMLLinkElement;
+          
           if (manifestLink) {
-            manifestLink.href = `https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/generate-manifest?domain=${encodeURIComponent(currentDomain)}`;
+            if (cachedManifestUrl) {
+              // Use cached manifest URL to avoid rate limiting
+              manifestLink.href = cachedManifestUrl;
+              console.log('📱 [Manifest] Using cached manifest URL');
+            } else {
+              // Generate and cache new manifest URL
+              const manifestUrl = `https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/generate-manifest?domain=${encodeURIComponent(currentDomain)}`;
+              manifestLink.href = manifestUrl;
+              sessionStorage.setItem(manifestCacheKey, manifestUrl);
+              console.log('📱 [Manifest] Set and cached manifest URL');
+            }
           }
         });
         
         // STEP 1: Set tenant isolation context for all services (fast)
         setCurrentStep('Preparing your workspace...');
         tenantIsolationService.setTenantContext(tenant.id, currentDomain);
+        
+        // Cache tenant primary color for initial loader
+        if (branding?.primary_color) {
+          localStorage.setItem('tenant_primary_color', branding.primary_color);
+        }
         
         // STEP 2: Initialize tenant-scoped local storage (fast)
         await localDB.initializeWithTenant(tenant.id);
@@ -330,7 +370,7 @@ const router = createBrowserRouter([
       { path: "profile/edit", element: <ProfileEdit /> },
       { path: "lands", element: <LandManagement /> },
       { path: "lands/add", element: <AddLand /> },
-      { path: "lands/edit/:id", element: <EditLand /> },
+      { path: "lands/:id/edit", element: <EditLand /> },
       { path: "lands/:id", element: <LandDetails /> },
       { path: "lands/:id/soil", element: <SoilHealthReport /> },
       { path: "lands/:id/ndvi", element: <NDVIAnalysis /> },
@@ -344,7 +384,14 @@ const router = createBrowserRouter([
       { path: "schedule", element: <Schedule /> },
       { path: "ai-dashboard", element: <AIScheduleDashboard /> },
       { path: "ndvi", element: <NDVIAnalysis /> },
+      { path: "videos", element: <VideoReels /> },
+      { path: "notifications/settings", element: <NotificationSettingsPage /> },
     ],
+  },
+  {
+    path: "/install",
+    element: <InstallPWA />,
+    errorElement: <RouteErrorBoundary />,
   },
   {
     path: "*",
@@ -364,6 +411,8 @@ export default function App() {
               </AppInitializer>
               <Toaster />
               <Sonner />
+              <PWAUpdatePrompt />
+              <PWAInstallBanner />
             </TooltipProvider>
           </QueryClientProvider>
         </TenantProvider>

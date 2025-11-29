@@ -1,7 +1,17 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { localDB } from '@/services/localDB';
 import { tenantIsolationService } from '@/services/tenantIsolationService';
+import { resetTenantStores } from '@/utils/resetStores';
+import { getEnvironment, logEnvironmentInfo } from '@/utils/environment';
+
+// Extend Window interface
+declare global {
+  interface Window {
+    __TENANT_LOADED__?: boolean;
+    __TENANT_BRANDING__?: any;
+  }
+}
 
 // ============= Types =============
 
@@ -43,6 +53,15 @@ export interface PWAConfig {
   background_color?: string;
 }
 
+export interface SplashScreenConfig {
+  enabled?: boolean;
+  active_animations?: number[]; // [1,2,3,4,5] - which animations to show
+  rotation_mode?: 'sequential' | 'random';
+  custom_message?: string;
+  show_logo?: boolean;
+  animation_duration?: number;
+}
+
 export interface TenantConfig {
   id: string;
   name: string;
@@ -54,6 +73,7 @@ export interface TenantConfig {
   branding: BrandingConfig;
   theme?: ThemeConfig;
   pwa?: PWAConfig;
+  splashScreens?: SplashScreenConfig;
   features: string[];
   settings: {
     languages: string[];
@@ -67,6 +87,7 @@ export interface TenantContextValue {
   tenant: TenantConfig | null;
   branding: BrandingConfig | null;
   theme: ThemeConfig | null;
+  splashScreens: SplashScreenConfig | null;
   features: string[];
   isLoading: boolean;
   error: Error | null;
@@ -87,6 +108,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [error, setError] = useState<Error | null>(null);
   const [currentDomain, setCurrentDomain] = useState<string>('');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const prevTenantIdRef = useRef<string | null>(null);
 
   const getCurrentDomain = useCallback(() => {
     if (typeof window === 'undefined') return 'localhost';
@@ -180,8 +202,12 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // Fallback to branding colors
     if (branding.primary_color) {
-      root.style.setProperty('--primary', ensureHSL(branding.primary_color));
+      const primaryHSL = ensureHSL(branding.primary_color);
+      root.style.setProperty('--primary', primaryHSL);
       root.style.setProperty('--primary-foreground', '0 0% 100%');
+      
+      // Cache primary color in HSL format for loader (with version)
+      localStorage.setItem('tenant_primary_color', `hsl(${primaryHSL})`);
     }
 
     if (branding.secondary_color) {
@@ -212,21 +238,56 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setError(null);
 
       const domain = getCurrentDomain();
-      console.log('🔍 [TenantProvider] Fetching tenant config from API...');
+      const env = getEnvironment();
+      
+      // Log environment info for debugging
+      logEnvironmentInfo();
+      
+      console.log('🔍 [TenantProvider] Fetching tenant config...');
       console.log('🌐 [TenantProvider] Current domain:', domain);
       console.log('🌐 [TenantProvider] Current URL:', window.location.href);
+      console.log('🔧 [TenantProvider] Environment:', env.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION');
 
-      // Check localStorage cache first (1 hour TTL)
+      // Check for new deploy using build hash
+      const BUILD_HASH = import.meta.env.VITE_BUILD_HASH || Date.now().toString();
+      const storedHash = localStorage.getItem('build_hash');
+      
+      // Clear cache if build hash changed (new deploy detected)
+      if (storedHash && storedHash !== BUILD_HASH) {
+        console.log('🔄 [TenantProvider] New deploy detected, clearing caches...', {
+          oldHash: storedHash.substring(0, 10),
+          newHash: BUILD_HASH.substring(0, 10)
+        });
+        localStorage.removeItem('tenant_config_cache');
+        localStorage.removeItem('white_label_config');
+        localStorage.removeItem('tenant_primary_color');
+        localStorage.setItem('build_hash', BUILD_HASH);
+        
+        // Signal service worker to clear caches
+        if (navigator.serviceWorker?.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHES' });
+          console.log('📡 [TenantProvider] Sent cache clear signal to service worker');
+        }
+      } else if (!storedHash) {
+        // First load - store build hash
+        localStorage.setItem('build_hash', BUILD_HASH);
+        console.log('🔖 [TenantProvider] Baseline build hash stored:', BUILD_HASH.substring(0, 10));
+      }
+      
       const cachedTenant = localStorage.getItem('tenant_config_cache');
       if (cachedTenant) {
         try {
           const parsed = JSON.parse(cachedTenant);
-          if (Date.now() - parsed.timestamp < 3600000) { // 1 hour cache
+          if (Date.now() - parsed.timestamp < 300000) { // 5 minutes cache (faster updates)
             console.log('📦 [TenantProvider] Using cached tenant config');
             setTenant(parsed.data);
             tenantIsolationService.setTenantContext(parsed.data.id, domain);
             applyThemeToDOM(parsed.data.branding, parsed.data.theme);
+            setLastUpdated(new Date(parsed.timestamp));
+            setIsLoading(false);
             return;
+          } else {
+            console.log('⏰ [TenantProvider] Cache expired, fetching fresh config');
           }
         } catch (e) {
           console.warn('⚠️ [TenantProvider] Failed to parse cache:', e);
@@ -273,6 +334,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             branding: apiConfig.branding,
             theme: apiConfig.theme,
             pwa: apiConfig.pwa,
+            splashScreens: apiConfig.splash_screens,
             features: apiConfig.features,
             settings: apiConfig.settings,
           };
@@ -284,6 +346,11 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           console.log('✅ [TenantProvider] Applying theme to DOM with branding and theme');
           applyThemeToDOM(config.branding, config.theme);
           setLastUpdated(new Date());
+          
+          // Signal to index.html loader that tenant is ready
+          window.__TENANT_LOADED__ = true;
+          window.__TENANT_BRANDING__ = config.branding;
+          console.log('🎯 [TenantProvider] Tenant loaded signal sent to loader');
 
           // Cache for offline in IndexedDB
           await localDB.saveTenantConfig(config.id, { 
@@ -312,15 +379,31 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
 
       // OPTION 2: Fallback to direct database access (for development/testing)
-      // Development mode: Use stored tenant or default
-      if (domain === 'localhost' || domain.includes('lovable.app')) {
+      // Development mode: Use environment variable, stored tenant, or default
+      if (env.isDevelopment) {
+        console.log('🔧 [TenantProvider] Development mode - using fallback resolution');
+        
+        // Priority 1: Environment variable (VITE_DEFAULT_TENANT_ID)
+        const envTenantId = env.defaultTenantId;
+        
+        // Priority 2: Stored tenant ID from localStorage
         const storedTenantId = localStorage.getItem('tenantId');
         
-        if (storedTenantId) {
+        const targetTenantId = envTenantId || storedTenantId;
+        
+        console.log('🔍 [TenantProvider] Tenant ID resolution:', {
+          envTenantId,
+          storedTenantId,
+          targetTenantId,
+          priority: envTenantId ? 'ENVIRONMENT' : storedTenantId ? 'LOCALSTORAGE' : 'DEFAULT'
+        });
+        
+        if (targetTenantId) {
+          console.log('✅ [TenantProvider] Loading tenant by ID:', targetTenantId);
           const { data: tenantData } = await supabase
             .from('tenants')
             .select('id, name, slug, subdomain, custom_domain, is_default, settings, status')
-            .eq('id', storedTenantId)
+            .eq('id', targetTenantId)
             .maybeSingle();
 
           if (tenantData) {
@@ -330,28 +413,28 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               .eq('tenant_id', tenantData.id)
               .maybeSingle();
 
-            const config: TenantConfig = {
-              id: tenantData.id,
-              name: tenantData.name,
-              slug: tenantData.slug || undefined,
-              domain,
-              subdomain: tenantData.subdomain || undefined,
-              custom_domain: tenantData.custom_domain || undefined,
-              status: tenantData.status || 'active',
-              branding: (whiteLabel?.brand_identity as BrandingConfig) || {
-                company_name: tenantData.name,
-                primary_color: '#10b981',
-              },
-              theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
-              pwa: whiteLabel?.pwa_config as PWAConfig,
-              features: (tenantData.settings as any)?.features || [
-                'lands', 'schedule', 'chat', 'market', 'weather', 'social'
-              ],
-              settings: {
-                languages: (tenantData.settings as any)?.languages || ['en', 'hi'],
-                defaultLanguage: (tenantData.settings as any)?.defaultLanguage || 'hi',
-              },
-            };
+          const config: TenantConfig = {
+            id: tenantData.id,
+            name: tenantData.name,
+            slug: tenantData.slug || undefined,
+            domain,
+            subdomain: tenantData.subdomain || undefined,
+            custom_domain: tenantData.custom_domain || undefined,
+            status: tenantData.status || 'active',
+            branding: (whiteLabel?.brand_identity as BrandingConfig) || {
+              company_name: tenantData.name,
+            },
+            theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
+            pwa: whiteLabel?.pwa_config as PWAConfig,
+            splashScreens: (whiteLabel as any)?.splash_screens as SplashScreenConfig,
+            features: (tenantData.settings as any)?.features || [
+              'lands', 'schedule', 'chat', 'market', 'weather', 'social'
+            ],
+            settings: {
+              languages: (tenantData.settings as any)?.languages || ['en', 'hi'],
+              defaultLanguage: (tenantData.settings as any)?.defaultLanguage || 'hi',
+            },
+          };
 
             setTenant(config);
             tenantIsolationService.setTenantContext(config.id, domain);
@@ -364,7 +447,12 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               domain
             });
 
+            // Signal tenant ready
+            window.__TENANT_LOADED__ = true;
+            window.__TENANT_BRANDING__ = config.branding;
+            
             console.log('✅ [TenantProvider] Tenant loaded:', config.name);
+            console.log('🎯 [TenantProvider] Tenant loaded signal sent to loader');
             return;
           }
         }
@@ -399,10 +487,10 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             status: tenantData.status || 'active',
             branding: (matchedConfig.brand_identity as BrandingConfig) || {
               company_name: tenantData.name,
-              primary_color: '#10b981',
             },
             theme: (matchedConfig.mobile_theme || matchedConfig.theme_colors) as ThemeConfig,
             pwa: matchedConfig.pwa_config as PWAConfig,
+            splashScreens: (matchedConfig as any)?.splash_screens as SplashScreenConfig,
             features: (tenantData.settings as any)?.features || [
               'lands', 'schedule', 'chat', 'market', 'weather', 'social'
             ],
@@ -423,63 +511,148 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             domain
           });
 
+          // Signal tenant ready
+          window.__TENANT_LOADED__ = true;
+          window.__TENANT_BRANDING__ = config.branding;
+
           console.log('✅ [TenantProvider] Tenant loaded:', config.name);
+          console.log('🎯 [TenantProvider] Tenant loaded signal sent to loader');
           return;
         }
       }
 
-      // Fallback to default tenant
-      console.warn('⚠️ [TenantProvider] No tenant found for domain, checking if development...');
+      // Fallback to default tenant (only in development)
+      console.warn('⚠️ [TenantProvider] No tenant found for domain, checking environment...');
       
-      const isDevelopment = domain.includes('localhost') || domain.includes('lovable.app') || domain.includes('lovableproject.com');
-      
-      if (isDevelopment) {
-        console.log('✅ [TenantProvider] Development mode detected, using default fallback tenant');
+      if (env.isDevelopment) {
+        console.log('✅ [TenantProvider] Development mode - fetching default tenant from database');
         
-        // Create minimal default tenant for development
-        const defaultTenant: TenantConfig = {
-          id: 'dev-default-tenant',
-          name: 'KisanShakti Ai',
-          domain: domain,
-          status: 'active',
-          settings: {
-            languages: ['en', 'hi'],
-            defaultLanguage: 'en',
-            timezone: 'Asia/Kolkata',
-            currency: 'INR'
-          },
-          branding: {
-            company_name: 'KisanShakti Ai',
-            logo_url: null,
-            primary_color: '#22c55e',
-            secondary_color: '#16a34a',
-            accent_color: '#84cc16'
-          },
-          features: ['ai_chat', 'weather', 'marketplace', 'social', 'analytics']
-        };
-        
-        setTenant(defaultTenant);
-        setLastUpdated(new Date());
-        applyThemeToDOM(defaultTenant.branding, {});
-        
-        // Cache the development fallback
-        localStorage.setItem('tenantId', defaultTenant.id);
-        localStorage.setItem('lastTenantFetch', Date.now().toString());
-        
-        return;
+        // First try to get the tenant marked as default
+        let { data: defaultTenantData, error: tenantError } = await supabase
+          .from('tenants')
+          .select('id, name, slug, subdomain, custom_domain, status, settings')
+          .eq('is_default', true)
+          .eq('status', 'active')
+          .maybeSingle();
+
+        // If no default tenant, get the first active tenant
+        if (!defaultTenantData && !tenantError) {
+          console.log('🔍 [TenantProvider] No default tenant found, fetching first active tenant');
+          const { data: firstActiveTenant } = await supabase
+            .from('tenants')
+            .select('id, name, slug, subdomain, custom_domain, status, settings')
+            .eq('status', 'active')
+            .order('created_at', { ascending: true })
+            .limit(1)
+            .maybeSingle();
+          
+          defaultTenantData = firstActiveTenant;
+        }
+
+        if (defaultTenantData) {
+          console.log('✅ [TenantProvider] Found default tenant:', defaultTenantData.name, defaultTenantData.id);
+          
+          // Fetch white label config for the default tenant
+          const { data: whiteLabel } = await supabase
+            .from('white_label_configs')
+            .select('brand_identity, mobile_theme, theme_colors, pwa_config, domain_config')
+            .eq('tenant_id', defaultTenantData.id)
+            .maybeSingle();
+
+          const defaultTenant: TenantConfig = {
+            id: defaultTenantData.id,
+            name: defaultTenantData.name,
+            slug: defaultTenantData.slug || undefined,
+            domain: domain,
+            subdomain: defaultTenantData.subdomain || undefined,
+            custom_domain: defaultTenantData.custom_domain || undefined,
+            status: defaultTenantData.status || 'active',
+            settings: {
+              languages: (defaultTenantData.settings as any)?.languages || ['en', 'hi'],
+              defaultLanguage: (defaultTenantData.settings as any)?.defaultLanguage || 'en',
+              timezone: (defaultTenantData.settings as any)?.timezone || 'Asia/Kolkata',
+              currency: (defaultTenantData.settings as any)?.currency || 'INR'
+            },
+            branding: (whiteLabel?.brand_identity as BrandingConfig) || {
+              company_name: defaultTenantData.name,
+              // No fallback colors - let CSS defaults handle it until theme loads
+            },
+            theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
+            pwa: whiteLabel?.pwa_config as PWAConfig,
+            features: (defaultTenantData.settings as any)?.features || ['ai_chat', 'weather', 'marketplace', 'social', 'analytics']
+          };
+          
+          setTenant(defaultTenant);
+          setLastUpdated(new Date());
+          tenantIsolationService.setTenantContext(defaultTenant.id, domain);
+          applyThemeToDOM(defaultTenant.branding, defaultTenant.theme);
+          
+          // Cache the development tenant
+          localStorage.setItem('tenantId', defaultTenant.id);
+          localStorage.setItem('tenant_config_cache', JSON.stringify({
+            data: defaultTenant,
+            timestamp: Date.now()
+          }));
+          
+          // Signal tenant ready
+          window.__TENANT_LOADED__ = true;
+          window.__TENANT_BRANDING__ = defaultTenant.branding;
+          console.log('🎯 [TenantProvider] Default tenant loaded signal sent to loader');
+          
+          return;
+        } else {
+          console.error('❌ [TenantProvider] No active tenants found in database');
+          throw new Error('No active tenants found in database. Please create at least one tenant with status="active".');
+        }
       } else {
-        // In production with custom domain, this is an error
-        throw new Error('No tenant found for domain: ' + domain);
+        // In production with custom domain, this is a critical error
+        console.error('❌ [TenantProvider] No tenant found for production domain:', domain);
+        throw new Error(`No tenant configured for domain: ${domain}. Please check your DNS and tenant configuration.`);
       }
 
     } catch (err) {
+      const domain = getCurrentDomain();
+      const env = getEnvironment();
+      
       console.error('❌ [TenantProvider] Error fetching tenant:', err);
-      setError(err as Error);
+      console.error('❌ [TenantProvider] Error details:', {
+        message: (err as Error)?.message,
+        domain,
+        environment: env.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION',
+      });
+      
+      // In development, try offline cache and continue (don't block the app)
+      // In production, this is a critical error
+      if (!env.isDevelopment) {
+        setError(err as Error);
+      }
 
-      // Try to load from offline cache
+      // Try to load from offline cache as last resort
       try {
         const storedTenantId = localStorage.getItem('tenantId');
-        if (!storedTenantId) return;
+        if (!storedTenantId) {
+          console.warn('⚠️ [TenantProvider] No cached tenant ID found in localStorage');
+          if (env.isDevelopment) {
+            // In development, create a fallback tenant to keep the app running
+            const fallbackTenant: TenantConfig = {
+              id: 'development',
+              name: 'Development Mode',
+              domain: domain,
+              branding: {
+              company_name: 'KisanShakti',
+              // No fallback colors - let CSS defaults handle it
+            },
+              features: ['lands', 'schedule', 'chat', 'market', 'weather', 'social'],
+              settings: {
+                languages: ['en', 'hi'],
+                defaultLanguage: 'en',
+              },
+            };
+            setTenant(fallbackTenant);
+            applyThemeToDOM(fallbackTenant.branding);
+          }
+          return;
+        }
 
         const cachedConfig = await localDB.getTenantConfig(storedTenantId);
         if (cachedConfig?.tenant_data) {
@@ -490,7 +663,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             domain: cachedConfig.tenant_data.domain,
             branding: (cachedConfig.white_label_config?.brand_identity as BrandingConfig) || {
               company_name: cachedConfig.tenant_data.name,
-              primary_color: '#10b981',
+              // No fallback colors - let CSS defaults handle it
             },
             theme: (cachedConfig.white_label_config?.mobile_theme || cachedConfig.white_label_config?.theme_colors) as ThemeConfig,
             features: [],
@@ -517,15 +690,25 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     fetchTenantConfig();
   }, [fetchTenantConfig]);
 
-  // Listen for theme update events
+  // Listen for theme update events from WhiteLabelService and PWA silent updates
   useEffect(() => {
     const handleThemeUpdate = () => {
       console.log('[TenantProvider] 🎨 Theme update event received');
       clearCache();
     };
+
+    const handleSilentThemeUpdate = () => {
+      console.log('[TenantProvider] 🎨 Silent theme update event received from PWA');
+      clearCache();
+    };
     
     window.addEventListener('theme-updated', handleThemeUpdate);
-    return () => window.removeEventListener('theme-updated', handleThemeUpdate);
+    window.addEventListener('tenant-theme-update', handleSilentThemeUpdate);
+    
+    return () => {
+      window.removeEventListener('theme-updated', handleThemeUpdate);
+      window.removeEventListener('tenant-theme-update', handleSilentThemeUpdate);
+    };
   }, [clearCache]);
 
   // Initial load
@@ -545,10 +728,35 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [getCurrentDomain, currentDomain, fetchTenantConfig]);
 
+  // Detect tenant changes and reset stores
+  useEffect(() => {
+    if (tenant?.id && prevTenantIdRef.current && prevTenantIdRef.current !== tenant.id) {
+      console.log('🔄 [TenantProvider] Tenant ID changed!', { 
+        from: prevTenantIdRef.current, 
+        to: tenant.id 
+      });
+      
+      // Reset all tenant-specific stores
+      resetTenantStores().then((result) => {
+        if (result.success) {
+          console.log('✅ [TenantProvider] Stores reset successfully for tenant switch');
+        } else {
+          console.error('❌ [TenantProvider] Failed to reset stores:', result.error);
+        }
+      });
+      
+      // Note: We don't force reload here to allow smooth tenant switching
+      // The app will naturally re-fetch data with the new tenant context
+    }
+    
+    prevTenantIdRef.current = tenant?.id || null;
+  }, [tenant?.id]);
+
   const value: TenantContextValue = {
     tenant,
     branding: tenant?.branding || null,
     theme: tenant?.theme || null,
+    splashScreens: tenant?.splashScreens || null,
     features: tenant?.features || [],
     isLoading,
     error,

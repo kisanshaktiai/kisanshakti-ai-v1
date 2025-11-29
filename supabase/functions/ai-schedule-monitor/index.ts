@@ -5,7 +5,7 @@ import { checkRateLimit } from '../_shared/rateLimiter.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id',
 };
 
 serve(async (req) => {
@@ -23,6 +23,13 @@ serve(async (req) => {
     const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+
+    // SECURITY: Extract tenant ID from headers for monitoring
+    const tenantId = req.headers.get('x-tenant-id');
+    
+    // Note: This is a background monitoring job, so tenant filtering is optional
+    // If tenantId is provided, only monitor that tenant's schedules
+    console.log('🔐 [Monitor] Tenant filter:', tenantId || 'all tenants');
 
     // Rate limiting: 10 requests per hour for monitoring (background job)
     const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'monitor-service';
@@ -44,12 +51,19 @@ serve(async (req) => {
       );
     }
 
-    // Fetch all active schedules
-    const { data: activeSchedules } = await supabase
+    // Fetch active schedules (filter by tenant if provided)
+    let scheduleQuery = supabase
       .from('crop_schedules')
       .select('*, lands(*)')
       .eq('is_active', true)
       .gte('harvest_date', new Date().toISOString().split('T')[0]);
+    
+    // Apply tenant filter if header is present
+    if (tenantId) {
+      scheduleQuery = scheduleQuery.eq('tenant_id', tenantId);
+    }
+    
+    const { data: activeSchedules } = await scheduleQuery;
 
     if (!activeSchedules || activeSchedules.length === 0) {
       return new Response(

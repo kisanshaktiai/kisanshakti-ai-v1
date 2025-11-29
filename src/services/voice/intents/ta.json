@@ -1,0 +1,280 @@
+{
+  "language": "ta",
+  "intents": [
+    {
+      "id": "navigate.home",
+      "patterns": ["வீட்டிற்கு செல்", "முகப்பை திற", "முதன்மை பக்கம்", "வீட்டுக்கு போ", "முதன்மை திரை"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app"
+    },
+    {
+      "id": "navigate.back",
+      "patterns": ["பின்னால் செல்", "மீண்டும் போ", "முந்தைய பக்கம்", "திரும்பு"],
+      "priority": "high",
+      "offline": true,
+      "action": "back"
+    },
+    {
+      "id": "navigate.lands",
+      "patterns": ["என் நிலங்களை காட்டு", "வயல்களை திற", "என் நிலங்கள்", "நில மேலாண்மை", "நிலத்தை பார்"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/lands"
+    },
+    {
+      "id": "navigate.weather",
+      "patterns": ["வானிலையை காட்டு", "வானிலை எப்படி", "வானிலை முன்னறிவிப்பு", "வானிலையை பார்", "இன்றைய வானிலை"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/weather"
+    },
+    {
+      "id": "navigate.schedule",
+      "patterns": ["அட்டவணையை காட்டு", "என் பணிகள்", "அட்டவணையை திற", "விவசாய அட்டவணை", "இன்றைய பணிகள்"],
+      "priority": "high",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/schedule"
+    },
+    {
+      "id": "navigate.chat",
+      "patterns": ["அரட்டையை திற", "உதவியாளருடன் பேசு", "ஏஐ உதவியாளர்", "உதவி செய்", "கேள்வி கேள்"],
+      "priority": "high",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/chat"
+    },
+    {
+      "id": "navigate.market",
+      "patterns": ["சந்தையை திற", "சந்தையை காட்டு", "பொருட்களை வாங்கு", "பயிர்களை விற்", "சந்தை விலை"],
+      "priority": "medium",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/market"
+    },
+    {
+      "id": "navigate.profile",
+      "patterns": ["என் விவரக்குறிப்பு", "விவரக்குறிப்பை திற", "கணக்கு அமைப்புகள்", "பயனர் விவரக்குறிப்பு"],
+      "priority": "medium",
+      "offline": true,
+      "action": "navigate",
+      "route": "/app/profile"
+    },
+    {
+      "id": "navigate.community",
+      "patterns": ["சமூகத்தை திற", "சமூக ஊட்டம்", "விவசாயி சமூகம்", "விவசாயிகளுடன் இணை"],
+      "priority": "medium",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/social"
+    },
+    {
+      "id": "navigate.menu",
+      "patterns": ["மெனுவை திற", "மெனுவை காட்டு", "முதன்மை மெனு"],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "open_menu" }
+    },
+    {
+      "id": "navigate.close_menu",
+      "patterns": ["மெனுவை மூடு", "மெனுவை மறை"],
+      "priority": "medium",
+      "offline": true,
+      "action": "ui_action",
+      "params": { "action": "close_menu" }
+    },
+    {
+      "id": "crud.create_land",
+      "patterns": ["புதிய நிலத்தை சேர்", "புதிய வயலை சேர்", "புதிய நிலத்தை பதிவு செய்", "நிலத்தை பதிவு செய்"],
+      "slots": [
+        { "name": "landName", "type": "string", "required": false },
+        { "name": "area", "type": "number", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "navigate",
+      "route": "/app/add-land"
+    },
+    {
+      "id": "crud.edit_land",
+      "patterns": ["நிலத்தை திருத்து", "வயலை புதுப்பி", "நிலத்தை மாற்று"],
+      "slots": [
+        { "name": "landId", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "edit",
+      "params": { "entity": "land" }
+    },
+    {
+      "id": "crud.delete_land",
+      "patterns": ["நிலத்தை நீக்கு", "வயலை அழி", "இந்த நிலத்தை நீக்கு"],
+      "slots": [
+        { "name": "landId", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "delete",
+      "params": { "entity": "land", "requiresConfirmation": true }
+    },
+    {
+      "id": "crud.create_task",
+      "patterns": ["பணியை சேர்", "புதிய பணியை உருவாக்கு", "நினைவூட்டலை சேர்"],
+      "slots": [
+        { "name": "title", "type": "string", "required": true },
+        { "name": "date", "type": "date", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "create",
+      "params": { "entity": "task" }
+    },
+    {
+      "id": "crud.delete_task",
+      "patterns": ["பணியை நீக்கு", "டாஸ்க் அழி", "இந்த பணியை நீக்கு"],
+      "slots": [
+        { "name": "taskId", "type": "string", "required": false }
+      ],
+      "priority": "high",
+      "offline": false,
+      "action": "delete",
+      "params": { "entity": "task", "requiresConfirmation": true }
+    },
+    {
+      "id": "form.next_field",
+      "patterns": ["அடுத்த புலம்", "அடுத்து", "முன்னோக்கி செல்"],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "next_field" }
+    },
+    {
+      "id": "form.previous_field",
+      "patterns": ["முந்தைய புலம்", "முந்தைய", "பின்னால் செல்"],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "previous_field" }
+    },
+    {
+      "id": "form.clear_field",
+      "patterns": ["புலத்தை அழி", "இதை அழி", "நீக்கு"],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "clear_field" }
+    },
+    {
+      "id": "form.save",
+      "patterns": ["சேமி", "சமர்ப்பி", "இதை சேமி", "மாற்றங்களை சேமி"],
+      "priority": "high",
+      "offline": false,
+      "action": "form_action",
+      "params": { "action": "save" }
+    },
+    {
+      "id": "form.cancel",
+      "patterns": ["ரத்து", "விட்டுவிடு", "சேமிக்க வேண்டாம்", "திரும்பு"],
+      "priority": "high",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "cancel" }
+    },
+    {
+      "id": "form.type_text",
+      "patterns": ["தட்டச்சு செய்", "எழுது", "உள்ளிடு"],
+      "slots": [
+        { "name": "text", "type": "string", "required": true }
+      ],
+      "priority": "medium",
+      "offline": true,
+      "action": "form_action",
+      "params": { "action": "type_text" }
+    },
+    {
+      "id": "confirm.yes",
+      "patterns": ["ஆம்", "சரி", "நிச்சயம்", "செய்", "தொடர்"],
+      "priority": "high",
+      "offline": true,
+      "action": "confirm",
+      "params": { "confirmation": true }
+    },
+    {
+      "id": "confirm.no",
+      "patterns": ["இல்லை", "ரத்து", "வேண்டாம்", "விட்டுவிடு"],
+      "priority": "high",
+      "offline": true,
+      "action": "confirm",
+      "params": { "confirmation": false }
+    },
+    {
+      "id": "help.repeat",
+      "patterns": ["மீண்டும் சொல்", "மீண்டும்", "என்ன சொன்னீர்கள்"],
+      "priority": "medium",
+      "offline": true,
+      "action": "help",
+      "params": { "type": "repeat" }
+    },
+    {
+      "id": "help.examples",
+      "patterns": ["உதவி", "நீங்கள் என்ன செய்ய முடியும்", "எடுத்துக்காட்டுகள்"],
+      "priority": "medium",
+      "offline": true,
+      "action": "help",
+      "params": { "type": "examples" }
+    },
+    {
+      "id": "help.slow_down",
+      "patterns": ["மெதுவாக பேசு", "மெதுவாக"],
+      "priority": "medium",
+      "offline": true,
+      "action": "help",
+      "params": { "type": "slow_down" }
+    },
+    {
+      "id": "accessibility.read_screen",
+      "patterns": ["திரையை படி", "திரையில் என்ன உள்ளது", "இதை படி"],
+      "priority": "medium",
+      "offline": true,
+      "action": "accessibility",
+      "params": { "action": "read_screen" }
+    },
+    {
+      "id": "action.undo",
+      "patterns": ["செயல்தவிர்", "மீட்டமை", "முந்தையது போல்"],
+      "priority": "high",
+      "offline": true,
+      "action": "undo"
+    },
+    {
+      "id": "emergency.call_support",
+      "patterns": ["ஆதரவை தொடர்பு கொள்", "உதவி தேவை", "அவசரம்", "அவசர உதவி"],
+      "priority": "high",
+      "offline": false,
+      "action": "emergency",
+      "params": { "type": "support" }
+    },
+    {
+      "id": "query.weather_today",
+      "patterns": ["இன்று வானிலை எப்படி", "இன்றைய வானிலை", "இன்று மழை பெய்யுமா", "இன்றைய வெப்பநிலை"],
+      "priority": "high",
+      "offline": false,
+      "action": "query",
+      "params": { "type": "weather", "timeframe": "today" }
+    }
+  ],
+  "examples": [
+    "வீட்டிற்கு செல்",
+    "என் நிலங்களை காட்டு",
+    "வானிலை எப்படி?",
+    "புதிய நிலத்தை சேர்",
+    "பணியை நீக்கு",
+    "சேமி",
+    "உதவி"
+  ]
+}

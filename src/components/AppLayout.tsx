@@ -1,7 +1,6 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import { BottomNavigation } from './BottomNavigation';
 import { HindenburgMenu } from './HindenburgMenu';
-import { FloatingActionButton } from './FloatingActionButton';
 import { LanguageSelector } from './LanguageSelector';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/stores/authStore';
@@ -10,8 +9,9 @@ import { Leaf } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { SyncButton } from '@/components/sync/SyncButton';
 import { ConnectionStatusIcon } from '@/components/ConnectionStatusIcon';
-import { VoiceNavigationProvider } from '@/contexts/VoiceNavigationContext';
-import { VoiceAssistant } from '@/components/voice/VoiceAssistant';
+import { ModernVoiceProvider } from '@/contexts/ModernVoiceContext';
+import { ModernVoiceAssistant } from '@/components/voice';
+import { VoiceIndicator } from '@/components/VoiceIndicator';
 
 export function AppLayout() {
   const { tenant, branding } = useTenant();
@@ -41,7 +41,7 @@ export function AppLayout() {
   }, [logoUrl, companyName, tagline, tenant, branding]);
 
   return (
-    <VoiceNavigationProvider>
+    <ModernVoiceProvider>
       <div className="min-h-mobile-screen bg-background">
         {/* Header - Hidden on AI Chat and Community Chat */}
         {!isAIChat && !isCommunityChat && (
@@ -86,6 +86,10 @@ export function AppLayout() {
           <Outlet />
         </main>
 
+        {/* Voice Assistant */}
+        <ModernVoiceAssistant />
+        <VoiceIndicator />
+
         {/* Bottom Navigation - Hidden on full-screen routes */}
         <BottomNavigation 
           onMenuOpen={() => setIsMenuOpen(true)} 
@@ -93,15 +97,9 @@ export function AppLayout() {
           hideAction={false}
         />
         
-        {/* Floating Action Button - Hidden on full-screen routes */}
-        {!isAIChat && !isCommunityChat && <FloatingActionButton />}
-        
-        {/* Voice Assistant - Available on all routes */}
-        <VoiceAssistant />
-        
         {/* Hindenburg Menu */}
         <HindenburgMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
       </div>
-    </VoiceNavigationProvider>
+    </ModernVoiceProvider>
   );
 }

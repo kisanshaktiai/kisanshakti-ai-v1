@@ -2,6 +2,126 @@ name: Deploy to Hostinger
 
 on:
   push:
+    branches: [main, production]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+        env:
+          VITE_APP_VERSION: ${{ github.sha }}
+          VITE_BUILD_TIMESTAMP: ${{ github.event.head_commit.timestamp }}
+
+      - name: Verify build output
+        run: |
+          echo "Checking build output..."
+          ls -la dist/
+          echo "Checking manifest.json..."
+          cat dist/manifest.json
+          echo "Checking service-worker.js exists..."
+          ls -la dist/service-worker.js
+
+      - name: Copy manifest.json to root (if not already)
+        run: |
+          if [ ! -f "dist/manifest.json" ]; then
+            echo "manifest.json not in dist root, copying..."
+            cp public/manifest.json dist/manifest.json
+          fi
+
+      - name: Copy service-worker.js to root (if not already)
+        run: |
+          if [ ! -f "dist/service-worker.js" ]; then
+            echo "service-worker.js not in dist root, copying..."
+            cp public/service-worker.js dist/service-worker.js
+          fi
+
+      - name: Create .htaccess for proper MIME types
+        run: |
+          cat > dist/.htaccess << 'EOF'
+          # PWA Service Worker & Manifest MIME Types
+          <FilesMatch "\.(json|webmanifest)$">
+            Header set Content-Type "application/json"
+            Header set Cache-Control "no-cache, no-store, must-revalidate"
+          </FilesMatch>
+
+          <FilesMatch "service-worker\.js$">
+            Header set Content-Type "application/javascript"
+            Header set Cache-Control "no-cache, no-store, must-revalidate"
+            Header set Service-Worker-Allowed "/"
+          </FilesMatch>
+
+          # Security Headers
+          Header always set X-Content-Type-Options "nosniff"
+          Header always set X-Frame-Options "DENY"
+          Header always set X-XSS-Protection "1; mode=block"
+          Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+          # HTTPS Redirect (if not already on HTTPS)
+          RewriteEngine On
+          RewriteCond %{HTTPS} off
+          RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+          # SPA Routing (React Router)
+          RewriteEngine On
+          RewriteBase /
+          RewriteRule ^index\.html$ - [L]
+          RewriteCond %{REQUEST_FILENAME} !-f
+          RewriteCond %{REQUEST_FILENAME} !-d
+          RewriteRule . /index.html [L]
+          EOF
+
+      - name: Deploy to Hostinger via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./dist/
+          server-dir: /public_html/
+          protocol: ftps
+          port: 21
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/.env*
+
+      - name: Verify deployment
+        run: |
+          echo "Deployment complete!"
+          echo "Verifying PWA files are accessible..."
+          curl -I https://your-domain.com/manifest.json
+          curl -I https://your-domain.com/service-worker.js
+
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "✅ Deployment successful!"
+          echo "📱 PWA files deployed to root"
+          echo "🔒 Security headers configured"
+          echo "🚀 App version: ${{ github.sha }}"
+
+      - name: Notify deployment failure
+        if: failure()
+        run: |
+          echo "❌ Deployment failed!"
+          echo "Check logs above for errors"
     branches: [ kisanshakti-ai-update ]
   workflow_dispatch:
 

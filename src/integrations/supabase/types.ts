@@ -1447,6 +1447,57 @@ export type Database = {
           },
         ]
       }
+      app_versions: {
+        Row: {
+          breaking_changes: Json | null
+          bugs_fixed: Json | null
+          build_hash: string
+          created_at: string | null
+          created_by: string | null
+          deployed_at: string | null
+          features_added: Json | null
+          force_update: boolean | null
+          id: string
+          is_current: boolean | null
+          metadata: Json | null
+          min_supported_version: string | null
+          release_notes: string | null
+          version: string
+        }
+        Insert: {
+          breaking_changes?: Json | null
+          bugs_fixed?: Json | null
+          build_hash: string
+          created_at?: string | null
+          created_by?: string | null
+          deployed_at?: string | null
+          features_added?: Json | null
+          force_update?: boolean | null
+          id?: string
+          is_current?: boolean | null
+          metadata?: Json | null
+          min_supported_version?: string | null
+          release_notes?: string | null
+          version: string
+        }
+        Update: {
+          breaking_changes?: Json | null
+          bugs_fixed?: Json | null
+          build_hash?: string
+          created_at?: string | null
+          created_by?: string | null
+          deployed_at?: string | null
+          features_added?: Json | null
+          force_update?: boolean | null
+          id?: string
+          is_current?: boolean | null
+          metadata?: Json | null
+          min_supported_version?: string | null
+          release_notes?: string | null
+          version?: string
+        }
+        Relationships: []
+      }
       appearance_settings: {
         Row: {
           accent_color: string
@@ -10393,6 +10444,7 @@ export type Database = {
           cloud_coverage: number | null
           collection_id: string | null
           computed_at: string | null
+          confidence_level: string | null
           coverage: number | null
           coverage_percentage: number | null
           created_at: string
@@ -10403,6 +10455,7 @@ export type Database = {
           land_id: string
           max_ndvi: number | null
           mean_ndvi: number | null
+          median_ndvi: number | null
           metadata: Json | null
           min_ndvi: number | null
           ndvi_max: number | null
@@ -10411,6 +10464,7 @@ export type Database = {
           ndvi_value: number | null
           ndwi_value: number | null
           processing_level: string | null
+          quality_score: number | null
           satellite_source: string | null
           savi_value: number | null
           scene_id: string | null
@@ -10426,6 +10480,7 @@ export type Database = {
           cloud_coverage?: number | null
           collection_id?: string | null
           computed_at?: string | null
+          confidence_level?: string | null
           coverage?: number | null
           coverage_percentage?: number | null
           created_at?: string
@@ -10436,6 +10491,7 @@ export type Database = {
           land_id: string
           max_ndvi?: number | null
           mean_ndvi?: number | null
+          median_ndvi?: number | null
           metadata?: Json | null
           min_ndvi?: number | null
           ndvi_max?: number | null
@@ -10444,6 +10500,7 @@ export type Database = {
           ndvi_value?: number | null
           ndwi_value?: number | null
           processing_level?: string | null
+          quality_score?: number | null
           satellite_source?: string | null
           savi_value?: number | null
           scene_id?: string | null
@@ -10459,6 +10516,7 @@ export type Database = {
           cloud_coverage?: number | null
           collection_id?: string | null
           computed_at?: string | null
+          confidence_level?: string | null
           coverage?: number | null
           coverage_percentage?: number | null
           created_at?: string
@@ -10469,6 +10527,7 @@ export type Database = {
           land_id?: string
           max_ndvi?: number | null
           mean_ndvi?: number | null
+          median_ndvi?: number | null
           metadata?: Json | null
           min_ndvi?: number | null
           ndvi_max?: number | null
@@ -10477,6 +10536,7 @@ export type Database = {
           ndvi_value?: number | null
           ndwi_value?: number | null
           processing_level?: string | null
+          quality_score?: number | null
           satellite_source?: string | null
           savi_value?: number | null
           scene_id?: string | null
@@ -13580,6 +13640,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          email: string | null
+          full_name: string | null
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          email?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       push_subscriptions: {
         Row: {
@@ -18935,6 +19022,320 @@ export type Database = {
           },
         ]
       }
+      voice_error_corrections: {
+        Row: {
+          created_at: string | null
+          farmer_id: string | null
+          id: string
+          intended_action: string | null
+          language_code: string | null
+          original_transcript: string
+          session_id: string | null
+          suggested_phrases: Json | null
+          tenant_id: string
+          was_helpful: boolean | null
+        }
+        Insert: {
+          created_at?: string | null
+          farmer_id?: string | null
+          id?: string
+          intended_action?: string | null
+          language_code?: string | null
+          original_transcript: string
+          session_id?: string | null
+          suggested_phrases?: Json | null
+          tenant_id: string
+          was_helpful?: boolean | null
+        }
+        Update: {
+          created_at?: string | null
+          farmer_id?: string | null
+          id?: string
+          intended_action?: string | null
+          language_code?: string | null
+          original_transcript?: string
+          session_id?: string | null
+          suggested_phrases?: Json | null
+          tenant_id?: string
+          was_helpful?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_error_corrections_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_error_corrections_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "voice_error_corrections_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "voice_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_error_corrections_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_navigation_intents: {
+        Row: {
+          action: string
+          created_at: string | null
+          id: string
+          intent_id: string
+          is_active: boolean | null
+          is_offline: boolean | null
+          language_code: string
+          params: Json | null
+          patterns: Json
+          priority: string | null
+          response_template: Json | null
+          route: string | null
+          synonyms: Json | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          id?: string
+          intent_id: string
+          is_active?: boolean | null
+          is_offline?: boolean | null
+          language_code: string
+          params?: Json | null
+          patterns?: Json
+          priority?: string | null
+          response_template?: Json | null
+          route?: string | null
+          synonyms?: Json | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          id?: string
+          intent_id?: string
+          is_active?: boolean | null
+          is_offline?: boolean | null
+          language_code?: string
+          params?: Json | null
+          patterns?: Json
+          priority?: string | null
+          response_template?: Json | null
+          route?: string | null
+          synonyms?: Json | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_navigation_intents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_sessions: {
+        Row: {
+          created_at: string | null
+          device_info: Json | null
+          failed_commands: number | null
+          farmer_id: string | null
+          id: string
+          language_code: string | null
+          metadata: Json | null
+          session_end: string | null
+          session_start: string | null
+          successful_commands: number | null
+          tenant_id: string
+          total_commands: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          device_info?: Json | null
+          failed_commands?: number | null
+          farmer_id?: string | null
+          id?: string
+          language_code?: string | null
+          metadata?: Json | null
+          session_end?: string | null
+          session_start?: string | null
+          successful_commands?: number | null
+          tenant_id: string
+          total_commands?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          device_info?: Json | null
+          failed_commands?: number | null
+          farmer_id?: string | null
+          id?: string
+          language_code?: string | null
+          metadata?: Json | null
+          session_end?: string | null
+          session_start?: string | null
+          successful_commands?: number | null
+          tenant_id?: string
+          total_commands?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_sessions_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_sessions_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "voice_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_suggestions: {
+        Row: {
+          category: string
+          created_at: string | null
+          display_order: number | null
+          id: string
+          is_active: boolean | null
+          language_code: string
+          phonetic_hint: string | null
+          suggestion_text: string
+          tenant_id: string
+        }
+        Insert: {
+          category: string
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          language_code: string
+          phonetic_hint?: string | null
+          suggestion_text: string
+          tenant_id: string
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          display_order?: number | null
+          id?: string
+          is_active?: boolean | null
+          language_code?: string
+          phonetic_hint?: string | null
+          suggestion_text?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_suggestions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_training_samples: {
+        Row: {
+          audio_url: string
+          confidence_score: number | null
+          consent_given: boolean | null
+          corrected_intent: string | null
+          created_at: string | null
+          detected_language: string | null
+          duration_ms: number | null
+          farmer_id: string
+          id: string
+          intent_matched: string | null
+          metadata: Json | null
+          tenant_id: string
+          transcript: string | null
+          was_correct: boolean | null
+        }
+        Insert: {
+          audio_url: string
+          confidence_score?: number | null
+          consent_given?: boolean | null
+          corrected_intent?: string | null
+          created_at?: string | null
+          detected_language?: string | null
+          duration_ms?: number | null
+          farmer_id: string
+          id?: string
+          intent_matched?: string | null
+          metadata?: Json | null
+          tenant_id: string
+          transcript?: string | null
+          was_correct?: boolean | null
+        }
+        Update: {
+          audio_url?: string
+          confidence_score?: number | null
+          consent_given?: boolean | null
+          corrected_intent?: string | null
+          created_at?: string | null
+          detected_language?: string | null
+          duration_ms?: number | null
+          farmer_id?: string
+          id?: string
+          intent_matched?: string | null
+          metadata?: Json | null
+          tenant_id?: string
+          transcript?: string | null
+          was_correct?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_training_samples_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_training_samples_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "voice_training_samples_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       wallet_transactions: {
         Row: {
           amount: number
@@ -19339,11 +19740,13 @@ export type Database = {
           created_at: string
           data_source: string
           evapotranspiration_mm: number | null
+          expires_at: string | null
           feels_like_celsius: number | null
           growing_degree_days: number | null
           humidity_percent: number | null
           id: string
           latitude: number
+          location_key: string | null
           longitude: number
           moon_phase: number | null
           observation_time: string
@@ -19371,11 +19774,13 @@ export type Database = {
           created_at?: string
           data_source: string
           evapotranspiration_mm?: number | null
+          expires_at?: string | null
           feels_like_celsius?: number | null
           growing_degree_days?: number | null
           humidity_percent?: number | null
           id?: string
           latitude: number
+          location_key?: string | null
           longitude: number
           moon_phase?: number | null
           observation_time: string
@@ -19403,11 +19808,13 @@ export type Database = {
           created_at?: string
           data_source?: string
           evapotranspiration_mm?: number | null
+          expires_at?: string | null
           feels_like_celsius?: number | null
           growing_degree_days?: number | null
           humidity_percent?: number | null
           id?: string
           latitude?: number
+          location_key?: string | null
           longitude?: number
           moon_phase?: number | null
           observation_time?: string
@@ -19453,6 +19860,7 @@ export type Database = {
           humidity_percent: number | null
           id: string
           latitude: number
+          location_key: string | null
           longitude: number
           pressure_hpa: number | null
           rain_amount_mm: number | null
@@ -19483,6 +19891,7 @@ export type Database = {
           humidity_percent?: number | null
           id?: string
           latitude: number
+          location_key?: string | null
           longitude: number
           pressure_hpa?: number | null
           rain_amount_mm?: number | null
@@ -19513,6 +19922,7 @@ export type Database = {
           humidity_percent?: number | null
           id?: string
           latitude?: number
+          location_key?: string | null
           longitude?: number
           pressure_hpa?: number | null
           rain_amount_mm?: number | null
@@ -20945,6 +21355,7 @@ export type Database = {
       cleanup_bootstrap_state: { Args: never; Returns: undefined }
       cleanup_expired_registrations: { Args: never; Returns: number }
       cleanup_expired_sessions: { Args: never; Returns: undefined }
+      cleanup_expired_weather_cache: { Args: never; Returns: number }
       cleanup_old_dashboard_updates: { Args: never; Returns: number }
       cleanup_old_data_with_retention: {
         Args: never
@@ -21335,6 +21746,7 @@ export type Database = {
       get_current_tenant_id: { Args: never; Returns: string }
       get_current_user_email: { Args: never; Returns: string }
       get_current_user_id: { Args: never; Returns: string }
+      get_farmer_id_from_header: { Args: never; Returns: string }
       get_geometry_bbox: { Args: { geom: unknown }; Returns: number[] }
       get_header_farmer_id: { Args: never; Returns: string }
       get_header_tenant_id: { Args: never; Returns: string }

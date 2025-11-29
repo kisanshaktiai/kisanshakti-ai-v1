@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import {
   Home, MapPin, Cloud, Users, Bot, TrendingUp, User,
   Calendar, FileText, Award, Bell, Settings, HelpCircle,
@@ -67,7 +67,7 @@ interface HindenburgMenuProps {
 export function HindenburgMenu({ isOpen, onClose }: HindenburgMenuProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { tenant } = useTenantStore();
+  const { tenant } = useTenant();
   const [searchQuery, setSearchQuery] = useState('');
   const [menuItems, setMenuItems] = useState(defaultMenuItems);
   const [activeCategory, setActiveCategory] = useState('all');
@@ -228,7 +228,7 @@ export function HindenburgMenu({ isOpen, onClose }: HindenburgMenuProps) {
         {/* Footer */}
         <div className="px-4 py-3 border-t border-border/10 glassmorphism-subtle">
           <p className="text-[10px] text-center text-muted-foreground/50">
-            {tenant?.whiteLabel?.brand_identity?.tagline || t('app.tagline')}
+            {tenant?.branding?.tagline || t('app.tagline')}
           </p>
         </div>
       </div>

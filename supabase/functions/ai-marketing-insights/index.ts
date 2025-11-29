@@ -5,7 +5,7 @@ import { checkRateLimit } from '../_shared/rateLimiter.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id',
 };
 
 serve(async (req) => {
@@ -24,7 +24,21 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    const { tenantId } = await req.json();
+    // SECURITY: Extract tenant ID from headers (not body)
+    const tenantId = req.headers.get('x-tenant-id');
+    const farmerId = req.headers.get('x-farmer-id');
+    
+    // Validate required header
+    if (!tenantId) {
+      console.error('Missing required header: x-tenant-id');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing required header',
+          details: 'x-tenant-id header is required'
+        }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Rate limiting: 50 requests per hour per tenant
     const rateLimit = await checkRateLimit(tenantId || 'anonymous', 'ai-marketing-insights', { maxRequests: 50, windowMs: 3600000 });

@@ -11,8 +11,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
+import { landsApi } from '@/services/landsApi';
+import { isolatedSupabase } from '@/services/dataIsolationService';
+import { supabase } from '@/integrations/supabase/client';
 import { Progress } from '@/components/ui/progress';
 import { LandDetailsSkeleton } from '@/components/skeletons';
 import {
@@ -104,19 +106,67 @@ export default function LandDetails() {
     }
   }, [id]);
 
+  // Real-time subscription for land data
+  useEffect(() => {
+    if (!id) return;
+
+    const landChannel = supabase
+      .channel(`land-${id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'lands',
+        filter: `id=eq.${id}`
+      }, () => {
+        console.log('🔄 Land data changed, refetching...');
+        fetchLandDetails();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(landChannel);
+    };
+  }, [id]);
+
+  // Real-time subscription for land activities
+  useEffect(() => {
+    if (!id) return;
+
+    const activitiesChannel = supabase
+      .channel(`land-activities-${id}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'land_activities',
+        filter: `land_id=eq.${id}`
+      }, () => {
+        console.log('🔄 Land activities changed, refetching...');
+        fetchActivities();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(activitiesChannel);
+    };
+  }, [id]);
+
   const fetchLandDetails = async () => {
     if (!id || !user?.id) return;
     
     try {
-      const { data, error } = await supabase
-        .from('lands')
-        .select('*')
-        .eq('id', id)
-        .eq('farmer_id', user.id)
-        .single();
-
-      if (error) throw error;
-      setLand(data);
+      const data = await landsApi.fetchLandById(id);
+      
+      if (!data) {
+        toast({
+          title: 'Error',
+          description: 'Land not found or access denied',
+          variant: 'destructive',
+        });
+        navigate('/app/lands');
+        return;
+      }
+      
+      setLand(data as Land);
     } catch (error) {
       console.error('Error fetching land details:', error);
       toast({
@@ -133,7 +183,7 @@ export default function LandDetails() {
     if (!id) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await isolatedSupabase
         .from('land_activities')
         .select('*')
         .eq('land_id', id)
@@ -151,7 +201,7 @@ export default function LandDetails() {
     if (!id) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await isolatedSupabase
         .from('crop_history')
         .select('*')
         .eq('land_id', id)
@@ -168,12 +218,7 @@ export default function LandDetails() {
     if (!id) return;
     
     try {
-      const { error } = await supabase
-        .from('lands')
-        .update({ is_active: false })
-        .eq('id', id);
-
-      if (error) throw error;
+      await landsApi.deleteLand(id);
 
       toast({
         title: 'Success',
@@ -223,9 +268,9 @@ export default function LandDetails() {
   const soilHealthScore = getSoilHealthScore();
   
   const soilHealthData = [
-    { name: 'pH', value: land?.soil_ph ? (land.soil_ph / 14) * 100 : 0, fill: '#10b981' },
-    { name: 'Organic Carbon', value: land?.organic_carbon_percent ? land.organic_carbon_percent * 100 : 0, fill: '#f59e0b' },
-    { name: 'NPK', value: land?.nitrogen_kg_per_ha ? Math.min((land.nitrogen_kg_per_ha / 400) * 100, 100) : 0, fill: '#3b82f6' },
+    { name: 'pH', value: land?.soil_ph ? (land.soil_ph / 14) * 100 : 0, fill: 'hsl(var(--success))' },
+    { name: 'Organic Carbon', value: land?.organic_carbon_percent ? land.organic_carbon_percent * 100 : 0, fill: 'hsl(var(--warning))' },
+    { name: 'NPK', value: land?.nitrogen_kg_per_ha ? Math.min((land.nitrogen_kg_per_ha / 400) * 100, 100) : 0, fill: 'hsl(var(--info))' },
   ];
 
   const activityData = activities.reduce((acc: any[], activity) => {
@@ -268,223 +313,356 @@ export default function LandDetails() {
   }
 
   return (
-    <div className="space-y-4 pb-20 md:pb-6">
-      {/* Mobile-optimized Header */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm pb-3 -mx-4 px-4 md:mx-0 md:px-0">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <div className="flex items-center gap-3 flex-1 min-w-0">
+    <div className="min-h-screen bg-background pb-20 md:pb-6">
+      {/* Modern Mobile-First Header */}
+      <div className="sticky top-0 z-20 glassmorphism-strong border-b">
+        <div className="container max-w-7xl">
+          <div className="flex items-center justify-between py-3">
+            {/* Back Button - Compact Touch Target */}
             <Button
               variant="ghost"
-              size="icon"
+              size="default"
               onClick={() => navigate('/app/lands')}
-              className="flex-shrink-0"
+              className="min-h-[40px] min-w-[40px] rounded-xl"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="h-5 w-5" />
             </Button>
-            <div className="min-w-0">
-              <h1 className="text-xl sm:text-2xl font-bold truncate">{land.name}</h1>
-              <p className="text-sm text-muted-foreground truncate">
-                {land.village && `${land.village}, `}{land.taluka}
-              </p>
+
+            {/* Land Info */}
+            <div className="flex-1 px-3 min-w-0">
+              <h1 className="text-lg md:text-xl font-bold truncate text-foreground">
+                {land.name}
+              </h1>
+              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+                <p className="truncate">
+                  {land.village && `${land.village}, `}{land.taluka || land.district}
+                </p>
+              </div>
             </div>
-          </div>
-          
-          {/* Mobile Actions Menu */}
-          <div className="flex gap-2 self-end sm:self-auto">
-            <Button variant="outline" size="icon" className="h-9 w-9 sm:h-10 sm:w-10">
-              <Share2 className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="icon" className="h-9 w-9 sm:h-10 sm:w-10 hidden sm:flex">
-              <Download className="h-4 w-4" />
-            </Button>
-            <Button 
-              variant="outline"
-              size="sm"
-              onClick={() => navigate(`/app/lands/${id}/edit`)}
-              className="h-9 px-3 sm:h-10 sm:px-4"
-            >
-              <Edit className="h-4 w-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Edit</span>
-            </Button>
-            <Button 
-              variant="destructive"
-              size="sm"
-              onClick={() => setShowDeleteDialog(true)}
-              className="h-9 px-3 sm:h-10 sm:px-4"
-            >
-              <Trash2 className="h-4 w-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Delete</span>
-            </Button>
+
+            {/* Action Buttons - Compact Touch Targets */}
+            <div className="flex gap-2">
+              <Button 
+                variant="outline"
+                size="icon"
+                onClick={() => navigate(`/app/lands/${id}/edit`)}
+                className="min-h-[40px] min-w-[40px] rounded-xl bg-primary/5 border-primary/20 hover:bg-primary/10"
+              >
+                <Edit className="h-4 w-4 text-primary" />
+              </Button>
+              <Button 
+                variant="outline"
+                size="icon"
+                onClick={() => setShowDeleteDialog(true)}
+                className="min-h-[40px] min-w-[40px] rounded-xl bg-destructive/5 border-destructive/20 hover:bg-destructive/10"
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Mobile-optimized Quick Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-        <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/10">
-          <CardContent className="p-4 md:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div className="space-y-1">
-                <p className="text-xs sm:text-sm text-muted-foreground">Total Area</p>
-                <p className="text-lg sm:text-2xl font-bold">
-                  {land.area_acres}
-                  <span className="text-xs sm:text-sm ml-1">acres</span>
-                  {land.area_guntas && <span className="text-xs"> {land.area_guntas}g</span>}
-                </p>
-              </div>
-              <MapPin className="h-6 w-6 sm:h-8 sm:w-8 text-primary opacity-20" />
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-gradient-to-br from-green-500/5 to-green-500/10 border-green-500/10">
-          <CardContent className="p-4 md:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div className="space-y-1">
-                <p className="text-xs sm:text-sm text-muted-foreground">Current Crop</p>
-                <p className="text-sm sm:text-xl font-bold line-clamp-1">{land.current_crop || 'No Crop'}</p>
-                {land.crop_stage && (
-                  <Badge variant="secondary" className="text-xs mt-1">{land.crop_stage}</Badge>
-                )}
-              </div>
-              <Sprout className="h-6 w-6 sm:h-8 sm:w-8 text-green-500 opacity-20" />
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-gradient-to-br from-orange-500/5 to-orange-500/10 border-orange-500/10">
-          <CardContent className="p-4 md:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div className="space-y-1">
-                <p className="text-xs sm:text-sm text-muted-foreground">Soil Health</p>
+      {/* Quick Stats - Mobile-First Grid */}
+      <div className="container max-w-7xl mt-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {/* Total Area Card */}
+          <Card className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-gradient-to-br from-card to-card/80 overflow-hidden">
+            <CardContent className="p-4 relative">
+              <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-primary/5 blur-2xl" />
+              <div className="relative space-y-2">
                 <div className="flex items-center gap-2">
-                  <Progress value={soilHealthScore} className="w-12 sm:w-20" />
-                  <span className="text-sm sm:text-xl font-bold">{soilHealthScore}%</span>
+                  <div className="p-2 rounded-lg bg-primary/10">
+                    <MapPin className="h-4 w-4 text-primary" />
+                  </div>
+                  <p className="text-xs font-medium text-muted-foreground">Total Area</p>
+                </div>
+                <div>
+                  <p className="text-2xl md:text-3xl font-bold text-foreground">
+                    {land.area_acres}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    acres {land.area_guntas && `· ${land.area_guntas} guntha`}
+                  </p>
                 </div>
               </div>
-              <Mountain className="h-6 w-6 sm:h-8 sm:w-8 text-orange-500 opacity-20" />
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card className="bg-gradient-to-br from-blue-500/5 to-blue-500/10 border-blue-500/10">
-          <CardContent className="p-4 md:p-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div className="space-y-1">
-                <p className="text-xs sm:text-sm text-muted-foreground">Irrigation</p>
-                <p className="text-sm sm:text-lg font-bold line-clamp-1">{land.irrigation_source || 'Not Set'}</p>
-                <p className="text-xs text-muted-foreground line-clamp-1">{land.water_source}</p>
+            </CardContent>
+          </Card>
+
+          {/* Current Crop Card */}
+          <Card className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-gradient-to-br from-card to-card/80 overflow-hidden">
+            <CardContent className="p-4 relative">
+              <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-success/5 blur-2xl" />
+              <div className="relative space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-success/10">
+                    <Sprout className="h-4 w-4 text-success" />
+                  </div>
+                  <p className="text-xs font-medium text-muted-foreground">Current Crop</p>
+                </div>
+                <div>
+                  <p className="text-xl md:text-2xl font-bold text-foreground line-clamp-1">
+                    {land.current_crop || 'No Crop'}
+                  </p>
+                  {land.crop_stage && (
+                    <Badge variant="secondary" className="mt-1.5 text-xs bg-success/10 text-success border-success/20">
+                      {land.crop_stage}
+                    </Badge>
+                  )}
+                </div>
               </div>
-              <Droplets className="h-6 w-6 sm:h-8 sm:w-8 text-blue-500 opacity-20" />
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+
+          {/* Soil Health Card */}
+          <Card className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-gradient-to-br from-card to-card/80 overflow-hidden">
+            <CardContent className="p-4 relative">
+              <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-warning/5 blur-2xl" />
+              <div className="relative space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-warning/10">
+                    <Mountain className="h-4 w-4 text-warning" />
+                  </div>
+                  <p className="text-xs font-medium text-muted-foreground">Soil Health</p>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-warning to-success transition-all duration-500"
+                        style={{ width: `${soilHealthScore}%` }}
+                      />
+                    </div>
+                    <span className="text-xl font-bold text-foreground">{soilHealthScore}%</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {soilHealthScore >= 70 ? 'Good' : soilHealthScore >= 40 ? 'Fair' : 'Needs Care'}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Irrigation Card */}
+          <Card className="group hover:shadow-lg transition-all duration-300 border-border/50 bg-gradient-to-br from-card to-card/80 overflow-hidden">
+            <CardContent className="p-4 relative">
+              <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-info/5 blur-2xl" />
+              <div className="relative space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-lg bg-info/10">
+                    <Droplets className="h-4 w-4 text-info" />
+                  </div>
+                  <p className="text-xs font-medium text-muted-foreground">Irrigation</p>
+                </div>
+                <div>
+                  <p className="text-lg md:text-xl font-bold text-foreground line-clamp-1">
+                    {land.irrigation_source || 'Not Set'}
+                  </p>
+                  {land.water_source && (
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                      {land.water_source}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
-      {/* Mobile-optimized Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="w-full overflow-x-auto flex justify-start md:grid md:grid-cols-5 bg-muted/50 p-1 h-auto">
-          <TabsTrigger value="overview" className="text-xs sm:text-sm whitespace-nowrap">Overview</TabsTrigger>
-          <TabsTrigger value="soil" className="text-xs sm:text-sm whitespace-nowrap">Soil</TabsTrigger>
-          <TabsTrigger value="activities" className="text-xs sm:text-sm whitespace-nowrap">Activities</TabsTrigger>
-          <TabsTrigger value="history" className="text-xs sm:text-sm whitespace-nowrap">History</TabsTrigger>
-          <TabsTrigger value="gallery" className="text-xs sm:text-sm whitespace-nowrap">Gallery</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Land Information</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Survey Number</p>
-                <p className="font-medium">{land.survey_number || 'Not Available'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Ownership Type</p>
-                <p className="font-medium">{land.ownership_type || 'Not Specified'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Soil Type</p>
-                <p className="font-medium">{land.soil_type || 'Not Specified'}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Location</p>
-                <p className="font-medium">
-                  {[land.village, land.taluka, land.district, land.state]
-                    .filter(Boolean)
-                    .join(', ')}
-                </p>
-              </div>
-              {land.last_sowing_date && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Last Sowing</p>
-                  <p className="font-medium">
-                    {new Date(land.last_sowing_date).toLocaleDateString()}
-                  </p>
-                </div>
-              )}
-              {land.expected_harvest_date && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Expected Harvest</p>
-                  <p className="font-medium">
-                    {new Date(land.expected_harvest_date).toLocaleDateString()}
-                  </p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Recent Activities */}
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Recent Activities</CardTitle>
-              <Button 
-                size="sm"
-                onClick={() => navigate(`/app/lands/${id}/activities/add`)}
+      {/* Modern Tabs - Large Touch Targets */}
+      <div className="container max-w-7xl mt-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <div className="relative">
+            <TabsList className="w-full h-auto p-1.5 bg-muted/30 rounded-2xl grid grid-cols-5 gap-1">
+              <TabsTrigger 
+                value="overview" 
+                className="min-h-[48px] text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
               >
-                <Plus className="h-4 w-4 mr-1" />
-                Add Activity
-              </Button>
-            </CardHeader>
-            <CardContent>
-              {activities.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">
-                  No activities recorded yet
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {activities.slice(0, 5).map(activity => (
-                    <div key={activity.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                      <div>
-                        <p className="font-medium">{activity.activity_type}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {activity.description}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm">
-                          {new Date(activity.activity_date).toLocaleDateString()}
-                        </p>
-                        {activity.cost && (
-                          <p className="text-sm font-medium">₹{activity.cost}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                <div className="flex flex-col items-center gap-1">
+                  <FileText className="h-4 w-4" />
+                  <span className="hidden sm:inline">Overview</span>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="soil" 
+                className="min-h-[48px] text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
+              >
+                <div className="flex flex-col items-center gap-1">
+                  <Mountain className="h-4 w-4" />
+                  <span className="hidden sm:inline">Soil</span>
+                </div>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="activities" 
+                className="min-h-[48px] text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
+              >
+                <div className="flex flex-col items-center gap-1">
+                  <Activity className="h-4 w-4" />
+                  <span className="hidden sm:inline">Activity</span>
+                </div>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="history" 
+                className="min-h-[48px] text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
+              >
+                <div className="flex flex-col items-center gap-1">
+                  <History className="h-4 w-4" />
+                  <span className="hidden sm:inline">History</span>
+                </div>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="gallery" 
+                className="min-h-[48px] text-sm font-medium rounded-xl data-[state=active]:bg-card data-[state=active]:shadow-md data-[state=active]:text-primary transition-all"
+              >
+                <div className="flex flex-col items-center gap-1">
+                  <Camera className="h-4 w-4" />
+                  <span className="hidden sm:inline">Gallery</span>
+                </div>
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-        <TabsContent value="soil" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Soil Health Overview</CardTitle>
-            </CardHeader>
-            <CardContent>
+          <TabsContent value="overview" className="space-y-4">
+            {/* Land Information Card */}
+            <Card className="border-border/50 shadow-lg">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
+                  <MapPin className="h-5 w-5 text-primary" />
+                  Land Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Info Item */}
+                  <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Survey Number</p>
+                    <p className="text-base font-semibold text-foreground">{land.survey_number || 'Not Available'}</p>
+                  </div>
+                  
+                  <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Ownership Type</p>
+                    <p className="text-base font-semibold text-foreground">{land.ownership_type || 'Not Specified'}</p>
+                  </div>
+                  
+                  <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Soil Type</p>
+                    <p className="text-base font-semibold text-foreground">{land.soil_type || 'Not Specified'}</p>
+                  </div>
+                  
+                  <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Location</p>
+                    <p className="text-base font-semibold text-foreground">
+                      {[land.village, land.taluka, land.district, land.state]
+                        .filter(Boolean)
+                        .join(', ') || 'Not specified'}
+                    </p>
+                  </div>
+                  
+                  {land.last_sowing_date && (
+                    <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
+                      <p className="text-xs font-medium text-muted-foreground mb-1.5">Last Sowing</p>
+                      <p className="text-base font-semibold text-foreground">
+                        {new Date(land.last_sowing_date).toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {land.expected_harvest_date && (
+                    <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
+                      <p className="text-xs font-medium text-muted-foreground mb-1.5">Expected Harvest</p>
+                      <p className="text-base font-semibold text-foreground">
+                        {new Date(land.expected_harvest_date).toLocaleDateString('en-IN', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Recent Activities Card */}
+            <Card className="border-border/50 shadow-lg">
+              <CardHeader className="pb-4">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-primary" />
+                    Recent Activities
+                  </CardTitle>
+                  <Button 
+                    size="lg"
+                    onClick={() => navigate(`/app/lands/${id}/activities/add`)}
+                    className="min-h-[44px] rounded-xl bg-primary hover:bg-primary-hover"
+                  >
+                    <Plus className="h-5 w-5 mr-2" />
+                    <span className="font-medium">Add</span>
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {activities.length === 0 ? (
+                  <div className="py-12 text-center">
+                    <div className="mx-auto w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                      <Activity className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <p className="text-base font-medium text-muted-foreground">
+                      No activities recorded yet
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Start tracking your farm activities
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {activities.slice(0, 5).map(activity => (
+                      <div 
+                        key={activity.id} 
+                        className="flex items-center justify-between p-4 rounded-xl bg-muted/30 border border-border/30 hover:border-primary/30 hover:bg-primary/5 transition-all"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-base text-foreground">{activity.activity_type}</p>
+                          {activity.description && (
+                            <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
+                              {activity.description}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right ml-4">
+                          <p className="text-sm font-medium text-foreground">
+                            {new Date(activity.activity_date).toLocaleDateString('en-IN', {
+                              day: 'numeric',
+                              month: 'short'
+                            })}
+                          </p>
+                          {activity.cost && (
+                            <p className="text-sm font-semibold text-primary mt-0.5">₹{activity.cost}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="soil" className="space-y-4">
+            <Card className="border-border/50 shadow-lg">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
+                  <Mountain className="h-5 w-5 text-primary" />
+                  Soil Health Overview
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <h3 className="font-semibold mb-4">Soil Composition</h3>
@@ -642,7 +820,7 @@ export default function LandDetails() {
                     <Tooltip />
                     <Legend />
                     <Line yAxisId="left" type="monotone" dataKey="yield" stroke="hsl(var(--primary))" name="Yield" />
-                    <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="#10b981" name="Revenue (₹)" />
+                    <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="hsl(var(--success))" name="Revenue (₹)" />
                   </LineChart>
                 </ResponsiveContainer>
               )}
@@ -709,22 +887,28 @@ export default function LandDetails() {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
+        </Tabs>
+      </div>
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-md mx-4 rounded-2xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete the land "{land.name}" and all associated data. 
-              This action cannot be undone.
+            <div className="mx-auto w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+              <AlertTriangle className="h-8 w-8 text-destructive" />
+            </div>
+            <AlertDialogTitle className="text-xl text-center">Delete Land Parcel?</AlertDialogTitle>
+            <AlertDialogDescription className="text-center text-base">
+              This will permanently delete "{land.name}" and all associated data. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
-              Delete
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel className="min-h-[48px] rounded-xl font-medium">Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDelete} 
+              className="min-h-[48px] rounded-xl bg-destructive hover:bg-destructive/90 font-medium"
+            >
+              Delete Permanently
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

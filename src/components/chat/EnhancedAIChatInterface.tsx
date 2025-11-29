@@ -19,7 +19,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
-import { useTenantStore } from '@/stores/tenantStore';
+import { useTenant } from '@/contexts/TenantContext';
 import { landsApi } from '@/services/landsApi';
 import { LandContextCard } from './LandContextCard';
 import { GeneralChatWelcomeCard } from './GeneralChatWelcomeCard';
@@ -55,11 +55,19 @@ export function EnhancedAIChatInterface() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const tenantStore = useTenantStore();
-  const currentTenant = (tenantStore as any).tenant;
+  const { tenant, isLoading: isTenantLoading } = useTenant();
   const langStore = useLanguageStore();
   const language = (langStore as any).selectedLanguage || 'en';
   const isOnline = useOfflineStatus();
+  
+  // Guard: Don't render until tenant is loaded
+  if (isTenantLoading || !tenant || !user) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
   
   const [activeTab, setActiveTab] = useState('general');
   const [lands, setLands] = useState<any[]>([]);
@@ -201,7 +209,7 @@ export function EnhancedAIChatInterface() {
         .from('ai_chat_sessions')
         .select('id')
         .eq('farmer_id', user?.id)
-        .eq('tenant_id', currentTenant?.id)
+        .eq('tenant_id', tenant?.id)
         .eq('land_id', landId)
         .eq('is_active', true)
         .order('updated_at', { ascending: false })
@@ -422,8 +430,8 @@ export function EnhancedAIChatInterface() {
       const landId = activeTab !== 'general' ? activeTab : undefined;
       const land = landId ? lands.find(l => l.id === landId) : null;
       
-      const tenantId = currentTenant?.id || '00000000-0000-0000-0000-000000000000';
-      const farmerId = user?.id || '00000000-0000-0000-0000-000000000000';
+      const tenantId = tenant.id;
+      const farmerId = user.id;
       
       // Create session in database only if it's a new session (not loaded from DB)
       if (!loadedSessionIds.has(sessionId)) {
@@ -630,8 +638,8 @@ export function EnhancedAIChatInterface() {
       if (!sessionIds[activeTab]) {
         await supabase.from('ai_chat_sessions').insert({
           id: sessionId,
-          tenant_id: currentTenant?.id || '00000000-0000-0000-0000-000000000000',
-          farmer_id: user?.id || '00000000-0000-0000-0000-000000000000',
+          tenant_id: tenant.id,
+          farmer_id: user.id,
           session_type: activeTab === 'general' ? 'general' : 'land_specific',
           session_title: activeTab === 'general' ? 'General Agriculture Chat' : land?.name,
           land_id: land?.id || null,
@@ -647,8 +655,8 @@ export function EnhancedAIChatInterface() {
       
       // Store user message
       await supabase.from('ai_chat_messages').insert({
-        tenant_id: currentTenant?.id || '00000000-0000-0000-0000-000000000000',
-        farmer_id: user?.id || '00000000-0000-0000-0000-000000000000',
+        tenant_id: tenant.id,
+        farmer_id: user.id,
         session_id: sessionId,
         role: 'user',
         content: userMessage.content,
@@ -684,8 +692,8 @@ export function EnhancedAIChatInterface() {
       
       // Store AI response
       await supabase.from('ai_chat_messages').insert({
-        tenant_id: currentTenant?.id || '00000000-0000-0000-0000-000000000000',
-        farmer_id: user?.id || '00000000-0000-0000-0000-000000000000',
+        tenant_id: tenant.id,
+        farmer_id: user.id,
         session_id: sessionId,
         role: 'assistant',
         content: aiMessage.content,
@@ -704,8 +712,8 @@ export function EnhancedAIChatInterface() {
       
       // Update analytics
       await supabase.from('ai_chat_analytics').upsert({
-        tenant_id: currentTenant?.id || '00000000-0000-0000-0000-000000000000',
-        farmer_id: user?.id || '00000000-0000-0000-0000-000000000000',
+        tenant_id: tenant.id,
+        farmer_id: user.id,
         date: new Date().toISOString().split('T')[0],
         total_messages: 2,
         total_sessions: 1,
