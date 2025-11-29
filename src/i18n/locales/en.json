@@ -310,6 +310,8 @@
     "enableVoiceNav": "Enable voice navigation",
     "disableVoiceNav": "Disable voice navigation",
     "voiceInputActive": "Voice input active",
+    "close": "Close Voice",
+    "start": "Voice Assistant",
     "commands": {
       "home": "Home",
       "lands": "My lands",
@@ -321,6 +323,9 @@
       "community": "Community",
       "analytics": "Analytics"
     }
+  },
+  "feature": {
+    "title": "Features"
   },
   "instaScan": {
     "title": "InstaScan",
