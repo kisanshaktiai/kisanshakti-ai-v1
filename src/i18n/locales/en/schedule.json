@@ -1,0 +1,105 @@
+{
+  "__meta": {
+    "page": "schedule",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "schedule": {
+    "title": "Crop Schedule",
+    "generate": "Generate Schedule",
+    "ai_schedule": "AI Smart Schedule",
+    "manual_entry": "Manual Entry",
+    "filters": {
+      "all": "All Tasks",
+      "pending": "Pending",
+      "completed": "Completed",
+      "overdue": "Overdue",
+      "upcoming": "Upcoming"
+    },
+    "time_view": {
+      "today": "Today",
+      "week": "Week",
+      "month": "Month",
+      "all": "All"
+    },
+    "task": {
+      "mark_complete": "Mark as Completed",
+      "skip": "Skip Task",
+      "reschedule": "Reschedule",
+      "details": "Task Details",
+      "priority": "Priority",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low",
+      "status": {
+        "pending": "Pending",
+        "completed": "Completed",
+        "skipped": "Skipped",
+        "overdue": "Overdue"
+      }
+    },
+    "stages": {
+      "land_prep": "Land Preparation",
+      "sowing": "Sowing",
+      "irrigation": "Irrigation",
+      "fertilizer": "Fertilization",
+      "pest_control": "Pest Control",
+      "weeding": "Weeding",
+      "harvest": "Harvesting"
+    },
+    "badges": {
+      "weather": "Weather",
+      "ai_adjusted": "AI Adjusted",
+      "critical": "Critical",
+      "optimal": "Optimal"
+    },
+    "empty": {
+      "title": "No Tasks Scheduled",
+      "message": "Generate an AI schedule or add tasks manually",
+      "no_tasks_period": "No tasks for this period"
+    },
+    "stats": {
+      "total_tasks": "Total Tasks",
+      "completed": "Completed",
+      "pending": "Pending",
+      "completion_rate": "Completion Rate"
+    },
+    "alerts": {
+      "weather_warning": "Weather Alert: {{message}}",
+      "task_due": "Task due in {{hours}} hours",
+      "overdue_tasks": "You have {{count}} overdue tasks"
+    },
+    "cta": {
+      "add_task": "Add Task",
+      "view_calendar": "View Calendar",
+      "refresh": "Refresh Schedule"
+    },
+    "toast": {
+      "task_completed": "Task marked as completed",
+      "task_skipped": "Task skipped",
+      "schedule_generated": "Schedule generated successfully",
+      "error": "Failed to update task"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show today's tasks",
+      "Mark task as complete",
+      "Generate crop schedule",
+      "Show pending tasks"
+    ],
+    "voice_examples_hi": [
+      "आज के कार्य दिखाओ",
+      "कार्य पूर्ण के रूप में चिह्नित करें",
+      "फसल अनुसूची बनाएं",
+      "लंबित कार्य दिखाओ"
+    ],
+    "voice_examples_mr": [
+      "आजची कामे दाखवा",
+      "काम पूर्ण म्हणून चिन्हांकित करा",
+      "पीक वेळापत्रक तयार करा",
+      "प्रलंबित कामे दाखवा"
+    ]
+  }
+}
