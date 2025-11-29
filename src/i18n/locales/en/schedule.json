@@ -16,6 +16,52 @@
       "schedule_view": "Step 3: AI Schedule",
       "of_total": "Step {{current}} of {{total}}"
     },
+    "land_selector": {
+      "ai_schedule_ready": "AI Schedule Ready",
+      "generate_schedule": "Generate Schedule",
+      "active": "Active",
+      "click_to_view": "Click to view",
+      "view": "View",
+      "edit": "Edit",
+      "delete": "Delete",
+      "delete_dialog": {
+        "title": "Delete Schedule",
+        "description": "Are you sure you want to delete this AI crop schedule? This action cannot be undone.",
+        "cancel": "Cancel",
+        "delete": "Delete"
+      },
+      "toast": {
+        "deleted": "Schedule Deleted",
+        "deleted_message": "AI crop schedule has been removed",
+        "delete_failed": "Delete Failed",
+        "delete_failed_message": "Failed to delete schedule"
+      }
+    },
+    "crop_input": {
+      "variety_label": "Variety (Optional)",
+      "variety_placeholder": "e.g., IR-64, HD-2967, BT Cotton",
+      "ready_made_plant": "Using ready-made nursery plants",
+      "ready_made_description": "Check if planting seedlings/transplants instead of sowing seeds",
+      "sowing_date": "Sowing Date",
+      "planting_date": "Planting Date",
+      "pick_date": "Pick a date",
+      "generate_ai_schedule": "Generate AI Schedule",
+      "generating": "Generating AI Schedule...",
+      "select_crop": "Select Crop",
+      "please_select_crop": "Please select a crop",
+      "select_date": "Select Date",
+      "please_select_date": "Please select the sowing date",
+      "water": "Water"
+    },
+    "schedule_view": {
+      "no_active_schedule": "No Active Schedule",
+      "no_schedule_available": "No Schedule Available",
+      "no_schedule_description": "Generate an AI-powered crop schedule to get personalized farming tasks and recommendations",
+      "generate_schedule": "Generate Schedule",
+      "ai_schedule": "AI Schedule",
+      "loading": "Loading schedule data...",
+      "standard_variety": "Standard Variety"
+    },
     "loading": {
       "syncing": "Syncing data from server..."
     },
