@@ -1,0 +1,147 @@
+{
+  "__meta": {
+    "page": "weather",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "weather": {
+    "header": {
+      "title": "Weather",
+      "current_location": "Current Location",
+      "updated_now": "just now",
+      "updated_minutes": "{{minutes}}m ago",
+      "updated_hour": "1h ago",
+      "updated_hours": "{{hours}}h ago"
+    },
+    "hero": {
+      "feels_like": "Feels like {{temp}}°C",
+      "provider": "Data from {{provider}}"
+    },
+    "stats": {
+      "wind": "Wind",
+      "humidity": "Humidity",
+      "visibility": "Visibility",
+      "pressure": "Pressure"
+    },
+    "units": {
+      "celsius": "°C",
+      "kmh": "km/h",
+      "percent": "%",
+      "km": "km",
+      "hpa": "hPa",
+      "mm": "mm"
+    },
+    "forecast": {
+      "title": "7-Day Forecast",
+      "daily": "Daily",
+      "hourly": "Hourly",
+      "today": "Today",
+      "week": "Week",
+      "days_7": "7 Days",
+      "temp_max": "High",
+      "temp_min": "Low",
+      "rain_chance": "Rain"
+    },
+    "rainfall": {
+      "title": "Rainfall",
+      "today": "Today",
+      "week": "Week",
+      "chart_label": "Rainfall (mm)",
+      "cumulative": "Cumulative",
+      "no_rain": "No rain expected"
+    },
+    "farming": {
+      "title": "Farming Recommendations",
+      "irrigation": "Irrigation",
+      "spraying": "Spraying",
+      "planting": "Planting",
+      "high": "HIGH",
+      "medium": "MEDIUM",
+      "low": "LOW",
+      "good": "GOOD",
+      "moderate": "MODERATE",
+      "avoid": "AVOID",
+      "favorable": "FAVORABLE",
+      "ok": "OK",
+      "not_recommended": "NOT RECOMMENDED"
+    },
+    "voice": {
+      "read": "Read Aloud",
+      "stop": "Stop Reading",
+      "summary": "Today's weather: {{temp}} degrees celsius, {{condition}}. It feels like {{feelsLike}} degrees. Humidity is {{humidity}} percent. Wind speed is {{windSpeed}} kilometers per hour. {{rainInfo}} {{advice}}",
+      "high_rain_advice": "Avoid spraying today due to high rain probability.",
+      "high_wind_advice": "Be careful with spraying due to strong winds.",
+      "irrigation_advice": "Consider increasing irrigation due to hot and dry conditions.",
+      "good_conditions": "Weather conditions are favorable for farming activities.",
+      "rain_expected": "Rain probability is {{chance}} percent.",
+      "no_rain": "No rain expected."
+    },
+    "toast": {
+      "sync_success": "Weather data synced successfully",
+      "sync_error": "Failed to sync weather data",
+      "location_error": "Unable to get your location",
+      "offline": "You're offline. Showing cached weather data.",
+      "refresh_hint": "Pull down to refresh"
+    },
+    "error": {
+      "title": "Weather Data Unavailable",
+      "message": "Unable to load weather information. Please check your connection and try again.",
+      "network": "Network error. Please check your internet connection.",
+      "location": "Location access denied. Enable location to get accurate weather.",
+      "server": "Weather service temporarily unavailable.",
+      "retry": "Retry"
+    },
+    "empty": {
+      "no_data": "No weather data available",
+      "enable_location": "Enable location to view weather"
+    },
+    "cta": {
+      "refresh": "Refresh",
+      "retry": "Retry",
+      "enable_location": "Enable Location"
+    },
+    "chart": {
+      "temperature": "Temperature",
+      "rain_probability": "Rain %",
+      "humidity": "Humidity",
+      "wind_speed": "Wind Speed",
+      "x_axis_hours": "Time",
+      "y_axis_temp": "°C",
+      "tooltip_temp": "Temperature: {{value}}°C",
+      "tooltip_feels": "Feels like: {{value}}°C",
+      "tooltip_rain": "Rain: {{value}}%"
+    },
+    "aria": {
+      "refresh_button": "Refresh weather data",
+      "back_button": "Go back",
+      "hero_card": "Current weather information",
+      "stats_grid": "Weather statistics",
+      "forecast_card": "Weather forecast for {{day}}",
+      "rainfall_chart": "Rainfall chart for 7 days",
+      "farming_recommendations": "Farming recommendations based on weather",
+      "voice_summary": "Read weather summary aloud",
+      "hourly_chart": "Hourly temperature forecast"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show today's weather",
+      "What's the weather forecast?",
+      "Read the weather report",
+      "How much rain is expected?"
+    ],
+    "voice_examples_hi": [
+      "आज का मौसम दिखाओ",
+      "मौसम का पूर्वानुमान क्या है?",
+      "मौसम रिपोर्ट पढ़ो",
+      "कितनी बारिश होगी?"
+    ],
+    "voice_examples_mr": [
+      "आजचे हवामान दाखवा",
+      "हवामानाचा अंदाज काय आहे?",
+      "हवामान अहवाल वाचा",
+      "किती पाऊस अपेक्षित आहे?"
+    ]
+  }
+}
