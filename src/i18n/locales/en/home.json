@@ -9,11 +9,22 @@
     "namaste": "Namaste, {{name}}",
     "last_synced": "Last synced: {{time}}",
     "default_name": "Farmer",
+    "loading": "Loading...",
+    "view": "View",
+    "unnamed_land": "Unnamed Land",
+    "location_not_set": "Location not set",
+    "no_crop": "No crop",
+    "recent_activity": "Recent Activity",
     "stats": {
       "temperature": "Temperature",
       "humidity": "Humidity",
       "wind_speed": "Wind Speed",
+      "wind": "Wind",
+      "pressure": "Pressure",
+      "temp": "Temp",
       "total_area": "Total Area",
+      "plots": "Plots",
+      "area": "Area",
       "no_land": "No land"
     },
     "features": {
