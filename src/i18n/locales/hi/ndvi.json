@@ -1,0 +1,104 @@
+{
+  "__meta": {
+    "page": "ndvi",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29",
+    "translation_status": "MACHINE_ASSISTED"
+  },
+  "ndvi": {
+    "title": "NDVI विश्लेषण",
+    "subtitle": "सैटेलाइट फसल स्वास्थ्य निगरानी",
+    "satellite_monitoring": "सैटेलाइट निगरानी",
+    "select_your_field": "अपना खेत चुनें",
+    "choose_field_analyze": "विश्लेषण के लिए एक खेत चुनें",
+    "no_fields_found": "कोई खेत नहीं मिला",
+    "add_first_field": "अपना पहला खेत जोड़ें",
+    "health_status": {
+      "excellent": "उत्कृष्ट स्वास्थ्य",
+      "good": "अच्छा स्वास्थ्य",
+      "moderate": "मध्यम स्वास्थ्य",
+      "poor": "खराब स्वास्थ्य"
+    },
+    "fetching_data": "सैटेलाइट डेटा प्राप्त हो रहा है...",
+    "advice": {
+      "crop_very_healthy": "🌱 बहुत बढ़िया! आपकी फसल एकदम स्वस्थ है",
+      "good_improve": "🌿 अच्छा! थोड़ा सुधार कर सकते हैं",
+      "attention_stress": "⚠️ ध्यान दें! फसल में तनाव है",
+      "critical_action": "🆘 गंभीर! तुरंत कार्रवाई करें"
+    },
+    "actions": {
+      "maintain_water": "पानी की वर्तमान मात्रा बनाए रखें",
+      "continue_monitoring": "कीटों की नियमित जांच करते रहें",
+      "check_in_days": "{{days}} दिन बाद फिर चेक करें",
+      "increase_irrigation": "💧 पानी की मात्रा बढ़ाएं",
+      "apply_fertilizer": "हल्का उर्वरक दे सकते हैं",
+      "remove_weeds": "खरपतवार हटाएं",
+      "check_leaf_color": "पत्तों का रंग देखें",
+      "irrigate_immediately": "🚨 तुरंत पानी दें",
+      "check_nutrients": "🌾 उर्वरक की जांच करें",
+      "look_pests": "🐛 कीट-रोग देखें",
+      "contact_expert": "📞 विशेषज्ञ से बात करें",
+      "check_tomorrow": "कल फिर जांचें",
+      "take_photos": "फोटो लेकर रखें",
+      "water_now": "💦 अभी पानी दें",
+      "call_officer": "☎️ कृषि अधिकारी को बुलाएं",
+      "apply_treatment": "💊 दवा छिड़काव करें",
+      "inform_insurance": "📋 बीमा कंपनी को सूचना दें",
+      "check_daily": "रोज़ जांचें",
+      "document_evidence": "सबूत इकट्ठा करें"
+    },
+    "next_steps": {
+      "record_height": "फसल की ऊंचाई नोट करें",
+      "monitor_weather": "मौसम पर नज़र रखें"
+    },
+    "indices": {
+      "ndvi": "NDVI",
+      "ndwi": "जल तनाव",
+      "evi": "वनस्पति स्वास्थ्य",
+      "savi": "मिट्टी की नमी"
+    },
+    "map": {
+      "view_map": "नक्शा देखें",
+      "satellite_view": "सैटेलाइट दृश्य",
+      "health_overlay": "स्वास्थ्य ओवरले"
+    },
+    "historical": {
+      "trend": "ऐतिहासिक प्रवृत्ति",
+      "last_30_days": "पिछले 30 दिन",
+      "comparison": "तारीखों की तुलना करें"
+    },
+    "metadata": {
+      "cloud_coverage": "बादल कवरेज",
+      "last_updated": "अंतिम अपडेट",
+      "days_ago": "{{count}} दिन पहले",
+      "satellite_source": "सैटेलाइट स्रोत"
+    },
+    "refresh": {
+      "data_refreshed": "✅ डेटा रीफ्रेश किया गया",
+      "latest_data": "नवीनतम सैटेलाइट डेटा लोड किया गया",
+      "refresh_failed": "❌ रीफ्रेश विफल",
+      "try_again": "कृपया पुनः प्रयास करें"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show NDVI analysis",
+      "Check crop health",
+      "Satellite monitoring",
+      "View field health"
+    ],
+    "voice_examples_hi": [
+      "NDVI विश्लेषण दिखाएं",
+      "फसल स्वास्थ्य जांचें",
+      "सैटेलाइट निगरानी",
+      "खेत स्वास्थ्य देखें"
+    ],
+    "voice_examples_mr": [
+      "NDVI विश्लेषण दाखवा",
+      "पीक आरोग्य तपासा",
+      "उपग्रह निरीक्षण",
+      "शेत आरोग्य पहा"
+    ]
+  }
+}
