@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, useAnimation } from 'framer-motion';
-import { 
+import { useTranslation } from 'react-i18next';
+import {
   Cloud, CloudRain, Sun, Wind, Droplets, Eye, Gauge, 
   Thermometer, CloudSnow, CloudDrizzle, CloudLightning,
   Sunrise, Sunset, Navigation, AlertTriangle, Info,
@@ -38,6 +39,7 @@ import { PullRefreshController } from '@/components/weather/PullRefreshControlle
 import { HourlyForecastChart } from '@/components/weather/HourlyForecastChart';
 
 export default function Weather() {
+  const { t } = useTranslation();
   const { currentWeather, forecast, hourlyForecast, loading, error, refetch, lastUpdated } = useWeather();
   
   /**
@@ -133,16 +135,16 @@ export default function Weather() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-destructive">
                 <AlertTriangle className="h-5 w-5" />
-                Weather Data Unavailable
+                {t('weather.error.title')}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-muted-foreground">
-                {error || 'Unable to load weather information. Please check your connection and try again.'}
+                {error || t('weather.error.message')}
               </p>
               <Button onClick={handleManualSync} className="w-full" size="lg">
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Retry
+                {t('weather.error.retry')}
               </Button>
             </CardContent>
           </Card>
@@ -277,23 +279,23 @@ export default function Weather() {
                 <CardTitle className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-1.5">
                     <Umbrella className="h-3.5 w-3.5 text-primary" />
-                    Rainfall
+                    {t('weather.rainfall.title')}
                   </span>
-                  <Badge variant="secondary" className="text-xs">7 Days</Badge>
+                  <Badge variant="secondary" className="text-xs">{t('weather.forecast.days_7')}</Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 pb-3">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <p className="text-[10px] text-muted-foreground">Today</p>
+                    <p className="text-[10px] text-muted-foreground">{t('weather.rainfall.today')}</p>
                     <p className="text-lg font-bold text-primary">
-                      {forecast && forecast[0]?.rain ? forecast[0].rain.toFixed(1) : '0.0'} mm
+                      {forecast && forecast[0]?.rain ? forecast[0].rain.toFixed(1) : '0.0'} {t('weather.units.mm')}
                     </p>
                   </div>
                   <div>
-                    <p className="text-[10px] text-muted-foreground">Week</p>
+                    <p className="text-[10px] text-muted-foreground">{t('weather.rainfall.week')}</p>
                     <p className="text-lg font-bold text-primary">
-                      {forecast ? forecast.slice(0, 7).reduce((sum, day) => sum + (day.rain || 0), 0).toFixed(1) : '0.0'} mm
+                      {forecast ? forecast.slice(0, 7).reduce((sum, day) => sum + (day.rain || 0), 0).toFixed(1) : '0.0'} {t('weather.units.mm')}
                     </p>
                   </div>
                 </div>
@@ -307,7 +309,7 @@ export default function Weather() {
 
           {/* 7-Day Forecast */}
           <div className="px-4 py-3">
-            <h3 className="text-base font-bold mb-3">7-Day Forecast</h3>
+            <h3 className="text-base font-bold mb-3">{t('weather.forecast.title')}</h3>
             <div className="grid grid-cols-7 gap-1.5">
               {forecast.slice(0, 7).map((day, index) => (
                 <motion.div
