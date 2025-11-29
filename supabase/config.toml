@@ -15,6 +15,9 @@ verify_jwt = false
 [functions.ai-agriculture-chat]
 verify_jwt = true
 
+[functions.ai-crop-scan]
+verify_jwt = true
+
 [functions.google-maps-config]
 verify_jwt = false
 
