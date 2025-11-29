@@ -100,7 +100,15 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
         {t('weather.farming.title', 'Farming Recommendations')}
       </h3>
 
-      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
+      {/* FIX: Improved horizontal scroll with better snap and touch handling */}
+      <div 
+        className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory"
+        style={{
+          scrollSnapType: 'x mandatory',
+          WebkitOverflowScrolling: 'touch',
+          scrollBehavior: 'smooth'
+        }}
+      >
         {recommendations.map((rec, index) => (
           <motion.div
             key={rec.title}
