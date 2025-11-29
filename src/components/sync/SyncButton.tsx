@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
+import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { localDB } from '@/services/localDB';
 import {
@@ -17,6 +18,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 export function SyncButton() {
+  const { t } = useTranslation();
   const [syncing, setSyncing] = useState(false);
   const [syncSuccess, setSyncSuccess] = useState(false);
   const [syncError, setSyncError] = useState(false);
@@ -45,10 +47,10 @@ export function SyncButton() {
     try {
       // Show appropriate toast based on sync type
       toast({
-        title: forceFull ? "🔄 Full sync starting..." : "🔄 Syncing data...",
+        title: forceFull ? t('sync.full_sync_starting') : t('sync.syncing'),
         description: forceFull 
-          ? "Clearing local data and reloading from server..." 
-          : "Please wait while we update your data",
+          ? t('sync.clearing_and_reloading')
+          : t('sync.please_wait'),
         duration: 2000,
       });
 
@@ -77,10 +79,10 @@ export function SyncButton() {
         setSyncSuccess(true);
         
         toast({
-          title: "✅ Sync complete!",
+          title: t('sync.sync_complete'),
           description: forceFull 
-            ? "All data reloaded from server - please refresh if needed" 
-            : (result.message || "All data is up to date"),
+            ? t('sync.data_reloaded')
+            : (result.message || t('sync.all_up_to_date')),
           duration: 3000,
         });
 
@@ -88,14 +90,14 @@ export function SyncButton() {
         if (forceFull) {
           setTimeout(() => {
             toast({
-              title: "💡 Tip",
-              description: "For best results, refresh the page after full sync",
+              title: t('sync.tip'),
+              description: t('sync.refresh_suggestion'),
               action: (
                 <Button
                   size="sm"
                   onClick={() => window.location.reload()}
                 >
-                  Refresh Now
+                  {t('sync.refresh_now')}
                 </Button>
               ),
             });
@@ -111,8 +113,8 @@ export function SyncButton() {
       } else {
         setSyncError(true);
         toast({
-          title: "⚠️ Sync partially completed",
-          description: result.errors?.join(', ') || "Some data could not be synced",
+          title: t('sync.sync_partial'),
+          description: result.errors?.join(', ') || t('sync.some_data_failed'),
           variant: "destructive",
           duration: 4000,
         });
@@ -122,8 +124,8 @@ export function SyncButton() {
       setSyncError(true);
       console.error('❌ [SyncButton] Sync failed:', error);
       toast({
-        title: "❌ Sync failed",
-        description: "Please check your connection and try again",
+        title: t('sync.sync_failed'),
+        description: t('sync.check_connection'),
         variant: "destructive",
         duration: 4000,
       });
@@ -143,7 +145,7 @@ export function SyncButton() {
           className="relative bg-muted/50"
         >
           <WifiOff className="h-4 w-4 text-muted-foreground" />
-          <span className="sr-only">Offline</span>
+          <span className="sr-only">{t('sync.offline')}</span>
         </Button>
         {pendingChanges > 0 && (
           <span className="absolute -top-1 -right-1 h-3 w-3 bg-warning rounded-full animate-pulse" />
@@ -187,27 +189,27 @@ export function SyncButton() {
                 />
               )}
             </div>
-            <span className="sr-only">Sync data</span>
+            <span className="sr-only">{t('sync.sync_data')}</span>
           </Button>
         </DropdownMenuTrigger>
         
         <DropdownMenuContent align="end" className="w-56">
           <DropdownMenuItem onClick={() => handleSync(false)}>
             <RefreshCw className="mr-2 h-4 w-4" />
-            <span>Quick Sync</span>
+            <span>{t('sync.quick_sync')}</span>
           </DropdownMenuItem>
           
           <DropdownMenuItem onClick={() => handleSync(true)}>
             <Database className="mr-2 h-4 w-4" />
-            <span>Full Reload from Server</span>
+            <span>{t('sync.full_reload')}</span>
           </DropdownMenuItem>
           
           <DropdownMenuSeparator />
           
           <div className="px-2 py-1.5 text-xs text-muted-foreground">
             {pendingChanges > 0 
-              ? `${pendingChanges} pending change${pendingChanges > 1 ? 's' : ''}`
-              : 'All data synced'
+              ? t('sync.pending_changes', { count: pendingChanges })
+              : t('sync.all_synced')
             }
           </div>
         </DropdownMenuContent>

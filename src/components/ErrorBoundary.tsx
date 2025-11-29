@@ -2,6 +2,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { AlertTriangle } from 'lucide-react';
+import i18n from '@/i18n/config';
 
 interface Props {
   children: ReactNode;
@@ -44,15 +45,15 @@ class ErrorBoundary extends Component<Props, State> {
             
             <div className="space-y-2">
               <h2 className="text-xl font-semibold text-foreground">
-                Oops! Something went wrong
+                {i18n.t('error.something_went_wrong')}
               </h2>
               <p className="text-sm text-muted-foreground">
-                We're sorry for the inconvenience. Please try refreshing the page.
+                {i18n.t('error.please_refresh')}
               </p>
               {this.state.error && (
                 <details className="mt-4 text-left">
                   <summary className="text-xs text-muted-foreground cursor-pointer">
-                    Error details
+                    {i18n.t('error.error_details')}
                   </summary>
                   <pre className="mt-2 text-xs bg-muted p-2 rounded overflow-auto">
                     {this.state.error.toString()}
@@ -62,7 +63,7 @@ class ErrorBoundary extends Component<Props, State> {
             </div>
 
             <Button onClick={this.handleReset} className="w-full">
-              Refresh Page
+              {i18n.t('error.refresh_page')}
             </Button>
           </Card>
         </div>

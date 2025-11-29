@@ -8,22 +8,22 @@ export default function Schemes() {
 
   const schemes = [
     {
-      title: 'PM-KISAN',
-      description: 'Direct income support of ₹6000 per year',
-      eligibility: 'Small and marginal farmers',
-      amount: '₹6000/year',
+      title: t('schemes.pm_kisan_title'),
+      description: t('schemes.pm_kisan_description'),
+      eligibility: t('schemes.pm_kisan_eligibility'),
+      amount: t('schemes.pm_kisan_amount'),
     },
     {
-      title: 'Crop Insurance',
-      description: 'Insurance coverage for crop loss',
-      eligibility: 'All farmers',
-      amount: 'Variable',
+      title: t('schemes.crop_insurance_title'),
+      description: t('schemes.crop_insurance_description'),
+      eligibility: t('schemes.crop_insurance_eligibility'),
+      amount: t('schemes.crop_insurance_amount'),
     },
     {
-      title: 'Soil Health Card',
-      description: 'Free soil testing and recommendations',
-      eligibility: 'All farmers',
-      amount: 'Free',
+      title: t('schemes.soil_health_title'),
+      description: t('schemes.soil_health_description'),
+      eligibility: t('schemes.soil_health_eligibility'),
+      amount: t('schemes.soil_health_amount'),
     },
   ];
 
@@ -44,16 +44,16 @@ export default function Schemes() {
               <p className="text-sm text-muted-foreground">{scheme.description}</p>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Eligibility:</span>
+                  <span className="text-muted-foreground">{t('schemes.eligibility_label')}</span>
                   <span className="font-medium">{scheme.eligibility}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Amount:</span>
+                  <span className="text-muted-foreground">{t('schemes.amount_label')}</span>
                   <span className="font-medium text-success">{scheme.amount}</span>
                 </div>
               </div>
               <Button className="w-full" size="sm">
-                Apply Now
+                {t('schemes.apply_now')}
                 <ExternalLink className="w-3 h-3 ml-2" />
               </Button>
             </CardContent>
