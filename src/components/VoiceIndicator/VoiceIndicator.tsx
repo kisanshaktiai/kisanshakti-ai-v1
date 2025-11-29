@@ -1,9 +1,9 @@
 import React from 'react';
-import { useVoiceNavigation } from '@/contexts/VoiceNavigationContext';
+import { useModernVoice } from '@/contexts/ModernVoiceContext';
 import { Mic, Volume2 } from 'lucide-react';
 
 export const VoiceIndicator: React.FC = () => {
-  const { isListening, isSpeaking } = useVoiceNavigation();
+  const { isListening, isSpeaking } = useModernVoice();
   
   if (!isListening && !isSpeaking) return null;
 
