@@ -5,15 +5,18 @@ import hi from './locales/hi.json';
 import pa from './locales/pa.json';
 import mr from './locales/mr.json';
 import ta from './locales/ta.json';
+import enWeather from './locales/en/weather.json';
+import hiWeather from './locales/hi/weather.json';
+import mrWeather from './locales/mr/weather.json';
 
 i18n
   .use(initReactI18next)
   .init({
     resources: {
-      en: { translation: en },
-      hi: { translation: hi },
+      en: { translation: { ...en, ...enWeather.weather } },
+      hi: { translation: { ...hi, ...hiWeather.weather } },
       pa: { translation: pa },
-      mr: { translation: mr },
+      mr: { translation: { ...mr, ...mrWeather.weather } },
       ta: { translation: ta },
     },
     lng: 'hi', // Default language
