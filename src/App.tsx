@@ -412,7 +412,7 @@ export default function App() {
               <Toaster />
               <Sonner />
               <PWAUpdatePrompt />
-              <PWAInstallPrompt />
+              <PWAInstallBanner />
             </TooltipProvider>
           </QueryClientProvider>
         </TenantProvider>
