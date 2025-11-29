@@ -3,6 +3,7 @@ import { DatabaseIntentMatcher } from './databaseIntentMatcher';
 import { VoiceAnalytics } from './voiceAnalytics';
 import { DialogManager } from './DialogManager';
 import { SlotExtractor } from './SlotExtractor';
+import { LanguageDetector } from './LanguageDetector';
 
 export class VoiceService {
   private config: VoiceConfig;
@@ -10,6 +11,7 @@ export class VoiceService {
   private analytics: VoiceAnalytics;
   private dialogManager: DialogManager;
   private slotExtractor: SlotExtractor;
+  private languageDetector: LanguageDetector;
   private tenantId: string = '';
   private recognition: any = null;
   private synthesis: SpeechSynthesis;
@@ -23,6 +25,7 @@ export class VoiceService {
     this.analytics = new VoiceAnalytics(config);
     this.dialogManager = new DialogManager();
     this.slotExtractor = new SlotExtractor(config.language);
+    this.languageDetector = new LanguageDetector();
     this.synthesis = window.speechSynthesis;
 
     // Load intents for current language
@@ -240,12 +243,32 @@ export class VoiceService {
     return this.slotExtractor;
   }
 
+  getLanguageDetector(): LanguageDetector {
+    return this.languageDetector;
+  }
+
   getAnalytics(): VoiceAnalytics {
     return this.analytics;
   }
 
   getLastSpokenText(): string {
     return this.lastSpokenText;
+  }
+
+  /**
+   * Auto-detect language from transcript
+   */
+  detectLanguage(transcript: string): string {
+    const detection = this.languageDetector.detectLanguage(transcript);
+    return detection.primaryLanguage;
+  }
+
+  /**
+   * Check if transcript is code-switching (mixed languages)
+   */
+  isCodeSwitching(transcript: string): boolean {
+    const detection = this.languageDetector.detectLanguage(transcript);
+    return detection.isCodeSwitching;
   }
 
   isSupported(): boolean {
