@@ -56,13 +56,32 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
   const [suggestions, setSuggestions] = useState<VoiceSuggestion[]>([]);
   const [showPanel, setShowPanel] = useState(false);
   const [isSpeakingSuggestion, setIsSpeakingSuggestion] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(true);
   const isPressedRef = useRef(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Pre-fetch suggestions on mount to avoid race conditions
+  // Pre-fetch suggestions on mount and show welcome
   useEffect(() => {
     console.log('[SimpleVoiceMicButton] Component mounted, pre-fetching suggestions');
     fetchSuggestions();
+    
+    // Show welcome message and auto-show suggestions for 5 seconds
+    const welcomeTimer = setTimeout(() => {
+      setShowWelcome(false);
+    }, 5000);
+    
+    // Auto-show suggestions panel for first 4 seconds
+    setShowPanel(true);
+    const autoHideTimer = setTimeout(() => {
+      if (!isPressedRef.current) {
+        setShowPanel(false);
+      }
+    }, 4000);
+    
+    return () => {
+      clearTimeout(welcomeTimer);
+      clearTimeout(autoHideTimer);
+    };
   }, []);
 
   const fetchSuggestions = async () => {
@@ -272,22 +291,45 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
         <X className="w-5 h-5 text-muted-foreground" />
       </motion.button>
 
-      {/* Floating Mic Button - Fixed Position Bottom Right */}
+      {/* Floating Mic Button Container - Fixed Position Bottom Right */}
       <motion.div
-        key="voice-mic-button"
+        key="voice-mic-button-container"
         initial={{ scale: 0, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0, opacity: 0 }}
         transition={{ duration: 0.2 }}
-        className="fixed bottom-6 right-6 z-50"
-        onMouseDown={handlePressStart}
-        onMouseUp={handlePressEnd}
-        onMouseLeave={handlePressEnd}
-        onTouchStart={handlePressStart}
-        onTouchEnd={handlePressEnd}
-        onTouchCancel={handlePressCancel}
+        className="fixed bottom-6 right-6 z-50 flex flex-col items-center gap-3"
       >
-        <div className="relative">
+        {/* Welcome Instructions - Animated */}
+        <AnimatePresence>
+          {showWelcome && (
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.9 }}
+              transition={{ duration: 0.3 }}
+              className="bg-primary/95 backdrop-blur-sm text-primary-foreground px-4 py-2 rounded-xl shadow-lg text-sm font-medium whitespace-nowrap"
+            >
+              {currentLanguage === 'hi' && '👇 दबाए रखें और बोलें'}
+              {currentLanguage === 'en' && '👇 Press & hold to speak'}
+              {currentLanguage === 'mr' && '👇 दाबा आणि धरा'}
+              {currentLanguage === 'ta' && '👇 அழுத்தி வைத்து பேசுங்கள்'}
+              {currentLanguage === 'pa' && '👇 ਦਬਾਓ ਤੇ ਬੋਲੋ'}
+              {!['hi', 'en', 'mr', 'ta', 'pa'].includes(currentLanguage || '') && '👇 Press & hold to speak'}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Mic Button with Press-and-Hold */}
+        <div 
+          className="relative"
+          onMouseDown={handlePressStart}
+          onMouseUp={handlePressEnd}
+          onMouseLeave={handlePressEnd}
+          onTouchStart={handlePressStart}
+          onTouchEnd={handlePressEnd}
+          onTouchCancel={handlePressCancel}
+        >
           {/* Pulse Animation - Only shows while physically pressing */}
           <AnimatePresence>
             {showPanel && (
@@ -323,10 +365,29 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
             )}
           </AnimatePresence>
 
+          {/* Idle Pulse Animation - Shows when not pressing */}
+          <AnimatePresence>
+            {!showPanel && isReady && isSupported && (
+              <motion.div
+                key="idle-pulse"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: [1, 1.3, 1], opacity: [0.3, 0.1, 0.3] }}
+                exit={{ scale: 0, opacity: 0 }}
+                transition={{ 
+                  duration: 2, 
+                  repeat: Infinity,
+                  ease: "easeInOut" 
+                }}
+                className="absolute inset-0 rounded-full bg-primary"
+                style={{ filter: "blur(10px)" }}
+              />
+            )}
+          </AnimatePresence>
+
           {/* Main Mic Button */}
           <button
             className={cn(
-              "relative w-14 h-14 rounded-full shadow-lg transition-all duration-300",
+              "relative w-16 h-16 rounded-full shadow-2xl transition-all duration-300",
               "flex items-center justify-center",
               "focus:outline-none focus:ring-4 focus:ring-primary/30",
               !isReady || !isSupported
@@ -335,7 +396,7 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
                   ? "bg-primary scale-110 shadow-primary/50" 
                   : "bg-gradient-to-br from-primary/90 to-primary/70 hover:scale-105 active:scale-95"
             )}
-            aria-label={!isReady ? "Voice service loading..." : "Voice navigation"}
+            aria-label={!isReady ? "Voice service loading..." : "Press and hold for voice navigation"}
             disabled={!isReady || !isSupported}
           >
             <Mic 
@@ -343,15 +404,29 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
                 "relative z-10 transition-all duration-300",
                 !isReady || !isSupported
                   ? "text-muted-foreground"
-                  : showPanel ? "w-6 h-6 text-white" : "w-5 h-5 text-white"
+                  : showPanel ? "w-7 h-7 text-white" : "w-6 h-6 text-white"
               )} 
               strokeWidth={2.5}
             />
           </button>
         </div>
+
+        {/* Instruction Text - Always visible below mic */}
+        {!showWelcome && (
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-xs text-muted-foreground text-center font-medium bg-background/80 backdrop-blur-sm px-3 py-1 rounded-full"
+          >
+            {showPanel 
+              ? (currentLanguage === 'hi' ? 'सुन रहा हूं...' : 'Listening...')
+              : (currentLanguage === 'hi' ? 'दबाएं' : 'Press & hold')
+            }
+          </motion.p>
+        )}
       </motion.div>
 
-      {/* Suggestions Panel - Shows ONLY while holding */}
+      {/* Suggestions Panel - Shows while holding OR on first load */}
       <AnimatePresence>
         {showPanel && suggestions.length > 0 && (
           <motion.div
@@ -360,45 +435,64 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="fixed bottom-24 right-6 w-80 max-w-[calc(100vw-3rem)] z-50"
+            className="fixed bottom-32 right-6 w-80 max-w-[calc(100vw-3rem)] z-50"
           >
-            <div className="bg-background/95 backdrop-blur-xl border border-border/20 rounded-2xl shadow-2xl p-4">
+            <div className="bg-background/95 backdrop-blur-xl border-2 border-primary/20 rounded-2xl shadow-2xl p-4">
+              {/* Header with animated icon */}
               <div className="flex items-center gap-2 mb-3 pb-3 border-b border-border/20">
-                <Volume2 className="w-4 h-4 text-primary animate-pulse" />
-                <p className="text-sm font-semibold text-foreground">
-                  {currentLanguage === 'hi' && 'कुछ सुझाव'}
-                  {currentLanguage === 'en' && 'Suggestions'}
-                  {currentLanguage === 'mr' && 'सूचना'}
-                  {currentLanguage === 'ta' && 'பரிந்துரைகள்'}
-                  {currentLanguage === 'pa' && 'ਸੁਝਾਅ'}
-                  {!['hi', 'en', 'mr', 'ta', 'pa'].includes(currentLanguage || '') && 'Suggestions'}
-                </p>
+                <motion.div
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ duration: 1.5, repeat: Infinity }}
+                >
+                  <Volume2 className="w-5 h-5 text-primary" />
+                </motion.div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-foreground">
+                    {currentLanguage === 'hi' && 'आप यह कह सकते हैं'}
+                    {currentLanguage === 'en' && 'You can say'}
+                    {currentLanguage === 'mr' && 'तुम्ही म्हणू शकता'}
+                    {currentLanguage === 'ta' && 'நீங்கள் சொல்லலாம்'}
+                    {currentLanguage === 'pa' && 'ਤੁਸੀਂ ਕਹਿ ਸਕਦੇ ਹੋ'}
+                    {!['hi', 'en', 'mr', 'ta', 'pa'].includes(currentLanguage || '') && 'You can say'}
+                  </p>
+                  {isListening && (
+                    <p className="text-xs text-primary animate-pulse">
+                      {currentLanguage === 'hi' ? 'सुन रहा हूं...' : 'Listening...'}
+                    </p>
+                  )}
+                </div>
               </div>
               
               <div className="space-y-2 max-h-64 overflow-y-auto">
-                {suggestions.map((suggestion) => (
-                  <button
+                {suggestions.map((suggestion, index) => (
+                  <motion.button
                     key={suggestion.id}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.05 }}
                     onClick={() => handleSuggestionClick(suggestion)}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-primary/10 transition-colors group"
+                    className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-primary/10 transition-colors group border border-transparent hover:border-primary/20"
                   >
-                    <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
-                      "{suggestion.patterns[0]}"
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Mic className="w-3 h-3 text-primary opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">
+                        "{suggestion.patterns[0]}"
+                      </p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
                       {suggestion.response_text}
                     </p>
-                  </button>
+                  </motion.button>
                 ))}
               </div>
               
               <div className="mt-3 pt-3 border-t border-border/20">
                 <p className="text-xs text-muted-foreground text-center">
-                  {currentLanguage === 'hi' && 'या बोलें...'}
+                  {currentLanguage === 'hi' && 'या स्वाभाविक रूप से बोलें...'}
                   {currentLanguage === 'en' && 'Or speak naturally...'}
-                  {currentLanguage === 'mr' && 'किंवा बोला...'}
-                  {currentLanguage === 'ta' && 'அல்லது பேசுங்கள்...'}
-                  {currentLanguage === 'pa' && 'ਜਾਂ ਬੋਲੋ...'}
+                  {currentLanguage === 'mr' && 'किंवा स्वाभाविकपणे बोला...'}
+                  {currentLanguage === 'ta' && 'அல்லது இயல்பாக பேசுங்கள்...'}
+                  {currentLanguage === 'pa' && 'ਜਾਂ ਕੁਦਰਤੀ ਤੌਰ ਤੇ ਬੋਲੋ...'}
                   {!['hi', 'en', 'mr', 'ta', 'pa'].includes(currentLanguage || '') && 'Or speak naturally...'}
                 </p>
               </div>
@@ -415,19 +509,20 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-24 right-6 max-w-xs z-50"
+            className="fixed bottom-32 right-6 max-w-xs z-50"
           >
             <div className={cn(
-              "px-4 py-3 rounded-2xl shadow-xl backdrop-blur-xl border",
+              "px-4 py-3 rounded-2xl shadow-xl backdrop-blur-xl border-2",
               error 
-                ? "bg-destructive/10 border-destructive/20 text-destructive" 
-                : "bg-background/95 border-border/20"
+                ? "bg-destructive/10 border-destructive/30 text-destructive" 
+                : "bg-background/95 border-primary/20"
             )}>
               {error ? (
                 <p className="text-sm font-medium">{error}</p>
               ) : (
                 <>
-                  <p className="text-xs text-muted-foreground mb-1">
+                  <p className="text-xs text-muted-foreground mb-1 flex items-center gap-2">
+                    {isListening && <motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 1.5, repeat: Infinity }}>●</motion.span>}
                     {isListening ? "Listening..." : isSpeaking ? "Processing..." : "Done"}
                   </p>
                   <p className="text-sm font-medium">{transcript}</p>
