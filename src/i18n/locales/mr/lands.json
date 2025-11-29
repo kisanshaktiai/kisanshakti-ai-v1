@@ -54,14 +54,212 @@
       "shared": "सामायिक"
     },
     "add_land": {
+      "title": "नवीन जमीन जोडा",
+      "instructions_title": "नवीन जमीन जोडा - सूचना",
+      "instructions_subtitle": "तुमची जमीन जोडण्यासाठी या सोप्या चरणांचे अनुसरण करा",
       "loading": {
-        "maps": "Google Maps लोड होत आहे..."
+        "maps": "Google Maps लोड होत आहे...",
+        "hybrid_map": "हायब्रिड मॅप लोड होत आहे...",
+        "location": "तुमचे स्थान मिळवत आहे..."
       },
       "error": {
         "maps_failed": {
           "title": "नकाशे लोड अयशस्वी",
           "message": "Google Maps लोड करू शकलो नाही. कृपया तुमचे इंटरनेट कनेक्शन तपासा आणि पुन्हा प्रयत्न करा."
+        },
+        "location": "तुमचे स्थान निर्धारित करू शकलो नाही",
+        "gps_not_available": "तुमचे डिव्हाइस GPS ट्रॅकिंगला समर्थन देत नाही",
+        "gps_error": "GPS स्थान मिळवण्यात अयशस्वी. कृपया तुमची सेटिंग्ज तपासा.",
+        "invalid_boundary": "कृपया तुमच्या जमिनीची सीमा परिभाषित करण्यासाठी किमान 3 बिंदू चिन्हांकित करा."
+      },
+      "steps": {
+        "step_1": {
+          "title": "पायरी 1: नकाशा उघडेल",
+          "description": "तुमचे वर्तमान स्थान दर्शविणारा एक पूर्ण-स्क्रीन नकाशा उघडेल. नकाशा पूर्णपणे लोड होण्याची प्रतीक्षा करा."
+        },
+        "step_2": {
+          "title": "पायरी 2: सीमा काढा",
+          "description": "तुमच्या जमिनीच्या सीमा बिंदू चिन्हांकित करण्यासाठी नकाशावर क्लिक करा. प्रत्येक क्लिक एक कोपरा बिंदू जोडतो."
+        },
+        "step_3": {
+          "title": "पायरी 3: चालण्याचा मोड (पर्यायी)",
+          "description": "तुम्ही तुमच्या जमिनीच्या सीमेभोवती फिरून GPS वापरून तुमच्या स्थितीचा मागोवा घेऊ शकता."
+        },
+        "step_4": {
+          "title": "पायरी 4: सीमा पूर्ण करा",
+          "description": "बंद सीमा तयार करण्यासाठी सर्व बिंदू जोडा. क्षेत्र स्वयंचलितपणे गणना केले जाईल."
+        },
+        "step_5": {
+          "title": "पायरी 5: जतन करा आणि तपशील जोडा",
+          "description": "सीमा जतन करा बटणावर क्लिक करा. पीक माहिती सारख्या जमीन तपशील जोडण्यासाठी एक फॉर्म उघडेल."
         }
+      },
+      "buttons": {
+        "previous": "मागील",
+        "next": "पुढील",
+        "start_mapping": "मॅपिंग सुरू करा",
+        "skip_instructions": "सूचना वगळा आणि आता सुरू करा",
+        "voice_guide": "आवाज मार्गदर्शक"
+      }
+    },
+    "map": {
+      "mode": {
+        "tap_to_mark": "चिन्हांकित करण्यासाठी टॅप करा",
+        "walk_boundary": "सीमा चाला"
+      },
+      "gps": {
+        "start_tracking": "GPS ट्रॅकिंग सुरू करा",
+        "stop_tracking": "ट्रॅकिंग थांबवा"
+      },
+      "actions": {
+        "undo": "शेवटचा बिंदू पूर्ववत करा",
+        "clear_all": "सर्व बिंदू साफ करा",
+        "save_boundary": "सीमा जतन करा"
+      },
+      "area": {
+        "points_marked": "{{count}} बिंदू चिन्हांकित",
+        "label": "क्षेत्र",
+        "sqft": "चौ फूट",
+        "guntha": "गुंठा",
+        "acres": "एकर"
+      },
+      "toast": {
+        "location_set": "स्थान सेट",
+        "location_updated": "स्थान अद्यतनित",
+        "gps_accuracy": "GPS अचूकता: {{accuracy}}मी"
+      }
+    },
+    "wizard": {
+      "step_of_total": "पायरी {{current}}/{{total}}: {{title}}",
+      "voice_guide": "आवाज मार्गदर्शक",
+      "steps": {
+        "basic_info": "मूलभूत माहिती",
+        "location": "स्थान",
+        "land_details": "जमीन तपशील",
+        "review_save": "पुनरावलोकन आणि जतन करा"
+      },
+      "form": {
+        "land_name": "जमिनीचे नाव",
+        "land_name_placeholder": "उदा., उत्तर शेत",
+        "survey_number": "सर्वे/गट नंबर",
+        "survey_number_placeholder": "उदा., 123/A",
+        "ownership_type": "मालकीचा प्रकार",
+        "location_details": "स्थान तपशील",
+        "land_characteristics": "जमीन वैशिष्ट्ये",
+        "basic_information": "मूलभूत माहिती",
+        "state": "राज्य",
+        "district": "जिल्हा",
+        "taluka": "तालुका",
+        "village": "गाव",
+        "soil_type": "माती प्रकार",
+        "water_source": "पाणी स्रोत",
+        "irrigation_type": "सिंचन प्रकार",
+        "current_crop": "वर्तमान पीक",
+        "previous_crop": "मागील पीक",
+        "cultivation_date": "लागवड तारीख",
+        "last_harvest_date": "शेवटची कापणी तारीख",
+        "select": "{{field}} निवडा",
+        "select_state": "राज्य निवडा",
+        "select_district": "जिल्हा निवडा",
+        "required": "आवश्यक"
+      },
+      "soil_types": {
+        "alluvial": "गाळाची",
+        "black": "काळी (रेगूर)",
+        "red": "लाल",
+        "laterite": "लॅटेराइट",
+        "desert": "वाळवंटी",
+        "mountain": "पर्वतीय"
+      },
+      "water_sources": {
+        "well": "विहीर",
+        "borewell": "बोअरवेल",
+        "canal": "कालवा",
+        "river": "नदी",
+        "rain": "पाऊस आधारित",
+        "tank": "टाके"
+      },
+      "irrigation_types": {
+        "drip": "ठिबक",
+        "sprinkler": "फवारा",
+        "flood": "पूर",
+        "furrow": "खोबणी",
+        "manual": "हातचलित",
+        "none": "नाही"
+      },
+      "review": {
+        "land_area": "जमीन क्षेत्र",
+        "basic_info": "मूलभूत माहिती",
+        "location": "स्थान",
+        "land_details": "जमीन तपशील",
+        "boundary_points": "सीमा बिंदू",
+        "points_captured": "नकाशावरून {{count}} बिंदू कॅप्चर केले"
+      },
+      "buttons": {
+        "previous": "मागील",
+        "next": "पुढील",
+        "cancel": "रद्द करा",
+        "save_land": "जमीन जतन करा",
+        "saving": "जतन करत आहे...",
+        "start_mapping": "मॅपिंग सुरू करा",
+        "skip_instructions": "सूचना वगळा आणि आता सुरू करा"
+      },
+      "toast": {
+        "success_title": "यश",
+        "success_message": "तुमची जमीन यशस्वीरित्या जतन केली आहे!",
+        "error_title": "त्रुटी",
+        "error_save": "जमीन जतन करण्यात अयशस्वी"
+      }
+    },
+    "card": {
+      "utilized": "{{percent}}% वापरलेले",
+      "survey_no": "सर्वे नं: {{number}}",
+      "current": "वर्तमान",
+      "previous": "मागील",
+      "soil_health": "माती आरोग्य",
+      "ndvi_data": "NDVI डेटा",
+      "updated": "अद्यतनित: {{date}}",
+      "edit": "संपादित करा",
+      "delete": "हटवा",
+      "delete_dialog": {
+        "title": "जमीन काढा",
+        "description": "तुम्हाला खात्री आहे की तुम्ही \"{{name}}\" तुमच्या जमिनींमधून काढू इच्छिता? ही जमीन आता तुमच्या यादीत दिसणार नाही परंतु नंतर पुनर्प्राप्त केली जाऊ शकते.",
+        "cancel": "रद्द करा",
+        "remove": "काढा",
+        "removing": "काढत आहे..."
+      },
+      "toast": {
+        "removed_title": "जमीन काढली",
+        "removed_message": "{{name}} तुमच्या जमिनींमधून काढली आहे",
+        "error": "जमीन काढण्यात अयशस्वी",
+        "link_copied": "लिंक कॉपी केली",
+        "link_copied_message": "जमीन लिंक क्लिपबोर्डवर कॉपी केली"
+      }
+    },
+    "details": {
+      "total_area": "एकूण क्षेत्र",
+      "current_crop": "वर्तमान पीक",
+      "no_crop": "पीक नाही",
+      "soil_health": "माती आरोग्य",
+      "health_good": "चांगले",
+      "health_fair": "ठीक",
+      "health_needs_care": "काळजी आवश्यक",
+      "irrigation": "सिंचन",
+      "not_set": "सेट नाही",
+      "tabs": {
+        "overview": "विहंगावलोकन",
+        "soil": "माती",
+        "activities": "क्रियाकलाप",
+        "crops": "पिके",
+        "analytics": "विश्लेषण"
+      },
+      "not_found": "जमीन सापडली नाही",
+      "back_to_lands": "जमिनींकडे परत",
+      "delete": {
+        "success_title": "यश",
+        "success_message": "जमीन यशस्वीरित्या हटवली",
+        "error_title": "त्रुटी",
+        "error_message": "जमीन हटवण्यात अयशस्वी"
       }
     }
   },

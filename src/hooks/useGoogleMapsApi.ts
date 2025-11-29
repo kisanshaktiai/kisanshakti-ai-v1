@@ -9,6 +9,10 @@ const libraries: Libraries = ['drawing', 'geometry'];
 let apiKeyFetched = false;
 let globalApiKey: string | null = null;
 
+// Cache configuration
+const CACHE_KEY = 'google_maps_api_key';
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+
 export function useGoogleMapsApi() {
   const [apiKey, setApiKey] = useState<string | null>(globalApiKey);
   const [error, setError] = useState<string | null>(null);
@@ -24,6 +28,24 @@ export function useGoogleMapsApi() {
 
   useEffect(() => {
     async function fetchApiKey() {
+      // Check cache first
+      try {
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) {
+          const { key, timestamp } = JSON.parse(cached);
+          if (Date.now() - timestamp < CACHE_DURATION) {
+            console.log('Using cached Google Maps API key');
+            globalApiKey = key;
+            apiKeyFetched = true;
+            setApiKey(key);
+            setIsKeyLoading(false);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to read cache:', err);
+      }
+
       // Skip if already fetched
       if (apiKeyFetched && globalApiKey) {
         setApiKey(globalApiKey);
@@ -50,6 +72,16 @@ export function useGoogleMapsApi() {
           globalApiKey = response.data.apiKey;
           apiKeyFetched = true;
           setApiKey(response.data.apiKey);
+          
+          // Cache the API key
+          try {
+            localStorage.setItem(CACHE_KEY, JSON.stringify({
+              key: response.data.apiKey,
+              timestamp: Date.now()
+            }));
+          } catch (err) {
+            console.warn('Failed to cache API key:', err);
+          }
         } else {
           throw new Error('API key not found in response');
         }
