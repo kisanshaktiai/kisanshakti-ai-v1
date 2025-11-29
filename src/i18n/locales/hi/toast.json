@@ -81,6 +81,7 @@
     "settings_saved": "सेटिंग्स सफलतापूर्वक सहेजी गईं",
     "settings_save_failed": "सेटिंग्स सहेजने में विफल",
     "language_changed": "भाषा सफलतापूर्वक बदली गई",
+    "language_changed_to": "भाषा बदलकर {{language}} कर दी गई",
     "theme_changed": "थीम सफलतापूर्वक बदली गई",
     "logout_success": "सफलतापूर्वक लॉग आउट हुए",
     "logout_failed": "लॉग आउट करने में विफल",

@@ -63,6 +63,25 @@ import enSync from './locales/en/sync.json';
 import hiSync from './locales/hi/sync.json';
 import mrSync from './locales/mr/sync.json';
 
+// Read persisted language from localStorage before initializing i18n
+const getInitialLanguage = (): string => {
+  try {
+    const storedData = localStorage.getItem('language-storage');
+    if (storedData) {
+      const parsed = JSON.parse(storedData);
+      const language = parsed?.state?.currentLanguage;
+      if (language) {
+        console.log('🌐 [i18n] Initializing with persisted language:', language);
+        return language;
+      }
+    }
+  } catch (error) {
+    console.warn('⚠️ [i18n] Failed to read persisted language:', error);
+  }
+  console.log('🌐 [i18n] No persisted language found, using default: hi');
+  return 'hi'; // Fallback to Hindi
+};
+
 i18n
   .use(initReactI18next)
   .init({
@@ -142,7 +161,7 @@ i18n
       },
       ta: { translation: ta },
     },
-    lng: 'hi', // Default language
+    lng: getInitialLanguage(), // Initialize with persisted language
     fallbackLng: 'en',
     interpolation: {
       escapeValue: false,
