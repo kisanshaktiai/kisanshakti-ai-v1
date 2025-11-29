@@ -26,6 +26,15 @@ import mrSocial from './locales/mr/social.json';
 import enSchedule from './locales/en/schedule.json';
 import hiSchedule from './locales/hi/schedule.json';
 import mrSchedule from './locales/mr/schedule.json';
+import enAnalytics from './locales/en/analytics.json';
+import hiAnalytics from './locales/hi/analytics.json';
+import mrAnalytics from './locales/mr/analytics.json';
+import enChat from './locales/en/chat.json';
+import hiChat from './locales/hi/chat.json';
+import mrChat from './locales/mr/chat.json';
+import enInstascan from './locales/en/instascan.json';
+import hiInstascan from './locales/hi/instascan.json';
+import mrInstascan from './locales/mr/instascan.json';
 
 i18n
   .use(initReactI18next)
@@ -40,7 +49,10 @@ i18n
           ...enProfile.profile,
           ...enMarket.market,
           ...enSocial.social,
-          ...enSchedule.schedule
+          ...enSchedule.schedule,
+          ...enAnalytics.analytics,
+          ...enChat.chat,
+          ...enInstascan.instascan
         } 
       },
       hi: { 
@@ -52,7 +64,10 @@ i18n
           ...hiProfile.profile,
           ...hiMarket.market,
           ...hiSocial.social,
-          ...hiSchedule.schedule
+          ...hiSchedule.schedule,
+          ...hiAnalytics.analytics,
+          ...hiChat.chat,
+          ...hiInstascan.instascan
         } 
       },
       pa: { translation: pa },
@@ -65,7 +80,10 @@ i18n
           ...mrProfile.profile,
           ...mrMarket.market,
           ...mrSocial.social,
-          ...mrSchedule.schedule
+          ...mrSchedule.schedule,
+          ...mrAnalytics.analytics,
+          ...mrChat.chat,
+          ...mrInstascan.instascan
         } 
       },
       ta: { translation: ta },

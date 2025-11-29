@@ -1,0 +1,118 @@
+{
+  "__meta": {
+    "page": "analytics",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "analytics": {
+    "title": "खेत विश्लेषण",
+    "subtitle": "अपनी खेती का प्रदर्शन ट्रैक करें",
+    "tabs": {
+      "overview": "अवलोकन",
+      "crops": "फसलें",
+      "weather": "मौसम",
+      "tasks": "कार्य",
+      "financial": "वित्तीय"
+    },
+    "overview": {
+      "title": "प्रदर्शन अवलोकन",
+      "total_land": "कुल भूमि",
+      "active_crops": "सक्रिय फसलें",
+      "completed_tasks": "पूर्ण कार्य",
+      "pending_tasks": "लंबित कार्य",
+      "this_month": "इस महीने",
+      "vs_last_month": "पिछले महीने की तुलना में"
+    },
+    "crops": {
+      "title": "फसल विश्लेषण",
+      "by_type": "प्रकार के अनुसार फसलें",
+      "by_season": "मौसम के अनुसार फसलें",
+      "yield_comparison": "उपज तुलना",
+      "expected_yield": "अपेक्षित उपज",
+      "actual_yield": "वास्तविक उपज",
+      "area_hectares": "क्षेत्र (हेक्टेयर)",
+      "avg_yield": "औसत उपज (क्विंटल/हेक्टेयर)"
+    },
+    "weather": {
+      "title": "मौसम पैटर्न",
+      "rainfall_trend": "वर्षा प्रवृत्ति",
+      "temperature_trend": "तापमान प्रवृत्ति",
+      "humidity_avg": "औसत आर्द्रता",
+      "rainfall_total": "कुल वर्षा",
+      "rainfall_unit": "मिमी",
+      "temp_unit": "°C",
+      "month": "महीना"
+    },
+    "tasks": {
+      "title": "कार्य प्रदर्शन",
+      "completion_rate": "पूर्णता दर",
+      "on_time": "समय पर",
+      "delayed": "विलंबित",
+      "pending": "लंबित",
+      "by_stage": "चरण के अनुसार कार्य",
+      "stage": "चरण",
+      "count": "संख्या"
+    },
+    "financial": {
+      "title": "वित्तीय सारांश",
+      "total_revenue": "कुल आय",
+      "total_expenses": "कुल व्यय",
+      "net_profit": "शुद्ध लाभ",
+      "profit_margin": "लाभ मार्जिन",
+      "by_category": "श्रेणी के अनुसार व्यय",
+      "seeds": "बीज",
+      "fertilizers": "उर्वरक",
+      "pesticides": "कीटनाशक",
+      "labor": "श्रम",
+      "equipment": "उपकरण",
+      "other": "अन्य"
+    },
+    "filters": {
+      "date_range": "तिथि सीमा",
+      "last_7_days": "पिछले 7 दिन",
+      "last_30_days": "पिछले 30 दिन",
+      "last_3_months": "पिछले 3 महीने",
+      "last_6_months": "पिछले 6 महीने",
+      "last_year": "पिछला वर्ष",
+      "custom": "कस्टम सीमा",
+      "apply": "लागू करें",
+      "reset": "रीसेट करें"
+    },
+    "export": {
+      "button": "निर्यात करें",
+      "pdf": "PDF के रूप में निर्यात करें",
+      "csv": "CSV के रूप में निर्यात करें",
+      "success": "विश्लेषण सफलतापूर्वक निर्यात किया गया",
+      "error": "विश्लेषण निर्यात करने में विफल"
+    },
+    "empty": {
+      "title": "कोई डेटा उपलब्ध नहीं",
+      "message": "विश्लेषण देखने के लिए अपनी खेती गतिविधियों को ट्रैक करना शुरू करें",
+      "cta": "भूमि जोड़ें"
+    },
+    "loading": {
+      "message": "विश्लेषण लोड हो रहा है..."
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show farm analytics",
+      "View crop performance",
+      "Check task completion rate",
+      "Show financial summary"
+    ],
+    "voice_examples_hi": [
+      "खेत विश्लेषण दिखाओ",
+      "फसल प्रदर्शन देखें",
+      "कार्य पूर्णता दर जांचें",
+      "वित्तीय सारांश दिखाओ"
+    ],
+    "voice_examples_mr": [
+      "शेत विश्लेषण दाखवा",
+      "पीक कामगिरी पहा",
+      "कार्य पूर्णता दर तपासा",
+      "आर्थिक सारांश दाखवा"
+    ]
+  }
+}
