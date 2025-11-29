@@ -1,0 +1,105 @@
+{
+  "__meta": {
+    "page": "schedule",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "schedule": {
+    "title": "फसल अनुसूची",
+    "generate": "अनुसूची बनाएं",
+    "ai_schedule": "AI स्मार्ट अनुसूची",
+    "manual_entry": "मैन्युअल एंट्री",
+    "filters": {
+      "all": "सभी कार्य",
+      "pending": "लंबित",
+      "completed": "पूर्ण",
+      "overdue": "विलंबित",
+      "upcoming": "आगामी"
+    },
+    "time_view": {
+      "today": "आज",
+      "week": "सप्ताह",
+      "month": "महीना",
+      "all": "सभी"
+    },
+    "task": {
+      "mark_complete": "पूर्ण के रूप में चिह्नित करें",
+      "skip": "कार्य छोड़ें",
+      "reschedule": "पुनर्निर्धारित करें",
+      "details": "कार्य विवरण",
+      "priority": "प्राथमिकता",
+      "high": "उच्च",
+      "medium": "मध्यम",
+      "low": "कम",
+      "status": {
+        "pending": "लंबित",
+        "completed": "पूर्ण",
+        "skipped": "छोड़ा गया",
+        "overdue": "विलंबित"
+      }
+    },
+    "stages": {
+      "land_prep": "भूमि तैयारी",
+      "sowing": "बुवाई",
+      "irrigation": "सिंचाई",
+      "fertilizer": "उर्वरक",
+      "pest_control": "कीट नियंत्रण",
+      "weeding": "निराई",
+      "harvest": "कटाई"
+    },
+    "badges": {
+      "weather": "मौसम",
+      "ai_adjusted": "AI समायोजित",
+      "critical": "महत्वपूर्ण",
+      "optimal": "उत्तम"
+    },
+    "empty": {
+      "title": "कोई कार्य निर्धारित नहीं",
+      "message": "AI अनुसूची बनाएं या मैन्युअल रूप से कार्य जोड़ें",
+      "no_tasks_period": "इस अवधि के लिए कोई कार्य नहीं"
+    },
+    "stats": {
+      "total_tasks": "कुल कार्य",
+      "completed": "पूर्ण",
+      "pending": "लंबित",
+      "completion_rate": "पूर्णता दर"
+    },
+    "alerts": {
+      "weather_warning": "मौसम चेतावनी: {{message}}",
+      "task_due": "कार्य {{hours}} घंटों में देय है",
+      "overdue_tasks": "आपके पास {{count}} विलंबित कार्य हैं"
+    },
+    "cta": {
+      "add_task": "कार्य जोड़ें",
+      "view_calendar": "कैलेंडर देखें",
+      "refresh": "अनुसूची रीफ्रेश करें"
+    },
+    "toast": {
+      "task_completed": "कार्य पूर्ण के रूप में चिह्नित",
+      "task_skipped": "कार्य छोड़ा गया",
+      "schedule_generated": "अनुसूची सफलतापूर्वक बनाई गई",
+      "error": "कार्य अपडेट करने में विफल"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show today's tasks",
+      "Mark task as complete",
+      "Generate crop schedule",
+      "Show pending tasks"
+    ],
+    "voice_examples_hi": [
+      "आज के कार्य दिखाओ",
+      "कार्य पूर्ण के रूप में चिह्नित करें",
+      "फसल अनुसूची बनाएं",
+      "लंबित कार्य दिखाओ"
+    ],
+    "voice_examples_mr": [
+      "आजची कामे दाखवा",
+      "काम पूर्ण म्हणून चिन्हांकित करा",
+      "पीक वेळापत्रक तयार करा",
+      "प्रलंबित कामे दाखवा"
+    ]
+  }
+}

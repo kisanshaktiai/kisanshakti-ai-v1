@@ -17,6 +17,15 @@ import mrLands from './locales/mr/lands.json';
 import enProfile from './locales/en/profile.json';
 import hiProfile from './locales/hi/profile.json';
 import mrProfile from './locales/mr/profile.json';
+import enMarket from './locales/en/market.json';
+import hiMarket from './locales/hi/market.json';
+import mrMarket from './locales/mr/market.json';
+import enSocial from './locales/en/social.json';
+import hiSocial from './locales/hi/social.json';
+import mrSocial from './locales/mr/social.json';
+import enSchedule from './locales/en/schedule.json';
+import hiSchedule from './locales/hi/schedule.json';
+import mrSchedule from './locales/mr/schedule.json';
 
 i18n
   .use(initReactI18next)
@@ -28,7 +37,10 @@ i18n
           ...enWeather.weather, 
           ...enHome.home, 
           ...enLands.lands, 
-          ...enProfile.profile 
+          ...enProfile.profile,
+          ...enMarket.market,
+          ...enSocial.social,
+          ...enSchedule.schedule
         } 
       },
       hi: { 
@@ -37,7 +49,10 @@ i18n
           ...hiWeather.weather, 
           ...hiHome.home, 
           ...hiLands.lands, 
-          ...hiProfile.profile 
+          ...hiProfile.profile,
+          ...hiMarket.market,
+          ...hiSocial.social,
+          ...hiSchedule.schedule
         } 
       },
       pa: { translation: pa },
@@ -47,7 +62,10 @@ i18n
           ...mrWeather.weather, 
           ...mrHome.home, 
           ...mrLands.lands, 
-          ...mrProfile.profile 
+          ...mrProfile.profile,
+          ...mrMarket.market,
+          ...mrSocial.social,
+          ...mrSchedule.schedule
         } 
       },
       ta: { translation: ta },
