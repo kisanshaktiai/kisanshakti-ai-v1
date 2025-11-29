@@ -1,0 +1,88 @@
+{
+  "__meta": {
+    "page": "profile",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "profile": {
+    "role": {
+      "farmer": "शेतकरी"
+    },
+    "farm_type": {
+      "general": "सामान्य",
+      "organic": "सेंद्रिय",
+      "commercial": "व्यावसायिक",
+      "subsistence": "निर्वाह"
+    },
+    "completion": {
+      "label": "प्रोफाइल पूर्णता"
+    },
+    "info": {
+      "phone": "फोन",
+      "location": "स्थान",
+      "not_set": "सेट नाही",
+      "location_not_set": "स्थान सेट नाही"
+    },
+    "analytics": {
+      "title": "अॅप वापर सांख्यिकी",
+      "total_opens": "एकूण उघडणे",
+      "last_active": "शेवटचे सक्रिय",
+      "never": "कधीच नाही",
+      "member_since": "सदस्य झाले",
+      "unknown": "अज्ञात",
+      "ai_queries": "AI प्रश्न"
+    },
+    "performance": {
+      "title": "शेती कामगिरी",
+      "good": "चांगले",
+      "excellent": "उत्कृष्ट",
+      "average": "सरासरी",
+      "yield": "उत्पन्न",
+      "efficiency": "कार्यक्षमता",
+      "sustainability": "शाश्वतता"
+    },
+    "crops": {
+      "distribution_title": "पीक वितरण"
+    },
+    "yield": {
+      "trend_title": "उत्पन्न ट्रेंड (शेवटचे 6 महिने)"
+    },
+    "farm_info": {
+      "title": "शेत माहिती",
+      "total_land": "एकूण जमीन",
+      "acres": "एकर",
+      "experience": "अनुभव",
+      "years": "वर्षे",
+      "farm_type": "शेताचा प्रकार",
+      "not_specified": "निर्दिष्ट नाही",
+      "irrigation": "पाणी पुरवठा",
+      "yes": "होय",
+      "no": "नाही",
+      "tractor": "ट्रॅक्टर",
+      "available": "उपलब्ध",
+      "not_available": "उपलब्ध नाही",
+      "storage": "स्टोरेज"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show my profile",
+      "Edit my information",
+      "View farm analytics",
+      "Check my achievements"
+    ],
+    "voice_examples_hi": [
+      "मेरी प्रोफ़ाइल दिखाओ",
+      "मेरी जानकारी बदलें",
+      "खेती विश्लेषण देखें",
+      "मेरी उपलब्धियां जांचें"
+    ],
+    "voice_examples_mr": [
+      "माझी प्रोफाइल दाखवा",
+      "माझी माहिती बदला",
+      "शेती विश्लेषण पहा",
+      "माझी उपलब्धी तपासा"
+    ]
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "__meta": {
+    "page": "lands",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "lands": {
+    "stats": {
+      "count": "{{count}} lands",
+      "count_one": "{{count}} land",
+      "total_area": "{{area}} acres",
+      "cultivated": "{{count}} active"
+    },
+    "offline_warning": "Offline - changes will sync later",
+    "search": {
+      "placeholder": "Search lands..."
+    },
+    "filter": {
+      "sheet_title": "Filters & Sort",
+      "by_label": "Filter by",
+      "all": "All Lands",
+      "with_crop": "With Crop",
+      "no_crop": "No Crop"
+    },
+    "sort": {
+      "label": "Sort by",
+      "by_name": "Name",
+      "by_area": "Area",
+      "by_date": "Date"
+    },
+    "view_mode": {
+      "label": "View mode",
+      "grid": "Grid",
+      "list": "List"
+    },
+    "empty": {
+      "title": "No Lands Found",
+      "search_message": "Try adjusting your search or filters",
+      "add_first": "Start by adding your first land parcel"
+    },
+    "cta": {
+      "add_first": "Add Your First Land",
+      "add": "Add Land"
+    },
+    "export": {
+      "success_title": "Exported Successfully",
+      "success_message": "{{count}} land records exported",
+      "success_message_one": "{{count}} land record exported"
+    },
+    "ownership": {
+      "owned": "Owned",
+      "leased": "Leased",
+      "shared": "Shared"
+    },
+    "add_land": {
+      "loading": {
+        "maps": "Loading Google Maps..."
+      },
+      "error": {
+        "maps_failed": {
+          "title": "Failed to Load Maps",
+          "message": "Could not load Google Maps. Please check your internet connection and try again."
+        }
+      }
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show my lands",
+      "Add new land",
+      "Search for land by name",
+      "Filter lands with crops"
+    ],
+    "voice_examples_hi": [
+      "मेरी जमीन दिखाओ",
+      "नई जमीन जोड़ें",
+      "नाम से जमीन खोजें",
+      "फसल वाली जमीन फ़िल्टर करें"
+    ],
+    "voice_examples_mr": [
+      "माझी जमीन दाखवा",
+      "नवीन जमीन जोडा",
+      "नावाने जमीन शोधा",
+      "पिकांसह जमीन फिल्टर करा"
+    ]
+  }
+}
