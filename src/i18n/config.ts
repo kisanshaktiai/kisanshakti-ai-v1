@@ -89,11 +89,11 @@ i18n
       en: { 
         translation: { 
           ...en,
-          // Properly nest page-level namespaces
-          auth: enAuth.auth,
+          // Merge base and page-level namespaces (with fallbacks)
+          auth: { ...((en as any).auth || {}), ...enAuth.auth },
           toast: enToast.toast,
           weather: enWeather.weather,
-          home: enHome.home,
+          home: { ...((en as any).home || {}), ...enHome.home },
           lands: enLands.lands,
           profile: enProfile.profile,
           market: enMarket.market,
@@ -114,11 +114,11 @@ i18n
       hi: { 
         translation: { 
           ...hi,
-          // Properly nest page-level namespaces
-          auth: hiAuth.auth,
+          // Merge base and page-level namespaces (with fallbacks)
+          auth: { ...((hi as any).auth || {}), ...hiAuth.auth },
           toast: hiToast.toast,
           weather: hiWeather.weather,
-          home: hiHome.home,
+          home: { ...((hi as any).home || {}), ...hiHome.home },
           lands: hiLands.lands,
           profile: hiProfile.profile,
           market: hiMarket.market,
@@ -140,11 +140,11 @@ i18n
       mr: { 
         translation: { 
           ...mr,
-          // Properly nest page-level namespaces
-          auth: mrAuth.auth,
+          // Merge base and page-level namespaces (with fallbacks)
+          auth: { ...((mr as any).auth || {}), ...mrAuth.auth },
           toast: mrToast.toast,
           weather: mrWeather.weather,
-          home: mrHome.home,
+          home: { ...((mr as any).home || {}), ...mrHome.home },
           lands: mrLands.lands,
           profile: mrProfile.profile,
           market: mrMarket.market,

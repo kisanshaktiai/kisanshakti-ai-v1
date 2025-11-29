@@ -9,11 +9,22 @@
     "namaste": "नमस्कार, {{name}}",
     "last_synced": "शेवटचे सिंक: {{time}}",
     "default_name": "शेतकरी",
+    "loading": "लोड होत आहे...",
+    "view": "पहा",
+    "unnamed_land": "अनामित जमीन",
+    "location_not_set": "स्थान सेट नाही",
+    "no_crop": "पीक नाही",
+    "recent_activity": "अलीकडील क्रियाकलाप",
     "stats": {
       "temperature": "तापमान",
       "humidity": "आर्द्रता",
       "wind_speed": "वाऱ्याचा वेग",
+      "wind": "वारा",
+      "pressure": "दबाव",
+      "temp": "तापमान",
       "total_area": "एकूण क्षेत्र",
+      "plots": "प्लॉट",
+      "area": "क्षेत्र",
       "no_land": "जमीन नाही"
     },
     "features": {

@@ -9,11 +9,22 @@
     "namaste": "नमस्ते, {{name}}",
     "last_synced": "अंतिम सिंक: {{time}}",
     "default_name": "किसान",
+    "loading": "लोड हो रहा है...",
+    "view": "देखें",
+    "unnamed_land": "बिना नाम की भूमि",
+    "location_not_set": "स्थान सेट नहीं",
+    "no_crop": "कोई फसल नहीं",
+    "recent_activity": "हाल की गतिविधि",
     "stats": {
       "temperature": "तापमान",
       "humidity": "नमी",
       "wind_speed": "हवा की गति",
+      "wind": "हवा",
+      "pressure": "दबाव",
+      "temp": "तापमान",
       "total_area": "कुल क्षेत्र",
+      "plots": "प्लॉट",
+      "area": "क्षेत्र",
       "no_land": "कोई भूमि नहीं"
     },
     "features": {
