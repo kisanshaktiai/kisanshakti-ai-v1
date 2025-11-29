@@ -27,6 +27,8 @@ interface ModernVoiceContextType {
   completeOnboarding: (config: Partial<VoiceConfig>) => void;
   skipOnboarding: () => void;
   setNavigationCallback: (callback: (route: string) => void) => void;
+  getDialogManager: () => any; // Access to dialog manager
+  getSlotExtractor: () => any; // Access to slot extractor
 }
 
 const ModernVoiceContext = createContext<ModernVoiceContextType | undefined>(undefined);
@@ -298,6 +300,8 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
         completeOnboarding,
         skipOnboarding,
         setNavigationCallback: (callback: (route: string) => void) => setNavigationCallback(() => callback),
+        getDialogManager: () => voiceService?.getDialogManager(),
+        getSlotExtractor: () => voiceService?.getSlotExtractor(),
       }}
     >
       {children}
