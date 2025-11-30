@@ -24,11 +24,20 @@
       "view": "View",
       "edit": "Edit",
       "delete": "Delete",
+      "survey": "Survey #{{number}}",
+      "acres": "acres",
+      "guntas": "guntas",
+      "create_schedule": "Create Schedule",
+      "add_land_btn": "Add Land",
       "delete_dialog": {
         "title": "Delete Schedule",
         "description": "Are you sure you want to delete this AI crop schedule? This action cannot be undone.",
         "cancel": "Cancel",
         "delete": "Delete"
+      },
+      "delete_ai_dialog": {
+        "title": "Delete AI Schedule?",
+        "description": "This will permanently delete the AI-generated crop schedule and all its tasks. This action cannot be undone."
       },
       "toast": {
         "deleted": "Schedule Deleted",
