@@ -465,6 +465,33 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
 - Provide season-specific and stage-specific advice
 - Consider weather patterns typical for this season in ${farmerDetails?.state || 'this region'}`;
 
+    // CRITICAL: Add language-specific instruction based on user's selected language
+    const languageMap: Record<string, string> = {
+      'hi': 'Hindi (हिन्दी)',
+      'mr': 'Marathi (मराठी)',
+      'en': 'English',
+      'pa': 'Punjabi (ਪੰਜਾਬੀ)',
+      'ta': 'Tamil (தமிழ்)',
+      'te': 'Telugu (తెలుగు)',
+      'bn': 'Bengali (বাংলা)',
+      'gu': 'Gujarati (ગુજરાતી)',
+      'kn': 'Kannada (ಕನ್ನಡ)',
+      'ml': 'Malayalam (മലയാളം)',
+      'or': 'Odia (ଓଡ଼ିଆ)',
+      'as': 'Assamese (অসমীয়া)',
+      'ur': 'Urdu (اردو)'
+    };
+
+    const languageName = languageMap[language] || languageMap['en'];
+    
+    systemPrompt += `\n\n🌍 LANGUAGE INSTRUCTION (CRITICAL):
+You MUST respond ENTIRELY in ${languageName}.
+- Do NOT use English unless the user's language is English
+- Translate ALL content including greetings, recommendations, technical terms
+- Use natural, conversational ${languageName}
+- Keep technical terms simple and explain them in ${languageName}
+- Farmer's preferred language: ${languageName}`;
+
     // Detect InstaScan mode (vision analysis)
     const isInstaScan = !!imageUrl;
     

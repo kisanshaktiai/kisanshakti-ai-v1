@@ -499,22 +499,31 @@ export function EnhancedAIChatInterface() {
       console.log(`📊 Session ID: ${sessionId}`);
       console.log(`🗂️ Training data collected per land in: ai_chat_messages table`);
       
+      console.log('🤖 Sending AI request with language:', language);
       const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
         body: {
           messages: [{ role: 'user', content: finalMessage }],
           sessionId,
           landId,
-          language,
+          language: language, // Pass user's selected language
           metadata: {
             tenantId,
             farmerId,
-            language,
+            language: language,
             landContext: land
           }
         }
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error('❌ AI Chat Error:', error);
+        throw new Error(error.message || 'AI request failed');
+      }
+      
+      if (!data || !data.response) {
+        console.error('❌ Invalid AI response:', data);
+        throw new Error('Invalid response from AI');
+      }
       
       // Update user message status to 'sent'
       await supabase.from('ai_chat_messages')
@@ -551,19 +560,32 @@ export function EnhancedAIChatInterface() {
       // Save AI response - No need to save separately as edge function already does this
       
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('❌ Error sending message:', {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+        activeTab,
+        landId: activeTab !== 'general' ? activeTab : null,
+        language
+      });
       
       // Update message status to 'error' if failed
       await supabase.from('ai_chat_messages')
         .update({ 
           status: 'error',
-          error_details: { error: error instanceof Error ? error.message : 'Unknown error' }
+          error_details: { 
+            error: error instanceof Error ? error.message : 'Unknown error',
+            timestamp: new Date().toISOString()
+          }
         })
         .eq('id', userMessageId);
       
+      // Show detailed error message for debugging
+      const errorMessage = error instanceof Error ? error.message : t('error.unknown');
       toast({
-        title: t('common.error'),
-        description: isOnline ? t('chat.errorOccurred') : t('chat.offlineMessage'),
+        title: t('error.title'),
+        description: isOnline 
+          ? `${t('chat.messages.error')}: ${errorMessage}`
+          : t('chat.voice.error'),
         variant: 'destructive'
       });
     } finally {
@@ -572,7 +594,7 @@ export function EnhancedAIChatInterface() {
   };
 
   const parseStructuredResponse = (response: string) => {
-    // Parse color-coded sections from AI response
+    // Parse color-coded sections from AI response with enhanced detection
     const structured: any = {
       greeting: '',
       landContext: '',
@@ -580,52 +602,97 @@ export function EnhancedAIChatInterface() {
       closingMessage: ''
     };
     
-    // Extract greeting (first line with emoji)
-    const greetingMatch = response.match(/^👨‍🌾.*?🙏/m);
+    // Extract greeting (first paragraph or line with greeting patterns)
+    const greetingMatch = response.match(/^[^।\n]*(नमस्ते|नमस्कार|Hello|Namaste)[^।\n]*/im);
     if (greetingMatch) {
-      structured.greeting = greetingMatch[0];
+      structured.greeting = greetingMatch[0].trim();
     }
     
-    // Extract land context line
-    const landContextMatch = response.match(/🌾.*?\|.*?\|.*$/m);
-    if (landContextMatch) {
-      structured.landContext = landContextMatch[0];
-    }
+    // Intelligent section detection based on keywords (multi-language support)
+    const detectSectionType = (text: string): string => {
+      const lowerText = text.toLowerCase();
+      
+      // Organic/Natural fertilizer keywords
+      if (lowerText.match(/(organic|जैविक|natural|नैसर्गिक|compost|कंपोस्ट|vermi|वर्मी|fym|गोबर|cow dung)/i)) {
+        return 'organic';
+      }
+      
+      // Chemical fertilizer keywords
+      if (lowerText.match(/(fertilizer|खत|उर्वरक|npk|urea|युरिया|dap|डीएपी|chemical|रासायनिक|potash|पोटॅश)/i)) {
+        return 'fertilizer';
+      }
+      
+      // Pesticide keywords
+      if (lowerText.match(/(pesticide|कीटनाशक|किटकनाशक|pest control|insect|किड|spray|फवारणी|fungicide)/i)) {
+        return 'pest';
+      }
+      
+      // Water/Irrigation keywords
+      if (lowerText.match(/(water|पाणी|irrigation|सिंचाई|पाणीपुरवठा|drip)/i)) {
+        return 'water';
+      }
+      
+      return 'other';
+    };
     
-    // Extract color-coded sections
-    const sectionPatterns = [
-      { emoji: '🟢', keyword: 'Organic Practices', type: 'organic', color: 'green' },
-      { emoji: '🟡', keyword: 'Fertilizer Schedule', type: 'fertilizer', color: 'yellow' },
-      { emoji: '🔴', keyword: 'Pesticide', type: 'pesticide', color: 'red' },
-      { emoji: '🟣', keyword: 'Hormone', type: 'hormone', color: 'purple' },
-      { emoji: '🟢', keyword: 'Advisory Note', type: 'advisory', color: 'blue' }
-    ];
+    // Split response into paragraphs and sections
+    const paragraphs = response.split(/\n\n+/);
+    let currentSection: any = null;
     
-    sectionPatterns.forEach(pattern => {
-      // More flexible regex to capture section content
-      const regex = new RegExp(`${pattern.emoji}\\s*\\*\\*([^*]+)\\*\\*([^🟢🟡🔴🟣🌾]+)`, 'g');
-      let match;
-      while ((match = regex.exec(response)) !== null) {
-        const title = match[1].trim();
-        const content = match[2].trim();
-        if (title.includes(pattern.keyword) && content) {
+    paragraphs.forEach(para => {
+      const trimmed = para.trim();
+      if (!trimmed) return;
+      
+      // Detect section headers (lines with special characters or all caps)
+      const isHeader = trimmed.match(/^[🟢🟡🔴🔵🟣🟤⚫⚪]/) || 
+                      trimmed.match(/^[A-Z\u0900-\u097F\s]{10,}:/) ||
+                      trimmed.match(/^\d+\.\s*[A-Z\u0900-\u097F]/);
+      
+      if (isHeader) {
+        // Save previous section if exists
+        if (currentSection && currentSection.content.trim()) {
+          const sectionType = detectSectionType(currentSection.title + ' ' + currentSection.content);
           structured.sections.push({
-            type: pattern.type,
-            title: title,
-            content: content,
-            color: pattern.color
+            ...currentSection,
+            type: sectionType
           });
         }
+        
+        // Start new section
+        currentSection = {
+          title: trimmed.replace(/^[🟢🟡🔴🔵🟣🟤⚫⚪]\s*/, '').replace(/\*\*/g, ''),
+          content: '',
+          type: 'other'
+        };
+      } else if (currentSection) {
+        // Add content to current section
+        currentSection.content += (currentSection.content ? '\n\n' : '') + trimmed;
+      } else if (!structured.greeting) {
+        // First paragraph becomes greeting if no greeting found
+        structured.greeting = trimmed;
       }
     });
     
-    // Extract closing message
-    const closingMatch = response.match(/🌾.*best friend!.*$/m);
-    if (closingMatch) {
-      structured.closingMessage = closingMatch[0];
+    // Save last section
+    if (currentSection && currentSection.content.trim()) {
+      const sectionType = detectSectionType(currentSection.title + ' ' + currentSection.content);
+      structured.sections.push({
+        ...currentSection,
+        type: sectionType
+      });
     }
     
-    // Return structured data if we found sections, otherwise return simple structure
+    // If no sections found, treat entire response as a single section
+    if (structured.sections.length === 0 && response.trim()) {
+      const sectionType = detectSectionType(response);
+      structured.sections.push({
+        title: structured.greeting || 'Response',
+        content: response.replace(structured.greeting, '').trim(),
+        type: sectionType
+      });
+    }
+    
+    // Return structured data
     return structured.sections.length > 0 ? structured : undefined;
   };
 
@@ -1128,69 +1195,76 @@ export function EnhancedAIChatInterface() {
                     "relative max-w-[85%]",
                     message.role === 'user' && 'order-1'
                   )}>
-                    {/* Message content - 2030 Modern UI with glassmorphism */}
+                     {/* Message content - Clean, single-color design */}
                     <div className={cn(
                       "relative overflow-hidden group",
                       message.role === 'user' 
                         ? cn(
-                            // Base glassmorphism
-                            "backdrop-blur-2xl bg-gradient-to-br from-primary/90 via-primary to-primary-hover",
+                            // Clean solid color background
+                            "bg-primary",
                             // Asymmetric rounded corners
                             "rounded-[2rem_2rem_0.5rem_2rem]",
                             // Text color
                             "text-primary-foreground",
                             // Smooth animations
-                            "transition-all duration-500 ease-out",
+                            "transition-all duration-300 ease-out",
                             // Interactive hover
-                            "hover:scale-[1.02]",
-                            // Advanced shadows for depth
-                            "shadow-[0_8px_32px_rgba(33,150,243,0.25),0_16px_64px_rgba(33,150,243,0.15),0_0_0_1px_rgba(255,255,255,0.1)_inset]",
-                            "hover:shadow-[0_12px_48px_rgba(33,150,243,0.35)]",
-                            // Glow effect
-                            "after:absolute after:inset-0 after:rounded-[2rem_2rem_0.5rem_2rem]",
-                            "after:bg-gradient-to-t after:from-white/10 after:to-transparent after:pointer-events-none"
+                            "hover:bg-primary/90",
+                            // Clean shadow
+                            "shadow-md hover:shadow-lg"
                           )
                         : cn(
-                            // Glassmorphism base
-                            "bg-card/60 backdrop-blur-2xl",
-                            // Multi-layer border
-                            "border-2 border-border/40",
+                            // Clean card background
+                            "bg-card",
+                            // Simple border
+                            "border border-border",
                             // Organic shape
                             "rounded-[0.5rem_2rem_2rem_2rem]",
                             // Smooth entrance animation
-                            "animate-in slide-in-from-left-4 fade-in duration-500",
+                            "animate-in slide-in-from-left-4 fade-in duration-300",
                             // Interactive
-                            "hover:border-border/60 transition-all duration-300",
-                            // Advanced shadows
-                            "shadow-[0_8px_32px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.04),0_0_0_1px_rgba(255,255,255,0.05)_inset]",
-                            "hover:shadow-[0_12px_48px_rgba(0,0,0,0.12)]",
-                            // Inner glow
-                            "before:absolute before:inset-0 before:rounded-[0.5rem_2rem_2rem_2rem]",
-                            "before:bg-gradient-to-br before:from-primary/5 before:to-transparent before:pointer-events-none"
+                            "hover:border-border/80 transition-all duration-300",
+                            // Clean shadow
+                            "shadow-sm hover:shadow-md"
                           )
                     )}>
                       <div className="p-5">
                         {message.role === 'assistant' && message.structured?.sections ? (
-                          <div className="space-y-4">
+                          <div className="space-y-3">
                             {message.structured.greeting && message.structured.greeting.trim() !== '' && (
-                              <div className="text-base font-medium text-foreground mb-3 pb-3 border-b border-border/20">
+                              <div className="text-sm font-medium text-foreground mb-2">
                                 {message.structured.greeting.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
                               </div>
                             )}
-                            {message.structured.sections.map((section: any, idx: number) => (
-                              <ResponseSectionCard 
-                                key={idx} 
-                                emoji={section.emoji || '📋'}
-                                title={section.title.replace(/\*\*/g, '')}
-                                content={section.content.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
-                                sectionType={section.type || 'other'}
-                              />
-                            ))}
-                            {message.structured.closingMessage && message.structured.closingMessage.trim() !== '' && (
-                              <div className="text-sm text-muted-foreground mt-3 pt-3 border-t border-border/20">
-                                {message.structured.closingMessage.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
-                              </div>
-                            )}
+                            {message.structured.sections.map((section: any, idx: number) => {
+                              // Map section type to proper sectionType
+                              let sectionType: 'organic' | 'fertilizer' | 'pest' | 'water' | 'income' | 'other' = 'other';
+                              if (section.type === 'organic') sectionType = 'organic';
+                              else if (section.type === 'fertilizer') sectionType = 'fertilizer';
+                              else if (section.type === 'pest') sectionType = 'pest';
+                              else if (section.type === 'water') sectionType = 'water';
+                              else if (section.type === 'income') sectionType = 'income';
+                              
+                              // Auto-assign emoji based on type
+                              const emojiMap: Record<string, string> = {
+                                'organic': '🌱',
+                                'fertilizer': '🟡',
+                                'pest': '🔴',
+                                'water': '💧',
+                                'income': '💰',
+                                'other': '📋'
+                              };
+                              
+                              return (
+                                <ResponseSectionCard 
+                                  key={idx} 
+                                  emoji={emojiMap[sectionType]}
+                                  title={section.title.replace(/\*\*/g, '')}
+                                  content={section.content.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
+                                  sectionType={sectionType}
+                                />
+                              );
+                            })}
                           </div>
                         ) : (
                           <p className="text-[15px] leading-[1.6] whitespace-pre-wrap break-words">
