@@ -127,8 +127,8 @@ serve(async (req) => {
         farmerId: finalFarmerId, 
         metadata,
         headers: {
-          'x-tenant-id': headerTenantId,
-          'x-farmer-id': headerFarmerId
+          'x-tenant-id': tenantId,
+          'x-farmer-id': farmerId
         }
       });
       return new Response(
@@ -321,24 +321,47 @@ Then provide specific diagnosis and solutions.
                            (land.area_gunta ? (land.area_gunta / 40).toFixed(2) : null) ||
                            (land.size ? land.size : 'Unknown');
         
-        // Get NDVI history data
-        const { data: ndviData } = await supabase
-          .from('ndvi_analysis')
-          .select('*')
-          .eq('land_id', landId)
-          .order('analysis_date', { ascending: false })
-          .limit(5);
+        // Get NDVI history data with error handling
+        let ndviData = null;
+        try {
+          const { data } = await supabase
+            .from('ndvi_data')
+            .select('*')
+            .eq('land_id', landId)
+            .order('date', { ascending: false })
+            .limit(5);
+          ndviData = data;
+          console.log('✅ NDVI data loaded:', ndviData?.length || 0, 'records');
+        } catch (ndviError) {
+          console.warn('⚠️ Could not load NDVI data:', ndviError);
+        }
         
-        // Get soil health data
-        const { data: soilHealthData } = await supabase
-          .from('soil_health')
-          .select('*')
-          .eq('land_id', landId)
-          .order('test_date', { ascending: false })
-          .limit(1);
+        // Get soil health data with error handling
+        let soilHealthData = null;
+        try {
+          const { data } = await supabase
+            .from('soil_health')
+            .select('*')
+            .eq('land_id', landId)
+            .order('test_date', { ascending: false })
+            .limit(1);
+          soilHealthData = data;
+          console.log('✅ Soil health data loaded:', soilHealthData?.length || 0, 'records');
+        } catch (soilError) {
+          console.warn('⚠️ Could not load soil health data:', soilError);
+        }
         
         const latestSoilHealth = soilHealthData && soilHealthData.length > 0 ? soilHealthData[0] : null;
         const latestNDVI = ndviData && ndviData.length > 0 ? ndviData[0] : null;
+        
+        // Compute NPK string from individual columns
+        let soilNPK = 'Not available';
+        if (latestSoilHealth) {
+          const n = latestSoilHealth.nitrogen_kg_per_ha || '-';
+          const p = latestSoilHealth.phosphorus_kg_per_ha || '-';
+          const k = latestSoilHealth.potassium_kg_per_ha || '-';
+          soilNPK = `N:${n} P:${p} K:${k} kg/ha`;
+        }
         
         landContext = {
           land_id: land.id,
@@ -351,9 +374,9 @@ Then provide specific diagnosis and solutions.
           water_source: land.water_source,
           irrigation_type: land.irrigation_type,
           cultivation_date: land.cultivation_date,
-          soil_npk: land.soil_npk || latestSoilHealth?.npk_values || 'Not available',
-          ndvi_value: land.ndvi_latest || latestNDVI?.ndvi_value || 'Not available',
-          soil_moisture: land.soil_moisture || latestSoilHealth?.moisture_level || 'Not available',
+          soil_npk: soilNPK,
+          ndvi_value: land.ndvi_latest || latestNDVI?.ndvi_value || latestNDVI?.mean_ndvi || 'Not available',
+          soil_moisture: land.soil_moisture || 'Not available',
           soil_health: latestSoilHealth,
           ndvi_history: ndviData
         };
@@ -364,27 +387,28 @@ Then provide specific diagnosis and solutions.
         if (latestSoilHealth) {
           dataInsights += `\n\n🧪 SOIL HEALTH DATA (Test Date: ${latestSoilHealth.test_date}):\n`;
           dataInsights += `- pH Level: ${latestSoilHealth.ph_level || 'N/A'}\n`;
-          dataInsights += `- Nitrogen (N): ${latestSoilHealth.nitrogen || 'N/A'} kg/ha\n`;
-          dataInsights += `- Phosphorus (P): ${latestSoilHealth.phosphorus || 'N/A'} kg/ha\n`;
-          dataInsights += `- Potassium (K): ${latestSoilHealth.potassium || 'N/A'} kg/ha\n`;
+          dataInsights += `- Nitrogen (N): ${latestSoilHealth.nitrogen_kg_per_ha || 'N/A'} kg/ha\n`;
+          dataInsights += `- Phosphorus (P): ${latestSoilHealth.phosphorus_kg_per_ha || 'N/A'} kg/ha\n`;
+          dataInsights += `- Potassium (K): ${latestSoilHealth.potassium_kg_per_ha || 'N/A'} kg/ha\n`;
           dataInsights += `- Organic Carbon: ${latestSoilHealth.organic_carbon || 'N/A'}%\n`;
-          dataInsights += `- Moisture Level: ${latestSoilHealth.moisture_level || 'N/A'}%\n`;
-          if (latestSoilHealth.micronutrients) {
-            dataInsights += `- Micronutrients: ${JSON.stringify(latestSoilHealth.micronutrients)}\n`;
-          }
+          dataInsights += `- EC (Electrical Conductivity): ${latestSoilHealth.electrical_conductivity || 'N/A'}\n`;
         }
         
         if (ndviData && ndviData.length > 0) {
           dataInsights += `\n\n📊 NDVI TREND ANALYSIS (Last ${ndviData.length} readings):\n`;
           ndviData.forEach((reading, idx) => {
-            dataInsights += `${idx + 1}. Date: ${reading.analysis_date} | NDVI: ${reading.ndvi_value} | Health: ${reading.health_status || 'N/A'}\n`;
+            const ndviVal = reading.ndvi_value || reading.mean_ndvi || 'N/A';
+            const quality = reading.quality_score || 'N/A';
+            dataInsights += `${idx + 1}. Date: ${reading.date} | NDVI: ${ndviVal} | Quality: ${quality}\n`;
           });
           
-          // Calculate trend
+          // Calculate trend if we have multiple readings
           if (ndviData.length >= 2) {
-            const trend = ndviData[0].ndvi_value - ndviData[ndviData.length - 1].ndvi_value;
+            const latestNDVI = ndviData[0].ndvi_value || ndviData[0].mean_ndvi || 0;
+            const oldestNDVI = ndviData[ndviData.length - 1].ndvi_value || ndviData[ndviData.length - 1].mean_ndvi || 0;
+            const trend = latestNDVI - oldestNDVI;
             const trendText = trend > 0 ? '📈 Improving' : trend < 0 ? '📉 Declining' : '➡️ Stable';
-            dataInsights += `Trend: ${trendText} (${trend > 0 ? '+' : ''}${trend.toFixed(2)})\n`;
+            dataInsights += `Trend: ${trendText} (${trend > 0 ? '+' : ''}${trend.toFixed(3)})\n`;
           }
         }
         
