@@ -958,7 +958,7 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
     }
 
     // Save messages to database
-    const lastUserMessage = messages[messages.length - 1];
+    // ✅ Reuse lastUserMessage already declared at line 33
     const responseTime = Date.now() - startTime;
     
     // Enhanced metadata for AI training
