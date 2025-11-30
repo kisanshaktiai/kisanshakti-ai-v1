@@ -136,9 +136,13 @@ serve(async (req) => {
       timestamp: new Date().toISOString()
     });
 
-    // Build comprehensive agricultural analysis prompt
+    // Build comprehensive agricultural analysis prompt with language support
+    const languageInstruction = language !== 'en' 
+      ? `\n\nIMPORTANT: Provide ALL text responses in ${language === 'hi' ? 'Hindi (हिंदी)' : language === 'mr' ? 'Marathi (मराठी)' : language} language. This includes commonName, summary, details, symptoms, actions, and all other text fields. Keep scientific names in Latin.`
+      : '';
+    
     const systemPrompt = mode === 'quick' 
-      ? `You are an expert agricultural scientist. Quickly identify the plant/crop from the image. Be specific and concise.`
+      ? `You are an expert agricultural scientist. Quickly identify the plant/crop from the image. Be specific and concise.${languageInstruction}`
       : `You are an expert agricultural scientist and plant pathologist with deep knowledge of crops, diseases, pests, weeds, and nutrient deficiencies. 
 
 CRITICAL INSTRUCTIONS:
@@ -148,6 +152,7 @@ CRITICAL INSTRUCTIONS:
 - Even sub-optimal images contain valuable diagnostic information
 - Focus on visible symptoms and patterns, not image perfection
 - If image quality limits confidence, say so but still provide your best analysis
+- ACCEPT ALL IMAGES: Even if you're uncertain, provide your best educated guess based on visible patterns
 
 Key Analysis Areas:
 1. IDENTIFICATION: Identify the plant/crop/weed/pest/disease from visible features
@@ -158,7 +163,7 @@ Key Analysis Areas:
 6. ENVIRONMENTAL STRESS: Identify drought, heat, or waterlogging damage
 
 Be specific, actionable, and farmer-friendly. Prioritize immediate actions that prevent crop loss.
-Accept all image qualities and provide the best analysis possible.`;
+Accept all image qualities and provide the best analysis possible.${languageInstruction}`;
 
     const userPrompt = `Analyze these agricultural images and provide a comprehensive diagnosis.
 
