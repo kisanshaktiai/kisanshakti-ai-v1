@@ -417,36 +417,36 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                   {/* Pills for attributes */}
                   <div className="flex flex-wrap gap-2">
                     {land.soil_type && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-secondary/20 to-secondary/10 border border-secondary/20">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary/10 border border-secondary/20">
                         <SoilIcon className="h-3.5 w-3.5 text-secondary" />
-                        <span className="text-xs font-medium text-secondary-foreground/90">
+                        <span className="text-xs font-medium text-foreground">
                           {land.soil_type}
                         </span>
                       </div>
                     )}
                     
                     {land.water_source && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-info/20 to-info/10 border border-info/20">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-info/10 border border-info/20">
                         <WaterIcon className="h-3.5 w-3.5 text-info" />
-                        <span className="text-xs font-medium text-info-foreground/90">
+                        <span className="text-xs font-medium text-foreground">
                           {land.water_source}
                         </span>
                       </div>
                     )}
                     
                     {land.irrigation_type && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-accent/20 to-accent/10 border border-accent/20">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20">
                         <Droplets className="h-3.5 w-3.5 text-accent" />
-                        <span className="text-xs font-medium text-accent-foreground/90">
+                        <span className="text-xs font-medium text-foreground">
                           {land.irrigation_type}
                         </span>
                       </div>
                     )}
                     
                     {land.current_crop && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-success/20 to-success/10 border border-success/20">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-success/10 border border-success/20">
                         <CropIcon className="h-3.5 w-3.5 text-success" />
-                        <span className="text-xs font-medium text-success-foreground/90">
+                        <span className="text-xs font-medium text-foreground">
                           {land.current_crop}
                         </span>
                       </div>
