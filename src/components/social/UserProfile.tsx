@@ -10,6 +10,7 @@ import {
   MessageSquare, Users, Wheat, TrendingUp 
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useTranslation } from 'react-i18next';
 
 interface UserProfileProps {
   userId?: string;
@@ -17,6 +18,7 @@ interface UserProfileProps {
 }
 
 export function UserProfile({ userId, isOwnProfile = false }: UserProfileProps) {
+  const { t } = useTranslation();
   const [profile, setProfile] = useState<any>(null);
   const [stats, setStats] = useState<any>(null);
   const [posts, setPosts] = useState<any[]>([]);
@@ -243,7 +245,7 @@ export function UserProfile({ userId, isOwnProfile = false }: UserProfileProps) 
           <Card className="p-6">
             <div className="flex items-center justify-center gap-2 text-muted-foreground">
               <TrendingUp className="w-5 h-5" />
-              <p>Activity feed coming soon</p>
+              <p>{t('social.profile.activity_feed_soon')}</p>
             </div>
           </Card>
         </TabsContent>

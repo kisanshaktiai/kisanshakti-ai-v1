@@ -216,6 +216,14 @@
       "medium": "Medium",
       "low": "Low"
     },
+    "climate": {
+      "ai_active": "AI Active",
+      "tasks_auto_adjusted": "Tasks Auto-Adjusted",
+      "schedule_optimized": "Schedule automatically optimized based on climate conditions",
+      "heavy_rainfall": "Heavy rainfall detected. Irrigation and spraying tasks may be delayed.",
+      "low_crop_health": "Low crop health (NDVI). Fertilizer application may be prioritized.",
+      "high_temperature": "High temperature. Irrigation may be advanced to prevent heat stress."
+    },
     "crop_selector": {
       "failed_load_categories": "Failed to load crop categories",
       "failed_load_crops": "Failed to load crops",

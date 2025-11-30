@@ -75,7 +75,8 @@
     "offline": "Offline",
     "comingSoon": "Coming Soon",
     "getStarted": "Get Started",
-    "swipeLeft": "Swipe left to continue"
+    "swipeLeft": "Swipe left to continue",
+    "loadingFeatures": "Loading features..."
   },
   "fab": {
     "myLands": "My Lands",
