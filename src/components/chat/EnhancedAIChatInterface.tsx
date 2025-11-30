@@ -8,10 +8,10 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import { 
-  Send, Mic, MicOff, Volume2, VolumeX, Loader2, Bot, User, 
+  Send, Mic, MicOff, Loader2, Bot, 
   RefreshCw, Wifi, WifiOff, MessageSquare, Mountain, 
-  Paperclip, Camera, Image, ArrowLeft, ChevronDown,
-  ThumbsUp, ThumbsDown, Copy, Share2, Check, Search, X, Clock, MessageCircle
+  Paperclip, Camera, Image, ArrowLeft,
+  Search, X, Clock, MessageCircle
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -24,6 +24,7 @@ import { landsApi } from '@/services/landsApi';
 import { LandContextCard } from './LandContextCard';
 import { GeneralChatWelcomeCard } from './GeneralChatWelcomeCard';
 import { ResponseSectionCard } from './ResponseSectionCard';
+import { ModernChatUI } from './ModernChatUI';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
@@ -57,7 +58,7 @@ export function EnhancedAIChatInterface() {
   const { user } = useAuthStore();
   const { tenant, isLoading: isTenantLoading } = useTenant();
   const langStore = useLanguageStore();
-  const language = (langStore as any).selectedLanguage || 'en';
+  const language = langStore.currentLanguage || 'en'; // Use currentLanguage from store
   const isOnline = useOfflineStatus();
   
   // Guard: Don't render until tenant is loaded
@@ -1184,260 +1185,14 @@ export function EnhancedAIChatInterface() {
 
               {/* Messages for this date */}
               {group.messages.map((message) => (
-                <motion.div
+                <ModernChatUI
                   key={message.id}
-                  initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -20, scale: 0.95 }}
-                  transition={{ 
-                    duration: 0.5, 
-                    type: "spring", 
-                    stiffness: 300, 
-                    damping: 25 
-                  }}
-                  className={cn(
-                    "flex gap-2 mb-4",
-                    message.role === 'user' ? 'justify-end' : 'justify-start'
-                  )}
-                >
-                  {message.role === 'assistant' && (
-                    <Avatar className="h-8 w-8 shrink-0">
-                      <AvatarFallback className="bg-primary text-primary-foreground">
-                        <Bot className="h-4 w-4" />
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
-                  
-                  <div className={cn(
-                    "relative max-w-[85%]",
-                    message.role === 'user' && 'order-1'
-                  )}>
-                     {/* Message content - Clean, single-color design */}
-                    <div className={cn(
-                      "relative overflow-hidden group",
-                      message.role === 'user' 
-                        ? cn(
-                            // Clean solid color background
-                            "bg-primary",
-                            // Asymmetric rounded corners
-                            "rounded-[2rem_2rem_0.5rem_2rem]",
-                            // Text color
-                            "text-primary-foreground",
-                            // Smooth animations
-                            "transition-all duration-300 ease-out",
-                            // Interactive hover
-                            "hover:bg-primary/90",
-                            // Clean shadow
-                            "shadow-md hover:shadow-lg"
-                          )
-                        : cn(
-                            // Clean card background
-                            "bg-card",
-                            // Simple border
-                            "border border-border",
-                            // Organic shape
-                            "rounded-[0.5rem_2rem_2rem_2rem]",
-                            // Smooth entrance animation
-                            "animate-in slide-in-from-left-4 fade-in duration-300",
-                            // Interactive
-                            "hover:border-border/80 transition-all duration-300",
-                            // Clean shadow
-                            "shadow-sm hover:shadow-md"
-                          )
-                    )}>
-                      <div className="p-5">
-                        {message.role === 'assistant' && message.structured?.sections ? (
-                          <div className="space-y-3">
-                            {message.structured.greeting && message.structured.greeting.trim() !== '' && (
-                              <div className="text-sm font-medium text-foreground mb-2">
-                                {message.structured.greeting.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
-                              </div>
-                            )}
-                            {message.structured.sections.map((section: any, idx: number) => {
-                              // Map section type to proper sectionType
-                              let sectionType: 'organic' | 'fertilizer' | 'pest' | 'water' | 'income' | 'other' = 'other';
-                              if (section.type === 'organic') sectionType = 'organic';
-                              else if (section.type === 'fertilizer') sectionType = 'fertilizer';
-                              else if (section.type === 'pest') sectionType = 'pest';
-                              else if (section.type === 'water') sectionType = 'water';
-                              else if (section.type === 'income') sectionType = 'income';
-                              
-                              // Auto-assign emoji based on type
-                              const emojiMap: Record<string, string> = {
-                                'organic': '🌱',
-                                'fertilizer': '🟡',
-                                'pest': '🔴',
-                                'water': '💧',
-                                'income': '💰',
-                                'other': '📋'
-                              };
-                              
-                              return (
-                                <ResponseSectionCard 
-                                  key={idx} 
-                                  emoji={emojiMap[sectionType]}
-                                  title={section.title.replace(/\*\*/g, '')}
-                                  content={section.content.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
-                                  sectionType={sectionType}
-                                />
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <p className="text-[15px] leading-[1.6] whitespace-pre-wrap break-words">
-                            {message.content.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
-                          </p>
-                        )}
-                        
-                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/10">
-                          <span className="text-xs opacity-60">
-                            {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Action buttons below message - Modern subtle design */}
-                    <div className={cn(
-                      "flex items-center gap-1 mt-2",
-                      message.role === 'user' ? 'justify-end' : 'justify-start'
-                    )}>
-                      {/* Read aloud button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          // Glassmorphism
-                          "backdrop-blur-xl bg-background/40",
-                          // Floating effect
-                          "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
-                          // Size and shape
-                          "h-7 px-2.5 rounded-full text-xs",
-                          // Smooth transitions
-                          "transition-all duration-300",
-                          // Interactive states
-                          "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
-                          "active:scale-95"
-                        )}
-                        onClick={() => handlePlayMessage(message.id, message.content)}
-                      >
-                        {playingMessageId === message.id && isSpeaking ? (
-                          <VolumeX className="h-3 w-3" />
-                        ) : (
-                          <Volume2 className="h-3 w-3" />
-                        )}
-                      </Button>
-                      
-                      {/* Like/Dislike buttons */}
-                      {message.role === 'assistant' && (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className={cn(
-                              // Glassmorphism
-                              "backdrop-blur-xl bg-background/40",
-                              // Floating effect
-                              "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
-                              // Size and shape
-                              "h-7 px-2.5 rounded-full text-xs",
-                              // Smooth transitions
-                              "transition-all duration-300",
-                              // Interactive states
-                              "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
-                              "active:scale-95",
-                              // Active state
-                              message.feedback === 'like' && "bg-primary/20 text-primary hover:bg-primary/30 border-primary/40"
-                            )}
-                            onClick={() => handleLike(message.id, true)}
-                          >
-                            <ThumbsUp className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className={cn(
-                              // Glassmorphism
-                              "backdrop-blur-xl bg-background/40",
-                              // Floating effect
-                              "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
-                              // Size and shape
-                              "h-7 px-2.5 rounded-full text-xs",
-                              // Smooth transitions
-                              "transition-all duration-300",
-                              // Interactive states
-                              "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
-                              "active:scale-95",
-                              // Active state
-                              message.feedback === 'dislike' && "bg-destructive/20 text-destructive hover:bg-destructive/30 border-destructive/40"
-                            )}
-                            onClick={() => handleLike(message.id, false)}
-                          >
-                            <ThumbsDown className="h-3 w-3" />
-                          </Button>
-                        </>
-                      )}
-                      
-                      {/* Copy button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          // Glassmorphism
-                          "backdrop-blur-xl bg-background/40",
-                          // Floating effect
-                          "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
-                          // Size and shape
-                          "h-7 px-2.5 rounded-full text-xs",
-                          // Smooth transitions
-                          "transition-all duration-300",
-                          // Interactive states
-                          "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
-                          "active:scale-95",
-                          // Active state
-                          copiedMessageId === message.id && "bg-success/20 text-success border-success/40"
-                        )}
-                        onClick={() => handleCopy(message.id, message.content)}
-                      >
-                        {copiedMessageId === message.id ? (
-                          <Check className="h-3 w-3" />
-                        ) : (
-                          <Copy className="h-3 w-3" />
-                        )}
-                      </Button>
-                      
-                      {/* Share button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          // Glassmorphism
-                          "backdrop-blur-xl bg-background/40",
-                          // Floating effect
-                          "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
-                          // Size and shape
-                          "h-7 px-2.5 rounded-full text-xs",
-                          // Smooth transitions
-                          "transition-all duration-300",
-                          // Interactive states
-                          "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
-                          "active:scale-95"
-                        )}
-                        onClick={() => handleShare(message.content)}
-                      >
-                        <Share2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  {message.role === 'user' && (
-                    <Avatar className="h-8 w-8 shrink-0">
-                      <AvatarFallback className="bg-secondary">
-                        <User className="h-4 w-4" />
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
-                </motion.div>
+                  message={message}
+                  onCopy={handleCopy}
+                  onLike={handleLike}
+                  onShare={handleShare}
+                  onPlay={handlePlayMessage}
+                />
               ))}
             </div>
           ))}

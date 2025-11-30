@@ -324,14 +324,19 @@ Then provide specific diagnosis and solutions.
         // Get NDVI history data with error handling
         let ndviData = null;
         try {
-          const { data } = await supabase
+          const { data, error } = await supabase
             .from('ndvi_data')
             .select('*')
             .eq('land_id', landId)
             .order('date', { ascending: false })
             .limit(5);
-          ndviData = data;
-          console.log('✅ NDVI data loaded:', ndviData?.length || 0, 'records');
+          
+          if (error) {
+            console.warn('⚠️ NDVI query error:', error);
+          } else {
+            ndviData = data;
+            console.log('✅ NDVI data loaded:', ndviData?.length || 0, 'records');
+          }
         } catch (ndviError) {
           console.warn('⚠️ Could not load NDVI data:', ndviError);
         }
@@ -339,14 +344,19 @@ Then provide specific diagnosis and solutions.
         // Get soil health data with error handling
         let soilHealthData = null;
         try {
-          const { data } = await supabase
+          const { data, error } = await supabase
             .from('soil_health')
             .select('*')
             .eq('land_id', landId)
             .order('test_date', { ascending: false })
             .limit(1);
-          soilHealthData = data;
-          console.log('✅ Soil health data loaded:', soilHealthData?.length || 0, 'records');
+          
+          if (error) {
+            console.warn('⚠️ Soil health query error:', error);
+          } else {
+            soilHealthData = data;
+            console.log('✅ Soil health data loaded:', soilHealthData?.length || 0, 'records');
+          }
         } catch (soilError) {
           console.warn('⚠️ Could not load soil health data:', soilError);
         }
@@ -391,21 +401,22 @@ Then provide specific diagnosis and solutions.
           dataInsights += `- Phosphorus (P): ${latestSoilHealth.phosphorus_kg_per_ha || 'N/A'} kg/ha\n`;
           dataInsights += `- Potassium (K): ${latestSoilHealth.potassium_kg_per_ha || 'N/A'} kg/ha\n`;
           dataInsights += `- Organic Carbon: ${latestSoilHealth.organic_carbon || 'N/A'}%\n`;
-          dataInsights += `- EC (Electrical Conductivity): ${latestSoilHealth.electrical_conductivity || 'N/A'}\n`;
+          dataInsights += `- EC (Electrical Conductivity): ${latestSoilHealth.electrical_conductivity || 'N/A'} dS/m\n`;
         }
         
         if (ndviData && ndviData.length > 0) {
           dataInsights += `\n\n📊 NDVI TREND ANALYSIS (Last ${ndviData.length} readings):\n`;
           ndviData.forEach((reading, idx) => {
             const ndviVal = reading.ndvi_value || reading.mean_ndvi || 'N/A';
-            const quality = reading.quality_score || 'N/A';
-            dataInsights += `${idx + 1}. Date: ${reading.date} | NDVI: ${ndviVal} | Quality: ${quality}\n`;
+            const quality = reading.quality_score !== null && reading.quality_score !== undefined ? reading.quality_score : 'N/A';
+            const readingDate = reading.date || reading.created_at || 'N/A';
+            dataInsights += `${idx + 1}. Date: ${readingDate} | NDVI: ${ndviVal} | Quality: ${quality}\n`;
           });
           
           // Calculate trend if we have multiple readings
           if (ndviData.length >= 2) {
-            const latestNDVI = ndviData[0].ndvi_value || ndviData[0].mean_ndvi || 0;
-            const oldestNDVI = ndviData[ndviData.length - 1].ndvi_value || ndviData[ndviData.length - 1].mean_ndvi || 0;
+            const latestNDVI = parseFloat(ndviData[0].ndvi_value || ndviData[0].mean_ndvi || 0);
+            const oldestNDVI = parseFloat(ndviData[ndviData.length - 1].ndvi_value || ndviData[ndviData.length - 1].mean_ndvi || 0);
             const trend = latestNDVI - oldestNDVI;
             const trendText = trend > 0 ? '📈 Improving' : trend < 0 ? '📉 Declining' : '➡️ Stable';
             dataInsights += `Trend: ${trendText} (${trend > 0 ? '+' : ''}${trend.toFixed(3)})\n`;
@@ -729,8 +740,12 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
         .order('created_at', { ascending: true })
         .limit(10);
 
+      // Filter out empty messages before adding to history
       if (messageHistory && messageHistory.length > 0) {
-        openAIMessages.push(...messageHistory.map(msg => ({
+        const validMessages = messageHistory.filter(msg => 
+          msg.content && msg.content.trim().length > 0
+        );
+        openAIMessages.push(...validMessages.map(msg => ({
           role: msg.role === 'user' ? 'user' : 'assistant',
           content: msg.content
         })));
@@ -793,6 +808,15 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
 
     const aiData = await openAIResponse.json();
     
+    // Add detailed logging for regular chat (similar to InstaScan)
+    console.log('📝 OpenAI Response:', {
+      model: aiData.model,
+      finishReason: aiData.choices[0]?.finish_reason,
+      hasContent: !!aiData.choices[0]?.message?.content,
+      contentLength: aiData.choices[0]?.message?.content?.length || 0,
+      tokensUsed: aiData.usage
+    });
+    
     // Enhanced logging for debugging
     if (isInstaScan) {
       console.log('📸 InstaScan - Full OpenAI Response:', JSON.stringify({
@@ -843,6 +867,35 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       }
     } else {
       aiMessage = aiData.choices[0].message.content;
+      
+      // CRITICAL: Validate AI response is not empty
+      if (!aiMessage || aiMessage.trim().length === 0) {
+        console.error('❌ OpenAI returned empty response:', {
+          finishReason: aiData.choices[0]?.finish_reason,
+          model: aiData.model,
+          usage: aiData.usage,
+          sessionId: currentSessionId,
+          messagesCount: openAIMessages.length
+        });
+        
+        // Generate fallback response in user's language
+        const fallbackMessages: Record<string, string> = {
+          'hi': '🙏 क्षमा करें, मुझे आपके प्रश्न का उत्तर देने में समस्या हुई। कृपया दोबारा प्रयास करें।',
+          'mr': '🙏 क्षमा करा, मला तुमच्या प्रश्नाचे उत्तर देण्यात अडचण आली. कृपया पुन्हा प्रयत्न करा.',
+          'en': '🙏 Sorry, I had trouble answering your question. Please try again.',
+          'pa': '🙏 ਮਾਫ਼ ਕਰਨਾ, ਮੈਨੂੰ ਤੁਹਾਡੇ ਸਵਾਲ ਦਾ ਜਵਾਬ ਦੇਣ ਵਿੱਚ ਮੁਸ਼ਕਲ ਹੋਈ। ਕਿਰਪਾ ਕਰਕੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।',
+          'ta': '🙏 மன்னிக்கவும், உங்கள் கேள்விக்கு பதிலளிக்க எனக்கு சிக்கல் ஏற்பட்டது. மீண்டும் முயற்சிக்கவும்.',
+          'te': '🙏 క్షమించండి, మీ ప్రశ్నకు సమాధానం ఇవ్వడంలో నాకు ఇబ్బంది ఎదురైంది. దయచేసి మళ్లీ ప్రయత్నించండి।',
+          'bn': '🙏 দুঃখিত, আপনার প্রশ্নের উত্তর দিতে আমার সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।',
+          'gu': '🙏 માફ કરશો, મને તમારા પ્રશ્નનો જવાબ આપવામાં મુશ્કેલી પડી. કૃપા કરીને ફરીથી પ્રયાસ કરો।',
+          'kn': '🙏 ಕ್ಷಮಿಸಿ, ನಿಮ್ಮ ಪ್ರಶ್ನೆಗೆ ಉತ್ತರಿಸಲು ನನಗೆ ತೊಂದರೆಯಾಯಿತು. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ।',
+          'ml': '🙏 ക്ഷമിക്കണം, നിങ്ങളുടെ ചോദ്യത്തിന് ഉത്തരം നൽകാൻ എനിക്ക് ബുദ്ധിമുട്ടുണ്ടായി. ദയവായി വീണ്ടും ശ്രമിക്കുക।',
+          'or': '🙏 କ୍ଷମା କରନ୍ତୁ, ଆପଣଙ୍କ ପ୍ରଶ୍ନର ଉତ୍ତର ଦେବାରେ ମୋତେ ଅସୁବିଧା ହେଲା। ଦୟାକରି ପୁଣି ଚେଷ୍ଟା କରନ୍ତୁ।',
+          'as': '🙏 ক্ষমা কৰিব, আপোনাৰ প্ৰশ্নৰ উত্তৰ দিবলৈ মোৰ অসুবিধা হ'ল। অনুগ্ৰহ কৰি পুনৰ চেষ্টা কৰক।',
+          'ur': '🙏 معذرت، مجھے آپ کے سوال کا جواب دینے میں پریشانی ہوئی۔ براہ کرم دوبارہ کوشش کریں۔'
+        };
+        aiMessage = fallbackMessages[language] || fallbackMessages['en'];
+      }
     }
     const tokensUsed = aiData.usage?.total_tokens || 0;
 
@@ -921,30 +974,32 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
     // Extract section tags from AI response for training data
     const sectionTags = extractSectionTags(aiMessage);
     
-    // Save AI response with enhanced metadata for training
-    const { error: aiMsgError } = await supabase
-      .from('ai_chat_messages')
-      .insert({
-        session_id: currentSessionId,
-        tenant_id: finalTenantId,
-        farmer_id: finalFarmerId,
-        role: 'assistant',
-        content: aiMessage,
-        status: 'sent',
-        language: language || 'en',
-        message_type: 'text',
-        word_count: aiMessage ? aiMessage.split(/\s+/).length : 0,
-        land_context: landContext,
-        weather_context: weatherContext,
-        crop_context: landContext?.current_crop ? {
-          crop_name: landContext.current_crop,
-          crop_stage: landDetails?.cultivation_date ? getCropStage(landDetails.cultivation_date) : null,
-          days_since_sowing: landDetails?.cultivation_date ? 
-            Math.floor((Date.now() - new Date(landDetails.cultivation_date).getTime()) / (1000 * 60 * 60 * 24)) : 0,
-          soil_npk: landContext?.soil_npk,
-          ndvi_value: landContext?.ndvi_value,
-          soil_moisture: landContext?.soil_moisture
-        } : landContext?.crops,
+    // Only save AI response if it has content
+    if (aiMessage && aiMessage.trim().length > 0) {
+      // Save AI response with enhanced metadata for training
+      const { error: aiMsgError } = await supabase
+        .from('ai_chat_messages')
+        .insert({
+          session_id: currentSessionId,
+          tenant_id: finalTenantId,
+          farmer_id: finalFarmerId,
+          role: 'assistant',
+          content: aiMessage,
+          status: 'sent',
+          language: language || 'en',
+          message_type: 'text',
+          word_count: aiMessage ? aiMessage.split(/\s+/).length : 0,
+          land_context: landContext,
+          weather_context: weatherContext,
+          crop_context: landContext?.current_crop ? {
+            crop_name: landContext.current_crop,
+            crop_stage: landDetails?.cultivation_date ? getCropStage(landDetails.cultivation_date) : null,
+            days_since_sowing: landDetails?.cultivation_date ? 
+              Math.floor((Date.now() - new Date(landDetails.cultivation_date).getTime()) / (1000 * 60 * 60 * 24)) : 0,
+            soil_npk: landContext?.soil_npk,
+            ndvi_value: landContext?.ndvi_value,
+            soil_moisture: landContext?.soil_moisture
+          } : landContext?.crops,
         location_context: {
           village: farmerDetails?.village,
           district: farmerDetails?.district,
@@ -967,10 +1022,14 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           land_size_acres: landContext?.area_acres,
           model_info: 'Using GPT-5-mini for multilingual, fast farmer assistance'
         }
+        }
       });
       
-     if (aiMsgError) {
-      console.error('Error saving AI response:', aiMsgError);
+      if (aiMsgError) {
+        console.error('Error saving AI response:', aiMsgError);
+      }
+    } else {
+      console.warn('⚠️ Skipping save - AI message is empty');
     }
     
     // Detect critical alerts and send push notifications
