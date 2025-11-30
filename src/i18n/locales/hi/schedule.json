@@ -170,6 +170,36 @@
       "medium": "मध्यम",
       "low": "कम"
     },
+    "land_selector": {
+      "ai_schedule_ready": "AI अनुसूची तैयार",
+      "generate_schedule": "अनुसूची बनाएं",
+      "active": "सक्रिय",
+      "click_to_view": "देखने के लिए क्लिक करें",
+      "view": "देखें",
+      "edit": "संपादित करें",
+      "delete": "हटाएं",
+      "survey": "सर्वे #{{number}}",
+      "acres": "एकड़",
+      "guntas": "गुंठा",
+      "create_schedule": "अनुसूची बनाएं",
+      "add_land_btn": "जमीन जोड़ें",
+      "delete_dialog": {
+        "title": "अनुसूची हटाएं",
+        "description": "क्या आप वाकई इस AI फसल अनुसूची को हटाना चाहते हैं? इस क्रिया को पूर्ववत नहीं किया जा सकता।",
+        "cancel": "रद्द करें",
+        "delete": "हटाएं"
+      },
+      "delete_ai_dialog": {
+        "title": "AI अनुसूची हटाएं?",
+        "description": "यह AI-जनित फसल अनुसूची और इसके सभी कार्यों को स्थायी रूप से हटा देगा। इस क्रिया को पूर्ववत नहीं किया जा सकता।"
+      },
+      "toast": {
+        "deleted": "अनुसूची हटाई गई",
+        "deleted_message": "AI फसल अनुसूची हटा दी गई है",
+        "delete_failed": "हटाना विफल",
+        "delete_failed_message": "अनुसूची हटाने में विफल"
+      }
+    },
     "climate": {
       "ai_active": "AI सक्रिय",
       "tasks_auto_adjusted": "कार्य स्वतः समायोजित",

@@ -331,7 +331,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                         {land.survey_number && (
                           <p className="text-xs text-muted-foreground flex items-center gap-1">
                             <Grid3x3 className="h-3 w-3" />
-                            Survey #{land.survey_number}
+                            {t('schedule.land_selector.survey', { number: land.survey_number })}
                           </p>
                         )}
                         {hasSchedule && status?.cropName && (
@@ -377,11 +377,11 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                         </div>
                         <div>
                           <p className="text-xl font-bold text-foreground">
-                            {land.area_acres} <span className="text-sm font-medium text-muted-foreground">acres</span>
+                            {land.area_acres} <span className="text-sm font-medium text-muted-foreground">{t('schedule.land_selector.acres')}</span>
                           </p>
                           {land.area_guntas && land.area_guntas > 0 && (
                             <p className="text-xs text-muted-foreground">
-                              {land.area_guntas} guntas
+                              {land.area_guntas} {t('schedule.land_selector.guntas')}
                             </p>
                           )}
                         </div>
@@ -464,22 +464,22 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                            e.stopPropagation();
                            onViewSchedule?.(land.id);
                          }}
-                       >
-                         <Calendar className="h-3.5 w-3.5" />
-                         View
-                       </Button>
-                       <Button
-                         variant="outline"
-                         size="sm"
-                         className="flex-1 gap-2"
-                         onClick={(e) => {
-                           e.stopPropagation();
-                           handleEditSchedule(land.id);
-                         }}
-                       >
-                         <Edit className="h-3.5 w-3.5" />
-                         Edit
-                       </Button>
+                        >
+                          <Calendar className="h-3.5 w-3.5" />
+                          {t('schedule.land_selector.view')}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 gap-2"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditSchedule(land.id);
+                          }}
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                          {t('schedule.land_selector.edit')}
+                        </Button>
                        <Button
                          variant="outline"
                          size="sm"
@@ -494,20 +494,20 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                      </div>
                    )}
 
-                   {!hasSchedule && (
-                     <Button
-                       variant="outline"
-                       size="sm"
-                       className="w-full mt-3 gap-2"
-                       onClick={(e) => {
-                         e.stopPropagation();
-                         handleCreateSchedule(land);
-                       }}
-                     >
-                       <Plus className="h-3.5 w-3.5" />
-                       Create Schedule
-                     </Button>
-                   )}
+                    {!hasSchedule && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full mt-3 gap-2"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCreateSchedule(land);
+                        }}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        {t('schedule.land_selector.create_schedule')}
+                      </Button>
+                    )}
                  </div>
                </Card>
              </motion.div>
@@ -533,7 +533,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
           size="lg"
         >
           <Plus className="h-5 w-5" />
-          <span className="font-medium">Add Land</span>
+          <span className="font-medium">{t('schedule.land_selector.add_land_btn')}</span>
         </Button>
       </motion.div>
 
@@ -541,18 +541,18 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete AI Schedule?</AlertDialogTitle>
+            <AlertDialogTitle>{t('schedule.land_selector.delete_ai_dialog.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the AI-generated crop schedule and all its tasks. This action cannot be undone.
+              {t('schedule.land_selector.delete_ai_dialog.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('schedule.land_selector.delete_dialog.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDeleteSchedule}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t('schedule.land_selector.delete_dialog.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

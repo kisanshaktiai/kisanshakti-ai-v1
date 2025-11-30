@@ -170,6 +170,36 @@
       "medium": "मध्यम",
       "low": "कमी"
     },
+    "land_selector": {
+      "ai_schedule_ready": "AI वेळापत्रक तयार",
+      "generate_schedule": "वेळापत्रक तयार करा",
+      "active": "सक्रिय",
+      "click_to_view": "पाहण्यासाठी क्लिक करा",
+      "view": "पहा",
+      "edit": "संपादित करा",
+      "delete": "हटवा",
+      "survey": "सर्वे #{{number}}",
+      "acres": "एकर",
+      "guntas": "गुंठा",
+      "create_schedule": "वेळापत्रक तयार करा",
+      "add_land_btn": "जमीन जोडा",
+      "delete_dialog": {
+        "title": "वेळापत्रक हटवा",
+        "description": "तुम्हाला खात्री आहे की तुम्ही हे AI पीक वेळापत्रक हटवू इच्छिता? ही क्रिया पूर्ववत करता येणार नाही.",
+        "cancel": "रद्द करा",
+        "delete": "हटवा"
+      },
+      "delete_ai_dialog": {
+        "title": "AI वेळापत्रक हटवायचे?",
+        "description": "हे AI-जनित पीक वेळापत्रक आणि त्याची सर्व कामे कायमस्वरूपी हटवेल. ही क्रिया पूर्ववत करता येणार नाही."
+      },
+      "toast": {
+        "deleted": "वेळापत्रक हटवले",
+        "deleted_message": "AI पीक वेळापत्रक काढून टाकले आहे",
+        "delete_failed": "हटवणे अयशस्वी",
+        "delete_failed_message": "वेळापत्रक हटवण्यात अयशस्वी"
+      }
+    },
     "climate": {
       "ai_active": "AI सक्रिय",
       "tasks_auto_adjusted": "कामे स्वयं समायोजित",
