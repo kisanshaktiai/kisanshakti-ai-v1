@@ -1,30 +1,26 @@
 /**
- * PWAInstallBanner - Production-ready PWA install banner
+ * PWAInstallBanner - PHASE 2 FIX: Production-ready PWA install banner
  * 
- * Features:
- * - Captures beforeinstallprompt on Android/Desktop
- * - Shows custom banner (not browser's default)
- * - iOS Safari A2HS instructions overlay
- * - Smart timing: shows after user engagement, not on page load
- * - Analytics hooks for funnel tracking
- * - Respects user dismissal (with graduated cooldown)
- * - Accessible and mobile-first
+ * CRITICAL FIXES IMPLEMENTED:
+ * ✅ Single component (removed PWAInstallPrompt duplicate)
+ * ✅ Captures prompt from global window.__capturedPwaPrompt
+ * ✅ Install button calls prompt() in IMMEDIATE user gesture handler
+ * ✅ Proper z-index layering (z-[70] above modals at z-50)
+ * ✅ Smart engagement detection before showing
+ * ✅ Graduated cooldown on dismissal
+ * ✅ Handles iOS manual instructions
+ * ✅ Analytics tracking
  * 
- * ROOT CAUSE FIX:
- * - Previous: Duplicate handlers in index.html + component caused race conditions
- * - Previous: Hardcoded 10s delay caused unwanted auto-prompt
- * - Previous: Top positioning bad for mobile UX
- * 
- * NEW APPROACH:
- * - Single handler in component only
- * - Show only after user engagement (scroll, click, 30s idle)
- * - Bottom positioning for better reachability
- * - Proper event cleanup
+ * ROOT CAUSE FIXES:
+ * - Previous: Multiple components competing for same prompt
+ * - Previous: prompt() called in async context losing user gesture
+ * - Previous: Duplicate beforeinstallprompt handlers
+ * - NOW: Single source of truth, immediate gesture handling, proper layering
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Download, Share, Plus, Smartphone, Monitor, ChevronUp } from 'lucide-react';
+import { X, Download, Share, Plus, Smartphone } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -55,7 +51,7 @@ export const PWAInstallBanner: React.FC = () => {
 
   // Analytics helper
   const trackEvent = useCallback((event: AnalyticsEvent, data?: Record<string, any>) => {
-    console.log(`[PWA Analytics] ${event}`, data);
+    console.log(`📊 [PWA Analytics] ${event}`, data);
     
     // Google Analytics 4
     if (typeof window !== 'undefined' && (window as any).gtag) {
@@ -63,11 +59,6 @@ export const PWAInstallBanner: React.FC = () => {
         event_category: 'pwa',
         ...data
       });
-    }
-
-    // Custom analytics hook (extend as needed)
-    if (typeof window !== 'undefined' && (window as any).analyticsHook) {
-      (window as any).analyticsHook(event, data);
     }
   }, []);
 
@@ -79,6 +70,11 @@ export const PWAInstallBanner: React.FC = () => {
       document.referrer.includes('android-app://');
     
     setIsStandalone(standalone);
+    
+    if (standalone) {
+      console.log('✅ [PWA] App already installed (standalone mode)');
+    }
+    
     return standalone;
   }, []);
 
@@ -89,9 +85,18 @@ export const PWAInstallBanner: React.FC = () => {
     const isAndroid = /android/.test(ua);
     const isSafari = /safari/.test(ua) && !/chrome/.test(ua);
     
-    if (isIOS && isSafari) return 'ios';
-    if (isAndroid) return 'android';
-    if (!isIOS && !isAndroid) return 'desktop';
+    if (isIOS && isSafari) {
+      console.log('📱 [PWA] Platform: iOS Safari (manual instructions)');
+      return 'ios';
+    }
+    if (isAndroid) {
+      console.log('📱 [PWA] Platform: Android (native prompt)');
+      return 'android';
+    }
+    if (!isIOS && !isAndroid) {
+      console.log('💻 [PWA] Platform: Desktop (native prompt)');
+      return 'desktop';
+    }
     return null;
   }, []);
 
@@ -107,20 +112,20 @@ export const PWAInstallBanner: React.FC = () => {
     const daysSinceDismiss = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24);
     
     if (daysSinceDismiss < cooldownDays) {
-      console.log(`[PWA] Banner dismissed ${dismissCount} times, cooling down for ${cooldownDays} days`);
+      console.log(`⏸️ [PWA] Cooldown active: ${cooldownDays} days (dismissed ${dismissCount} times)`);
       return false;
     }
 
     return true;
   }, []);
 
-  // Handle user engagement detection
+  // User engagement detection
   useEffect(() => {
     if (isStandalone || !canShow()) return;
 
     const handleEngagement = () => {
       if (userEngaged) return;
-      console.log('[PWA] User engaged, will show banner after idle period');
+      console.log('👆 [PWA] User engaged (scroll/click/touch)');
       setUserEngaged(true);
     };
 
@@ -130,9 +135,9 @@ export const PWAInstallBanner: React.FC = () => {
       window.addEventListener(event, handleEngagement, { once: true, passive: true });
     });
 
-    // Fallback: show after 30s idle
+    // Fallback: consider engaged after 30s
     engagementTimerRef.current = setTimeout(() => {
-      console.log('[PWA] Engagement timeout reached, user considered engaged');
+      console.log('⏰ [PWA] Engagement timeout - considering user engaged');
       setUserEngaged(true);
     }, ENGAGEMENT_THRESHOLD_MS);
 
@@ -144,41 +149,47 @@ export const PWAInstallBanner: React.FC = () => {
     };
   }, [isStandalone, canShow, userEngaged]);
 
-  // Capture beforeinstallprompt
+  // PHASE 2 FIX: Listen for globally captured prompt
   useEffect(() => {
     if (checkStandalone()) {
-      console.log('[PWA] Already installed, not showing banner');
       return;
     }
 
     const detectedPlatform = detectPlatform();
     setPlatform(detectedPlatform);
-    console.log('[PWA] Platform detected:', detectedPlatform);
 
-    const handleBeforeInstallPrompt = (e: Event) => {
-      // Prevent browser's default install prompt
-      e.preventDefault();
-      console.log('[PWA] beforeinstallprompt captured');
+    // Listen for prompt captured by App.tsx
+    const handlePromptCaptured = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const promptEvent = customEvent.detail || window.__capturedPwaPrompt;
       
-      const promptEvent = e as BeforeInstallPromptEvent;
-      setDeferredPrompt(promptEvent);
+      if (!promptEvent) {
+        console.warn('⚠️ [PWA] Prompt event missing from capture');
+        return;
+      }
+
+      console.log('✅ [PWA Banner] Received captured prompt from app level');
+      setDeferredPrompt(promptEvent as BeforeInstallPromptEvent);
 
       // Show banner only if user is engaged and cooldown passed
       if (userEngaged && canShow()) {
+        console.log('📢 [PWA Banner] Showing banner (user engaged + cooldown passed)');
         setShowBanner(true);
         
         if (!hasTrackedShow.current) {
           trackEvent('install_shown', { platform: detectedPlatform });
           hasTrackedShow.current = true;
         }
+      } else {
+        console.log('⏸️ [PWA Banner] Banner suppressed (engagement or cooldown check)');
       }
     };
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('pwa-prompt-captured', handlePromptCaptured);
 
-    // iOS: Show banner after engagement
+    // For iOS, show banner after engagement (no native prompt available)
     if (detectedPlatform === 'ios' && canShow() && userEngaged) {
-      console.log('[PWA] iOS detected, showing banner after engagement');
+      console.log('🍎 [PWA Banner] iOS detected, showing manual instructions');
       setShowBanner(true);
       
       if (!hasTrackedShow.current) {
@@ -187,9 +198,9 @@ export const PWAInstallBanner: React.FC = () => {
       }
     }
 
-    // Listen for appinstalled event
+    // Listen for app installed event
     const handleAppInstalled = () => {
-      console.log('[PWA] App installed successfully');
+      console.log('✅ [PWA] App installed successfully!');
       setShowBanner(false);
       setShowIOSModal(false);
       localStorage.removeItem(STORAGE_KEY_DISMISSED);
@@ -200,57 +211,60 @@ export const PWAInstallBanner: React.FC = () => {
     window.addEventListener('appinstalled', handleAppInstalled);
 
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('pwa-prompt-captured', handlePromptCaptured);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, [checkStandalone, detectPlatform, canShow, userEngaged, trackEvent]);
 
-  // Show banner after engagement (for iOS and when prompt is available)
+  // Show banner after engagement (for platforms with native prompt)
   useEffect(() => {
-    if (userEngaged && !isStandalone && canShow()) {
-      if ((platform === 'ios') || (deferredPrompt && (platform === 'android' || platform === 'desktop'))) {
-        setShowBanner(true);
-        
-        if (!hasTrackedShow.current) {
-          trackEvent('install_shown', { platform });
-          hasTrackedShow.current = true;
-        }
+    if (userEngaged && !isStandalone && canShow() && deferredPrompt && (platform === 'android' || platform === 'desktop')) {
+      console.log('📢 [PWA Banner] User engaged + prompt available, showing banner');
+      setShowBanner(true);
+      
+      if (!hasTrackedShow.current) {
+        trackEvent('install_shown', { platform });
+        hasTrackedShow.current = true;
       }
     }
   }, [userEngaged, isStandalone, canShow, platform, deferredPrompt, trackEvent]);
 
-  const handleInstall = async () => {
+  // PHASE 2 CRITICAL FIX: Install handler calls prompt() in IMMEDIATE user gesture
+  const handleInstall = () => {
     if (!deferredPrompt) {
-      console.warn('[PWA] No deferred prompt available');
+      console.error('❌ [PWA] No deferred prompt available');
       return;
     }
 
-    try {
-      console.log('[PWA] Showing install prompt');
-      trackEvent('install_prompted', { platform });
+    console.log('🚀 [PWA] Install button clicked (direct user gesture)');
+    trackEvent('install_prompted', { platform });
 
-      await deferredPrompt.prompt();
-      const choiceResult = await deferredPrompt.userChoice;
+    // CRITICAL: Call prompt() IMMEDIATELY in the click handler
+    // Do NOT await or add any async code before this call
+    // This preserves the "user gesture" requirement for mobile browsers
+    deferredPrompt.prompt();
 
-      console.log('[PWA] User choice:', choiceResult.outcome);
+    // THEN handle the async userChoice result
+    deferredPrompt.userChoice.then(choiceResult => {
+      console.log('👤 [PWA] User choice:', choiceResult.outcome);
 
       if (choiceResult.outcome === 'accepted') {
-        console.log('[PWA] Install accepted');
+        console.log('✅ [PWA] Install accepted');
         trackEvent('install_accepted', { platform });
         setShowBanner(false);
         localStorage.removeItem(STORAGE_KEY_DISMISSED);
         localStorage.removeItem(STORAGE_KEY_DISMISS_COUNT);
       } else {
-        console.log('[PWA] Install dismissed by user');
+        console.log('❌ [PWA] Install dismissed by user');
         trackEvent('install_dismissed', { platform, reason: 'user_declined_prompt' });
         handleDismiss();
       }
 
       setDeferredPrompt(null);
-    } catch (error) {
-      console.error('[PWA] Install error:', error);
+    }).catch(error => {
+      console.error('❌ [PWA] Install error:', error);
       trackEvent('install_dismissed', { platform, reason: 'error', error: (error as Error).message });
-    }
+    });
   };
 
   const handleDismiss = () => {
@@ -259,6 +273,7 @@ export const PWAInstallBanner: React.FC = () => {
     localStorage.setItem(STORAGE_KEY_DISMISS_COUNT, (dismissCount + 1).toString());
     setShowBanner(false);
     setShowIOSModal(false);
+    console.log(`🔕 [PWA] Dismissed (count: ${dismissCount + 1})`);
     trackEvent('install_dismissed', { platform, dismiss_count: dismissCount + 1 });
   };
 
@@ -268,6 +283,7 @@ export const PWAInstallBanner: React.FC = () => {
     localStorage.setItem(STORAGE_KEY_DISMISS_COUNT, '0');
     setShowBanner(false);
     setShowIOSModal(false);
+    console.log('⏰ [PWA] Later (1-day cooldown)');
     trackEvent('install_dismissed', { platform, reason: 'later' });
   };
 
@@ -283,15 +299,16 @@ export const PWAInstallBanner: React.FC = () => {
 
   return (
     <>
-      {/* Bottom Banner (Android/Desktop) */}
+      {/* PHASE 2 FIX: z-[70] ensures banner is above modals (z-50) and onboarding (z-50) */}
       <AnimatePresence>
+        {/* Android/Desktop Banner with native prompt button */}
         {showBanner && (platform === 'android' || platform === 'desktop') && deferredPrompt && (
           <motion.div
             initial={{ opacity: 0, y: 100 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 100 }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed bottom-20 left-4 right-4 z-50 md:left-auto md:right-6 md:bottom-6 md:w-96"
+            className="fixed bottom-20 left-4 right-4 z-[70] md:left-auto md:right-6 md:bottom-6 md:w-96"
           >
             <Card className="border-2 border-primary/30 bg-card/95 backdrop-blur-xl shadow-2xl">
               <button
@@ -318,6 +335,7 @@ export const PWAInstallBanner: React.FC = () => {
                 </div>
 
                 <div className="flex gap-2">
+                  {/* PHASE 2 CRITICAL FIX: onClick directly calls handleInstall (user gesture preserved) */}
                   <Button
                     onClick={handleInstall}
                     className="flex-1 bg-gradient-to-r from-primary to-primary/90 hover:opacity-90 shadow-md"
@@ -349,7 +367,7 @@ export const PWAInstallBanner: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 100 }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed bottom-20 left-4 right-4 z-50 md:left-auto md:right-6 md:bottom-6 md:w-96"
+            className="fixed bottom-20 left-4 right-4 z-[70] md:left-auto md:right-6 md:bottom-6 md:w-96"
           >
             <Card className="border-2 border-primary/30 bg-card/95 backdrop-blur-xl shadow-2xl">
               <button
@@ -399,13 +417,13 @@ export const PWAInstallBanner: React.FC = () => {
           </motion.div>
         )}
 
-        {/* iOS Instructions Modal */}
+        {/* iOS Instructions Modal - z-[80] above banner */}
         {showIOSModal && platform === 'ios' && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-end md:items-center justify-center p-4"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[80] flex items-end md:items-center justify-center p-4"
             onClick={handleDismiss}
           >
             <motion.div

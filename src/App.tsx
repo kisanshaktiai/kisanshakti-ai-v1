@@ -18,6 +18,13 @@ import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import { AppLoadingProgress } from "@/components/AppLoadingProgress";
 
+// Extend Window interface for PWA prompt
+declare global {
+  interface Window {
+    __capturedPwaPrompt?: any;
+  }
+}
+
 // Pages
 import Home from "./pages/Home";
 import Weather from "./pages/Weather";
@@ -89,18 +96,38 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   // Initialize global real-time sync
   useGlobalRealtimeSync();
 
-  // Global beforeinstallprompt handler - captures event at app level
+  // PHASE 2 FIX: Single beforeinstallprompt handler at app level
+  // Captures prompt ONCE and makes it available to PWAInstallBanner
+  // Prevents race conditions from multiple handlers
   useEffect(() => {
+    let promptCaptured = false;
+    
     const handleBeforeInstallPrompt = (e: Event) => {
-      console.log('🎯 [PWA] beforeinstallprompt event captured at app level');
-      // Store event in window for PWAInstallPrompt component to access
-      (window as any).__pwaInstallPromptEvent = e;
-      // Dispatch custom event to notify PWAInstallPrompt
-      window.dispatchEvent(new CustomEvent('pwa-install-prompt-ready'));
+      if (promptCaptured) {
+        console.log('⚠️ [PWA] Prompt already captured, ignoring duplicate');
+        return;
+      }
+      
+      // Prevent browser's default install prompt
+      e.preventDefault();
+      promptCaptured = true;
+      
+      console.log('✅ [PWA] beforeinstallprompt captured (app level)');
+      console.log('📋 [PWA] Prompt details:', {
+        type: e.type,
+        timestamp: Date.now()
+      });
+      
+      // Store in window for PWAInstallBanner access
+      window.__capturedPwaPrompt = e;
+      
+      // Dispatch event to notify PWAInstallBanner
+      const customEvent = new CustomEvent('pwa-prompt-captured', { detail: e });
+      window.dispatchEvent(customEvent);
     };
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    console.log('👂 [PWA] Global beforeinstallprompt listener attached');
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt, { once: true });
+    console.log('👂 [PWA] Global beforeinstallprompt listener attached (single capture)');
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -273,7 +300,10 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       <AppLoadingProgress isLoading={isInitializing} currentStep={currentStep} />
       <OfflineIndicator />
       <PWAUpdatePrompt />
+      {/* PHASE 1 FIX: Single onboarding controller - no duplicates */}
       <FirstRunOnboardingController />
+      {/* PHASE 2 FIX: Single PWA install component */}
+      <PWAInstallBanner />
       {children}
     </>
   );
@@ -375,8 +405,8 @@ export default function App() {
               </AppInitializer>
               <Toaster />
               <Sonner />
-              <PWAUpdatePrompt />
-              <PWAInstallBanner />
+              {/* PHASE 2 FIX: Removed duplicate PWA components */}
+              {/* PWAInstallBanner is rendered in AppInitializer */}
             </TooltipProvider>
           </QueryClientProvider>
         </TenantProvider>
