@@ -53,6 +53,10 @@
       "leased": "Leased",
       "shared": "Shared"
     },
+    "list_item": {
+      "acres": "acres",
+      "ownership_default": "Owned"
+    },
     "add_land": {
       "title": "Add New Land",
       "instructions_title": "Add New Land - Instructions",
@@ -246,12 +250,46 @@
       "health_needs_care": "Needs Care",
       "irrigation": "Irrigation",
       "not_set": "Not Set",
+      "land_info": "Land Information",
+      "survey_number_label": "Survey Number",
+      "not_available": "Not Available",
+      "ownership_type_label": "Ownership Type",
+      "not_specified": "Not Specified",
+      "soil_type_label": "Soil Type",
+      "location_label": "Location",
+      "last_sowing": "Last Sowing",
+      "expected_harvest": "Expected Harvest",
+      "recent_activities": "Recent Activities",
+      "add": "Add",
+      "no_activities": "No activities recorded yet",
+      "start_tracking": "Start tracking your farm activities",
+      "soil_overview": "Soil Health Overview",
+      "soil_composition": "Soil Composition",
+      "soil_ph": "Soil pH",
+      "organic_carbon": "Organic Carbon",
+      "nitrogen": "Nitrogen",
+      "phosphorus": "Phosphorus",
+      "potassium": "Potassium",
+      "not_tested": "Not Tested",
+      "kg_ha": "kg/ha",
+      "last_soil_test": "Last soil test conducted on {{date}}",
+      "activity_log": "Activity Log",
+      "log_activity": "Log Activity",
+      "note": "Note",
+      "crop_history": "Crop History",
+      "add_crop_record": "Add Crop Record",
+      "no_crop_history": "No crop history available",
+      "sown": "Sown",
+      "harvested": "Harvested",
+      "kg_acre": "kg/acre",
       "tabs": {
         "overview": "Overview",
         "soil": "Soil",
         "activities": "Activities",
         "crops": "Crops",
-        "analytics": "Analytics"
+        "analytics": "Analytics",
+        "history": "History",
+        "gallery": "Gallery"
       },
       "not_found": "Land not found",
       "back_to_lands": "Back to Lands",
@@ -260,6 +298,44 @@
         "success_message": "Land deleted successfully",
         "error_title": "Error",
         "error_message": "Failed to delete land"
+      }
+    },
+    "crop_management": {
+      "title": "Manage Crops - {{name}}",
+      "description": "Add or update crop information for your land",
+      "current_crop": "Current Crop",
+      "previous_crop": "Previous Crop",
+      "select_category": "Select Crop Category",
+      "back": "Back",
+      "select_from": "Select Crop from {{group}}",
+      "selected": "Selected",
+      "planting_date": "Planting/Sowing Date",
+      "expected_harvest": "Expected Harvest Date",
+      "auto_calculated": "Auto-calculated based on crop duration (~{{days}} days)",
+      "select_date": "Select date",
+      "select_planting_first": "Select planting date first",
+      "previous_harvest_date": "Previous Harvest Date",
+      "save_changes": "Save Changes",
+      "saving": "Saving...",
+      "duration_days": "~{{days}} days",
+      "toast": {
+        "success": "Crop information updated successfully",
+        "error": "Failed to update crop information",
+        "load_error": "Failed to load crop data"
+      }
+    },
+    "edit": {
+      "title": "Edit Land: {{name}}",
+      "basic_details": "Basic Details",
+      "basic_land_info": "Basic Land Information",
+      "land_characteristics": "Land Characteristics",
+      "review": "Review",
+      "area_display": "Area: {{acres}} acres",
+      "area_detail": "{{guntha}} guntha | {{sqft}} sq ft",
+      "toast": {
+        "success": "Land updated successfully",
+        "error": "Failed to update land",
+        "session_error": "Session or land information missing"
       }
     }
   },

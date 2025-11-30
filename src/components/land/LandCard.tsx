@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
+import { useTranslation } from 'react-i18next';
 import { 
   MapPin, 
   Mountain, 
@@ -55,6 +56,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
   const navigate = useNavigate();
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
   const { apiKey, isLoaded } = useGoogleMapsApi();
+  const { t } = useTranslation();
   
   // Generate static map URL with boundary polygon
   const getStaticMapUrl = () => {
@@ -101,7 +103,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
             <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent" />
             <Badge className="absolute top-2 left-2 bg-background/90 backdrop-blur">
               <Mountain className="h-3 w-3 mr-1" />
-              {land.area.toFixed(2)} acres
+              {land.area.toFixed(2)} {t('lands.list_item.acres')}
             </Badge>
           </div>
         )}
@@ -112,7 +114,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
               <h3 className="font-semibold text-lg">{land.name}</h3>
               {land.survey_number && (
                 <p className="text-xs text-muted-foreground">
-                  Survey No: {land.survey_number}
+                  {t('lands.card.survey_no', { number: land.survey_number })}
                 </p>
               )}
             </div>
@@ -131,18 +133,18 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => navigate(`/app/lands/${land.id}`)}>
                     <Eye className="h-4 w-4 mr-2" />
-                    View Details
+                    {t('lands.card.view_details')}
                   </DropdownMenuItem>
                   {onEdit && (
                     <DropdownMenuItem onClick={onEdit}>
                       <Edit className="h-4 w-4 mr-2" />
-                      Edit
+                      {t('lands.card.edit')}
                     </DropdownMenuItem>
                   )}
                   {onDelete && (
                     <DropdownMenuItem onClick={onDelete} className="text-destructive">
                       <Trash2 className="h-4 w-4 mr-2" />
-                      Delete
+                      {t('lands.card.delete')}
                     </DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
@@ -156,7 +158,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
           <div className="flex items-start gap-2">
             <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
             <div className="text-sm">
-              <p className="font-medium">{land.village || 'Location'}</p>
+              <p className="font-medium">{land.village || t('lands.wizard.form.location_details')}</p>
               {(land.district || land.state) && (
                 <p className="text-muted-foreground">
                   {[land.district, land.state].filter(Boolean).join(', ')}
@@ -190,7 +192,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Wheat className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-medium">Current Crop</span>
+                    <span className="text-sm font-medium">{t('lands.wizard.form.current_crop')}</span>
                   </div>
                   <Badge variant="default" className="text-xs">
                     {land.current_crop}
@@ -199,19 +201,19 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
                 {land.planting_date && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Calendar className="h-3 w-3" />
-                    Planted: {format(new Date(land.planting_date), 'dd MMM yyyy')}
+                    {t('lands.details.last_sowing')}: {format(new Date(land.planting_date), 'dd MMM yyyy')}
                   </div>
                 )}
                 {land.expected_harvest_date && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Clock className="h-3 w-3" />
-                    Expected Harvest: {format(new Date(land.expected_harvest_date), 'dd MMM yyyy')}
+                    {t('lands.details.expected_harvest')}: {format(new Date(land.expected_harvest_date), 'dd MMM yyyy')}
                   </div>
                 )}
               </div>
             ) : (
               <div className="flex items-center justify-center py-2 border-2 border-dashed rounded-lg">
-                <p className="text-sm text-muted-foreground">No crop planted</p>
+                <p className="text-sm text-muted-foreground">{t('lands.details.no_crop')}</p>
               </div>
             )}
             
@@ -225,12 +227,12 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
               {land.current_crop ? (
                 <>
                   <Edit className="h-4 w-4 mr-2" />
-                  Manage Crops
+                  {t('lands.card.manage_crops')}
                 </>
               ) : (
                 <>
                   <Plus className="h-4 w-4 mr-2" />
-                  Add Crop
+                  {t('lands.card.add_crop')}
                 </>
               )}
             </Button>

@@ -67,7 +67,7 @@ interface CropScheduleViewProps {
 const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, currentCrop, onBack }) => {
   const { toast } = useToast();
   const { user } = useAuthStore();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { speak, stop, isSpeaking } = useTextToSpeech({ 
     language: i18n.language === 'hi' ? 'hi-IN' : 
              i18n.language === 'mr' ? 'mr-IN' : 
@@ -354,7 +354,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
           {/* Loading message */}
           <div className="flex items-center justify-center gap-2 text-muted-foreground py-4">
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
-            <p className="text-sm font-medium">Loading schedule data...</p>
+            <p className="text-sm font-medium">{t('schedule.schedule_view.loading')}</p>
           </div>
         </div>
       </div>
@@ -383,7 +383,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                   {landName}
                 </h2>
                 <p className="text-xs text-muted-foreground font-medium">
-                  No Active Schedule
+                  {t('schedule.schedule_view.no_active_schedule')}
                 </p>
               </div>
             </div>
@@ -397,9 +397,9 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               <Calendar className="h-20 w-20 text-primary/60 mx-auto animate-pulse" />
               <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
             </div>
-            <h3 className="text-xl font-bold text-foreground">No Schedule Available</h3>
+            <h3 className="text-xl font-bold text-foreground">{t('schedule.schedule_view.no_schedule_available')}</h3>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Generate an AI-powered crop schedule to get personalized farming tasks and recommendations
+              {t('schedule.schedule_view.no_schedule_description')}
             </p>
             <div className="pt-4">
               <Button 
@@ -407,7 +407,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                 className="bg-gradient-to-r from-primary to-accent hover:shadow-lg hover:shadow-primary/30 transition-all"
               >
                 <Plus className="h-4 w-4 mr-2" />
-                Generate Schedule
+                {t('schedule.schedule_view.generate_schedule')}
               </Button>
             </div>
           </div>
@@ -446,12 +446,12 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                 </h2>
                 <p className="text-xs text-muted-foreground font-medium">
                   <MapPin className="h-3 w-3 inline mr-1" />
-                  {landName} • {schedule.crop_variety || 'Standard Variety'}
+                  {landName} • {schedule.crop_variety || t('schedule.schedule_view.standard_variety')}
                 </p>
               </div>
             </div>
             <Badge className="bg-primary/10 text-primary border-primary/20">
-              AI Schedule
+              {t('schedule.schedule_view.ai_schedule')}
             </Badge>
           </div>
         </div>

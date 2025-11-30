@@ -3,7 +3,7 @@
     "page": "lands",
     "version": "1.0",
     "updated_by": "AI Localization Engineer",
-    "last_updated": "2025-11-29"
+    "last_updated": "2025-11-30"
   },
   "lands": {
     "stats": {
@@ -53,15 +53,284 @@
       "leased": "पट्टे पर",
       "shared": "साझा"
     },
+    "list_item": {
+      "acres": "एकड़",
+      "ownership_default": "स्वामित्व"
+    },
     "add_land": {
+      "title": "नई भूमि जोड़ें",
+      "instructions_title": "नई भूमि जोड़ें - निर्देश",
+      "instructions_subtitle": "अपनी भूमि जोड़ने के लिए इन सरल चरणों का पालन करें",
       "loading": {
-        "maps": "Google मैप्स लोड हो रहा है..."
+        "maps": "Google मैप्स लोड हो रहा है...",
+        "hybrid_map": "हाइब्रिड मैप लोड हो रहा है...",
+        "location": "आपका स्थान प्राप्त किया जा रहा है..."
       },
       "error": {
         "maps_failed": {
           "title": "मैप्स लोड नहीं हो सका",
           "message": "Google मैप्स लोड नहीं हो सका। कृपया अपना इंटरनेट कनेक्शन जांचें और पुनः प्रयास करें।"
+        },
+        "location": "आपका स्थान निर्धारित नहीं किया जा सका",
+        "gps_not_available": "आपके डिवाइस में GPS ट्रैकिंग का समर्थन नहीं है",
+        "gps_error": "GPS स्थान प्राप्त करने में विफल। कृपया अपनी सेटिंग जांचें।",
+        "invalid_boundary": "कृपया अपनी भूमि सीमा को परिभाषित करने के लिए कम से कम 3 बिंदु चिह्नित करें।"
+      },
+      "steps": {
+        "step_1": {
+          "title": "चरण 1: मैप खुलेगा",
+          "description": "एक पूर्ण-स्क्रीन मैप खुलेगा जो आपका वर्तमान स्थान दिखाएगा। मैप के पूरी तरह लोड होने की प्रतीक्षा करें।"
+        },
+        "step_2": {
+          "title": "चरण 2: सीमा बनाएं",
+          "description": "अपनी भूमि की सीमा बिंदुओं को चिह्नित करने के लिए मैप पर क्लिक करें। प्रत्येक क्लिक एक कोने का बिंदु जोड़ता है।"
+        },
+        "step_3": {
+          "title": "चरण 3: वॉक मोड (वैकल्पिक)",
+          "description": "आप अपनी भूमि सीमा के चारों ओर चल सकते हैं और GPS का उपयोग करके अपनी स्थिति को ट्रैक कर सकते हैं।"
+        },
+        "step_4": {
+          "title": "चरण 4: सीमा पूर्ण करें",
+          "description": "एक बंद सीमा बनाने के लिए सभी बिंदुओं को कनेक्ट करें। क्षेत्र स्वचालित रूप से गणना की जाएगी।"
+        },
+        "step_5": {
+          "title": "चरण 5: सहेजें और विवरण जोड़ें",
+          "description": "सीमा सहेजें बटन पर क्लिक करें। फसल की जानकारी जैसे भूमि विवरण जोड़ने के लिए एक फॉर्म खुलेगा।"
         }
+      },
+      "buttons": {
+        "start_mapping": "मैपिंग शुरू करें",
+        "skip_instructions": "निर्देश छोड़ें और अभी शुरू करें"
+      }
+    },
+    "map": {
+      "mode": {
+        "tap_to_mark": "चिह्नित करने के लिए टैप करें",
+        "walk_boundary": "सीमा चलें"
+      },
+      "gps": {
+        "start_tracking": "GPS ट्रैकिंग शुरू करें",
+        "stop_tracking": "ट्रैकिंग बंद करें"
+      },
+      "actions": {
+        "undo": "अंतिम बिंदु पूर्ववत करें",
+        "clear_all": "सभी बिंदु साफ़ करें",
+        "save_boundary": "सीमा सहेजें"
+      },
+      "area": {
+        "points_marked": "{{count}} बिंदु चिह्नित",
+        "label": "क्षेत्र",
+        "sqft": "वर्ग फुट",
+        "guntha": "गुंठा",
+        "acres": "एकड़"
+      },
+      "toast": {
+        "location_set": "स्थान सेट",
+        "location_updated": "स्थान अपडेट किया गया",
+        "gps_accuracy": "GPS सटीकता: {{accuracy}}मी"
+      }
+    },
+    "wizard": {
+      "step_of_total": "चरण {{current}} / {{total}}: {{title}}",
+      "voice_guide": "ध्वनि मार्गदर्शक",
+      "steps": {
+        "basic_info": "मूल जानकारी",
+        "location": "स्थान",
+        "land_details": "भूमि विवरण",
+        "review_save": "समीक्षा और सहेजें"
+      },
+      "form": {
+        "land_name": "भूमि का नाम",
+        "land_name_placeholder": "उदाहरण: उत्तर खेत",
+        "survey_number": "सर्वे/गट नंबर",
+        "survey_number_placeholder": "उदाहरण: 123/A",
+        "ownership_type": "स्वामित्व प्रकार",
+        "location_details": "स्थान विवरण",
+        "land_characteristics": "भूमि विशेषताएं",
+        "state": "राज्य",
+        "district": "जिला",
+        "taluka": "तालुका",
+        "village": "गाँव",
+        "soil_type": "मिट्टी का प्रकार",
+        "water_source": "जल स्रोत",
+        "irrigation_type": "सिंचाई प्रकार",
+        "current_crop": "वर्तमान फसल",
+        "previous_crop": "पिछली फसल",
+        "cultivation_date": "खेती की तारीख",
+        "last_harvest_date": "अंतिम फसल की तारीख",
+        "select": "{{field}} चुनें",
+        "required": "आवश्यक"
+      },
+      "soil_types": {
+        "alluvial": "जलोढ़",
+        "black": "काली (रेगुर)",
+        "red": "लाल",
+        "laterite": "लेटेराइट",
+        "desert": "रेगिस्तान",
+        "mountain": "पहाड़ी"
+      },
+      "water_sources": {
+        "well": "कुआँ",
+        "borewell": "बोरवेल",
+        "canal": "नहर",
+        "river": "नदी",
+        "rain": "बारिश आधारित",
+        "tank": "टैंक"
+      },
+      "irrigation_types": {
+        "drip": "ड्रिप",
+        "sprinkler": "स्प्रिंकलर",
+        "flood": "फ्लड",
+        "furrow": "नाली",
+        "manual": "मैनुअल",
+        "none": "कोई नहीं"
+      },
+      "review": {
+        "land_area": "भूमि क्षेत्र",
+        "basic_info": "मूल जानकारी",
+        "location": "स्थान",
+        "land_details": "भूमि विवरण",
+        "boundary_points": "सीमा बिंदु",
+        "points_captured": "मैप से {{count}} बिंदु कैप्चर किए गए"
+      },
+      "buttons": {
+        "previous": "पिछला",
+        "next": "अगला",
+        "cancel": "रद्द करें",
+        "save_land": "भूमि सहेजें",
+        "saving": "सहेजा जा रहा है..."
+      },
+      "toast": {
+        "success_title": "सफलता",
+        "success_message": "आपकी भूमि सफलतापूर्वक सहेजी गई है!",
+        "error_title": "त्रुटि",
+        "error_save": "भूमि सहेजने में विफल"
+      }
+    },
+    "card": {
+      "utilized": "{{percent}}% उपयोग किया गया",
+      "survey_no": "सर्वे नं: {{number}}",
+      "current": "वर्तमान",
+      "previous": "पिछला",
+      "soil_health": "मिट्टी स्वास्थ्य",
+      "ndvi_data": "NDVI डेटा",
+      "updated": "अपडेट: {{date}}",
+      "edit": "संपादित करें",
+      "delete": "हटाएं",
+      "view_details": "विवरण देखें",
+      "manage_crops": "फसल प्रबंधित करें",
+      "add_crop": "फसल जोड़ें",
+      "delete_dialog": {
+        "title": "भूमि हटाएं",
+        "description": "क्या आप वाकई \"{{name}}\" को अपनी भूमि से हटाना चाहते हैं? यह भूमि आपकी सूची में अब दिखाई नहीं देगी लेकिन बाद में आवश्यकता पड़ने पर पुनर्प्राप्त की जा सकती है।",
+        "cancel": "रद्द करें",
+        "remove": "हटाएं",
+        "removing": "हटाया जा रहा है..."
+      },
+      "toast": {
+        "removed_title": "भूमि हटाई गई",
+        "removed_message": "{{name}} आपकी भूमि से हटा दिया गया है",
+        "error": "भूमि हटाने में विफल",
+        "link_copied": "लिंक कॉपी किया गया",
+        "link_copied_message": "भूमि लिंक क्लिपबोर्ड पर कॉपी किया गया"
+      }
+    },
+    "details": {
+      "total_area": "कुल क्षेत्र",
+      "current_crop": "वर्तमान फसल",
+      "no_crop": "कोई फसल नहीं",
+      "soil_health": "मिट्टी स्वास्थ्य",
+      "health_good": "अच्छा",
+      "health_fair": "ठीक",
+      "health_needs_care": "देखभाल की आवश्यकता है",
+      "irrigation": "सिंचाई",
+      "not_set": "सेट नहीं",
+      "land_info": "भूमि जानकारी",
+      "survey_number_label": "सर्वे नंबर",
+      "not_available": "उपलब्ध नहीं",
+      "ownership_type_label": "स्वामित्व प्रकार",
+      "not_specified": "निर्दिष्ट नहीं",
+      "soil_type_label": "मिट्टी का प्रकार",
+      "location_label": "स्थान",
+      "last_sowing": "अंतिम बुवाई",
+      "expected_harvest": "अपेक्षित फसल",
+      "recent_activities": "हाल की गतिविधियाँ",
+      "add": "जोड़ें",
+      "no_activities": "अभी तक कोई गतिविधि रिकॉर्ड नहीं की गई",
+      "start_tracking": "अपनी खेती गतिविधियों को ट्रैक करना शुरू करें",
+      "soil_overview": "मिट्टी स्वास्थ्य अवलोकन",
+      "soil_composition": "मिट्टी संरचना",
+      "soil_ph": "मिट्टी pH",
+      "organic_carbon": "जैविक कार्बन",
+      "nitrogen": "नाइट्रोजन",
+      "phosphorus": "फॉस्फोरस",
+      "potassium": "पोटैशियम",
+      "not_tested": "परीक्षण नहीं किया गया",
+      "kg_ha": "किग्रा/हे",
+      "last_soil_test": "अंतिम मिट्टी परीक्षण {{date}} को किया गया",
+      "activity_log": "गतिविधि लॉग",
+      "log_activity": "गतिविधि लॉग करें",
+      "note": "नोट",
+      "crop_history": "फसल इतिहास",
+      "add_crop_record": "फसल रिकॉर्ड जोड़ें",
+      "no_crop_history": "कोई फसल इतिहास उपलब्ध नहीं",
+      "sown": "बोया गया",
+      "harvested": "कटाई की गई",
+      "kg_acre": "किग्रा/एकड़",
+      "tabs": {
+        "overview": "अवलोकन",
+        "soil": "मिट्टी",
+        "activities": "गतिविधियाँ",
+        "crops": "फसलें",
+        "analytics": "विश्लेषण",
+        "history": "इतिहास",
+        "gallery": "गैलरी"
+      },
+      "not_found": "भूमि नहीं मिली",
+      "back_to_lands": "भूमि पर वापस जाएं",
+      "delete": {
+        "success_title": "सफलता",
+        "success_message": "भूमि सफलतापूर्वक हटाई गई",
+        "error_title": "त्रुटि",
+        "error_message": "भूमि हटाने में विफल"
+      }
+    },
+    "crop_management": {
+      "title": "फसल प्रबंधित करें - {{name}}",
+      "description": "अपनी भूमि के लिए फसल जानकारी जोड़ें या अपडेट करें",
+      "current_crop": "वर्तमान फसल",
+      "previous_crop": "पिछली फसल",
+      "select_category": "फसल श्रेणी चुनें",
+      "back": "वापस",
+      "select_from": "{{group}} से फसल चुनें",
+      "selected": "चयनित",
+      "planting_date": "रोपण/बुवाई तिथि",
+      "expected_harvest": "अपेक्षित फसल तिथि",
+      "auto_calculated": "फसल अवधि (~{{days}} दिन) के आधार पर स्वतः गणना",
+      "select_date": "तिथि चुनें",
+      "select_planting_first": "पहले रोपण तिथि चुनें",
+      "previous_harvest_date": "पिछली फसल तिथि",
+      "save_changes": "परिवर्तन सहेजें",
+      "saving": "सहेजा जा रहा है...",
+      "duration_days": "~{{days}} दिन",
+      "toast": {
+        "success": "फसल जानकारी सफलतापूर्वक अपडेट की गई",
+        "error": "फसल जानकारी अपडेट करने में विफल",
+        "load_error": "फसल डेटा लोड करने में विफल"
+      }
+    },
+    "edit": {
+      "title": "भूमि संपादित करें: {{name}}",
+      "basic_details": "मूल विवरण",
+      "basic_land_info": "मूल भूमि जानकारी",
+      "land_characteristics": "भूमि विशेषताएं",
+      "review": "समीक्षा",
+      "area_display": "क्षेत्र: {{acres}} एकड़",
+      "area_detail": "{{guntha}} गुंठा | {{sqft}} वर्ग फुट",
+      "toast": {
+        "success": "भूमि सफलतापूर्वक अपडेट की गई",
+        "error": "भूमि अपडेट करने में विफल",
+        "session_error": "सत्र या भूमि जानकारी गायब है"
       }
     }
   },
