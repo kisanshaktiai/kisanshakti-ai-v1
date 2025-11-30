@@ -185,8 +185,8 @@ export default function Schedule() {
         if (retryCount < 2) {
           setRetryCount(prev => prev + 1);
           toast({
-            title: '🔄 Retrying...',
-            description: `Generating AI schedule (Attempt ${retryCount + 1}/2)`,
+            title: t('schedule.main.retrying'),
+            description: t('schedule.main.generating_attempt', { count: retryCount + 1 }),
             className: 'bg-accent/10 border-accent/20',
           });
           // Retry after 2 seconds
@@ -214,8 +214,8 @@ export default function Schedule() {
       }
       
       toast({
-        title: '✅ AI Schedule Generated!',
-        description: `Smart farming schedule created for ${cropName}`,
+        title: t('schedule.main.generated_success'),
+        description: t('schedule.main.generated_description', { crop: cropName }),
         className: 'bg-success/10 border-success/20',
       });
 
@@ -226,8 +226,8 @@ export default function Schedule() {
       
       // Show user-friendly error with retry option
       toast({
-        title: '❌ Generation Failed',
-        description: error instanceof Error ? error.message : 'Failed to generate schedule',
+        title: t('schedule.main.generation_failed'),
+        description: error instanceof Error ? error.message : t('schedule.toast.error'),
         variant: 'destructive',
         action: (
           <Button 
@@ -345,7 +345,7 @@ export default function Schedule() {
             </p>
             <Button onClick={() => navigate('/app/lands/add')}>
               <Plus className="h-4 w-4 mr-2" />
-              Add Land
+              {t('schedule.main.add_land')}
             </Button>
           </CardContent>
         </Card>
@@ -370,7 +370,7 @@ export default function Schedule() {
               </Button>
               <div>
                 <h1 className="text-lg font-bold bg-gradient-to-r from-primary via-primary/80 to-accent bg-clip-text text-transparent animate-gradient">
-                  {t('schedule.ai_schedule')}
+                  {t('schedule.main.ai_crop_schedule')}
                 </h1>
                 <p className="text-xs text-muted-foreground font-medium">
                   {flowStep === 'land-selection' && t('schedule.steps.land_selection')}
@@ -389,8 +389,8 @@ export default function Schedule() {
                   onClick={() => {
                     refetchLands();
                     toast({
-                      title: '🔄 Refreshing',
-                      description: 'Syncing latest data...',
+                      title: t('schedule.main.refreshing'),
+                      description: t('schedule.main.syncing_latest'),
                       className: 'bg-accent/10 border-accent/20',
                     });
                   }}
