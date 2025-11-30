@@ -88,8 +88,115 @@
       "task_completed": "कार्य पूर्ण के रूप में चिह्नित",
       "task_skipped": "कार्य छोड़ा गया",
       "schedule_generated": "अनुसूची सफलतापूर्वक बनाई गई",
-      "error": "कार्य अपडेट करने में विफल"
-    }
+      "error": "कार्य अपडेट करने में विफल",
+      "great_work": "बहुत अच्छा! सिंक हो रहा है...",
+      "sync_failed": "पूर्णता सिंक करने में विफल",
+      "rolled_back": "रोल बैक किया गया। फिर से प्रयास करें।",
+      "task_unmarked": "कार्य अचिह्नित",
+      "reverting": "पूर्णता वापस ले रहे हैं...",
+      "unmark_failed": "अचिह्नित करने में विफल",
+      "try_again": "फिर से प्रयास करें।"
+    },
+    "main": {
+      "ai_crop_schedule": "AI फसल अनुसूची",
+      "add_land": "जमीन जोड़ें",
+      "retrying": "पुनः प्रयास कर रहे हैं...",
+      "generating_attempt": "AI अनुसूची बना रहे हैं (प्रयास {{count}}/2)",
+      "generated_success": "AI अनुसूची बनाई गई!",
+      "generated_description": "{{crop}} के लिए स्मार्ट खेती अनुसूची बनाई गई",
+      "generation_failed": "बनाना विफल",
+      "refreshing": "रीफ्रेश हो रहा है",
+      "syncing_latest": "नवीनतम डेटा सिंक हो रहा है..."
+    },
+    "task_statistics": {
+      "title": "कार्य आंकड़े",
+      "completion_rate": "पूर्णता दर",
+      "tasks_count": "{{completed}}/{{total}} कार्य",
+      "completed": "पूर्ण",
+      "tasks_done": "कार्य पूर्ण",
+      "streak": "श्रृंखला",
+      "days": "दिन",
+      "best_streak": "सर्वश्रेष्ठ: {{days}} दिन",
+      "perfect_score": "पूर्ण स्कोर! 🎉",
+      "on_fire": "धमाकेदार! {{days}} दिन की श्रृंखला 🔥"
+    },
+    "task_card": {
+      "today": "आज",
+      "tomorrow": "कल",
+      "overdue": "विलंबित",
+      "days_until": "{{days}} दिन",
+      "high_priority": "उच्च प्राथमिकता",
+      "weather": "मौसम",
+      "completed": "पूर्ण",
+      "description": "विवरण",
+      "instructions": "निर्देश",
+      "precautions": "सावधानियां",
+      "required_resources": "आवश्यक संसाधन",
+      "ideal_weather": "आदर्श मौसम",
+      "temperature": "तापमान",
+      "humidity": "नमी",
+      "conditions": "स्थितियां",
+      "read_aloud": "जोर से पढ़ें"
+    },
+    "schedule_card": {
+      "variety": "किस्म",
+      "yield": "उपज",
+      "cost": "लागत",
+      "progress": "प्रगति: {{completed}}/{{total}} कार्य",
+      "view_schedule": "अनुसूची देखें"
+    },
+    "timeline": {
+      "title": "समयरेखा दृश्य",
+      "tasks_count": "{{count}} कार्य",
+      "task": "कार्य",
+      "tasks": "कार्य",
+      "ai_adjusted": "AI समायोजित",
+      "done": "पूर्ण"
+    },
+    "dialog": {
+      "task_details": "कार्य विवरण",
+      "update_status": "कार्य स्थिति अपडेट करें और नोट्स जोड़ें",
+      "resources_needed": "आवश्यक संसाधन",
+      "notes_label": "नोट्स",
+      "notes_optional": "(वैकल्पिक)",
+      "notes_placeholder": "इस कार्य के बारे में कोई नोट्स जोड़ें...",
+      "done": "पूर्ण",
+      "skipped": "छोड़ा गया",
+      "weather": "मौसम",
+      "high": "उच्च",
+      "medium": "मध्यम",
+      "low": "कम"
+    },
+    "crop_selector": {
+      "failed_load_categories": "फसल श्रेणियां लोड करने में विफल",
+      "failed_load_crops": "फसलें लोड करने में विफल",
+      "search_placeholder": "फसलें खोजें...",
+      "hot": "लोकप्रिय",
+      "retry": "पुनः प्रयास करें"
+    },
+    "sowing": "बुवाई",
+    "harvest": "कटाई",
+    "days_remaining": "दिन शेष",
+    "days_ago": "दिन पहले",
+    "todays_tasks": "आज के कार्य",
+    "pending": "लंबित",
+    "upcoming": "आगामी",
+    "complete": "पूर्ण",
+    "overdue": "विलंबित",
+    "refresh_schedule": "अनुसूची रीफ्रेश करें",
+    "no_tasks": "इस अवधि के लिए कोई कार्य नहीं",
+    "today": "आज",
+    "week": "सप्ताह",
+    "month": "महीना",
+    "all": "सभी",
+    "listen": "सुनें",
+    "close": "बंद करें",
+    "done": "पूर्ण",
+    "skipped": "छोड़ा गया"
+  },
+  "common": {
+    "cancel": "रद्द करें",
+    "save": "सहेजें"
   },
   "__qa": {
     "voice_examples_en": [

@@ -5,6 +5,7 @@ import { CheckCircle2, TrendingUp, Flame, Target } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
 
 interface TaskStatisticsWidgetProps {
   scheduleId: string;
@@ -20,6 +21,7 @@ interface TaskStats {
 }
 
 export function TaskStatisticsWidget({ scheduleId, className }: TaskStatisticsWidgetProps) {
+  const { t } = useTranslation();
   const [stats, setStats] = useState<TaskStats>({
     totalCompleted: 0,
     totalTasks: 0,
@@ -146,7 +148,7 @@ export function TaskStatisticsWidget({ scheduleId, className }: TaskStatisticsWi
       <CardHeader className="pb-3">
         <CardTitle className="text-base font-semibold flex items-center gap-2 text-foreground">
           <Target className="h-4 w-4 text-primary" />
-          Task Statistics
+          {t('schedule.task_statistics.title')}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -160,7 +162,7 @@ export function TaskStatisticsWidget({ scheduleId, className }: TaskStatisticsWi
           <div className="relative z-10">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Completion Rate
+                {t('schedule.task_statistics.completion_rate')}
               </span>
               <TrendingUp className={cn(
                 "h-4 w-4",
@@ -173,7 +175,7 @@ export function TaskStatisticsWidget({ scheduleId, className }: TaskStatisticsWi
                 {stats.completionRate}%
               </span>
               <span className="text-sm text-muted-foreground font-medium">
-                {stats.totalCompleted}/{stats.totalTasks} tasks
+                {t('schedule.task_statistics.tasks_count', { completed: stats.totalCompleted, total: stats.totalTasks })}
               </span>
             </div>
           </div>
@@ -205,11 +207,11 @@ export function TaskStatisticsWidget({ scheduleId, className }: TaskStatisticsWi
             <div className="flex items-center gap-2 mb-2">
               <CheckCircle2 className="h-4 w-4 text-success" />
               <span className="text-[10px] font-medium text-success uppercase tracking-wider">
-                Completed
+                {t('schedule.task_statistics.completed')}
               </span>
             </div>
             <p className="text-2xl font-bold text-foreground">{stats.totalCompleted}</p>
-            <p className="text-xs text-muted-foreground font-medium">tasks done</p>
+            <p className="text-xs text-muted-foreground font-medium">{t('schedule.task_statistics.tasks_done')}</p>
           </motion.div>
 
           {/* Current Streak */}
@@ -233,16 +235,16 @@ export function TaskStatisticsWidget({ scheduleId, className }: TaskStatisticsWi
                 "text-[10px] font-medium uppercase tracking-wider",
                 stats.currentStreak >= 3 ? "text-primary" : "text-muted-foreground"
               )}>
-                Streak
+                {t('schedule.task_statistics.streak')}
               </span>
             </div>
             <div className="flex items-baseline gap-1">
               <p className="text-2xl font-bold text-foreground">{stats.currentStreak}</p>
-              <span className="text-xs text-muted-foreground">days</span>
+              <span className="text-xs text-muted-foreground">{t('schedule.task_statistics.days')}</span>
             </div>
             {stats.longestStreak > stats.currentStreak && (
               <p className="text-xs text-muted-foreground font-medium">
-                Best: {stats.longestStreak} days
+                {t('schedule.task_statistics.best_streak', { days: stats.longestStreak })}
               </p>
             )}
           </motion.div>
@@ -258,7 +260,7 @@ export function TaskStatisticsWidget({ scheduleId, className }: TaskStatisticsWi
           >
             <Badge className="gap-1.5 bg-success/10 text-success border-success/20 px-3 py-1.5 font-semibold">
               <CheckCircle2 className="h-3.5 w-3.5" />
-              Perfect Score! 🎉
+              {t('schedule.task_statistics.perfect_score')}
             </Badge>
           </motion.div>
         )}
@@ -272,7 +274,7 @@ export function TaskStatisticsWidget({ scheduleId, className }: TaskStatisticsWi
           >
             <Badge className="gap-1.5 bg-primary/10 text-primary border-primary/20 px-3 py-1.5 font-semibold">
               <Flame className="h-3.5 w-3.5" />
-              On Fire! {stats.currentStreak} Day Streak 🔥
+              {t('schedule.task_statistics.on_fire', { days: stats.currentStreak })}
             </Badge>
           </motion.div>
         )}

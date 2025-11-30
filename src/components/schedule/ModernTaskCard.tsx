@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useTranslation } from 'react-i18next';
 import { 
   Dialog,
   DialogContent,
@@ -92,6 +93,7 @@ export default function ModernTaskCard({
   isSpeaking = false,
   readOnly = false
 }: TaskCardProps) {
+  const { t } = useTranslation();
   const [showDetails, setShowDetails] = useState(false);
 
   const config = taskTypeConfig[task.task_type as keyof typeof taskTypeConfig] || taskTypeConfig.other;
@@ -102,10 +104,10 @@ export default function ModernTaskCard({
   const taskDate = new Date(task.task_date);
 
   const getDateLabel = () => {
-    if (isToday(taskDate)) return { text: 'Today', color: 'text-primary' };
-    if (isTomorrow(taskDate)) return { text: 'Tomorrow', color: 'text-info' };
-    if (isOverdue) return { text: 'Overdue', color: 'text-destructive' };
-    if (daysUntil <= 7) return { text: `${daysUntil} days`, color: 'text-warning' };
+    if (isToday(taskDate)) return { text: t('schedule.task_card.today'), color: 'text-primary' };
+    if (isTomorrow(taskDate)) return { text: t('schedule.task_card.tomorrow'), color: 'text-info' };
+    if (isOverdue) return { text: t('schedule.task_card.overdue'), color: 'text-destructive' };
+    if (daysUntil <= 7) return { text: t('schedule.task_card.days_until', { days: daysUntil }), color: 'text-warning' };
     return { text: format(taskDate, 'dd MMM'), color: 'text-muted-foreground' };
   };
 
@@ -165,7 +167,7 @@ export default function ModernTaskCard({
                     </span>
                     {task.priority === 'high' && (
                       <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-                        High Priority
+                        {t('schedule.task_card.high_priority')}
                       </Badge>
                     )}
                   </div>
@@ -216,7 +218,7 @@ export default function ModernTaskCard({
               {task.weather_dependent && (
                 <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/20">
                   <CloudRain className="h-3 w-3 text-blue-500" />
-                  <span className="text-[10px] text-blue-600 dark:text-blue-400">Weather</span>
+                  <span className="text-[10px] text-blue-600 dark:text-blue-400">{t('schedule.task_card.weather')}</span>
                 </div>
               )}
             </div>
@@ -227,7 +229,7 @@ export default function ModernTaskCard({
               <div className="flex items-center gap-2 pt-2">
                 <Badge variant="outline" className="bg-success/10 text-success border-success/20">
                   <Check className="h-3 w-3 mr-1" />
-                  Completed
+                  {t('schedule.task_card.completed')}
                 </Badge>
                 {task.completed_at && (
                   <span className="text-[10px] text-muted-foreground">
@@ -265,14 +267,14 @@ export default function ModernTaskCard({
           <div className="space-y-4 py-4">
             {task.task_description && (
               <div>
-                <h4 className="text-sm font-medium mb-2">Description</h4>
+                <h4 className="text-sm font-medium mb-2">{t('schedule.task_card.description')}</h4>
                 <p className="text-sm text-muted-foreground">{task.task_description}</p>
               </div>
             )}
 
             {task.instructions && task.instructions.length > 0 && (
               <div>
-                <h4 className="text-sm font-medium mb-2">Instructions</h4>
+                <h4 className="text-sm font-medium mb-2">{t('schedule.task_card.instructions')}</h4>
                 <ul className="list-disc list-inside space-y-1">
                   {task.instructions.map((instruction: string, index: number) => (
                     <li key={index} className="text-sm text-muted-foreground">{instruction}</li>
@@ -283,7 +285,7 @@ export default function ModernTaskCard({
 
             {task.precautions && task.precautions.length > 0 && (
               <div>
-                <h4 className="text-sm font-medium mb-2 text-warning">⚠️ Precautions</h4>
+                <h4 className="text-sm font-medium mb-2 text-warning">⚠️ {t('schedule.task_card.precautions')}</h4>
                 <ul className="list-disc list-inside space-y-1">
                   {task.precautions.map((precaution: string, index: number) => (
                     <li key={index} className="text-sm text-muted-foreground">{precaution}</li>
@@ -294,7 +296,7 @@ export default function ModernTaskCard({
 
             {task.resources && Object.keys(task.resources).length > 0 && (
               <div>
-                <h4 className="text-sm font-medium mb-2">Required Resources</h4>
+                <h4 className="text-sm font-medium mb-2">{t('schedule.task_card.required_resources')}</h4>
                 <div className="space-y-1">
                   {Object.entries(task.resources).map(([key, value]) => (
                     <div key={key} className="flex justify-between text-sm">
@@ -310,24 +312,24 @@ export default function ModernTaskCard({
               <div>
                 <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
                   <Thermometer className="h-4 w-4 text-info" />
-                  Ideal Weather
+                  {t('schedule.task_card.ideal_weather')}
                 </h4>
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   {task.ideal_weather.temperature && (
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Temperature:</span>
+                      <span className="text-muted-foreground">{t('schedule.task_card.temperature')}:</span>
                       <span>{task.ideal_weather.temperature}°C</span>
                     </div>
                   )}
                   {task.ideal_weather.humidity && (
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Humidity:</span>
+                      <span className="text-muted-foreground">{t('schedule.task_card.humidity')}:</span>
                       <span>{task.ideal_weather.humidity}%</span>
                     </div>
                   )}
                   {task.ideal_weather.conditions && (
                     <div className="col-span-2">
-                      <span className="text-muted-foreground">Conditions:</span> {task.ideal_weather.conditions}
+                      <span className="text-muted-foreground">{t('schedule.task_card.conditions')}:</span> {task.ideal_weather.conditions}
                     </div>
                   )}
                 </div>
@@ -346,7 +348,7 @@ export default function ModernTaskCard({
                 className="w-full"
               >
                 <Volume2 className="h-4 w-4 mr-2" />
-                Read Aloud
+                {t('schedule.task_card.read_aloud')}
               </Button>
             </DialogFooter>
           )}

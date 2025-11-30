@@ -12,6 +12,7 @@ import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { supabase } from '@/utils/supabase';
 import { toast } from 'sonner';
 import { useLanguageStore } from '@/stores/languageStore';
+import { useTranslation } from 'react-i18next';
 
 interface Task {
   id: string;
@@ -46,6 +47,7 @@ interface TaskTimelineProps {
 }
 
 const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskComplete, onTaskUpdate }) => {
+  const { t } = useTranslation();
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
   const { currentLanguage } = useLanguageStore();
@@ -84,8 +86,8 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
     }
 
     // Show immediate feedback
-    toast.success('✅ Task completed!', {
-      description: 'Great work! Syncing...',
+    toast.success(t('schedule.toast.task_completed'), {
+      description: t('schedule.toast.great_work'),
       duration: 2000,
     });
 
@@ -125,8 +127,8 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
         });
       }
       
-      toast.error('❌ Failed to sync completion', {
-        description: 'Rolled back. Try again.',
+      toast.error(t('schedule.toast.sync_failed'), {
+        description: t('schedule.toast.rolled_back'),
       });
     }
   };
@@ -140,8 +142,8 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
       });
     }
 
-    toast.success('↩️ Task unmarked', {
-      description: 'Reverting completion...',
+    toast.success(t('schedule.toast.task_unmarked'), {
+      description: t('schedule.toast.reverting'),
       duration: 2000,
     });
 
@@ -175,8 +177,8 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
         });
       }
       
-      toast.error('❌ Failed to unmark', {
-        description: 'Try again.',
+      toast.error(t('schedule.toast.unmark_failed'), {
+        description: t('schedule.toast.try_again'),
       });
     }
   };
@@ -260,8 +262,8 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
 
   const getDateLabel = (dateStr: string) => {
     const date = new Date(dateStr);
-    if (isToday(date)) return { label: 'Today', variant: 'today' as const };
-    if (isTomorrow(date)) return { label: 'Tomorrow', variant: 'tomorrow' as const };
+    if (isToday(date)) return { label: t('schedule.timeline.today'), variant: 'today' as const };
+    if (isTomorrow(date)) return { label: t('schedule.timeline.tomorrow'), variant: 'tomorrow' as const };
     
     const daysFromNow = differenceInDays(date, new Date());
     if (daysFromNow > 0 && daysFromNow <= 7) {
@@ -289,10 +291,10 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
       {/* Modern Header */}
       <div className="flex items-center justify-between px-1">
         <h3 className="text-lg font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-          Timeline View
+          {t('schedule.timeline.title')}
         </h3>
         <Badge variant="outline" className="font-mono text-xs">
-          {tasks.length} tasks
+          {t('schedule.timeline.tasks_count', { count: tasks.length })}
         </Badge>
       </div>
 
@@ -350,7 +352,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                     {dateInfo.label}
                   </span>
                   <Badge variant="secondary" className="text-[10px] h-5">
-                    {dateTasks.length} {dateTasks.length === 1 ? 'task' : 'tasks'}
+                    {dateTasks.length} {dateTasks.length === 1 ? t('schedule.timeline.task') : t('schedule.timeline.tasks')}
                   </Badge>
                 </div>
               </div>
@@ -440,21 +442,21 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                                   {task.weather_dependent && (
                                     <Badge variant="outline" className="text-[10px] h-5 gap-1">
                                       <Droplets className="h-2.5 w-2.5" />
-                                      Weather
+                                      {t('schedule.badges.weather')}
                                     </Badge>
                                   )}
 
                                   {task.climate_adjusted && (
                                     <Badge className="bg-accent/10 text-accent border-accent/30 text-[10px] h-5 gap-1">
                                       <Zap className="h-2.5 w-2.5" />
-                                      AI Adjusted
+                                      {t('schedule.badges.ai_adjusted')}
                                     </Badge>
                                   )}
 
                                   {isCompleted && (
                                     <Badge className="bg-success/20 text-success border-success/30 text-[10px] h-5 gap-1">
                                       <CheckCircle2 className="h-2.5 w-2.5" />
-                                      Done
+                                      {t('schedule.timeline.done')}
                                     </Badge>
                                   )}
 
@@ -521,7 +523,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                             {/* Full Description */}
                             {task.task_description && (
                               <div>
-                                <h5 className="text-sm font-medium mb-2">Description</h5>
+                                <h5 className="text-sm font-medium mb-2">{t('schedule.task_card.description')}</h5>
                                 <p className="text-sm text-muted-foreground">{task.task_description}</p>
                               </div>
                             )}
@@ -529,7 +531,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                             {/* Instructions */}
                             {task.instructions && task.instructions.length > 0 && (
                               <div>
-                                <h5 className="text-sm font-medium mb-2">Instructions</h5>
+                                <h5 className="text-sm font-medium mb-2">{t('schedule.task_card.instructions')}</h5>
                                 <ol className="list-decimal list-inside space-y-1">
                                   {task.instructions.map((instruction, idx) => (
                                     <li key={idx} className="text-sm text-muted-foreground">{instruction}</li>
@@ -543,7 +545,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                               <div>
                                 <h5 className="text-sm font-medium mb-2 text-warning flex items-center gap-2">
                                   <AlertCircle className="h-4 w-4" />
-                                  Precautions
+                                  {t('schedule.task_card.precautions')}
                                 </h5>
                                 <ul className="list-disc list-inside space-y-1">
                                   {task.precautions.map((precaution, idx) => (

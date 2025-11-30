@@ -3629,6 +3629,8 @@ export type Database = {
           group_icon: string
           group_key: string
           group_name: string
+          group_name_hi: string | null
+          group_name_mr: string | null
           id: string
           is_active: boolean
           updated_at: string
@@ -3640,6 +3642,8 @@ export type Database = {
           group_icon?: string
           group_key: string
           group_name: string
+          group_name_hi?: string | null
+          group_name_mr?: string | null
           id?: string
           is_active?: boolean
           updated_at?: string
@@ -3651,6 +3655,8 @@ export type Database = {
           group_icon?: string
           group_key?: string
           group_name?: string
+          group_name_hi?: string | null
+          group_name_mr?: string | null
           id?: string
           is_active?: boolean
           updated_at?: string
@@ -4100,7 +4106,9 @@ export type Database = {
           is_active: boolean | null
           is_popular: boolean | null
           label: string
+          label_hi: string | null
           label_local: string | null
+          label_mr: string | null
           local_name: string | null
           metadata: Json | null
           season: string | null
@@ -4118,7 +4126,9 @@ export type Database = {
           is_active?: boolean | null
           is_popular?: boolean | null
           label: string
+          label_hi?: string | null
           label_local?: string | null
+          label_mr?: string | null
           local_name?: string | null
           metadata?: Json | null
           season?: string | null
@@ -4136,7 +4146,9 @@ export type Database = {
           is_active?: boolean | null
           is_popular?: boolean | null
           label?: string
+          label_hi?: string | null
           label_local?: string | null
+          label_mr?: string | null
           local_name?: string | null
           metadata?: Json | null
           season?: string | null

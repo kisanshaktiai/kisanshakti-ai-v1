@@ -134,8 +134,115 @@
       "task_completed": "Task marked as completed",
       "task_skipped": "Task skipped",
       "schedule_generated": "Schedule generated successfully",
-      "error": "Failed to update task"
-    }
+      "error": "Failed to update task",
+      "great_work": "Great work! Syncing...",
+      "sync_failed": "Failed to sync completion",
+      "rolled_back": "Rolled back. Try again.",
+      "task_unmarked": "Task unmarked",
+      "reverting": "Reverting completion...",
+      "unmark_failed": "Failed to unmark",
+      "try_again": "Try again."
+    },
+    "main": {
+      "ai_crop_schedule": "AI Crop Schedule",
+      "add_land": "Add Land",
+      "retrying": "Retrying...",
+      "generating_attempt": "Generating AI schedule (Attempt {{count}}/2)",
+      "generated_success": "AI Schedule Generated!",
+      "generated_description": "Smart farming schedule created for {{crop}}",
+      "generation_failed": "Generation Failed",
+      "refreshing": "Refreshing",
+      "syncing_latest": "Syncing latest data..."
+    },
+    "task_statistics": {
+      "title": "Task Statistics",
+      "completion_rate": "Completion Rate",
+      "tasks_count": "{{completed}}/{{total}} tasks",
+      "completed": "Completed",
+      "tasks_done": "tasks done",
+      "streak": "Streak",
+      "days": "days",
+      "best_streak": "Best: {{days}} days",
+      "perfect_score": "Perfect Score! 🎉",
+      "on_fire": "On Fire! {{days}} Day Streak 🔥"
+    },
+    "task_card": {
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "overdue": "Overdue",
+      "days_until": "{{days}} days",
+      "high_priority": "High Priority",
+      "weather": "Weather",
+      "completed": "Completed",
+      "description": "Description",
+      "instructions": "Instructions",
+      "precautions": "Precautions",
+      "required_resources": "Required Resources",
+      "ideal_weather": "Ideal Weather",
+      "temperature": "Temperature",
+      "humidity": "Humidity",
+      "conditions": "Conditions",
+      "read_aloud": "Read Aloud"
+    },
+    "schedule_card": {
+      "variety": "Variety",
+      "yield": "Yield",
+      "cost": "Cost",
+      "progress": "Progress: {{completed}}/{{total}} tasks",
+      "view_schedule": "View Schedule"
+    },
+    "timeline": {
+      "title": "Timeline View",
+      "tasks_count": "{{count}} tasks",
+      "task": "task",
+      "tasks": "tasks",
+      "ai_adjusted": "AI Adjusted",
+      "done": "Done"
+    },
+    "dialog": {
+      "task_details": "Task Details",
+      "update_status": "Update task status and add notes",
+      "resources_needed": "Resources Needed",
+      "notes_label": "Notes",
+      "notes_optional": "(Optional)",
+      "notes_placeholder": "Add any notes about this task...",
+      "done": "Done",
+      "skipped": "Skipped",
+      "weather": "Weather",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "crop_selector": {
+      "failed_load_categories": "Failed to load crop categories",
+      "failed_load_crops": "Failed to load crops",
+      "search_placeholder": "Search crops...",
+      "hot": "Hot",
+      "retry": "Retry"
+    },
+    "sowing": "Sowing",
+    "harvest": "Harvest",
+    "days_remaining": "days left",
+    "days_ago": "days ago",
+    "todays_tasks": "Today's Tasks",
+    "pending": "pending",
+    "upcoming": "Upcoming",
+    "complete": "Complete",
+    "overdue": "Overdue",
+    "refresh_schedule": "Refresh Schedule",
+    "no_tasks": "No tasks for this period",
+    "today": "Today",
+    "week": "Week",
+    "month": "Month",
+    "all": "All",
+    "listen": "Listen",
+    "close": "Close",
+    "done": "Done",
+    "skipped": "Skipped"
+  },
+  "common": {
+    "cancel": "Cancel",
+    "save": "Save"
   },
   "__qa": {
     "voice_examples_en": [
