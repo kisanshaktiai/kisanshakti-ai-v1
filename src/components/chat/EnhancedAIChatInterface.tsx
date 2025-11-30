@@ -61,15 +61,7 @@ export function EnhancedAIChatInterface() {
   const language = langStore.currentLanguage || 'en'; // Use currentLanguage from store
   const isOnline = useOfflineStatus();
   
-  // Guard: Don't render until tenant is loaded
-  if (isTenantLoading || !tenant || !user) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-  
+  // ✅ ALL HOOKS MUST BE DECLARED BEFORE ANY CONDITIONAL RETURNS
   const [activeTab, setActiveTab] = useState('general');
   const [lands, setLands] = useState<any[]>([]);
   
@@ -98,6 +90,16 @@ export function EnhancedAIChatInterface() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // ✅ NOW conditional returns are safe - all hooks are declared
+  // Guard: Don't render until tenant is loaded
+  if (isTenantLoading || !tenant || !user) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const [isUserScrolling, setIsUserScrolling] = useState(false);
   const lastScrollTop = useRef(0);
