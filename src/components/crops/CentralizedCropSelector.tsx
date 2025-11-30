@@ -13,6 +13,8 @@ import { useTranslation } from 'react-i18next';
 interface CropGroup {
   id: string;
   group_name: string;
+  group_name_hi?: string;
+  group_name_mr?: string;
   group_icon: string;
   display_order: number;
 }
@@ -63,6 +65,13 @@ export function CentralizedCropSelector({
     return crop.label;
   };
 
+  // Helper to display localized group name
+  const displayGroupName = (group: CropGroup) => {
+    if (i18n.language === 'hi' && group.group_name_hi) return group.group_name_hi;
+    if (i18n.language === 'mr' && group.group_name_mr) return group.group_name_mr;
+    return group.group_name;
+  };
+
   // Load crop groups on mount
   useEffect(() => {
     loadCropGroups();
@@ -82,7 +91,7 @@ export function CentralizedCropSelector({
     try {
       const { data, error: fetchError } = await supabase
         .from('crop_groups')
-        .select('*')
+        .select('id, group_name, group_name_hi, group_name_mr, group_icon, display_order, is_active')
         .eq('is_active', true)
         .order('display_order');
 
@@ -101,7 +110,7 @@ export function CentralizedCropSelector({
     try {
       const { data, error: fetchError } = await supabase
         .from('crops')
-        .select('*')
+        .select('id, label, label_hi, label_mr, icon, season, crop_group_id, is_active')
         .eq('id', cropId)
         .single();
 
@@ -121,7 +130,7 @@ export function CentralizedCropSelector({
     try {
       const { data, error: fetchError } = await supabase
         .from('crops')
-        .select('*')
+        .select('id, label, label_hi, label_mr, icon, season, crop_group_id, is_active, display_order')
         .eq('crop_group_id', group.id)
         .eq('is_active', true)
         .order('display_order');
@@ -223,7 +232,7 @@ export function CentralizedCropSelector({
                 
                 {/* Label with better typography */}
                 <span className="text-[10px] sm:text-xs font-semibold text-foreground/80 group-hover:text-foreground transition-colors text-center leading-tight">
-                  {group.group_name}
+                  {displayGroupName(group)}
                 </span>
                 
                 {/* Subtle arrow indicator */}
@@ -258,7 +267,7 @@ export function CentralizedCropSelector({
           )}
           <span className="font-medium flex items-center gap-2">
             <span className="text-lg">{selectedGroup?.group_icon}</span>
-            {selectedGroup?.group_name}
+            {selectedGroup && displayGroupName(selectedGroup)}
           </span>
         </div>
       )}

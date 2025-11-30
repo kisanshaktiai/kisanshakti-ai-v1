@@ -186,6 +186,8 @@
     },
     "schedule_card": {
       "variety": "Variety",
+      "variety_label": "Variety:",
+      "tbd": "TBD",
       "yield": "Yield",
       "cost": "Cost",
       "progress": "Progress: {{completed}}/{{total}} tasks",
@@ -203,6 +205,7 @@
       "task_details": "Task Details",
       "update_status": "Update task status and add notes",
       "resources_needed": "Resources Needed",
+      "resources_needed_label": "Resources Needed:",
       "notes_label": "Notes",
       "notes_optional": "(Optional)",
       "notes_placeholder": "Add any notes about this task...",

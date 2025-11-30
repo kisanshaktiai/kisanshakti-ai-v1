@@ -67,7 +67,7 @@ export function EnhancedCropSelector({ selectedCropId, onSelect, onBack }: Enhan
         // Load crop groups
         const { data: groupsData, error: groupsError } = await supabase
           .from('crop_groups')
-          .select('*')
+          .select('id, group_name, group_name_hi, group_name_mr, group_key, group_icon, description, display_order, is_active')
           .order('display_order', { ascending: true });
           
         if (groupsError) throw groupsError;
@@ -75,7 +75,7 @@ export function EnhancedCropSelector({ selectedCropId, onSelect, onBack }: Enhan
         // Load all crops
         const { data: cropsData, error: cropsError } = await supabase
           .from('crops')
-          .select('*')
+          .select('id, value, label, label_hi, label_mr, local_name, season, duration_days, crop_group_id, is_active')
           .order('label', { ascending: true });
           
         if (cropsError) throw cropsError;

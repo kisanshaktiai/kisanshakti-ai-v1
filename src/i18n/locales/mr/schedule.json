@@ -140,6 +140,8 @@
     },
     "schedule_card": {
       "variety": "विविधता",
+      "variety_label": "विविधता:",
+      "tbd": "ठरवायचे आहे",
       "yield": "उत्पन्न",
       "cost": "खर्च",
       "progress": "प्रगती: {{completed}}/{{total}} कामे",
@@ -157,6 +159,7 @@
       "task_details": "काम तपशील",
       "update_status": "काम स्थिती अपडेट करा आणि नोट्स जोडा",
       "resources_needed": "आवश्यक संसाधने",
+      "resources_needed_label": "आवश्यक संसाधने:",
       "notes_label": "नोट्स",
       "notes_optional": "(पर्यायी)",
       "notes_placeholder": "या कामाबद्दल काही नोट्स जोडा...",
