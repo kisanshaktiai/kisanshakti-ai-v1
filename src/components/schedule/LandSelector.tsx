@@ -99,6 +99,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuthStore();
+  const { t } = useTranslation();
   const [scheduleStatuses, setScheduleStatuses] = useState<LandScheduleStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -217,8 +218,8 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
       if (scheduleError) throw scheduleError;
 
       toast({
-        title: '✅ Schedule Deleted',
-        description: 'AI crop schedule has been removed',
+        title: t('schedule.land_selector.toast.deleted'),
+        description: t('schedule.land_selector.toast.deleted_message'),
         className: 'bg-success/10 border-success/20',
       });
 
@@ -227,8 +228,8 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
     } catch (error) {
       console.error('Error deleting schedule:', error);
       toast({
-        title: '❌ Delete Failed',
-        description: 'Failed to delete schedule',
+        title: t('schedule.land_selector.toast.delete_failed'),
+        description: t('schedule.land_selector.toast.delete_failed_message'),
         variant: 'destructive',
       });
     } finally {
@@ -297,7 +298,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                   >
                     <Badge className="bg-gradient-to-r from-primary to-accent text-primary-foreground border-0 shadow-lg flex items-center gap-1.5 px-2.5 py-1">
                       <Sparkles className="h-3 w-3 animate-pulse" />
-                      <span className="text-xs font-semibold">AI Schedule Ready</span>
+                      <span className="text-xs font-semibold">{t('schedule.land_selector.ai_schedule_ready')}</span>
                     </Badge>
                   </motion.div>
                 )}
@@ -307,7 +308,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                   <div className="absolute top-2 right-2 z-10">
                     <Badge variant="outline" className="bg-background/80 backdrop-blur-sm border-muted-foreground/30 flex items-center gap-1.5 px-2.5 py-1">
                       <Calendar className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-xs font-medium text-muted-foreground">Generate Schedule</span>
+                      <span className="text-xs font-medium text-muted-foreground">{t('schedule.land_selector.generate_schedule')}</span>
                     </Badge>
                   </div>
                 )}
@@ -387,8 +388,8 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                       
                       {hasSchedule && (
                         <div className="text-right">
-                          <p className="text-xs text-primary font-semibold">Active</p>
-                          <p className="text-[10px] text-muted-foreground">Click to view</p>
+                          <p className="text-xs text-primary font-semibold">{t('schedule.land_selector.active')}</p>
+                          <p className="text-[10px] text-muted-foreground">{t('schedule.land_selector.click_to_view')}</p>
                         </div>
                       )}
                     </div>

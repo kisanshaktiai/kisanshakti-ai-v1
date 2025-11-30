@@ -53,33 +53,33 @@ export function LandInstructionDialog({ open, onClose, onStart }: LandInstructio
   const instructions = [
     {
       icon: MapPin,
-      title: 'Step 1: Map will open',
-      description: 'A full-screen map will open showing your current location. Wait for the map to load completely.',
-      speech: 'Step 1. A full-screen map will open showing your current location. Wait for the map to load completely.'
+      title: t('lands.add_land.steps.step_1.title'),
+      description: t('lands.add_land.steps.step_1.description'),
+      speech: t('lands.add_land.steps.step_1.description')
     },
     {
       icon: MousePointer,
-      title: 'Step 2: Draw boundary',
-      description: 'Click on the map to mark boundary points of your land. Each click adds a corner point.',
-      speech: 'Step 2. Click on the map to mark boundary points of your land. Each click adds a corner point.'
+      title: t('lands.add_land.steps.step_2.title'),
+      description: t('lands.add_land.steps.step_2.description'),
+      speech: t('lands.add_land.steps.step_2.description')
     },
     {
       icon: Footprints,
-      title: 'Step 3: Walk mode (Optional)',
-      description: 'You can also walk around your land boundary and track your position using GPS.',
-      speech: 'Step 3. Optional. You can also walk around your land boundary and track your position using GPS.'
+      title: t('lands.add_land.steps.step_3.title'),
+      description: t('lands.add_land.steps.step_3.description'),
+      speech: t('lands.add_land.steps.step_3.description')
     },
     {
       icon: Square,
-      title: 'Step 4: Complete boundary',
-      description: 'Connect all points to form a closed boundary. The area will be calculated automatically.',
-      speech: 'Step 4. Connect all points to form a closed boundary. The area will be calculated automatically.'
+      title: t('lands.add_land.steps.step_4.title'),
+      description: t('lands.add_land.steps.step_4.description'),
+      speech: t('lands.add_land.steps.step_4.description')
     },
     {
       icon: Save,
-      title: 'Step 5: Save and add details',
-      description: 'Click "Save Boundary" button. A form will open to add land details like crop information.',
-      speech: 'Step 5. Click Save Boundary button. A form will open to add land details like crop information.'
+      title: t('lands.add_land.steps.step_5.title'),
+      description: t('lands.add_land.steps.step_5.description'),
+      speech: t('lands.add_land.steps.step_5.description')
     }
   ];
 
@@ -127,7 +127,7 @@ export function LandInstructionDialog({ open, onClose, onStart }: LandInstructio
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
-            Add New Land - Instructions
+            {t('lands.add_land.instructions_title')}
             <Button
               variant="ghost"
               size="icon"
@@ -142,7 +142,7 @@ export function LandInstructionDialog({ open, onClose, onStart }: LandInstructio
             </Button>
           </DialogTitle>
           <DialogDescription>
-            Follow these simple steps to add your land
+            {t('lands.add_land.instructions_subtitle')}
           </DialogDescription>
         </DialogHeader>
 
@@ -182,7 +182,7 @@ export function LandInstructionDialog({ open, onClose, onStart }: LandInstructio
               disabled={currentStep === 0}
               className="flex-1"
             >
-              Previous
+              {t('lands.wizard.buttons.previous')}
             </Button>
             {currentStep === instructions.length - 1 ? (
               <Button
@@ -192,7 +192,7 @@ export function LandInstructionDialog({ open, onClose, onStart }: LandInstructio
                 }}
                 className="flex-1"
               >
-                Start Mapping
+                {t('lands.add_land.buttons.start_mapping')}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (
@@ -200,7 +200,7 @@ export function LandInstructionDialog({ open, onClose, onStart }: LandInstructio
                 onClick={handleNextStep}
                 className="flex-1"
               >
-                Next
+                {t('lands.wizard.buttons.next')}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             )}
@@ -216,7 +216,7 @@ export function LandInstructionDialog({ open, onClose, onStart }: LandInstructio
               }}
               className="text-sm"
             >
-              Skip instructions and start now
+              {t('lands.add_land.buttons.skip_instructions')}
             </Button>
           </div>
         </div>

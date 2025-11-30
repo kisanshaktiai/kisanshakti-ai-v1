@@ -7,6 +7,7 @@ import { useToast } from '@/components/ui/use-toast';
 import LocationService from '@/services/LocationService';
 import { Card } from '@/components/ui/card';
 import { Satellite, Navigation, MapPin, Loader2, AlertCircle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface LatLng {
   lat: number;
@@ -32,6 +33,7 @@ export function GoogleMapBoundaryDrawer({
   initialBoundary = []
 }: GoogleMapBoundaryDrawerProps) {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [center, setCenter] = useState<LatLng>(
     initialCenter || { lat: 20.5937, lng: 78.9629 } // Default to India center
@@ -145,7 +147,7 @@ export function GoogleMapBoundaryDrawer({
           // Show location source to user
           if (location.source && location.source !== 'gps') {
             toast({
-              title: "Location Set",
+              title: t('lands.map.toast.location_set'),
               description: `Using ${location.approximateArea || location.source} location`,
             });
           }
@@ -301,8 +303,8 @@ export function GoogleMapBoundaryDrawer({
   const startTracking = useCallback(() => {
     if (!navigator.geolocation) {
       toast({
-        title: "GPS Not Available",
-        description: "Your device doesn't support GPS tracking.",
+        title: t('lands.add_land.error.gps_not_available'),
+        description: t('lands.add_land.error.gps_not_available'),
         variant: "destructive",
       });
       return;
@@ -328,8 +330,8 @@ export function GoogleMapBoundaryDrawer({
       (error) => {
         console.error('GPS error:', error);
         toast({
-          title: "GPS Error",
-          description: "Failed to get GPS location. Please check your settings.",
+          title: t('lands.add_land.error.gps_error'),
+          description: t('lands.add_land.error.gps_error'),
           variant: "destructive",
         });
         setIsTracking(false);
