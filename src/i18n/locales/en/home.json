@@ -15,6 +15,11 @@
     "location_not_set": "Location not set",
     "no_crop": "No crop",
     "recent_activity": "Recent Activity",
+    "myLand": "My Lands",
+    "aiChat": "AI Chat",
+    "market": "Market",
+    "governmentSchemes": "Government Schemes",
+    "weather": "Weather",
     "stats": {
       "temperature": "Temperature",
       "humidity": "Humidity",
