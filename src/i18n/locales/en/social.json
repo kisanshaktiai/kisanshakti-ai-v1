@@ -94,6 +94,9 @@
       "feed": "No posts yet. Start sharing with the community!",
       "messages": "No conversations yet",
       "communities": "No communities found"
+    },
+    "profile": {
+      "activity_feed_soon": "Activity feed coming soon"
     }
   },
   "__qa": {

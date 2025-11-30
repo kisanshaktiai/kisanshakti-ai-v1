@@ -2,6 +2,7 @@ import React from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { CloudRain, Leaf, ThermometerSun, TrendingUp, Calendar } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { useTranslation } from 'react-i18next';
 
 interface ClimateAlert {
   rainfall_24h: number;
@@ -17,6 +18,8 @@ interface ClimateAlertBannerProps {
 }
 
 const ClimateAlertBanner: React.FC<ClimateAlertBannerProps> = ({ data }) => {
+  const { t } = useTranslation();
+  
   if (!data) return null;
 
   const hasHighRainfall = data.rainfall_24h > 50;
@@ -55,7 +58,7 @@ const ClimateAlertBanner: React.FC<ClimateAlertBannerProps> = ({ data }) => {
             className={`text-[10px] ${hasAdjustments ? 'bg-primary animate-pulse' : ''}`}
           >
             <TrendingUp className="h-3 w-3 mr-1" />
-            AI Active
+            {t('schedule.climate.ai_active')}
           </Badge>
         </div>
       </Alert>
@@ -67,11 +70,11 @@ const ClimateAlertBanner: React.FC<ClimateAlertBannerProps> = ({ data }) => {
           <AlertDescription className="text-xs space-y-1">
             <div className="flex items-center gap-2">
               <Badge className="bg-success text-success-foreground text-[10px]">
-                {data.tasks_rescheduled} Tasks Auto-Adjusted
+                {t('schedule.climate.tasks_auto_adjusted', { count: data.tasks_rescheduled })}
               </Badge>
             </div>
             <p className="text-muted-foreground">
-              {data.adjustment_reason || 'Schedule automatically optimized based on climate conditions'}
+              {data.adjustment_reason || t('schedule.climate.schedule_optimized')}
             </p>
           </AlertDescription>
         </Alert>
@@ -82,7 +85,7 @@ const ClimateAlertBanner: React.FC<ClimateAlertBannerProps> = ({ data }) => {
         <Alert variant="default" className="bg-blue-50 dark:bg-blue-950/20 border-blue-300 text-xs py-2">
           <CloudRain className="h-3 w-3" />
           <AlertDescription>
-            Heavy rainfall detected. Irrigation and spraying tasks may be delayed.
+            {t('schedule.climate.heavy_rainfall')}
           </AlertDescription>
         </Alert>
       )}
@@ -91,7 +94,7 @@ const ClimateAlertBanner: React.FC<ClimateAlertBannerProps> = ({ data }) => {
         <Alert variant="default" className="bg-orange-50 dark:bg-orange-950/20 border-orange-300 text-xs py-2">
           <Leaf className="h-3 w-3" />
           <AlertDescription>
-            Low crop health (NDVI). Fertilizer application may be prioritized.
+            {t('schedule.climate.low_crop_health')}
           </AlertDescription>
         </Alert>
       )}
@@ -100,7 +103,7 @@ const ClimateAlertBanner: React.FC<ClimateAlertBannerProps> = ({ data }) => {
         <Alert variant="default" className="bg-red-50 dark:bg-red-950/20 border-red-300 text-xs py-2">
           <ThermometerSun className="h-3 w-3" />
           <AlertDescription>
-            High temperature. Irrigation may be advanced to prevent heat stress.
+            {t('schedule.climate.high_temperature')}
           </AlertDescription>
         </Alert>
       )}
