@@ -237,6 +237,7 @@
     },
     "details": {
       "total_area": "कुल क्षेत्र",
+      "total_area": "कुल क्षेत्रफल",
       "current_crop": "वर्तमान फसल",
       "no_crop": "कोई फसल नहीं",
       "soil_health": "मिट्टी स्वास्थ्य",
@@ -245,6 +246,7 @@
       "health_needs_care": "देखभाल की आवश्यकता है",
       "irrigation": "सिंचाई",
       "not_set": "सेट नहीं",
+      "well": "कुआं",
       "land_info": "भूमि जानकारी",
       "survey_number_label": "सर्वे नंबर",
       "not_available": "उपलब्ध नहीं",
@@ -277,6 +279,14 @@
       "sown": "बोया गया",
       "harvested": "कटाई की गई",
       "kg_acre": "किग्रा/एकड़",
+      "activities_count": "गतिविधियाँ",
+      "cost_label": "लागत (₹)",
+      "yield_label": "उपज",
+      "revenue_label": "आय (₹)",
+      "photo_gallery": "फोटो गैलरी",
+      "upload_photos": "फोटो अपलोड करें",
+      "no_photos": "अभी तक कोई फोटो अपलोड नहीं की गई",
+      "upload_first_photo": "पहली फोटो अपलोड करें",
       "tabs": {
         "overview": "अवलोकन",
         "soil": "मिट्टी",
@@ -288,7 +298,16 @@
       },
       "not_found": "भूमि नहीं मिली",
       "back_to_lands": "भूमि पर वापस जाएं",
+      "error": {
+        "not_found_title": "त्रुटि",
+        "not_found_message": "भूमि नहीं मिली या पहुंच अस्वीकृत",
+        "fetch_failed": "भूमि विवरण प्राप्त करने में विफल"
+      },
       "delete": {
+        "dialog_title": "भूमि हटाएं?",
+        "dialog_description": "यह स्थायी रूप से \"{{name}}\" और सभी संबंधित डेटा को हटा देगा। इस क्रिया को पूर्ववत नहीं किया जा सकता।",
+        "cancel": "रद्द करें",
+        "confirm": "स्थायी रूप से हटाएं",
         "success_title": "सफलता",
         "success_message": "भूमि सफलतापूर्वक हटाई गई",
         "error_title": "त्रुटि",
