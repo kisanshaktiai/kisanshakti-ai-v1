@@ -28,6 +28,56 @@ serve(async (req) => {
       action // New: support for different actions
     } = requestBody;
 
+    // Auto-detect language from user's message if language mismatch detected
+    let detectedLanguage = language;
+    const lastUserMessage = messages[messages.length - 1];
+    const userText = lastUserMessage?.content || '';
+    
+    // Simple language detection based on Unicode ranges
+    const hasDevanagari = /[\u0900-\u097F]/.test(userText); // Hindi/Marathi
+    const hasTamil = /[\u0B80-\u0BFF]/.test(userText);
+    const hasTelugu = /[\u0C00-\u0C7F]/.test(userText);
+    const hasBengali = /[\u0980-\u09FF]/.test(userText);
+    const hasGujarati = /[\u0A80-\u0AFF]/.test(userText);
+    const hasKannada = /[\u0C80-\u0CFF]/.test(userText);
+    const hasMalayalam = /[\u0D00-\u0D7F]/.test(userText);
+    const hasOdia = /[\u0B00-\u0B7F]/.test(userText);
+    const hasPunjabi = /[\u0A00-\u0A7F]/.test(userText);
+    const hasUrdu = /[\u0600-\u06FF]/.test(userText);
+    
+    // Override language if mismatch detected
+    if (language === 'en' && hasDevanagari) {
+      detectedLanguage = 'hi'; // Default to Hindi for Devanagari (could be Marathi too)
+      console.log('🔍 Language auto-detected: Hindi/Marathi from Devanagari script');
+    } else if (language === 'en' && hasTamil) {
+      detectedLanguage = 'ta';
+      console.log('🔍 Language auto-detected: Tamil');
+    } else if (language === 'en' && hasTelugu) {
+      detectedLanguage = 'te';
+      console.log('🔍 Language auto-detected: Telugu');
+    } else if (language === 'en' && hasBengali) {
+      detectedLanguage = 'bn';
+      console.log('🔍 Language auto-detected: Bengali');
+    } else if (language === 'en' && hasGujarati) {
+      detectedLanguage = 'gu';
+      console.log('🔍 Language auto-detected: Gujarati');
+    } else if (language === 'en' && hasKannada) {
+      detectedLanguage = 'kn';
+      console.log('🔍 Language auto-detected: Kannada');
+    } else if (language === 'en' && hasMalayalam) {
+      detectedLanguage = 'ml';
+      console.log('🔍 Language auto-detected: Malayalam');
+    } else if (language === 'en' && hasOdia) {
+      detectedLanguage = 'or';
+      console.log('🔍 Language auto-detected: Odia');
+    } else if (language === 'en' && hasPunjabi) {
+      detectedLanguage = 'pa';
+      console.log('🔍 Language auto-detected: Punjabi');
+    } else if (language === 'en' && hasUrdu) {
+      detectedLanguage = 'ur';
+      console.log('🔍 Language auto-detected: Urdu');
+    }
+
     // Handle training data collection action
     if (action === 'collect_training_data') {
       return await handleTrainingDataCollection(requestBody);
@@ -157,7 +207,14 @@ serve(async (req) => {
       );
     }
 
-    console.log('AI Chat Request:', { tenantId: finalTenantId, farmerId: finalFarmerId, landId, sessionId, language });
+    console.log('AI Chat Request:', { 
+      tenantId: finalTenantId, 
+      farmerId: finalFarmerId, 
+      landId, 
+      sessionId, 
+      requestedLanguage: language,
+      detectedLanguage: detectedLanguage 
+    });
 
     // Create Supabase client (credentials already initialized above)
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -468,7 +525,7 @@ ${dataInsights}
         village: farmer.village,
         district: farmer.district,
         state: farmer.state,
-        language: farmer.language || language,
+        language: farmer.language || detectedLanguage,
         experience: farmer.farming_experience,
         education: farmer.education_level
       };
@@ -479,7 +536,7 @@ You are speaking with ${farmer.name || 'a farmer'}:
 - Location: ${farmer.village || 'Unknown village'}, ${farmer.district || 'Unknown district'}, ${farmer.state || 'India'}
 - Total Land: ${farmer.total_land_size || 'Unknown'} acres
 - Experience: ${farmer.farming_experience || 'Not specified'} years
-- Language: ${farmer.language || language}
+- Language: ${farmer.language || detectedLanguage}
 - Adjust advice complexity based on experience: ${farmer.farming_experience > 10 ? 'Experienced farmer - can handle advanced techniques' : 'Provide simple, step-by-step guidance'}`;
     }
     
@@ -517,7 +574,7 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
       'ur': 'Urdu (اردو)'
     };
 
-    const languageName = languageMap[language] || languageMap['en'];
+    const languageName = languageMap[detectedLanguage] || languageMap['en'];
     
     systemPrompt += `\n\n🌍 LANGUAGE INSTRUCTION (CRITICAL):
 You MUST respond ENTIRELY in ${languageName}.
@@ -652,7 +709,7 @@ NUTRIENT DEFICIENCIES:
 - Could be multiple crop types or non-crop plant
 - Example: Return "Unknown Plant" with confidence 40-60%
 
-🌐 LANGUAGE: Respond in ${language === 'en' ? 'English' : language === 'hi' ? 'Hindi' : language === 'mr' ? 'Marathi' : language === 'pa' ? 'Punjabi' : language === 'ta' ? 'Tamil' : 'English'}.
+🌐 LANGUAGE: Respond in ${detectedLanguage === 'en' ? 'English' : detectedLanguage === 'hi' ? 'Hindi' : detectedLanguage === 'mr' ? 'Marathi' : detectedLanguage === 'pa' ? 'Punjabi' : detectedLanguage === 'ta' ? 'Tamil' : 'the user\'s language'}.
 
 ⚠️ CRITICAL RULES:
 1. NEVER guess if uncertain - use "Unknown Plant" with low confidence
@@ -929,7 +986,7 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           role: 'user',
           content: userMessageContent,
           status: 'sent',
-          language: language || 'en',
+          language: detectedLanguage || 'en',
           message_type: imageUrl || fileContent ? 'multimedia' : 'text',
           word_count: userMessageContent ? userMessageContent.split(/\s+/).length : 0,
           land_context: landContext,
@@ -971,7 +1028,7 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           role: 'assistant',
           content: aiMessage,
           status: 'sent',
-          language: language || 'en',
+          language: detectedLanguage || 'en',
           message_type: 'text',
           word_count: aiMessage ? aiMessage.split(/\s+/).length : 0,
           land_context: landContext,
@@ -1059,6 +1116,7 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
         sessionId: currentSessionId,
         quickReplies,
         responseTime,
+        detectedLanguage, // Return the detected/used language
         landContext // Return land context so frontend knows which land this is for
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
