@@ -204,17 +204,24 @@ export function EnhancedAIChatInterface() {
   // Load session and messages for a specific land (or general chat if landId is null)
   const loadLandSession = async (landId: string | null) => {
     try {
-      // Get existing active session for this land
-      const { data: existingSession } = await supabase
+      // Build query for existing active session
+      let sessionQuery = supabase
         .from('ai_chat_sessions')
         .select('id')
         .eq('farmer_id', user?.id)
         .eq('tenant_id', tenant?.id)
-        .eq('land_id', landId)
         .eq('is_active', true)
         .order('updated_at', { ascending: false })
-        .limit(1)
-        .single();
+        .limit(1);
+      
+      // Handle null landId properly - use is null filter instead of eq
+      if (landId === null) {
+        sessionQuery = sessionQuery.is('land_id', null);
+      } else {
+        sessionQuery = sessionQuery.eq('land_id', landId);
+      }
+      
+      const { data: existingSession } = await sessionQuery.single();
 
       if (existingSession) {
         console.log(`✅ Loaded session for ${landId || 'general'}:`, existingSession.id);
@@ -500,6 +507,11 @@ export function EnhancedAIChatInterface() {
       console.log(`🗂️ Training data collected per land in: ai_chat_messages table`);
       
       console.log('🤖 Sending AI request with language:', language);
+      
+      // Get session token from localStorage
+      const sessionToken = localStorage.getItem('app_session_token') || '';
+      
+      // CRITICAL: Pass tenant and farmer IDs as headers (required by edge function)
       const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
         body: {
           messages: [{ role: 'user', content: finalMessage }],
@@ -512,6 +524,11 @@ export function EnhancedAIChatInterface() {
             language: language,
             landContext: land
           }
+        },
+        headers: {
+          'x-tenant-id': tenantId,
+          'x-farmer-id': farmerId,
+          'x-session-token': sessionToken
         }
       });
       
