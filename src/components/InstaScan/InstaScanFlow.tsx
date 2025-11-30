@@ -136,10 +136,11 @@ export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
 
       const aiResult = data.result;
       
-      // Check if AI couldn't identify reliably
-      if (aiResult.detectedItem?.confidence < 60 || 
+      // RELAXED confidence threshold - accept more results
+      // Only reject if confidence is very low (<40%) AND category is unknown
+      if (aiResult.detectedItem?.confidence < 40 && 
           aiResult.detectedItem?.category === 'unknown') {
-        console.warn('Low confidence detection:', aiResult.detectedItem);
+        console.warn('Very low confidence detection:', aiResult.detectedItem);
         sonnerToast.warning(t('instaScan.lowConfidence') || 'Could not identify clearly. Please take a clearer photo.');
         
         if (aiResult.metadata?.needsMoreImages) {
@@ -150,6 +151,11 @@ export function InstaScanFlow({ isOpen, onClose }: InstaScanFlowProps) {
         setShowCamera(true);
         setIsAnalyzing(false);
         return;
+      }
+      
+      // Show warning for moderate confidence but still proceed
+      if (aiResult.detectedItem?.confidence < 70) {
+        sonnerToast.info(t('instaScan.moderateConfidence') || 'Analysis complete. Consider taking additional photos for better accuracy.');
       }
 
       // Transform AI result to InstaScanResult format
