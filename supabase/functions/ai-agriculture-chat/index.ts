@@ -1007,7 +1007,6 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           land_size_acres: landContext?.area_acres,
           model_info: 'Using GPT-5-mini for multilingual, fast farmer assistance'
         }
-        }
       });
       
       if (aiMsgError) {
