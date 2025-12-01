@@ -45,35 +45,35 @@ serve(async (req) => {
     const hasPunjabi = /[\u0A00-\u0A7F]/.test(userText);
     const hasUrdu = /[\u0600-\u06FF]/.test(userText);
     
-    // Override language if mismatch detected
-    if (language === 'en' && hasDevanagari) {
+    // ✅ IMPROVED: Always detect language from user input content (removed 'language === "en"' condition)
+    if (hasDevanagari) {
       detectedLanguage = 'hi'; // Default to Hindi for Devanagari (could be Marathi too)
       console.log('🔍 Language auto-detected: Hindi/Marathi from Devanagari script');
-    } else if (language === 'en' && hasTamil) {
+    } else if (hasTamil) {
       detectedLanguage = 'ta';
       console.log('🔍 Language auto-detected: Tamil');
-    } else if (language === 'en' && hasTelugu) {
+    } else if (hasTelugu) {
       detectedLanguage = 'te';
       console.log('🔍 Language auto-detected: Telugu');
-    } else if (language === 'en' && hasBengali) {
+    } else if (hasBengali) {
       detectedLanguage = 'bn';
       console.log('🔍 Language auto-detected: Bengali');
-    } else if (language === 'en' && hasGujarati) {
+    } else if (hasGujarati) {
       detectedLanguage = 'gu';
       console.log('🔍 Language auto-detected: Gujarati');
-    } else if (language === 'en' && hasKannada) {
+    } else if (hasKannada) {
       detectedLanguage = 'kn';
       console.log('🔍 Language auto-detected: Kannada');
-    } else if (language === 'en' && hasMalayalam) {
+    } else if (hasMalayalam) {
       detectedLanguage = 'ml';
       console.log('🔍 Language auto-detected: Malayalam');
-    } else if (language === 'en' && hasOdia) {
+    } else if (hasOdia) {
       detectedLanguage = 'or';
       console.log('🔍 Language auto-detected: Odia');
-    } else if (language === 'en' && hasPunjabi) {
+    } else if (hasPunjabi) {
       detectedLanguage = 'pa';
       console.log('🔍 Language auto-detected: Punjabi');
-    } else if (language === 'en' && hasUrdu) {
+    } else if (hasUrdu) {
       detectedLanguage = 'ur';
       console.log('🔍 Language auto-detected: Urdu');
     }
@@ -584,12 +584,33 @@ You MUST respond ENTIRELY in ${languageName}.
 - Keep technical terms simple and explain them in ${languageName}
 - Farmer's preferred language: ${languageName}`;
 
+    // ✅ Helper: Detect simple questions for smart model selection
+    function isSimpleQuestion(text: string): boolean {
+      const simplePatterns = [
+        /^(hi|hello|namaste|namaskar|नमस्ते|नमस्कार|hey|hola)/i,
+        /^(yes|no|हाँ|नहीं|हो|नाही|होय|ஆம்|இல்லை)/i,
+        /^(ok|okay|thanks|thank you|धन्यवाद|नन्दी|ధన్యవాదాలు)/i,
+        /^(bye|goodbye|अलविदा|விடை)/i
+      ];
+      const wordCount = text.trim().split(/\s+/).length;
+      return wordCount <= 5 || simplePatterns.some(p => p.test(text.trim()));
+    }
+
     // Detect InstaScan mode (vision analysis)
     const isInstaScan = !!imageUrl;
     
     // Prepare messages for OpenAI
     let openAIMessages: any[] = [];
-    let openAIModel = 'gpt-5-mini-2025-08-07'; // Default model
+    
+    // ✅ SMART MODEL SELECTION: Use gpt-5-nano for simple questions, gpt-5-mini for complex queries
+    let openAIModel = isInstaScan 
+      ? 'gpt-4o'  // Vision model for InstaScan
+      : isSimpleQuestion(userText)
+        ? 'gpt-5-nano-2025-08-07'  // Fast & cheap for greetings/simple queries
+        : 'gpt-5-mini-2025-08-07'; // Full model for complex agricultural queries
+    
+    console.log(`🤖 Model selected: ${openAIModel} (${isSimpleQuestion(userText) ? 'simple' : 'complex'} query)`);
+    
     let tools = undefined;
     let tool_choice = undefined;
 
@@ -848,20 +869,58 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       openAIRequestBody.tool_choice = tool_choice;
     }
 
-    const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openAIKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(openAIRequestBody),
-    });
+    // ✅ RETRY LOGIC: OpenAI API call with exponential backoff
+    async function callOpenAIWithRetry(maxRetries = 3): Promise<Response> {
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          console.log(`🔄 OpenAI API call attempt ${attempt + 1}/${maxRetries}`);
+          
+          const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${openAIKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(openAIRequestBody),
+          });
 
-    if (!openAIResponse.ok) {
-      const errorData = await openAIResponse.text();
-      console.error('OpenAI API error:', errorData);
-      throw new Error(`OpenAI API failed: ${openAIResponse.status} - ${errorData}`);
+          // Success case
+          if (response.ok) {
+            console.log(`✅ OpenAI API call succeeded on attempt ${attempt + 1}`);
+            return response;
+          }
+
+          // Rate limit - wait and retry
+          if (response.status === 429) {
+            const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s
+            console.warn(`⚠️ Rate limit hit (429), waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            continue;
+          }
+
+          // Non-retryable error
+          const errorData = await response.text();
+          console.error(`❌ OpenAI API error (attempt ${attempt + 1}):`, errorData);
+          throw new Error(`OpenAI API failed: ${response.status} - ${errorData}`);
+
+        } catch (error) {
+          // Last attempt - throw error
+          if (attempt === maxRetries - 1) {
+            console.error(`❌ OpenAI API call failed after ${maxRetries} attempts:`, error);
+            throw error;
+          }
+
+          // Retry with exponential backoff
+          const waitTime = Math.pow(2, attempt) * 1000;
+          console.warn(`⚠️ OpenAI API error, retrying in ${waitTime}ms (attempt ${attempt + 1}/${maxRetries}):`, error);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+      }
+      
+      throw new Error('OpenAI API call failed after all retries');
     }
+
+    const openAIResponse = await callOpenAIWithRetry();
 
     const aiData = await openAIResponse.json();
     
