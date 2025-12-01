@@ -4,6 +4,7 @@ import { Bot, User, Copy, ThumbsUp, ThumbsDown, Share2, Volume2, Check } from 'l
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { ColorCodedCard } from './ColorCodedCard';
 
 interface Message {
   id: string;
@@ -13,6 +14,20 @@ interface Message {
   isPlaying?: boolean;
   feedback?: 'like' | 'dislike' | null;
   isCopied?: boolean;
+  // Color-coded cards
+  structuredResponse?: {
+    cards: Array<{
+      id: string;
+      type: 'organic' | 'fertilizer' | 'pesticide' | 'warning' | 'success' | 'info' | 'hormone' | 'irrigation';
+      title: string;
+      content: string;
+      color: string;
+      gradient: string[];
+      icon: string;
+      priority: number;
+    }>;
+    language: string;
+  };
 }
 
 interface ModernChatUIProps {
@@ -81,13 +96,22 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
             </div>
           )}
           
-          {/* Message Text */}
-          <div className={cn(
-            "text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words relative z-10",
-            isUser ? "text-white" : "text-foreground"
-          )}>
-            {message.content}
-          </div>
+          {/* Color-Coded Cards (if available) */}
+          {!isUser && message.structuredResponse?.cards && message.structuredResponse.cards.length > 0 ? (
+            <div className="space-y-2">
+              {message.structuredResponse.cards.map((card, index) => (
+                <ColorCodedCard key={card.id} card={card} index={index} />
+              ))}
+            </div>
+          ) : (
+            /* Message Text */
+            <div className={cn(
+              "text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words relative z-10",
+              isUser ? "text-white" : "text-foreground"
+            )}>
+              {message.content}
+            </div>
+          )}
 
           {/* Timestamp */}
           <div className={cn(

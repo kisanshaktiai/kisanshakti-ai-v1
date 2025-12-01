@@ -48,6 +48,20 @@ interface Message {
     pest?: string;
     weather?: string;
   };
+  // ✅ NEW: Color-coded cards
+  structuredResponse?: {
+    cards: Array<{
+      id: string;
+      type: 'organic' | 'fertilizer' | 'pesticide' | 'warning' | 'success' | 'info' | 'hormone' | 'irrigation';
+      title: string;
+      content: string;
+      color: string;
+      gradient: string[];
+      icon: string;
+      priority: number;
+    }>;
+    language: string;
+  };
   feedback?: 'like' | 'dislike' | null;
   isCopied?: boolean;
 }
@@ -76,6 +90,7 @@ export function EnhancedAIChatInterface() {
   });
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState(''); // ✅ NEW: Loading message state
   const [sessionIds, setSessionIds] = useState<Record<string, string>>({});
   const [loadedSessionIds, setLoadedSessionIds] = useState<Set<string>>(new Set()); // Track sessions loaded from DB
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
@@ -440,6 +455,16 @@ export function EnhancedAIChatInterface() {
     setAttachedFiles([]);
     setIsLoading(true);
     
+    // ✅ NEW: Show random loading messages
+    const loadingMessages = language === 'hi' 
+      ? ['जवाब तैयार कर रहा हूं...', 'सोच रहा हूं...', 'विश्लेषण कर रहा हूं...', 'समझ रहा हूं...']
+      : language === 'mr'
+      ? ['उत्तर तयार करत आहे...', 'विचार करत आहे...', 'विश्लेषण करत आहे...', 'समजत आहे...']
+      : ['Preparing answer...', 'Thinking...', 'Analyzing...', 'Understanding...'];
+    
+    const randomMessage = loadingMessages[Math.floor(Math.random() * loadingMessages.length)];
+    setLoadingMessage(randomMessage);
+    
     try {
       const sessionId = getCurrentSessionId();
       const landId = activeTab !== 'general' ? activeTab : undefined;
@@ -561,7 +586,8 @@ export function EnhancedAIChatInterface() {
         role: 'assistant',
         content: data.response || t('chat.errorOccurred'),
         timestamp: new Date(),
-        structured: parseStructuredResponse(data.response)
+        structured: parseStructuredResponse(data.response),
+        structuredResponse: data.structuredResponse // ✅ NEW: Color-coded cards from backend
       };
       
       setMessages(prev => ({
@@ -615,6 +641,7 @@ export function EnhancedAIChatInterface() {
       });
     } finally {
       setIsLoading(false);
+      setLoadingMessage(''); // ✅ Clear loading message
     }
   };
 
@@ -1217,10 +1244,15 @@ export function EnhancedAIChatInterface() {
               </AvatarFallback>
             </Avatar>
             <div className="bg-card border rounded-2xl p-3 shadow-sm">
-              <div className="flex gap-1">
-                <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1">
+                  <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+                {loadingMessage && (
+                  <span className="text-xs text-muted-foreground ml-2">{loadingMessage}</span>
+                )}
               </div>
             </div>
           </motion.div>

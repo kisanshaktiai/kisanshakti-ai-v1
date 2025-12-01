@@ -5,6 +5,8 @@ import { checkRateLimit } from '../_shared/rateLimiter.ts';
 import { classifyFarmerQuery } from './query-classifier.ts';
 import { buildCompressedContext } from './context-compressor.ts';
 import { getMinimalContext, getMiniRefresh } from './context-helpers.ts';
+import { generateMultilingualQuickReplies } from './multilingual-quick-replies.ts';
+import { parseResponseToCards } from './response-parser.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -321,11 +323,31 @@ serve(async (req) => {
 - Complex topics → Organized sections
 - Be conversational, practical, specific
 
+📱 MODERN UI RESPONSE FORMAT:
+Structure your response with clear sections using emojis:
+🟢 ORGANIC/NATURAL METHODS - Green cards, eco-friendly advice
+🟡 FERTILIZER/NUTRITION - Yellow/amber cards, NPK recommendations
+🔴 PESTICIDES/CHEMICALS - Red cards, chemical treatments
+🟣 GROWTH HORMONES - Purple cards, growth promoters
+🔵 IRRIGATION/WATER - Blue cards, watering schedules
+⚠️ WARNINGS/ALERTS - Orange cards, urgent actions
+✅ SUCCESS/DONE - Green cards, completed tasks
+
+Example structure:
+🔵 Watering Schedule
+Monday & Thursday: 28,000 liters each day via drip
+
+🟡 Fertilizer Needed
+Apply Urea 50kg per acre, split into 3 doses
+
 ⚠️ CRITICAL:
+- Start each section with the appropriate emoji
+- Keep sections short (2-4 lines max)
 - Calculate ALL doses for exact land area
 - Use conversation history - AI remembers previous context
 - NO ** markdown formatting
-- Respond in farmer's language`;
+- Use simple rural vocabulary (not technical terms)
+- Respond ENTIRELY in farmer's language`;
 
     if (landId) {
       const { data: land } = await supabase
@@ -547,7 +569,14 @@ You MUST respond ENTIRELY in ${languageName}.
 - Translate ALL content including greetings, recommendations, technical terms
 - Use natural, conversational ${languageName}
 - Keep technical terms simple and explain them in ${languageName}
-- Farmer's preferred language: ${languageName}`;
+- Farmer's preferred language: ${languageName}
+
+⚠️ LANGUAGE SIMPLICITY RULES:
+- Use everyday rural farming words, not technical terms
+- English: Say "watering" not "irrigation", "amount" not "dosage", "cutting crop" not "harvest"
+- Hindi: कहें "डालना" न कि "अनुप्रयोग", "मात्रा" न कि "खुराक", "पानी देना" न कि "सिंचाई"
+- Marathi: सांगा "टाकणे" नाही "अनुप्रयोग", "प्रमाण" नाही "डोस", "पाणी देणे" नाही "सिंचन"
+- Explain scientific names in simple words (e.g., "Urea = white fertilizer for green leaves")`;
 
     // ✅ Helper: Detect simple questions for smart model selection
     function isSimpleQuestion(text: string): boolean {
@@ -1176,12 +1205,16 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       })
       .eq('id', currentSessionId);
 
-    // Generate quick replies based on land context and AI response
-    const quickReplies = generateQuickReplies(
-      lastUserMessage?.content || '', 
-      aiMessage,
-      landDetails
+    // ✅ FIX: Generate language-specific quick replies
+    const quickReplies = generateMultilingualQuickReplies(
+      queryIntent.type,
+      language, // Use user's selected language
+      aiMessage
     );
+    console.log(`💬 Generated quick replies in ${language}:`, quickReplies);
+    
+    // Parse response to structured cards for color-coded UI
+    const structuredResponse = parseResponseToCards(aiMessage, language);
 
     // ============= TOKEN SAVINGS ANALYTICS =============
     // Estimate token savings from smart caching
@@ -1202,6 +1235,7 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
         response: aiMessage,
         sessionId: currentSessionId,
         quickReplies,
+        structuredResponse, // ✅ NEW: Color-coded cards for modern UI
         responseTime,
         detectedLanguage,
         landContext,
@@ -1209,6 +1243,7 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           messageCount,
           contextType: landContext?.context_type || 'none',
           queryIntent: queryIntent.type,
+          queryConfidence: queryIntent.confidence,
           tokensSaved,
           cumulativeSavings: tokensSaved * Math.max(0, messageCount - 1)
         }
