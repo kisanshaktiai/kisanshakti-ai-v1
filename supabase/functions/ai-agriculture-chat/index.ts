@@ -793,12 +793,18 @@ serve(async (req) => {
     const queryIntent = classifyFarmerQuery(userText, language);
     console.log(`🎯 Query Intent: ${queryIntent.type} (confidence: ${queryIntent.confidence}) | Message #${messageCount}`);
     
+    // Check if query is weather-related
+    const isWeatherQuery = /weather|मौसम|हवामान|வானிலை|వాతావరణం|ਮੌਸਮ|rain|बारिश|पाऊस|மழை|వర్షం|ਬਾਰਿਸ਼|temperature|तापमान|तापमान|வெப்பநிலை|ఉష్ణోగ్రత|ਤਾਪਮਾਨ|wind|हवा|वारा|காற்று|గాలి|ਹਵਾ|forecast|पूर्वानुमान|अंदाज|முன்னறிவிப்பு|అంచనా|ਪੂਰਵ ਅਨੁਮਾਨ|climate|जलवायु|हवामान|காலநிலை|వాతావరణం|ਜਲਵਾਯੂ/i.test(userText);
+    console.log(`🌤️ Weather Query Detected: ${isWeatherQuery}`);
+    
     // Get land context if landId is provided
     let landContext = null;
     let landDetails: any = null;
     let farmerDetails: any = null;
     let farmerContext: any = null;
     let weatherContext: any = null;
+    let currentWeather: any = null;
+    let weatherForecast: any[] = [];
     
     // ✅ DECLARE CROP SCHEDULE VARIABLES AT TOP LEVEL (before systemPrompt)
     let cropSchedule: any = null;
@@ -889,6 +895,137 @@ serve(async (req) => {
             ? Math.floor((Date.now() - new Date(land.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))
             : null;
         }
+      }
+    }
+    
+    // ✅ STEP 1.5: FETCH WEATHER DATA IF NEEDED
+    if (isWeatherQuery || landId) {
+      try {
+        // Get location from land or farmer profile
+        let weatherLat: number | null = null;
+        let weatherLon: number | null = null;
+        let locationName = 'Unknown';
+        
+        if (landDetails?.center_lat && landDetails?.center_lon) {
+          weatherLat = landDetails.center_lat;
+          weatherLon = landDetails.center_lon;
+          locationName = landDetails.location || landDetails.name;
+        } else if (farmerDetails?.latitude && farmerDetails?.longitude) {
+          weatherLat = farmerDetails.latitude;
+          weatherLon = farmerDetails.longitude;
+          locationName = `${farmerDetails.village || ''}, ${farmerDetails.district || ''}`.trim();
+        }
+        
+        if (weatherLat && weatherLon) {
+          // Round coordinates for cache lookup
+          const roundedLat = Math.round(weatherLat * 100) / 100;
+          const roundedLon = Math.round(weatherLon * 100) / 100;
+          const locationKey = `${roundedLat},${roundedLon}`;
+          
+          console.log(`🌤️ Fetching weather data for: ${locationKey} (${locationName})`);
+          
+          // Fetch current weather from cache
+          const { data: cachedCurrent } = await supabase
+            .from('weather_current')
+            .select('*')
+            .eq('location_key', locationKey)
+            .gt('expires_at', new Date().toISOString())
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .single();
+          
+          if (cachedCurrent) {
+            currentWeather = {
+              location: locationName,
+              temp: cachedCurrent.temperature_celsius,
+              feels_like: cachedCurrent.feels_like_celsius,
+              humidity: cachedCurrent.humidity_percent,
+              wind_speed: cachedCurrent.wind_speed_kmh,
+              wind_direction: cachedCurrent.wind_direction_degrees,
+              description: cachedCurrent.weather_description,
+              main: cachedCurrent.weather_main,
+              rain_1h: cachedCurrent.rain_1h_mm,
+              rain_24h: cachedCurrent.rain_24h_mm,
+              uv_index: cachedCurrent.uv_index,
+              visibility: cachedCurrent.visibility_km,
+              pressure: cachedCurrent.pressure_hpa,
+              clouds: cachedCurrent.cloud_cover_percent,
+              sunrise: cachedCurrent.sunrise_time,
+              sunset: cachedCurrent.sunset_time,
+              updated_at: cachedCurrent.updated_at,
+              provider: cachedCurrent.data_source
+            };
+            
+            console.log(`✅ Current weather loaded: ${currentWeather.temp}°C, ${currentWeather.description}`);
+          }
+          
+          // Fetch forecast data (next 7 days)
+          const { data: cachedForecasts } = await supabase
+            .from('weather_forecasts')
+            .select('*')
+            .eq('location_key', locationKey)
+            .gte('forecast_time', new Date().toISOString())
+            .order('forecast_time', { ascending: true })
+            .limit(168); // 7 days * 24 hours
+          
+          if (cachedForecasts && cachedForecasts.length > 0) {
+            // Group forecasts by day
+            const dailyMap = new Map<string, any>();
+            
+            cachedForecasts.forEach((forecast: any) => {
+              const forecastDate = new Date(forecast.forecast_time);
+              const dateKey = forecastDate.toISOString().split('T')[0];
+              
+              if (!dailyMap.has(dateKey)) {
+                dailyMap.set(dateKey, {
+                  date: dateKey,
+                  temps: [],
+                  rain: [],
+                  humidity: [],
+                  wind_speed: [],
+                  descriptions: [],
+                  pop: []
+                });
+              }
+              
+              const dayData = dailyMap.get(dateKey)!;
+              dayData.temps.push(forecast.temperature_celsius || 0);
+              dayData.rain.push(forecast.rain_amount_mm || 0);
+              dayData.humidity.push(forecast.humidity_percent || 0);
+              dayData.wind_speed.push(forecast.wind_speed_kmh || 0);
+              dayData.descriptions.push(forecast.weather_description);
+              dayData.pop.push(forecast.rain_probability_percent || 0);
+            });
+            
+            // Convert to array with summary
+            weatherForecast = Array.from(dailyMap.values()).slice(0, 7).map(day => ({
+              date: day.date,
+              temp_min: Math.min(...day.temps),
+              temp_max: Math.max(...day.temps),
+              temp_avg: day.temps.reduce((a: number, b: number) => a + b, 0) / day.temps.length,
+              total_rain: day.rain.reduce((a: number, b: number) => a + b, 0),
+              max_rain_prob: Math.max(...day.pop),
+              avg_humidity: day.humidity.reduce((a: number, b: number) => a + b, 0) / day.humidity.length,
+              avg_wind_speed: day.wind_speed.reduce((a: number, b: number) => a + b, 0) / day.wind_speed.length,
+              description: day.descriptions[Math.floor(day.descriptions.length / 2)] || day.descriptions[0]
+            }));
+            
+            console.log(`✅ Weather forecast loaded: ${weatherForecast.length} days`);
+          }
+          
+          // Build weather context for prompt
+          if (currentWeather || weatherForecast.length > 0) {
+            weatherContext = {
+              location: locationName,
+              current: currentWeather,
+              forecast: weatherForecast,
+              has_data: true
+            };
+          }
+        }
+      } catch (weatherError) {
+        console.warn('⚠️ Could not load weather data:', weatherError);
+        // Continue without weather data
       }
     }
     
@@ -1296,6 +1433,62 @@ You are speaking with ${farmer.name || 'a farmer'}:
 ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now() - new Date(landDetails.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))} days` : ''}
 - Provide season-specific and stage-specific advice
 - Consider weather patterns typical for this season in ${farmerDetails?.state || 'this region'}`;
+    
+    // ✅ ADD WEATHER DATA TO SYSTEM PROMPT
+    if (weatherContext?.has_data) {
+      systemPrompt += `\n\n🌤️ REAL-TIME WEATHER DATA (${weatherContext.location}):`;
+      
+      if (currentWeather) {
+        systemPrompt += `
+
+📍 CURRENT CONDITIONS (Updated: ${new Date(currentWeather.updated_at).toLocaleString('en-IN')}):
+- Temperature: ${currentWeather.temp}°C (Feels like: ${currentWeather.feels_like}°C)
+- Weather: ${currentWeather.description}
+- Humidity: ${currentWeather.humidity}%
+- Wind: ${currentWeather.wind_speed} km/h
+- Rain (1h): ${currentWeather.rain_1h || 0} mm
+- Rain (24h): ${currentWeather.rain_24h || 0} mm
+- UV Index: ${currentWeather.uv_index || 'N/A'}
+- Visibility: ${currentWeather.visibility} km
+- Cloud Cover: ${currentWeather.clouds}%
+- Sunrise: ${new Date(currentWeather.sunrise).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+- Sunset: ${new Date(currentWeather.sunset).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+- Data Source: ${currentWeather.provider}`;
+      }
+      
+      if (weatherForecast.length > 0) {
+        systemPrompt += `\n\n📊 WEATHER FORECAST (Next ${weatherForecast.length} Days):`;
+        weatherForecast.forEach((day, index) => {
+          const dayName = index === 0 ? 'Today' : index === 1 ? 'Tomorrow' : new Date(day.date).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' });
+          systemPrompt += `
+${dayName} (${day.date}):
+  • Temp: ${day.temp_min}°C - ${day.temp_max}°C (Avg: ${day.temp_avg.toFixed(1)}°C)
+  • Rain: ${day.total_rain.toFixed(1)} mm (${day.max_rain_prob}% probability)
+  • Humidity: ${day.avg_humidity.toFixed(0)}%
+  • Wind: ${day.avg_wind_speed.toFixed(1)} km/h
+  • Conditions: ${day.description}`;
+        });
+      }
+      
+      systemPrompt += `\n
+⚠️ CRITICAL WEATHER INSTRUCTIONS:
+1. Use this REAL weather data in your response - do NOT make up weather information
+2. For weather queries, cite the actual data: "According to current data, temperature is ${currentWeather?.temp}°C..."
+3. Provide farming recommendations based on this actual weather:
+   - If rain is forecasted (>50% probability), advise postponing spraying/fertilizing
+   - If temperature is high (>35°C), recommend early morning/evening irrigation
+   - If humidity is high (>80%), warn about disease risk
+   - If wind speed is high (>20 km/h), advise against pesticide application
+4. Reference specific forecast days: "Rain expected on ${weatherForecast[0]?.date} with ${weatherForecast[0]?.total_rain.toFixed(1)}mm"
+5. Always mention when the data was last updated for transparency`;
+    } else if (isWeatherQuery) {
+      systemPrompt += `\n\n⚠️ WEATHER DATA NOT AVAILABLE:
+Weather data could not be retrieved for this location. Inform the farmer politely that:
+- Real-time weather data is temporarily unavailable
+- They can check local weather forecasts
+- They should visit the Weather section of the app for updates
+Do NOT make up or estimate weather information.`;
+    }
 
     // CRITICAL: Add language-specific instruction based on user's selected language
     const languageMap: Record<string, string> = {
