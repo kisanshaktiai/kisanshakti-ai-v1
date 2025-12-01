@@ -45,10 +45,20 @@ serve(async (req) => {
     const hasPunjabi = /[\u0A00-\u0A7F]/.test(userText);
     const hasUrdu = /[\u0600-\u06FF]/.test(userText);
     
-    // ✅ IMPROVED: Always detect language from user input content (removed 'language === "en"' condition)
+    // ✅ FIX: Respect user's selected language for Devanagari script (Hindi/Marathi)
     if (hasDevanagari) {
-      detectedLanguage = 'hi'; // Default to Hindi for Devanagari (could be Marathi too)
-      console.log('🔍 Language auto-detected: Hindi/Marathi from Devanagari script');
+      // If user selected Marathi or Hindi explicitly, keep their preference
+      if (language === 'mr') {
+        detectedLanguage = 'mr';
+        console.log('🔍 Language detected: Marathi (user preference respected)');
+      } else if (language === 'hi' || language === 'en') {
+        detectedLanguage = 'hi';
+        console.log('🔍 Language auto-detected: Hindi from Devanagari script');
+      } else {
+        // Keep user's original language if it's something else
+        detectedLanguage = language;
+        console.log('🔍 Language: keeping user preference:', language);
+      }
     } else if (hasTamil) {
       detectedLanguage = 'ta';
       console.log('🔍 Language auto-detected: Tamil');
@@ -574,7 +584,8 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
       'ur': 'Urdu (اردو)'
     };
 
-    const languageName = languageMap[detectedLanguage] || languageMap['en'];
+    // ✅ FIX: Use user's selected language preference (not detected language)
+    const languageName = languageMap[language] || languageMap['en'];
     
     systemPrompt += `\n\n🌍 LANGUAGE INSTRUCTION (CRITICAL):
 You MUST respond ENTIRELY in ${languageName}.
@@ -858,13 +869,16 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
     });
 
     // ✅ CRITICAL FIX: GPT-5 models use reasoning_tokens that count against max_completion_tokens
-    // For agricultural chat: ~2000 reasoning tokens + ~4000 content tokens needed
-    // Set to 6000 to ensure we get full responses in regional languages
+    // GPT-5 models allocate tokens dynamically between reasoning and content
+    // Based on logs: gpt-5-nano needs ~4000 reasoning + ~4000 content = 8000 total
+    //                gpt-5-mini needs ~8000 reasoning + ~8000 content = 16000 total
     const maxTokens = isInstaScan 
       ? 1000  // Vision tasks need less
-      : openAIModel.includes('gpt-5') 
-        ? 6000  // GPT-5 needs high limit for reasoning + content
-        : 2000; // Legacy models
+      : openAIModel.includes('gpt-5-nano') 
+        ? 8000  // GPT-5-nano: sufficient for reasoning + content
+        : openAIModel.includes('gpt-5-mini') || openAIModel.includes('gpt-5')
+          ? 16000  // GPT-5-mini/GPT-5: higher limit for complex queries
+          : 2000; // Legacy models (gpt-4o, gpt-4o-mini)
 
     console.log(`⚙️ Token limit: ${maxTokens} (model: ${openAIModel})`);
 
@@ -1028,11 +1042,13 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           'ur': '🙏 معاف کریں، آپ کے سوال کا جواب دینے میں مشکل۔ براہ کرم دوبارہ کوشش کریں۔'
         };
         
-        aiMessage = errorMessages[detectedLanguage] || errorMessages['en'];
+        // ✅ FIX: Use user's selected language (not detected language) for error messages
+        aiMessage = errorMessages[language] || errorMessages[detectedLanguage] || errorMessages['en'];
         
         // Log for monitoring
         console.warn('⚠️ Using fallback error message:', {
-          language: detectedLanguage,
+          userLanguage: language,
+          detectedLanguage: detectedLanguage,
           message: aiMessage
         });
       }
@@ -1084,7 +1100,7 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           role: 'user',
           content: userMessageContent,
           status: 'sent',
-          language: detectedLanguage || 'en',
+          language: language, // ✅ FIX: Use user's selected language
           message_type: imageUrl || fileContent ? 'multimedia' : 'text',
           word_count: userMessageContent ? userMessageContent.split(/\s+/).length : 0,
           land_context: landContext,
@@ -1126,7 +1142,7 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           role: 'assistant',
           content: aiMessage,
           status: 'sent',
-          language: detectedLanguage || 'en',
+          language: language, // ✅ FIX: Use user's selected language
           message_type: 'text',
           word_count: aiMessage ? aiMessage.split(/\s+/).length : 0,
           land_context: landContext,
