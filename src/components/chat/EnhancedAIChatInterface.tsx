@@ -106,6 +106,117 @@ export function EnhancedAIChatInterface() {
     language: language === 'hi' ? 'hi-IN' : language === 'pa' ? 'pa-IN' : language === 'mr' ? 'mr-IN' : language === 'ta' ? 'ta-IN' : 'en-IN'
   });
   
+  // ✅ CRITICAL FIX: ALL HOOKS MUST BE BEFORE CONDITIONAL RETURNS
+  // Move useCallback and useEffect hooks here
+  const scrollToBottom = useCallback(() => {
+    // Don't auto-scroll if user is manually scrolling
+    if (isUserScrolling) return;
+    
+    // Wait for next tick to ensure DOM is updated
+    setTimeout(() => {
+      if (scrollAreaRef.current) {
+        // Get the actual viewport element that contains the scroll
+        const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+        if (viewport) {
+          viewport.scrollTo({
+            top: viewport.scrollHeight,
+            behavior: 'smooth'
+          });
+        }
+      }
+    }, 100);
+  }, [isUserScrolling]);
+
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) return;
+    
+    setIsRefreshing(true);
+    try {
+      // fetchLands will be called after the component is mounted
+      const fetchedLands = await landsApi.fetchLands();
+      setLands(fetchedLands);
+      toast({
+        title: t('common.success'),
+        description: t('chat.refreshed')
+      });
+    } catch (error) {
+      console.error('Error refreshing:', error);
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 1000);
+    }
+  }, [isRefreshing, t]);
+
+  // All useEffect hooks MUST be before conditional return
+  useEffect(() => {
+    if (transcript) {
+      setInputValue(transcript);
+    }
+  }, [transcript]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, activeTab, scrollToBottom]);
+
+  // Track session start time when switching tabs or sending first message
+  useEffect(() => {
+    if (!sessionStartTime[activeTab] && messages[activeTab]?.length > 0) {
+      setSessionStartTime(prev => ({ ...prev, [activeTab]: new Date() }));
+    }
+  }, [activeTab, messages, sessionStartTime]);
+
+  // Detect user scroll vs auto-scroll
+  useEffect(() => {
+    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (!viewport) return;
+
+    const handleScroll = () => {
+      const currentScrollTop = viewport.scrollTop;
+      const scrollHeight = viewport.scrollHeight;
+      const clientHeight = viewport.clientHeight;
+      
+      // Check if user scrolled up (not at bottom)
+      const isAtBottom = scrollHeight - currentScrollTop - clientHeight < 50;
+      
+      // If user manually scrolled up, set flag
+      if (currentScrollTop < lastScrollTop.current && !isAtBottom) {
+        setIsUserScrolling(true);
+      }
+      // If user scrolled to bottom, clear flag
+      else if (isAtBottom) {
+        setIsUserScrolling(false);
+      }
+      
+      lastScrollTop.current = currentScrollTop;
+    };
+
+    viewport.addEventListener('scroll', handleScroll, { passive: true });
+    return () => viewport.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // MutationObserver to watch for new messages
+  useEffect(() => {
+    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
+    if (!viewport) return;
+
+    const observer = new MutationObserver((mutations) => {
+      // Check if new content was added
+      const hasNewContent = mutations.some(mutation => 
+        mutation.type === 'childList' && mutation.addedNodes.length > 0
+      );
+      
+      if (hasNewContent && !isUserScrolling) {
+        scrollToBottom();
+      }
+    });
+
+    observer.observe(viewport, {
+      childList: true,
+      subtree: true
+    });
+
+    return () => observer.disconnect();
+  }, [scrollToBottom, isUserScrolling]);
+
   // ✅ All hooks are now declared BEFORE conditional returns
   // Guard: Don't render until tenant is loaded
   if (isTenantLoading || !tenant || !user) {
@@ -145,25 +256,7 @@ export function EnhancedAIChatInterface() {
     }
   };
 
-  // Pull to refresh handler
-  const handleRefresh = useCallback(async () => {
-    if (isRefreshing) return;
-    
-    setIsRefreshing(true);
-    try {
-      await fetchLands();
-      toast({
-        title: t('common.success'),
-        description: t('chat.refreshed')
-      });
-    } catch (error) {
-      console.error('Error refreshing:', error);
-    } finally {
-      setTimeout(() => setIsRefreshing(false), 1000);
-    }
-  }, [isRefreshing]);
-
-  // Touch event handlers for pull-to-refresh (hooks already declared above)
+  // Touch event handlers for pull-to-refresh
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStart(e.targetTouches[0].clientY);
   };
@@ -183,26 +276,10 @@ export function EnhancedAIChatInterface() {
     }
   };
 
+  // Initialize lands on mount
   useEffect(() => {
     fetchLands();
   }, []);
-
-  // Track session start time when switching tabs or sending first message
-  useEffect(() => {
-    if (!sessionStartTime[activeTab] && messages[activeTab]?.length > 0) {
-      setSessionStartTime(prev => ({ ...prev, [activeTab]: new Date() }));
-    }
-  }, [activeTab, messages]);
-
-  useEffect(() => {
-    if (transcript) {
-      setInputValue(transcript);
-    }
-  }, [transcript]);
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, activeTab]);
 
   // Load session and messages for a specific land (or general chat if landId is null)
   const loadLandSession = async (landId: string | null) => {
@@ -307,78 +384,6 @@ export function EnhancedAIChatInterface() {
       console.error('Error fetching lands:', error);
     }
   };
-
-  const scrollToBottom = useCallback(() => {
-    // Don't auto-scroll if user is manually scrolling
-    if (isUserScrolling) return;
-    
-    // Wait for next tick to ensure DOM is updated
-    setTimeout(() => {
-      if (scrollAreaRef.current) {
-        // Get the actual viewport element that contains the scroll
-        const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-        if (viewport) {
-          viewport.scrollTo({
-            top: viewport.scrollHeight,
-            behavior: 'smooth'
-          });
-        }
-      }
-    }, 100);
-  }, [isUserScrolling]);
-
-  // Detect user scroll vs auto-scroll
-  useEffect(() => {
-    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-    if (!viewport) return;
-
-    const handleScroll = () => {
-      const currentScrollTop = viewport.scrollTop;
-      const scrollHeight = viewport.scrollHeight;
-      const clientHeight = viewport.clientHeight;
-      
-      // Check if user scrolled up (not at bottom)
-      const isAtBottom = scrollHeight - currentScrollTop - clientHeight < 50;
-      
-      // If user manually scrolled up, set flag
-      if (currentScrollTop < lastScrollTop.current && !isAtBottom) {
-        setIsUserScrolling(true);
-      }
-      // If user scrolled to bottom, clear flag
-      else if (isAtBottom) {
-        setIsUserScrolling(false);
-      }
-      
-      lastScrollTop.current = currentScrollTop;
-    };
-
-    viewport.addEventListener('scroll', handleScroll, { passive: true });
-    return () => viewport.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  // MutationObserver to watch for new messages
-  useEffect(() => {
-    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-    if (!viewport) return;
-
-    const observer = new MutationObserver((mutations) => {
-      // Check if new content was added
-      const hasNewContent = mutations.some(mutation => 
-        mutation.type === 'childList' && mutation.addedNodes.length > 0
-      );
-      
-      if (hasNewContent && !isUserScrolling) {
-        scrollToBottom();
-      }
-    });
-
-    observer.observe(viewport, {
-      childList: true,
-      subtree: true
-    });
-
-    return () => observer.disconnect();
-  }, [scrollToBottom, isUserScrolling]);
 
   const getCurrentSessionId = () => {
     // Check if we already have a session ID loaded from database or created in this session
