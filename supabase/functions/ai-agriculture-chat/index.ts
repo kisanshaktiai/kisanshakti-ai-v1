@@ -7,6 +7,7 @@ import { buildCompressedContext } from './context-compressor.ts';
 import { getMinimalContext, getMiniRefresh } from './context-helpers.ts';
 import { generateMultilingualQuickReplies } from './multilingual-quick-replies.ts';
 import { parseResponseToCards } from './response-parser.ts';
+import { analyzeQueryComplexity, getResponseLengthInstruction, enforceResponseLength } from './query-complexity.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -838,6 +839,39 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       }
     }
 
+    // ============================================
+    // SMART RESPONSE LENGTH CONTROL
+    // ============================================
+    
+    // Analyze query complexity (only for non-InstaScan queries)
+    let complexityAnalysis = null;
+    if (!isInstaScan) {
+      const lastUserMsg = messages[messages.length - 1];
+      const userQuery = typeof lastUserMsg === 'string' ? lastUserMsg : lastUserMsg?.content || '';
+      
+      complexityAnalysis = analyzeQueryComplexity(userQuery);
+      
+      console.log(`📊 Query Analysis:`, {
+        query: userQuery.substring(0, 50) + '...',
+        complexity: complexityAnalysis.complexity,
+        maxWords: complexityAnalysis.maxWords,
+        maxTokens: complexityAnalysis.maxTokens,
+        style: complexityAnalysis.responseStyle
+      });
+      
+      // Add length instruction to system prompt
+      const lengthInstruction = getResponseLengthInstruction(
+        complexityAnalysis.complexity,
+        detectedLanguage
+      );
+      
+      // Update the system prompt for regular chat mode
+      if (openAIMessages[0]?.role === 'system') {
+        openAIMessages[0].content += '\n\n' + lengthInstruction;
+        console.log(`📝 Added ${complexityAnalysis.complexity} complexity instructions to system prompt`);
+      }
+    }
+
     // Call OpenAI API
     const openAIKey = Deno.env.get('OPENAI_API_KEY');
     if (!openAIKey) {
@@ -855,15 +889,25 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
     // GPT-5 models allocate tokens dynamically between reasoning and content
     // Based on logs: gpt-5-nano needs ~4000 reasoning + ~4000 content = 8000 total
     //                gpt-5-mini needs ~8000 reasoning + ~8000 content = 16000 total
-    const maxTokens = isInstaScan 
-      ? 1000  // Vision tasks need less
-      : openAIModel.includes('gpt-5-nano') 
-        ? 8000  // GPT-5-nano: sufficient for reasoning + content
+    
+    // Set dynamic token limit based on complexity analysis
+    let maxTokens: number;
+    if (isInstaScan) {
+      maxTokens = 1000; // Vision tasks need less
+    } else if (complexityAnalysis) {
+      // Use complexity-based token limits for regular chat
+      maxTokens = complexityAnalysis.maxTokens;
+      console.log(`⚙️ Token limit set to: ${maxTokens} (${complexityAnalysis.complexity} query)`);
+    } else {
+      // Fallback to model-based limits
+      maxTokens = openAIModel.includes('gpt-5-nano') 
+        ? 8000
         : openAIModel.includes('gpt-5-mini') || openAIModel.includes('gpt-5')
-          ? 16000  // GPT-5-mini/GPT-5: higher limit for complex queries
-          : 2000; // Legacy models (gpt-4o, gpt-4o-mini)
+          ? 16000
+          : 2000;
+    }
 
-    console.log(`⚙️ Token limit: ${maxTokens} (model: ${openAIModel})`);
+    console.log(`⚙️ Final token limit: ${maxTokens} (model: ${openAIModel})`);
 
     const openAIRequestBody: any = {
       model: openAIModel,
@@ -1035,6 +1079,26 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           message: aiMessage
         });
       }
+      
+      // ============================================
+      // ENFORCE RESPONSE LENGTH LIMIT
+      // ============================================
+      if (complexityAnalysis && aiMessage && aiMessage.trim().length > 0) {
+        const originalWordCount = aiMessage.split(/\s+/).length;
+        console.log(`✅ AI response received: ${originalWordCount} words`);
+        
+        // Enforce length limit based on complexity
+        aiMessage = enforceResponseLength(
+          aiMessage,
+          complexityAnalysis.maxWords,
+          detectedLanguage
+        );
+        
+        const finalWordCount = aiMessage.split(/\s+/).length;
+        if (finalWordCount < originalWordCount) {
+          console.log(`✂️ Response truncated: ${originalWordCount} → ${finalWordCount} words`);
+        }
+      }
     }
     const tokensUsed = aiData.usage?.total_tokens || 0;
 
@@ -1200,7 +1264,11 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           last_context_type: landContext?.context_type || 'none',
           context_sent: landContext?.context_type === 'full', // Full context sent?
           last_query_intent: queryIntent.type,
-          query_intent_confidence: queryIntent.confidence
+          query_intent_confidence: queryIntent.confidence,
+          // ✅ NEW: Track complexity for analytics
+          last_query_complexity: complexityAnalysis?.complexity,
+          last_max_words: complexityAnalysis?.maxWords,
+          last_max_tokens: complexityAnalysis?.maxTokens
         }
       })
       .eq('id', currentSessionId);
@@ -1244,6 +1312,10 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           contextType: landContext?.context_type || 'none',
           queryIntent: queryIntent.type,
           queryConfidence: queryIntent.confidence,
+          // ✅ NEW: Add complexity analytics
+          queryComplexity: complexityAnalysis?.complexity,
+          maxWords: complexityAnalysis?.maxWords,
+          maxTokens: complexityAnalysis?.maxTokens,
           tokensSaved,
           cumulativeSavings: tokensSaved * Math.max(0, messageCount - 1)
         }
