@@ -98,31 +98,41 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
           
           {/* Color-Coded Cards (if available) */}
           {!isUser && message.structuredResponse?.cards && message.structuredResponse.cards.length > 0 ? (
-            <div>
-              {message.structuredResponse.cards.map((card, index) => (
-                <ColorCodedCard key={card.id} card={card} index={index} />
-              ))}
-            </div>
+            <>
+              <div>
+                {message.structuredResponse.cards.map((card, index) => (
+                  <ColorCodedCard key={card.id} card={card} index={index} />
+                ))}
+              </div>
+              {/* Timestamp for cards */}
+              <div className="text-xs mt-2 opacity-60 text-muted-foreground px-3 pb-2.5">
+                {new Date(message.timestamp).toLocaleTimeString([], { 
+                  hour: '2-digit', 
+                  minute: '2-digit' 
+                })}
+              </div>
+            </>
           ) : (
-            /* Message Text */
-            <div className={cn(
-              "text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words relative z-10 px-4 py-3",
-              isUser ? "text-white" : "text-foreground"
-            )}>
-              {message.content}
-            </div>
+            <>
+              {/* Message Text */}
+              <div className={cn(
+                "text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words relative z-10 px-4 py-3",
+                isUser ? "text-white" : "text-foreground"
+              )}>
+                {message.content}
+              </div>
+              {/* Timestamp for text */}
+              <div className={cn(
+                "text-xs mt-2 opacity-60",
+                isUser ? "text-white/80 px-4 pb-3" : "text-muted-foreground px-3 pb-2.5"
+              )}>
+                {new Date(message.timestamp).toLocaleTimeString([], { 
+                  hour: '2-digit', 
+                  minute: '2-digit' 
+                })}
+              </div>
+            </>
           )}
-
-          {/* Timestamp */}
-          <div className={cn(
-            "text-xs mt-2 opacity-60",
-            isUser ? "text-white/80 px-4 pb-3" : "text-muted-foreground px-3 pb-2.5"
-          )}>
-            {new Date(message.timestamp).toLocaleTimeString([], { 
-              hour: '2-digit', 
-              minute: '2-digit' 
-            })}
-          </div>
         </motion.div>
 
         {/* Action Buttons - AI Messages Only */}
