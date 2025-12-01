@@ -4,6 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
 import { classifyFarmerQuery } from './query-classifier.ts';
 import { buildCompressedContext } from './context-compressor.ts';
+import { getMinimalContext, getMiniRefresh } from './context-helpers.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -283,10 +284,19 @@ serve(async (req) => {
       currentSession = newSession;
     }
 
-    // ============= SMART CONTEXT LOADER =============
+    // ============= SESSION-BASED SMART CACHING =============
+    // Get message count for this session
+    const { data: messageHistory } = await supabase
+      .from('ai_chat_messages')
+      .select('id, land_context')
+      .eq('session_id', currentSessionId)
+      .order('created_at', { ascending: true });
+
+    const messageCount = (messageHistory?.length || 0) + 1;
+    
     // Step 1: Classify farmer's query intent
     const queryIntent = classifyFarmerQuery(userText, language);
-    console.log('🎯 Query Intent:', queryIntent);
+    console.log(`🎯 Query Intent: ${queryIntent.type} (confidence: ${queryIntent.confidence}) | Message #${messageCount}`);
     
     // Get land context if landId is provided
     let landContext = null;
@@ -295,89 +305,27 @@ serve(async (req) => {
     let farmerContext: any = null;
     let weatherContext: any = null;
     
-    let systemPrompt = `You are KisanShakti AI — an expert agriculture advisor for Indian farmers.
+    // Check if land has changed (for context refresh)
+    const previousLandId = messageHistory && messageHistory.length > 0 
+      ? messageHistory[messageHistory.length - 1]?.land_context?.land_id 
+      : null;
+    const landHasChanged = previousLandId && landId && previousLandId !== landId;
+    
+    let systemPrompt = `You are KisanShakti AI — expert agriculture advisor for Indian farmers.
 
-🚨 AGRICULTURE-ONLY RESTRICTION 🚨
-You ONLY answer agriculture-related questions: crops, soil, irrigation, pests, fertilizers, weather, markets, livestock, farm equipment.
+🚨 AGRICULTURE ONLY: Answer only crop, soil, irrigation, pest, fertilizer, weather, market, livestock questions.
 
-For non-agriculture questions, respond:
-"🙏 Namaste! I'm KisanShakti AI, specialized exclusively in agriculture and farming.
+📝 RESPONSE STYLE:
+- Simple questions → 2-3 lines
+- How-to questions → Clear steps
+- Complex topics → Organized sections
+- Be conversational, practical, specific
 
-I can help with:
-🌾 Crop cultivation • 🌱 Soil health • 💧 Irrigation • 🐛 Pest control
-🌤️ Weather advice • 📊 Market prices • 🐄 Livestock • 🚜 Farm equipment
-
-Please ask me anything related to agriculture! 🌾"
-
-⚠️ RESPONSE STYLE - ADAPT TO QUESTION TYPE:
-1. Simple questions (What is NPK?) → Short, direct answer (2-3 lines)
-2. Quick facts (Best time to plant?) → Brief answer with 1-2 key points
-3. How-to questions → Step-by-step guidance with practical tips
-4. Complex topics → Organized sections with detailed explanations
-5. Calculations needed → Show formulas and exact quantities
-
-📝 FORMATTING RULES:
-- DO NOT use ** or markdown formatting
-- Write naturally in simple language
-- Use emojis sparingly for visual breaks
-- Use CAPITAL LETTERS for important headers
-- Keep paragraphs close together (use single line breaks)
-- No excessive spacing between ideas
-
-🎯 ANSWER PATTERNS BY QUESTION TYPE:
-
-**TYPE 1: Simple Definition/Fact Questions**
-Answer directly in 2-4 sentences. No sections needed.
-Example: "What is NPK?"
-→ "NPK stands for Nitrogen (N), Phosphorus (P), and Potassium (K) - the three essential nutrients for plant growth. Nitrogen promotes leaf growth, phosphorus helps roots and flowers, and potassium strengthens overall plant health. These are the numbers you see on fertilizer bags like 19:19:19."
-
-**TYPE 2: Quick Practical Questions**  
-Give direct answer with 1-2 practical tips.
-Example: "When to plant tomatoes?"
-→ "Best time to plant tomatoes in India is October-November (winter) or February-March (spring). Choose October planting for better yields. Ensure night temperatures are above 10°C and day temps around 20-25°C."
-
-**TYPE 3: How-To Questions**
-Provide clear steps with practical details.
-Example: "How to prepare soil for wheat?"
-→ "SOIL PREPARATION FOR WHEAT:
-
-Step 1: Deep plowing (6-8 inches) after monsoon to break hardpan and improve drainage.
-
-Step 2: Add organic matter - 5-6 tons FYM per acre, spread evenly.
-
-Step 3: Level the field with leveler to avoid water logging.
-
-Step 4: Make seed bed with 2-3 harrowing and planking.
-
-Timing: Complete 2 weeks before sowing for soil settling."
-
-**TYPE 4: Complex/Technical Questions**
-Use organized sections for clarity, but only when needed.
-Example: "Complete fertilizer schedule for cotton?"
-→ [Provide structured sections with emojis, detailed calculations, timing, methods]
-
-**TYPE 5: Problem Diagnosis**
-Ask clarifying questions if needed, then provide targeted solutions.
-Example: "My crop leaves are yellowing"
-→ First ask about: which crop, leaf pattern (old vs new leaves), other symptoms.
-Then provide specific diagnosis and solutions.
-
-🌾 COMMUNICATION PRINCIPLES:
-• Be conversational and friendly, like talking to a farmer friend
-• Use practical examples farmers can relate to
-• Mention real studies when relevant: "ICAR research shows..."
-• Provide local context: regional crops, climate, practices
-• Give cost-effective solutions (organic first, then low-cost alternatives)
-• Include specific quantities, timings, methods when giving advice
-• End with relevant follow-up opportunity, not generic closing
-
-⚠️ CRITICAL RULES:
-- Match response length to question complexity
-- Don't force sections for simple questions
-- Don't add unnecessary greetings/closings for every response
-- Remove all ** formatting - write naturally
-- Keep line spacing minimal (single breaks between ideas)
-- Be direct and practical, not overly formal`;
+⚠️ CRITICAL:
+- Calculate ALL doses for exact land area
+- Use conversation history - AI remembers previous context
+- NO ** markdown formatting
+- Respond in farmer's language`;
 
     if (landId) {
       const { data: land } = await supabase
@@ -400,22 +348,28 @@ Then provide specific diagnosis and solutions.
           ? Math.floor((Date.now() - new Date(land.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))
           : null;
         
-        // ============= SMART DATA LOADING BASED ON QUERY INTENT =============
+        // ============= SELECTIVE DATA LOADING BASED ON QUERY INTENT =============
         let ndviData = null;
         let soilHealthData = null;
+        
+        // Only load new data if:
+        // 1. First message (messageCount === 1), OR
+        // 2. Land has changed, OR
+        // 3. Long conversation (messageCount > 10)
+        const shouldLoadFullData = messageCount === 1 || landHasChanged || messageCount > 10;
         
         // Load data selectively based on what the farmer is asking about
         const needsNDVI = ['pest', 'disease', 'health', 'market'].includes(queryIntent.type);
         const needsSoil = ['fertilizer', 'nutrition', 'health'].includes(queryIntent.type);
         
-        if (needsNDVI) {
+        if (shouldLoadFullData && needsNDVI) {
           try {
             const { data, error } = await supabase
               .from('ndvi_data')
               .select('*')
               .eq('land_id', landId)
               .order('date', { ascending: false })
-              .limit(queryIntent.type === 'health' ? 5 : 1); // Only get history for health queries
+              .limit(queryIntent.type === 'health' ? 5 : 1);
             
             if (!error) {
               ndviData = data;
@@ -424,9 +378,11 @@ Then provide specific diagnosis and solutions.
           } catch (ndviError) {
             console.warn('⚠️ Could not load NDVI data:', ndviError);
           }
+        } else if (needsNDVI) {
+          console.log(`⚡ Skipping NDVI load - using conversation memory (message #${messageCount})`);
         }
         
-        if (needsSoil) {
+        if (shouldLoadFullData && needsSoil) {
           try {
             const { data, error } = await supabase
               .from('soil_health')
@@ -442,23 +398,41 @@ Then provide specific diagnosis and solutions.
           } catch (soilError) {
             console.warn('⚠️ Could not load soil health data:', soilError);
           }
+        } else if (needsSoil) {
+          console.log(`⚡ Skipping soil load - using conversation memory (message #${messageCount})`);
         }
         
         const latestSoilHealth = soilHealthData && soilHealthData.length > 0 ? soilHealthData[0] : null;
         const latestNDVI = ndviData && ndviData.length > 0 ? ndviData[0] : null;
         
-        // Build compressed context based on query type
-        const compressedContext = buildCompressedContext({
-          land,
-          areaInAcres,
-          daysSinceSowing,
-          latestSoilHealth,
-          latestNDVI,
-          ndviData,
-          queryIntent
-        });
+        // Build context based on message count (session-aware caching)
+        let contextToSend = '';
+        let contextType = 'none';
         
-        console.log('📦 Compressed context tokens:', compressedContext.length, 'chars (est.', Math.ceil(compressedContext.length / 4), 'tokens)');
+        if (messageCount === 1 || landHasChanged) {
+          // First message or land changed: Send FULL compressed context
+          contextToSend = buildCompressedContext({
+            land,
+            areaInAcres,
+            daysSinceSowing,
+            latestSoilHealth,
+            latestNDVI,
+            ndviData,
+            queryIntent
+          });
+          contextType = 'full';
+          console.log(`📦 Sending FULL context (message #${messageCount}${landHasChanged ? ', land changed' : ''}): ~${Math.ceil(contextToSend.length / 4)} tokens`);
+        } else if (messageCount >= 2 && messageCount <= 10) {
+          // Messages 2-10: Send query-specific minimal context
+          contextToSend = getMinimalContext(queryIntent.type, land, areaInAcres, daysSinceSowing, latestSoilHealth, latestNDVI);
+          contextType = 'minimal';
+          console.log(`⚡ Sending MINIMAL context (message #${messageCount}, ${queryIntent.type}): ~${Math.ceil(contextToSend.length / 4)} tokens`);
+        } else {
+          // Message 11+: Send mini-refresh
+          contextToSend = getMiniRefresh(land, areaInAcres, latestSoilHealth);
+          contextType = 'refresh';
+          console.log(`🔄 Sending MINI-REFRESH (message #${messageCount}): ~${Math.ceil(contextToSend.length / 4)} tokens`);
+        }
         
         landContext = {
           land_id: land.id,
@@ -474,20 +448,19 @@ Then provide specific diagnosis and solutions.
           days_since_sowing: daysSinceSowing,
           soil_health: latestSoilHealth,
           ndvi_value: latestNDVI?.ndvi_value || latestNDVI?.mean_ndvi,
-          ndvi_history: ndviData
+          ndvi_history: ndviData,
+          context_type: contextType,
+          message_count: messageCount
         };
         
-        systemPrompt += `\n\n📊 LAND CONTEXT (${queryIntent.type.toUpperCase()} QUERY):
-${compressedContext}
-- Irrigation Type: ${land.irrigation_type || 'Not specified'}
-${dataInsights}
+        if (contextToSend) {
+          systemPrompt += `\n\n📊 LAND DATA (${queryIntent.type.toUpperCase()} query, msg #${messageCount}):
+${contextToSend}
 
-⚠️ IMPORTANT: 
-1. Calculate ALL fertilizer/pesticide doses for ${areaInAcres} acres. Show per-acre calculation.
-2. Use ACTUAL soil health and NDVI data provided above for precise recommendations.
-3. Format your response with clear sections using emojis (🟢🟡🔴🟣🔵) and **bold headers**.
-4. Keep language simple and conversational - avoid excessive technical jargon.
-5. Use tables for schedules and bullet points for steps.`;
+⚠️ CRITICAL: 
+1. Calculate ALL doses for ${areaInAcres} acres. Show per-acre calculation.
+2. Remember previous context from conversation history - don't ask for already provided information.`;
+        }
       }
     }
 
@@ -1185,7 +1158,7 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       );
     }
     
-    // Update session activity
+    // Update session activity with context tracking
     await supabase
       .from('ai_chat_sessions')
       .update({
@@ -1193,7 +1166,12 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
         metadata: {
           last_activity: new Date().toISOString(),
           total_messages: (currentSession?.metadata?.total_messages || 0) + 2,
-          last_land_id: landId
+          last_land_id: landId,
+          message_count: messageCount + 1, // Track message count for caching logic
+          last_context_type: landContext?.context_type || 'none',
+          context_sent: landContext?.context_type === 'full', // Full context sent?
+          last_query_intent: queryIntent.type,
+          query_intent_confidence: queryIntent.confidence
         }
       })
       .eq('id', currentSessionId);
@@ -1205,14 +1183,35 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       landDetails
     );
 
+    // ============= TOKEN SAVINGS ANALYTICS =============
+    // Estimate token savings from smart caching
+    const estimatedFullContextTokens = 180; // Average full context
+    const estimatedMinimalContextTokens = landContext?.context_type === 'minimal' ? 60 : 
+                                         landContext?.context_type === 'refresh' ? 30 : 
+                                         landContext?.context_type === 'full' ? 180 : 0;
+    const tokensSaved = messageCount > 1 ? estimatedFullContextTokens - estimatedMinimalContextTokens : 0;
+    
+    console.log(`💰 TOKEN EFFICIENCY (msg #${messageCount}):`);
+    console.log(`   Context type: ${landContext?.context_type || 'none'}`);
+    console.log(`   Tokens sent: ~${estimatedMinimalContextTokens}`);
+    console.log(`   Tokens saved: ~${tokensSaved} (vs full context)`);
+    console.log(`   Cumulative savings: ~${tokensSaved * (messageCount - 1)} tokens this session`);
+
     return new Response(
       JSON.stringify({ 
-        response: aiMessage, // Changed from 'message' to 'response' to match frontend
+        response: aiMessage,
         sessionId: currentSessionId,
         quickReplies,
         responseTime,
-        detectedLanguage, // Return the detected/used language
-        landContext // Return land context so frontend knows which land this is for
+        detectedLanguage,
+        landContext,
+        analytics: {
+          messageCount,
+          contextType: landContext?.context_type || 'none',
+          queryIntent: queryIntent.type,
+          tokensSaved,
+          cumulativeSavings: tokensSaved * Math.max(0, messageCount - 1)
+        }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
