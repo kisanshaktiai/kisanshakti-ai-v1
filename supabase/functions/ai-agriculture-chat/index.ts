@@ -857,10 +857,21 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       hasTools: !!tools 
     });
 
+    // ✅ CRITICAL FIX: GPT-5 models use reasoning_tokens that count against max_completion_tokens
+    // For agricultural chat: ~2000 reasoning tokens + ~4000 content tokens needed
+    // Set to 6000 to ensure we get full responses in regional languages
+    const maxTokens = isInstaScan 
+      ? 1000  // Vision tasks need less
+      : openAIModel.includes('gpt-5') 
+        ? 6000  // GPT-5 needs high limit for reasoning + content
+        : 2000; // Legacy models
+
+    console.log(`⚙️ Token limit: ${maxTokens} (model: ${openAIModel})`);
+
     const openAIRequestBody: any = {
       model: openAIModel,
       messages: openAIMessages,
-      max_completion_tokens: isInstaScan ? 1000 : 2000,
+      max_completion_tokens: maxTokens,
       stream: false
     };
 
@@ -930,7 +941,11 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       finishReason: aiData.choices[0]?.finish_reason,
       hasContent: !!aiData.choices[0]?.message?.content,
       contentLength: aiData.choices[0]?.message?.content?.length || 0,
-      tokensUsed: aiData.usage
+      tokensUsed: aiData.usage,
+      language: detectedLanguage,
+      // Show reasoning vs content token breakdown
+      reasoningTokens: aiData.usage?.completion_tokens_details?.reasoning_tokens || 0,
+      contentTokens: (aiData.usage?.completion_tokens || 0) - (aiData.usage?.completion_tokens_details?.reasoning_tokens || 0)
     });
     
     // Enhanced logging for debugging
@@ -991,11 +1006,35 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           model: aiData.model,
           usage: aiData.usage,
           sessionId: currentSessionId,
-          messagesCount: openAIMessages.length
+          messagesCount: openAIMessages.length,
+          detectedLanguage: detectedLanguage,
+          requestedLanguage: language
         });
         
-        // Use English fallback to avoid Unicode parsing issues in edge function bundler
-        aiMessage = '🙏 Sorry, I had trouble answering your question. Please try again.';
+        // ✅ FIX: Return error in user's language, not English
+        const errorMessages: Record<string, string> = {
+          'en': '🙏 Sorry, I had trouble answering your question. Please try again.',
+          'hi': '🙏 क्षमा करें, मुझे आपके प्रश्न का उत्तर देने में समस्या हुई। कृपया पुनः प्रयास करें।',
+          'mr': '🙏 माफ करा, मला तुमच्या प्रश्नाचे उत्तर देण्यात अडचण आली. कृपया पुन्हा प्रयत्न करा.',
+          'ta': '🙏 மன்னிக்கவும், உங்கள் கேள்விக்கு பதிலளிக்க சிரமம். மீண்டும் முயற்சிக்கவும்.',
+          'te': '🙏 క్షమించండి, మీ ప్రశ్నకు సమాధానం ఇవ్వడంలో సమస్య. దయచేసి మళ్లీ ప్రయత్నించండి.',
+          'bn': '🙏 দুঃখিত, আপনার প্রশ্নের উত্তর দিতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।',
+          'gu': '🙏 માફ કરશો, તમારા પ્રશ્નનો જવાબ આપવામાં સમસ્યા. કૃપા કરીને ફરી પ્રયાસ કરો.',
+          'pa': '🙏 ਮਾਫ਼ ਕਰਨਾ, ਤੁਹਾਡੇ ਸਵਾਲ ਦਾ ਜਵਾਬ ਦੇਣ ਵਿੱਚ ਸਮੱਸਿਆ। ਕਿਰਪਾ ਕਰਕੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।',
+          'kn': '🙏 ಕ್ಷಮಿಸಿ, ನಿಮ್ಮ ಪ್ರಶ್ನೆಗೆ ಉತ್ತರಿಸಲು ತೊಂದರೆ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.',
+          'ml': '🙏 ക്ഷമിക്കണം, നിങ്ങളുടെ ചോദ്യത്തിന് ഉത്തരം നൽകാൻ പ്രയാസം. വീണ്ടും ശ്രമിക്കൂ.',
+          'or': '🙏 କ୍ଷମା କରନ୍ତୁ, ଆପଣଙ୍କ ପ୍ରଶ୍ନର ଉତ୍ତର ଦେବାରେ ସମସ୍ୟା। ପୁନର୍ବାର ଚେଷ୍ଟା କରନ୍ତୁ।',
+          'as': '🙏 ক্ষমা কৰিব, আপোনাৰ প্ৰশ্নৰ উত্তৰ দিবলৈ সমস্যা। অনুগ্ৰহ কৰি পুনৰ চেষ্টা কৰক।',
+          'ur': '🙏 معاف کریں، آپ کے سوال کا جواب دینے میں مشکل۔ براہ کرم دوبارہ کوشش کریں۔'
+        };
+        
+        aiMessage = errorMessages[detectedLanguage] || errorMessages['en'];
+        
+        // Log for monitoring
+        console.warn('⚠️ Using fallback error message:', {
+          language: detectedLanguage,
+          message: aiMessage
+        });
       }
     }
     const tokensUsed = aiData.usage?.total_tokens || 0;
