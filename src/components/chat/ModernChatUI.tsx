@@ -82,11 +82,11 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
           whileHover={{ scale: 1.01 }}
           transition={{ type: "spring", stiffness: 400, damping: 25 }}
           className={cn(
-            "relative rounded-2xl px-4 py-3 backdrop-blur-xl",
+            "relative rounded-2xl backdrop-blur-xl",
             "transition-all duration-300",
             isUser
-              ? "bg-gradient-to-br from-primary via-primary-hover to-primary rounded-tr-sm text-white shadow-chat-user"
-              : "bg-card/60 border border-border/50 rounded-tl-sm shadow-chat-ai"
+              ? "bg-gradient-to-br from-primary via-primary-hover to-primary rounded-tr-sm text-white shadow-chat-user px-4 py-3"
+              : "bg-card/60 border border-border/50 rounded-tl-sm shadow-chat-ai p-0 overflow-hidden"
           )}
         >
           {/* AI Shimmer Effect */}
@@ -98,7 +98,7 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
           
           {/* Color-Coded Cards (if available) */}
           {!isUser && message.structuredResponse?.cards && message.structuredResponse.cards.length > 0 ? (
-            <div className="space-y-2">
+            <div>
               {message.structuredResponse.cards.map((card, index) => (
                 <ColorCodedCard key={card.id} card={card} index={index} />
               ))}
@@ -106,7 +106,7 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
           ) : (
             /* Message Text */
             <div className={cn(
-              "text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words relative z-10",
+              "text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words relative z-10 px-4 py-3",
               isUser ? "text-white" : "text-foreground"
             )}>
               {message.content}
@@ -116,7 +116,7 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
           {/* Timestamp */}
           <div className={cn(
             "text-xs mt-2 opacity-60",
-            isUser ? "text-white/80" : "text-muted-foreground"
+            isUser ? "text-white/80 px-4 pb-3" : "text-muted-foreground px-3 pb-2.5"
           )}>
             {new Date(message.timestamp).toLocaleTimeString([], { 
               hour: '2-digit', 
