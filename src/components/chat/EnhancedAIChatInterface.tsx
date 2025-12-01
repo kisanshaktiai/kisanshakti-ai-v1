@@ -232,6 +232,116 @@ export function EnhancedAIChatInterface() {
     return () => observer.disconnect();
   }, [scrollToBottom, isUserScrolling]);
 
+  // ✅ CRITICAL FIX: Define loadLandSession FIRST (before fetchLands that depends on it)
+  const loadLandSession = useCallback(async (landId: string | null) => {
+    try {
+      // Build query for existing active session
+      let sessionQuery = supabase
+        .from('ai_chat_sessions')
+        .select('id')
+        .eq('farmer_id', user?.id)
+        .eq('tenant_id', tenant?.id)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      
+      // Handle null landId properly - use is null filter instead of eq
+      if (landId === null) {
+        sessionQuery = sessionQuery.is('land_id', null);
+      } else {
+        sessionQuery = sessionQuery.eq('land_id', landId);
+      }
+      
+      const { data: existingSession } = await sessionQuery.single();
+
+      if (existingSession) {
+        console.log(`✅ Loaded session for ${landId || 'general'}:`, existingSession.id);
+        
+        // Load messages for this session
+        const { data: previousMessages } = await supabase
+          .from('ai_chat_messages')
+          .select('*')
+          .eq('session_id', existingSession.id)
+          .eq('farmer_id', user?.id)
+          .order('created_at', { ascending: true });
+
+        console.log(`📜 Loaded ${previousMessages?.length || 0} messages for ${landId || 'general'}`);
+
+        return {
+          sessionId: existingSession.id,
+          messages: (previousMessages || []).map(msg => ({
+            id: msg.id,
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+            timestamp: new Date(msg.created_at),
+            feedback: msg.feedback_rating 
+              ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
+              : null
+          }))
+        };
+      }
+
+      console.log(`ℹ️ No existing session for ${landId || 'general'}`);
+      return { sessionId: null, messages: [] };
+    } catch (error) {
+      console.error(`Error loading session for ${landId || 'general'}:`, error);
+      return { sessionId: null, messages: [] };
+    }
+  }, [user?.id, tenant?.id]);
+
+  // ✅ CRITICAL FIX: fetchLands wrapped in useCallback with proper dependencies
+  const fetchLands = useCallback(async () => {
+    try {
+      const fetchedLands = await landsApi.fetchLands();
+      setLands(fetchedLands);
+      
+      console.log('🔄 Loading chat history for all lands...');
+      
+      // Load general chat history
+      const generalSession = await loadLandSession(null);
+      
+      // Load land-specific histories
+      const landMessages: Record<string, Message[]> = { 
+        general: generalSession.messages 
+      };
+      const landSessionIds: Record<string, string> = {};
+      
+      if (generalSession.sessionId) {
+        landSessionIds.general = generalSession.sessionId;
+      }
+      
+      // Load history for each land
+      for (const land of fetchedLands) {
+        const session = await loadLandSession(land.id);
+        landMessages[land.id] = session.messages;
+        if (session.sessionId) {
+          landSessionIds[land.id] = session.sessionId;
+        }
+      }
+      
+      setMessages(landMessages);
+      setSessionIds(prev => ({ ...prev, ...landSessionIds }));
+      
+      // Mark all loaded sessions so we don't recreate them in the database
+      const loadedIds = new Set(Object.values(landSessionIds));
+      setLoadedSessionIds(loadedIds);
+      
+      console.log('✅ Chat history loaded:', {
+        generalMessages: generalSession.messages.length,
+        landsCount: fetchedLands.length,
+        totalSessions: Object.keys(landSessionIds).length,
+        loadedSessionIds: Array.from(loadedIds)
+      });
+    } catch (error) {
+      console.error('Error fetching lands:', error);
+    }
+  }, [loadLandSession]); // fetchLands depends on loadLandSession
+
+  // ✅ Initialize lands on mount - MUST be before conditional return
+  useEffect(() => {
+    fetchLands();
+  }, [fetchLands]);
+
   // ✅ All hooks are now declared BEFORE conditional returns
   // Guard: Don't render until tenant is loaded
   if (isTenantLoading || !tenant || !user) {
@@ -291,114 +401,7 @@ export function EnhancedAIChatInterface() {
     }
   };
 
-  // Initialize lands on mount
-  useEffect(() => {
-    fetchLands();
-  }, []);
-
-  // Load session and messages for a specific land (or general chat if landId is null)
-  const loadLandSession = async (landId: string | null) => {
-    try {
-      // Build query for existing active session
-      let sessionQuery = supabase
-        .from('ai_chat_sessions')
-        .select('id')
-        .eq('farmer_id', user?.id)
-        .eq('tenant_id', tenant?.id)
-        .eq('is_active', true)
-        .order('updated_at', { ascending: false })
-        .limit(1);
-      
-      // Handle null landId properly - use is null filter instead of eq
-      if (landId === null) {
-        sessionQuery = sessionQuery.is('land_id', null);
-      } else {
-        sessionQuery = sessionQuery.eq('land_id', landId);
-      }
-      
-      const { data: existingSession } = await sessionQuery.single();
-
-      if (existingSession) {
-        console.log(`✅ Loaded session for ${landId || 'general'}:`, existingSession.id);
-        
-        // Load messages for this session
-        const { data: previousMessages } = await supabase
-          .from('ai_chat_messages')
-          .select('*')
-          .eq('session_id', existingSession.id)
-          .eq('farmer_id', user?.id)
-          .order('created_at', { ascending: true });
-
-        console.log(`📜 Loaded ${previousMessages?.length || 0} messages for ${landId || 'general'}`);
-
-        return {
-          sessionId: existingSession.id,
-          messages: (previousMessages || []).map(msg => ({
-            id: msg.id,
-            role: msg.role as 'user' | 'assistant',
-            content: msg.content,
-            timestamp: new Date(msg.created_at),
-            feedback: msg.feedback_rating 
-              ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
-              : null
-          }))
-        };
-      }
-
-      console.log(`ℹ️ No existing session for ${landId || 'general'}`);
-      return { sessionId: null, messages: [] };
-    } catch (error) {
-      console.error(`Error loading session for ${landId || 'general'}:`, error);
-      return { sessionId: null, messages: [] };
-    }
-  };
-
-  const fetchLands = async () => {
-    try {
-      const fetchedLands = await landsApi.fetchLands();
-      setLands(fetchedLands);
-      
-      console.log('🔄 Loading chat history for all lands...');
-      
-      // Load general chat history
-      const generalSession = await loadLandSession(null);
-      
-      // Load land-specific histories
-      const landMessages: Record<string, Message[]> = { 
-        general: generalSession.messages 
-      };
-      const landSessionIds: Record<string, string> = {};
-      
-      if (generalSession.sessionId) {
-        landSessionIds.general = generalSession.sessionId;
-      }
-      
-      // Load history for each land
-      for (const land of fetchedLands) {
-        const session = await loadLandSession(land.id);
-        landMessages[land.id] = session.messages;
-        if (session.sessionId) {
-          landSessionIds[land.id] = session.sessionId;
-        }
-      }
-      
-      setMessages(landMessages);
-      setSessionIds(prev => ({ ...prev, ...landSessionIds }));
-      
-      // Mark all loaded sessions so we don't recreate them in the database
-      const loadedIds = new Set(Object.values(landSessionIds));
-      setLoadedSessionIds(loadedIds);
-      
-      console.log('✅ Chat history loaded:', {
-        generalMessages: generalSession.messages.length,
-        landsCount: fetchedLands.length,
-        totalSessions: Object.keys(landSessionIds).length,
-        loadedSessionIds: Array.from(loadedIds)
-      });
-    } catch (error) {
-      console.error('Error fetching lands:', error);
-    }
-  };
+  // ✅ MOVED: fetchLands and loadLandSession are now defined BEFORE conditional return as useCallback hooks
 
   const getCurrentSessionId = () => {
     // Check if we already have a session ID loaded from database or created in this session
