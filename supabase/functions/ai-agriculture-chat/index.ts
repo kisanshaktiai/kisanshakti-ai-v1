@@ -800,12 +800,99 @@ serve(async (req) => {
     let farmerContext: any = null;
     let weatherContext: any = null;
     
+    // ✅ DECLARE CROP SCHEDULE VARIABLES AT TOP LEVEL (before systemPrompt)
+    let cropSchedule: any = null;
+    let daysSinceSowing: number | null = null;
+    let daysToHarvest: number | null = null;
+    let currentGrowthStage: string = 'Unknown';
+    let areaInAcres: string | number = 'Unknown';
+    
     // Check if land has changed (for context refresh)
     const previousLandId = messageHistory && messageHistory.length > 0 
       ? messageHistory[messageHistory.length - 1]?.land_context?.land_id 
       : null;
     const landHasChanged = previousLandId && landId && previousLandId !== landId;
     
+    // ✅ STEP 1: FETCH LAND DATA FIRST (before constructing systemPrompt)
+    if (landId) {
+      const { data: land } = await supabase
+        .from('lands')
+        .select('*')
+        .eq('id', landId)
+        .eq('tenant_id', finalTenantId)
+        .single();
+
+      if (land) {
+        landDetails = land;
+        
+        // Calculate area in acres (assign to outer variable)
+        areaInAcres = land.area_acres || 
+                           (land.area_gunta ? (land.area_gunta / 40).toFixed(2) : null) ||
+                           (land.size ? land.size : 'Unknown');
+        
+        // ✅ Fetch active crop schedule for this land (assign to outer variables)
+        try {
+          const { data: schedule } = await supabase
+            .from('crop_schedules')
+            .select('*')
+            .eq('land_id', landId)
+            .eq('is_active', true)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+          
+          if (schedule) {
+            cropSchedule = schedule;
+            
+            // Calculate days since actual sowing from schedule
+            if (schedule.sowing_date) {
+              daysSinceSowing = Math.floor((Date.now() - new Date(schedule.sowing_date).getTime()) / (1000 * 60 * 60 * 24));
+              
+              // Calculate days to harvest
+              if (schedule.expected_harvest_date) {
+                daysToHarvest = Math.floor((new Date(schedule.expected_harvest_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+              }
+              
+              // Determine growth stage based on days since sowing
+              if (daysSinceSowing <= 15) {
+                currentGrowthStage = 'Germination/Early Growth';
+              } else if (daysSinceSowing <= 30) {
+                currentGrowthStage = 'Vegetative Growth';
+              } else if (daysSinceSowing <= 60) {
+                currentGrowthStage = 'Flowering/Reproductive';
+              } else if (daysSinceSowing <= 90) {
+                currentGrowthStage = 'Grain Filling/Maturity';
+              } else {
+                currentGrowthStage = 'Ready for Harvest';
+              }
+            }
+            
+            console.log('✅ Crop Schedule Found:', {
+              crop: schedule.crop_name,
+              variety: schedule.crop_variety,
+              sowingDate: schedule.sowing_date,
+              daysSinceSowing,
+              daysToHarvest,
+              growthStage: currentGrowthStage
+            });
+          } else {
+            console.log('ℹ️ No active crop schedule found, using land cultivation_date');
+            // Fallback to land cultivation_date
+            daysSinceSowing = land.cultivation_date 
+              ? Math.floor((Date.now() - new Date(land.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))
+              : null;
+          }
+        } catch (scheduleError) {
+          console.warn('⚠️ Could not load crop schedule:', scheduleError);
+          // Fallback to land cultivation_date
+          daysSinceSowing = land.cultivation_date 
+            ? Math.floor((Date.now() - new Date(land.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))
+            : null;
+        }
+      }
+    }
+    
+    // ✅ STEP 2: NOW CONSTRUCT SYSTEM PROMPT WITH FETCHED DATA
     let systemPrompt = `You are KisanShakti AI — an advanced agricultural AI assistant for Indian farmers.
 
 🎯 PRIMARY OBJECTIVE:
@@ -1008,210 +1095,128 @@ REMEMBER: You are having a conversation, not writing a technical document.
 Speak naturally, be helpful, and always consider the farmer's specific land and situation.
 ═══════════════════════════════════════════════════════════════`;
 
-    if (landId) {
-      const { data: land } = await supabase
-        .from('lands')
-        .select('*')
-        .eq('id', landId)
-        .eq('tenant_id', finalTenantId)
-        .single();
-
-      if (land) {
-        landDetails = land;
+    // ✅ STEP 3: LOAD NDVI AND SOIL DATA (after systemPrompt is constructed)
+    if (landId && landDetails) {
+      // ============= SELECTIVE DATA LOADING BASED ON QUERY INTENT =============
+      let ndviData = null;
+      let soilHealthData = null;
         
-        // Calculate area in acres
-        const areaInAcres = land.area_acres || 
-                           (land.area_gunta ? (land.area_gunta / 40).toFixed(2) : null) ||
-                           (land.size ? land.size : 'Unknown');
-        
-        // ✅ NEW: Fetch active crop schedule for this land
-        let cropSchedule = null;
-        let daysSinceSowing = null;
-        let daysToHarvest = null;
-        let currentGrowthStage = 'Unknown';
-        
+      // Only load new data if:
+      // 1. First message (messageCount === 1), OR
+      // 2. Land has changed, OR
+      // 3. Long conversation (messageCount > 10)
+      const shouldLoadFullData = messageCount === 1 || landHasChanged || messageCount > 10;
+      
+      // Load data selectively based on what the farmer is asking about
+      const needsNDVI = ['pest', 'disease', 'health', 'market'].includes(queryIntent.type);
+      const needsSoil = ['fertilizer', 'nutrition', 'health'].includes(queryIntent.type);
+      
+      if (shouldLoadFullData && needsNDVI) {
         try {
-          const { data: schedule } = await supabase
-            .from('crop_schedules')
+          const { data, error } = await supabase
+            .from('ndvi_data')
             .select('*')
             .eq('land_id', landId)
-            .eq('is_active', true)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
+            .order('date', { ascending: false })
+            .limit(queryIntent.type === 'health' ? 5 : 1);
           
-          if (schedule) {
-            cropSchedule = schedule;
-            
-            // Calculate days since actual sowing from schedule
-            if (schedule.sowing_date) {
-              daysSinceSowing = Math.floor((Date.now() - new Date(schedule.sowing_date).getTime()) / (1000 * 60 * 60 * 24));
-              
-              // Calculate days to harvest
-              if (schedule.expected_harvest_date) {
-                daysToHarvest = Math.floor((new Date(schedule.expected_harvest_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-              }
-              
-              // Determine growth stage based on days since sowing
-              if (daysSinceSowing <= 15) {
-                currentGrowthStage = 'Germination/Early Growth';
-              } else if (daysSinceSowing <= 30) {
-                currentGrowthStage = 'Vegetative Growth';
-              } else if (daysSinceSowing <= 60) {
-                currentGrowthStage = 'Flowering/Reproductive';
-              } else if (daysSinceSowing <= 90) {
-                currentGrowthStage = 'Grain Filling/Maturity';
-              } else {
-                currentGrowthStage = 'Ready for Harvest';
-              }
-            }
-            
-            console.log('✅ Crop Schedule Found:', {
-              crop: schedule.crop_name,
-              variety: schedule.crop_variety,
-              sowingDate: schedule.sowing_date,
-              daysSinceSowing,
-              daysToHarvest,
-              growthStage: currentGrowthStage
-            });
-          } else {
-            console.log('ℹ️ No active crop schedule found, using land cultivation_date');
-            // Fallback to land cultivation_date
-            daysSinceSowing = land.cultivation_date 
-              ? Math.floor((Date.now() - new Date(land.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))
-              : null;
+          if (!error) {
+            ndviData = data;
+            console.log(`✅ NDVI loaded (${queryIntent.type}):`, ndviData?.length || 0, 'records');
           }
-        } catch (scheduleError) {
-          console.warn('⚠️ Could not load crop schedule:', scheduleError);
-          // Fallback to land cultivation_date
-          daysSinceSowing = land.cultivation_date 
-            ? Math.floor((Date.now() - new Date(land.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))
-            : null;
+        } catch (ndviError) {
+          console.warn('⚠️ Could not load NDVI data:', ndviError);
         }
-        
-        // ============= SELECTIVE DATA LOADING BASED ON QUERY INTENT =============
-        let ndviData = null;
-        let soilHealthData = null;
-        
-        // Only load new data if:
-        // 1. First message (messageCount === 1), OR
-        // 2. Land has changed, OR
-        // 3. Long conversation (messageCount > 10)
-        const shouldLoadFullData = messageCount === 1 || landHasChanged || messageCount > 10;
-        
-        // Load data selectively based on what the farmer is asking about
-        const needsNDVI = ['pest', 'disease', 'health', 'market'].includes(queryIntent.type);
-        const needsSoil = ['fertilizer', 'nutrition', 'health'].includes(queryIntent.type);
-        
-        if (shouldLoadFullData && needsNDVI) {
-          try {
-            const { data, error } = await supabase
-              .from('ndvi_data')
-              .select('*')
-              .eq('land_id', landId)
-              .order('date', { ascending: false })
-              .limit(queryIntent.type === 'health' ? 5 : 1);
-            
-            if (!error) {
-              ndviData = data;
-              console.log(`✅ NDVI loaded (${queryIntent.type}):`, ndviData?.length || 0, 'records');
-            }
-          } catch (ndviError) {
-            console.warn('⚠️ Could not load NDVI data:', ndviError);
+      } else if (needsNDVI) {
+        console.log(`⚡ Skipping NDVI load - using conversation memory (message #${messageCount})`);
+      }
+      
+      if (shouldLoadFullData && needsSoil) {
+        try {
+          const { data, error } = await supabase
+            .from('soil_health')
+            .select('*')
+            .eq('land_id', landId)
+            .order('test_date', { ascending: false })
+            .limit(1);
+          
+          if (!error) {
+            soilHealthData = data;
+            console.log(`✅ Soil data loaded (${queryIntent.type}):`, soilHealthData?.length || 0, 'records');
           }
-        } else if (needsNDVI) {
-          console.log(`⚡ Skipping NDVI load - using conversation memory (message #${messageCount})`);
+        } catch (soilError) {
+          console.warn('⚠️ Could not load soil health data:', soilError);
         }
-        
-        if (shouldLoadFullData && needsSoil) {
-          try {
-            const { data, error } = await supabase
-              .from('soil_health')
-              .select('*')
-              .eq('land_id', landId)
-              .order('test_date', { ascending: false })
-              .limit(1);
-            
-            if (!error) {
-              soilHealthData = data;
-              console.log(`✅ Soil data loaded (${queryIntent.type}):`, soilHealthData?.length || 0, 'records');
-            }
-          } catch (soilError) {
-            console.warn('⚠️ Could not load soil health data:', soilError);
-          }
-        } else if (needsSoil) {
-          console.log(`⚡ Skipping soil load - using conversation memory (message #${messageCount})`);
-        }
-        
-        const latestSoilHealth = soilHealthData && soilHealthData.length > 0 ? soilHealthData[0] : null;
-        const latestNDVI = ndviData && ndviData.length > 0 ? ndviData[0] : null;
-        
-        // Build context based on message count (session-aware caching)
-        let contextToSend = '';
-        let contextType = 'none';
-        
-        if (messageCount === 1 || landHasChanged) {
-          // First message or land changed: Send FULL compressed context
-          contextToSend = buildCompressedContext({
-            land,
-            areaInAcres,
-            daysSinceSowing,
-            latestSoilHealth,
-            latestNDVI,
-            ndviData,
-            queryIntent,
-            cropSchedule,
-            currentGrowthStage,
-            daysToHarvest
-          });
-          contextType = 'full';
-          console.log(`📦 Sending FULL context (message #${messageCount}${landHasChanged ? ', land changed' : ''}): ~${Math.ceil(contextToSend.length / 4)} tokens`);
-        } else if (messageCount >= 2 && messageCount <= 10) {
-          // Messages 2-10: Send query-specific minimal context
-          contextToSend = getMinimalContext(queryIntent.type, land, areaInAcres, daysSinceSowing, latestSoilHealth, latestNDVI, cropSchedule, currentGrowthStage);
-          contextType = 'minimal';
-          console.log(`⚡ Sending MINIMAL context (message #${messageCount}, ${queryIntent.type}): ~${Math.ceil(contextToSend.length / 4)} tokens`);
-        } else {
-          // Message 11+: Send mini-refresh
-          contextToSend = getMiniRefresh(land, areaInAcres, latestSoilHealth);
-          contextType = 'refresh';
-          console.log(`🔄 Sending MINI-REFRESH (message #${messageCount}): ~${Math.ceil(contextToSend.length / 4)} tokens`);
-        }
-        
-        landContext = {
-          land_id: land.id,
-          name: land.name,
-          area_acres: areaInAcres,
-          soil_type: land.soil_type,
-          location: land.location,
-          current_crop: cropSchedule?.crop_name || land.current_crop,
-          crop_variety: cropSchedule?.crop_variety,
-          sowing_date: cropSchedule?.sowing_date,
-          days_since_sowing: daysSinceSowing,
-          growth_stage: currentGrowthStage,
-          expected_harvest: cropSchedule?.expected_harvest_date,
-          days_to_harvest: daysToHarvest,
-          crops: land.crops,
-          current_crop: land.current_crop,
-          water_source: land.water_source,
-          irrigation_type: land.irrigation_type,
-          cultivation_date: land.cultivation_date,
-          days_since_sowing: daysSinceSowing,
-          soil_health: latestSoilHealth,
-          ndvi_value: latestNDVI?.ndvi_value || latestNDVI?.mean_ndvi,
-          ndvi_history: ndviData,
-          context_type: contextType,
-          message_count: messageCount
-        };
-        
-        if (contextToSend) {
-          systemPrompt += `\n\n📊 LAND DATA (${queryIntent.type.toUpperCase()} query, msg #${messageCount}):
+      } else if (needsSoil) {
+        console.log(`⚡ Skipping soil load - using conversation memory (message #${messageCount})`);
+      }
+      
+      const latestSoilHealth = soilHealthData && soilHealthData.length > 0 ? soilHealthData[0] : null;
+      const latestNDVI = ndviData && ndviData.length > 0 ? ndviData[0] : null;
+      
+      // Build context based on message count (session-aware caching)
+      let contextToSend = '';
+      let contextType = 'none';
+      
+      if (messageCount === 1 || landHasChanged) {
+        // First message or land changed: Send FULL compressed context
+        contextToSend = buildCompressedContext({
+          land: landDetails,
+          areaInAcres,
+          daysSinceSowing,
+          latestSoilHealth,
+          latestNDVI,
+          ndviData,
+          queryIntent,
+          cropSchedule,
+          currentGrowthStage,
+          daysToHarvest
+        });
+        contextType = 'full';
+        console.log(`📦 Sending FULL context (message #${messageCount}${landHasChanged ? ', land changed' : ''}): ~${Math.ceil(contextToSend.length / 4)} tokens`);
+      } else if (messageCount >= 2 && messageCount <= 10) {
+        // Messages 2-10: Send query-specific minimal context
+        contextToSend = getMinimalContext(queryIntent.type, landDetails, areaInAcres, daysSinceSowing, latestSoilHealth, latestNDVI, cropSchedule, currentGrowthStage);
+        contextType = 'minimal';
+        console.log(`⚡ Sending MINIMAL context (message #${messageCount}, ${queryIntent.type}): ~${Math.ceil(contextToSend.length / 4)} tokens`);
+      } else {
+        // Message 11+: Send mini-refresh
+        contextToSend = getMiniRefresh(landDetails, areaInAcres, latestSoilHealth);
+        contextType = 'refresh';
+        console.log(`🔄 Sending MINI-REFRESH (message #${messageCount}): ~${Math.ceil(contextToSend.length / 4)} tokens`);
+      }
+      
+      landContext = {
+        land_id: landDetails.id,
+        name: landDetails.name,
+        area_acres: areaInAcres,
+        soil_type: landDetails.soil_type,
+        location: landDetails.location,
+        current_crop: cropSchedule?.crop_name || landDetails.current_crop,
+        crop_variety: cropSchedule?.crop_variety,
+        sowing_date: cropSchedule?.sowing_date,
+        days_since_sowing: daysSinceSowing,
+        growth_stage: currentGrowthStage,
+        expected_harvest: cropSchedule?.expected_harvest_date,
+        days_to_harvest: daysToHarvest,
+        crops: landDetails.crops,
+        water_source: landDetails.water_source,
+        irrigation_type: landDetails.irrigation_type,
+        cultivation_date: landDetails.cultivation_date,
+        soil_health: latestSoilHealth,
+        ndvi_value: latestNDVI?.ndvi_value || latestNDVI?.mean_ndvi,
+        ndvi_history: ndviData,
+        context_type: contextType,
+        message_count: messageCount
+      };
+      
+      if (contextToSend) {
+        systemPrompt += `\n\n📊 LAND DATA (${queryIntent.type.toUpperCase()} query, msg #${messageCount}):
 ${contextToSend}
 
 ⚠️ CRITICAL: 
 1. Calculate ALL doses for ${areaInAcres} acres. Show per-acre calculation.
 2. Remember previous context from conversation history - don't ask for already provided information.`;
-        }
       }
     }
 
