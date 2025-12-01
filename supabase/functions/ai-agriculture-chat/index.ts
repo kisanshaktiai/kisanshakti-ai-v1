@@ -1063,14 +1063,12 @@ You MUST respond ENTIRELY in ${languageName}.
     // Prepare messages for OpenAI
     let openAIMessages: any[] = [];
     
-    // ✅ SMART MODEL SELECTION: Use gpt-5-nano for simple questions, gpt-5-mini for complex queries
+    // ✅ MODEL SELECTION: gpt-4o-mini for chat, gpt-4o for vision
     let openAIModel = isInstaScan 
       ? 'gpt-4o'  // Vision model for InstaScan
-      : isSimpleQuestion(userText)
-        ? 'gpt-5-nano-2025-08-07'  // Fast & cheap for greetings/simple queries
-        : 'gpt-5-mini-2025-08-07'; // Full model for complex agricultural queries
+      : 'gpt-4o-mini'; // Fast & cost-effective for all chat queries
     
-    console.log(`🤖 Model selected: ${openAIModel} (${isSimpleQuestion(userText) ? 'simple' : 'complex'} query)`);
+    console.log(`🤖 Model selected: ${openAIModel} (${isInstaScan ? 'vision' : 'chat'} mode)`);
     
     let tools = undefined;
     let tool_choice = undefined;
@@ -1351,26 +1349,21 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       hasTools: !!tools 
     });
 
-    // ✅ CRITICAL FIX: GPT-5 models use reasoning_tokens that count against max_completion_tokens
-    // GPT-5 models allocate tokens dynamically between reasoning and content
-    // Based on logs: gpt-5-nano needs ~4000 reasoning + ~4000 content = 8000 total
-    //                gpt-5-mini needs ~8000 reasoning + ~8000 content = 16000 total
-    
-    // Set dynamic token limit based on complexity analysis
+    // ✅ TOKEN LIMITS: gpt-4o-mini doesn't have reasoning token overhead
+    // Set appropriate limits based on query complexity
     let maxTokens: number;
     if (isInstaScan) {
-      maxTokens = 1000; // Vision tasks need less
+      maxTokens = 1500; // Vision tasks
     } else if (complexityAnalysis) {
-      // Use complexity-based token limits for regular chat
-      maxTokens = complexityAnalysis.maxTokens;
+      // GPT-4o-mini: Simple: 200-300 words, Medium: 500-600 words, Complex: 1000-1200 words
+      maxTokens = complexityAnalysis.complexity === 'simple' 
+        ? 400 
+        : complexityAnalysis.complexity === 'medium' 
+          ? 800 
+          : 1500;
       console.log(`⚙️ Token limit set to: ${maxTokens} (${complexityAnalysis.complexity} query)`);
     } else {
-      // Fallback to model-based limits
-      maxTokens = openAIModel.includes('gpt-5-nano') 
-        ? 8000
-        : openAIModel.includes('gpt-5-mini') || openAIModel.includes('gpt-5')
-          ? 16000
-          : 2000;
+      maxTokens = 1000; // Default fallback
     }
 
     console.log(`⚙️ Final token limit: ${maxTokens} (model: ${openAIModel})`);
@@ -1378,7 +1371,8 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
     const openAIRequestBody: any = {
       model: openAIModel,
       messages: openAIMessages,
-      max_completion_tokens: maxTokens,
+      max_tokens: maxTokens,  // gpt-4o-mini uses max_tokens not max_completion_tokens
+      temperature: 0.7,       // Add creativity control (supported by gpt-4o-mini)
       stream: false
     };
 
@@ -1678,7 +1672,7 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
         agro_climatic_zone: landDetails?.agro_climatic_zone || farmerDetails?.agro_climatic_zone,
         soil_zone: landDetails?.soil_type,
         rainfall_zone: farmerDetails?.rainfall_zone,
-        ai_model: 'gpt-5-mini-2025-08-07', // Fast, accurate model for farmer chat
+        ai_model: 'gpt-4o-mini', // Fast, cost-effective model for farmer chat
         response_time_ms: responseTime,
         tokens_used: tokensUsed,
         metadata: {
@@ -1689,7 +1683,7 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           section_tags: sectionTags, // For AI training classification
           regional_title: farmerContext?.regional_title,
           land_size_acres: landContext?.area_acres,
-          model_info: 'Using GPT-5-mini for multilingual, fast farmer assistance'
+          model_info: 'Using GPT-4o-mini for multilingual, fast farmer assistance'
         }
       });
       
