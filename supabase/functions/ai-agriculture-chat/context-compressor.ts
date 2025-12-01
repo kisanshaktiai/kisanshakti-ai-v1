@@ -11,23 +11,37 @@ interface ContextData {
   latestNDVI: any;
   ndviData: any[];
   queryIntent: QueryIntent;
+  cropSchedule?: any;
+  currentGrowthStage?: string;
+  daysToHarvest?: number | null;
 }
 
 export function buildCompressedContext(data: ContextData): string {
-  const { land, areaInAcres, daysSinceSowing, latestSoilHealth, latestNDVI, ndviData, queryIntent } = data;
+  const { land, areaInAcres, daysSinceSowing, latestSoilHealth, latestNDVI, ndviData, queryIntent, cropSchedule, currentGrowthStage, daysToHarvest } = data;
   
   let context = '';
   
   // ============= ALWAYS INCLUDE BASIC INFO =============
-  const cropName = land.current_crop || 'Unknown';
+  const cropName = cropSchedule?.crop_name || land.current_crop || 'Unknown';
+  const cropVariety = cropSchedule?.crop_variety ? ` (${cropSchedule.crop_variety})` : '';
   const areaGunta = land.area_gunta || Math.round(Number(areaInAcres) * 40);
   
   context += `Land: ${areaInAcres}ac (${areaGunta}g)`;
   
   if (cropName !== 'Unknown') {
-    context += ` | ${cropName}`;
+    context += ` | ${cropName}${cropVariety}`;
     if (daysSinceSowing) {
-      context += `(${daysSinceSowing}d)`;
+      context += ` (${daysSinceSowing}d)`;
+    }
+    if (currentGrowthStage) {
+      context += ` - ${currentGrowthStage}`;
+    }
+    if (cropSchedule?.sowing_date) {
+      const sowingDate = new Date(cropSchedule.sowing_date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' });
+      context += ` [Sown: ${sowingDate}]`;
+    }
+    if (daysToHarvest && daysToHarvest > 0) {
+      context += ` [Harvest in ${daysToHarvest}d]`;
     }
   }
   
@@ -99,13 +113,18 @@ export function buildCompressedContext(data: ContextData): string {
   }
   
   else if (queryIntent.type === 'market') {
-    // 💰 Market: crop, area, expected harvest
-    if (land.cultivation_date && daysSinceSowing) {
-      // Estimate harvest date (rough approximation)
+    // 💰 Market: crop, area, expected harvest from schedule
+    if (daysToHarvest && daysToHarvest > 0) {
+      context += ` | Harvest in: ${daysToHarvest}d`;
+    } else if (cropSchedule?.expected_harvest_date) {
+      const harvestDate = new Date(cropSchedule.expected_harvest_date).toLocaleDateString('en-IN');
+      context += ` | Expected: ${harvestDate}`;
+    } else if (land.cultivation_date && daysSinceSowing) {
+      // Fallback: Estimate harvest date
       const estimatedCropDuration = getCropDuration(cropName);
-      const daysToHarvest = estimatedCropDuration - daysSinceSowing;
-      if (daysToHarvest > 0) {
-        context += ` | Est. harvest: ${daysToHarvest}d`;
+      const fallbackDaysToHarvest = estimatedCropDuration - daysSinceSowing;
+      if (fallbackDaysToHarvest > 0) {
+        context += ` | Est. harvest: ${fallbackDaysToHarvest}d`;
       } else {
         context += ` | Ready for harvest`;
       }

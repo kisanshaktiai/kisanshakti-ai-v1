@@ -811,6 +811,27 @@ serve(async (req) => {
 🎯 PRIMARY OBJECTIVE:
 Deliver clear, conversational agricultural advice in native Indian languages with natural, easy-to-understand responses that farmers can instantly act upon.
 
+${landId && landDetails && cropSchedule ? `
+═══════════════════════════════════════════════════════════════
+🌾 FARMER'S LAND CONTEXT (ALWAYS USE THIS)
+═══════════════════════════════════════════════════════════════
+
+Land: ${landDetails.name || 'Unknown'} (${areaInAcres} acres)
+Location: ${landDetails.location || 'Unknown'}
+Soil Type: ${landDetails.soil_type || 'Unknown'}
+
+CURRENT CROP SCHEDULE:
+• Crop: ${cropSchedule.crop_name || 'Unknown'}${cropSchedule.crop_variety ? ` (Variety: ${cropSchedule.crop_variety})` : ''}
+• Sowing Date: ${cropSchedule.sowing_date ? new Date(cropSchedule.sowing_date).toLocaleDateString() : 'Unknown'}
+• Days Since Sowing: ${daysSinceSowing || 'Unknown'} days
+• Current Growth Stage: ${currentGrowthStage}
+• Expected Harvest: ${cropSchedule.expected_harvest_date ? new Date(cropSchedule.expected_harvest_date).toLocaleDateString() : 'Unknown'}${daysToHarvest ? ` (${daysToHarvest} days remaining)` : ''}
+• Irrigation Type: ${landDetails.irrigation_type || 'Unknown'}
+
+⚠️ CRITICAL: Always reference this context in your responses. Calculate doses for ${areaInAcres} acres automatically.
+═══════════════════════════════════════════════════════════════
+` : ''}
+
 ═══════════════════════════════════════════════════════════════
 🧠 INTELLIGENT QUESTION UNDERSTANDING
 ═══════════════════════════════════════════════════════════════
@@ -822,6 +843,7 @@ UNDERSTAND THE REAL QUESTION behind farmer queries:
 "पीक काळे पडतेय" → They want: disease diagnosis + immediate treatment + prevention
 "किती नफा होईल?" → They want: cost breakdown + expected yield + market price
 "कोणते बियाणे चांगले?" → They want: variety comparison for THEIR land + local availability
+"मी कोणते पीक घ्यू?" → ${cropSchedule ? `They ALREADY have ${cropSchedule.crop_name} planted! Tell them current status and care advice.` : 'Ask about their land conditions to suggest suitable crops'}
 
 Intent Recognition Patterns:
 • Timing questions (कधी, when) → Include specific dates, crop stage, weather dependency
@@ -835,10 +857,12 @@ Intent Recognition Patterns:
 ═══════════════════════════════════════════════════════════════
 
 1️⃣ LAND-SPECIFIC ADVICE ONLY
-• Farmer's land has ONE current crop: ${landDetails?.current_crop || 'unknown'}
-• ONLY give advice for THIS crop, not other crops
+• Farmer's land has ONE current crop: ${cropSchedule?.crop_name || landDetails?.current_crop || 'unknown'}
+• Current growth stage: ${currentGrowthStage}
+• Days since sowing: ${daysSinceSowing || 'unknown'} days
+• ONLY give advice for THIS crop at THIS stage, not other crops
 • Don't suggest alternatives unless explicitly asked
-• If no current crop, ask: "कोणते पीक लावणार आहात?"
+• If farmer asks "which crop to plant" but already has crop planted, remind them about current crop first!
 
 2️⃣ AUTOMATIC LAND-SPECIFIC CALCULATIONS (MANDATORY)
 Always provide:
@@ -1000,10 +1024,70 @@ Speak naturally, be helpful, and always consider the farmer's specific land and 
                            (land.area_gunta ? (land.area_gunta / 40).toFixed(2) : null) ||
                            (land.size ? land.size : 'Unknown');
         
-        // Calculate days since sowing
-        const daysSinceSowing = land.cultivation_date 
-          ? Math.floor((Date.now() - new Date(land.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))
-          : null;
+        // ✅ NEW: Fetch active crop schedule for this land
+        let cropSchedule = null;
+        let daysSinceSowing = null;
+        let daysToHarvest = null;
+        let currentGrowthStage = 'Unknown';
+        
+        try {
+          const { data: schedule } = await supabase
+            .from('crop_schedules')
+            .select('*')
+            .eq('land_id', landId)
+            .eq('is_active', true)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+          
+          if (schedule) {
+            cropSchedule = schedule;
+            
+            // Calculate days since actual sowing from schedule
+            if (schedule.sowing_date) {
+              daysSinceSowing = Math.floor((Date.now() - new Date(schedule.sowing_date).getTime()) / (1000 * 60 * 60 * 24));
+              
+              // Calculate days to harvest
+              if (schedule.expected_harvest_date) {
+                daysToHarvest = Math.floor((new Date(schedule.expected_harvest_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+              }
+              
+              // Determine growth stage based on days since sowing
+              if (daysSinceSowing <= 15) {
+                currentGrowthStage = 'Germination/Early Growth';
+              } else if (daysSinceSowing <= 30) {
+                currentGrowthStage = 'Vegetative Growth';
+              } else if (daysSinceSowing <= 60) {
+                currentGrowthStage = 'Flowering/Reproductive';
+              } else if (daysSinceSowing <= 90) {
+                currentGrowthStage = 'Grain Filling/Maturity';
+              } else {
+                currentGrowthStage = 'Ready for Harvest';
+              }
+            }
+            
+            console.log('✅ Crop Schedule Found:', {
+              crop: schedule.crop_name,
+              variety: schedule.crop_variety,
+              sowingDate: schedule.sowing_date,
+              daysSinceSowing,
+              daysToHarvest,
+              growthStage: currentGrowthStage
+            });
+          } else {
+            console.log('ℹ️ No active crop schedule found, using land cultivation_date');
+            // Fallback to land cultivation_date
+            daysSinceSowing = land.cultivation_date 
+              ? Math.floor((Date.now() - new Date(land.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))
+              : null;
+          }
+        } catch (scheduleError) {
+          console.warn('⚠️ Could not load crop schedule:', scheduleError);
+          // Fallback to land cultivation_date
+          daysSinceSowing = land.cultivation_date 
+            ? Math.floor((Date.now() - new Date(land.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))
+            : null;
+        }
         
         // ============= SELECTIVE DATA LOADING BASED ON QUERY INTENT =============
         let ndviData = null;
@@ -1075,13 +1159,16 @@ Speak naturally, be helpful, and always consider the farmer's specific land and 
             latestSoilHealth,
             latestNDVI,
             ndviData,
-            queryIntent
+            queryIntent,
+            cropSchedule,
+            currentGrowthStage,
+            daysToHarvest
           });
           contextType = 'full';
           console.log(`📦 Sending FULL context (message #${messageCount}${landHasChanged ? ', land changed' : ''}): ~${Math.ceil(contextToSend.length / 4)} tokens`);
         } else if (messageCount >= 2 && messageCount <= 10) {
           // Messages 2-10: Send query-specific minimal context
-          contextToSend = getMinimalContext(queryIntent.type, land, areaInAcres, daysSinceSowing, latestSoilHealth, latestNDVI);
+          contextToSend = getMinimalContext(queryIntent.type, land, areaInAcres, daysSinceSowing, latestSoilHealth, latestNDVI, cropSchedule, currentGrowthStage);
           contextType = 'minimal';
           console.log(`⚡ Sending MINIMAL context (message #${messageCount}, ${queryIntent.type}): ~${Math.ceil(contextToSend.length / 4)} tokens`);
         } else {
@@ -1097,6 +1184,13 @@ Speak naturally, be helpful, and always consider the farmer's specific land and 
           area_acres: areaInAcres,
           soil_type: land.soil_type,
           location: land.location,
+          current_crop: cropSchedule?.crop_name || land.current_crop,
+          crop_variety: cropSchedule?.crop_variety,
+          sowing_date: cropSchedule?.sowing_date,
+          days_since_sowing: daysSinceSowing,
+          growth_stage: currentGrowthStage,
+          expected_harvest: cropSchedule?.expected_harvest_date,
+          days_to_harvest: daysToHarvest,
           crops: land.crops,
           current_crop: land.current_crop,
           water_source: land.water_source,
