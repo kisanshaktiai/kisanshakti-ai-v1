@@ -2,6 +2,8 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
+import { classifyFarmerQuery } from './query-classifier.ts';
+import { buildCompressedContext } from './context-compressor.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -281,6 +283,11 @@ serve(async (req) => {
       currentSession = newSession;
     }
 
+    // ============= SMART CONTEXT LOADER =============
+    // Step 1: Classify farmer's query intent
+    const queryIntent = classifyFarmerQuery(userText, language);
+    console.log('🎯 Query Intent:', queryIntent);
+    
     // Get land context if landId is provided
     let landContext = null;
     let landDetails: any = null;
@@ -388,57 +395,70 @@ Then provide specific diagnosis and solutions.
                            (land.area_gunta ? (land.area_gunta / 40).toFixed(2) : null) ||
                            (land.size ? land.size : 'Unknown');
         
-        // Get NDVI history data with error handling
+        // Calculate days since sowing
+        const daysSinceSowing = land.cultivation_date 
+          ? Math.floor((Date.now() - new Date(land.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))
+          : null;
+        
+        // ============= SMART DATA LOADING BASED ON QUERY INTENT =============
         let ndviData = null;
-        try {
-          const { data, error } = await supabase
-            .from('ndvi_data')
-            .select('*')
-            .eq('land_id', landId)
-            .order('date', { ascending: false })
-            .limit(5);
-          
-          if (error) {
-            console.warn('⚠️ NDVI query error:', error);
-          } else {
-            ndviData = data;
-            console.log('✅ NDVI data loaded:', ndviData?.length || 0, 'records');
+        let soilHealthData = null;
+        
+        // Load data selectively based on what the farmer is asking about
+        const needsNDVI = ['pest', 'disease', 'health', 'market'].includes(queryIntent.type);
+        const needsSoil = ['fertilizer', 'nutrition', 'health'].includes(queryIntent.type);
+        
+        if (needsNDVI) {
+          try {
+            const { data, error } = await supabase
+              .from('ndvi_data')
+              .select('*')
+              .eq('land_id', landId)
+              .order('date', { ascending: false })
+              .limit(queryIntent.type === 'health' ? 5 : 1); // Only get history for health queries
+            
+            if (!error) {
+              ndviData = data;
+              console.log(`✅ NDVI loaded (${queryIntent.type}):`, ndviData?.length || 0, 'records');
+            }
+          } catch (ndviError) {
+            console.warn('⚠️ Could not load NDVI data:', ndviError);
           }
-        } catch (ndviError) {
-          console.warn('⚠️ Could not load NDVI data:', ndviError);
         }
         
-        // Get soil health data with error handling
-        let soilHealthData = null;
-        try {
-          const { data, error } = await supabase
-            .from('soil_health')
-            .select('*')
-            .eq('land_id', landId)
-            .order('test_date', { ascending: false })
-            .limit(1);
-          
-          if (error) {
-            console.warn('⚠️ Soil health query error:', error);
-          } else {
-            soilHealthData = data;
-            console.log('✅ Soil health data loaded:', soilHealthData?.length || 0, 'records');
+        if (needsSoil) {
+          try {
+            const { data, error } = await supabase
+              .from('soil_health')
+              .select('*')
+              .eq('land_id', landId)
+              .order('test_date', { ascending: false })
+              .limit(1);
+            
+            if (!error) {
+              soilHealthData = data;
+              console.log(`✅ Soil data loaded (${queryIntent.type}):`, soilHealthData?.length || 0, 'records');
+            }
+          } catch (soilError) {
+            console.warn('⚠️ Could not load soil health data:', soilError);
           }
-        } catch (soilError) {
-          console.warn('⚠️ Could not load soil health data:', soilError);
         }
         
         const latestSoilHealth = soilHealthData && soilHealthData.length > 0 ? soilHealthData[0] : null;
         const latestNDVI = ndviData && ndviData.length > 0 ? ndviData[0] : null;
         
-        // Compute NPK string from individual columns
-        let soilNPK = 'Not available';
-        if (latestSoilHealth) {
-          const n = latestSoilHealth.nitrogen_kg_per_ha || '-';
-          const p = latestSoilHealth.phosphorus_kg_per_ha || '-';
-          const k = latestSoilHealth.potassium_kg_per_ha || '-';
-          soilNPK = `N:${n} P:${p} K:${k} kg/ha`;
-        }
+        // Build compressed context based on query type
+        const compressedContext = buildCompressedContext({
+          land,
+          areaInAcres,
+          daysSinceSowing,
+          latestSoilHealth,
+          latestNDVI,
+          ndviData,
+          queryIntent
+        });
+        
+        console.log('📦 Compressed context tokens:', compressedContext.length, 'chars (est.', Math.ceil(compressedContext.length / 4), 'tokens)');
         
         landContext = {
           land_id: land.id,
@@ -451,53 +471,14 @@ Then provide specific diagnosis and solutions.
           water_source: land.water_source,
           irrigation_type: land.irrigation_type,
           cultivation_date: land.cultivation_date,
-          soil_npk: soilNPK,
-          ndvi_value: land.ndvi_latest || latestNDVI?.ndvi_value || latestNDVI?.mean_ndvi || 'Not available',
-          soil_moisture: land.soil_moisture || 'Not available',
+          days_since_sowing: daysSinceSowing,
           soil_health: latestSoilHealth,
+          ndvi_value: latestNDVI?.ndvi_value || latestNDVI?.mean_ndvi,
           ndvi_history: ndviData
         };
         
-        // Build enhanced prompt with real data
-        let dataInsights = '';
-        
-        if (latestSoilHealth) {
-          dataInsights += `\n\n🧪 SOIL HEALTH DATA (Test Date: ${latestSoilHealth.test_date}):\n`;
-          dataInsights += `- pH Level: ${latestSoilHealth.ph_level || 'N/A'}\n`;
-          dataInsights += `- Nitrogen (N): ${latestSoilHealth.nitrogen_kg_per_ha || 'N/A'} kg/ha\n`;
-          dataInsights += `- Phosphorus (P): ${latestSoilHealth.phosphorus_kg_per_ha || 'N/A'} kg/ha\n`;
-          dataInsights += `- Potassium (K): ${latestSoilHealth.potassium_kg_per_ha || 'N/A'} kg/ha\n`;
-          dataInsights += `- Organic Carbon: ${latestSoilHealth.organic_carbon || 'N/A'}%\n`;
-          dataInsights += `- EC (Electrical Conductivity): ${latestSoilHealth.electrical_conductivity || 'N/A'} dS/m\n`;
-        }
-        
-        if (ndviData && ndviData.length > 0) {
-          dataInsights += `\n\n📊 NDVI TREND ANALYSIS (Last ${ndviData.length} readings):\n`;
-          ndviData.forEach((reading, idx) => {
-            const ndviVal = reading.ndvi_value || reading.mean_ndvi || 'N/A';
-            const quality = reading.quality_score !== null && reading.quality_score !== undefined ? reading.quality_score : 'N/A';
-            const readingDate = reading.date || reading.created_at || 'N/A';
-            dataInsights += `${idx + 1}. Date: ${readingDate} | NDVI: ${ndviVal} | Quality: ${quality}\n`;
-          });
-          
-          // Calculate trend if we have multiple readings
-          if (ndviData.length >= 2) {
-            const latestNDVI = parseFloat(ndviData[0].ndvi_value || ndviData[0].mean_ndvi || 0);
-            const oldestNDVI = parseFloat(ndviData[ndviData.length - 1].ndvi_value || ndviData[ndviData.length - 1].mean_ndvi || 0);
-            const trend = latestNDVI - oldestNDVI;
-            const trendText = trend > 0 ? '📈 Improving' : trend < 0 ? '📉 Declining' : '➡️ Stable';
-            dataInsights += `Trend: ${trendText} (${trend > 0 ? '+' : ''}${trend.toFixed(3)})\n`;
-          }
-        }
-        
-        systemPrompt += `\n\n📊 LAND-SPECIFIC CONTEXT (USE THIS DATA FOR CALCULATIONS):
-- Land Name: ${land.name || 'Unknown'}
-- Size: ${areaInAcres} acres (${land.area_gunta || 'Unknown'} gunta)
-- Soil Type: ${land.soil_type || 'Not specified'}
-- Current Crop: ${land.current_crop || 'Not specified'}
-- Cultivation Date: ${land.cultivation_date || 'Not specified'}
-- Location: ${land.village || ''}, ${land.district || ''}, ${land.state || 'India'}
-- Water Source: ${land.water_source || 'Not specified'}
+        systemPrompt += `\n\n📊 LAND CONTEXT (${queryIntent.type.toUpperCase()} QUERY):
+${compressedContext}
 - Irrigation Type: ${land.irrigation_type || 'Not specified'}
 ${dataInsights}
 
