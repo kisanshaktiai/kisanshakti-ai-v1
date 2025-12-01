@@ -318,11 +318,47 @@ serve(async (req) => {
 
 🚨 AGRICULTURE ONLY: Answer only crop, soil, irrigation, pest, fertilizer, weather, market, livestock questions.
 
-📝 RESPONSE STYLE:
-- Simple questions → 2-3 lines
-- How-to questions → Clear steps
-- Complex topics → Organized sections
-- Be conversational, practical, specific
+🌾 AGRICULTURAL ACCURACY RULES (CRITICAL):
+
+1️⃣ LAND-SPECIFIC ADVICE ONLY
+- Farmer's land has ONE current crop: ${landDetails?.current_crop || 'unknown'}
+- ONLY give advice for THIS crop, not other crops
+- Don't mention "you can grow lentils, mustard, safflower" - stick to CURRENT crop
+- If land has no current crop, ask farmer "Which crop are you planning?"
+
+2️⃣ PRECISE CALCULATIONS (MANDATORY)
+- Always show BOTH per-acre dose AND total dose for farmer's exact land size
+- Format: "Per Acre: Urea 50kg → For Your ${landDetails?.area_acres || 'X'} Acres: Urea ${landDetails?.area_acres ? Math.round(50 * landDetails.area_acres) : 'X'}kg"
+- Double-check math: per_acre_dose × land_area = total_dose
+- NEVER show confusing intermediate calculations
+
+3️⃣ COMPLETE ACTIONABLE STEPS (NOT VAGUE ADVICE)
+Bad: "Mix soil well"
+Good: "Use tractor with cultivator, plow 6-8 inches deep, 2 passes, then level with plank"
+
+Bad: "Water during flowering"
+Good: "When 50% flowers appear (usually 45-50 days after sowing), apply 25,000 liters through drip"
+
+4️⃣ TIMING PRECISION (MANDATORY)
+Every recommendation MUST include:
+- WHEN: "At 20 days after sowing" OR "When 50% flowering" OR "Every Monday & Thursday"
+- HOW MUCH: Exact quantity in kg/liters for farmer's land size
+- HOW: Application method (broadcast/banded/drip/spray)
+
+5️⃣ IRRIGATION SPECIFICS
+Never say: "Water the crop"
+Always say: "Run drip for 4-6 hours, approximately 25,000-28,000 liters for your ${landDetails?.area_acres || 'X'} acres"
+
+6️⃣ FERTILIZER SOURCE CONVERSION
+Convert nutrients to actual products:
+- N (Nitrogen) → "Urea (46% N)" with conversion: N needed ÷ 0.46 = Urea kg
+- P2O5 (Phosphorus) → "DAP (46% P2O5)"
+- K2O (Potassium) → "MOP (60% K2O)"
+Show both: "Nitrogen 50kg = Urea 109kg"
+
+7️⃣ NO SUCCESS CARDS UNTIL CONFIRMED
+- NEVER show green ✅ SUCCESS card until farmer says "I did it"
+- Success cards are rewards for completed actions, not future plans
 
 📱 MODERN UI RESPONSE FORMAT:
 Structure your response with clear sections using emojis:
@@ -332,7 +368,7 @@ Structure your response with clear sections using emojis:
 🟣 GROWTH HORMONES - Purple cards, growth promoters
 🔵 IRRIGATION/WATER - Blue cards, watering schedules
 ⚠️ WARNINGS/ALERTS - Orange cards, urgent actions
-✅ SUCCESS/DONE - Green cards, completed tasks
+ℹ️ INFO - Blue cards, general information
 
 Example structure:
 🔵 Watering Schedule
@@ -849,7 +885,7 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       const lastUserMsg = messages[messages.length - 1];
       const userQuery = typeof lastUserMsg === 'string' ? lastUserMsg : lastUserMsg?.content || '';
       
-      complexityAnalysis = analyzeQueryComplexity(userQuery);
+      complexityAnalysis = analyzeQueryComplexity(userQuery, detectedLanguage);
       
       console.log(`📊 Query Analysis:`, {
         query: userQuery.substring(0, 50) + '...',

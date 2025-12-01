@@ -23,22 +23,22 @@ export function ColorCodedCard({ card, index }: ColorCodedCardProps) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
-      className="mb-3"
+      className="mb-2"
     >
       <Card 
         className={cn(
-          "p-4 relative overflow-hidden",
-          "border-l-4 shadow-md",
-          "transition-all duration-200 hover:shadow-lg"
+          "px-3 py-2.5 relative overflow-hidden",
+          "border-l-4 shadow-sm",
+          "transition-all duration-200 hover:shadow-md"
         )}
         style={{
           borderLeftColor: card.color,
-          background: `linear-gradient(135deg, ${card.gradient[0]}08 0%, ${card.gradient[2]}08 100%)`
+          background: `linear-gradient(135deg, ${card.gradient[0]}06 0%, ${card.gradient[2]}06 100%)`
         }}
       >
-        <div className="flex items-start gap-3">
+        <div className="flex items-start gap-2">
           <div 
-            className="text-2xl flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center"
+            className="text-xl flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center"
             style={{
               background: `linear-gradient(135deg, ${card.gradient[0]} 0%, ${card.gradient[1]} 100%)`
             }}
@@ -47,7 +47,7 @@ export function ColorCodedCard({ card, index }: ColorCodedCardProps) {
           </div>
           <div className="flex-1 min-w-0">
             <h3 
-              className="font-semibold text-base mb-2"
+              className="font-semibold text-sm mb-1.5 leading-tight"
               style={{ color: card.color }}
             >
               {card.title}

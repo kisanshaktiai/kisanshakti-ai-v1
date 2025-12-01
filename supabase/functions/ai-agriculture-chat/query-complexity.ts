@@ -7,9 +7,35 @@ export interface ComplexityAnalysis {
   responseStyle: string;
 }
 
-export function analyzeQueryComplexity(userMessage: string): ComplexityAnalysis {
+export function analyzeQueryComplexity(userMessage: string, language: string = 'en'): ComplexityAnalysis {
   const msg = userMessage.toLowerCase();
-  const wordCount = msg.split(/\s+/).length;
+  
+  // ✅ FIX: Use character count for Indic scripts, word count for Latin scripts
+  const isIndicScript = /[\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B00-\u0B7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F]/.test(userMessage);
+  
+  let complexity: 'simple' | 'medium' | 'complex';
+  let baseMaxWords: number;
+  let baseMaxTokens: number;
+  
+  if (isIndicScript) {
+    // For Indic scripts, use character count
+    const charCount = userMessage.length;
+    if (charCount < 30) {
+      complexity = 'simple';
+      baseMaxWords = 80;
+      baseMaxTokens = 150;
+    } else if (charCount < 100) {
+      complexity = 'medium';
+      baseMaxWords = 250;
+      baseMaxTokens = 400;
+    } else {
+      complexity = 'complex';
+      baseMaxWords = 500;
+      baseMaxTokens = 800;
+    }
+  } else {
+    // For Latin scripts, use word count
+    const wordCount = msg.split(/\s+/).length;
   
   // ============================================
   // SIMPLE QUERIES (1-5 words, yes/no, greetings)
@@ -36,14 +62,40 @@ export function analyzeQueryComplexity(userMessage: string): ComplexityAnalysis 
     /^(price|भाव|किंमत|விலை|ధర|ਭਾਅ)/
   ];
   
-  if (wordCount <= 5 || simplePatterns.some(p => p.test(msg))) {
-    return {
-      complexity: 'simple',
-      maxWords: 80,
-      maxTokens: 150,
-      responseStyle: 'brief'
-    };
+    if (wordCount <= 5 || simplePatterns.some(p => p.test(msg))) {
+      complexity = 'simple';
+      baseMaxWords = 80;
+      baseMaxTokens = 150;
+    } else if (wordCount <= 15 || mediumPatterns.some(p => p.test(msg))) {
+      complexity = 'medium';
+      baseMaxWords = 250;
+      baseMaxTokens = 400;
+    } else {
+      complexity = 'complex';
+      baseMaxWords = 500;
+      baseMaxTokens = 800;
+    }
   }
+  
+  // ✅ FIX: Apply 1.8x multiplier for Indic languages
+  const indicLanguages = ['hi', 'mr', 'ta', 'te', 'bn', 'gu', 'kn', 'ml', 'pa', 'or', 'ur'];
+  const isIndicLanguage = indicLanguages.includes(language);
+  
+  let finalMaxTokens = baseMaxTokens;
+  if (isIndicLanguage) {
+    finalMaxTokens = Math.round(baseMaxTokens * 1.8); // Indic scripts use more tokens
+    console.log(`🔤 Indic language detected (${language}): ${baseMaxTokens} → ${finalMaxTokens} tokens`);
+  }
+  
+  // ✅ FIX: Add 20% safety buffer to prevent mid-response cutoffs
+  finalMaxTokens = Math.round(finalMaxTokens * 1.2);
+  
+  return {
+    complexity,
+    maxWords: baseMaxWords,
+    maxTokens: finalMaxTokens,
+    responseStyle: complexity === 'simple' ? 'brief' : complexity === 'medium' ? 'structured' : 'comprehensive'
+  };
   
   // ============================================
   // MEDIUM QUERIES (6-15 words, how-to, advice)
@@ -64,26 +116,6 @@ export function analyzeQueryComplexity(userMessage: string): ComplexityAnalysis 
     // Problem diagnosis (medium detail)
     /problem|issue|समस्या|अडचण|பிரச்சனை|సమస్య|ਸਮੱਸਿਆ/
   ];
-  
-  if (wordCount <= 15 || mediumPatterns.some(p => p.test(msg))) {
-    return {
-      complexity: 'medium',
-      maxWords: 250,
-      maxTokens: 400,
-      responseStyle: 'structured'
-    };
-  }
-  
-  // ============================================
-  // COMPLEX QUERIES (16+ words, detailed plans)
-  // ============================================
-  return {
-    complexity: 'complex',
-    maxWords: 500,
-    maxTokens: 800,
-    responseStyle: 'comprehensive'
-  };
-}
 
 export function getResponseLengthInstruction(
   complexity: 'simple' | 'medium' | 'complex',
@@ -94,6 +126,7 @@ export function getResponseLengthInstruction(
       en: `
 ⚠️ RESPONSE LENGTH: MAXIMUM 80 WORDS (3-4 sentences)
 This is a SIMPLE question. Give a DIRECT, SHORT answer.
+DO NOT use emoji sections (🟢🟡🔴) for simple queries - just plain text.
 
 Example:
 User: "When to water wheat?"
@@ -113,6 +146,7 @@ DO give:
       hi: `
 ⚠️ उत्तर की लंबाई: अधिकतम 80 शब्द (3-4 वाक्य)
 यह एक सरल सवाल है। सीधा, छोटा जवाब दें।
+सरल सवालों के लिए इमोजी सेक्शन (🟢🟡🔴) का उपयोग न करें - केवल सादा टेक्स्ट।
 
 उदाहरण:
 उपयोगकर्ता: "गेहूं में पानी कब दें?"
@@ -131,6 +165,7 @@ DO give:
       mr: `
 ⚠️ उत्तराची लांबी: जास्तीत जास्त 80 शब्द (3-4 वाक्ये)
 हा एक साधा प्रश्न आहे। थेट, लहान उत्तर द्या।
+साध्या प्रश्नांसाठी इमोजी विभाग (🟢🟡🔴) वापरू नका - फक्त साधा मजकूर.
 
 उदाहरण:
 वापरकर्ता: "गहू मध्ये पाणी कधी द्यावे?"
