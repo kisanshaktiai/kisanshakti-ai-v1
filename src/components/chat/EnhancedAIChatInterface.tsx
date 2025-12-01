@@ -90,8 +90,23 @@ export function EnhancedAIChatInterface() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const lastScrollTop = useRef(0);
   
-  // ✅ NOW conditional returns are safe - all hooks are declared
+  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const [transcript, setTranscript] = useState('');
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchEnd, setTouchEnd] = useState(0);
+  
+  const { isListening, startListening: originalStartListening, stopListening } = useSpeechRecognition({
+    onTranscript: (text) => setTranscript(text)
+  });
+  
+  const { speak, stop: stopSpeaking, isSpeaking } = useTextToSpeech({
+    language: language === 'hi' ? 'hi-IN' : language === 'pa' ? 'pa-IN' : language === 'mr' ? 'mr-IN' : language === 'ta' ? 'ta-IN' : 'en-IN'
+  });
+  
+  // ✅ All hooks are now declared BEFORE conditional returns
   // Guard: Don't render until tenant is loaded
   if (isTenantLoading || !tenant || !user) {
     return (
@@ -100,18 +115,6 @@ export function EnhancedAIChatInterface() {
       </div>
     );
   }
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const [isUserScrolling, setIsUserScrolling] = useState(false);
-  const lastScrollTop = useRef(0);
-  
-  const [transcript, setTranscript] = useState('');
-  const { isListening, startListening: originalStartListening, stopListening } = useSpeechRecognition({
-    onTranscript: (text) => setTranscript(text)
-  });
-  
-  const { speak, stop: stopSpeaking, isSpeaking } = useTextToSpeech({
-    language: language === 'hi' ? 'hi-IN' : language === 'pa' ? 'pa-IN' : language === 'mr' ? 'mr-IN' : language === 'ta' ? 'ta-IN' : 'en-IN'
-  });
 
   // Request microphone permission
   const startListening = async () => {
@@ -160,10 +163,7 @@ export function EnhancedAIChatInterface() {
     }
   }, [isRefreshing]);
 
-  // Touch event handlers for pull-to-refresh
-  const [touchStart, setTouchStart] = useState(0);
-  const [touchEnd, setTouchEnd] = useState(0);
-  
+  // Touch event handlers for pull-to-refresh (hooks already declared above)
   const handleTouchStart = (e: React.TouchEvent) => {
     setTouchStart(e.targetTouches[0].clientY);
   };
