@@ -32,15 +32,8 @@ export function ColorCodedCard({
       borderLeftColor: card.color,
       background: `linear-gradient(135deg, ${card.gradient[0]}06 0%, ${card.gradient[2]}06 100%)`
     }}>
-        <div className="w-full">
-          <h3 className="font-semibold text-sm mb-1.5 leading-tight" style={{
-            color: card.color
-          }}>
-            {card.title}
-          </h3>
-          <div className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">
-            {card.content}
-          </div>
+        <div className="w-full text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">
+          {card.content}
         </div>
       </Card>
     </motion.div>;
