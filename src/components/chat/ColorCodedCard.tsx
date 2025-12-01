@@ -19,6 +19,23 @@ export function ColorCodedCard({
   card,
   index
 }: ColorCodedCardProps) {
+  // Format content with proper line breaks
+  const formatContent = (text: string) => {
+    return text
+      .split('\n')
+      .map((line, idx) => {
+        const trimmedLine = line.trim();
+        if (!trimmedLine) return null;
+        
+        return (
+          <div key={idx} className="mb-2 last:mb-0">
+            {trimmedLine}
+          </div>
+        );
+      })
+      .filter(Boolean);
+  };
+
   return <motion.div initial={{
     opacity: 0,
     y: 20
@@ -32,8 +49,13 @@ export function ColorCodedCard({
       borderLeftColor: card.color,
       background: `linear-gradient(135deg, ${card.gradient[0]}06 0%, ${card.gradient[2]}06 100%)`
     }}>
-        <div className="w-full text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">
-          {card.content}
+        {card.title && (
+          <div className="font-medium text-sm mb-2 text-foreground">
+            {card.title}
+          </div>
+        )}
+        <div className="w-full text-sm text-foreground/90 leading-relaxed">
+          {formatContent(card.content)}
         </div>
       </Card>
     </motion.div>;

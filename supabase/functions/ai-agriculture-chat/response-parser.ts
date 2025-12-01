@@ -67,6 +67,37 @@ const CARD_THEMES = {
   }
 };
 
+// Helper function to clean markdown formatting
+function cleanMarkdown(text: string): string {
+  return text
+    // Remove ** for bold
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    // Remove * for italic
+    .replace(/\*(.*?)\*/g, '$1')
+    // Remove ## headers
+    .replace(/^#{1,6}\s+/gm, '')
+    // Remove --- separators
+    .replace(/^-{3,}$/gm, '')
+    // Clean up multiple spaces
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Helper function to format content with proper line breaks
+function formatContentWithLineBreaks(content: string): string {
+  return content
+    // Remove markdown
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    // Ensure each numbered/bulleted point is on new line
+    .replace(/(\d+\.)/g, '\n$1')
+    .replace(/([•·])/g, '\n$1')
+    // Clean up multiple newlines
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export function parseResponseToCards(aiResponse: string, language: string): StructuredResponse {
   const cards: ResponseCard[] = [];
   
@@ -82,7 +113,8 @@ export function parseResponseToCards(aiResponse: string, language: string): Stru
     if (section.startsWith('🟢')) {
       const lowerSection = section.toLowerCase();
       if (lowerSection.includes('organic') || lowerSection.includes('जैविक') || 
-          lowerSection.includes('प्राकृतिक') || lowerSection.includes('natural')) {
+          lowerSection.includes('प्राकृतिक') || lowerSection.includes('natural') ||
+          lowerSection.includes('सेंद्रिय')) {
         cardType = 'organic';
       }
     } else if (section.startsWith('🟡')) {
@@ -101,8 +133,10 @@ export function parseResponseToCards(aiResponse: string, language: string): Stru
     
     // Extract title and content
     const lines = section.trim().split('\n');
-    const title = lines[0].replace(/^[🟢🟡🔴🟣🔵⚠️✅ℹ️]\s*/, '').trim();
-    const content = lines.slice(1).join('\n').trim();
+    const titleLine = lines[0].replace(/^[🟢🟡🔴🟣🔵⚠️✅ℹ️]\s*/, '').trim();
+    const title = cleanMarkdown(titleLine);
+    const rawContent = lines.slice(1).join('\n').trim();
+    const content = formatContentWithLineBreaks(rawContent);
     
     if (title && content) {
       cards.push({
