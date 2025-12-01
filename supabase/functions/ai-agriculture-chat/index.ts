@@ -473,6 +473,117 @@ Use bullet points (•) or numbers (1., 2., 3.) only.`,
   return langInstructions;
 }
 
+// ============= WEATHER RESPONSE GENERATOR =============
+
+interface WeatherData {
+  temp: number;
+  feels_like: number;
+  humidity: number;
+  wind_speed: string | number;
+  description: string;
+  rain_1h?: number;
+  rain_3h?: number;
+  location: string;
+  provider: string;
+}
+
+interface ForecastDay {
+  date: string;
+  temp_min: number;
+  temp_max: number;
+  max_rain_prob: number;
+  description: string;
+}
+
+function generateWeatherResponse(
+  current: WeatherData,
+  forecast: ForecastDay[],
+  language: string
+): string {
+  const temp = Math.round(current.temp);
+  const feelsLike = Math.round(current.feels_like);
+  const humidity = current.humidity;
+  const windSpeed = typeof current.wind_speed === 'string' 
+    ? parseFloat(current.wind_speed) 
+    : current.wind_speed;
+  const desc = current.description;
+  
+  // Farming recommendations based on weather
+  const hasRain = (current.rain_1h && current.rain_1h > 0) || (current.rain_3h && current.rain_3h > 0);
+  const rainForecast = forecast.find(day => day.max_rain_prob > 50);
+  const isHot = temp > 35;
+  const isHumid = humidity > 80;
+  const isWindy = windSpeed > 20;
+  
+  // Language responses
+  const responses: Record<string, string> = {
+    en: `📍 Current Weather for ${current.location}
+
+🌡️ Temperature: ${temp}°C (Feels like ${feelsLike}°C)
+💨 Wind: ${Math.round(windSpeed)} km/h
+💧 Humidity: ${humidity}%
+🌤️ Conditions: ${desc}
+
+📅 Next 3 Days:
+${forecast.slice(0, 3).map((day, i) => {
+  const dayName = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : new Date(day.date).toLocaleDateString('en-IN', { weekday: 'short' });
+  return `${dayName}: ${Math.round(day.temp_min)}-${Math.round(day.temp_max)}°C, Rain ${day.max_rain_prob}%`;
+}).join('\n')}
+
+🌾 Farming Advice:
+${hasRain || rainForecast ? '🔴 Avoid spraying - rain expected' : '✅ Good for spraying'}
+${isHot ? '💧 Water early (5-7 AM) or evening (5-7 PM)' : '✅ Normal watering time'}
+${isHumid ? '⚠️ Watch for fungal diseases' : '✅ Low disease risk'}
+${isWindy ? '🔴 Avoid fertilizer - windy' : '✅ Safe for fertilizer'}
+
+Updated: ${new Date().toLocaleTimeString('en-IN')} • ${current.provider}`,
+    
+    hi: `📍 ${current.location} का मौसम
+
+🌡️ तापमान: ${temp}°C (अनुभव ${feelsLike}°C)
+💨 हवा: ${Math.round(windSpeed)} किमी/घंटा
+💧 नमी: ${humidity}%
+🌤️ स्थिति: ${desc}
+
+📅 अगले 3 दिन:
+${forecast.slice(0, 3).map((day, i) => {
+  const dayName = i === 0 ? 'आज' : i === 1 ? 'कल' : new Date(day.date).toLocaleDateString('hi-IN', { weekday: 'short' });
+  return `${dayName}: ${Math.round(day.temp_min)}-${Math.round(day.temp_max)}°C, बारिश ${day.max_rain_prob}%`;
+}).join('\n')}
+
+🌾 खेती सलाह:
+${hasRain || rainForecast ? '🔴 छिड़काव न करें - बारिश होगी' : '✅ छिड़काव के लिए अच्छा'}
+${isHot ? '💧 सुबह (5-7) या शाम (5-7) पानी दें' : '✅ सामान्य समय पानी दें'}
+${isHumid ? '⚠️ फफूंद रोग का खतरा' : '✅ रोग का कम खतरा'}
+${isWindy ? '🔴 खाद न डालें - तेज हवा' : '✅ खाद डाल सकते हैं'}
+
+अपडेट: ${new Date().toLocaleTimeString('hi-IN')} • ${current.provider}`,
+    
+    mr: `📍 ${current.location} चे हवामान
+
+🌡️ तापमान: ${temp}°C (अनुभव ${feelsLike}°C)
+💨 वारा: ${Math.round(windSpeed)} किमी/तास
+💧 आर्द्रता: ${humidity}%
+🌤️ परिस्थिती: ${desc}
+
+📅 पुढील 3 दिवस:
+${forecast.slice(0, 3).map((day, i) => {
+  const dayName = i === 0 ? 'आज' : i === 1 ? 'उद्या' : new Date(day.date).toLocaleDateString('mr-IN', { weekday: 'short' });
+  return `${dayName}: ${Math.round(day.temp_min)}-${Math.round(day.temp_max)}°C, पाऊस ${day.max_rain_prob}%`;
+}).join('\n')}
+
+🌾 शेती सल्ला:
+${hasRain || rainForecast ? '🔴 फवारणी टाळा - पाऊस होणार' : '✅ फवारणीसाठी चांगले'}
+${isHot ? '💧 सकाळी (5-7) किंवा संध्याकाळी (5-7) पाणी द्या' : '✅ नेहमीच्या वेळी पाणी'}
+${isHumid ? '⚠️ बुरशीजन्य रोगाचा धोका' : '✅ रोगाचा कमी धोका'}
+${isWindy ? '🔴 खत टाकू नका - जोरदार वारा' : '✅ खत टाकू शकता'}
+
+अपडेट: ${new Date().toLocaleTimeString('mr-IN')} • ${current.provider}`
+  };
+  
+  return responses[language] || responses['en'];
+}
+
 function enforceResponseLength(
   aiResponse: string,
   maxWords: number,
@@ -920,97 +1031,69 @@ serve(async (req) => {
           // Round coordinates for cache lookup
           const roundedLat = Math.round(weatherLat * 100) / 100;
           const roundedLon = Math.round(weatherLon * 100) / 100;
-          const locationKey = `${roundedLat},${roundedLon}`;
           
-          console.log(`🌤️ Fetching weather data for: ${locationKey} (${locationName})`);
+          console.log(`🌤️ Fetching weather data via weather function: ${roundedLat},${roundedLon} (${locationName})`);
           
-          // Fetch current weather from cache
-          const { data: cachedCurrent } = await supabase
-            .from('weather_current')
-            .select('*')
-            .eq('location_key', locationKey)
-            .gt('expires_at', new Date().toISOString())
-            .order('updated_at', { ascending: false })
-            .limit(1)
-            .single();
+          // ✅ FETCH WEATHER FROM WEATHER EDGE FUNCTION
+          const { data: weatherData, error: weatherError } = await supabase.functions.invoke('weather', {
+            body: {
+              action: 'all',
+              lat: roundedLat,
+              lon: roundedLon
+            }
+          });
           
-          if (cachedCurrent) {
-            currentWeather = {
-              location: locationName,
-              temp: cachedCurrent.temperature_celsius,
-              feels_like: cachedCurrent.feels_like_celsius,
-              humidity: cachedCurrent.humidity_percent,
-              wind_speed: cachedCurrent.wind_speed_kmh,
-              wind_direction: cachedCurrent.wind_direction_degrees,
-              description: cachedCurrent.weather_description,
-              main: cachedCurrent.weather_main,
-              rain_1h: cachedCurrent.rain_1h_mm,
-              rain_24h: cachedCurrent.rain_24h_mm,
-              uv_index: cachedCurrent.uv_index,
-              visibility: cachedCurrent.visibility_km,
-              pressure: cachedCurrent.pressure_hpa,
-              clouds: cachedCurrent.cloud_cover_percent,
-              sunrise: cachedCurrent.sunrise_time,
-              sunset: cachedCurrent.sunset_time,
-              updated_at: cachedCurrent.updated_at,
-              provider: cachedCurrent.data_source
-            };
-            
-            console.log(`✅ Current weather loaded: ${currentWeather.temp}°C, ${currentWeather.description}`);
-          }
-          
-          // Fetch forecast data (next 7 days)
-          const { data: cachedForecasts } = await supabase
-            .from('weather_forecasts')
-            .select('*')
-            .eq('location_key', locationKey)
-            .gte('forecast_time', new Date().toISOString())
-            .order('forecast_time', { ascending: true })
-            .limit(168); // 7 days * 24 hours
-          
-          if (cachedForecasts && cachedForecasts.length > 0) {
-            // Group forecasts by day
-            const dailyMap = new Map<string, any>();
-            
-            cachedForecasts.forEach((forecast: any) => {
-              const forecastDate = new Date(forecast.forecast_time);
-              const dateKey = forecastDate.toISOString().split('T')[0];
-              
-              if (!dailyMap.has(dateKey)) {
-                dailyMap.set(dateKey, {
-                  date: dateKey,
-                  temps: [],
-                  rain: [],
-                  humidity: [],
-                  wind_speed: [],
-                  descriptions: [],
-                  pop: []
-                });
-              }
-              
-              const dayData = dailyMap.get(dateKey)!;
-              dayData.temps.push(forecast.temperature_celsius || 0);
-              dayData.rain.push(forecast.rain_amount_mm || 0);
-              dayData.humidity.push(forecast.humidity_percent || 0);
-              dayData.wind_speed.push(forecast.wind_speed_kmh || 0);
-              dayData.descriptions.push(forecast.weather_description);
-              dayData.pop.push(forecast.rain_probability_percent || 0);
+          if (weatherError) {
+            console.error('❌ Failed to fetch weather:', weatherError);
+          } else if (weatherData) {
+            console.log('✅ Weather data fetched:', {
+              hasCurrent: !!weatherData.current,
+              hasForecast: !!weatherData.forecast,
+              hasHourly: !!weatherData.hourly
             });
             
-            // Convert to array with summary
-            weatherForecast = Array.from(dailyMap.values()).slice(0, 7).map(day => ({
-              date: day.date,
-              temp_min: Math.min(...day.temps),
-              temp_max: Math.max(...day.temps),
-              temp_avg: day.temps.reduce((a: number, b: number) => a + b, 0) / day.temps.length,
-              total_rain: day.rain.reduce((a: number, b: number) => a + b, 0),
-              max_rain_prob: Math.max(...day.pop),
-              avg_humidity: day.humidity.reduce((a: number, b: number) => a + b, 0) / day.humidity.length,
-              avg_wind_speed: day.wind_speed.reduce((a: number, b: number) => a + b, 0) / day.wind_speed.length,
-              description: day.descriptions[Math.floor(day.descriptions.length / 2)] || day.descriptions[0]
-            }));
+            // Extract current weather
+            if (weatherData.current) {
+              currentWeather = {
+                location: locationName,
+                temp: weatherData.current.temp,
+                feels_like: weatherData.current.feels_like,
+                humidity: weatherData.current.humidity,
+                wind_speed: (weatherData.current.wind_speed * 3.6).toFixed(1), // Convert m/s to km/h
+                wind_direction: weatherData.current.wind_deg,
+                description: weatherData.current.description,
+                main: weatherData.current.main,
+                rain_1h: weatherData.current.rain_1h || 0,
+                rain_3h: weatherData.current.rain_3h || 0,
+                uv_index: weatherData.current.uv_index,
+                visibility: (weatherData.current.visibility / 1000).toFixed(1), // Convert m to km
+                pressure: weatherData.current.pressure,
+                clouds: weatherData.current.clouds,
+                sunrise: weatherData.current.sunrise,
+                sunset: weatherData.current.sunset,
+                updated_at: new Date().toISOString(),
+                provider: weatherData.provider || 'OpenWeather'
+              };
+              
+              console.log(`✅ Current weather: ${currentWeather.temp}°C, ${currentWeather.description}`);
+            }
             
-            console.log(`✅ Weather forecast loaded: ${weatherForecast.length} days`);
+            // Extract forecast (daily)
+            if (weatherData.forecast && weatherData.forecast.length > 0) {
+              weatherForecast = weatherData.forecast.slice(0, 7).map((day: any) => ({
+                date: new Date(day.dt * 1000).toISOString().split('T')[0],
+                temp_min: day.temp.min,
+                temp_max: day.temp.max,
+                temp_avg: day.temp.day,
+                total_rain: 0, // Not directly available, would need hourly aggregation
+                max_rain_prob: day.pop * 100,
+                avg_humidity: day.humidity,
+                avg_wind_speed: (day.wind_speed * 3.6).toFixed(1), // Convert m/s to km/h
+                description: day.weather[0].description
+              }));
+              
+              console.log(`✅ Weather forecast: ${weatherForecast.length} days`);
+            }
           }
           
           // Build weather context for prompt
@@ -1021,6 +1104,41 @@ serve(async (req) => {
               forecast: weatherForecast,
               has_data: true
             };
+            
+            // 🌤️ PHASE 1: DIRECT WEATHER RESPONSE (NO AI)
+            // If this is a pure weather query, generate template response directly
+            if (isWeatherQuery && !landId && currentWeather) {
+              console.log('🌤️ Pure weather query detected - generating direct response');
+              
+              // Generate multi-language weather response
+              const weatherResponse = generateWeatherResponse(currentWeather, weatherForecast, language);
+              
+              // Save message to database
+              await supabase.from('ai_chat_messages').insert({
+                session_id: sessionId,
+                farmer_id: farmerId,
+                tenant_id: finalTenantId,
+                role: 'assistant',
+                content: weatherResponse,
+                language: detectedLanguage,
+                weather_context: weatherContext,
+                ip_address: clientIp || '0.0.0.0',
+                user_agent: req.headers.get('user-agent') || 'Unknown',
+                partition_key: getPartitionKey(farmerId)
+              });
+              
+              console.log('✅ Direct weather response generated');
+              
+              return new Response(
+                JSON.stringify({
+                  reply: weatherResponse,
+                  language: detectedLanguage,
+                  quickReplies: generateQuickReplies(detectedLanguage, 'general'),
+                  source: 'direct_weather_template'
+                }),
+                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              );
+            }
           }
         }
       } catch (weatherError) {
@@ -1030,7 +1148,7 @@ serve(async (req) => {
     }
     
     // ✅ STEP 2: NOW CONSTRUCT SYSTEM PROMPT WITH FETCHED DATA
-    let systemPrompt = `You are KisanShakti AI — an advanced agricultural AI assistant for Indian farmers.
+    let systemPrompt = `You are KisanShakti AI — a Very Expert Agriculture Scientist and advanced agricultural AI assistant for Indian farmers.
 
 🎯 PRIMARY OBJECTIVE:
 Deliver clear, conversational agricultural advice in native Indian languages with natural, easy-to-understand responses that farmers can instantly act upon.
@@ -1470,17 +1588,19 @@ ${dayName} (${day.date}):
         });
       }
       
-      systemPrompt += `\n
+    systemPrompt += `\n
 ⚠️ CRITICAL WEATHER INSTRUCTIONS:
-1. Use this REAL weather data in your response - do NOT make up weather information
-2. For weather queries, cite the actual data: "According to current data, temperature is ${currentWeather?.temp}°C..."
-3. Provide farming recommendations based on this actual weather:
-   - If rain is forecasted (>50% probability), advise postponing spraying/fertilizing
-   - If temperature is high (>35°C), recommend early morning/evening irrigation
-   - If humidity is high (>80%), warn about disease risk
-   - If wind speed is high (>20 km/h), advise against pesticide application
-4. Reference specific forecast days: "Rain expected on ${weatherForecast[0]?.date} with ${weatherForecast[0]?.total_rain.toFixed(1)}mm"
-5. Always mention when the data was last updated for transparency`;
+As a Very Expert Agriculture Scientist, you MUST:
+1. Use this REAL weather data in your response - NEVER make up weather information
+2. For agriculture queries needing weather (watering, fertilizer, spray, etc), analyze weather data and provide expert recommendations
+3. Provide specific, actionable farming advice based on actual weather:
+   • If rain is forecasted (>50% probability), advise postponing spraying/fertilizing with specific timing
+   • If temperature is high (>35°C), recommend early morning (5-7 AM) or evening (5-7 PM) irrigation
+   • If humidity is high (>80%), warn about fungal disease risk and suggest preventive measures
+   • If wind speed is high (>20 km/h), advise against pesticide application and explain why
+4. Reference specific forecast data: "Rain expected on ${weatherForecast[0]?.date} with ${weatherForecast[0]?.max_rain_prob}% probability"
+5. Always mention data source and update time for transparency
+6. Combine weather data with crop stage and soil type for comprehensive expert advice`;
     } else if (isWeatherQuery) {
       systemPrompt += `\n\n⚠️ WEATHER DATA NOT AVAILABLE:
 Weather data could not be retrieved for this location. Inform the farmer politely that:
