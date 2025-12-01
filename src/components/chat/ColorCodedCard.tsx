@@ -27,7 +27,7 @@ export function ColorCodedCard({
     y: 0
   }} transition={{
     delay: index * 0.1
-  }} className="mb-2">
+  }}>
       <Card className={cn("w-full px-3 py-2.5 relative overflow-hidden", "border-l-4 shadow-sm", "transition-all duration-200 hover:shadow-md")} style={{
       borderLeftColor: card.color,
       background: `linear-gradient(135deg, ${card.gradient[0]}06 0%, ${card.gradient[2]}06 100%)`
