@@ -14,10 +14,16 @@ interface ContextData {
   cropSchedule?: any;
   currentGrowthStage?: string;
   daysToHarvest?: number | null;
+  historicalWeather?: any[]; // ✅ NEW: Last 30 days weather
+  weatherTrend?: string; // ✅ NEW: Weather trend analysis
 }
 
 export function buildCompressedContext(data: ContextData): string {
-  const { land, areaInAcres, daysSinceSowing, latestSoilHealth, latestNDVI, ndviData, queryIntent, cropSchedule, currentGrowthStage, daysToHarvest } = data;
+  const { 
+    land, areaInAcres, daysSinceSowing, latestSoilHealth, latestNDVI, ndviData, 
+    queryIntent, cropSchedule, currentGrowthStage, daysToHarvest,
+    historicalWeather, weatherTrend 
+  } = data;
   
   let context = '';
   
@@ -136,6 +142,33 @@ export function buildCompressedContext(data: ContextData): string {
     if (land.location || land.village) {
       context += ` | ${land.village || land.location}`;
     }
+  }
+  
+  // ============= HISTORICAL WEATHER ANALYSIS (NEW) =============
+  if (historicalWeather && historicalWeather.length > 0 && queryIntent.type !== 'general') {
+    const avgTemp = historicalWeather.reduce((sum, w) => sum + (w.temp_avg || w.temp || 0), 0) / historicalWeather.length;
+    const totalRain = historicalWeather.reduce((sum, w) => sum + (w.total_rain || w.rainfall || 0), 0);
+    const avgHumidity = historicalWeather.reduce((sum, w) => sum + (w.avg_humidity || w.humidity || 0), 0) / historicalWeather.length;
+    
+    context += `\nWeather (30d): Temp ${avgTemp.toFixed(1)}°C | Rain ${totalRain}mm | Humid ${avgHumidity.toFixed(0)}%`;
+    if (weatherTrend) context += ` | ${weatherTrend}`;
+  }
+  
+  // ============= SOIL HEALTH TRENDS (NEW) =============
+  if (queryIntent.type === 'fertilizer' && latestSoilHealth) {
+    const testAge = latestSoilHealth.test_date 
+      ? Math.floor((Date.now() - new Date(latestSoilHealth.test_date).getTime()) / (1000 * 60 * 60 * 24))
+      : null;
+    if (testAge && testAge > 90) {
+      context += `\n⚠️ Soil test ${testAge}d old - results may be outdated`;
+    }
+  }
+  
+  // ============= NDVI HISTORICAL TREND (NEW) =============
+  if (queryIntent.type === 'health' && ndviData && ndviData.length >= 3) {
+    const recent = ndviData.slice(0, 3).map(d => Number(d.ndvi_value || d.mean_ndvi));
+    const trend = recent[0] > recent[2] ? 'Improving↑' : recent[0] < recent[2] ? 'Declining↓' : 'Stable→';
+    context += `\nNDVI Trend (3 readings): ${trend} [${recent.map(v => v.toFixed(2)).join(', ')}]`;
   }
   
   return context;
