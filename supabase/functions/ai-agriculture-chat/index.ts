@@ -1631,7 +1631,7 @@ As a Very Expert Agriculture Scientist, you MUST:
 4. Reference specific forecast data: "Rain expected on ${weatherForecast[0]?.date} with ${weatherForecast[0]?.max_rain_prob}% probability"
 5. Always mention data source and update time for transparency
 6. Combine weather data with crop stage and soil type for comprehensive expert advice`;
-    } else if (isWeatherQuery) {
+    } else if (isPureWeatherQuery || isAgricultureWithWeather) {
       systemPrompt += `\n\n⚠️ WEATHER DATA NOT AVAILABLE:
 Weather data could not be retrieved for this location. Inform the farmer politely that:
 - Real-time weather data is temporarily unavailable
