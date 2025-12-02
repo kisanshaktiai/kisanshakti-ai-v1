@@ -28,7 +28,10 @@ export function EnhancedSpeakerButton({
   className
 }: EnhancedSpeakerButtonProps) {
   const { t } = useTranslation();
-  const store = useTTSStore();
+  // Use stable selectors instead of full store object
+  const currentlyPlaying = useTTSStore(state => state.currentlyPlaying);
+  const setCurrentlyPlaying = useTTSStore(state => state.setCurrentlyPlaying);
+  const setPaused = useTTSStore(state => state.setPaused);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
 
@@ -47,51 +50,58 @@ export function EnhancedSpeakerButton({
   } = useAdvancedTextToSpeech({
     language,
     onEnd: () => {
-      store.setCurrentlyPlaying(null);
+      setCurrentlyPlaying(null);
       onPlayStateChange?.(false);
     },
     onError: (error) => {
       console.error('[TTS] Error:', error);
-      store.setCurrentlyPlaying(null);
+      setCurrentlyPlaying(null);
       onPlayStateChange?.(false);
     }
   });
 
-  // Sync with external playing state
-  useEffect(() => {
-    if (externalIsPlaying && !isSpeaking) {
-      handlePlay();
-    } else if (!externalIsPlaying && isSpeaking) {
-      handleStop();
-    }
-  }, [externalIsPlaying]);
-
-  const handlePlay = async () => {
+  // Stable handlers wrapped in useCallback
+  const handlePlay = React.useCallback(async () => {
     // Stop any other playing message
-    if (store.currentlyPlaying && store.currentlyPlaying !== messageId) {
+    if (currentlyPlaying && currentlyPlaying !== messageId) {
       window.speechSynthesis.cancel();
     }
 
-    store.setCurrentlyPlaying(messageId);
+    setCurrentlyPlaying(messageId);
     onPlayStateChange?.(true);
     await speak(content);
-  };
+  }, [currentlyPlaying, messageId, setCurrentlyPlaying, onPlayStateChange, speak, content]);
 
-  const handlePause = () => {
+  const handlePause = React.useCallback(() => {
     pause();
-    store.setPaused(true);
-  };
+    setPaused(true);
+  }, [pause, setPaused]);
 
-  const handleResume = () => {
+  const handleResume = React.useCallback(() => {
     resume();
-    store.setPaused(false);
-  };
+    setPaused(false);
+  }, [resume, setPaused]);
 
-  const handleStop = () => {
+  const handleStop = React.useCallback(() => {
     stop();
-    store.setCurrentlyPlaying(null);
+    setCurrentlyPlaying(null);
     onPlayStateChange?.(false);
-  };
+  }, [stop, setCurrentlyPlaying, onPlayStateChange]);
+
+  // Use ref to track isSpeaking without triggering effects
+  const isSpeakingRef = React.useRef(isSpeaking);
+  React.useEffect(() => {
+    isSpeakingRef.current = isSpeaking;
+  }, [isSpeaking]);
+
+  // Sync with external playing state - only trigger when actually needed
+  React.useEffect(() => {
+    if (externalIsPlaying && !isSpeakingRef.current) {
+      handlePlay();
+    } else if (!externalIsPlaying && isSpeakingRef.current) {
+      handleStop();
+    }
+  }, [externalIsPlaying, handlePlay, handleStop]);
 
   const getFallbackLanguageName = (code: string | null): string => {
     if (!code) return '';
@@ -118,7 +128,7 @@ export function EnhancedSpeakerButton({
     );
   }
 
-  const isThisMessagePlaying = isSpeaking && store.currentlyPlaying === messageId;
+  const isThisMessagePlaying = isSpeaking && currentlyPlaying === messageId;
 
   return (
     <div className="relative inline-flex items-center gap-1">

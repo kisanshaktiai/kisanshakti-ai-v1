@@ -19,25 +19,32 @@ interface TTSSettingsModalProps {
 
 export function TTSSettingsModal({ open, onClose, currentLanguage }: TTSSettingsModalProps) {
   const { t } = useTranslation();
-  const store = useTTSStore();
-  const [localSettings, setLocalSettings] = useState(store.settings);
+  // Use stable selectors instead of full store
+  const settings = useTTSStore(state => state.settings);
+  const updateSettings = useTTSStore(state => state.updateSettings);
+  
+  const [localSettings, setLocalSettings] = useState(settings);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<string>('');
   const [playingPreview, setPlayingPreview] = useState<string | null>(null);
 
-  // Load voices for current language
-  useEffect(() => {
+  // Load voices for current language - no store dependency
+  React.useEffect(() => {
     if (open) {
       const voices = window.speechSynthesis?.getVoices() || [];
       const langPrefix = currentLanguage.split('-')[0];
       const filtered = voices.filter(v => v.lang.startsWith(langPrefix));
       setAvailableVoices(filtered);
 
-      // Set currently selected voice
-      const current = store.settings.selectedVoices[currentLanguage] || filtered[0]?.name || '';
+      // Get current settings directly
+      const currentSettings = useTTSStore.getState().settings;
+      const current = currentSettings.selectedVoices[currentLanguage] || filtered[0]?.name || '';
       setSelectedVoice(current);
+      
+      // Sync local settings with store
+      setLocalSettings(currentSettings);
     }
-  }, [open, currentLanguage, store.settings.selectedVoices]);
+  }, [open, currentLanguage]);
 
   const handleSpeedChange = (value: number[]) => {
     setLocalSettings(prev => ({ ...prev, speed: value[0] }));
@@ -91,7 +98,7 @@ export function TTSSettingsModal({ open, onClose, currentLanguage }: TTSSettings
       }
     };
 
-    store.updateSettings(updatedSettings);
+    updateSettings(updatedSettings);
     
     toast({
       title: t('common.success'),

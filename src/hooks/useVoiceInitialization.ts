@@ -8,7 +8,6 @@ import { voiceDownloadService } from '@/services/voiceDownloadService';
  */
 export function useVoiceInitialization() {
   const { currentLanguage } = useLanguageStore();
-  const ttsStore = useTTSStore();
   const [needsDownload, setNeedsDownload] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
 
@@ -31,6 +30,10 @@ export function useVoiceInitialization() {
       };
 
       await waitForVoices();
+
+      // Update voice availability using getState to avoid dependency issues
+      const voices = window.speechSynthesis.getVoices();
+      useTTSStore.getState().updateVoiceAvailability(voices);
 
       // Verify pre-installed voices
       const missingVoices = await voiceDownloadService.verifyPreInstalledVoices();
