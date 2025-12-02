@@ -3,7 +3,6 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
@@ -136,14 +135,10 @@ export function EnhancedAIChatInterface() {
     // Wait for next tick to ensure DOM is updated
     setTimeout(() => {
       if (scrollAreaRef.current) {
-        // Get the actual viewport element that contains the scroll
-        const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-        if (viewport) {
-          viewport.scrollTo({
-            top: viewport.scrollHeight,
-            behavior: 'smooth'
-          });
-        }
+        scrollAreaRef.current.scrollTo({
+          top: scrollAreaRef.current.scrollHeight,
+          behavior: 'smooth'
+        });
       }
       // Reset flag after scroll completes
       setTimeout(() => {
@@ -191,13 +186,13 @@ export function EnhancedAIChatInterface() {
 
   // Detect user scroll vs auto-scroll
   useEffect(() => {
-    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-    if (!viewport) return;
+    const scrollContainer = scrollAreaRef.current;
+    if (!scrollContainer) return;
 
     const handleScroll = () => {
-      const currentScrollTop = viewport.scrollTop;
-      const scrollHeight = viewport.scrollHeight;
-      const clientHeight = viewport.clientHeight;
+      const currentScrollTop = scrollContainer.scrollTop;
+      const scrollHeight = scrollContainer.scrollHeight;
+      const clientHeight = scrollContainer.clientHeight;
       
       // Check if user scrolled up (not at bottom)
       const isAtBottom = scrollHeight - currentScrollTop - clientHeight < 50;
@@ -214,14 +209,14 @@ export function EnhancedAIChatInterface() {
       lastScrollTop.current = currentScrollTop;
     };
 
-    viewport.addEventListener('scroll', handleScroll, { passive: true });
-    return () => viewport.removeEventListener('scroll', handleScroll);
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    return () => scrollContainer.removeEventListener('scroll', handleScroll);
   }, []);
 
   // MutationObserver to watch for new messages
   useEffect(() => {
-    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-    if (!viewport) return;
+    const scrollContainer = scrollAreaRef.current;
+    if (!scrollContainer) return;
 
     const observer = new MutationObserver((mutations) => {
       // Ignore mutations during auto-scroll to prevent infinite loops
@@ -239,7 +234,7 @@ export function EnhancedAIChatInterface() {
       }
     });
 
-    observer.observe(viewport, {
+    observer.observe(scrollContainer, {
       childList: true,
       subtree: true
     });
@@ -1190,7 +1185,10 @@ export function EnhancedAIChatInterface() {
         </div>
       )}
       
-      <ScrollArea className="h-full px-3 py-4" ref={scrollAreaRef}>
+      <div 
+        ref={scrollAreaRef}
+        className="h-full px-3 py-4 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
+      >
         <AnimatePresence mode="popLayout">
           {/* Show Welcome Card for general chat when no messages */}
           {activeTab === 'general' && messages[activeTab]?.length === 0 && (
@@ -1275,7 +1273,7 @@ export function EnhancedAIChatInterface() {
             </div>
           </motion.div>
         )}
-      </ScrollArea>
+      </div>
     </div>
 
       {/* Suggestion Chips - Show when no messages OR when AI has provided quick replies */}
