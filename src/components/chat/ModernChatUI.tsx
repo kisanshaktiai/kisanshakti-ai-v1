@@ -42,9 +42,20 @@ interface ModernChatUIProps {
 export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: ModernChatUIProps) {
   const isUser = message.role === 'user';
   
+  // Clean markdown symbols for display (**, ##, ---, etc.)
+  const cleanMarkdownForDisplay = (text: string): string => {
+    return text
+      .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove **bold**
+      .replace(/\*(.*?)\*/g, '$1')      // Remove *italic*
+      .replace(/^#{1,6}\s+/gm, '')      // Remove ## headers
+      .replace(/^-{3,}$/gm, '')         // Remove --- separators
+      .replace(/\n{3,}/g, '\n\n');      // Clean multiple newlines
+  };
+  
   // Wrap sentences for highlighting during TTS playback
   const wrapSentences = (text: string) => {
-    const sentences = text.split(/([.!?।॥]+\s+)/).filter(s => s.trim());
+    const cleanedText = cleanMarkdownForDisplay(text);
+    const sentences = cleanedText.split(/([.!?।॥]+\s+)/).filter(s => s.trim());
     return sentences.map((sentence, idx) => (
       <span key={idx} data-sentence={Math.floor(idx / 2)}>
         {sentence}

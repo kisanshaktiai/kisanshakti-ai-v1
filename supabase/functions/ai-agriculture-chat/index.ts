@@ -1179,7 +1179,12 @@ serve(async (req) => {
     }
     
     // ✅ STEP 2: NOW CONSTRUCT SYSTEM PROMPT WITH FETCHED DATA
-let systemPrompt = `You are Dr. KisanShakti AI — PhD Agriculture (IIT-Kharagpur, ICAR-certified), World-Class Agriculture Scientist with expertise from:
+let systemPrompt = `⚠️ CRITICAL: NO MARKDOWN SYNTAX IN YOUR RESPONSES!
+Do NOT use **, ##, ###, ---, *, or any markdown formatting.
+Write plain text with emojis and line breaks for structure.
+
+═══════════════════════════════════════════════════════════════
+You are Dr. KisanShakti AI — PhD Agriculture (IIT-Kharagpur, ICAR-certified), World-Class Agriculture Scientist with expertise from:
 • Indian Council of Agricultural Research (ICAR)
 • Punjab Agricultural University (PAU)
 • Tamil Nadu Agricultural University (TNAU)
@@ -1188,6 +1193,22 @@ let systemPrompt = `You are Dr. KisanShakti AI — PhD Agriculture (IIT-Kharagpu
 
 🎯 PRIMARY OBJECTIVE:
 Deliver scientifically accurate, ICAR-compliant agricultural advice in simple rural language that any farmer (Class 5-8 education) can understand and act upon immediately. Every recommendation must be verifiable, precise, and follow established agricultural science.
+
+📋 RESPONSE FORMATTING RULES (MANDATORY):
+1. ALWAYS structure your response using emoji markers for color-coded cards:
+   🟢 (Green) - Organic solutions, natural methods
+   🟡 (Yellow) - Fertilizer recommendations
+   🔴 (Red) - Pesticide/chemical treatments
+   🟣 (Purple) - Hormones, growth regulators
+   🔵 (Blue) - Irrigation, water management
+   ⚠️ (Warning) - Critical warnings, urgent actions
+   
+2. Start each section with emoji + heading:
+   Example: "🟢 जैविक उपाय\n\nनीम तेल फवारणी..."
+   
+3. NO markdown (no **, ##, ---)
+4. Use simple paragraphs with line breaks
+5. Use numbered lists (1., 2., 3.) for steps
 
 ${landId && landDetails && cropSchedule ? `
 ═══════════════════════════════════════════════════════════════
@@ -2292,6 +2313,18 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       offTopic: trainingData.off_topic
     });
     
+    // ✅ Strip markdown from AI response (safety net)
+    const stripMarkdownFromResponse = (text: string): string => {
+      return text
+        .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove **bold**
+        .replace(/\*(.*?)\*/g, '$1')      // Remove *italic*
+        .replace(/^#{1,6}\s+/gm, '')      // Remove ## headers
+        .replace(/^-{3,}$/gm, '')         // Remove --- separators
+        .replace(/\n{3,}/g, '\n\n');      // Clean multiple newlines
+    };
+    
+    aiMessage = stripMarkdownFromResponse(aiMessage);
+    
     // Extract section tags from AI response for training data
     const sectionTags = extractSectionTags(aiMessage);
     
@@ -2361,21 +2394,46 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       } else {
         console.log('✅ AI message saved with training data:', savedMessage?.[0]?.id);
         
-        // ✅ NEW: Update ai_chat_analytics table
+        // ✅ Update ai_chat_analytics table with proper aggregation
         try {
-          await supabase.from('ai_chat_analytics').upsert({
-            tenant_id: finalTenantId,
-            farmer_id: finalFarmerId,
-            date: new Date().toISOString().split('T')[0],
-            total_messages: messageCount + 1,
-            total_sessions: 1,
-            avg_response_time_ms: responseTime,
-            satisfaction_score: null, // Updated later via feedback
-            topics: trainingData.domain_tags
-          }, {
-            onConflict: 'tenant_id,farmer_id,date',
-            ignoreDuplicates: false
-          });
+          const today = new Date().toISOString().split('T')[0];
+          
+          // Check existing analytics record
+          const { data: existingAnalytics } = await supabase
+            .from('ai_chat_analytics')
+            .select('*')
+            .eq('tenant_id', finalTenantId)
+            .eq('farmer_id', finalFarmerId)
+            .eq('date', today)
+            .single();
+          
+          if (existingAnalytics) {
+            // Update existing record with aggregated values
+            const newTotalMessages = existingAnalytics.total_messages + 2; // user + assistant
+            const newAvgResponseTime = Math.round(
+              ((existingAnalytics.avg_response_time_ms * existingAnalytics.total_messages) + responseTime) / newTotalMessages
+            );
+            const updatedTopics = [...new Set([...(existingAnalytics.topics || []), ...trainingData.domain_tags])];
+            
+            await supabase.from('ai_chat_analytics').update({
+              total_messages: newTotalMessages,
+              avg_response_time_ms: newAvgResponseTime,
+              topics: updatedTopics
+            }).eq('id', existingAnalytics.id);
+          } else {
+            // Insert new record
+            await supabase.from('ai_chat_analytics').insert({
+              tenant_id: finalTenantId,
+              farmer_id: finalFarmerId,
+              date: today,
+              total_messages: 2, // user + assistant
+              total_sessions: 1,
+              avg_response_time_ms: responseTime,
+              satisfaction_score: null,
+              topics: trainingData.domain_tags
+            });
+          }
+          
           console.log('✅ Analytics updated for farmer');
         } catch (analyticsError) {
           console.error('⚠️ Failed to update analytics:', analyticsError);

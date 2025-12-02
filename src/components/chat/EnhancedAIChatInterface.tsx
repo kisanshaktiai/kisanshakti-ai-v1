@@ -513,35 +513,7 @@ export function EnhancedAIChatInterface() {
         console.log('♻️ Reusing existing database session:', sessionId);
       }
       
-      // Save user message immediately with status 'sending'
-      const { error: msgError } = await supabase.from('ai_chat_messages').insert({
-        id: userMessageId,
-        session_id: sessionId,
-        tenant_id: tenantId,
-        farmer_id: farmerId,
-        role: 'user',
-        content: finalMessage,
-        status: 'sending',
-        language: language,
-        message_type: attachedFiles.length > 0 ? 'multimedia' : 'text',
-        word_count: finalMessage.split(/\s+/).length,
-        metadata: {
-          tab: activeTab,
-          landId: land?.id,
-          quickAction: quickAction,
-          attachments: attachedFiles.length
-        },
-        land_context: land ? {
-          land_id: land.id,
-          land_name: land.name,
-          soil_type: land.soil_type,
-          area_acres: land.area_acres,
-          current_crop: land.current_crop
-        } : null,
-        crop_season: getCurrentSeason()
-      });
-      
-      if (msgError) console.error('Error saving user message:', msgError);
+      // ✅ Let edge function handle ALL message saves (prevents duplicates)
       
       // 🤖 Call Land-Specific AI Agent
       // Each land has its own AI agent that:
@@ -558,9 +530,15 @@ export function EnhancedAIChatInterface() {
       const sessionToken = localStorage.getItem('app_session_token') || '';
       
       // CRITICAL: Pass tenant and farmer IDs as headers (required by edge function)
+      // ✅ Send conversation history (last 8 messages) for context
+      const conversationHistory = (messages[activeTab] || []).slice(-8).map(m => ({ 
+        role: m.role, 
+        content: m.content 
+      }));
+      
       const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
         body: {
-          messages: [{ role: 'user', content: finalMessage }],
+          messages: [...conversationHistory, { role: 'user', content: finalMessage }],
           sessionId,
           landId,
           language: language, // Pass user's selected language
