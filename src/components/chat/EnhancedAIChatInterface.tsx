@@ -29,6 +29,8 @@ import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { useLanguageStore } from '@/stores/languageStore';
+import { useVoiceInitialization } from '@/hooks/useVoiceInitialization';
+import { VoiceDownloadCard } from '@/components/onboarding/VoiceDownloadCard';
 
 interface Message {
   id: string;
@@ -74,6 +76,8 @@ export function EnhancedAIChatInterface() {
   const langStore = useLanguageStore();
   const language = langStore.currentLanguage || 'en'; // Use currentLanguage from store
   const isOnline = useOfflineStatus();
+  const { needsDownload, isInitialized, currentLanguage } = useVoiceInitialization();
+  const [showVoiceDownload, setShowVoiceDownload] = useState(false);
   
   // ✅ ALL HOOKS MUST BE DECLARED BEFORE ANY CONDITIONAL RETURNS
   const [activeTab, setActiveTab] = useState('general');

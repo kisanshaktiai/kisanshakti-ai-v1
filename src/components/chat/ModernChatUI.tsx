@@ -1,10 +1,11 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Bot, User, Copy, ThumbsUp, ThumbsDown, Share2, Volume2, Check } from 'lucide-react';
+import { Bot, User, Copy, ThumbsUp, ThumbsDown, Share2, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ColorCodedCard } from './ColorCodedCard';
+import { EnhancedSpeakerButton } from './EnhancedSpeakerButton';
 
 interface Message {
   id: string;
@@ -40,6 +41,16 @@ interface ModernChatUIProps {
 
 export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: ModernChatUIProps) {
   const isUser = message.role === 'user';
+  
+  // Wrap sentences for highlighting during TTS playback
+  const wrapSentences = (text: string) => {
+    const sentences = text.split(/([.!?।॥]+\s+)/).filter(s => s.trim());
+    return sentences.map((sentence, idx) => (
+      <span key={idx} data-sentence={Math.floor(idx / 2)}>
+        {sentence}
+      </span>
+    ));
+  };
   
   return (
     <motion.div
@@ -115,11 +126,14 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
           ) : (
             <>
               {/* Message Text */}
-              <div className={cn(
-                "text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words relative z-10 px-4 py-3",
-                isUser ? "text-white" : "text-foreground"
-              )}>
-                {message.content}
+              <div 
+                className={cn(
+                  "text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words relative z-10 px-4 py-3",
+                  isUser ? "text-white" : "text-foreground"
+                )}
+                data-message-id={message.id}
+              >
+                {isUser ? message.content : wrapSentences(message.content)}
               </div>
               {/* Timestamp for text */}
               <div className={cn(
@@ -157,18 +171,17 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
               )}
             </Button>
 
-            {/* Text-to-Speech Button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => onPlay(message.id, message.content)}
-              className={cn(
-                "h-7 w-7 hover:bg-muted/50 hover:scale-110 transition-all",
-                message.isPlaying && "text-primary animate-pulse"
-              )}
-            >
-              <Volume2 className="h-3.5 w-3.5" />
-            </Button>
+            {/* Enhanced Text-to-Speech Button */}
+            <EnhancedSpeakerButton
+              messageId={message.id}
+              content={message.content}
+              language={navigator.language || 'en-IN'}
+              isPlaying={message.isPlaying}
+              onPlayStateChange={(playing) => {
+                // Update message playing state if needed
+                onPlay(message.id, message.content);
+              }}
+            />
 
             {/* Share Button */}
             <Button
