@@ -111,8 +111,7 @@ export function EnhancedAIChatInterface() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const lastScrollTop = useRef(0);
-  
-  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  const isUserScrollingRef = useRef(false);
   const [transcript, setTranscript] = useState('');
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
@@ -129,7 +128,7 @@ export function EnhancedAIChatInterface() {
   // Move useCallback and useEffect hooks here
   const scrollToBottom = useCallback(() => {
     // Don't auto-scroll if user is manually scrolling
-    if (isUserScrolling) return;
+    if (isUserScrollingRef.current) return;
     
     // Wait for next tick to ensure DOM is updated
     setTimeout(() => {
@@ -144,7 +143,7 @@ export function EnhancedAIChatInterface() {
         }
       }
     }, 100);
-  }, [isUserScrolling]);
+  }, []);
 
   const handleRefresh = useCallback(async () => {
     if (isRefreshing) return;
@@ -174,7 +173,7 @@ export function EnhancedAIChatInterface() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, activeTab, scrollToBottom]);
+  }, [messages, activeTab]);
 
   // Track session start time when switching tabs or sending first message
   useEffect(() => {
@@ -198,11 +197,11 @@ export function EnhancedAIChatInterface() {
       
       // If user manually scrolled up, set flag
       if (currentScrollTop < lastScrollTop.current && !isAtBottom) {
-        setIsUserScrolling(true);
+        isUserScrollingRef.current = true;
       }
       // If user scrolled to bottom, clear flag
       else if (isAtBottom) {
-        setIsUserScrolling(false);
+        isUserScrollingRef.current = false;
       }
       
       lastScrollTop.current = currentScrollTop;
@@ -223,7 +222,7 @@ export function EnhancedAIChatInterface() {
         mutation.type === 'childList' && mutation.addedNodes.length > 0
       );
       
-      if (hasNewContent && !isUserScrolling) {
+      if (hasNewContent && !isUserScrollingRef.current) {
         scrollToBottom();
       }
     });
@@ -234,7 +233,7 @@ export function EnhancedAIChatInterface() {
     });
 
     return () => observer.disconnect();
-  }, [scrollToBottom, isUserScrolling]);
+  }, [scrollToBottom]);
 
   // ✅ CRITICAL FIX: Define loadLandSession FIRST (before fetchLands that depends on it)
   const loadLandSession = useCallback(async (landId: string | null) => {
