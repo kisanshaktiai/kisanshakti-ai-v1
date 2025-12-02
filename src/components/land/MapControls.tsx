@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { useTranslation } from 'react-i18next';
 import { 
   MapPin, 
   Footprints, 
@@ -50,6 +51,8 @@ export function MapControls({
   gpsAccuracy,
   hasValidationError = false,
 }: MapControlsProps) {
+  const { t } = useTranslation();
+  
   return (
     <TooltipProvider>
       <>
@@ -89,7 +92,7 @@ export function MapControls({
                 onClick={() => onModeChange('draw')}
               >
                 <MapPin className="h-3.5 w-3.5 mr-1.5" />
-                Tap to Mark
+                {t('lands.map.mode.tap_to_mark')}
               </Button>
               <Button
                 variant={mode === 'walk' ? 'default' : 'outline'}
@@ -98,7 +101,7 @@ export function MapControls({
                 onClick={() => onModeChange('walk')}
               >
                 <Footprints className="h-3.5 w-3.5 mr-1.5" />
-                Walk Boundary
+                {t('lands.map.mode.walk_boundary')}
               </Button>
             </div>
 
@@ -111,7 +114,7 @@ export function MapControls({
                 onClick={onToggleTracking}
               >
                 <Navigation2 className="h-3.5 w-3.5 mr-1.5" />
-                {isTracking ? 'Stop Tracking' : 'Start GPS Tracking'}
+                {isTracking ? t('lands.map.gps.stop_tracking') : t('lands.map.gps.start_tracking')}
               </Button>
             )}
 
@@ -130,7 +133,7 @@ export function MapControls({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>Undo last point</p>
+                  <p>{t('lands.map.actions.undo')}</p>
                 </TooltipContent>
               </Tooltip>
 
@@ -148,7 +151,7 @@ export function MapControls({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <p>Clear all points</p>
+                    <p>{t('lands.map.actions.clear_all')}</p>
                   </TooltipContent>
                 </Tooltip>
               )}
@@ -160,7 +163,7 @@ export function MapControls({
                 className="flex-1 h-9 bg-primary text-primary-foreground shadow-lg"
               >
                 <Save className="h-3.5 w-3.5 mr-1.5" />
-                Save Boundary
+                {t('lands.map.actions.save_boundary')}
               </Button>
             </div>
           </div>

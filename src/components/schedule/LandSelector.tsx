@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -99,6 +100,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuthStore();
+  const { t } = useTranslation();
   const [scheduleStatuses, setScheduleStatuses] = useState<LandScheduleStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -217,8 +219,8 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
       if (scheduleError) throw scheduleError;
 
       toast({
-        title: '✅ Schedule Deleted',
-        description: 'AI crop schedule has been removed',
+        title: t('schedule.land_selector.toast.deleted'),
+        description: t('schedule.land_selector.toast.deleted_message'),
         className: 'bg-success/10 border-success/20',
       });
 
@@ -227,8 +229,8 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
     } catch (error) {
       console.error('Error deleting schedule:', error);
       toast({
-        title: '❌ Delete Failed',
-        description: 'Failed to delete schedule',
+        title: t('schedule.land_selector.toast.delete_failed'),
+        description: t('schedule.land_selector.toast.delete_failed_message'),
         variant: 'destructive',
       });
     } finally {
@@ -297,7 +299,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                   >
                     <Badge className="bg-gradient-to-r from-primary to-accent text-primary-foreground border-0 shadow-lg flex items-center gap-1.5 px-2.5 py-1">
                       <Sparkles className="h-3 w-3 animate-pulse" />
-                      <span className="text-xs font-semibold">AI Schedule Ready</span>
+                      <span className="text-xs font-semibold">{t('schedule.land_selector.ai_schedule_ready')}</span>
                     </Badge>
                   </motion.div>
                 )}
@@ -307,7 +309,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                   <div className="absolute top-2 right-2 z-10">
                     <Badge variant="outline" className="bg-background/80 backdrop-blur-sm border-muted-foreground/30 flex items-center gap-1.5 px-2.5 py-1">
                       <Calendar className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-xs font-medium text-muted-foreground">Generate Schedule</span>
+                      <span className="text-xs font-medium text-muted-foreground">{t('schedule.land_selector.generate_schedule')}</span>
                     </Badge>
                   </div>
                 )}
@@ -329,7 +331,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                         {land.survey_number && (
                           <p className="text-xs text-muted-foreground flex items-center gap-1">
                             <Grid3x3 className="h-3 w-3" />
-                            Survey #{land.survey_number}
+                            {t('schedule.land_selector.survey', { number: land.survey_number })}
                           </p>
                         )}
                         {hasSchedule && status?.cropName && (
@@ -375,11 +377,11 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                         </div>
                         <div>
                           <p className="text-xl font-bold text-foreground">
-                            {land.area_acres} <span className="text-sm font-medium text-muted-foreground">acres</span>
+                            {land.area_acres} <span className="text-sm font-medium text-muted-foreground">{t('schedule.land_selector.acres')}</span>
                           </p>
                           {land.area_guntas && land.area_guntas > 0 && (
                             <p className="text-xs text-muted-foreground">
-                              {land.area_guntas} guntas
+                              {land.area_guntas} {t('schedule.land_selector.guntas')}
                             </p>
                           )}
                         </div>
@@ -387,8 +389,8 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                       
                       {hasSchedule && (
                         <div className="text-right">
-                          <p className="text-xs text-primary font-semibold">Active</p>
-                          <p className="text-[10px] text-muted-foreground">Click to view</p>
+                          <p className="text-xs text-primary font-semibold">{t('schedule.land_selector.active')}</p>
+                          <p className="text-[10px] text-muted-foreground">{t('schedule.land_selector.click_to_view')}</p>
                         </div>
                       )}
                     </div>
@@ -415,36 +417,36 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                   {/* Pills for attributes */}
                   <div className="flex flex-wrap gap-2">
                     {land.soil_type && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-secondary/20 to-secondary/10 border border-secondary/20">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary/10 border border-secondary/20">
                         <SoilIcon className="h-3.5 w-3.5 text-secondary" />
-                        <span className="text-xs font-medium text-secondary-foreground/90">
+                        <span className="text-xs font-medium text-foreground">
                           {land.soil_type}
                         </span>
                       </div>
                     )}
                     
                     {land.water_source && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-info/20 to-info/10 border border-info/20">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-info/10 border border-info/20">
                         <WaterIcon className="h-3.5 w-3.5 text-info" />
-                        <span className="text-xs font-medium text-info-foreground/90">
+                        <span className="text-xs font-medium text-foreground">
                           {land.water_source}
                         </span>
                       </div>
                     )}
                     
                     {land.irrigation_type && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-accent/20 to-accent/10 border border-accent/20">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20">
                         <Droplets className="h-3.5 w-3.5 text-accent" />
-                        <span className="text-xs font-medium text-accent-foreground/90">
+                        <span className="text-xs font-medium text-foreground">
                           {land.irrigation_type}
                         </span>
                       </div>
                     )}
                     
                     {land.current_crop && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-success/20 to-success/10 border border-success/20">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-success/10 border border-success/20">
                         <CropIcon className="h-3.5 w-3.5 text-success" />
-                        <span className="text-xs font-medium text-success-foreground/90">
+                        <span className="text-xs font-medium text-foreground">
                           {land.current_crop}
                         </span>
                       </div>
@@ -462,22 +464,22 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                            e.stopPropagation();
                            onViewSchedule?.(land.id);
                          }}
-                       >
-                         <Calendar className="h-3.5 w-3.5" />
-                         View
-                       </Button>
-                       <Button
-                         variant="outline"
-                         size="sm"
-                         className="flex-1 gap-2"
-                         onClick={(e) => {
-                           e.stopPropagation();
-                           handleEditSchedule(land.id);
-                         }}
-                       >
-                         <Edit className="h-3.5 w-3.5" />
-                         Edit
-                       </Button>
+                        >
+                          <Calendar className="h-3.5 w-3.5" />
+                          {t('schedule.land_selector.view')}
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 gap-2"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditSchedule(land.id);
+                          }}
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                          {t('schedule.land_selector.edit')}
+                        </Button>
                        <Button
                          variant="outline"
                          size="sm"
@@ -492,20 +494,20 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                      </div>
                    )}
 
-                   {!hasSchedule && (
-                     <Button
-                       variant="outline"
-                       size="sm"
-                       className="w-full mt-3 gap-2"
-                       onClick={(e) => {
-                         e.stopPropagation();
-                         handleCreateSchedule(land);
-                       }}
-                     >
-                       <Plus className="h-3.5 w-3.5" />
-                       Create Schedule
-                     </Button>
-                   )}
+                    {!hasSchedule && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full mt-3 gap-2"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCreateSchedule(land);
+                        }}
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                        {t('schedule.land_selector.create_schedule')}
+                      </Button>
+                    )}
                  </div>
                </Card>
              </motion.div>
@@ -531,7 +533,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
           size="lg"
         >
           <Plus className="h-5 w-5" />
-          <span className="font-medium">Add Land</span>
+          <span className="font-medium">{t('schedule.land_selector.add_land_btn')}</span>
         </Button>
       </motion.div>
 
@@ -539,18 +541,18 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete AI Schedule?</AlertDialogTitle>
+            <AlertDialogTitle>{t('schedule.land_selector.delete_ai_dialog.title')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete the AI-generated crop schedule and all its tasks. This action cannot be undone.
+              {t('schedule.land_selector.delete_ai_dialog.description')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('schedule.land_selector.delete_dialog.cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDeleteSchedule}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t('schedule.land_selector.delete_dialog.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

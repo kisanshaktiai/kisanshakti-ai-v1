@@ -733,19 +733,27 @@ export type Database = {
       }
       ai_chat_messages: {
         Row: {
+          agricultural_accuracy: number | null
           agro_climatic_zone: string | null
           ai_model: string | null
           attachments: Json | null
+          complexity_level: string | null
           content: string
+          conversation_quality_score: number | null
+          conversation_turn_number: number | null
+          correction_notes: string | null
           created_at: string
           crop_context: Json | null
           crop_season: string | null
+          domain_tags: string[] | null
           edited_at: string | null
           error_details: Json | null
+          excluded_reason: string | null
           farmer_id: string
           feedback_rating: number | null
           feedback_text: string | null
           feedback_timestamp: string | null
+          human_verified: boolean | null
           id: string
           image_urls: string[] | null
           ip_address: unknown
@@ -756,8 +764,10 @@ export type Database = {
           location_context: Json | null
           message_type: string | null
           metadata: Json | null
+          off_topic: boolean | null
           parent_message_id: string | null
           partition_key: number | null
+          preprocessed_content: string | null
           rainfall_zone: string | null
           response_time_ms: number | null
           role: string
@@ -766,25 +776,34 @@ export type Database = {
           status: string | null
           tenant_id: string
           tokens_used: number | null
+          training_processed: boolean | null
           updated_at: string | null
           user_agent: string | null
           weather_context: Json | null
           word_count: number | null
         }
         Insert: {
+          agricultural_accuracy?: number | null
           agro_climatic_zone?: string | null
           ai_model?: string | null
           attachments?: Json | null
+          complexity_level?: string | null
           content: string
+          conversation_quality_score?: number | null
+          conversation_turn_number?: number | null
+          correction_notes?: string | null
           created_at?: string
           crop_context?: Json | null
           crop_season?: string | null
+          domain_tags?: string[] | null
           edited_at?: string | null
           error_details?: Json | null
+          excluded_reason?: string | null
           farmer_id: string
           feedback_rating?: number | null
           feedback_text?: string | null
           feedback_timestamp?: string | null
+          human_verified?: boolean | null
           id?: string
           image_urls?: string[] | null
           ip_address?: unknown
@@ -795,8 +814,10 @@ export type Database = {
           location_context?: Json | null
           message_type?: string | null
           metadata?: Json | null
+          off_topic?: boolean | null
           parent_message_id?: string | null
           partition_key?: number | null
+          preprocessed_content?: string | null
           rainfall_zone?: string | null
           response_time_ms?: number | null
           role: string
@@ -805,25 +826,34 @@ export type Database = {
           status?: string | null
           tenant_id: string
           tokens_used?: number | null
+          training_processed?: boolean | null
           updated_at?: string | null
           user_agent?: string | null
           weather_context?: Json | null
           word_count?: number | null
         }
         Update: {
+          agricultural_accuracy?: number | null
           agro_climatic_zone?: string | null
           ai_model?: string | null
           attachments?: Json | null
+          complexity_level?: string | null
           content?: string
+          conversation_quality_score?: number | null
+          conversation_turn_number?: number | null
+          correction_notes?: string | null
           created_at?: string
           crop_context?: Json | null
           crop_season?: string | null
+          domain_tags?: string[] | null
           edited_at?: string | null
           error_details?: Json | null
+          excluded_reason?: string | null
           farmer_id?: string
           feedback_rating?: number | null
           feedback_text?: string | null
           feedback_timestamp?: string | null
+          human_verified?: boolean | null
           id?: string
           image_urls?: string[] | null
           ip_address?: unknown
@@ -834,8 +864,10 @@ export type Database = {
           location_context?: Json | null
           message_type?: string | null
           metadata?: Json | null
+          off_topic?: boolean | null
           parent_message_id?: string | null
           partition_key?: number | null
+          preprocessed_content?: string | null
           rainfall_zone?: string | null
           response_time_ms?: number | null
           role?: string
@@ -844,6 +876,7 @@ export type Database = {
           status?: string | null
           tenant_id?: string
           tokens_used?: number | null
+          training_processed?: boolean | null
           updated_at?: string | null
           user_agent?: string | null
           weather_context?: Json | null
@@ -3629,6 +3662,8 @@ export type Database = {
           group_icon: string
           group_key: string
           group_name: string
+          group_name_hi: string | null
+          group_name_mr: string | null
           id: string
           is_active: boolean
           updated_at: string
@@ -3640,6 +3675,8 @@ export type Database = {
           group_icon?: string
           group_key: string
           group_name: string
+          group_name_hi?: string | null
+          group_name_mr?: string | null
           id?: string
           is_active?: boolean
           updated_at?: string
@@ -3651,6 +3688,8 @@ export type Database = {
           group_icon?: string
           group_key?: string
           group_name?: string
+          group_name_hi?: string | null
+          group_name_mr?: string | null
           id?: string
           is_active?: boolean
           updated_at?: string
@@ -4100,7 +4139,9 @@ export type Database = {
           is_active: boolean | null
           is_popular: boolean | null
           label: string
+          label_hi: string | null
           label_local: string | null
+          label_mr: string | null
           local_name: string | null
           metadata: Json | null
           season: string | null
@@ -4118,7 +4159,9 @@ export type Database = {
           is_active?: boolean | null
           is_popular?: boolean | null
           label: string
+          label_hi?: string | null
           label_local?: string | null
+          label_mr?: string | null
           local_name?: string | null
           metadata?: Json | null
           season?: string | null
@@ -4136,7 +4179,9 @@ export type Database = {
           is_active?: boolean | null
           is_popular?: boolean | null
           label?: string
+          label_hi?: string | null
           label_local?: string | null
+          label_mr?: string | null
           local_name?: string | null
           metadata?: Json | null
           season?: string | null

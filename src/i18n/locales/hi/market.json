@@ -91,6 +91,22 @@
       "product_added": "उत्पाद सफलतापूर्वक जोड़ा गया",
       "order_placed": "ऑर्डर सफलतापूर्वक प्लेस किया गया",
       "error": "कुछ गलत हो गया"
+    },
+    "seller_dashboard": {
+      "title": "विक्रेता डैशबोर्ड",
+      "become_seller": "विक्रेता बनें",
+      "start_selling": "हमारे बाज़ार में अपने उत्पाद बेचना शुरू करें",
+      "register": "विक्रेता के रूप में पंजीकरण करें",
+      "add_product": "उत्पाद जोड़ें",
+      "total_products": "कुल उत्पाद",
+      "total_sales": "कुल बिक्री",
+      "revenue": "राजस्व",
+      "rating": "रेटिंग",
+      "products_tab": "उत्पाद",
+      "orders_tab": "ऑर्डर",
+      "analytics_tab": "विश्लेषण",
+      "order_management_soon": "ऑर्डर प्रबंधन जल्द आ रहा है",
+      "analytics_dashboard_soon": "विश्लेषण डैशबोर्ड जल्द आ रहा है"
     }
   },
   "__qa": {

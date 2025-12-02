@@ -8,10 +8,13 @@ import { Loader2, ChevronLeft, ChevronRight, Check, Search, Sparkles } from 'luc
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 
 interface CropGroup {
   id: string;
   group_name: string;
+  group_name_hi?: string;
+  group_name_mr?: string;
   group_icon: string;
   display_order: number;
 }
@@ -20,6 +23,8 @@ interface Crop {
   id: string;
   label: string;
   label_local?: string;
+  label_hi?: string;
+  label_mr?: string;
   icon?: string;
   season?: string;
   crop_group_id: string;
@@ -43,6 +48,7 @@ export function CentralizedCropSelector({
   showHeader = true,
   variant = 'default'
 }: CentralizedCropSelectorProps) {
+  const { t, i18n } = useTranslation();
   const [step, setStep] = useState<'groups' | 'crops'>('groups');
   const [groups, setGroups] = useState<CropGroup[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
@@ -51,6 +57,20 @@ export function CentralizedCropSelector({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Helper to display localized crop name
+  const displayCropName = (crop: Crop) => {
+    if (i18n.language === 'hi' && crop.label_hi) return crop.label_hi;
+    if (i18n.language === 'mr' && crop.label_mr) return crop.label_mr;
+    return crop.label;
+  };
+
+  // Helper to display localized group name
+  const displayGroupName = (group: CropGroup) => {
+    if (i18n.language === 'hi' && group.group_name_hi) return group.group_name_hi;
+    if (i18n.language === 'mr' && group.group_name_mr) return group.group_name_mr;
+    return group.group_name;
+  };
 
   // Load crop groups on mount
   useEffect(() => {
@@ -71,7 +91,7 @@ export function CentralizedCropSelector({
     try {
       const { data, error: fetchError } = await supabase
         .from('crop_groups')
-        .select('*')
+        .select('id, group_name, group_name_hi, group_name_mr, group_icon, display_order, is_active')
         .eq('is_active', true)
         .order('display_order');
 
@@ -80,7 +100,7 @@ export function CentralizedCropSelector({
       setGroups(data || []);
     } catch (err) {
       console.error('Error loading crop groups:', err);
-      setError('Failed to load crop categories');
+      setError(t('schedule.crop_selector.failed_load_categories'));
     } finally {
       setLoading(false);
     }
@@ -90,7 +110,7 @@ export function CentralizedCropSelector({
     try {
       const { data, error: fetchError } = await supabase
         .from('crops')
-        .select('*')
+        .select('id, label, label_hi, label_mr, icon, season, crop_group_id, is_active')
         .eq('id', cropId)
         .single();
 
@@ -110,7 +130,7 @@ export function CentralizedCropSelector({
     try {
       const { data, error: fetchError } = await supabase
         .from('crops')
-        .select('*')
+        .select('id, label, label_hi, label_mr, icon, season, crop_group_id, is_active, display_order')
         .eq('crop_group_id', group.id)
         .eq('is_active', true)
         .order('display_order');
@@ -127,7 +147,7 @@ export function CentralizedCropSelector({
       setStep('crops');
     } catch (err) {
       console.error('Error loading crops:', err);
-      setError('Failed to load crops');
+      setError(t('schedule.crop_selector.failed_load_crops'));
     } finally {
       setLoading(false);
     }
@@ -212,7 +232,7 @@ export function CentralizedCropSelector({
                 
                 {/* Label with better typography */}
                 <span className="text-[10px] sm:text-xs font-semibold text-foreground/80 group-hover:text-foreground transition-colors text-center leading-tight">
-                  {group.group_name}
+                  {displayGroupName(group)}
                 </span>
                 
                 {/* Subtle arrow indicator */}
@@ -247,7 +267,7 @@ export function CentralizedCropSelector({
           )}
           <span className="font-medium flex items-center gap-2">
             <span className="text-lg">{selectedGroup?.group_icon}</span>
-            {selectedGroup?.group_name}
+            {selectedGroup && displayGroupName(selectedGroup)}
           </span>
         </div>
       )}
@@ -257,7 +277,7 @@ export function CentralizedCropSelector({
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search crops..."
+              placeholder={t('schedule.crop_selector.search_placeholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10 glass-card"
@@ -343,11 +363,11 @@ export function CentralizedCropSelector({
                           "font-semibold text-xs leading-tight transition-colors",
                           isSelected ? "text-primary" : "text-foreground/80 group-hover:text-foreground"
                         )}>
-                          {crop.label}
+                          {displayCropName(crop)}
                         </p>
-                        {crop.label_local && (
+                        {crop.label !== displayCropName(crop) && (
                           <p className="text-[10px] text-muted-foreground/70 leading-tight line-clamp-1">
-                            {crop.label_local}
+                            {crop.label}
                           </p>
                         )}
                       </div>
@@ -358,7 +378,7 @@ export function CentralizedCropSelector({
                           {crop.is_popular && (
                             <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/30">
                               <Sparkles className="h-2 w-2 text-yellow-600 dark:text-yellow-400" />
-                              <span className="text-[9px] font-medium text-yellow-700 dark:text-yellow-300">Hot</span>
+                              <span className="text-[9px] font-medium text-yellow-700 dark:text-yellow-300">{t('schedule.crop_selector.hot')}</span>
                             </span>
                           )}
                           {crop.season && (
@@ -406,7 +426,7 @@ export function CentralizedCropSelector({
       <div className="text-center p-8">
         <p className="text-destructive mb-4">{error}</p>
         <Button onClick={loadCropGroups} variant="outline">
-          Retry
+          {t('schedule.crop_selector.retry')}
         </Button>
       </div>
     );

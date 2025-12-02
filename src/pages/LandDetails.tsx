@@ -158,8 +158,8 @@ export default function LandDetails() {
       
       if (!data) {
         toast({
-          title: 'Error',
-          description: 'Land not found or access denied',
+          title: t('lands.details.error.not_found_title'),
+          description: t('lands.details.error.not_found_message'),
           variant: 'destructive',
         });
         navigate('/app/lands');
@@ -170,8 +170,8 @@ export default function LandDetails() {
     } catch (error) {
       console.error('Error fetching land details:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to fetch land details',
+        title: t('lands.details.error.not_found_title'),
+        description: t('lands.details.error.fetch_failed'),
         variant: 'destructive',
       });
     } finally {
@@ -221,15 +221,15 @@ export default function LandDetails() {
       await landsApi.deleteLand(id);
 
       toast({
-        title: 'Success',
-        description: 'Land deleted successfully',
+        title: t('lands.details.delete.success_title'),
+        description: t('lands.details.delete.success_message'),
       });
       navigate('/app/lands');
     } catch (error) {
       console.error('Error deleting land:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to delete land',
+        title: t('lands.details.delete.error_title'),
+        description: t('lands.details.delete.error_message'),
         variant: 'destructive',
       });
     }
@@ -304,9 +304,9 @@ export default function LandDetails() {
   if (!land) {
     return (
       <div className="text-center py-12">
-        <p className="text-muted-foreground">Land not found</p>
+        <p className="text-muted-foreground">{t('lands.details.not_found')}</p>
         <Button onClick={() => navigate('/app/lands')} className="mt-4">
-          Back to Lands
+          {t('lands.details.back_to_lands')}
         </Button>
       </div>
     );
@@ -376,14 +376,14 @@ export default function LandDetails() {
                   <div className="p-2 rounded-lg bg-primary/10">
                     <MapPin className="h-4 w-4 text-primary" />
                   </div>
-                  <p className="text-xs font-medium text-muted-foreground">Total Area</p>
+                  <p className="text-xs font-medium text-muted-foreground">{t('lands.details.total_area')}</p>
                 </div>
                 <div>
                   <p className="text-2xl md:text-3xl font-bold text-foreground">
                     {land.area_acres}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    acres {land.area_guntas && `· ${land.area_guntas} guntha`}
+                    {t('lands.map.area.acres')} {land.area_guntas && `· ${land.area_guntas} ${t('lands.map.area.guntha')}`}
                   </p>
                 </div>
               </div>
@@ -399,11 +399,11 @@ export default function LandDetails() {
                   <div className="p-2 rounded-lg bg-success/10">
                     <Sprout className="h-4 w-4 text-success" />
                   </div>
-                  <p className="text-xs font-medium text-muted-foreground">Current Crop</p>
+                  <p className="text-xs font-medium text-muted-foreground">{t('lands.details.current_crop')}</p>
                 </div>
                 <div>
                   <p className="text-xl md:text-2xl font-bold text-foreground line-clamp-1">
-                    {land.current_crop || 'No Crop'}
+                    {land.current_crop || t('lands.details.no_crop')}
                   </p>
                   {land.crop_stage && (
                     <Badge variant="secondary" className="mt-1.5 text-xs bg-success/10 text-success border-success/20">
@@ -424,7 +424,7 @@ export default function LandDetails() {
                   <div className="p-2 rounded-lg bg-warning/10">
                     <Mountain className="h-4 w-4 text-warning" />
                   </div>
-                  <p className="text-xs font-medium text-muted-foreground">Soil Health</p>
+                  <p className="text-xs font-medium text-muted-foreground">{t('lands.details.soil_health')}</p>
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
@@ -437,7 +437,7 @@ export default function LandDetails() {
                     <span className="text-xl font-bold text-foreground">{soilHealthScore}%</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {soilHealthScore >= 70 ? 'Good' : soilHealthScore >= 40 ? 'Fair' : 'Needs Care'}
+                    {soilHealthScore >= 70 ? t('lands.details.health_good') : soilHealthScore >= 40 ? t('lands.details.health_fair') : t('lands.details.health_needs_care')}
                   </p>
                 </div>
               </div>
@@ -453,11 +453,11 @@ export default function LandDetails() {
                   <div className="p-2 rounded-lg bg-info/10">
                     <Droplets className="h-4 w-4 text-info" />
                   </div>
-                  <p className="text-xs font-medium text-muted-foreground">Irrigation</p>
+                  <p className="text-xs font-medium text-muted-foreground">{t('lands.details.irrigation')}</p>
                 </div>
                 <div>
                   <p className="text-lg md:text-xl font-bold text-foreground line-clamp-1">
-                    {land.irrigation_source || 'Not Set'}
+                    {land.irrigation_source || t('lands.details.not_set')}
                   </p>
                   {land.water_source && (
                     <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
@@ -482,7 +482,7 @@ export default function LandDetails() {
               >
                 <div className="flex flex-col items-center gap-1">
                   <FileText className="h-4 w-4" />
-                  <span className="hidden sm:inline">Overview</span>
+                  <span className="hidden sm:inline">{t('lands.details.tabs.overview')}</span>
                 </div>
               </TabsTrigger>
               <TabsTrigger 
@@ -491,7 +491,7 @@ export default function LandDetails() {
               >
                 <div className="flex flex-col items-center gap-1">
                   <Mountain className="h-4 w-4" />
-                  <span className="hidden sm:inline">Soil</span>
+                  <span className="hidden sm:inline">{t('lands.details.tabs.soil')}</span>
                 </div>
               </TabsTrigger>
               <TabsTrigger 
@@ -500,7 +500,7 @@ export default function LandDetails() {
               >
                 <div className="flex flex-col items-center gap-1">
                   <Activity className="h-4 w-4" />
-                  <span className="hidden sm:inline">Activity</span>
+                  <span className="hidden sm:inline">{t('lands.details.tabs.activities')}</span>
                 </div>
               </TabsTrigger>
               <TabsTrigger 
@@ -509,7 +509,7 @@ export default function LandDetails() {
               >
                 <div className="flex flex-col items-center gap-1">
                   <History className="h-4 w-4" />
-                  <span className="hidden sm:inline">History</span>
+                  <span className="hidden sm:inline">{t('lands.details.tabs.history')}</span>
                 </div>
               </TabsTrigger>
               <TabsTrigger 
@@ -518,7 +518,7 @@ export default function LandDetails() {
               >
                 <div className="flex flex-col items-center gap-1">
                   <Camera className="h-4 w-4" />
-                  <span className="hidden sm:inline">Gallery</span>
+                  <span className="hidden sm:inline">{t('lands.details.tabs.gallery')}</span>
                 </div>
               </TabsTrigger>
             </TabsList>
@@ -530,39 +530,39 @@ export default function LandDetails() {
               <CardHeader className="pb-4">
                 <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
                   <MapPin className="h-5 w-5 text-primary" />
-                  Land Information
+                  {t('lands.details.land_info')}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Info Item */}
                   <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
-                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Survey Number</p>
-                    <p className="text-base font-semibold text-foreground">{land.survey_number || 'Not Available'}</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">{t('lands.details.survey_number_label')}</p>
+                    <p className="text-base font-semibold text-foreground">{land.survey_number || t('lands.details.not_available')}</p>
                   </div>
                   
                   <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
-                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Ownership Type</p>
-                    <p className="text-base font-semibold text-foreground">{land.ownership_type || 'Not Specified'}</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">{t('lands.details.ownership_type_label')}</p>
+                    <p className="text-base font-semibold text-foreground">{land.ownership_type || t('lands.details.not_specified')}</p>
                   </div>
                   
                   <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
-                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Soil Type</p>
-                    <p className="text-base font-semibold text-foreground">{land.soil_type || 'Not Specified'}</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">{t('lands.details.soil_type_label')}</p>
+                    <p className="text-base font-semibold text-foreground">{land.soil_type || t('lands.details.not_specified')}</p>
                   </div>
                   
                   <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
-                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Location</p>
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">{t('lands.details.location_label')}</p>
                     <p className="text-base font-semibold text-foreground">
                       {[land.village, land.taluka, land.district, land.state]
                         .filter(Boolean)
-                        .join(', ') || 'Not specified'}
+                        .join(', ') || t('lands.details.not_specified')}
                     </p>
                   </div>
                   
                   {land.last_sowing_date && (
                     <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
-                      <p className="text-xs font-medium text-muted-foreground mb-1.5">Last Sowing</p>
+                      <p className="text-xs font-medium text-muted-foreground mb-1.5">{t('lands.details.last_sowing')}</p>
                       <p className="text-base font-semibold text-foreground">
                         {new Date(land.last_sowing_date).toLocaleDateString('en-IN', {
                           day: 'numeric',
@@ -575,7 +575,7 @@ export default function LandDetails() {
                   
                   {land.expected_harvest_date && (
                     <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
-                      <p className="text-xs font-medium text-muted-foreground mb-1.5">Expected Harvest</p>
+                      <p className="text-xs font-medium text-muted-foreground mb-1.5">{t('lands.details.expected_harvest')}</p>
                       <p className="text-base font-semibold text-foreground">
                         {new Date(land.expected_harvest_date).toLocaleDateString('en-IN', {
                           day: 'numeric',
@@ -595,7 +595,7 @@ export default function LandDetails() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
                     <Activity className="h-5 w-5 text-primary" />
-                    Recent Activities
+                    {t('lands.details.recent_activities')}
                   </CardTitle>
                   <Button 
                     size="lg"
@@ -603,7 +603,7 @@ export default function LandDetails() {
                     className="min-h-[44px] rounded-xl bg-primary hover:bg-primary-hover"
                   >
                     <Plus className="h-5 w-5 mr-2" />
-                    <span className="font-medium">Add</span>
+                    <span className="font-medium">{t('lands.details.add')}</span>
                   </Button>
                 </div>
               </CardHeader>
@@ -614,10 +614,10 @@ export default function LandDetails() {
                       <Activity className="h-8 w-8 text-muted-foreground" />
                     </div>
                     <p className="text-base font-medium text-muted-foreground">
-                      No activities recorded yet
+                      {t('lands.details.no_activities')}
                     </p>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Start tracking your farm activities
+                      {t('lands.details.start_tracking')}
                     </p>
                   </div>
                 ) : (
@@ -659,13 +659,13 @@ export default function LandDetails() {
               <CardHeader className="pb-4">
                 <CardTitle className="text-xl font-bold text-foreground flex items-center gap-2">
                   <Mountain className="h-5 w-5 text-primary" />
-                  Soil Health Overview
+                  {t('lands.details.soil_overview')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <h3 className="font-semibold mb-4">Soil Composition</h3>
+                  <h3 className="font-semibold mb-4">{t('lands.details.soil_composition')}</h3>
                   <ResponsiveContainer width="100%" height={200}>
                     <RadialBarChart cx="50%" cy="50%" innerRadius="10%" outerRadius="90%" data={soilHealthData}>
                       <RadialBar dataKey="value" />
@@ -677,8 +677,8 @@ export default function LandDetails() {
                 <div className="space-y-4">
                   <div>
                     <div className="flex justify-between mb-2">
-                      <span className="text-sm text-muted-foreground">Soil pH</span>
-                      <span className="font-medium">{land.soil_ph || 'Not Tested'}</span>
+                      <span className="text-sm text-muted-foreground">{t('lands.details.soil_ph')}</span>
+                      <span className="font-medium">{land.soil_ph || t('lands.details.not_tested')}</span>
                     </div>
                     {land.soil_ph && (
                       <Progress 
@@ -690,9 +690,9 @@ export default function LandDetails() {
                   
                   <div>
                     <div className="flex justify-between mb-2">
-                      <span className="text-sm text-muted-foreground">Organic Carbon</span>
+                      <span className="text-sm text-muted-foreground">{t('lands.details.organic_carbon')}</span>
                       <span className="font-medium">
-                        {land.organic_carbon_percent ? `${land.organic_carbon_percent}%` : 'Not Tested'}
+                        {land.organic_carbon_percent ? `${land.organic_carbon_percent}%` : t('lands.details.not_tested')}
                       </span>
                     </div>
                     {land.organic_carbon_percent && (
@@ -705,19 +705,19 @@ export default function LandDetails() {
                   
                   <div className="grid grid-cols-3 gap-2">
                     <div className="text-center p-3 bg-muted rounded-lg">
-                      <p className="text-xs text-muted-foreground">Nitrogen</p>
+                      <p className="text-xs text-muted-foreground">{t('lands.details.nitrogen')}</p>
                       <p className="font-bold">{land.nitrogen_kg_per_ha || 0}</p>
-                      <p className="text-xs">kg/ha</p>
+                      <p className="text-xs">{t('lands.details.kg_ha')}</p>
                     </div>
                     <div className="text-center p-3 bg-muted rounded-lg">
-                      <p className="text-xs text-muted-foreground">Phosphorus</p>
+                      <p className="text-xs text-muted-foreground">{t('lands.details.phosphorus')}</p>
                       <p className="font-bold">{land.phosphorus_kg_per_ha || 0}</p>
-                      <p className="text-xs">kg/ha</p>
+                      <p className="text-xs">{t('lands.details.kg_ha')}</p>
                     </div>
                     <div className="text-center p-3 bg-muted rounded-lg">
-                      <p className="text-xs text-muted-foreground">Potassium</p>
+                      <p className="text-xs text-muted-foreground">{t('lands.details.potassium')}</p>
                       <p className="font-bold">{land.potassium_kg_per_ha || 0}</p>
-                      <p className="text-xs">kg/ha</p>
+                      <p className="text-xs">{t('lands.details.kg_ha')}</p>
                     </div>
                   </div>
                 </div>
@@ -726,7 +726,7 @@ export default function LandDetails() {
               {land.last_soil_test_date && (
                 <div className="mt-4 p-4 bg-muted rounded-lg">
                   <p className="text-sm text-muted-foreground">
-                    Last soil test conducted on {new Date(land.last_soil_test_date).toLocaleDateString()}
+                    {t('lands.details.last_soil_test', { date: new Date(land.last_soil_test_date).toLocaleDateString() })}
                   </p>
                 </div>
               )}
@@ -737,10 +737,10 @@ export default function LandDetails() {
         <TabsContent value="activities" className="space-y-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Activity Log</CardTitle>
+              <CardTitle>{t('lands.details.activity_log')}</CardTitle>
               <Button onClick={() => navigate(`/app/lands/${id}/activities/add`)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Log Activity
+                {t('lands.details.log_activity')}
               </Button>
             </CardHeader>
             <CardContent>
@@ -753,8 +753,8 @@ export default function LandDetails() {
                     <YAxis yAxisId="right" orientation="right" />
                     <Tooltip />
                     <Legend />
-                    <Bar yAxisId="left" dataKey="activities" fill="hsl(var(--primary))" name="Activities" />
-                    <Bar yAxisId="right" dataKey="cost" fill="hsl(var(--destructive))" name="Cost (₹)" />
+                    <Bar yAxisId="left" dataKey="activities" fill="hsl(var(--primary))" name={t('lands.details.activities_count')} />
+                    <Bar yAxisId="right" dataKey="cost" fill="hsl(var(--destructive))" name={t('lands.details.cost_label')} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -775,7 +775,7 @@ export default function LandDetails() {
                         )}
                         {activity.notes && (
                           <p className="text-sm text-muted-foreground mt-2">
-                            Note: {activity.notes}
+                            {t('lands.details.note')}: {activity.notes}
                           </p>
                         )}
                       </div>
@@ -803,10 +803,10 @@ export default function LandDetails() {
         <TabsContent value="history" className="space-y-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Crop History</CardTitle>
+              <CardTitle>{t('lands.details.crop_history')}</CardTitle>
               <Button onClick={() => navigate(`/app/lands/${id}/crop-history/add`)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Add Crop Record
+                {t('lands.details.add_crop_record')}
               </Button>
             </CardHeader>
             <CardContent>
@@ -819,8 +819,8 @@ export default function LandDetails() {
                     <YAxis yAxisId="right" orientation="right" />
                     <Tooltip />
                     <Legend />
-                    <Line yAxisId="left" type="monotone" dataKey="yield" stroke="hsl(var(--primary))" name="Yield" />
-                    <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="hsl(var(--success))" name="Revenue (₹)" />
+                    <Line yAxisId="left" type="monotone" dataKey="yield" stroke="hsl(var(--primary))" name={t('lands.details.yield_label')} />
+                    <Line yAxisId="right" type="monotone" dataKey="revenue" stroke="hsl(var(--success))" name={t('lands.details.revenue_label')} />
                   </LineChart>
                 </ResponsiveContainer>
               )}
@@ -828,7 +828,7 @@ export default function LandDetails() {
               {cropHistory.length === 0 ? (
                 <div className="text-center py-12">
                   <History className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground">No crop history available</p>
+                  <p className="text-muted-foreground">{t('lands.details.no_crop_history')}</p>
                 </div>
               ) : (
                 <div className="mt-6 space-y-2">
@@ -838,14 +838,14 @@ export default function LandDetails() {
                         <div>
                           <p className="font-medium text-lg">{crop.crop_name}</p>
                           <p className="text-sm text-muted-foreground">
-                            Sown: {new Date(crop.planting_date).toLocaleDateString()}
-                            {crop.harvest_date && ` • Harvested: ${new Date(crop.harvest_date).toLocaleDateString()}`}
+                            {t('lands.details.sown')}: {new Date(crop.planting_date).toLocaleDateString()}
+                            {crop.harvest_date && ` • ${t('lands.details.harvested')}: ${new Date(crop.harvest_date).toLocaleDateString()}`}
                           </p>
                         </div>
                         <div className="text-right">
                           {crop.yield_kg_per_acre && (
                             <p className="font-medium">
-                              {crop.yield_kg_per_acre} kg/acre
+                              {crop.yield_kg_per_acre} {t('lands.details.kg_acre')}
                             </p>
                           )}
                           {crop.growth_stage && (
@@ -866,22 +866,22 @@ export default function LandDetails() {
         <TabsContent value="gallery" className="space-y-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Photo Gallery</CardTitle>
+              <CardTitle>{t('lands.details.photo_gallery')}</CardTitle>
               <Button onClick={() => navigate(`/app/lands/${id}/gallery/upload`)}>
                 <Camera className="h-4 w-4 mr-2" />
-                Upload Photos
+                {t('lands.details.upload_photos')}
               </Button>
             </CardHeader>
             <CardContent>
               <div className="text-center py-12">
                 <Camera className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">No photos uploaded yet</p>
+                <p className="text-muted-foreground">{t('lands.details.no_photos')}</p>
                 <Button 
                   variant="outline" 
                   className="mt-4"
                   onClick={() => navigate(`/app/lands/${id}/gallery/upload`)}
                 >
-                  Upload First Photo
+                  {t('lands.details.upload_first_photo')}
                 </Button>
               </div>
             </CardContent>
@@ -897,18 +897,18 @@ export default function LandDetails() {
             <div className="mx-auto w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
               <AlertTriangle className="h-8 w-8 text-destructive" />
             </div>
-            <AlertDialogTitle className="text-xl text-center">Delete Land Parcel?</AlertDialogTitle>
+            <AlertDialogTitle className="text-xl text-center">{t('lands.details.delete.dialog_title')}</AlertDialogTitle>
             <AlertDialogDescription className="text-center text-base">
-              This will permanently delete "{land.name}" and all associated data. This action cannot be undone.
+              {t('lands.details.delete.dialog_description', { name: land.name })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col sm:flex-row gap-2">
-            <AlertDialogCancel className="min-h-[48px] rounded-xl font-medium">Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="min-h-[48px] rounded-xl font-medium">{t('lands.details.delete.cancel')}</AlertDialogCancel>
             <AlertDialogAction 
               onClick={handleDelete} 
               className="min-h-[48px] rounded-xl bg-destructive hover:bg-destructive/90 font-medium"
             >
-              Delete Permanently
+              {t('lands.details.delete.confirm')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

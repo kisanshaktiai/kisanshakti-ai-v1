@@ -91,6 +91,22 @@
       "product_added": "Product added successfully",
       "order_placed": "Order placed successfully",
       "error": "Something went wrong"
+    },
+    "seller_dashboard": {
+      "title": "Seller Dashboard",
+      "become_seller": "Become a Seller",
+      "start_selling": "Start selling your products on our marketplace",
+      "register": "Register as Seller",
+      "add_product": "Add Product",
+      "total_products": "Total Products",
+      "total_sales": "Total Sales",
+      "revenue": "Revenue",
+      "rating": "Rating",
+      "products_tab": "Products",
+      "orders_tab": "Orders",
+      "analytics_tab": "Analytics",
+      "order_management_soon": "Order management coming soon",
+      "analytics_dashboard_soon": "Analytics dashboard coming soon"
     }
   },
   "__qa": {

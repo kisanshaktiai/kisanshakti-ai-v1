@@ -3,15 +3,14 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import { 
-  Send, Mic, MicOff, Volume2, VolumeX, Loader2, Bot, User, 
+  Send, Mic, MicOff, Loader2, Bot, 
   RefreshCw, Wifi, WifiOff, MessageSquare, Mountain, 
-  Paperclip, Camera, Image, ArrowLeft, ChevronDown,
-  ThumbsUp, ThumbsDown, Copy, Share2, Check, Search, X, Clock, MessageCircle
+  Paperclip, Camera, Image, ArrowLeft,
+  Search, X, Clock, MessageCircle
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -24,10 +23,13 @@ import { landsApi } from '@/services/landsApi';
 import { LandContextCard } from './LandContextCard';
 import { GeneralChatWelcomeCard } from './GeneralChatWelcomeCard';
 import { ResponseSectionCard } from './ResponseSectionCard';
+import { ModernChatUI } from './ModernChatUI';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { useLanguageStore } from '@/stores/languageStore';
+import { useVoiceInitialization } from '@/hooks/useVoiceInitialization';
+import { VoiceDownloadCard } from '@/components/onboarding/VoiceDownloadCard';
 
 interface Message {
   id: string;
@@ -47,6 +49,20 @@ interface Message {
     pest?: string;
     weather?: string;
   };
+  // ✅ NEW: Color-coded cards
+  structuredResponse?: {
+    cards: Array<{
+      id: string;
+      type: 'organic' | 'fertilizer' | 'pesticide' | 'warning' | 'success' | 'info' | 'hormone' | 'irrigation';
+      title: string;
+      content: string;
+      color: string;
+      gradient: string[];
+      icon: string;
+      priority: number;
+    }>;
+    language: string;
+  };
   feedback?: 'like' | 'dislike' | null;
   isCopied?: boolean;
 }
@@ -57,18 +73,12 @@ export function EnhancedAIChatInterface() {
   const { user } = useAuthStore();
   const { tenant, isLoading: isTenantLoading } = useTenant();
   const langStore = useLanguageStore();
-  const language = (langStore as any).selectedLanguage || 'en';
+  const language = langStore.currentLanguage || 'en'; // Use currentLanguage from store
   const isOnline = useOfflineStatus();
+  const { needsDownload, isInitialized, currentLanguage } = useVoiceInitialization();
+  const [showVoiceDownload, setShowVoiceDownload] = useState(false);
   
-  // Guard: Don't render until tenant is loaded
-  if (isTenantLoading || !tenant || !user) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-  
+  // ✅ ALL HOOKS MUST BE DECLARED BEFORE ANY CONDITIONAL RETURNS
   const [activeTab, setActiveTab] = useState('general');
   const [lands, setLands] = useState<any[]>([]);
   
@@ -83,6 +93,7 @@ export function EnhancedAIChatInterface() {
   });
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState(''); // ✅ NEW: Loading message state
   const [sessionIds, setSessionIds] = useState<Record<string, string>>({});
   const [loadedSessionIds, setLoadedSessionIds] = useState<Set<string>>(new Set()); // Track sessions loaded from DB
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
@@ -98,10 +109,13 @@ export function EnhancedAIChatInterface() {
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const [isUserScrolling, setIsUserScrolling] = useState(false);
   const lastScrollTop = useRef(0);
-  
+  const isUserScrollingRef = useRef(false);
+  const isAutoScrollingRef = useRef(false);
   const [transcript, setTranscript] = useState('');
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchEnd, setTouchEnd] = useState(0);
+  
   const { isListening, startListening: originalStartListening, stopListening } = useSpeechRecognition({
     onTranscript: (text) => setTranscript(text)
   });
@@ -109,43 +123,38 @@ export function EnhancedAIChatInterface() {
   const { speak, stop: stopSpeaking, isSpeaking } = useTextToSpeech({
     language: language === 'hi' ? 'hi-IN' : language === 'pa' ? 'pa-IN' : language === 'mr' ? 'mr-IN' : language === 'ta' ? 'ta-IN' : 'en-IN'
   });
+  
+  // ✅ CRITICAL FIX: ALL HOOKS MUST BE BEFORE CONDITIONAL RETURNS
+  // Move useCallback and useEffect hooks here
+  const scrollToBottom = useCallback(() => {
+    // Don't auto-scroll if user is manually scrolling or already auto-scrolling
+    if (isUserScrollingRef.current || isAutoScrollingRef.current) return;
+    
+    isAutoScrollingRef.current = true;
+    
+    // Wait for next tick to ensure DOM is updated
+    setTimeout(() => {
+      if (scrollAreaRef.current) {
+        scrollAreaRef.current.scrollTo({
+          top: scrollAreaRef.current.scrollHeight,
+          behavior: 'smooth'
+        });
+      }
+      // Reset flag after scroll completes
+      setTimeout(() => {
+        isAutoScrollingRef.current = false;
+      }, 300);
+    }, 100);
+  }, []);
 
-  // Request microphone permission
-  const startListening = async () => {
-    try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      originalStartListening();
-    } catch (error) {
-      toast({
-        title: t('common.error'),
-        description: t('chat.microphonePermissionRequired'),
-        variant: 'destructive'
-      });
-    }
-  };
-
-  // Request camera permission
-  const requestCameraPermission = async () => {
-    try {
-      await navigator.mediaDevices.getUserMedia({ video: true });
-      return true;
-    } catch (error) {
-      toast({
-        title: t('common.error'),
-        description: t('chat.cameraPermissionRequired'),
-        variant: 'destructive'
-      });
-      return false;
-    }
-  };
-
-  // Pull to refresh handler
   const handleRefresh = useCallback(async () => {
     if (isRefreshing) return;
     
     setIsRefreshing(true);
     try {
-      await fetchLands();
+      // fetchLands will be called after the component is mounted
+      const fetchedLands = await landsApi.fetchLands();
+      setLands(fetchedLands);
       toast({
         title: t('common.success'),
         description: t('chat.refreshed')
@@ -155,42 +164,9 @@ export function EnhancedAIChatInterface() {
     } finally {
       setTimeout(() => setIsRefreshing(false), 1000);
     }
-  }, [isRefreshing]);
+  }, [isRefreshing, t]);
 
-  // Touch event handlers for pull-to-refresh
-  const [touchStart, setTouchStart] = useState(0);
-  const [touchEnd, setTouchEnd] = useState(0);
-  
-  const handleTouchStart = (e: React.TouchEvent) => {
-    setTouchStart(e.targetTouches[0].clientY);
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    setTouchEnd(e.targetTouches[0].clientY);
-  };
-
-  const handleTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-    const distance = touchEnd - touchStart;
-    const isDownSwipe = distance > 50;
-    const isAtTop = scrollAreaRef.current?.scrollTop === 0;
-    
-    if (isDownSwipe && isAtTop) {
-      handleRefresh();
-    }
-  };
-
-  useEffect(() => {
-    fetchLands();
-  }, []);
-
-  // Track session start time when switching tabs or sending first message
-  useEffect(() => {
-    if (!sessionStartTime[activeTab] && messages[activeTab]?.length > 0) {
-      setSessionStartTime(prev => ({ ...prev, [activeTab]: new Date() }));
-    }
-  }, [activeTab, messages]);
-
+  // All useEffect hooks MUST be before conditional return
   useEffect(() => {
     if (transcript) {
       setInputValue(transcript);
@@ -201,20 +177,92 @@ export function EnhancedAIChatInterface() {
     scrollToBottom();
   }, [messages, activeTab]);
 
-  // Load session and messages for a specific land (or general chat if landId is null)
-  const loadLandSession = async (landId: string | null) => {
+  // Track session start time when switching tabs or sending first message
+  useEffect(() => {
+    if (!sessionStartTime[activeTab] && messages[activeTab]?.length > 0) {
+      setSessionStartTime(prev => ({ ...prev, [activeTab]: new Date() }));
+    }
+  }, [activeTab, messages, sessionStartTime]);
+
+  // Detect user scroll vs auto-scroll
+  useEffect(() => {
+    const scrollContainer = scrollAreaRef.current;
+    if (!scrollContainer) return;
+
+    const handleScroll = () => {
+      const currentScrollTop = scrollContainer.scrollTop;
+      const scrollHeight = scrollContainer.scrollHeight;
+      const clientHeight = scrollContainer.clientHeight;
+      
+      // Check if user scrolled up (not at bottom)
+      const isAtBottom = scrollHeight - currentScrollTop - clientHeight < 50;
+      
+      // If user manually scrolled up, set flag
+      if (currentScrollTop < lastScrollTop.current && !isAtBottom) {
+        isUserScrollingRef.current = true;
+      }
+      // If user scrolled to bottom, clear flag
+      else if (isAtBottom) {
+        isUserScrollingRef.current = false;
+      }
+      
+      lastScrollTop.current = currentScrollTop;
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    return () => scrollContainer.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // MutationObserver to watch for new messages
+  useEffect(() => {
+    const scrollContainer = scrollAreaRef.current;
+    if (!scrollContainer) return;
+
+    const observer = new MutationObserver((mutations) => {
+      // Ignore mutations during auto-scroll to prevent infinite loops
+      if (isAutoScrollingRef.current) return;
+      
+      // Check if new content was added (ignore attribute/style changes)
+      const hasNewContent = mutations.some(mutation => 
+        mutation.type === 'childList' && 
+        mutation.addedNodes.length > 0 &&
+        Array.from(mutation.addedNodes).some(node => node.nodeType === Node.ELEMENT_NODE)
+      );
+      
+      if (hasNewContent && !isUserScrollingRef.current) {
+        scrollToBottom();
+      }
+    });
+
+    observer.observe(scrollContainer, {
+      childList: true,
+      subtree: true
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  // ✅ CRITICAL FIX: Define loadLandSession FIRST (before fetchLands that depends on it)
+  const loadLandSession = useCallback(async (landId: string | null) => {
     try {
-      // Get existing active session for this land
-      const { data: existingSession } = await supabase
+      // Build query for existing active session
+      let sessionQuery = supabase
         .from('ai_chat_sessions')
         .select('id')
         .eq('farmer_id', user?.id)
         .eq('tenant_id', tenant?.id)
-        .eq('land_id', landId)
         .eq('is_active', true)
         .order('updated_at', { ascending: false })
-        .limit(1)
-        .single();
+        .limit(1);
+      
+      // Handle null landId properly - use is null filter instead of eq
+      if (landId === null) {
+        sessionQuery = sessionQuery.is('land_id', null);
+      } else {
+        sessionQuery = sessionQuery.eq('land_id', landId);
+      }
+      
+      const { data: existingSession } = await sessionQuery.single();
 
       if (existingSession) {
         console.log(`✅ Loaded session for ${landId || 'general'}:`, existingSession.id);
@@ -249,9 +297,10 @@ export function EnhancedAIChatInterface() {
       console.error(`Error loading session for ${landId || 'general'}:`, error);
       return { sessionId: null, messages: [] };
     }
-  };
+  }, [user?.id, tenant?.id]);
 
-  const fetchLands = async () => {
+  // ✅ CRITICAL FIX: fetchLands wrapped in useCallback with proper dependencies
+  const fetchLands = useCallback(async () => {
     try {
       const fetchedLands = await landsApi.fetchLands();
       setLands(fetchedLands);
@@ -296,79 +345,73 @@ export function EnhancedAIChatInterface() {
     } catch (error) {
       console.error('Error fetching lands:', error);
     }
+  }, [loadLandSession]); // fetchLands depends on loadLandSession
+
+  // ✅ Initialize lands on mount - MUST be before conditional return
+  useEffect(() => {
+    fetchLands();
+  }, [fetchLands]);
+
+  // ✅ All hooks are now declared BEFORE conditional returns
+  // Guard: Don't render until tenant is loaded
+  if (isTenantLoading || !tenant || !user) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Request microphone permission
+  const startListening = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      originalStartListening();
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: t('chat.microphonePermissionRequired'),
+        variant: 'destructive'
+      });
+    }
   };
 
-  const scrollToBottom = useCallback(() => {
-    // Don't auto-scroll if user is manually scrolling
-    if (isUserScrolling) return;
+  // Request camera permission
+  const requestCameraPermission = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ video: true });
+      return true;
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: t('chat.cameraPermissionRequired'),
+        variant: 'destructive'
+      });
+      return false;
+    }
+  };
+
+  // Touch event handlers for pull-to-refresh
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStart(e.targetTouches[0].clientY);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientY);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchEnd - touchStart;
+    const isDownSwipe = distance > 50;
+    const isAtTop = scrollAreaRef.current?.scrollTop === 0;
     
-    // Wait for next tick to ensure DOM is updated
-    setTimeout(() => {
-      if (scrollAreaRef.current) {
-        // Get the actual viewport element that contains the scroll
-        const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-        if (viewport) {
-          viewport.scrollTo({
-            top: viewport.scrollHeight,
-            behavior: 'smooth'
-          });
-        }
-      }
-    }, 100);
-  }, [isUserScrolling]);
+    if (isDownSwipe && isAtTop) {
+      handleRefresh();
+    }
+  };
 
-  // Detect user scroll vs auto-scroll
-  useEffect(() => {
-    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-    if (!viewport) return;
-
-    const handleScroll = () => {
-      const currentScrollTop = viewport.scrollTop;
-      const scrollHeight = viewport.scrollHeight;
-      const clientHeight = viewport.clientHeight;
-      
-      // Check if user scrolled up (not at bottom)
-      const isAtBottom = scrollHeight - currentScrollTop - clientHeight < 50;
-      
-      // If user manually scrolled up, set flag
-      if (currentScrollTop < lastScrollTop.current && !isAtBottom) {
-        setIsUserScrolling(true);
-      }
-      // If user scrolled to bottom, clear flag
-      else if (isAtBottom) {
-        setIsUserScrolling(false);
-      }
-      
-      lastScrollTop.current = currentScrollTop;
-    };
-
-    viewport.addEventListener('scroll', handleScroll, { passive: true });
-    return () => viewport.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  // MutationObserver to watch for new messages
-  useEffect(() => {
-    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-    if (!viewport) return;
-
-    const observer = new MutationObserver((mutations) => {
-      // Check if new content was added
-      const hasNewContent = mutations.some(mutation => 
-        mutation.type === 'childList' && mutation.addedNodes.length > 0
-      );
-      
-      if (hasNewContent && !isUserScrolling) {
-        scrollToBottom();
-      }
-    });
-
-    observer.observe(viewport, {
-      childList: true,
-      subtree: true
-    });
-
-    return () => observer.disconnect();
-  }, [scrollToBottom, isUserScrolling]);
+  // ✅ MOVED: fetchLands and loadLandSession are now defined BEFORE conditional return as useCallback hooks
 
   const getCurrentSessionId = () => {
     // Check if we already have a session ID loaded from database or created in this session
@@ -425,6 +468,16 @@ export function EnhancedAIChatInterface() {
     setAttachedFiles([]);
     setIsLoading(true);
     
+    // ✅ NEW: Show random loading messages
+    const loadingMessages = language === 'hi' 
+      ? ['जवाब तैयार कर रहा हूं...', 'सोच रहा हूं...', 'विश्लेषण कर रहा हूं...', 'समझ रहा हूं...']
+      : language === 'mr'
+      ? ['उत्तर तयार करत आहे...', 'विचार करत आहे...', 'विश्लेषण करत आहे...', 'समजत आहे...']
+      : ['Preparing answer...', 'Thinking...', 'Analyzing...', 'Understanding...'];
+    
+    const randomMessage = loadingMessages[Math.floor(Math.random() * loadingMessages.length)];
+    setLoadingMessage(randomMessage);
+    
     try {
       const sessionId = getCurrentSessionId();
       const landId = activeTab !== 'general' ? activeTab : undefined;
@@ -460,35 +513,7 @@ export function EnhancedAIChatInterface() {
         console.log('♻️ Reusing existing database session:', sessionId);
       }
       
-      // Save user message immediately with status 'sending'
-      const { error: msgError } = await supabase.from('ai_chat_messages').insert({
-        id: userMessageId,
-        session_id: sessionId,
-        tenant_id: tenantId,
-        farmer_id: farmerId,
-        role: 'user',
-        content: finalMessage,
-        status: 'sending',
-        language: language,
-        message_type: attachedFiles.length > 0 ? 'multimedia' : 'text',
-        word_count: finalMessage.split(/\s+/).length,
-        metadata: {
-          tab: activeTab,
-          landId: land?.id,
-          quickAction: quickAction,
-          attachments: attachedFiles.length
-        },
-        land_context: land ? {
-          land_id: land.id,
-          land_name: land.name,
-          soil_type: land.soil_type,
-          area_acres: land.area_acres,
-          current_crop: land.current_crop
-        } : null,
-        crop_season: getCurrentSeason()
-      });
-      
-      if (msgError) console.error('Error saving user message:', msgError);
+      // ✅ Let edge function handle ALL message saves (prevents duplicates)
       
       // 🤖 Call Land-Specific AI Agent
       // Each land has its own AI agent that:
@@ -499,22 +524,47 @@ export function EnhancedAIChatInterface() {
       console.log(`📊 Session ID: ${sessionId}`);
       console.log(`🗂️ Training data collected per land in: ai_chat_messages table`);
       
+      console.log('🤖 Sending AI request with language:', language);
+      
+      // Get session token from localStorage
+      const sessionToken = localStorage.getItem('app_session_token') || '';
+      
+      // CRITICAL: Pass tenant and farmer IDs as headers (required by edge function)
+      // ✅ Send conversation history (last 8 messages) for context
+      const conversationHistory = (messages[activeTab] || []).slice(-8).map(m => ({ 
+        role: m.role, 
+        content: m.content 
+      }));
+      
       const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
         body: {
-          messages: [{ role: 'user', content: finalMessage }],
+          messages: [...conversationHistory, { role: 'user', content: finalMessage }],
           sessionId,
           landId,
-          language,
+          language: language, // Pass user's selected language
           metadata: {
             tenantId,
             farmerId,
-            language,
+            language: language,
             landContext: land
           }
+        },
+        headers: {
+          'x-tenant-id': tenantId,
+          'x-farmer-id': farmerId,
+          'x-session-token': sessionToken
         }
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error('❌ AI Chat Error:', error);
+        throw new Error(error.message || 'AI request failed');
+      }
+      
+      if (!data || !data.response) {
+        console.error('❌ Invalid AI response:', data);
+        throw new Error('Invalid response from AI');
+      }
       
       // Update user message status to 'sent'
       await supabase.from('ai_chat_messages')
@@ -527,7 +577,8 @@ export function EnhancedAIChatInterface() {
         role: 'assistant',
         content: data.response || t('chat.errorOccurred'),
         timestamp: new Date(),
-        structured: parseStructuredResponse(data.response)
+        structured: parseStructuredResponse(data.response),
+        structuredResponse: data.structuredResponse // ✅ NEW: Color-coded cards from backend
       };
       
       setMessages(prev => ({
@@ -551,28 +602,42 @@ export function EnhancedAIChatInterface() {
       // Save AI response - No need to save separately as edge function already does this
       
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('❌ Error sending message:', {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+        activeTab,
+        landId: activeTab !== 'general' ? activeTab : null,
+        language
+      });
       
       // Update message status to 'error' if failed
       await supabase.from('ai_chat_messages')
         .update({ 
           status: 'error',
-          error_details: { error: error instanceof Error ? error.message : 'Unknown error' }
+          error_details: { 
+            error: error instanceof Error ? error.message : 'Unknown error',
+            timestamp: new Date().toISOString()
+          }
         })
         .eq('id', userMessageId);
       
+      // Show detailed error message for debugging
+      const errorMessage = error instanceof Error ? error.message : t('error.unknown');
       toast({
-        title: t('common.error'),
-        description: isOnline ? t('chat.errorOccurred') : t('chat.offlineMessage'),
+        title: t('error.title'),
+        description: isOnline 
+          ? `${t('chat.messages.error')}: ${errorMessage}`
+          : t('chat.voice.error'),
         variant: 'destructive'
       });
     } finally {
       setIsLoading(false);
+      setLoadingMessage(''); // ✅ Clear loading message
     }
   };
 
   const parseStructuredResponse = (response: string) => {
-    // Parse color-coded sections from AI response
+    // Parse color-coded sections from AI response with enhanced detection
     const structured: any = {
       greeting: '',
       landContext: '',
@@ -580,52 +645,97 @@ export function EnhancedAIChatInterface() {
       closingMessage: ''
     };
     
-    // Extract greeting (first line with emoji)
-    const greetingMatch = response.match(/^👨‍🌾.*?🙏/m);
+    // Extract greeting (first paragraph or line with greeting patterns)
+    const greetingMatch = response.match(/^[^।\n]*(नमस्ते|नमस्कार|Hello|Namaste)[^।\n]*/im);
     if (greetingMatch) {
-      structured.greeting = greetingMatch[0];
+      structured.greeting = greetingMatch[0].trim();
     }
     
-    // Extract land context line
-    const landContextMatch = response.match(/🌾.*?\|.*?\|.*$/m);
-    if (landContextMatch) {
-      structured.landContext = landContextMatch[0];
-    }
+    // Intelligent section detection based on keywords (multi-language support)
+    const detectSectionType = (text: string): string => {
+      const lowerText = text.toLowerCase();
+      
+      // Organic/Natural fertilizer keywords
+      if (lowerText.match(/(organic|जैविक|natural|नैसर्गिक|compost|कंपोस्ट|vermi|वर्मी|fym|गोबर|cow dung)/i)) {
+        return 'organic';
+      }
+      
+      // Chemical fertilizer keywords
+      if (lowerText.match(/(fertilizer|खत|उर्वरक|npk|urea|युरिया|dap|डीएपी|chemical|रासायनिक|potash|पोटॅश)/i)) {
+        return 'fertilizer';
+      }
+      
+      // Pesticide keywords
+      if (lowerText.match(/(pesticide|कीटनाशक|किटकनाशक|pest control|insect|किड|spray|फवारणी|fungicide)/i)) {
+        return 'pest';
+      }
+      
+      // Water/Irrigation keywords
+      if (lowerText.match(/(water|पाणी|irrigation|सिंचाई|पाणीपुरवठा|drip)/i)) {
+        return 'water';
+      }
+      
+      return 'other';
+    };
     
-    // Extract color-coded sections
-    const sectionPatterns = [
-      { emoji: '🟢', keyword: 'Organic Practices', type: 'organic', color: 'green' },
-      { emoji: '🟡', keyword: 'Fertilizer Schedule', type: 'fertilizer', color: 'yellow' },
-      { emoji: '🔴', keyword: 'Pesticide', type: 'pesticide', color: 'red' },
-      { emoji: '🟣', keyword: 'Hormone', type: 'hormone', color: 'purple' },
-      { emoji: '🟢', keyword: 'Advisory Note', type: 'advisory', color: 'blue' }
-    ];
+    // Split response into paragraphs and sections
+    const paragraphs = response.split(/\n\n+/);
+    let currentSection: any = null;
     
-    sectionPatterns.forEach(pattern => {
-      // More flexible regex to capture section content
-      const regex = new RegExp(`${pattern.emoji}\\s*\\*\\*([^*]+)\\*\\*([^🟢🟡🔴🟣🌾]+)`, 'g');
-      let match;
-      while ((match = regex.exec(response)) !== null) {
-        const title = match[1].trim();
-        const content = match[2].trim();
-        if (title.includes(pattern.keyword) && content) {
+    paragraphs.forEach(para => {
+      const trimmed = para.trim();
+      if (!trimmed) return;
+      
+      // Detect section headers (lines with special characters or all caps)
+      const isHeader = trimmed.match(/^[🟢🟡🔴🔵🟣🟤⚫⚪]/) || 
+                      trimmed.match(/^[A-Z\u0900-\u097F\s]{10,}:/) ||
+                      trimmed.match(/^\d+\.\s*[A-Z\u0900-\u097F]/);
+      
+      if (isHeader) {
+        // Save previous section if exists
+        if (currentSection && currentSection.content.trim()) {
+          const sectionType = detectSectionType(currentSection.title + ' ' + currentSection.content);
           structured.sections.push({
-            type: pattern.type,
-            title: title,
-            content: content,
-            color: pattern.color
+            ...currentSection,
+            type: sectionType
           });
         }
+        
+        // Start new section
+        currentSection = {
+          title: trimmed.replace(/^[🟢🟡🔴🔵🟣🟤⚫⚪]\s*/, '').replace(/\*\*/g, ''),
+          content: '',
+          type: 'other'
+        };
+      } else if (currentSection) {
+        // Add content to current section
+        currentSection.content += (currentSection.content ? '\n\n' : '') + trimmed;
+      } else if (!structured.greeting) {
+        // First paragraph becomes greeting if no greeting found
+        structured.greeting = trimmed;
       }
     });
     
-    // Extract closing message
-    const closingMatch = response.match(/🌾.*best friend!.*$/m);
-    if (closingMatch) {
-      structured.closingMessage = closingMatch[0];
+    // Save last section
+    if (currentSection && currentSection.content.trim()) {
+      const sectionType = detectSectionType(currentSection.title + ' ' + currentSection.content);
+      structured.sections.push({
+        ...currentSection,
+        type: sectionType
+      });
     }
     
-    // Return structured data if we found sections, otherwise return simple structure
+    // If no sections found, treat entire response as a single section
+    if (structured.sections.length === 0 && response.trim()) {
+      const sectionType = detectSectionType(response);
+      structured.sections.push({
+        title: structured.greeting || 'Response',
+        content: response.replace(structured.greeting, '').trim(),
+        type: sectionType
+      });
+    }
+    
+    // Return structured data
     return structured.sections.length > 0 ? structured : undefined;
   };
 
@@ -1053,7 +1163,10 @@ export function EnhancedAIChatInterface() {
         </div>
       )}
       
-      <ScrollArea className="h-full px-3 py-4" ref={scrollAreaRef}>
+      <div 
+        ref={scrollAreaRef}
+        className="h-full px-3 py-4 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
+      >
         <AnimatePresence mode="popLayout">
           {/* Show Welcome Card for general chat when no messages */}
           {activeTab === 'general' && messages[activeTab]?.length === 0 && (
@@ -1100,253 +1213,14 @@ export function EnhancedAIChatInterface() {
 
               {/* Messages for this date */}
               {group.messages.map((message) => (
-                <motion.div
+                <ModernChatUI
                   key={message.id}
-                  initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -20, scale: 0.95 }}
-                  transition={{ 
-                    duration: 0.5, 
-                    type: "spring", 
-                    stiffness: 300, 
-                    damping: 25 
-                  }}
-                  className={cn(
-                    "flex gap-2 mb-4",
-                    message.role === 'user' ? 'justify-end' : 'justify-start'
-                  )}
-                >
-                  {message.role === 'assistant' && (
-                    <Avatar className="h-8 w-8 shrink-0">
-                      <AvatarFallback className="bg-primary text-primary-foreground">
-                        <Bot className="h-4 w-4" />
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
-                  
-                  <div className={cn(
-                    "relative max-w-[85%]",
-                    message.role === 'user' && 'order-1'
-                  )}>
-                    {/* Message content - 2030 Modern UI with glassmorphism */}
-                    <div className={cn(
-                      "relative overflow-hidden group",
-                      message.role === 'user' 
-                        ? cn(
-                            // Base glassmorphism
-                            "backdrop-blur-2xl bg-gradient-to-br from-primary/90 via-primary to-primary-hover",
-                            // Asymmetric rounded corners
-                            "rounded-[2rem_2rem_0.5rem_2rem]",
-                            // Text color
-                            "text-primary-foreground",
-                            // Smooth animations
-                            "transition-all duration-500 ease-out",
-                            // Interactive hover
-                            "hover:scale-[1.02]",
-                            // Advanced shadows for depth
-                            "shadow-[0_8px_32px_rgba(33,150,243,0.25),0_16px_64px_rgba(33,150,243,0.15),0_0_0_1px_rgba(255,255,255,0.1)_inset]",
-                            "hover:shadow-[0_12px_48px_rgba(33,150,243,0.35)]",
-                            // Glow effect
-                            "after:absolute after:inset-0 after:rounded-[2rem_2rem_0.5rem_2rem]",
-                            "after:bg-gradient-to-t after:from-white/10 after:to-transparent after:pointer-events-none"
-                          )
-                        : cn(
-                            // Glassmorphism base
-                            "bg-card/60 backdrop-blur-2xl",
-                            // Multi-layer border
-                            "border-2 border-border/40",
-                            // Organic shape
-                            "rounded-[0.5rem_2rem_2rem_2rem]",
-                            // Smooth entrance animation
-                            "animate-in slide-in-from-left-4 fade-in duration-500",
-                            // Interactive
-                            "hover:border-border/60 transition-all duration-300",
-                            // Advanced shadows
-                            "shadow-[0_8px_32px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.04),0_0_0_1px_rgba(255,255,255,0.05)_inset]",
-                            "hover:shadow-[0_12px_48px_rgba(0,0,0,0.12)]",
-                            // Inner glow
-                            "before:absolute before:inset-0 before:rounded-[0.5rem_2rem_2rem_2rem]",
-                            "before:bg-gradient-to-br before:from-primary/5 before:to-transparent before:pointer-events-none"
-                          )
-                    )}>
-                      <div className="p-5">
-                        {message.role === 'assistant' && message.structured?.sections ? (
-                          <div className="space-y-4">
-                            {message.structured.greeting && message.structured.greeting.trim() !== '' && (
-                              <div className="text-base font-medium text-foreground mb-3 pb-3 border-b border-border/20">
-                                {message.structured.greeting.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
-                              </div>
-                            )}
-                            {message.structured.sections.map((section: any, idx: number) => (
-                              <ResponseSectionCard 
-                                key={idx} 
-                                emoji={section.emoji || '📋'}
-                                title={section.title.replace(/\*\*/g, '')}
-                                content={section.content.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
-                                sectionType={section.type || 'other'}
-                              />
-                            ))}
-                            {message.structured.closingMessage && message.structured.closingMessage.trim() !== '' && (
-                              <div className="text-sm text-muted-foreground mt-3 pt-3 border-t border-border/20">
-                                {message.structured.closingMessage.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-[15px] leading-[1.6] whitespace-pre-wrap break-words">
-                            {message.content.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
-                          </p>
-                        )}
-                        
-                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/10">
-                          <span className="text-xs opacity-60">
-                            {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Action buttons below message - Modern subtle design */}
-                    <div className={cn(
-                      "flex items-center gap-1 mt-2",
-                      message.role === 'user' ? 'justify-end' : 'justify-start'
-                    )}>
-                      {/* Read aloud button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          // Glassmorphism
-                          "backdrop-blur-xl bg-background/40",
-                          // Floating effect
-                          "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
-                          // Size and shape
-                          "h-7 px-2.5 rounded-full text-xs",
-                          // Smooth transitions
-                          "transition-all duration-300",
-                          // Interactive states
-                          "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
-                          "active:scale-95"
-                        )}
-                        onClick={() => handlePlayMessage(message.id, message.content)}
-                      >
-                        {playingMessageId === message.id && isSpeaking ? (
-                          <VolumeX className="h-3 w-3" />
-                        ) : (
-                          <Volume2 className="h-3 w-3" />
-                        )}
-                      </Button>
-                      
-                      {/* Like/Dislike buttons */}
-                      {message.role === 'assistant' && (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className={cn(
-                              // Glassmorphism
-                              "backdrop-blur-xl bg-background/40",
-                              // Floating effect
-                              "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
-                              // Size and shape
-                              "h-7 px-2.5 rounded-full text-xs",
-                              // Smooth transitions
-                              "transition-all duration-300",
-                              // Interactive states
-                              "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
-                              "active:scale-95",
-                              // Active state
-                              message.feedback === 'like' && "bg-primary/20 text-primary hover:bg-primary/30 border-primary/40"
-                            )}
-                            onClick={() => handleLike(message.id, true)}
-                          >
-                            <ThumbsUp className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className={cn(
-                              // Glassmorphism
-                              "backdrop-blur-xl bg-background/40",
-                              // Floating effect
-                              "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
-                              // Size and shape
-                              "h-7 px-2.5 rounded-full text-xs",
-                              // Smooth transitions
-                              "transition-all duration-300",
-                              // Interactive states
-                              "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
-                              "active:scale-95",
-                              // Active state
-                              message.feedback === 'dislike' && "bg-destructive/20 text-destructive hover:bg-destructive/30 border-destructive/40"
-                            )}
-                            onClick={() => handleLike(message.id, false)}
-                          >
-                            <ThumbsDown className="h-3 w-3" />
-                          </Button>
-                        </>
-                      )}
-                      
-                      {/* Copy button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          // Glassmorphism
-                          "backdrop-blur-xl bg-background/40",
-                          // Floating effect
-                          "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
-                          // Size and shape
-                          "h-7 px-2.5 rounded-full text-xs",
-                          // Smooth transitions
-                          "transition-all duration-300",
-                          // Interactive states
-                          "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
-                          "active:scale-95",
-                          // Active state
-                          copiedMessageId === message.id && "bg-success/20 text-success border-success/40"
-                        )}
-                        onClick={() => handleCopy(message.id, message.content)}
-                      >
-                        {copiedMessageId === message.id ? (
-                          <Check className="h-3 w-3" />
-                        ) : (
-                          <Copy className="h-3 w-3" />
-                        )}
-                      </Button>
-                      
-                      {/* Share button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          // Glassmorphism
-                          "backdrop-blur-xl bg-background/40",
-                          // Floating effect
-                          "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
-                          // Size and shape
-                          "h-7 px-2.5 rounded-full text-xs",
-                          // Smooth transitions
-                          "transition-all duration-300",
-                          // Interactive states
-                          "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
-                          "active:scale-95"
-                        )}
-                        onClick={() => handleShare(message.content)}
-                      >
-                        <Share2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  {message.role === 'user' && (
-                    <Avatar className="h-8 w-8 shrink-0">
-                      <AvatarFallback className="bg-secondary">
-                        <User className="h-4 w-4" />
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
-                </motion.div>
+                  message={message}
+                  onCopy={handleCopy}
+                  onLike={handleLike}
+                  onShare={handleShare}
+                  onPlay={handlePlayMessage}
+                />
               ))}
             </div>
           ))}
@@ -1364,15 +1238,20 @@ export function EnhancedAIChatInterface() {
               </AvatarFallback>
             </Avatar>
             <div className="bg-card border rounded-2xl p-3 shadow-sm">
-              <div className="flex gap-1">
-                <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1">
+                  <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+                {loadingMessage && (
+                  <span className="text-xs text-muted-foreground ml-2">{loadingMessage}</span>
+                )}
               </div>
             </div>
           </motion.div>
         )}
-      </ScrollArea>
+      </div>
     </div>
 
       {/* Suggestion Chips - Show when no messages OR when AI has provided quick replies */}

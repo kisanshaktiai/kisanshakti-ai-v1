@@ -13,6 +13,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { supabase } from '@/integrations/supabase/client';
 import { landsApi } from '@/services/landsApi';
+import { useTranslation } from 'react-i18next';
 
 interface LatLng {
   lat: number;
@@ -44,6 +45,7 @@ export function EditLandWizard({
   const { toast } = useToast();
   const { user } = useAuthStore();
   const { speak } = useTextToSpeech();
+  const { t } = useTranslation();
   const [currentStep, setCurrentStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -160,8 +162,8 @@ export function EditLandWizard({
   const handleSave = async () => {
     if (!user?.tenantId || !landId) {
       toast({
-        title: 'Error',
-        description: 'Session or land information missing',
+        title: t('lands.wizard.toast.error_title'),
+        description: t('lands.edit.toast.session_error'),
         variant: 'destructive',
       });
       return;
@@ -204,16 +206,16 @@ export function EditLandWizard({
       });
 
       toast({
-        title: 'Success',
-        description: 'Land updated successfully',
+        title: t('lands.wizard.toast.success_title'),
+        description: t('lands.edit.toast.success'),
       });
 
       onComplete();
     } catch (error) {
       console.error('Error updating land:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to update land',
+        title: t('lands.wizard.toast.error_title'),
+        description: t('lands.edit.toast.error'),
         variant: 'destructive',
       });
     } finally {
@@ -222,10 +224,10 @@ export function EditLandWizard({
   };
 
   const steps = [
-    { title: 'Basic Details', icon: MapPin },
-    { title: 'Location', icon: MapPin },
-    { title: 'Land Characteristics', icon: Info },
-    { title: 'Review', icon: Save },
+    { title: t('lands.edit.basic_details'), icon: MapPin },
+    { title: t('lands.wizard.steps.location'), icon: MapPin },
+    { title: t('lands.edit.land_characteristics'), icon: Info },
+    { title: t('lands.edit.review'), icon: Save },
   ];
 
   const soilTypes = [
@@ -259,7 +261,7 @@ export function EditLandWizard({
             <CardHeader>
               <div className="flex items-center justify-between mb-4">
                 <CardTitle className="text-2xl font-bold">
-                  Edit Land: {existingData?.name || 'Land Parcel'}
+                  {t('lands.edit.title', { name: existingData?.name || 'Land Parcel' })}
                 </CardTitle>
                 <Button
                   variant="ghost"
@@ -300,7 +302,7 @@ export function EditLandWizard({
                 {currentStep === 0 && (
                   <div className="space-y-6">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-lg font-semibold">Basic Land Information</h3>
+                      <h3 className="text-lg font-semibold">{t('lands.edit.basic_land_info')}</h3>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -312,28 +314,28 @@ export function EditLandWizard({
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="name">Land Name *</Label>
+                        <Label htmlFor="name">{t('lands.wizard.form.land_name')} *</Label>
                         <Input
                           id="name"
                           value={formData.name}
                           onChange={(e) => handleInputChange('name', e.target.value)}
-                          placeholder="e.g., North Field"
+                          placeholder={t('lands.wizard.form.land_name_placeholder')}
                           required
                         />
                       </div>
                       
                       <div>
-                        <Label htmlFor="survey_no">Survey Number</Label>
+                        <Label htmlFor="survey_no">{t('lands.wizard.form.survey_number')}</Label>
                         <Input
                           id="survey_no"
                           value={formData.survey_no}
                           onChange={(e) => handleInputChange('survey_no', e.target.value)}
-                          placeholder="e.g., 123/A"
+                          placeholder={t('lands.wizard.form.survey_number_placeholder')}
                         />
                       </div>
                       
                       <div>
-                        <Label htmlFor="ownership_type">Ownership Type</Label>
+                        <Label htmlFor="ownership_type">{t('lands.wizard.form.ownership_type')}</Label>
                         <Select 
                           value={formData.ownership_type}
                           onValueChange={(value) => handleInputChange('ownership_type', value)}
@@ -350,10 +352,10 @@ export function EditLandWizard({
                         </Select>
                       </div>
                       
-                      <div className="p-4 bg-muted rounded-lg">
-                        <p className="text-sm font-medium">Area: {area.acres.toFixed(2)} acres</p>
+                        <div className="p-4 bg-muted rounded-lg">
+                        <p className="text-sm font-medium">{t('lands.edit.area_display', { acres: area.acres.toFixed(2) })}</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          {area.guntha.toFixed(2)} guntha | {area.sqft.toFixed(0)} sq ft
+                          {t('lands.edit.area_detail', { guntha: area.guntha.toFixed(2), sqft: area.sqft.toFixed(0) })}
                         </p>
                       </div>
                     </div>

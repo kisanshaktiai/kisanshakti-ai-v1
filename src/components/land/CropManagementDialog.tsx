@@ -42,6 +42,7 @@ import {
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { useTranslation } from 'react-i18next';
 
 interface CropGroup {
   id: string;
@@ -100,6 +101,7 @@ export function CropManagementDialog({
   landName,
   onSuccess 
 }: CropManagementDialogProps) {
+  const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'current' | 'previous'>('current');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -166,8 +168,8 @@ export function CropManagementDialog({
       } catch (err) {
         console.error('Error loading data:', err);
         toast({
-          title: 'Error',
-          description: 'Failed to load crop data',
+          title: t('lands.wizard.toast.error_title'),
+          description: t('lands.crop_management.toast.load_error'),
           variant: 'destructive',
         });
       } finally {
@@ -231,8 +233,8 @@ export function CropManagementDialog({
       if (error) throw error;
 
       toast({
-        title: 'Success',
-        description: 'Crop information updated successfully',
+        title: t('lands.wizard.toast.success_title'),
+        description: t('lands.crop_management.toast.success'),
       });
 
       onSuccess?.();
@@ -240,8 +242,8 @@ export function CropManagementDialog({
     } catch (error) {
       console.error('Error updating crop information:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to update crop information',
+        title: t('lands.wizard.toast.error_title'),
+        description: t('lands.crop_management.toast.error'),
         variant: 'destructive',
       });
     } finally {
@@ -269,9 +271,9 @@ export function CropManagementDialog({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-hidden p-0">
         <DialogHeader className="p-6 pb-0">
-          <DialogTitle>Manage Crops - {landName}</DialogTitle>
+          <DialogTitle>{t('lands.crop_management.title', { name: landName })}</DialogTitle>
           <DialogDescription>
-            Add or update crop information for your land
+            {t('lands.crop_management.description')}
           </DialogDescription>
         </DialogHeader>
 
@@ -281,11 +283,11 @@ export function CropManagementDialog({
               <TabsList className="grid w-full grid-cols-2 mx-6" style={{ width: 'calc(100% - 3rem)' }}>
                 <TabsTrigger value="current">
                   <Wheat className="h-4 w-4 mr-2" />
-                  Current Crop
+                  {t('lands.crop_management.current_crop')}
                 </TabsTrigger>
                 <TabsTrigger value="previous">
                   <Clock className="h-4 w-4 mr-2" />
-                  Previous Crop
+                  {t('lands.crop_management.previous_crop')}
                 </TabsTrigger>
               </TabsList>
 

@@ -37,8 +37,10 @@
     "filter": "फ़िल्टर",
     "online": "ऑनलाइन",
     "offline": "ऑफलाइन",
+    "comingSoon": "जल्द आ रहा है",
     "getStarted": "शुरू करें",
-    "swipeLeft": "जारी रखने के लिए बाएं स्वाइप करें"
+    "swipeLeft": "जारी रखने के लिए बाएं स्वाइप करें",
+    "loadingFeatures": "सुविधाएं लोड हो रही हैं..."
   },
   "home": {
     "greeting": "नमस्ते, {{name}}",
@@ -244,6 +246,23 @@
     "settings": "सेटिंग्स",
     "help": "सहायता केंद्र",
     "contact": "संपर्क करें"
+  },
+  "fab": {
+    "myLands": "मेरी भूमि",
+    "aiSchedule": "AI फसल अनुसूची",
+    "aiChat": "AI चैट",
+    "market": "मंडी",
+    "weather": "मौसम",
+    "community": "समुदाय",
+    "ndviSatellite": "NDVI और सैटेलाइट",
+    "govSchemes": "सरकारी योजनाएं",
+    "analytics": "विश्लेषण",
+    "profile": "प्रोफ़ाइल",
+    "insurance": "बीमा",
+    "loan": "ऋण",
+    "open": "मेनू खोलें",
+    "close": "मेनू बंद करें",
+    "menuOpened": "सुविधा मेनू खोला गया"
   },
   "feature": {
     "title": "सुविधाएं"

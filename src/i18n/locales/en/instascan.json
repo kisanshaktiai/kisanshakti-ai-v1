@@ -28,6 +28,13 @@
       "progress": "{{percent}}% complete",
       "wait": "Please wait..."
     },
+    "analyzing_title": "Analyzing Image...",
+    "aiWorking": "AI is identifying your crop...",
+    "lowConfidence": "Could not identify clearly. Please take a clearer photo.",
+    "moderateConfidence": "Analysis complete. Consider taking additional photos for better accuracy.",
+    "needsMoreImages": "Try capturing from different angles",
+    "tryAgain": "Please try again",
+    "analysisError": "Analysis failed",
     "results": {
       "title": "Scan Results",
       "identified_as": "Identified as",

@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { CentralizedCropSelector } from '@/components/crops/CentralizedCropSelector';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 
 interface CropDateInputProps {
   land: {
@@ -36,6 +37,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   loading = false
 }) => {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [cropId, setCropId] = useState('');
   const [cropName, setCropName] = useState('');
   const [cropVariety, setCropVariety] = useState('');
@@ -45,8 +47,8 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   const handleSubmit = () => {
     if (!cropName) {
       toast({
-        title: 'Select Crop',
-        description: 'Please select a crop',
+        title: t('schedule.crop_input.select_crop'),
+        description: t('schedule.crop_input.please_select_crop'),
         variant: 'destructive',
       });
       return;
@@ -54,8 +56,8 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     
     if (!sowingDate) {
       toast({
-        title: 'Select Date',
-        description: 'Please select the sowing date',
+        title: t('schedule.crop_input.select_date'),
+        description: t('schedule.crop_input.please_select_date'),
         variant: 'destructive',
       });
       return;
@@ -140,11 +142,11 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
             {/* Variety Input */}
             <div className="space-y-2">
               <Label htmlFor="variety" className="text-xs font-medium text-muted-foreground">
-                Variety (Optional)
+                {t('schedule.crop_input.variety_label')}
               </Label>
               <Input
                 id="variety"
-                placeholder="e.g., IR-64, HD-2967, BT Cotton"
+                placeholder={t('schedule.crop_input.variety_placeholder')}
                 value={cropVariety}
                 onChange={(e) => setCropVariety(e.target.value)}
                 className="h-10 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-white/30 dark:border-white/20 focus:border-primary/50 transition-all"
@@ -162,10 +164,10 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
               />
               <div className="flex-1">
                 <Label htmlFor="ready-made-plant" className="text-xs font-medium cursor-pointer">
-                  Using ready-made nursery plants
+                  {t('schedule.crop_input.ready_made_plant')}
                 </Label>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Check if planting seedlings/transplants instead of sowing seeds
+                  {t('schedule.crop_input.ready_made_description')}
                 </p>
               </div>
             </div>
@@ -175,7 +177,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
               <div className="flex items-center gap-2">
                 <CalendarIcon className="h-4 w-4 text-primary" />
                 <span className="text-xs font-medium">
-                  {isReadyMadePlant ? 'Planting Date' : 'Sowing Date'}
+                  {isReadyMadePlant ? t('schedule.crop_input.planting_date') : t('schedule.crop_input.sowing_date')}
                 </span>
               </div>
               
@@ -191,7 +193,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {sowingDate ? format(sowingDate, "PPP") : "Pick a date"}
+                    {sowingDate ? format(sowingDate, "PPP") : t('schedule.crop_input.pick_date')}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -218,11 +220,11 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
               {loading ? (
                 <>
                   <Sparkles className="mr-2 h-4 w-4 animate-spin" />
-                  Generating AI Schedule...
+                  {t('schedule.crop_input.generating')}
                 </>
               ) : (
                 <>
-                  Generate AI Schedule
+                  {t('schedule.crop_input.generate_ai_schedule')}
                   <Sparkles className="ml-2 h-4 w-4" />
                 </>
               )}

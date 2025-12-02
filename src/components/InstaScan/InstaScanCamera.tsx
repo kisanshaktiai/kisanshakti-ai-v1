@@ -47,8 +47,8 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
       window.addEventListener('devicemotion', motionListener);
     }
     
-    // Set up periodic quality check
-    const qualityInterval = setInterval(checkQuality, 500);
+    // REDUCED frequency to prevent flickering - check quality every 2 seconds instead of 0.5s
+    const qualityInterval = setInterval(checkQuality, 2000);
     
     return () => {
       if (stream) {
@@ -92,16 +92,17 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
     const avgBrightness = totalBrightness / (pixels.length / 4);
     const contrast = maxBrightness - minBrightness;
     
-    // RELAXED thresholds for rural farmers
+    // EXTREMELY RELAXED thresholds - only warn on very dark/bright images
     let status: QualityStatus = 'good';
     
-    if (avgBrightness < 25 || avgBrightness > 250 || contrast < 30) {
+    if (avgBrightness < 20 || avgBrightness > 250) {
       status = 'poor';
-    } else if (avgBrightness < 40 || avgBrightness > 230 || contrast < 40) {
+    } else if (avgBrightness < 30 || avgBrightness > 240) {
       status = 'acceptable';
     }
     
-    setQualityStatus(status);
+    // Only update state if status actually changed to minimize re-renders
+    setQualityStatus(prev => prev === status ? prev : status);
   };
   
   // Motion detection for stability
@@ -279,16 +280,14 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
         {/* Viewfinder Frame with Quality Indicator */}
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="relative w-80 h-80 max-w-[80vw] max-h-[60vh]">
-            {/* Quality Ring - Green/Yellow/Red */}
-            <motion.div
+            {/* Quality Ring - Green/Yellow/Red - REMOVED animation to prevent flickering */}
+            <div
               className={cn(
                 "absolute inset-0 rounded-3xl border-4 transition-colors duration-300",
                 qualityStatus === 'good' && "border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.5)]",
                 qualityStatus === 'acceptable' && "border-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.5)]",
                 qualityStatus === 'poor' && "border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.5)]"
               )}
-              animate={{ scale: [1, 1.02, 1] }}
-              transition={{ duration: 2, repeat: Infinity }}
             />
             
             {/* Corner Markers */}
@@ -296,9 +295,6 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
             <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr-2xl" />
             <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl-2xl" />
             <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-white rounded-br-2xl" />
-            
-            {/* Scanning Animation */}
-            <div className="absolute inset-x-4 top-4 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent animate-scan" />
             
             {/* Visual Quality Indicators */}
             <AnimatePresence>

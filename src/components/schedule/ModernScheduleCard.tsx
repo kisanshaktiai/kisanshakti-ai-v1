@@ -75,7 +75,7 @@ const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
               </div>
               {schedule.crop_variety && (
                 <p className="text-xs text-muted-foreground ml-8">
-                  Variety: {schedule.crop_variety}
+                  {t('schedule.schedule_card.variety_label')} {schedule.crop_variety}
                 </p>
               )}
             </div>
@@ -112,7 +112,7 @@ const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
               <p className="text-sm font-bold text-foreground">
                 {schedule.expected_harvest_date 
                   ? format(new Date(schedule.expected_harvest_date), 'dd MMM yyyy')
-                  : 'TBD'}
+                  : t('schedule.schedule_card.tbd')}
               </p>
               {daysToHarvest !== null && daysToHarvest > 0 && (
                 <p className="text-[10px] text-muted-foreground mt-0.5">
@@ -127,7 +127,7 @@ const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
                 <div className="flex items-center gap-2 mb-1">
                   <TrendingUp className="h-3 w-3 text-green-600" />
                   <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                    Yield
+                    {t('schedule.schedule_card.yield')}
                   </span>
                 </div>
                 <p className="text-sm font-bold text-foreground">
@@ -142,7 +142,7 @@ const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
                 <div className="flex items-center gap-2 mb-1">
                   <IndianRupee className="h-3 w-3 text-orange-600" />
                   <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-                    Cost
+                    {t('schedule.schedule_card.cost')}
                   </span>
                 </div>
                 <p className="text-sm font-bold text-foreground">
@@ -156,7 +156,7 @@ const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
           <div className="space-y-2">
             <div className="flex items-center justify-between text-xs">
               <span className="text-muted-foreground font-medium">
-                Progress: {completedTasks}/{totalTasks} tasks
+                {t('schedule.schedule_card.progress', { completed: completedTasks, total: totalTasks })}
               </span>
               <span className="text-primary font-bold">{Math.round(progress)}%</span>
             </div>
@@ -176,7 +176,7 @@ const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
               onClick={onViewSchedule}
               className="flex-1 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-white shadow-lg"
             >
-              View Schedule
+              {t('schedule.schedule_card.view_schedule')}
             </Button>
             {onSpeak && (
               <Button
