@@ -904,9 +904,19 @@ serve(async (req) => {
     const queryIntent = classifyFarmerQuery(userText, language);
     console.log(`🎯 Query Intent: ${queryIntent.type} (confidence: ${queryIntent.confidence}) | Message #${messageCount}`);
     
-    // Check if query is weather-related
-    const isWeatherQuery = /weather|मौसम|हवामान|வானிலை|వాతావరణం|ਮੌਸਮ|rain|बारिश|पाऊस|மழை|వర్షం|ਬਾਰਿਸ਼|temperature|तापमान|तापमान|வெப்பநிலை|ఉష్ణోగ్రత|ਤਾਪਮਾਨ|wind|हवा|वारा|காற்று|గాలి|ਹਵਾ|forecast|पूर्वानुमान|अंदाज|முன்னறிவிப்பு|అంచనా|ਪੂਰਵ ਅਨੁਮਾਨ|climate|जलवायु|हवामान|காலநிலை|వాతావరణం|ਜਲਵਾਯੂ/i.test(userText);
-    console.log(`🌤️ Weather Query Detected: ${isWeatherQuery}`);
+    // Detect pure weather query vs agriculture query with weather context
+    const weatherKeywords = /weather|मौसम|हवामान|வானிலை|వాతావరణం|ਮੌਸਮ|rain|बारिश|पाऊस|மழை|వర్షం|ਬਾਰਿਸ਼|temperature|तापमान|तापमान|வெப்பநிலை|ఉష్ణోగ్రత|ਤਾਪਮਾਨ|wind|हवा|वारा|காற்று|గాలి|ਹਵਾ|forecast|पूर्वानुमान|अंदाज|முன்னறிவிப்பு|అంచనా|ਪੂਰਵ ਅਨੁਮਾਨ|climate|जलवायु|हवामान|காலநிலை|వాతావరణం|ਜਲਵਾਯੂ/i;
+    const agricultureKeywords = /spray|छिड़काव|फवारणी|water|पाणी|पानी|fertilizer|खत|खाद|irrigation|सिंचाई|पाणीपुरवठा|pesticide|कीटनाशक|crop|फसल|पीक|plant|रोपण|लागवड/i;
+    
+    const hasWeatherKeyword = weatherKeywords.test(userText);
+    const hasAgricultureKeyword = agricultureKeywords.test(userText);
+    
+    // Pure weather query: Only weather keywords, no agriculture keywords
+    const isPureWeatherQuery = hasWeatherKeyword && !hasAgricultureKeyword;
+    // Agriculture with weather: Both types of keywords
+    const isAgricultureWithWeather = hasWeatherKeyword && hasAgricultureKeyword;
+    
+    console.log(`🌤️ Query Analysis: Pure Weather=${isPureWeatherQuery}, Agriculture+Weather=${isAgricultureWithWeather}`);
     
     // Get land context if landId is provided
     let landContext = null;
@@ -1010,7 +1020,7 @@ serve(async (req) => {
     }
     
     // ✅ STEP 1.5: FETCH WEATHER DATA IF NEEDED
-    if (isWeatherQuery || landId) {
+    if (isPureWeatherQuery || isAgricultureWithWeather || landId) {
       try {
         // Get location from land or farmer profile
         let weatherLat: number | null = null;
@@ -1105,36 +1115,56 @@ serve(async (req) => {
               has_data: true
             };
             
-            // 🌤️ PHASE 1: DIRECT WEATHER RESPONSE (NO AI)
-            // If this is a pure weather query, generate template response directly
-            if (isWeatherQuery && !landId && currentWeather) {
-              console.log('🌤️ Pure weather query detected - generating direct response');
+            // 🌤️ PHASE 1: DIRECT WEATHER RESPONSE (NO AI, NO COST)
+            // If this is a PURE weather query (no agriculture context), return template response
+            if (isPureWeatherQuery && currentWeather) {
+              console.log('🌤️ PHASE 1: Pure weather query - generating direct template response (no AI)');
               
-              // Generate multi-language weather response
-              const weatherResponse = generateWeatherResponse(currentWeather, weatherForecast, language);
+              // Generate multi-language weather response using template
+              const weatherResponse = generateWeatherResponse(currentWeather, weatherForecast, detectedLanguage);
               
-              // Save message to database
+              // Save user message first
               await supabase.from('ai_chat_messages').insert({
-                session_id: sessionId,
+                session_id: currentSessionId,
                 farmer_id: farmerId,
                 tenant_id: finalTenantId,
-                role: 'assistant',
-                content: weatherResponse,
+                role: 'user',
+                content: userText,
                 language: detectedLanguage,
+                land_context: landId ? { land_id: landId } : null,
                 weather_context: weatherContext,
                 ip_address: clientIp || '0.0.0.0',
                 user_agent: req.headers.get('user-agent') || 'Unknown',
                 partition_key: getPartitionKey(farmerId)
               });
               
-              console.log('✅ Direct weather response generated');
+              // Save assistant response
+              await supabase.from('ai_chat_messages').insert({
+                session_id: currentSessionId,
+                farmer_id: farmerId,
+                tenant_id: finalTenantId,
+                role: 'assistant',
+                content: weatherResponse,
+                language: detectedLanguage,
+                weather_context: weatherContext,
+                message_type: 'weather_direct',
+                ip_address: clientIp || '0.0.0.0',
+                user_agent: req.headers.get('user-agent') || 'Unknown',
+                partition_key: getPartitionKey(farmerId)
+              });
+              
+              console.log('✅ Direct weather response generated and saved (PHASE 1 - no AI cost)');
               
               return new Response(
                 JSON.stringify({
                   reply: weatherResponse,
                   language: detectedLanguage,
-                  quickReplies: generateQuickReplies(detectedLanguage, 'general'),
-                  source: 'direct_weather_template'
+                  quickReplies: generateQuickReplies(detectedLanguage, 'weather'),
+                  source: 'direct_weather_template',
+                  weatherData: {
+                    current: currentWeather,
+                    forecast: weatherForecast.slice(0, 3)
+                  }
                 }),
                 { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
               );
