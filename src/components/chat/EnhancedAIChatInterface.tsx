@@ -112,6 +112,7 @@ export function EnhancedAIChatInterface() {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const lastScrollTop = useRef(0);
   const isUserScrollingRef = useRef(false);
+  const isAutoScrollingRef = useRef(false);
   const [transcript, setTranscript] = useState('');
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
@@ -127,8 +128,10 @@ export function EnhancedAIChatInterface() {
   // ✅ CRITICAL FIX: ALL HOOKS MUST BE BEFORE CONDITIONAL RETURNS
   // Move useCallback and useEffect hooks here
   const scrollToBottom = useCallback(() => {
-    // Don't auto-scroll if user is manually scrolling
-    if (isUserScrollingRef.current) return;
+    // Don't auto-scroll if user is manually scrolling or already auto-scrolling
+    if (isUserScrollingRef.current || isAutoScrollingRef.current) return;
+    
+    isAutoScrollingRef.current = true;
     
     // Wait for next tick to ensure DOM is updated
     setTimeout(() => {
@@ -142,6 +145,10 @@ export function EnhancedAIChatInterface() {
           });
         }
       }
+      // Reset flag after scroll completes
+      setTimeout(() => {
+        isAutoScrollingRef.current = false;
+      }, 300);
     }, 100);
   }, []);
 
@@ -217,9 +224,14 @@ export function EnhancedAIChatInterface() {
     if (!viewport) return;
 
     const observer = new MutationObserver((mutations) => {
-      // Check if new content was added
+      // Ignore mutations during auto-scroll to prevent infinite loops
+      if (isAutoScrollingRef.current) return;
+      
+      // Check if new content was added (ignore attribute/style changes)
       const hasNewContent = mutations.some(mutation => 
-        mutation.type === 'childList' && mutation.addedNodes.length > 0
+        mutation.type === 'childList' && 
+        mutation.addedNodes.length > 0 &&
+        Array.from(mutation.addedNodes).some(node => node.nodeType === Node.ELEMENT_NODE)
       );
       
       if (hasNewContent && !isUserScrollingRef.current) {
@@ -233,7 +245,7 @@ export function EnhancedAIChatInterface() {
     });
 
     return () => observer.disconnect();
-  }, [scrollToBottom]);
+  }, []);
 
   // ✅ CRITICAL FIX: Define loadLandSession FIRST (before fetchLands that depends on it)
   const loadLandSession = useCallback(async (landId: string | null) => {
