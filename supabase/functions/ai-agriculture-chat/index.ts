@@ -7,6 +7,7 @@ import { buildCompressedContext } from './context-compressor.ts';
 import { getMinimalContext, getMiniRefresh } from './context-helpers.ts';
 import { generateMultilingualQuickReplies } from './multilingual-quick-replies.ts';
 import { parseResponseToCards } from './response-parser.ts';
+import { buildTrainingData } from './training-pipeline.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -1178,10 +1179,15 @@ serve(async (req) => {
     }
     
     // ✅ STEP 2: NOW CONSTRUCT SYSTEM PROMPT WITH FETCHED DATA
-    let systemPrompt = `You are KisanShakti AI — a Very Expert Agriculture Scientist and advanced agricultural AI assistant for Indian farmers.
+let systemPrompt = `You are Dr. KisanShakti AI — PhD Agriculture (IIT-Kharagpur, ICAR-certified), World-Class Agriculture Scientist with expertise from:
+• Indian Council of Agricultural Research (ICAR)
+• Punjab Agricultural University (PAU)
+• Tamil Nadu Agricultural University (TNAU)
+• University of Agricultural Sciences, Dharwad (UAS)
+• International research: FAO guidelines, CGIAR databases
 
 🎯 PRIMARY OBJECTIVE:
-Deliver clear, conversational agricultural advice in native Indian languages with natural, easy-to-understand responses that farmers can instantly act upon.
+Deliver scientifically accurate, ICAR-compliant agricultural advice in simple rural language that any farmer (Class 5-8 education) can understand and act upon immediately. Every recommendation must be verifiable, precise, and follow established agricultural science.
 
 ${landId && landDetails && cropSchedule ? `
 ═══════════════════════════════════════════════════════════════
@@ -2264,13 +2270,35 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       }
     }
 
+    // ✅ NEW: TRAINING DATA PIPELINE - Auto-populate all LLM training columns
+    const userMessageContent = typeof lastUserMessage === 'string' ? lastUserMessage : lastUserMessage?.content || '';
+    const trainingData = buildTrainingData(
+      userMessageContent,
+      aiMessage,
+      queryIntent,
+      language,
+      messageCount,
+      responseTime,
+      !!landId, // hasLandContext
+      null // feedbackRating - will be updated later
+    );
+    
+    console.log('📊 Training Data Generated:', {
+      complexity: trainingData.complexity_level,
+      domainTags: trainingData.domain_tags,
+      qualityScore: trainingData.conversation_quality_score.toFixed(2),
+      agricultureAccuracy: trainingData.agricultural_accuracy.toFixed(2),
+      isTrainingCandidate: trainingData.is_training_candidate,
+      offTopic: trainingData.off_topic
+    });
+    
     // Extract section tags from AI response for training data
     const sectionTags = extractSectionTags(aiMessage);
     
     // Only save AI response if it has content
     if (aiMessage && aiMessage.trim().length > 0) {
-      // Save AI response with enhanced metadata for training
-      const { error: aiMsgError } = await supabase
+      // Save AI response with enhanced metadata + training pipeline data
+      const { data: savedMessage, error: aiMsgError } = await supabase
         .from('ai_chat_messages')
         .insert({
           session_id: currentSessionId,
@@ -2279,11 +2307,22 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           role: 'assistant',
           content: aiMessage,
           status: 'sent',
-          language: language, // ✅ FIX: Use user's selected language
+          language: language,
           message_type: 'text',
           word_count: aiMessage ? aiMessage.split(/\s+/).length : 0,
           land_context: landContext,
           weather_context: weatherContext,
+          // ✅ NEW: Training pipeline columns
+          complexity_level: trainingData.complexity_level,
+          domain_tags: trainingData.domain_tags,
+          conversation_quality_score: trainingData.conversation_quality_score,
+          agricultural_accuracy: trainingData.agricultural_accuracy,
+          is_training_candidate: trainingData.is_training_candidate,
+          preprocessed_content: trainingData.preprocessed_content,
+          conversation_turn_number: trainingData.conversation_turn_number,
+          off_topic: trainingData.off_topic,
+          excluded_reason: trainingData.excluded_reason,
+          training_processed: false,
           crop_context: landContext?.current_crop ? {
             crop_name: landContext.current_crop,
             crop_stage: landDetails?.cultivation_date ? getCropStage(landDetails.cultivation_date) : null,
@@ -2319,6 +2358,28 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       
       if (aiMsgError) {
         console.error('Error saving AI response:', aiMsgError);
+      } else {
+        console.log('✅ AI message saved with training data:', savedMessage?.[0]?.id);
+        
+        // ✅ NEW: Update ai_chat_analytics table
+        try {
+          await supabase.from('ai_chat_analytics').upsert({
+            tenant_id: finalTenantId,
+            farmer_id: finalFarmerId,
+            date: new Date().toISOString().split('T')[0],
+            total_messages: messageCount + 1,
+            total_sessions: 1,
+            avg_response_time_ms: responseTime,
+            satisfaction_score: null, // Updated later via feedback
+            topics: trainingData.domain_tags
+          }, {
+            onConflict: 'tenant_id,farmer_id,date',
+            ignoreDuplicates: false
+          });
+          console.log('✅ Analytics updated for farmer');
+        } catch (analyticsError) {
+          console.error('⚠️ Failed to update analytics:', analyticsError);
+        }
       }
     } else {
       console.warn('⚠️ Skipping save - AI message is empty');
