@@ -25,25 +25,14 @@ export function VoiceDownloadCard({
   autoStart = false
 }: VoiceDownloadCardProps) {
   const { t } = useTranslation();
-  const store = useTTSStore();
   const [status, setStatus] = useState<'idle' | 'downloading' | 'success' | 'error'>('idle');
   const [progress, setProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
 
   const isPreInstalled = voiceDownloadService.isPreInstalledVoice(`${language}-IN`);
 
-  useEffect(() => {
-    if (autoStart && !isPreInstalled) {
-      handleDownload();
-    } else if (isPreInstalled) {
-      setStatus('success');
-      setTimeout(() => {
-        onComplete?.();
-      }, 1000);
-    }
-  }, [autoStart, isPreInstalled]);
-
-  const handleDownload = async () => {
+  // Stable download handler with proper dependencies
+  const handleDownload = React.useCallback(async () => {
     setStatus('downloading');
     setProgress(0);
     setErrorMessage('');
@@ -84,7 +73,20 @@ export function VoiceDownloadCard({
       setStatus('error');
       setErrorMessage(t('chat.tts.downloadFailed', 'Download failed. Please check your internet connection.'));
     }
-  };
+  }, [language, languageName, onComplete, t]);
+
+  // Effect with proper dependencies
+  React.useEffect(() => {
+    // Guard: only run if status is idle to prevent repeated execution
+    if (autoStart && !isPreInstalled && status === 'idle') {
+      handleDownload();
+    } else if (isPreInstalled && status === 'idle') {
+      setStatus('success');
+      setTimeout(() => {
+        onComplete?.();
+      }, 1000);
+    }
+  }, [autoStart, isPreInstalled, status, handleDownload, onComplete]);
 
   const handleRetry = () => {
     handleDownload();

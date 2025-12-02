@@ -24,9 +24,11 @@ export function useAdvancedTextToSpeech({
   const sentencesRef = useRef<string[]>([]);
   const currentIndexRef = useRef(0);
 
-  const store = useTTSStore();
+  // Use stable selectors instead of full store object
+  const settings = useTTSStore(state => state.settings);
+  const getPreferredVoiceForLanguage = useTTSStore(state => state.getPreferredVoiceForLanguage);
 
-  // Check browser support and load voices
+  // Check browser support and load voices - use getState() to avoid dependency on store
   useEffect(() => {
     const checkSupport = () => {
       const supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
@@ -36,7 +38,8 @@ export function useAdvancedTextToSpeech({
         const loadVoices = () => {
           const voices = window.speechSynthesis.getVoices();
           if (voices.length > 0) {
-            store.updateVoiceAvailability(voices);
+            // Use getState() to avoid adding store to dependencies
+            useTTSStore.getState().updateVoiceAvailability(voices);
             
             // Verify pre-installed voices
             voiceDownloadService.verifyPreInstalledVoices().then(missing => {
@@ -60,7 +63,7 @@ export function useAdvancedTextToSpeech({
         window.speechSynthesis.onvoiceschanged = null;
       }
     };
-  }, [store]);
+  }, []); // No dependencies - runs once on mount
 
   // Split text into sentences
   const splitIntoSentences = useCallback((text: string): string[] => {
@@ -80,7 +83,7 @@ export function useAdvancedTextToSpeech({
   // Get voice with intelligent fallback
   const getVoiceWithFallback = useCallback(() => {
     const langCode = language.toLowerCase();
-    let voice = store.getPreferredVoiceForLanguage(langCode);
+    let voice = getPreferredVoiceForLanguage(langCode);
     let usedFallback = null;
 
     if (!voice) {
@@ -88,7 +91,7 @@ export function useAdvancedTextToSpeech({
       const fallbackChain = ['hi', 'mr', 'en'];
       
       for (const fallbackLang of fallbackChain) {
-        voice = store.getPreferredVoiceForLanguage(fallbackLang);
+        voice = getPreferredVoiceForLanguage(fallbackLang);
         if (voice) {
           usedFallback = fallbackLang;
           console.log(`🔄 [TTS] Using fallback: ${fallbackLang} for ${langCode}`);
@@ -99,7 +102,7 @@ export function useAdvancedTextToSpeech({
 
     setFallbackLanguage(usedFallback);
     return voice;
-  }, [language, store]);
+  }, [language, getPreferredVoiceForLanguage]);
 
   // Speak with sentence highlighting
   const speak = useCallback(async (text: string) => {
@@ -133,7 +136,7 @@ export function useAdvancedTextToSpeech({
         }
 
         // Apply user settings
-        utterance.rate = store.settings.speed;
+        utterance.rate = settings.speed;
         utterance.pitch = 1.0;
 
         utterance.onstart = () => {
@@ -171,7 +174,7 @@ export function useAdvancedTextToSpeech({
       onError?.('Failed to start speech');
       setIsSpeaking(false);
     }
-  }, [isSupported, splitIntoSentences, getVoiceWithFallback, store.settings.speed, onEnd, onError]);
+  }, [isSupported, splitIntoSentences, getVoiceWithFallback, settings.speed, onEnd, onError]);
 
   const stop = useCallback(() => {
     if (isSupported) {
