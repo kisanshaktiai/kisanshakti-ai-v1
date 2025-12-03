@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Volume2, X } from 'lucide-react';
+import { Mic, Volume2, X, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -8,6 +8,7 @@ import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/stores/authStore';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
+import { getVoicePlatformInfo, getUnsupportedMessage } from '@/services/voice/voicePlatformDetector';
 
 interface VoiceSuggestion {
   id: string;
@@ -240,12 +241,16 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
     // Check if service is ready
     if (!isReady || !isSupported) {
       console.warn('[VoiceMic] Service not ready or not supported');
+      
+      // Get detailed platform info for better error message
+      const platformInfo = getVoicePlatformInfo();
+      const message = getUnsupportedMessage(currentLanguage, platformInfo.unsupportedReason);
+      
       toast({
-        title: "Voice Not Ready",
-        description: isSupported 
-          ? "Voice service is initializing. Please wait a moment..."
-          : "Your browser doesn't support voice recognition. Try Chrome, Edge, or Safari.",
+        title: message.title,
+        description: message.description,
         variant: isSupported ? "default" : "destructive",
+        duration: 6000, // Longer duration for actionable messages
       });
       return;
     }
