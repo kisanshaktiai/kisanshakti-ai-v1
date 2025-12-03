@@ -6,8 +6,9 @@ import { GoogleMapBoundaryDrawer } from '@/components/land/GoogleMapBoundaryDraw
 import { ModernLandWizard } from '@/components/land/ModernLandWizard';
 import { LandInstructionDialog } from '@/components/land/LandInstructionDialog';
 import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, MapPin } from 'lucide-react';
+import { Loader2, MapPin, RefreshCw, AlertTriangle } from 'lucide-react';
 
 interface LatLng {
   lat: number;
@@ -17,7 +18,7 @@ interface LatLng {
 export default function AddLand() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { isLoaded, loadError, isLoading } = useGoogleMapsApi();
+  const { isLoaded, loadError, isLoading, retry } = useGoogleMapsApi();
   
   const [showInstructions, setShowInstructions] = useState(true);
   const [showMap, setShowMap] = useState(false);
@@ -69,15 +70,30 @@ export default function AddLand() {
     );
   }
 
-  // Error state
+  // Error state with retry button
   if (loadError) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background p-4 z-50">
-        <Card className="p-6 max-w-md w-full space-y-4">
-          <h2 className="text-xl font-semibold text-destructive">{t('lands.add_land.error.maps_failed.title')}</h2>
+        <Card className="p-6 max-w-md w-full space-y-4 text-center">
+          <div className="mx-auto w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
+            <AlertTriangle className="h-8 w-8 text-destructive" />
+          </div>
+          <h2 className="text-xl font-semibold text-destructive">
+            {t('lands.add_land.error.maps_failed.title', 'Map Loading Failed')}
+          </h2>
           <p className="text-muted-foreground">
-            {t('lands.add_land.error.maps_failed.message')}
+            {t('lands.add_land.error.maps_failed.message', 'Unable to load Google Maps. Please check your internet connection and try again.')}
           </p>
+          <p className="text-sm text-muted-foreground/70">{loadError}</p>
+          <div className="flex gap-3 justify-center pt-2">
+            <Button variant="outline" onClick={() => navigate('/app/lands')}>
+              Go Back
+            </Button>
+            <Button onClick={retry} className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Try Again
+            </Button>
+          </div>
         </Card>
       </div>
     );

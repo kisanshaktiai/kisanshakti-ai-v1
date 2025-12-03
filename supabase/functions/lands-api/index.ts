@@ -174,7 +174,32 @@ serve(async (req) => {
         // Create new land
         const body = await req.json();
         
-        // Ensure tenant_id and farmer_id are set correctly
+        console.log('📝 [LandsAPI] Creating land:', {
+          name: body.name,
+          area_acres: body.area_acres,
+          hasBoundary: !!body.boundary_polygon_old,
+          tenantId,
+          farmerId
+        });
+
+        // Validate required fields
+        if (!body.name || !body.name.trim()) {
+          console.error('❌ [LandsAPI] Validation failed: Missing name');
+          return new Response(
+            JSON.stringify({ error: 'Land name is required', field: 'name' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (!body.area_acres || body.area_acres <= 0) {
+          console.error('❌ [LandsAPI] Validation failed: Invalid area');
+          return new Response(
+            JSON.stringify({ error: 'Valid area is required', field: 'area_acres' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        // Ensure tenant_id and farmer_id are set correctly (override any sent values)
         const landData = {
           ...body,
           tenant_id: tenantId,
@@ -184,6 +209,15 @@ serve(async (req) => {
           updated_at: new Date().toISOString()
         };
 
+        // Remove any undefined values that could cause issues
+        Object.keys(landData).forEach(key => {
+          if (landData[key] === undefined || landData[key] === '') {
+            delete landData[key];
+          }
+        });
+
+        console.log('📝 [LandsAPI] Inserting land data with fields:', Object.keys(landData));
+
         const { data, error } = await supabase
           .from('lands')
           .insert([landData])
@@ -191,12 +225,26 @@ serve(async (req) => {
           .single();
 
         if (error) {
-          console.error('Error creating land:', error);
+          console.error('❌ [LandsAPI] Database error creating land:', {
+            error: error.message,
+            code: error.code,
+            details: error.details,
+            hint: error.hint
+          });
           return new Response(
-            JSON.stringify({ error: error.message }),
+            JSON.stringify({ 
+              error: error.message,
+              details: error.details,
+              hint: error.hint 
+            }),
             { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
+
+        console.log('✅ [LandsAPI] Land created successfully:', {
+          id: data.id,
+          name: data.name
+        });
 
         return new Response(
           JSON.stringify({ data, success: true }),
