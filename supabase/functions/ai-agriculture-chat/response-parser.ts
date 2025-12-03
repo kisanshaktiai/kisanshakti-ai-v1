@@ -90,11 +90,20 @@ function formatContentWithLineBreaks(content: string): string {
     .replace(/\*\*(.*?)\*\*/g, '$1')
     .replace(/\*(.*?)\*/g, '$1')
     .replace(/^#{1,6}\s+/gm, '')
-    // Ensure each numbered/bulleted point is on new line
-    .replace(/(\d+\.)/g, '\n$1')
-    .replace(/([•·])/g, '\n$1')
+    // ✅ Ensure each numbered point is on new line (handles 1. 2. 3. etc)
+    .replace(/(?<!\n)(\d+\.)\s+/g, '\n$1 ')
+    // ✅ Handle Hindi numbered lists (१. २. ३.)
+    .replace(/(?<!\n)([१२३४५६७८९०]+\.)\s+/g, '\n$1 ')
+    // ✅ Handle bullet points
+    .replace(/(?<!\n)([•·\-])\s+/g, '\n$1 ')
+    // ✅ Ensure emoji section markers start on new line
+    .replace(/(?<!\n)(🟢|🟡|🔴|🟣|🔵|⚠️|✅|ℹ️)/g, '\n\n$1')
+    // ✅ Add spacing after section titles (text followed by colon)
+    .replace(/([।:])(\s*)(?=[A-Za-z\u0900-\u097F])/g, '$1\n')
     // Clean up multiple newlines
     .replace(/\n{3,}/g, '\n\n')
+    // Clean leading newlines
+    .replace(/^\n+/, '')
     .trim();
 }
 

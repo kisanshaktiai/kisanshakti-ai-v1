@@ -65,6 +65,16 @@ interface Message {
   };
   feedback?: 'like' | 'dislike' | null;
   isCopied?: boolean;
+  // ✅ NEW: Analytics including token usage
+  analytics?: {
+    responseTime?: number;
+    tokensUsed?: {
+      prompt: number;
+      completion: number;
+      total: number;
+    };
+    queryComplexity?: string;
+  };
 }
 
 export function EnhancedAIChatInterface() {
@@ -578,7 +588,13 @@ export function EnhancedAIChatInterface() {
         content: data.response || t('chat.errorOccurred'),
         timestamp: new Date(),
         structured: parseStructuredResponse(data.response),
-        structuredResponse: data.structuredResponse // ✅ NEW: Color-coded cards from backend
+        structuredResponse: data.structuredResponse, // ✅ NEW: Color-coded cards from backend
+        // ✅ NEW: Include analytics for token display
+        analytics: {
+          responseTime: data.responseTime,
+          tokensUsed: data.analytics?.tokensUsed,
+          queryComplexity: data.analytics?.queryComplexity
+        }
       };
       
       setMessages(prev => ({
