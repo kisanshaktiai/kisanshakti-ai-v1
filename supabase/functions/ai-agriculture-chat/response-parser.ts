@@ -91,26 +91,22 @@ function formatContentWithLineBreaks(content: string): string {
     .replace(/\*(.*?)\*/g, '$1')
     .replace(/^#{1,6}\s+/gm, '');
   
-  // ✅ Step 2: Force newlines before numbered points (without lookbehind for compatibility)
-  // Handle "text1. text" -> "text\n1. text"
-  formatted = formatted.replace(/([^\n\d])(\d+\.)\s+/g, '$1\n$2 ');
+  // ✅ Step 2: Force newlines before numbered points
+  formatted = formatted
+    .replace(/([^\n\d])(\d+\.)\s+/g, '$1\n$2 ')  // "text1. text" -> "text\n1. text"
+    .replace(/([^\n])([१२३४५६७८९०]+\.)\s+/g, '$1\n$2 ')  // Hindi numbered lists
+    .replace(/([^\n])([•·\-\*])\s+(?=[A-Za-z\u0900-\u097F])/g, '$1\n$2 ');  // Bullet points
   
-  // ✅ Step 3: Handle Hindi numbered lists (१. २. ३.)
-  formatted = formatted.replace(/([^\n])([१२३४५६७८९०]+\.)\s+/g, '$1\n$2 ');
+  // ✅ Step 3: Ensure emoji section markers start on new line with spacing
+  formatted = formatted.replace(/([^\n])(🟢|🟡|🔴|🟣|🔵|⚠️|✅|ℹ️|🌱|💧|🌾|📅|🎯|💰|📊|🏦|💵)/g, '$1\n\n$2');
   
-  // ✅ Step 4: Handle bullet points
-  formatted = formatted.replace(/([^\n])([•·\-\*])\s+(?=[A-Za-z\u0900-\u097F])/g, '$1\n$2 ');
-  
-  // ✅ Step 5: Ensure emoji section markers start on new line
-  formatted = formatted.replace(/([^\n])(🟢|🟡|🔴|🟣|🔵|⚠️|✅|ℹ️|🌱|💧|🌾|📅|🎯)/g, '$1\n\n$2');
-  
-  // ✅ Step 6: Add spacing after colons that precede text (section dividers)
+  // ✅ Step 4: Add spacing after colons that precede text (section dividers)
   formatted = formatted.replace(/([।:])(\s*)(?=[A-Za-z\u0900-\u097F])/g, '$1\n');
   
-  // ✅ Step 7: Clean up
+  // ✅ Step 5: Clean up excessive newlines
   formatted = formatted
-    .replace(/\n{3,}/g, '\n\n')  // Max 2 newlines
-    .replace(/^\n+/, '')         // No leading newlines
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/^\n+/, '')
     .trim();
   
   return formatted;

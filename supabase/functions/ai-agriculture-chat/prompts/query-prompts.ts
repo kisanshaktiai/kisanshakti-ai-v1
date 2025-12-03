@@ -108,14 +108,17 @@ Include: ₹ per quintal, total income estimate`
     hi: `🌾 सामान्य कृषि सहायता:
 - संक्षिप्त, सटीक उत्तर दें
 - व्यावहारिक सलाह प्राथमिकता
-- आर्थिक लाभ शामिल करें`,
+- आर्थिक लाभ शामिल करें
+- अगर विकास धीमा हो तो ग्रोथ प्रमोटर सुझाएं`,
     mr: `🌾 सामान्य शेती मदत:
 - संक्षिप्त, अचूक उत्तर द्या
-- व्यावहारिक सल्ला प्राधान्य`,
+- व्यावहारिक सल्ला प्राधान्य
+- वाढ कमी असल्यास ग्रोथ प्रमोटर सुचवा`,
     en: `🌾 General agriculture help:
 - Brief, accurate answers
 - Practical advice priority
-- Include economic benefit`
+- Include economic benefit
+- Suggest growth promoters if growth is slow`
   },
 
   harvest: {
@@ -132,6 +135,59 @@ Include: ₹ per quintal, total income estimate`
 - Soil preparation for next crop
 - Follow crop rotation
 Suggest: 3 best crops, expected income`
+  },
+
+  growth: {
+    hi: `🟣 विकास/बढ़वार समस्या:
+- पौधे का विकास धीमा होने के कारण जांचें
+- पोषक तत्व कमी या हार्मोन असंतुलन हो सकता है
+- प्राकृतिक ग्रोथ प्रमोटर सुझाएं:
+  • जिब्रेलिक एसिड (GA3): 10-25 ppm
+  • ह्यूमिक एसिड: 2ml/लीटर
+  • समुद्री शैवाल अर्क (Seaweed): 2-3ml/लीटर
+- ब्रांड सुझाव: Anshul Crop Booster, Multiplex General, Tapas GA3
+खर्च: ₹200-400 प्रति एकड़, उपज वृद्धि: 15-30%`,
+    mr: `🟣 वाढ/विकास समस्या:
+- वाढ मंद होण्याची कारणे तपासा
+- पोषक तत्व कमतरता किंवा हार्मोन असंतुलन असू शकते
+- नैसर्गिक ग्रोथ प्रमोटर सुचवा:
+  • जिबरेलिक अॅसिड (GA3): 10-25 ppm
+  • ह्युमिक अॅसिड: 2ml/लिटर
+  • सीव्हीड अर्क: 2-3ml/लिटर
+- ब्रँड सूचना: Anshul Crop Booster, Multiplex General
+खर्च: ₹200-400 प्रति एकर, उत्पादन वाढ: 15-30%`,
+    en: `🟣 Growth/Development issues:
+- Check reasons for slow growth
+- Could be nutrient deficiency or hormone imbalance
+- Suggest natural growth promoters:
+  • Gibberellic Acid (GA3): 10-25 ppm
+  • Humic Acid: 2ml/litre
+  • Seaweed Extract: 2-3ml/litre
+- Brand suggestions: Anshul Crop Booster, Multiplex General, Tapas GA3
+Cost: ₹200-400 per acre, Yield increase: 15-30%`
+  },
+
+  planting: {
+    hi: `🌱 बुवाई/रोपाई सलाह:
+- सही समय, गहराई, दूरी बताएं
+- बीज उपचार (बीजामृत/थीरम)
+- मिट्टी तैयारी और खाद मिलाएं
+- 🟣 बेहतर अंकुरण के लिए: जिब्रेलिक एसिड (GA3) 50ppm में बीज भिगोएं
+- ब्रांड: Anshul GA3, Tapas Gibberellic
+अपेक्षित उपज: क्विंटल/एकड़, आय: ₹`,
+    mr: `🌱 पेरणी/लावणी सल्ला:
+- योग्य वेळ, खोली, अंतर सांगा
+- बीज प्रक्रिया (बीजामृत/थायरम)
+- माती तयारी आणि खत मिसळा
+- 🟣 चांगल्या उगवणीसाठी: GA3 50ppm मध्ये बी भिजवा
+अपेक्षित उत्पादन: क्विंटल/एकर, उत्पन्न: ₹`,
+    en: `🌱 Planting/Sowing advice:
+- Correct timing, depth, spacing
+- Seed treatment (Beejamrut/Thiram)
+- Soil prep and fertilizer mixing
+- 🟣 For better germination: Soak seeds in GA3 50ppm
+- Brands: Anshul GA3, Tapas Gibberellic
+Expected yield: quintal/acre, income: ₹`
   }
 };
 
@@ -171,8 +227,18 @@ export function detectQueryType(message: string): string {
   }
   
   // Harvest/new crop keywords
-  if (/कटाई|harvest|अगली फसल|next crop|काढणी|नवीन पीक|बुवाई|sowing/.test(lowerMsg)) {
+  if (/कटाई|harvest|अगली फसल|next crop|काढणी|नवीन पीक/.test(lowerMsg)) {
     return 'harvest';
+  }
+  
+  // Growth issues keywords (triggers hormone/growth promoter suggestions)
+  if (/विकास|growth|बढ़वार|slow|धीमा|मंद|छोटा|small|weak|कमजोर|वाढ|not growing|नहीं बढ़|double|दोगुनी|दुप्पट/.test(lowerMsg)) {
+    return 'growth';
+  }
+  
+  // Planting/sowing keywords
+  if (/बुवाई|sowing|plant|रोपाई|लगाना|पेरणी|लावणी|बोना|how to grow|कैसे उगाएं|कसे पिकवावे/.test(lowerMsg)) {
+    return 'planting';
   }
   
   return 'general';
