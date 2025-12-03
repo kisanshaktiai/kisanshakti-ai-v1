@@ -91,7 +91,7 @@ jobs:
           echo "✅ PWA deployed successfully"
 
       - name: 🔄 Purge Cloudflare cache
-        if: secrets.CF_API_TOKEN != '' && secrets.CF_ZONE_ID != ''
+        if: ${{ secrets.CF_API_TOKEN != '' && secrets.CF_ZONE_ID != '' }}
         run: |
           curl -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" \
             -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
@@ -156,7 +156,7 @@ jobs:
           retention-days: 30
 
       - name: 🔨 Build Release APK (if keystore exists)
-        if: secrets.ANDROID_KEYSTORE_B64 != ''
+        if: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
         run: |
           # Decode keystore
           echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 --decode > android/app/release.keystore
@@ -185,7 +185,7 @@ jobs:
           ./gradlew assembleRelease --stacktrace
 
       - name: 📤 Upload Release APK
-        if: secrets.ANDROID_KEYSTORE_B64 != ''
+        if: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: kisanshakti-release.apk
