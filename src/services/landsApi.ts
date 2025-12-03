@@ -3,6 +3,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { dataIsolation, isolatedSupabase } from './dataIsolationService';
 
 const LANDS_API_URL = 'https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/lands-api';
+const MAX_RETRIES = 2;
+const RETRY_DELAY = 1000;
 
 interface LandData {
   id?: string;
@@ -35,29 +37,65 @@ interface LandData {
 }
 
 class LandsApiService {
-  private getHeaders(): HeadersInit {
-    // Validate isolation context before making API calls
-    const { tenantId, farmerId, isValid } = dataIsolation.getIsolationContext();
+  private async getHeaders(): Promise<HeadersInit> {
+    // Wait for context to be available (handles race condition during app init)
+    let attempts = 0;
+    const maxAttempts = 5;
     
-    if (!isValid || !tenantId || !farmerId) {
-      console.error('[LandsAPI] ❌ Invalid context:', { tenantId, farmerId, isValid });
-      throw new Error('Authentication required: Please ensure you are logged in and tenant is loaded');
+    while (attempts < maxAttempts) {
+      const { tenantId, farmerId, isValid } = dataIsolation.getIsolationContext();
+      
+      if (isValid && tenantId && farmerId) {
+        const headers = dataIsolation.getIsolationHeaders();
+        console.log('🌐 [LandsAPI] Headers ready:', { 
+          tenantId: headers['x-tenant-id'], 
+          farmerId: headers['x-farmer-id'] 
+        });
+        return {
+          ...headers,
+          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbwYom1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4'
+        };
+      }
+      
+      console.log(`🌐 [LandsAPI] Waiting for context (attempt ${attempts + 1}/${maxAttempts})...`);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      attempts++;
     }
     
-    // Use centralized data isolation service for headers
-    const headers = dataIsolation.getIsolationHeaders();
+    console.error('❌ [LandsAPI] Context never became valid after waiting');
+    throw new Error('Please ensure you are logged in before managing lands');
+  }
+
+  private async fetchWithRetry(
+    url: string, 
+    options: RequestInit, 
+    retries = MAX_RETRIES
+  ): Promise<Response> {
+    let lastError: Error | null = null;
     
-    return {
-      ...headers,
-      'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || ''
-    };
+    for (let i = 0; i <= retries; i++) {
+      try {
+        const response = await fetch(url, options);
+        return response;
+      } catch (error) {
+        lastError = error as Error;
+        console.warn(`🌐 [LandsAPI] Fetch failed (attempt ${i + 1}/${retries + 1}):`, error);
+        
+        if (i < retries) {
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * (i + 1)));
+        }
+      }
+    }
+    
+    throw lastError || new Error('Request failed after retries');
   }
 
   async fetchLands(): Promise<LandData[]> {
     try {
-      const response = await fetch(LANDS_API_URL, {
+      const headers = await this.getHeaders();
+      const response = await this.fetchWithRetry(LANDS_API_URL, {
         method: 'GET',
-        headers: this.getHeaders(),
+        headers,
       });
 
       if (!response.ok) {
@@ -68,37 +106,56 @@ class LandsApiService {
       const result = await response.json();
       return result.data || [];
     } catch (error) {
-      console.error('Error fetching lands:', error);
+      console.error('❌ [LandsAPI] Error fetching lands:', error);
       throw error;
     }
   }
 
   async createLand(landData: Omit<LandData, 'id'>): Promise<LandData> {
     try {
-      const response = await fetch(LANDS_API_URL, {
+      // Validate required fields before sending
+      if (!landData.name?.trim()) {
+        throw new Error('Land name is required');
+      }
+      if (!landData.area_acres || landData.area_acres <= 0) {
+        throw new Error('Valid area is required');
+      }
+
+      const headers = await this.getHeaders();
+      
+      console.log('🌐 [LandsAPI] Creating land:', {
+        name: landData.name,
+        area_acres: landData.area_acres,
+        hasBoundary: !!landData.boundary_polygon_old
+      });
+
+      const response = await this.fetchWithRetry(LANDS_API_URL, {
         method: 'POST',
-        headers: this.getHeaders(),
+        headers,
         body: JSON.stringify(landData),
       });
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to create land');
+        console.error('❌ [LandsAPI] Create failed:', error);
+        throw new Error(error.error || error.details || 'Failed to create land');
       }
 
       const result = await response.json();
+      console.log('✅ [LandsAPI] Land created:', result.data?.id);
       return result.data;
     } catch (error) {
-      console.error('Error creating land:', error);
+      console.error('❌ [LandsAPI] Error creating land:', error);
       throw error;
     }
   }
 
   async updateLand(id: string, landData: Partial<LandData>): Promise<LandData> {
     try {
-      const response = await fetch(`${LANDS_API_URL}/${id}`, {
+      const headers = await this.getHeaders();
+      const response = await this.fetchWithRetry(`${LANDS_API_URL}/${id}`, {
         method: 'PUT',
-        headers: this.getHeaders(),
+        headers,
         body: JSON.stringify(landData),
       });
 
@@ -110,16 +167,17 @@ class LandsApiService {
       const result = await response.json();
       return result.data;
     } catch (error) {
-      console.error('Error updating land:', error);
+      console.error('❌ [LandsAPI] Error updating land:', error);
       throw error;
     }
   }
 
   async deleteLand(id: string): Promise<void> {
     try {
-      const response = await fetch(`${LANDS_API_URL}/${id}`, {
+      const headers = await this.getHeaders();
+      const response = await this.fetchWithRetry(`${LANDS_API_URL}/${id}`, {
         method: 'DELETE',
-        headers: this.getHeaders(),
+        headers,
       });
 
       if (!response.ok) {
@@ -127,58 +185,36 @@ class LandsApiService {
         throw new Error(error.error || 'Failed to delete land');
       }
     } catch (error) {
-      console.error('Error deleting land:', error);
+      console.error('❌ [LandsAPI] Error deleting land:', error);
       throw error;
     }
   }
 
-  // Fetch a specific land by ID - uses the Edge Function
   async fetchLandById(id: string): Promise<LandData | null> {
     try {
-      const headers = this.getHeaders();
+      const headers = await this.getHeaders();
       
-      console.log('🌐 [LandsAPI] Fetching land by ID:', {
-        landId: id,
-        headers: {
-          'x-tenant-id': headers['x-tenant-id'],
-          'x-farmer-id': headers['x-farmer-id'],
-          'x-session-token': headers['x-session-token'] ? '***' : 'null'
-        }
-      });
+      console.log('🌐 [LandsAPI] Fetching land by ID:', id);
       
-      const response = await fetch(`${LANDS_API_URL}/${id}`, {
+      const response = await this.fetchWithRetry(`${LANDS_API_URL}/${id}`, {
         method: 'GET',
         headers,
       });
 
-      console.log('🌐 [LandsAPI] Response status:', response.status);
-
       if (!response.ok) {
-        const error = await response.json();
-        console.error('❌ [LandsAPI] Error fetching land by ID:', {
-          status: response.status,
-          error,
-          landId: id
-        });
-        
-        // Return null for 404 errors (land not found)
         if (response.status === 404) {
-          console.log('⚠️ [LandsAPI] Land not found with ID:', id);
+          console.log('⚠️ [LandsAPI] Land not found:', id);
           return null;
         }
-        
+        const error = await response.json();
         throw new Error(error.error || 'Failed to fetch land');
       }
 
       const result = await response.json();
-      console.log('✅ [LandsAPI] Land fetched successfully:', {
-        landId: result.data?.id,
-        landName: result.data?.name
-      });
-      
+      console.log('✅ [LandsAPI] Land fetched:', result.data?.name);
       return result.data || null;
     } catch (error) {
-      console.error('❌ [LandsAPI] Exception fetching land by ID:', error);
+      console.error('❌ [LandsAPI] Error fetching land by ID:', error);
       return null;
     }
   }

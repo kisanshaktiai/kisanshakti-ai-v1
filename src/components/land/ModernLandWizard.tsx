@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
+import { landsApi } from '@/services/landsApi';
 import { useTranslation } from 'react-i18next';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { cn } from '@/lib/utils';
@@ -237,19 +238,80 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
   };
 
   const handleSave = async () => {
+    // Validate required fields
+    if (!formData.name?.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a land name",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!area.acres || area.acres <= 0) {
+      toast({
+        title: "Validation Error", 
+        description: "Please draw a valid boundary on the map",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSaving(true);
     
     try {
-      const response = await supabase.functions.invoke('lands-api', {
-        body: {
-          action: 'create',
-          ...formData,
-          farmer_id: user?.id,
-          tenant_id: user?.tenantId,
-        },
+      // Build proper GeoJSON polygon from boundary points
+      // GeoJSON format: coordinates array with lng first, lat second
+      // Close the polygon by repeating the first point at the end
+      const boundaryGeoJSON = boundary.length >= 3 ? {
+        type: 'Polygon',
+        coordinates: [[
+          ...boundary.map(p => [p.lng, p.lat]),
+          [boundary[0].lng, boundary[0].lat] // Close the polygon
+        ]]
+      } : null;
+      
+      // Calculate center point from boundary
+      const centerGeoJSON = boundary.length >= 3 ? {
+        type: 'Point',
+        coordinates: [
+          boundary.reduce((sum, p) => sum + p.lng, 0) / boundary.length,
+          boundary.reduce((sum, p) => sum + p.lat, 0) / boundary.length
+        ]
+      } : null;
+
+      console.log('📍 [ModernLandWizard] Saving land with:', {
+        name: formData.name,
+        area_acres: area.acres,
+        hasBoundary: !!boundaryGeoJSON,
+        boundaryPoints: boundary.length
       });
 
-      if (response.error) throw response.error;
+      // Use the landsApi service which handles proper headers and authentication
+      await landsApi.createLand({
+        name: formData.name,
+        survey_number: formData.survey_number || undefined,
+        ownership_type: formData.ownership_type,
+        area_acres: area.acres,
+        area_guntas: area.guntha,
+        area_sqft: area.sqft,
+        state: formData.state || undefined,
+        district: formData.district || undefined,
+        taluka: formData.taluka || undefined,
+        village: formData.village || undefined,
+        soil_type: formData.soil_type || undefined,
+        water_source: formData.water_source || undefined,
+        irrigation_type: formData.irrigation_type || undefined,
+        current_crop: formData.current_crop || undefined,
+        previous_crop: formData.previous_crop || undefined,
+        cultivation_date: formData.cultivation_date || undefined,
+        last_harvest_date: formData.last_harvest_date || undefined,
+        boundary_polygon_old: boundaryGeoJSON,
+        center_point_old: centerGeoJSON,
+        boundary_method: 'google_maps',
+        gps_accuracy_meters: 10,
+        gps_recorded_at: new Date().toISOString()
+      });
 
       toast({
         title: "✅ Success",
@@ -261,9 +323,10 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
       
       onComplete();
     } catch (error: any) {
+      console.error('❌ [ModernLandWizard] Save error:', error);
       toast({
-        title: "Error",
-        description: error.message || "Failed to save land",
+        title: "Error Saving Land",
+        description: error.message || "Failed to save land. Please check your connection and try again.",
         variant: "destructive",
       });
     } finally {
