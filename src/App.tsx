@@ -134,26 +134,9 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           }
         };
         
-        // Set dynamic manifest link with caching (non-blocking)
-        runInBackground(() => {
-          const manifestCacheKey = 'manifest-url-cache';
-          const cachedManifestUrl = sessionStorage.getItem(manifestCacheKey);
-          const manifestLink = document.querySelector('link[rel="manifest"]') as HTMLLinkElement;
-          
-          if (manifestLink) {
-            if (cachedManifestUrl) {
-              // Use cached manifest URL to avoid rate limiting
-              manifestLink.href = cachedManifestUrl;
-              console.log('📱 [Manifest] Using cached manifest URL');
-            } else {
-              // Generate and cache new manifest URL
-              const manifestUrl = `${getSupabaseFunctionUrl('generate-manifest')}?domain=${encodeURIComponent(currentDomain)}`;
-              manifestLink.href = manifestUrl;
-              sessionStorage.setItem(manifestCacheKey, manifestUrl);
-              console.log('📱 [Manifest] Set and cached manifest URL');
-            }
-          }
-        });
+        // CRITICAL: Use static manifest.json only - no dynamic API calls
+        // This prevents 429 rate limiting errors and ensures PWA installability
+        console.log('📱 [Manifest] Using static /manifest.json (no API calls)');
         
         // STEP 1: Set tenant isolation context for all services (fast)
         setCurrentStep('Preparing your workspace...');
