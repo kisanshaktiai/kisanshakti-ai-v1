@@ -4,6 +4,7 @@ import "./index.css";
 
 // Import debug utilities (makes window.__debugAuth available)
 import "@/utils/debugAuth";
+import { getSupabaseFunctionUrl } from "@/config/supabase";
 
 // Import Capacitor initialization
 import { initializeCapacitor, isNativeApp, getPlatform } from "@/utils/capacitorInit";
@@ -34,9 +35,8 @@ const updateManifestLink = async () => {
     const manifestLink = document.getElementById('app-manifest') as HTMLLinkElement;
     if (manifestLink) {
       // Use Supabase edge function for dynamic tenant manifest
-      const supabaseUrl = 'https://qfklkkzxemsbeniyugiz.supabase.co';
       const domain = window.location.hostname;
-      manifestLink.href = `${supabaseUrl}/functions/v1/generate-manifest?domain=${encodeURIComponent(domain)}`;
+      manifestLink.href = `${getSupabaseFunctionUrl('generate-manifest')}?domain=${encodeURIComponent(domain)}`;
       console.log('📱 [PWA] Dynamic manifest loaded:', manifestLink.href);
       console.log('📱 [PWA] Domain:', domain);
     }

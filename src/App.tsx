@@ -6,6 +6,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { I18nextProvider } from "react-i18next";
 import i18n from "@/i18n/config";
+import { getSupabaseFunctionUrl } from "@/config/supabase";
 
 // Components
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -173,7 +174,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
               console.log('📱 [Manifest] Using cached manifest URL');
             } else {
               // Generate and cache new manifest URL
-              const manifestUrl = `https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/generate-manifest?domain=${encodeURIComponent(currentDomain)}`;
+              const manifestUrl = `${getSupabaseFunctionUrl('generate-manifest')}?domain=${encodeURIComponent(currentDomain)}`;
               manifestLink.href = manifestUrl;
               sessionStorage.setItem(manifestCacheKey, manifestUrl);
               console.log('📱 [Manifest] Set and cached manifest URL');
