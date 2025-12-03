@@ -9,6 +9,9 @@ import { getSupabaseFunctionUrl } from "@/config/supabase";
 // Import Capacitor initialization
 import { initializeCapacitor, isNativeApp, getPlatform } from "@/utils/capacitorInit";
 
+// Import PWA debug utility
+import { initPwaDebug } from "@/utils/pwaDebug";
+
 // Extend Window interface for React loaded flag and PWA prompt
 declare global {
   interface Window {
@@ -27,6 +30,9 @@ declare global {
 // Moving this to main.tsx ensures we capture it before any React code runs.
 // =============================================================================
 console.log('🚀 [PWA] main.tsx executing - setting up beforeinstallprompt listener');
+console.log('🔧 [PWA] Current URL:', window.location.href);
+console.log('🔧 [PWA] Protocol:', window.location.protocol);
+console.log('🔧 [PWA] Is Secure Context:', window.isSecureContext);
 
 // Capture the event IMMEDIATELY - before React renders
 window.addEventListener('beforeinstallprompt', (e: Event) => {
@@ -40,6 +46,9 @@ window.addEventListener('beforeinstallprompt', (e: Event) => {
   
   console.log('✅ [PWA] beforeinstallprompt CAPTURED in main.tsx (before React)!');
   console.log('📋 [PWA] Event stored at:', new Date().toISOString());
+  console.log('📋 [PWA] Event object:', e);
+  console.log('📋 [PWA] Event type:', e.type);
+  console.log('📋 [PWA] Event cancelable:', e.cancelable);
   
   // Dispatch custom event for any React components that are already mounted
   window.dispatchEvent(new CustomEvent('pwa-prompt-captured', { detail: e }));
@@ -48,6 +57,7 @@ window.addEventListener('beforeinstallprompt', (e: Event) => {
 // Also listen for app installed
 window.addEventListener('appinstalled', () => {
   console.log('🎉 [PWA] App was installed successfully!');
+  console.log('📋 [PWA] Install completed at:', new Date().toISOString());
   window.__capturedPwaPrompt = null;
   window.__pwaPromptUsed = true;
 });
@@ -55,12 +65,16 @@ window.addEventListener('appinstalled', () => {
 // Signal that React is loaded
 window.__REACT_LOADED__ = true;
 
+// Initialize PWA debugging
+initPwaDebug();
+
 // Initialize Capacitor for native apps
 if (isNativeApp()) {
   console.log('📱 [Capacitor] Running as native app on:', getPlatform());
   initializeCapacitor();
 } else {
   console.log('🌐 [PWA] Running as web app');
+  console.log('🔧 [PWA] User Agent:', navigator.userAgent);
 }
 
 // Update manifest link dynamically with tenant-specific manifest
