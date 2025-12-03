@@ -97,42 +97,15 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   // Initialize global real-time sync
   useGlobalRealtimeSync();
 
-  // PHASE 2 FIX: Single beforeinstallprompt handler at app level
-  // Captures prompt ONCE and makes it available to PWAInstallBanner
-  // Prevents race conditions from multiple handlers
+  // PWA prompt is now captured in main.tsx BEFORE React loads
+  // This useEffect just logs if we already have a captured prompt
   useEffect(() => {
-    let promptCaptured = false;
-    
-    const handleBeforeInstallPrompt = (e: Event) => {
-      if (promptCaptured) {
-        console.log('⚠️ [PWA] Prompt already captured, ignoring duplicate');
-        return;
-      }
-      
-      // Prevent browser's default install prompt
-      e.preventDefault();
-      promptCaptured = true;
-      
-      console.log('✅ [PWA] beforeinstallprompt captured (app level)');
-      console.log('📋 [PWA] Prompt details:', {
-        type: e.type,
-        timestamp: Date.now()
-      });
-      
-      // Store in window for PWAInstallBanner access
-      window.__capturedPwaPrompt = e;
-      
-      // Dispatch event to notify PWAInstallBanner
-      const customEvent = new CustomEvent('pwa-prompt-captured', { detail: e });
-      window.dispatchEvent(customEvent);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt, { once: true });
-    console.log('👂 [PWA] Global beforeinstallprompt listener attached (single capture)');
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
+    if (window.__capturedPwaPrompt) {
+      console.log('✅ [PWA] Prompt already captured before React mounted');
+      console.log('📋 [PWA] Captured at:', window.__pwaPromptCapturedAt ? new Date(window.__pwaPromptCapturedAt).toISOString() : 'unknown');
+    } else {
+      console.log('⏳ [PWA] No prompt captured yet - waiting for browser event');
+    }
   }, []);
 
   useEffect(() => {

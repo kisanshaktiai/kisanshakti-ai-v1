@@ -43,11 +43,15 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       registerType: 'prompt',
       filename: 'sw.js',
+      // CRITICAL: Use static manifest.json from public/ folder
+      // This ensures browser can validate PWA installability
       manifestFilename: 'manifest.json',
       strategies: 'generateSW',
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff,woff2}'],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MB
+        // Skip external URLs to avoid CORS issues
+        navigateFallbackDenylist: [/^\/api/, /supabase/],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
@@ -69,7 +73,9 @@ export default defineConfig(({ mode }) => ({
         ]
       },
       includeAssets: ['favicon.ico', 'icon-192x192.png', 'icon-512x512.png', '.htaccess', '_redirects'],
-      manifest: false, // Use static manifest.webmanifest instead
+      // CRITICAL: false = use static manifest.json from public/ folder
+      // This is required for PWA installability - browser needs valid manifest
+      manifest: false,
       devOptions: {
         enabled: false,
         type: 'module',
