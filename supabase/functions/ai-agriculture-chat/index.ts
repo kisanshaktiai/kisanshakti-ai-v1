@@ -83,16 +83,16 @@ function analyzeQueryComplexity(userMessage: string, language: string = 'en'): C
     const charCount = userMessage.length;
     if (charCount < 30) {
       complexity = 'simple';
-      baseMaxWords = 80;
-      baseMaxTokens = 150;
+      baseMaxWords = 120; // ✅ Increased from 80
+      baseMaxTokens = 200;
     } else if (charCount < 100) {
       complexity = 'medium';
-      baseMaxWords = 250;
-      baseMaxTokens = 400;
+      baseMaxWords = 400; // ✅ Increased from 250 to prevent mid-response cuts
+      baseMaxTokens = 600;
     } else {
       complexity = 'complex';
-      baseMaxWords = 500;
-      baseMaxTokens = 800;
+      baseMaxWords = 700; // ✅ Increased from 500
+      baseMaxTokens = 1000;
     }
   } else {
     // For Latin scripts, use word count
@@ -100,16 +100,16 @@ function analyzeQueryComplexity(userMessage: string, language: string = 'en'): C
     
     if (wordCount <= 5 || simplePatterns.some(p => p.test(msg))) {
       complexity = 'simple';
-      baseMaxWords = 80;
-      baseMaxTokens = 150;
+      baseMaxWords = 120; // ✅ Increased from 80
+      baseMaxTokens = 200;
     } else if (wordCount <= 15 || mediumPatterns.some(p => p.test(msg))) {
       complexity = 'medium';
-      baseMaxWords = 250;
-      baseMaxTokens = 400;
+      baseMaxWords = 400; // ✅ Increased from 250 to prevent mid-response cuts
+      baseMaxTokens = 600;
     } else {
       complexity = 'complex';
-      baseMaxWords = 500;
-      baseMaxTokens = 800;
+      baseMaxWords = 700; // ✅ Increased from 500
+      baseMaxTokens = 1000;
     }
   }
   
@@ -263,24 +263,37 @@ DO give:
     
     medium: {
       en: `
-⚠️ RESPONSE LENGTH: MAXIMUM 250 WORDS (2-3 paragraphs)
+⚠️ RESPONSE LENGTH: MAXIMUM 400 WORDS (2-3 paragraphs)
 This is a MEDIUM complexity question. Provide structured, step-by-step guidance.
 🚫 ABSOLUTELY NO ** ASTERISKS ** OR ## MARKDOWN FORMATTING
+
+📝 CRITICAL FORMATTING RULES:
+- Each numbered point MUST start on a NEW LINE
+- Use double newline (blank line) between sections
+- Format numbered steps like this:
+  1. First step details here
+  2. Second step details here
+  3. Third step details here
+- Each emoji section (🟢🟡🔴🔵) MUST start on a NEW LINE
 
 Structure using EMOJIS ONLY:
 1️⃣ Brief intro (1 sentence)
 2️⃣ Main steps (3-5 bullet points with •)
 3️⃣ Key tip (1 sentence)
 
-Example:
-User: "How to apply fertilizer to tomato?"
-You: "Here's the fertilizer schedule for tomato in your 5.25 acres:
+Example format:
+Here's the fertilizer schedule for tomato in your 5.25 acres:
 
-🌱 पायरी 1: लावताना - डीएपी 25 किलो + पोटॅश 15 किलो मातीत मिसळा
-🌱 पायरी 2: 20 दिवसांनंतर - युरिया 20 किलो रोपांभोवती टाका
-🌱 पायरी 3: फुलांच्या वेळी - 19:19:19 एनपीके 30 किलो लावा
+🌱 Step 1: At planting
+Apply DAP 25 kg + Potash 15 kg mixed in soil
 
-ओल्या मातीवर टाका, नंतर हलके पाणी द्या। पानांना हात लावू नका।"
+🌱 Step 2: After 20 days
+Apply Urea 20 kg around plants
+
+🌱 Step 3: At flowering
+Apply 19:19:19 NPK 30 kg
+
+Apply on moist soil, then give light water. Don't touch leaves.
 
 DO NOT use:
 ❌ **Bold** or *italic* text
@@ -291,16 +304,24 @@ DO NOT use:
 DO use:
 ✅ Emojis for visual structure (🌱, 💧, ⚠️)
 ✅ Simple bullet points (•)
-✅ Numbered steps (1., 2., 3.)
+✅ Numbered steps (1., 2., 3.) - EACH ON NEW LINE
 ✅ Natural conversational language
 ✅ Exact calculations for their land size
 
-DO NOT exceed 250 words.`,
+DO NOT exceed 400 words.`,
       
       hi: `
-⚠️ उत्तर की लंबाई: अधिकतम 250 शब्द (2-3 पैराग्राफ)
+⚠️ उत्तर की लंबाई: अधिकतम 400 शब्द (2-3 पैराग्राफ)
 यह मध्यम कठिनाई का सवाल है। स्टेप-बाय-स्टेप मार्गदर्शन दें।
 🚫 बिल्कुल ** तारे ** या ## मार्कडाउन फॉर्मेटिंग नहीं
+
+📝 महत्वपूर्ण फॉर्मेटिंग नियम:
+- हर नंबर वाला पॉइंट नई लाइन में होना चाहिए
+- सेक्शन के बीच खाली लाइन दें
+- फॉर्मेट इस तरह करें:
+  1. पहला स्टेप यहां
+  2. दूसरा स्टेप यहां
+  3. तीसरा स्टेप यहां
 
 केवल इमोजी का उपयोग करके संरचना:
 1️⃣ संक्षिप्त परिचय (1 वाक्य)
@@ -310,22 +331,27 @@ DO NOT exceed 250 words.`,
 उपयोग न करें:
 ❌ **बोल्ड** या *इटैलिक* टेक्स्ट
 ❌ ## हेडर या ### उप-हेडर
-❌ कई *** तारे
-❌ लंबे पैराग्राफ (प्रत्येक में अधिकतम 2-3 वाक्य)
 
 उपयोग करें:
 ✅ दृश्य संरचना के लिए इमोजी (🌱, 💧, ⚠️)
 ✅ सरल बुलेट पॉइंट (•)
-✅ क्रमांकित चरण (1., 2., 3.)
+✅ क्रमांकित चरण (1., 2., 3.) - हर एक नई लाइन में
 ✅ प्राकृतिक बातचीत की भाषा
-✅ उनकी जमीन के लिए सटीक गणना
 
-250 शब्दों से अधिक न लिखें।`,
+400 शब्दों से अधिक न लिखें।`,
       
       mr: `
-⚠️ उत्तराची लांबी: जास्तीत जास्त 250 शब्द (2-3 परिच्छेद)
+⚠️ उत्तराची लांबी: जास्तीत जास्त 400 शब्द (2-3 परिच्छेद)
 हा मध्यम क्लिष्टतेचा प्रश्न आहे। पायरी-दर-पायरी मार्गदर्शन द्या।
 🚫 अजिबात ** तारे ** किंवा ## मार्कडाउन फॉरमॅटिंग नाही
+
+📝 महत्त्वाचे फॉर्मॅटिंग नियम:
+- प्रत्येक क्रमांकित मुद्दा नवीन ओळीवर असावा
+- विभागांमध्ये रिकामी ओळ द्या
+- फॉर्मॅट असे करा:
+  1. पहिली पायरी येथे
+  2. दुसरी पायरी येथे
+  3. तिसरी पायरी येथे
 
 फक्त इमोजी वापरून रचना:
 1️⃣ संक्षिप्त परिचय (1 वाक्य)
@@ -335,50 +361,58 @@ DO NOT exceed 250 words.`,
 वापरू नका:
 ❌ **ठळक** किंवा *इटॅलिक* मजकूर
 ❌ ## शीर्षक किंवा ### उप-शीर्षक
-❌ अनेक *** तारे
-❌ लांब परिच्छेद (प्रत्येकी जास्तीत जास्त 2-3 वाक्ये)
 
 वापरा:
 ✅ दृश्य रचनेसाठी इमोजी (🌱, 💧, ⚠️)
 ✅ साधे बुलेट पॉइंट (•)
-✅ क्रमांकित पायऱ्या (1., 2., 3.)
+✅ क्रमांकित पायऱ्या (1., 2., 3.) - प्रत्येक नवीन ओळीवर
 ✅ नैसर्गिक संवादात्मक भाषा
-✅ त्यांच्या जमिनीसाठी अचूक गणना
 
-250 शब्दांपेक्षा जास्त लिहू नका।`,
+400 शब्दांपेक्षा जास्त लिहू नका।`,
       
       ta: `
-⚠️ பதில் நீளம்: அதிகபட்சம் 250 சொற்கள் (2-3 பத்திகள்)
+⚠️ பதில் நீளம்: அதிகபட்சம் 400 சொற்கள் (2-3 பத்திகள்)
 இது நடுத்தர சிக்கலான கேள்வி। படிப்படியான வழிகாட்டுதலை வழங்கவும்.
+
+📝 முக்கிய வடிவமைப்பு விதிகள்:
+- ஒவ்வொரு எண்ணிட்ட புள்ளியும் புதிய வரியில் இருக்க வேண்டும்
+- பிரிவுகளுக்கு இடையே வெற்று வரி கொடுங்கள்
 
 கட்டமைப்பு:
 1️⃣ சுருக்கமான அறிமுகம் (1 வாக்கியம்)
 2️⃣ முக்கிய படிகள் (3-5 புள்ளிகள்)
 3️⃣ முக்கிய குறிப்பு (1 வாக்கியம்)
 
-250 சொற்களுக்கு மேல் எழுத வேண்டாம்.`,
+400 சொற்களுக்கு மேல் எழுத வேண்டாம்.`,
       
       te: `
-⚠️ సమాధాన పొడవు: గరిష్టంగా 250 పదాలు (2-3 పేరాగ్రాఫ్‌లు)
+⚠️ సమాధాన పొడవు: గరిష్టంగా 400 పదాలు (2-3 పేరాగ్రాఫ్‌లు)
 ఇది మధ్యస్థ సంక్లిష్టత ప్రశ్న. దశలవారీ మార్గదర్శకత్వం అందించండి.
+
+📝 ముఖ్యమైన ఫార్మాటింగ్ నియమాలు:
+- ప్రతి సంఖ్య పాయింట్ కొత్త లైన్‌లో ఉండాలి
+- విభాగాల మధ్య ఖాళీ లైన్ ఇవ్వండి
 
 నిర్మాణం:
 1️⃣ సంక్షిప్త పరిచయం (1 వాక్యం)
 2️⃣ ముఖ్య దశలు (3-5 పాయింట్లు)
 3️⃣ ముఖ్య చిట్కా (1 వాక్యం)
 
-250 పదాలకు మించి రాయకండి.`,
+400 పదాలకు మించి రాయకండి.`,
       
       pa: `
-⚠️ ਜਵਾਬ ਦੀ ਲੰਬਾਈ: ਅਧਿਕਤਮ 250 ਸ਼ਬਦ (2-3 ਪੈਰੇ)
+⚠️ ਜਵਾਬ ਦੀ ਲੰਬਾਈ: ਅਧਿਕਤਮ 400 ਸ਼ਬਦ (2-3 ਪੈਰੇ)
 ਇਹ ਮੱਧਮ ਗੁੰਝਲਦਾਰਤਾ ਦਾ ਸਵਾਲ ਹੈ। ਕਦਮ-ਦਰ-ਕਦਮ ਮਾਰਗਦਰਸ਼ਨ ਦਿਓ।
+
+📝 ਮਹੱਤਵਪੂਰਨ ਫਾਰਮੈਟਿੰਗ ਨਿਯਮ:
+- ਹਰ ਨੰਬਰ ਵਾਲਾ ਬਿੰਦੂ ਨਵੀਂ ਲਾਈਨ ਵਿੱਚ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ
 
 ਢਾਂਚਾ:
 1️⃣ ਸੰਖੇਪ ਜਾਣ-ਪਛਾਣ (1 ਵਾਕ)
 2️⃣ ਮੁੱਖ ਕਦਮ (3-5 ਬਿੰਦੂ)
 3️⃣ ਮੁੱਖ ਸੁਝਾਅ (1 ਵਾਕ)
 
-250 ਸ਼ਬਦਾਂ ਤੋਂ ਵੱਧ ਨਾ ਲਿਖੋ।`
+400 ਸ਼ਬਦਾਂ ਤੋਂ ਵੱਧ ਨਾ ਲਿਖੋ।`
     },
     
     complex: {
@@ -592,30 +626,53 @@ function enforceResponseLength(
 ): string {
   const words = aiResponse.split(/\s+/);
   
+  // ✅ Allow 20% buffer to prevent aggressive truncation
+  const effectiveMaxWords = Math.round(maxWords * 1.2);
+  
   // If within limit, return as-is
-  if (words.length <= maxWords) {
+  if (words.length <= effectiveMaxWords) {
     return aiResponse;
   }
   
-  console.log(`✂️ Truncating response from ${words.length} to ${maxWords} words`);
+  console.log(`✂️ Truncating response from ${words.length} to ${effectiveMaxWords} words`);
   
   // Truncate to max words
-  const truncated = words.slice(0, maxWords).join(' ');
+  const truncated = words.slice(0, effectiveMaxWords).join(' ');
   
-  // Find last complete sentence
+  // ✅ Find a safe cut point - avoid cutting mid-numbered list
+  // Look for last complete numbered point or section
+  const lastNumberedPoint = truncated.lastIndexOf('\n');
   const lastPeriod = truncated.lastIndexOf('.');
   const lastQuestion = truncated.lastIndexOf('?');
   const lastExclamation = truncated.lastIndexOf('!');
   const lastDevanagari = truncated.lastIndexOf('।'); // Hindi/Marathi sentence end
+  const lastNewline = truncated.lastIndexOf('\n\n'); // Section break
+  
+  // ✅ Check if we're cutting mid-numbered list (1., 2., 3., etc.)
+  const numberedListPattern = /\d+\.\s+[^\n]+$/;
+  const isInMiddleOfList = numberedListPattern.test(truncated);
+  
+  if (isInMiddleOfList && lastNewline > 0) {
+    // Cut at the last complete numbered point
+    const beforeLastNewline = truncated.lastIndexOf('\n', truncated.length - 10);
+    if (beforeLastNewline > truncated.length * 0.7) {
+      return truncated.substring(0, beforeLastNewline).trim();
+    }
+  }
   
   const lastSentenceEnd = Math.max(lastPeriod, lastQuestion, lastExclamation, lastDevanagari);
   
-  if (lastSentenceEnd > 0) {
+  if (lastSentenceEnd > truncated.length * 0.7) {
     return truncated.substring(0, lastSentenceEnd + 1);
   }
   
-  // If no sentence end found, add ellipsis
-  return truncated + '...';
+  // If no good sentence end found, try to end at newline
+  if (lastNumberedPoint > truncated.length * 0.7) {
+    return truncated.substring(0, lastNumberedPoint).trim();
+  }
+  
+  // Last resort - return full truncated text without ellipsis (it's complete enough)
+  return truncated;
 }
 
 serve(async (req) => {
@@ -2532,7 +2589,13 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           maxWords: complexityAnalysis?.maxWords,
           maxTokens: complexityAnalysis?.maxTokens,
           tokensSaved,
-          cumulativeSavings: tokensSaved * Math.max(0, messageCount - 1)
+          cumulativeSavings: tokensSaved * Math.max(0, messageCount - 1),
+          // ✅ NEW: Token usage for display in UI
+          tokensUsed: {
+            prompt: aiData?.usage?.prompt_tokens || 0,
+            completion: aiData?.usage?.completion_tokens || 0,
+            total: tokensUsed
+          }
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

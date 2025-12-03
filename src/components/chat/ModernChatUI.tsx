@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Bot, User, Copy, ThumbsUp, ThumbsDown, Share2, Check } from 'lucide-react';
+import { Bot, User, Copy, ThumbsUp, ThumbsDown, Share2, Check, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,16 @@ interface Message {
       priority: number;
     }>;
     language: string;
+  };
+  // ✅ NEW: Analytics including token usage
+  analytics?: {
+    responseTime?: number;
+    tokensUsed?: {
+      prompt: number;
+      completion: number;
+      total: number;
+    };
+    queryComplexity?: string;
   };
 }
 
@@ -126,12 +136,20 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
                   <ColorCodedCard key={card.id} card={card} index={index} />
                 ))}
               </div>
-              {/* Timestamp for cards */}
-              <div className="text-xs mt-2 opacity-60 text-muted-foreground px-3 pb-2.5">
-                {new Date(message.timestamp).toLocaleTimeString([], { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                })}
+              {/* Timestamp & Token Usage for cards */}
+              <div className="flex items-center justify-between text-xs mt-2 opacity-60 text-muted-foreground px-3 pb-2.5">
+                <span>
+                  {new Date(message.timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </span>
+                {message.analytics?.tokensUsed?.total && (
+                  <span className="flex items-center gap-1 text-primary/70">
+                    <Zap className="h-3 w-3" />
+                    {message.analytics.tokensUsed.total.toLocaleString()} tokens
+                  </span>
+                )}
               </div>
             </>
           ) : (
@@ -146,15 +164,23 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
               >
                 {isUser ? message.content : wrapSentences(message.content)}
               </div>
-              {/* Timestamp for text */}
+              {/* Timestamp & Token Usage for text */}
               <div className={cn(
-                "text-xs mt-2 opacity-60",
+                "flex items-center justify-between text-xs mt-2 opacity-60",
                 isUser ? "text-white/80 px-4 pb-3" : "text-muted-foreground px-3 pb-2.5"
               )}>
-                {new Date(message.timestamp).toLocaleTimeString([], { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                })}
+                <span>
+                  {new Date(message.timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </span>
+                {!isUser && message.analytics?.tokensUsed?.total && (
+                  <span className="flex items-center gap-1 text-primary/70">
+                    <Zap className="h-3 w-3" />
+                    {message.analytics.tokensUsed.total.toLocaleString()} tokens
+                  </span>
+                )}
               </div>
             </>
           )}

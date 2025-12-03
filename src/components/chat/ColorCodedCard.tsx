@@ -19,16 +19,38 @@ export function ColorCodedCard({
   card,
   index
 }: ColorCodedCardProps) {
-  // Format content with proper line breaks
+  // Format content with proper line breaks and numbered list detection
   const formatContent = (text: string) => {
-    return text
+    // First, ensure numbered points are on separate lines
+    const formattedText = text
+      // Add newline before numbered points if missing
+      .replace(/(?<!\n)(\d+\.)\s+/g, '\n$1 ')
+      // Add newline before Hindi numbers
+      .replace(/(?<!\n)([१२३४५६७८९०]+\.)\s+/g, '\n$1 ')
+      // Add newline before bullets
+      .replace(/(?<!\n)([•·\-])\s+/g, '\n$1 ')
+      // Clean leading newlines
+      .replace(/^\n+/, '');
+    
+    return formattedText
       .split('\n')
       .map((line, idx) => {
         const trimmedLine = line.trim();
         if (!trimmedLine) return null;
         
+        // Check if it's a numbered point
+        const isNumberedPoint = /^(\d+\.|[१२३४५६७८९०]+\.)/.test(trimmedLine);
+        const isBulletPoint = /^[•·\-]/.test(trimmedLine);
+        
         return (
-          <div key={idx} className="mb-2 last:mb-0">
+          <div 
+            key={idx} 
+            className={cn(
+              "mb-2 last:mb-0",
+              isNumberedPoint && "pl-2 border-l-2 border-primary/20",
+              isBulletPoint && "pl-2"
+            )}
+          >
             {trimmedLine}
           </div>
         );
