@@ -1,0 +1,179 @@
+// ============= QUERY-SPECIFIC PROMPTS (~100 tokens each) =============
+// Load only what's needed for the specific query type
+
+interface QueryPromptMap {
+  [key: string]: {
+    [lang: string]: string;
+  };
+}
+
+const queryPrompts: QueryPromptMap = {
+  watering: {
+    hi: `💧 सिंचाई सलाह:
+- मिट्टी नमी और फसल अवस्था के अनुसार पानी दें
+- ड्रिप/स्प्रिंकलर से 40% पानी बचाएं
+- सुबह/शाम सिंचाई करें
+- बारिश का पूर्वानुमान देखें
+आर्थिक लाभ: ₹ प्रति एकड़ बचत बताएं`,
+    mr: `💧 सिंचन सल्ला:
+- माती ओलावा आणि पीक अवस्थेनुसार पाणी द्या
+- ठिबक/तुषार सिंचनाने 40% पाणी वाचवा
+- सकाळी/संध्याकाळी सिंचन करा
+आर्थिक फायदा: ₹ प्रति एकर बचत सांगा`,
+    en: `💧 Irrigation advice:
+- Water based on soil moisture & crop stage
+- Save 40% water with drip/sprinkler
+- Irrigate morning/evening
+- Check rainfall forecast
+Include: ₹ savings per acre`
+  },
+
+  fertilizer: {
+    hi: `🌱 खाद सलाह:
+- NPK अनुपात फसल अवस्था के अनुसार
+- जैविक + रासायनिक संतुलित उपयोग
+- स्प्लिट डोज़ में दें (2-3 बार)
+- मिट्टी परीक्षण आधारित
+सटीक मात्रा: kg/एकड़, समय, विधि बताएं
+खर्च बचत: ₹ प्रति एकड़`,
+    mr: `🌱 खत सल्ला:
+- NPK प्रमाण पीक अवस्थेनुसार
+- सेंद्रिय + रासायनिक संतुलित वापर
+- विभाजित मात्रेत द्या (2-3 वेळा)
+अचूक प्रमाण: kg/एकर, वेळ, पद्धत सांगा`,
+    en: `🌱 Fertilizer advice:
+- NPK ratio as per crop stage
+- Balanced organic + chemical use
+- Split dose application (2-3 times)
+Include: kg/acre, timing, method, ₹ cost`
+  },
+
+  pest: {
+    hi: `🐛 कीट/रोग प्रबंधन:
+- पहले जैविक नियंत्रण (नीम, जीवामृत)
+- रासायनिक: सही समय, सही मात्रा
+- IPM (एकीकृत कीट प्रबंधन) अपनाएं
+- PHI (प्री-हार्वेस्ट इंटरवल) का पालन करें
+दवाई: नाम, मात्रा/लीटर, छिड़काव समय
+खर्च: ₹ प्रति एकड़`,
+    mr: `🐛 कीड/रोग व्यवस्थापन:
+- आधी जैविक नियंत्रण (निंबोळी, जीवामृत)
+- रासायनिक: योग्य वेळ, योग्य प्रमाण
+- IPM अवलंबा
+औषध: नाव, प्रमाण/लिटर, फवारणी वेळ`,
+    en: `🐛 Pest/Disease management:
+- First try organic (neem, jeevamrut)
+- Chemical: right time, right dose
+- Follow IPM approach
+Include: medicine name, dose/litre, spray timing, ₹ cost`
+  },
+
+  health: {
+    hi: `🌿 फसल स्वास्थ्य:
+- NDVI मान से स्वास्थ्य आंकलन
+- पोषक तत्व कमी के लक्षण पहचानें
+- सुधारात्मक कदम तुरंत बताएं
+उपज प्रभाव: % वृद्धि/कमी अनुमान`,
+    mr: `🌿 पीक आरोग्य:
+- NDVI वरून आरोग्य मूल्यांकन
+- पोषक तत्व कमतरतेची लक्षणे ओळखा
+उत्पादन प्रभाव: % वाढ/घट अंदाज`,
+    en: `🌿 Crop health:
+- NDVI-based health assessment
+- Identify nutrient deficiency symptoms
+- Immediate corrective measures
+Include: yield impact % estimate`
+  },
+
+  market: {
+    hi: `📊 बाजार सलाह:
+- वर्तमान मंडी भाव
+- बेचने का सही समय
+- भंडारण सुझाव
+- MSP तुलना
+आय अनुमान: ₹ प्रति क्विंटल, कुल आय`,
+    mr: `📊 बाजार सल्ला:
+- सध्याचे बाजार भाव
+- विक्रीची योग्य वेळ
+- साठवणूक सूचना
+उत्पन्न अंदाज: ₹ प्रति क्विंटल`,
+    en: `📊 Market advice:
+- Current mandi prices
+- Best time to sell
+- Storage suggestions
+Include: ₹ per quintal, total income estimate`
+  },
+
+  general: {
+    hi: `🌾 सामान्य कृषि सहायता:
+- संक्षिप्त, सटीक उत्तर दें
+- व्यावहारिक सलाह प्राथमिकता
+- आर्थिक लाभ शामिल करें`,
+    mr: `🌾 सामान्य शेती मदत:
+- संक्षिप्त, अचूक उत्तर द्या
+- व्यावहारिक सल्ला प्राधान्य`,
+    en: `🌾 General agriculture help:
+- Brief, accurate answers
+- Practical advice priority
+- Include economic benefit`
+  },
+
+  harvest: {
+    hi: `🌾 कटाई/नई फसल योजना:
+- अगली फसल के लिए मिट्टी तैयारी
+- फसल चक्र अपनाएं (दाल के बाद अनाज)
+- मौसम के अनुसार फसल चुनें
+सुझाव: 3 सर्वोत्तम फसलें, अपेक्षित आय`,
+    mr: `🌾 काढणी/नवीन पीक योजना:
+- पुढील पिकासाठी माती तयारी
+- पीक फेरपालट करा
+सूचना: 3 सर्वोत्तम पिके, अपेक्षित उत्पन्न`,
+    en: `🌾 Harvest/New crop planning:
+- Soil preparation for next crop
+- Follow crop rotation
+Suggest: 3 best crops, expected income`
+  }
+};
+
+export function getQueryPrompt(queryType: string, language: string): string {
+  const type = queryType || 'general';
+  const prompts = queryPrompts[type] || queryPrompts['general'];
+  return prompts[language] || prompts['en'] || prompts['hi'];
+}
+
+// Detect query type from user message
+export function detectQueryType(message: string): string {
+  const lowerMsg = message.toLowerCase();
+  
+  // Water/irrigation keywords
+  if (/पानी|सिंचाई|irrigation|water|पाणी|सिंचन|ਪਾਣੀ|நீர்/.test(lowerMsg)) {
+    return 'watering';
+  }
+  
+  // Fertilizer keywords
+  if (/खाद|उर्वरक|fertilizer|urea|dap|npk|खत|यूरिया|ਖਾਦ|உரம்/.test(lowerMsg)) {
+    return 'fertilizer';
+  }
+  
+  // Pest/disease keywords
+  if (/कीट|रोग|pest|disease|insect|fungus|कीड|रोग|ਕੀੜੇ|பூச்சி|spray|छिड़काव|फवारणी/.test(lowerMsg)) {
+    return 'pest';
+  }
+  
+  // Health/NDVI keywords
+  if (/स्वास्थ्य|health|ndvi|yellow|पीला|सुक|आरोग्य|ਸਿਹਤ/.test(lowerMsg)) {
+    return 'health';
+  }
+  
+  // Market keywords
+  if (/बाजार|market|price|भाव|बेचना|sell|मंडी|விலை|ਮੰਡੀ/.test(lowerMsg)) {
+    return 'market';
+  }
+  
+  // Harvest/new crop keywords
+  if (/कटाई|harvest|अगली फसल|next crop|काढणी|नवीन पीक|बुवाई|sowing/.test(lowerMsg)) {
+    return 'harvest';
+  }
+  
+  return 'general';
+}
