@@ -241,6 +241,21 @@ export const PWAInstallBanner: React.FC = () => {
   // NO setTimeout, NO async before prompt() - user gesture is only valid briefly
   const handleInstall = () => {
     console.log('🚀 [PWA] Install button clicked!');
+    console.log('📋 [PWA] Click timestamp:', new Date().toISOString());
+    
+    // COMPREHENSIVE DEBUG LOGGING
+    console.log('🔍 [PWA DEBUG] Full state check:');
+    console.log('   - deferredPrompt (state):', !!deferredPrompt);
+    console.log('   - window.__capturedPwaPrompt:', !!window.__capturedPwaPrompt);
+    console.log('   - window.deferredPwaPrompt:', !!(window as any).deferredPwaPrompt);
+    console.log('   - window.__pwaPromptUsed:', window.__pwaPromptUsed);
+    console.log('   - window.__pwaPromptCapturedAt:', window.__pwaPromptCapturedAt 
+      ? new Date(window.__pwaPromptCapturedAt).toISOString() 
+      : 'never');
+    console.log('   - Platform:', platform);
+    console.log('   - Is Standalone:', isStandalone);
+    console.log('   - Secure Context:', window.isSecureContext);
+    console.log('   - beforeinstallprompt supported:', 'onbeforeinstallprompt' in window);
     
     // CRITICAL: Get prompt from state OR directly from window - NO ASYNC!
     // Check both variable names for backwards compatibility
@@ -253,13 +268,22 @@ export const PWAInstallBanner: React.FC = () => {
     console.log('📋 [PWA] Prompt state:', {
       hasStatePrompt: !!deferredPrompt,
       hasWindowPrompt: !!window.__capturedPwaPrompt,
+      hasLegacyPrompt: !!(window as any).deferredPwaPrompt,
       promptUsed: window.__pwaPromptUsed,
-      usingPrompt: !!promptToUse
+      usingPrompt: !!promptToUse,
+      promptType: promptToUse ? typeof promptToUse : 'null'
     });
 
     if (!promptToUse) {
       console.error('❌ [PWA] No install prompt available!');
-      console.error('❌ [PWA] This means beforeinstallprompt never fired or was already used');
+      console.error('❌ [PWA] Possible reasons:');
+      console.error('   1. beforeinstallprompt event never fired');
+      console.error('   2. App is already installed (standalone mode)');
+      console.error('   3. Not served over HTTPS');
+      console.error('   4. Service worker not registered');
+      console.error('   5. Manifest invalid or missing required fields');
+      console.error('   6. Browser does not support PWA install');
+      console.error('❌ [PWA] Run window.pwaDebug.runDiagnostics() for full report');
       return;
     }
 
