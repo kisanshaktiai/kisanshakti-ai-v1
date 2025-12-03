@@ -90,15 +90,6 @@ jobs:
             "${{ secrets.HOST_SFTP_USER }}@${{ secrets.HOST_SFTP_HOST }}:${{ secrets.HOST_REMOTE_DIR }}/"
           echo "✅ PWA deployed successfully"
 
-      - name: 🔄 Purge Cloudflare cache
-        if: ${{ secrets.CF_API_TOKEN != '' && secrets.CF_ZONE_ID != '' }}
-        run: |
-          curl -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" \
-            -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
-            -H "Content-Type: application/json" \
-            --data '{"purge_everything":true}'
-          echo "✅ Cache purged"
-
       - name: 🧹 Cleanup
         if: always()
         run: |
@@ -155,54 +146,12 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      - name: 🔨 Build Release APK (if keystore exists)
-        if: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
-        run: |
-          # Decode keystore
-          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 --decode > android/app/release.keystore
-          
-          # Create signing config
-          cat >> android/app/build.gradle << EOF
-          
-          android {
-              signingConfigs {
-                  release {
-                      storeFile file('release.keystore')
-                      storePassword '${{ secrets.ANDROID_KEYSTORE_PASSWORD }}'
-                      keyAlias '${{ secrets.ANDROID_KEY_ALIAS }}'
-                      keyPassword '${{ secrets.ANDROID_KEY_PASSWORD }}'
-                  }
-              }
-              buildTypes {
-                  release {
-                      signingConfig signingConfigs.release
-                  }
-              }
-          }
-          EOF
-          
-          cd android
-          ./gradlew assembleRelease --stacktrace
-
-      - name: 📤 Upload Release APK
-        if: ${{ secrets.ANDROID_KEYSTORE_B64 != '' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: kisanshakti-release.apk
-          path: android/app/build/outputs/apk/release/app-release.apk
-          retention-days: 90
-
       - name: ✅ Android Build Summary
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "📱 Android APK Build Complete!"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "✅ Debug APK: Available in Artifacts"
-          if [ -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
-            echo "✅ Release APK: Available in Artifacts (Signed)"
-          else
-            echo "⚠️  Release APK: Skipped (No keystore configured)"
-          fi
 
   # Job 3: Build iOS IPA
   build-ios:
@@ -266,8 +215,8 @@ jobs:
           <dict>
               <key>method</key>
               <string>development</string>
-              <key>teamID</key>
-              <string>${{ secrets.APPLE_TEAM_ID }}</string>
+              <key>compileBitcode</key>
+              <false/>
           </dict>
           </plist>
           EOF
@@ -290,7 +239,6 @@ jobs:
           echo "🍎 iOS IPA Build Complete!"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo "✅ IPA: Available in Artifacts"
-          echo "⚠️  Note: For App Store, configure signing in Xcode"
 
   # Job 4: Build Summary
   summary:
