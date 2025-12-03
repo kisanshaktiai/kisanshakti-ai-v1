@@ -1,3 +1,5 @@
+import { getSupabaseFunctionUrl } from '@/config/supabase';
+
 /**
  * Version Service for tracking app version and checking for updates
  */
@@ -120,7 +122,7 @@ class VersionService {
   async fetchVersionFromDatabase(): Promise<{ version: string; buildHash: string; forceUpdate: boolean } | null> {
     try {
       const response = await fetch(
-        'https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/app-version',
+        getSupabaseFunctionUrl('app-version'),
         {
           method: 'GET',
           headers: {

@@ -1,3 +1,5 @@
+import { SUPABASE_CONFIG } from '@/config/supabase';
+
 /**
  * Centralized Network Status Service
  * 
@@ -75,7 +77,7 @@ class NetworkStatusService {
       const timeoutId = setTimeout(() => controller.abort(), 5000);
 
       // Use Supabase REST API health check (not precached by service worker)
-      const response = await fetch('https://qfklkkzxemsbeniyugiz.supabase.co/rest/v1/', {
+      const response = await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/`, {
         method: 'HEAD',
         mode: 'no-cors', // Avoid CORS issues
         cache: 'no-store',
