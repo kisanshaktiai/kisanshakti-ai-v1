@@ -43,7 +43,7 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       registerType: 'prompt',
       filename: 'sw.js',
-      manifestFilename: 'manifest.webmanifest',
+      manifestFilename: 'manifest.json',
       strategies: 'generateSW',
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff,woff2}'],

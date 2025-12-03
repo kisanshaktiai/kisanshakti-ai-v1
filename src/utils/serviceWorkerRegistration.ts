@@ -17,7 +17,8 @@ interface ServiceWorkerConfig {
   onOfflineReady?: () => void;
 }
 
-const SW_URL = '/service-worker.js';
+// CRITICAL: Must match VitePWA filename in vite.config.ts
+const SW_URL = '/sw.js';
 const SW_SCOPE = '/';
 
 export async function register(config?: ServiceWorkerConfig): Promise<void> {

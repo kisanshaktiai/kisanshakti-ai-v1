@@ -45,24 +45,52 @@ const updateManifestLink = async () => {
   }
 };
 
-// Explicit Service Worker Registration
+// Explicit Service Worker Registration - Single source of truth
 const registerServiceWorker = async () => {
-  if ('serviceWorker' in navigator) {
-    try {
-      const registration = await navigator.serviceWorker.register('/sw.js', { 
-        scope: '/' 
-      });
-      console.log('✅ [PWA] Service Worker registered:', registration.scope);
-      
-      // Listen for updates
-      registration.addEventListener('updatefound', () => {
-        console.log('🔄 [PWA] Service Worker update found');
-      });
-    } catch (error) {
-      console.error('❌ [PWA] Service Worker registration failed:', error);
-    }
-  } else {
+  if (!('serviceWorker' in navigator)) {
     console.warn('⚠️ [PWA] Service Worker not supported');
+    return;
+  }
+
+  try {
+    // Unregister any old service workers first
+    const existingRegistrations = await navigator.serviceWorker.getRegistrations();
+    for (const reg of existingRegistrations) {
+      if (reg.active?.scriptURL && !reg.active.scriptURL.endsWith('/sw.js')) {
+        console.log('🗑️ [PWA] Unregistering old SW:', reg.active.scriptURL);
+        await reg.unregister();
+      }
+    }
+
+    const registration = await navigator.serviceWorker.register('/sw.js', { 
+      scope: '/',
+      updateViaCache: 'none' // Always fetch fresh SW
+    });
+    
+    console.log('✅ [PWA] Service Worker registered:', registration.scope);
+    console.log('📊 [PWA] SW State:', {
+      installing: !!registration.installing,
+      waiting: !!registration.waiting,
+      active: !!registration.active
+    });
+    
+    // Listen for updates
+    registration.addEventListener('updatefound', () => {
+      const newWorker = registration.installing;
+      console.log('🔄 [PWA] New Service Worker installing...');
+      
+      if (newWorker) {
+        newWorker.addEventListener('statechange', () => {
+          console.log('📊 [PWA] SW state changed:', newWorker.state);
+          if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+            console.log('✨ [PWA] New version available!');
+            window.dispatchEvent(new CustomEvent('pwa-update-available'));
+          }
+        });
+      }
+    });
+  } catch (error) {
+    console.error('❌ [PWA] Service Worker registration failed:', error);
   }
 };
 
