@@ -908,33 +908,6 @@
       })();
     </script>
 
-    <!-- Service Worker Registration -->
-    <script src="/registerSW.js" defer></script>
-
-    <!-- PWA Install Prompt Capture -->
-    <script>
-      window.deferredPwaPrompt = null;
-
-      window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        window.deferredPwaPrompt = e;
-        document.dispatchEvent(new CustomEvent('pwa:can-install'));
-        console.log('beforeinstallprompt captured');
-      });
-
-      async function triggerPwaInstall() {
-        const e = window.deferredPwaPrompt;
-        if (!e) {
-          console.warn('No PWA prompt available');
-          return;
-        }
-        e.prompt();
-        const choice = await e.userChoice;
-        console.log('PWA install result:', choice.outcome);
-        window.deferredPwaPrompt = null;
-        document.dispatchEvent(new CustomEvent('pwa:install-completed', { detail: choice }));
-      }
-      window.triggerPwaInstall = triggerPwaInstall;
-    </script>
+    <!-- PWA: Service Worker registration handled by main.tsx -->
   </body>
 </html>
