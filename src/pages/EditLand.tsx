@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Loader2, ArrowLeft, MapPin, Edit } from 'lucide-react';
+import { Loader2, ArrowLeft, MapPin, Edit, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuthStore } from '@/stores/authStore';
@@ -22,7 +22,7 @@ export default function EditLand() {
   const { id } = useParams();
   const { toast } = useToast();
   const { user } = useAuthStore();
-  const { isLoaded, loadError, isLoading } = useGoogleMapsApi();
+  const { isLoaded, loadError, isLoading, retry } = useGoogleMapsApi();
   
   const [showMap, setShowMap] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -147,21 +147,31 @@ export default function EditLand() {
     );
   }
 
-  // Error state
+  // Error state with retry button
   if (loadError) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background p-4 z-50">
-        <Card className="p-6 max-w-md w-full space-y-4">
+        <Card className="p-6 max-w-md w-full space-y-4 text-center">
+          <div className="mx-auto w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
+            <AlertTriangle className="h-8 w-8 text-destructive" />
+          </div>
           <h2 className="text-xl font-semibold text-destructive">Failed to Load Maps</h2>
           <p className="text-muted-foreground">
             {loadError === 'User not authenticated' 
               ? 'Please sign in to edit land parcels.'
               : 'Could not load Google Maps. Please check your internet connection and try again.'}
           </p>
-          <Button onClick={() => navigate('/app/lands')} className="w-full">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Lands
-          </Button>
+          <p className="text-sm text-muted-foreground/70">{loadError}</p>
+          <div className="flex gap-3 justify-center pt-2">
+            <Button variant="outline" onClick={() => navigate('/app/lands')}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Lands
+            </Button>
+            <Button onClick={retry} className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Try Again
+            </Button>
+          </div>
         </Card>
       </div>
     );
