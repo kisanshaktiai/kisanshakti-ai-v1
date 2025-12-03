@@ -42,58 +42,57 @@ export default function InstallPWA() {
       setPlatform('desktop');
     }
 
-    // Check global prompt from index.html script
-    const globalPrompt = (window as any).deferredPwaPrompt;
+    // FIX: Use correct global variable name from App.tsx
+    const globalPrompt = window.__capturedPwaPrompt;
     if (globalPrompt) {
+      console.log('✅ [InstallPWA] Found captured prompt');
       setDeferredPrompt(globalPrompt as BeforeInstallPromptEvent);
     }
 
-    // Listen for custom event
-    const handleCanInstall = () => {
-      const prompt = (window as any).deferredPwaPrompt;
+    // FIX: Listen for correct event name from App.tsx
+    const handlePromptCaptured = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const prompt = customEvent.detail || window.__capturedPwaPrompt;
       if (prompt) {
+        console.log('✅ [InstallPWA] Received prompt from event');
         setDeferredPrompt(prompt as BeforeInstallPromptEvent);
       }
     };
 
-    document.addEventListener('pwa:can-install', handleCanInstall);
+    window.addEventListener('pwa-prompt-captured', handlePromptCaptured);
     
     return () => {
-      document.removeEventListener('pwa:can-install', handleCanInstall);
+      window.removeEventListener('pwa-prompt-captured', handlePromptCaptured);
     };
   }, []);
 
-  const handleInstall = async () => {
+  // FIX: Call prompt() IMMEDIATELY in click handler to preserve user gesture
+  const handleInstall = () => {
+    if (!deferredPrompt) {
+      console.error('❌ [InstallPWA] No deferred prompt available');
+      return;
+    }
+
     setInstalling(true);
-    
-    try {
-      // Use global install helper if available
-      const globalInstall = (window as any).triggerPwaInstall;
-      if (globalInstall) {
-        await globalInstall();
-        setIsInstalled(true);
-        return;
-      }
+    console.log('🚀 [InstallPWA] Install triggered (direct user gesture)');
 
-      // Fallback to component prompt
-      if (!deferredPrompt) {
-        setInstalling(false);
-        return;
-      }
+    // CRITICAL: Call prompt() IMMEDIATELY - no await before this
+    deferredPrompt.prompt();
 
-      await deferredPrompt.prompt();
-      const choiceResult = await deferredPrompt.userChoice;
+    // Handle result asynchronously
+    deferredPrompt.userChoice.then(choiceResult => {
+      console.log('👤 [InstallPWA] User choice:', choiceResult.outcome);
       
       if (choiceResult.outcome === 'accepted') {
         setIsInstalled(true);
       }
       
       setDeferredPrompt(null);
-    } catch (error) {
-      console.error('Install error:', error);
-    } finally {
+    }).catch(error => {
+      console.error('❌ [InstallPWA] Install error:', error);
+    }).finally(() => {
       setInstalling(false);
-    }
+    });
   };
 
   return (

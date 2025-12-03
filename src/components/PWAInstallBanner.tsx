@@ -301,14 +301,14 @@ export const PWAInstallBanner: React.FC = () => {
     <>
       {/* PHASE 2 FIX: z-[70] ensures banner is above modals (z-50) and onboarding (z-50) */}
       <AnimatePresence>
-        {/* Android/Desktop Banner with native prompt button */}
+        {/* Android/Desktop Banner with native prompt button - FIXED: Position at TOP */}
         {showBanner && (platform === 'android' || platform === 'desktop') && deferredPrompt && (
           <motion.div
-            initial={{ opacity: 0, y: 100 }}
+            initial={{ opacity: 0, y: -100 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 100 }}
+            exit={{ opacity: 0, y: -100 }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed bottom-20 left-4 right-4 z-[70] md:left-auto md:right-6 md:bottom-6 md:w-96"
+            className="fixed top-4 left-4 right-4 z-[70] md:left-auto md:right-6 md:top-6 md:w-96"
           >
             <Card className="border-2 border-primary/30 bg-card/95 backdrop-blur-xl shadow-2xl">
               <button
@@ -360,14 +360,14 @@ export const PWAInstallBanner: React.FC = () => {
           </motion.div>
         )}
 
-        {/* iOS Banner (shows instructions button) */}
+        {/* iOS Banner (shows instructions button) - FIXED: Position at TOP */}
         {showBanner && platform === 'ios' && (
           <motion.div
-            initial={{ opacity: 0, y: 100 }}
+            initial={{ opacity: 0, y: -100 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 100 }}
+            exit={{ opacity: 0, y: -100 }}
             transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed bottom-20 left-4 right-4 z-[70] md:left-auto md:right-6 md:bottom-6 md:w-96"
+            className="fixed top-4 left-4 right-4 z-[70] md:left-auto md:right-6 md:top-6 md:w-96"
           >
             <Card className="border-2 border-primary/30 bg-card/95 backdrop-blur-xl shadow-2xl">
               <button
