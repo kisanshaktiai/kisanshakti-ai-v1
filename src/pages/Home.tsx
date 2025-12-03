@@ -75,13 +75,13 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
-  // Auto-collapse weather card after 10 seconds
+  // Auto-collapse weather card after 4 seconds
   useEffect(() => {
     if (!hasAutoCollapsed) {
       const collapseTimer = setTimeout(() => {
         setIsWeatherExpanded(false);
         setHasAutoCollapsed(true);
-      }, 10000);
+      }, 4000);
       return () => clearTimeout(collapseTimer);
     }
   }, [hasAutoCollapsed]);
