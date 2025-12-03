@@ -149,7 +149,7 @@ export const PWAInstallBanner: React.FC = () => {
     };
   }, [isStandalone, canShow, userEngaged]);
 
-  // PHASE 2 FIX: Listen for globally captured prompt
+  // CRITICAL FIX: Check for prompt captured BEFORE component mounted (in main.tsx)
   useEffect(() => {
     if (checkStandalone()) {
       return;
@@ -158,7 +158,14 @@ export const PWAInstallBanner: React.FC = () => {
     const detectedPlatform = detectPlatform();
     setPlatform(detectedPlatform);
 
-    // Listen for prompt captured by App.tsx
+    // CRITICAL: Check if prompt was already captured in main.tsx BEFORE React mounted
+    if (window.__capturedPwaPrompt && !window.__pwaPromptUsed) {
+      console.log('✅ [PWA Banner] Found pre-captured prompt from main.tsx!');
+      console.log('📋 [PWA Banner] Captured at:', window.__pwaPromptCapturedAt ? new Date(window.__pwaPromptCapturedAt).toISOString() : 'unknown');
+      setDeferredPrompt(window.__capturedPwaPrompt as BeforeInstallPromptEvent);
+    }
+
+    // Also listen for prompt captured after component mounts (fallback)
     const handlePromptCaptured = (e: Event) => {
       const customEvent = e as CustomEvent;
       const promptEvent = customEvent.detail || window.__capturedPwaPrompt;
@@ -168,34 +175,15 @@ export const PWAInstallBanner: React.FC = () => {
         return;
       }
 
-      console.log('✅ [PWA Banner] Received captured prompt from app level');
+      console.log('✅ [PWA Banner] Received captured prompt from event listener');
       setDeferredPrompt(promptEvent as BeforeInstallPromptEvent);
-
-      // Show banner only if user is engaged and cooldown passed
-      if (userEngaged && canShow()) {
-        console.log('📢 [PWA Banner] Showing banner (user engaged + cooldown passed)');
-        setShowBanner(true);
-        
-        if (!hasTrackedShow.current) {
-          trackEvent('install_shown', { platform: detectedPlatform });
-          hasTrackedShow.current = true;
-        }
-      } else {
-        console.log('⏸️ [PWA Banner] Banner suppressed (engagement or cooldown check)');
-      }
     };
 
     window.addEventListener('pwa-prompt-captured', handlePromptCaptured);
 
-    // For iOS, show banner after engagement (no native prompt available)
-    if (detectedPlatform === 'ios' && canShow() && userEngaged) {
-      console.log('🍎 [PWA Banner] iOS detected, showing manual instructions');
-      setShowBanner(true);
-      
-      if (!hasTrackedShow.current) {
-        trackEvent('install_shown', { platform: 'ios' });
-        hasTrackedShow.current = true;
-      }
+    // For iOS, no native prompt - just set platform for manual instructions
+    if (detectedPlatform === 'ios') {
+      console.log('🍎 [PWA Banner] iOS detected - will show manual instructions');
     }
 
     // Listen for app installed event
@@ -214,12 +202,21 @@ export const PWAInstallBanner: React.FC = () => {
       window.removeEventListener('pwa-prompt-captured', handlePromptCaptured);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
-  }, [checkStandalone, detectPlatform, canShow, userEngaged, trackEvent]);
+  }, [checkStandalone, detectPlatform, trackEvent]);
 
-  // Show banner after engagement (for platforms with native prompt)
+  // Show banner when conditions are met (separated from capture logic)
   useEffect(() => {
-    if (userEngaged && !isStandalone && canShow() && deferredPrompt && (platform === 'android' || platform === 'desktop')) {
-      console.log('📢 [PWA Banner] User engaged + prompt available, showing banner');
+    if (isStandalone || !canShow()) return;
+
+    const shouldShow = (
+      // Android/Desktop with native prompt
+      (deferredPrompt && (platform === 'android' || platform === 'desktop') && userEngaged) ||
+      // iOS needs manual instructions (no native prompt)
+      (platform === 'ios' && userEngaged)
+    );
+
+    if (shouldShow && !showBanner) {
+      console.log('📢 [PWA Banner] Showing banner', { platform, hasPrompt: !!deferredPrompt, userEngaged });
       setShowBanner(true);
       
       if (!hasTrackedShow.current) {
@@ -227,44 +224,67 @@ export const PWAInstallBanner: React.FC = () => {
         hasTrackedShow.current = true;
       }
     }
-  }, [userEngaged, isStandalone, canShow, platform, deferredPrompt, trackEvent]);
+  }, [deferredPrompt, platform, userEngaged, isStandalone, canShow, showBanner, trackEvent]);
 
-  // PHASE 2 CRITICAL FIX: Install handler calls prompt() in IMMEDIATE user gesture
+  // Removed: Banner show logic is now in the combined useEffect above
+
+  // CRITICAL FIX: Install handler calls prompt() SYNCHRONOUSLY in user gesture
   const handleInstall = () => {
+    console.log('🚀 [PWA] Install button clicked!');
+    console.log('📋 [PWA] Prompt state:', {
+      hasPrompt: !!deferredPrompt,
+      promptUsed: window.__pwaPromptUsed,
+      capturedAt: window.__pwaPromptCapturedAt
+    });
+
     if (!deferredPrompt) {
-      console.error('❌ [PWA] No deferred prompt available');
+      console.error('❌ [PWA] No deferred prompt available!');
+      // Try to get from window as fallback
+      if (window.__capturedPwaPrompt && !window.__pwaPromptUsed) {
+        console.log('🔄 [PWA] Using fallback prompt from window');
+        setDeferredPrompt(window.__capturedPwaPrompt as BeforeInstallPromptEvent);
+        // Re-trigger on next tick
+        setTimeout(() => handleInstall(), 0);
+      }
       return;
     }
 
-    console.log('🚀 [PWA] Install button clicked (direct user gesture)');
     trackEvent('install_prompted', { platform });
 
-    // CRITICAL: Call prompt() IMMEDIATELY in the click handler
-    // Do NOT await or add any async code before this call
-    // This preserves the "user gesture" requirement for mobile browsers
-    deferredPrompt.prompt();
+    // CRITICAL: Call prompt() SYNCHRONOUSLY - no async before this!
+    // The user gesture (click) is only valid for a short time
+    try {
+      console.log('📲 [PWA] Calling prompt()...');
+      deferredPrompt.prompt();
+      
+      // Mark as used to prevent re-use
+      window.__pwaPromptUsed = true;
 
-    // THEN handle the async userChoice result
-    deferredPrompt.userChoice.then(choiceResult => {
-      console.log('👤 [PWA] User choice:', choiceResult.outcome);
+      // Handle the result asynchronously AFTER prompt() is called
+      deferredPrompt.userChoice.then(choiceResult => {
+        console.log('👤 [PWA] User choice:', choiceResult.outcome);
 
-      if (choiceResult.outcome === 'accepted') {
-        console.log('✅ [PWA] Install accepted');
-        trackEvent('install_accepted', { platform });
-        setShowBanner(false);
-        localStorage.removeItem(STORAGE_KEY_DISMISSED);
-        localStorage.removeItem(STORAGE_KEY_DISMISS_COUNT);
-      } else {
-        console.log('❌ [PWA] Install dismissed by user');
-        trackEvent('install_dismissed', { platform, reason: 'user_declined_prompt' });
-        handleDismiss();
-      }
+        if (choiceResult.outcome === 'accepted') {
+          console.log('✅ [PWA] Install ACCEPTED!');
+          trackEvent('install_accepted', { platform });
+          setShowBanner(false);
+          localStorage.removeItem(STORAGE_KEY_DISMISSED);
+          localStorage.removeItem(STORAGE_KEY_DISMISS_COUNT);
+        } else {
+          console.log('❌ [PWA] Install dismissed by user');
+          trackEvent('install_dismissed', { platform, reason: 'user_declined_prompt' });
+          handleDismiss();
+        }
 
-      setDeferredPrompt(null);
-    }).catch(error => {
-      console.error('❌ [PWA] Install error:', error);
+        setDeferredPrompt(null);
+        window.__capturedPwaPrompt = null;
+      }).catch(error => {
+        console.error('❌ [PWA] userChoice error:', error);
+      });
+    } catch (error) {
+      console.error('❌ [PWA] prompt() failed:', error);
       trackEvent('install_dismissed', { platform, reason: 'error', error: (error as Error).message });
-    });
+    }
   };
 
   const handleDismiss = () => {
