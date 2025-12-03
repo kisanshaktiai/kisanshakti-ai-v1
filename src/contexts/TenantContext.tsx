@@ -4,6 +4,7 @@ import { localDB } from '@/services/localDB';
 import { tenantIsolationService } from '@/services/tenantIsolationService';
 import { resetTenantStores } from '@/utils/resetStores';
 import { getEnvironment, logEnvironmentInfo } from '@/utils/environment';
+import { getSupabaseFunctionUrl } from '@/config/supabase';
 
 // Extend Window interface
 declare global {
@@ -298,7 +299,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // OPTION 1: Try centralized API first (cleaner)
       try {
         const response = await fetch(
-          'https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/tenant-config',
+          getSupabaseFunctionUrl('tenant-config'),
           {
             method: 'GET',
             headers: {

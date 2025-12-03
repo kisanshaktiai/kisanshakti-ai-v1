@@ -1,8 +1,9 @@
 import { supabase } from '@/utils/supabase';
 import { useAuthStore } from '@/stores/authStore';
 import { dataIsolation, isolatedSupabase } from './dataIsolationService';
+import { SUPABASE_CONFIG, getSupabaseFunctionUrl } from '@/config/supabase';
 
-const LANDS_API_URL = 'https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/lands-api';
+const LANDS_API_URL = getSupabaseFunctionUrl('lands-api');
 const MAX_RETRIES = 2;
 const RETRY_DELAY = 1000;
 
@@ -53,7 +54,7 @@ class LandsApiService {
         });
         return {
           ...headers,
-          'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbwYom1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4'
+          'apikey': SUPABASE_CONFIG.ANON_KEY
         };
       }
       
