@@ -159,10 +159,19 @@ export const PWAInstallBanner: React.FC = () => {
     setPlatform(detectedPlatform);
 
     // CRITICAL: Check if prompt was already captured in main.tsx BEFORE React mounted
-    if (window.__capturedPwaPrompt && !window.__pwaPromptUsed) {
-      console.log('✅ [PWA Banner] Found pre-captured prompt from main.tsx!');
+    // Also check legacy variable name for backwards compatibility
+    const capturedPrompt = window.__capturedPwaPrompt || (window as any).deferredPwaPrompt;
+    
+    if (capturedPrompt && !window.__pwaPromptUsed) {
+      console.log('✅ [PWA Banner] Found pre-captured prompt!');
+      console.log('📋 [PWA Banner] Source:', window.__capturedPwaPrompt ? 'main.tsx' : 'legacy');
       console.log('📋 [PWA Banner] Captured at:', window.__pwaPromptCapturedAt ? new Date(window.__pwaPromptCapturedAt).toISOString() : 'unknown');
-      setDeferredPrompt(window.__capturedPwaPrompt as BeforeInstallPromptEvent);
+      setDeferredPrompt(capturedPrompt as BeforeInstallPromptEvent);
+      
+      // Sync to main variable for consistency
+      if (!window.__capturedPwaPrompt) {
+        window.__capturedPwaPrompt = capturedPrompt;
+      }
     }
 
     // Also listen for prompt captured after component mounts (fallback)
@@ -234,9 +243,11 @@ export const PWAInstallBanner: React.FC = () => {
     console.log('🚀 [PWA] Install button clicked!');
     
     // CRITICAL: Get prompt from state OR directly from window - NO ASYNC!
+    // Check both variable names for backwards compatibility
+    const windowPrompt = window.__capturedPwaPrompt || (window as any).deferredPwaPrompt;
     const promptToUse = deferredPrompt || 
-      (window.__capturedPwaPrompt && !window.__pwaPromptUsed 
-        ? window.__capturedPwaPrompt as BeforeInstallPromptEvent 
+      (windowPrompt && !window.__pwaPromptUsed 
+        ? windowPrompt as BeforeInstallPromptEvent 
         : null);
 
     console.log('📋 [PWA] Prompt state:', {
