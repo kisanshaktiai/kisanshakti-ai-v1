@@ -1635,13 +1635,19 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
         systemPrompt += `\n\n📊 WEATHER FORECAST (Next ${weatherForecast.length} Days):`;
         weatherForecast.forEach((day, index) => {
           const dayName = index === 0 ? 'Today' : index === 1 ? 'Tomorrow' : new Date(day.date).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' });
+          // Safe number conversion with fallback to prevent .toFixed errors
+          const tempAvg = Number(day.temp_avg) || 0;
+          const totalRain = Number(day.total_rain) || 0;
+          const avgHumidity = Number(day.avg_humidity) || 0;
+          const avgWindSpeed = Number(day.avg_wind_speed) || 0;
+          const maxRainProb = Number(day.max_rain_prob) || 0;
           systemPrompt += `
 ${dayName} (${day.date}):
-  • Temp: ${day.temp_min}°C - ${day.temp_max}°C (Avg: ${day.temp_avg.toFixed(1)}°C)
-  • Rain: ${day.total_rain.toFixed(1)} mm (${day.max_rain_prob}% probability)
-  • Humidity: ${day.avg_humidity.toFixed(0)}%
-  • Wind: ${day.avg_wind_speed.toFixed(1)} km/h
-  • Conditions: ${day.description}`;
+  • Temp: ${day.temp_min ?? 'N/A'}°C - ${day.temp_max ?? 'N/A'}°C (Avg: ${tempAvg.toFixed(1)}°C)
+  • Rain: ${totalRain.toFixed(1)} mm (${maxRainProb}% probability)
+  • Humidity: ${avgHumidity.toFixed(0)}%
+  • Wind: ${avgWindSpeed.toFixed(1)} km/h
+  • Conditions: ${day.description || 'Unknown'}`;
         });
       }
       
