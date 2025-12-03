@@ -229,61 +229,76 @@ export const PWAInstallBanner: React.FC = () => {
   // Removed: Banner show logic is now in the combined useEffect above
 
   // CRITICAL FIX: Install handler calls prompt() SYNCHRONOUSLY in user gesture
+  // NO setTimeout, NO async before prompt() - user gesture is only valid briefly
   const handleInstall = () => {
     console.log('🚀 [PWA] Install button clicked!');
+    
+    // CRITICAL: Get prompt from state OR directly from window - NO ASYNC!
+    const promptToUse = deferredPrompt || 
+      (window.__capturedPwaPrompt && !window.__pwaPromptUsed 
+        ? window.__capturedPwaPrompt as BeforeInstallPromptEvent 
+        : null);
+
     console.log('📋 [PWA] Prompt state:', {
-      hasPrompt: !!deferredPrompt,
+      hasStatePrompt: !!deferredPrompt,
+      hasWindowPrompt: !!window.__capturedPwaPrompt,
       promptUsed: window.__pwaPromptUsed,
-      capturedAt: window.__pwaPromptCapturedAt
+      usingPrompt: !!promptToUse
     });
 
-    if (!deferredPrompt) {
-      console.error('❌ [PWA] No deferred prompt available!');
-      // Try to get from window as fallback
-      if (window.__capturedPwaPrompt && !window.__pwaPromptUsed) {
-        console.log('🔄 [PWA] Using fallback prompt from window');
-        setDeferredPrompt(window.__capturedPwaPrompt as BeforeInstallPromptEvent);
-        // Re-trigger on next tick
-        setTimeout(() => handleInstall(), 0);
-      }
+    if (!promptToUse) {
+      console.error('❌ [PWA] No install prompt available!');
+      console.error('❌ [PWA] This means beforeinstallprompt never fired or was already used');
       return;
     }
 
-    trackEvent('install_prompted', { platform });
-
-    // CRITICAL: Call prompt() SYNCHRONOUSLY - no async before this!
-    // The user gesture (click) is only valid for a short time
+    // CRITICAL: Call prompt() IMMEDIATELY - NO setState, NO setTimeout before this!
+    // The user gesture (click) is only valid for a very short time (~1 second)
     try {
-      console.log('📲 [PWA] Calling prompt()...');
-      deferredPrompt.prompt();
+      console.log('📲 [PWA] Calling prompt() SYNCHRONOUSLY...');
       
-      // Mark as used to prevent re-use
+      // Mark as used BEFORE calling prompt to prevent double-calls
       window.__pwaPromptUsed = true;
+      
+      // THIS MUST BE SYNCHRONOUS - no async operations before this line!
+      promptToUse.prompt();
+      
+      console.log('✅ [PWA] prompt() called successfully!');
+      trackEvent('install_prompted', { platform });
 
       // Handle the result asynchronously AFTER prompt() is called
-      deferredPrompt.userChoice.then(choiceResult => {
-        console.log('👤 [PWA] User choice:', choiceResult.outcome);
+      promptToUse.userChoice
+        .then(choiceResult => {
+          console.log('👤 [PWA] User choice:', choiceResult.outcome);
 
-        if (choiceResult.outcome === 'accepted') {
-          console.log('✅ [PWA] Install ACCEPTED!');
-          trackEvent('install_accepted', { platform });
-          setShowBanner(false);
-          localStorage.removeItem(STORAGE_KEY_DISMISSED);
-          localStorage.removeItem(STORAGE_KEY_DISMISS_COUNT);
-        } else {
-          console.log('❌ [PWA] Install dismissed by user');
-          trackEvent('install_dismissed', { platform, reason: 'user_declined_prompt' });
-          handleDismiss();
-        }
+          if (choiceResult.outcome === 'accepted') {
+            console.log('🎉 [PWA] Install ACCEPTED!');
+            trackEvent('install_accepted', { platform });
+            setShowBanner(false);
+            localStorage.removeItem(STORAGE_KEY_DISMISSED);
+            localStorage.removeItem(STORAGE_KEY_DISMISS_COUNT);
+          } else {
+            console.log('❌ [PWA] Install dismissed by user');
+            trackEvent('install_dismissed', { platform, reason: 'user_declined_prompt' });
+            handleDismiss();
+          }
 
-        setDeferredPrompt(null);
-        window.__capturedPwaPrompt = null;
-      }).catch(error => {
-        console.error('❌ [PWA] userChoice error:', error);
-      });
+          setDeferredPrompt(null);
+          window.__capturedPwaPrompt = null;
+        })
+        .catch(error => {
+          console.error('❌ [PWA] userChoice error:', error);
+        });
     } catch (error) {
       console.error('❌ [PWA] prompt() failed:', error);
+      console.error('❌ [PWA] Error details:', {
+        name: (error as Error).name,
+        message: (error as Error).message,
+        stack: (error as Error).stack
+      });
       trackEvent('install_dismissed', { platform, reason: 'error', error: (error as Error).message });
+      // Reset used flag on error so user can retry
+      window.__pwaPromptUsed = false;
     }
   };
 
