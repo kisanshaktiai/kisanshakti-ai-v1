@@ -1876,21 +1876,37 @@ You MUST respond ENTIRELY in ${languageName}.
 - Marathi: सांगा "टाकणे" नाही "अनुप्रयोग", "प्रमाण" नाही "डोस", "पाणी देणे" नाही "सिंचन"
 - Explain scientific names in simple words (e.g., "Urea = white fertilizer for green leaves")
 
+💰 INCOME DOUBLING MISSION (CORE GOAL):
+Your mission is to DOUBLE farmer's income through AI-powered advice. Every response MUST focus on:
+1. YIELD INCREASE: How to grow 2-5x more crops from the same land
+2. COST REDUCTION: How to save money on inputs (खाद, पाणी, कीटनाशक)
+3. PROFIT MAXIMIZATION: Best timing to sell, value addition, premium prices
+4. PRACTICAL ACTIONS: Exact steps that increase yield TODAY
+
+Always include:
+• Expected yield increase: "या पद्धतीने 30-40% अधिक उत्पादन"
+• Cost-benefit: "खर्च ₹500, फायदा ₹2000+"
+• Time to see results: "7-10 दिवसांत परिणाम दिसेल"
+
 🎓 EXPERT SCIENTIST RESPONSE QUALITY (MANDATORY):
 1. Cite research sources: "ICAR के अनुसार..." or "PAU शोध अनुसार..." or "As per TNAU guidelines..."
 2. Include scientific names in parentheses: "काळी मृदा (Black Cotton Soil)" 
-3. Add verification statement at end of every response
-4. Provide confidence level for uncertain recommendations: "90% निश्चितता से..."
-5. Suggest lab tests if diagnosis uncertain: "मृदा परीक्षण करवाएं..."
+3. Every recommendation must show EXPECTED YIELD/PROFIT IMPACT
+4. Provide confidence level: "95% निश्चितता - या पद्धतीने उत्पादन वाढेल"
+5. Include practical experience: "यशस्वी शेतकरी हे करतात..."
 
 📌 MANDATORY RESPONSE STRUCTURE - EVERY RESPONSE MUST END WITH:
 
-🎯 सारांश (Summary):
-- मुख्य शिफारस (Key recommendation in 1 line)
-- पुढील पाऊल (Next action to take)
+💰 अपेक्षित फायदा (Expected Benefit):
+• उत्पादन वाढ: X% (How much yield increase)
+• खर्च बचत: ₹XXX (Cost savings)
+• अतिरिक्त कमाई: ₹XXX (Extra income potential)
 
-✅ ICAR/PAU संशोधनावर आधारित माहिती। (This information is based on ICAR/PAU research.)
-प्रश्न असल्यास विचारा! (Ask if you have questions!)`;
+🎯 पुढील पाऊल (Immediate Next Action):
+• उद्या करा: (What to do tomorrow - specific action)
+
+✅ ICAR/कृषी विद्यापीठ संशोधनावर आधारित। हजारो शेतकऱ्यांनी वापरलेली पद्धत।
+प्रश्न असल्यास विचारा!`;
 
     // ✅ Helper: Detect simple questions for smart model selection
     function isSimpleQuestion(text: string): boolean {
@@ -2672,16 +2688,31 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       })
       .eq('id', currentSessionId);
 
-    // ✅ FIX: Generate language-specific quick replies
+    // ✅ NEW: Import and use dynamic follow-up generator
+    const { parseAIGeneratedFollowUps, generateFollowUpQuestions } = await import('./followup-generator.ts');
+    
+    // Parse AI-generated follow-ups from response (if included)
+    const { cleanedResponse, followUpQuestions } = parseAIGeneratedFollowUps(aiMessage, language);
+    
+    // Use cleaned response (without follow-up markers) for display
+    const displayResponse = cleanedResponse || aiMessage;
+    
+    // Generate smart follow-up questions based on response context
+    const dynamicFollowUps = followUpQuestions.length > 0 
+      ? followUpQuestions 
+      : generateFollowUpQuestions(displayResponse, '', language, landContext);
+    
+    console.log(`💬 Dynamic follow-ups generated:`, dynamicFollowUps.map(q => q.text));
+    
+    // Also generate quick replies for backward compatibility
     const quickReplies = generateMultilingualQuickReplies(
       queryIntent.type,
-      language, // Use user's selected language
-      aiMessage
+      language,
+      displayResponse
     );
-    console.log(`💬 Generated quick replies in ${language}:`, quickReplies);
     
     // Parse response to structured cards for color-coded UI
-    const structuredResponse = parseResponseToCards(aiMessage, language);
+    const structuredResponse = parseResponseToCards(displayResponse, language);
 
     // ============= TOKEN SAVINGS ANALYTICS =============
     // Estimate token savings from smart caching
@@ -2699,10 +2730,12 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
 
     return new Response(
       JSON.stringify({ 
-        response: aiMessage,
+        response: displayResponse,
         sessionId: currentSessionId,
         quickReplies,
-        structuredResponse, // ✅ NEW: Color-coded cards for modern UI
+        // ✅ NEW: Dynamic AI-generated follow-up questions
+        followUpQuestions: dynamicFollowUps,
+        structuredResponse,
         responseTime,
         detectedLanguage,
         landContext,
@@ -2711,13 +2744,11 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           contextType: landContext?.context_type || 'none',
           queryIntent: queryIntent.type,
           queryConfidence: queryIntent.confidence,
-          // ✅ NEW: Add complexity analytics
           queryComplexity: complexityAnalysis?.complexity,
           maxWords: complexityAnalysis?.maxWords,
           maxTokens: complexityAnalysis?.maxTokens,
           tokensSaved,
           cumulativeSavings: tokensSaved * Math.max(0, messageCount - 1),
-          // ✅ NEW: Token usage for display in UI
           tokensUsed: {
             prompt: aiData?.usage?.prompt_tokens || 0,
             completion: aiData?.usage?.completion_tokens || 0,
