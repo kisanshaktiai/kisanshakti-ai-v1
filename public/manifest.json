@@ -1,8 +1,9 @@
 {
+  "id": "/",
   "name": "KisanShakti - Farmer Empowerment Platform",
   "short_name": "KisanShakti",
   "description": "Digital platform empowering Indian farmers with weather updates, market prices, advisory services, and government schemes",
-  "start_url": "/?source=pwa",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#f9fafb",
   "theme_color": "#22c55e",
