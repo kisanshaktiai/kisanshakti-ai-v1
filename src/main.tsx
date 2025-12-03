@@ -63,35 +63,10 @@ if (isNativeApp()) {
   console.log('🌐 [PWA] Running as web app');
 }
 
-// Update manifest link dynamically with tenant-specific manifest
-// NOTE: We defer this to avoid interfering with PWA installability check
-const updateManifestLink = async () => {
-  try {
-    const manifestLink = document.getElementById('app-manifest') as HTMLLinkElement;
-    if (manifestLink) {
-      // Check if we already have a valid static manifest
-      const currentHref = manifestLink.getAttribute('href');
-      if (currentHref === '/manifest.json') {
-        console.log('📱 [PWA] Using static manifest.json for installability');
-        // Don't override - let browser use static manifest for install prompt
-        return;
-      }
-      
-      // Only set dynamic manifest after install prompt is captured or for tenant branding
-      const domain = window.location.hostname;
-      
-      // Defer dynamic manifest update to avoid breaking install prompt
-      setTimeout(() => {
-        if (window.__capturedPwaPrompt || window.__pwaPromptUsed) {
-          manifestLink.href = `${getSupabaseFunctionUrl('generate-manifest')}?domain=${encodeURIComponent(domain)}`;
-          console.log('📱 [PWA] Dynamic manifest loaded (after prompt captured)');
-        }
-      }, 5000); // Wait 5 seconds for install prompt to fire
-    }
-  } catch (error) {
-    console.error('❌ [PWA] Failed to update manifest:', error);
-  }
-};
+// REMOVED: Dynamic manifest generation - causes 429 rate limiting errors
+// Using static /manifest.json only for PWA installability
+// Tenant branding is loaded separately via TenantContext
+console.log('📱 [PWA] Using static manifest.json (no dynamic API calls)');
 
 // Explicit Service Worker Registration - Single source of truth
 const registerServiceWorker = async () => {
@@ -147,8 +122,7 @@ console.log('🔧 [PWA] Checking PWA installability...');
 console.log('🔧 [PWA] SW supported:', 'serviceWorker' in navigator);
 console.log('🔧 [PWA] beforeinstallprompt supported:', 'onbeforeinstallprompt' in window);
 
-// Update manifest and register SW on load
-updateManifestLink();
+// Register SW on load (no dynamic manifest calls)
 window.addEventListener('load', () => {
   registerServiceWorker();
 });

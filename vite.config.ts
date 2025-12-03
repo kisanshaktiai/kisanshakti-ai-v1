@@ -72,7 +72,8 @@ export default defineConfig(({ mode }) => ({
           }
         ]
       },
-      includeAssets: ['favicon.ico', 'icon-192x192.png', 'icon-512x512.png', '.htaccess', '_redirects'],
+      // CRITICAL: Only include actual app assets - NOT server config files (.htaccess returns 403)
+      includeAssets: ['favicon.ico', 'icon-192x192.png', 'icon-512x512.png'],
       // CRITICAL: false = use static manifest.json from public/ folder
       manifest: false,
       devOptions: {
