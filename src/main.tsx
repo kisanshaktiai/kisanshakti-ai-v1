@@ -5,6 +5,9 @@ import "./index.css";
 // Import debug utilities (makes window.__debugAuth available)
 import "@/utils/debugAuth";
 
+// Import Capacitor initialization
+import { initializeCapacitor, isNativeApp, getPlatform } from "@/utils/capacitorInit";
+
 // Extend Window interface for React loaded flag
 declare global {
   interface Window {
@@ -16,6 +19,14 @@ declare global {
 
 // Signal that React is loaded
 window.__REACT_LOADED__ = true;
+
+// Initialize Capacitor for native apps
+if (isNativeApp()) {
+  console.log('📱 [Capacitor] Running as native app on:', getPlatform());
+  initializeCapacitor();
+} else {
+  console.log('🌐 [PWA] Running as web app');
+}
 
 // Update manifest link dynamically with tenant-specific manifest
 const updateManifestLink = async () => {
