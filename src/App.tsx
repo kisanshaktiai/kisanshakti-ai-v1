@@ -57,7 +57,6 @@ import SoilHealthReport from "./pages/SoilHealthReport";
 import AIScheduleDashboard from "./pages/AIScheduleDashboard";
 import VideoReels from "./pages/VideoReels";
 import InstallPWA from "./pages/InstallPWA";
-import PWADebug from "./pages/PWADebug";
 import NotificationSettingsPage from "./pages/NotificationSettingsPage";
 
 // Stores and Services
@@ -360,11 +359,6 @@ const router = createBrowserRouter([
   {
     path: "/install",
     element: <InstallPWA />,
-    errorElement: <RouteErrorBoundary />,
-  },
-  {
-    path: "/pwa-debug",
-    element: <PWADebug />,
     errorElement: <RouteErrorBoundary />,
   },
   {
