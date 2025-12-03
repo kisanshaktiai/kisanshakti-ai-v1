@@ -1074,6 +1074,95 @@ serve(async (req) => {
             ? Math.floor((Date.now() - new Date(land.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))
             : null;
         }
+        
+        // ✅ STEP 1.2: FETCH SOIL HEALTH DATA (always load for complete context)
+        let soilHealthData = null;
+        try {
+          const { data: soilHealth } = await supabase
+            .from('soil_health')
+            .select('*')
+            .eq('land_id', landId)
+            .order('test_date', { ascending: false })
+            .limit(1)
+            .single();
+          
+          if (soilHealth) {
+            soilHealthData = soilHealth;
+            console.log('✅ Soil Health Data Found:', {
+              nitrogen: soilHealth.nitrogen,
+              phosphorus: soilHealth.phosphorus,
+              potassium: soilHealth.potassium,
+              ph: soilHealth.ph,
+              organic_carbon: soilHealth.organic_carbon,
+              testDate: soilHealth.test_date
+            });
+          }
+        } catch (soilError) {
+          console.warn('⚠️ Could not load soil health:', soilError);
+        }
+        
+        // ✅ STEP 1.3: FETCH NDVI DATA (if available)
+        let ndviData = null;
+        try {
+          const { data: ndviRecords } = await supabase
+            .from('ndvi_data')
+            .select('*')
+            .eq('land_id', landId)
+            .order('date', { ascending: false })
+            .limit(3);
+          
+          if (ndviRecords && ndviRecords.length > 0) {
+            ndviData = ndviRecords;
+            console.log('✅ NDVI Data Found:', {
+              latestNdvi: ndviRecords[0]?.ndvi_value,
+              latestDate: ndviRecords[0]?.date,
+              recordCount: ndviRecords.length
+            });
+          }
+        } catch (ndviError) {
+          console.warn('⚠️ Could not load NDVI data:', ndviError);
+        }
+        
+        // ✅ STEP 1.4: CHECK IF CROP IS HARVESTED - suggest new cultivation plan
+        let isHarvested = false;
+        if (cropSchedule?.expected_harvest_date) {
+          const harvestDate = new Date(cropSchedule.expected_harvest_date);
+          isHarvested = harvestDate < new Date();
+          
+          if (isHarvested) {
+            console.log('🌾 CROP HARVESTED: Previous crop completed, will suggest new cultivation plan');
+          }
+        }
+        
+        // ✅ Add soil, NDVI, and harvested context to landContext
+        landContext = {
+          land_id: landId,
+          land_name: land.name,
+          area_acres: areaInAcres,
+          soil_type: land.soil_type,
+          irrigation_type: land.irrigation_type,
+          current_crop: cropSchedule?.crop_name || land.current_crop,
+          crop_stage: currentGrowthStage,
+          days_since_sowing: daysSinceSowing,
+          days_to_harvest: daysToHarvest,
+          // ✅ NEW: Soil health context
+          soil_health: soilHealthData ? {
+            nitrogen: soilHealthData.nitrogen,
+            phosphorus: soilHealthData.phosphorus,
+            potassium: soilHealthData.potassium,
+            ph: soilHealthData.ph,
+            organic_carbon: soilHealthData.organic_carbon,
+            test_date: soilHealthData.test_date
+          } : null,
+          // ✅ NEW: NDVI context
+          ndvi_data: ndviData ? {
+            latest_value: ndviData[0]?.ndvi_value,
+            latest_date: ndviData[0]?.date,
+            trend: ndviData.length > 1 ? (ndviData[0]?.ndvi_value > ndviData[1]?.ndvi_value ? 'improving' : 'declining') : 'stable'
+          } : null,
+          // ✅ NEW: Harvested flag
+          is_harvested: isHarvested
+        };
       }
     }
     
@@ -1283,6 +1372,28 @@ CURRENT CROP SCHEDULE:
 • Current Growth Stage: ${currentGrowthStage}
 • Expected Harvest: ${cropSchedule.expected_harvest_date ? new Date(cropSchedule.expected_harvest_date).toLocaleDateString() : 'Unknown'}${daysToHarvest ? ` (${daysToHarvest} days remaining)` : ''}
 • Irrigation Type: ${landDetails.irrigation_type || 'Unknown'}
+${landContext?.is_harvested ? `
+⚠️ HARVEST COMPLETED - SUGGEST NEW CULTIVATION PLAN:
+Previous crop "${cropSchedule.crop_name}" has been harvested.
+NOW you should suggest:
+1. Best crops for NEXT season based on soil type and climate
+2. Soil preparation needed after previous crop
+3. Crop rotation recommendations (avoid same family crops)
+4. Ideal sowing window for next season` : ''}
+${landContext?.soil_health ? `
+📊 SOIL HEALTH DATA (Use for fertilizer recommendations):
+• Nitrogen (N): ${landContext.soil_health.nitrogen || 'Unknown'} kg/ha
+• Phosphorus (P): ${landContext.soil_health.phosphorus || 'Unknown'} kg/ha  
+• Potassium (K): ${landContext.soil_health.potassium || 'Unknown'} kg/ha
+• pH Level: ${landContext.soil_health.ph || 'Unknown'}
+• Organic Carbon: ${landContext.soil_health.organic_carbon || 'Unknown'}%
+• Test Date: ${landContext.soil_health.test_date || 'Unknown'}
+⚠️ BASE ALL FERTILIZER RECOMMENDATIONS ON THIS SOIL DATA!` : ''}
+${landContext?.ndvi_data ? `
+🛰️ NDVI DATA (Crop Health Indicator):
+• Latest NDVI: ${landContext.ndvi_data.latest_value || 'Unknown'} (Date: ${landContext.ndvi_data.latest_date || 'Unknown'})
+• Health Trend: ${landContext.ndvi_data.trend || 'stable'}
+• Interpretation: ${landContext.ndvi_data.latest_value > 0.6 ? 'Healthy vegetation' : landContext.ndvi_data.latest_value > 0.4 ? 'Moderate health' : 'Stress detected - investigate'}` : ''}
 
 ⚠️ CRITICAL: Always reference this context in your responses. Calculate doses for ${areaInAcres} acres automatically.
 ═══════════════════════════════════════════════════════════════
@@ -1763,7 +1874,23 @@ You MUST respond ENTIRELY in ${languageName}.
 - English: Say "watering" not "irrigation", "amount" not "dosage", "cutting crop" not "harvest"
 - Hindi: कहें "डालना" न कि "अनुप्रयोग", "मात्रा" न कि "खुराक", "पानी देना" न कि "सिंचाई"
 - Marathi: सांगा "टाकणे" नाही "अनुप्रयोग", "प्रमाण" नाही "डोस", "पाणी देणे" नाही "सिंचन"
-- Explain scientific names in simple words (e.g., "Urea = white fertilizer for green leaves")`;
+- Explain scientific names in simple words (e.g., "Urea = white fertilizer for green leaves")
+
+🎓 EXPERT SCIENTIST RESPONSE QUALITY (MANDATORY):
+1. Cite research sources: "ICAR के अनुसार..." or "PAU शोध अनुसार..." or "As per TNAU guidelines..."
+2. Include scientific names in parentheses: "काळी मृदा (Black Cotton Soil)" 
+3. Add verification statement at end of every response
+4. Provide confidence level for uncertain recommendations: "90% निश्चितता से..."
+5. Suggest lab tests if diagnosis uncertain: "मृदा परीक्षण करवाएं..."
+
+📌 MANDATORY RESPONSE STRUCTURE - EVERY RESPONSE MUST END WITH:
+
+🎯 सारांश (Summary):
+- मुख्य शिफारस (Key recommendation in 1 line)
+- पुढील पाऊल (Next action to take)
+
+✅ ICAR/PAU संशोधनावर आधारित माहिती। (This information is based on ICAR/PAU research.)
+प्रश्न असल्यास विचारा! (Ask if you have questions!)`;
 
     // ✅ Helper: Detect simple questions for smart model selection
     function isSimpleQuestion(text: string): boolean {

@@ -62,15 +62,29 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
       .replace(/\n{3,}/g, '\n\n');      // Clean multiple newlines
   };
   
-  // Wrap sentences for highlighting during TTS playback
+  // Wrap sentences for highlighting during TTS playback - preserve line breaks
   const wrapSentences = (text: string) => {
     const cleanedText = cleanMarkdownForDisplay(text);
-    const sentences = cleanedText.split(/([.!?।॥]+\s+)/).filter(s => s.trim());
-    return sentences.map((sentence, idx) => (
-      <span key={idx} data-sentence={Math.floor(idx / 2)}>
-        {sentence}
-      </span>
-    ));
+    
+    // Split by newlines first, then by sentences
+    const lines = cleanedText.split('\n');
+    
+    return lines.map((line, lineIdx) => {
+      if (!line.trim()) {
+        return <br key={`br-${lineIdx}`} />;
+      }
+      
+      const sentences = line.split(/([.!?।॥]+\s*)/).filter(s => s);
+      return (
+        <div key={`line-${lineIdx}`} className="mb-1 last:mb-0">
+          {sentences.map((sentence, idx) => (
+            <span key={`${lineIdx}-${idx}`} data-sentence={lineIdx}>
+              {sentence}
+            </span>
+          ))}
+        </div>
+      );
+    });
   };
   
   return (
@@ -106,7 +120,8 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
 
       {/* Message Bubble */}
       <div className={cn(
-        "max-w-[80%] md:max-w-[70%]",
+        // ✅ Full width for AI messages, 80% for user messages
+        isUser ? "max-w-[80%] md:max-w-[70%]" : "max-w-full md:max-w-[95%]",
         isUser && "flex flex-col items-end"
       )}>
         {/* Bubble Content */}
