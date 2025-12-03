@@ -1,142 +1,15 @@
-name: Deploy to Hostinger
+name: Deploy PWA + Build Mobile Apps
 
 on:
   push:
-    branches: [main, production]
+    branches: [main, production, kisanshakti-ai-update]
   workflow_dispatch:
 
 jobs:
-  build-and-deploy:
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build application
-        run: npm run build
-        env:
-          VITE_APP_VERSION: ${{ github.sha }}
-          VITE_BUILD_TIMESTAMP: ${{ github.event.head_commit.timestamp }}
-
-      - name: Verify build output
-        run: |
-          echo "Checking build output..."
-          ls -la dist/
-          echo "Checking manifest.json..."
-          cat dist/manifest.json
-          echo "Checking service-worker.js exists..."
-          ls -la dist/service-worker.js
-
-      - name: Copy manifest.json to root (if not already)
-        run: |
-          if [ ! -f "dist/manifest.json" ]; then
-            echo "manifest.json not in dist root, copying..."
-            cp public/manifest.json dist/manifest.json
-          fi
-
-      - name: Copy service-worker.js to root (if not already)
-        run: |
-          if [ ! -f "dist/service-worker.js" ]; then
-            echo "service-worker.js not in dist root, copying..."
-            cp public/service-worker.js dist/service-worker.js
-          fi
-
-      - name: Create .htaccess for proper MIME types
-        run: |
-          cat > dist/.htaccess << 'EOF'
-          # PWA Service Worker & Manifest MIME Types
-          <FilesMatch "\.(json|webmanifest)$">
-            Header set Content-Type "application/json"
-            Header set Cache-Control "no-cache, no-store, must-revalidate"
-          </FilesMatch>
-
-          <FilesMatch "service-worker\.js$">
-            Header set Content-Type "application/javascript"
-            Header set Cache-Control "no-cache, no-store, must-revalidate"
-            Header set Service-Worker-Allowed "/"
-          </FilesMatch>
-
-          # Security Headers
-          Header always set X-Content-Type-Options "nosniff"
-          Header always set X-Frame-Options "DENY"
-          Header always set X-XSS-Protection "1; mode=block"
-          Header always set Referrer-Policy "strict-origin-when-cross-origin"
-
-          # HTTPS Redirect (if not already on HTTPS)
-          RewriteEngine On
-          RewriteCond %{HTTPS} off
-          RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
-
-          # SPA Routing (React Router)
-          RewriteEngine On
-          RewriteBase /
-          RewriteRule ^index\.html$ - [L]
-          RewriteCond %{REQUEST_FILENAME} !-f
-          RewriteCond %{REQUEST_FILENAME} !-d
-          RewriteRule . /index.html [L]
-          EOF
-
-      - name: Deploy to Hostinger via FTP
-        uses: SamKirkland/FTP-Deploy-Action@v4.3.4
-        with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ./dist/
-          server-dir: /public_html/
-          protocol: ftps
-          port: 21
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            **/.env*
-
-      - name: Verify deployment
-        run: |
-          echo "Deployment complete!"
-          echo "Verifying PWA files are accessible..."
-          curl -I https://your-domain.com/manifest.json
-          curl -I https://your-domain.com/service-worker.js
-
-      - name: Notify deployment success
-        if: success()
-        run: |
-          echo "✅ Deployment successful!"
-          echo "📱 PWA files deployed to root"
-          echo "🔒 Security headers configured"
-          echo "🚀 App version: ${{ github.sha }}"
-
-      - name: Notify deployment failure
-        if: failure()
-        run: |
-          echo "❌ Deployment failed!"
-          echo "Check logs above for errors"
-    branches: [ kisanshakti-ai-update ]
-  workflow_dispatch:
-
-jobs:
-  deploy:
+  # Job 1: Build and Deploy PWA to Hostinger
+  deploy-pwa:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
-    env:
-      HOST_SFTP_HOST: ${{ secrets.HOST_SFTP_HOST }}
-      HOST_SFTP_PORT: ${{ secrets.HOST_SFTP_PORT }}
-      HOST_SFTP_USER: ${{ secrets.HOST_SFTP_USER }}
-      HOST_REMOTE_DIR: ${{ secrets.HOST_REMOTE_DIR }}
-      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
-      CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
 
     steps:
       - name: 📥 Checkout repository
@@ -145,7 +18,7 @@ jobs:
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
           cache: 'npm'
 
       - name: 📦 Install dependencies
@@ -159,192 +32,284 @@ jobs:
       - name: 🏗️ Build production bundle
         env:
           NODE_ENV: production
+          VITE_APP_VERSION: ${{ github.sha }}
+          VITE_BUILD_TIMESTAMP: ${{ github.event.head_commit.timestamp }}
         run: |
           npm run build
           echo "✅ Build completed successfully"
 
-      - name: ✅ Verify SPA routing files
+      - name: ✅ Verify build output
         run: |
-          echo "🔍 Checking for routing configuration files..."
+          echo "🔍 Checking build output..."
           
           if [ ! -d ./dist ]; then 
             echo "❌ ERROR: dist folder not found!"
             exit 1
           fi
           
-          # Check for .htaccess (Apache routing)
-          if [ -f ./dist/.htaccess ]; then
-            echo "✅ .htaccess found (Apache SPA routing configured)"
-            echo "📄 .htaccess content:"
-            head -20 ./dist/.htaccess
-          else
-            echo "⚠️  WARNING: .htaccess not found - SPA routing may not work on Apache servers!"
-          fi
-          
-          # Check for _redirects (Netlify-style routing)
-          if [ -f ./dist/_redirects ]; then
-            echo "✅ _redirects found (Netlify-style routing configured)"
-          fi
-          
-          # Verify index.html exists
           if [ ! -f ./dist/index.html ]; then
-            echo "❌ ERROR: index.html not found in dist!"
+            echo "❌ ERROR: index.html not found!"
             exit 1
           fi
           
-          echo ""
-          echo "📊 Build output summary:"
-          du -sh ./dist
-          echo "Total files: $(find dist -type f | wc -l)"
+          echo "✅ index.html exists"
+          
+          if [ -f ./dist/.htaccess ]; then
+            echo "✅ .htaccess found"
+          fi
+          
+          if [ -f ./dist/manifest.json ]; then
+            echo "✅ manifest.json found"
+          fi
+          
+          echo "📊 Build size: $(du -sh ./dist)"
 
       - name: 🔐 Setup SSH authentication
         run: |
           mkdir -p "$HOME/.ssh"
           chmod 700 "$HOME/.ssh"
-
-          # Decode and save private key
           echo "${{ secrets.SFTP_KEY_B64 }}" | tr -d '\r\n ' | base64 --decode > "$HOME/.ssh/deploy_key"
           chmod 600 "$HOME/.ssh/deploy_key"
-
-          # Setup known_hosts for security
+          
           if [ -n "${{ secrets.HOST_SFTP_KNOWN_HOSTS }}" ]; then
             echo "${{ secrets.HOST_SFTP_KNOWN_HOSTS }}" > "$HOME/.ssh/known_hosts"
           else
             ssh-keyscan -p "${{ secrets.HOST_SFTP_PORT }}" "${{ secrets.HOST_SFTP_HOST }}" >> "$HOME/.ssh/known_hosts" 2>/dev/null
           fi
           chmod 600 "$HOME/.ssh/known_hosts"
-          
-          echo "✅ SSH authentication configured"
 
-      - name: 🧪 Test SSH connection
+      - name: 🚀 Deploy to Hostinger
         run: |
-          echo "Testing SSH connection to Hostinger..."
-          ssh -i "$HOME/.ssh/deploy_key" \
-            -p "${{ secrets.HOST_SFTP_PORT }}" \
-            -o StrictHostKeyChecking=no \
-            -o ConnectTimeout=30 \
-            "${{ secrets.HOST_SFTP_USER }}@${{ secrets.HOST_SFTP_HOST }}" \
-            "echo '✅ SSH connection successful!' && pwd" || {
-              echo "❌ SSH connection failed!"
-              exit 1
-            }
-
-      - name: 🚀 Deploy to Hostinger via rsync over SSH
-        run: |
-          echo "🚀 Starting deployment to Hostinger..."
-          
-          # Use rsync for efficient, reliable deployment
+          echo "🚀 Starting deployment..."
           rsync -avz --delete \
             -e "ssh -i $HOME/.ssh/deploy_key -p ${{ secrets.HOST_SFTP_PORT }} -o StrictHostKeyChecking=no" \
             --exclude='.git*' \
             --exclude='node_modules' \
-            --exclude='*.md' \
             --progress \
             ./dist/ \
-            "${{ secrets.HOST_SFTP_USER }}@${{ secrets.HOST_SFTP_HOST }}:${{ secrets.HOST_REMOTE_DIR }}/" || {
-              echo "❌ Deployment failed!"
-              exit 1
-            }
-          
-          echo "✅ Files deployed successfully"
-
-      - name: 🔒 Set proper file permissions
-        run: |
-          echo "Setting correct file permissions on server..."
-          ssh -i "$HOME/.ssh/deploy_key" \
-            -p "${{ secrets.HOST_SFTP_PORT }}" \
-            -o StrictHostKeyChecking=no \
-            "${{ secrets.HOST_SFTP_USER }}@${{ secrets.HOST_SFTP_HOST }}" <<'ENDSSH'
-            cd ${{ secrets.HOST_REMOTE_DIR }}
-            
-            # Set directory permissions
-            find . -type d -exec chmod 755 {} \;
-            
-            # Set file permissions
-            find . -type f -exec chmod 644 {} \;
-            
-            # Ensure .htaccess is readable
-            if [ -f .htaccess ]; then
-              chmod 644 .htaccess
-              echo "✅ .htaccess permissions set"
-            fi
-            
-            echo "✅ Permissions updated successfully"
-          ENDSSH
-
-      - name: ✅ Verify deployment
-        run: |
-          echo "🔍 Verifying deployment on server..."
-          ssh -i "$HOME/.ssh/deploy_key" \
-            -p "${{ secrets.HOST_SFTP_PORT }}" \
-            -o StrictHostKeyChecking=no \
-            "${{ secrets.HOST_SFTP_USER }}@${{ secrets.HOST_SFTP_HOST }}" <<'ENDSSH'
-            cd ${{ secrets.HOST_REMOTE_DIR }}
-            
-            echo "📁 Deployed files:"
-            ls -lah | head -20
-            
-            echo ""
-            echo "🔍 Checking critical files:"
-            
-            if [ -f index.html ]; then
-              echo "✅ index.html exists"
-            else
-              echo "❌ index.html missing!"
-              exit 1
-            fi
-            
-            if [ -f .htaccess ]; then
-              echo "✅ .htaccess exists (SPA routing enabled)"
-            else
-              echo "⚠️  .htaccess missing - SPA routing may not work!"
-            fi
-            
-            echo ""
-            echo "✅ Deployment verification complete"
-          ENDSSH
+            "${{ secrets.HOST_SFTP_USER }}@${{ secrets.HOST_SFTP_HOST }}:${{ secrets.HOST_REMOTE_DIR }}/"
+          echo "✅ PWA deployed successfully"
 
       - name: 🔄 Purge Cloudflare cache
-        if: env.CF_API_TOKEN != '' && env.CF_ZONE_ID != ''
+        if: secrets.CF_API_TOKEN != '' && secrets.CF_ZONE_ID != ''
         run: |
-          echo "🔄 Purging Cloudflare cache..."
-          
-          response=$(curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" \
+          curl -X POST "https://api.cloudflare.com/client/v4/zones/${{ secrets.CF_ZONE_ID }}/purge_cache" \
             -H "Authorization: Bearer ${{ secrets.CF_API_TOKEN }}" \
             -H "Content-Type: application/json" \
-            --data '{"purge_everything":true}')
-          
-          if echo "$response" | jq -e '.success == true' > /dev/null; then
-            echo "✅ Cloudflare cache purged successfully"
-          else
-            echo "⚠️  Cache purge may have failed:"
-            echo "$response" | jq '.'
-          fi
+            --data '{"purge_everything":true}'
+          echo "✅ Cache purged"
 
-      - name: 🧹 Cleanup SSH keys
+      - name: 🧹 Cleanup
         if: always()
         run: |
-          if [ -f "$HOME/.ssh/deploy_key" ]; then
-            shred -u "$HOME/.ssh/deploy_key" 2>/dev/null || rm -f "$HOME/.ssh/deploy_key"
-          fi
+          shred -u "$HOME/.ssh/deploy_key" 2>/dev/null || rm -f "$HOME/.ssh/deploy_key"
           rm -f "$HOME/.ssh/known_hosts" 2>/dev/null || true
-          echo "✅ SSH keys cleaned up"
 
-      - name: 🎉 Deployment summary
-        if: success()
+  # Job 2: Build Android APK
+  build-android:
+    runs-on: ubuntu-latest
+    needs: deploy-pwa
+    timeout-minutes: 45
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🏗️ Build web app
+        run: npm run build
+
+      - name: 📱 Setup Capacitor
+        run: |
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+          npx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
+          npx cap add android
+          npx cap sync android
+          npx cap copy android
+
+      - name: 🔨 Build Debug APK
+        run: |
+          cd android
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --stacktrace
+
+      - name: 📤 Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kisanshakti-debug.apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: 🔨 Build Release APK (if keystore exists)
+        if: secrets.ANDROID_KEYSTORE_B64 != ''
+        run: |
+          # Decode keystore
+          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 --decode > android/app/release.keystore
+          
+          # Create signing config
+          cat >> android/app/build.gradle << EOF
+          
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file('release.keystore')
+                      storePassword '${{ secrets.ANDROID_KEYSTORE_PASSWORD }}'
+                      keyAlias '${{ secrets.ANDROID_KEY_ALIAS }}'
+                      keyPassword '${{ secrets.ANDROID_KEY_PASSWORD }}'
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          EOF
+          
+          cd android
+          ./gradlew assembleRelease --stacktrace
+
+      - name: 📤 Upload Release APK
+        if: secrets.ANDROID_KEYSTORE_B64 != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: kisanshakti-release.apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 90
+
+      - name: ✅ Android Build Summary
         run: |
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🎉 Deployment completed successfully!"
+          echo "📱 Android APK Build Complete!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ Debug APK: Available in Artifacts"
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_B64 }}" ]; then
+            echo "✅ Release APK: Available in Artifacts (Signed)"
+          else
+            echo "⚠️  Release APK: Skipped (No keystore configured)"
+          fi
+
+  # Job 3: Build iOS IPA
+  build-ios:
+    runs-on: macos-latest
+    needs: deploy-pwa
+    timeout-minutes: 60
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 🍎 Setup Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🏗️ Build web app
+        run: npm run build
+
+      - name: 📱 Setup Capacitor
+        run: |
+          npm install @capacitor/core @capacitor/cli @capacitor/ios
+          npx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
+          npx cap add ios
+          npx cap sync ios
+          npx cap copy ios
+
+      - name: 📦 Install CocoaPods dependencies
+        run: |
+          cd ios/App
+          pod install
+
+      - name: 🔨 Build iOS App (Debug)
+        run: |
+          cd ios/App
+          xcodebuild -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -archivePath $PWD/build/KisanShakti.xcarchive \
+            archive
+
+      - name: 📦 Export IPA (Debug)
+        run: |
+          cd ios/App
+          
+          # Create export options
+          cat > ExportOptions.plist << EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>development</string>
+              <key>teamID</key>
+              <string>${{ secrets.APPLE_TEAM_ID }}</string>
+          </dict>
+          </plist>
+          EOF
+          
+          xcodebuild -exportArchive \
+            -archivePath $PWD/build/KisanShakti.xcarchive \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath $PWD/build
+
+      - name: 📤 Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: kisanshakti-ios.ipa
+          path: ios/App/build/*.ipa
+          retention-days: 30
+
+      - name: ✅ iOS Build Summary
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🍎 iOS IPA Build Complete!"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "✅ IPA: Available in Artifacts"
+          echo "⚠️  Note: For App Store, configure signing in Xcode"
+
+  # Job 4: Build Summary
+  summary:
+    runs-on: ubuntu-latest
+    needs: [deploy-pwa, build-android, build-ios]
+    if: always()
+
+    steps:
+      - name: 🎉 Deployment Summary
+        run: |
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          echo "🎉 BUILD & DEPLOYMENT COMPLETE!"
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           echo ""
-          echo "✅ App deployed to: https://kisanshaktiai.in"
-          echo "✅ SPA routing: Configured (.htaccess)"
-          echo "✅ Cloudflare cache: Purged"
+          echo "✅ PWA: https://kisanshaktiai.in"
+          echo "✅ Android APK: Check Artifacts tab"
+          echo "✅ iOS IPA: Check Artifacts tab"
           echo ""
-          echo "🔍 Test these URLs to verify routing:"
-          echo "   - https://kisanshaktiai.in/"
-          echo "   - https://kisanshaktiai.in/app/weather"
-          echo "   - https://kisanshaktiai.in/app/schedule"
-          echo "   - Try refreshing each page!"
+          echo "📱 Download apps from:"
+          echo "   Actions → Workflow run → Artifacts"
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
