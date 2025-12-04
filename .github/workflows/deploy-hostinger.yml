@@ -129,13 +129,30 @@ jobs:
       - name: 🏗️ Build web app
         run: npm run build
 
-      - name: 📱 Setup Capacitor
+      - name: 📱 Setup Capacitor (Android)
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
-          npx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
-          npx cap add android
+
+          # If no capacitor config file exists, run init. Otherwise skip.
+          if ! ls capacitor.config.* >/dev/null 2>&1; then
+            echo "No capacitor.config.* found — running npx cap init"
+            npx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
+          else
+            echo "Found capacitor.config.* — skipping npx cap init"
+          fi
+
+          # Only add android platform if not present
+          if [ -d "android" ]; then
+            echo "android/ already exists — skipping npx cap add android"
+          else
+            echo "Adding android platform"
+            npx cap add android
+          fi
+
+          # Always sync/copy to ensure native project has latest web assets
           npx cap sync android
           npx cap copy android
+
 
       - name: 🔨 Build Debug APK
         run: |
@@ -184,13 +201,30 @@ jobs:
       - name: 🏗️ Build web app
         run: npm run build
 
-      - name: 📱 Setup Capacitor
+      - name: 📱 Setup Capacitor (iOS)
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/ios
-          npx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
-          npx cap add ios
+
+          # If no capacitor config file exists, run init. Otherwise skip.
+          if ! ls capacitor.config.* >/dev/null 2>&1; then
+            echo "No capacitor.config.* found — running npx cap init"
+            npx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
+          else
+            echo "Found capacitor.config.* — skipping npx cap init"
+          fi
+
+          # Only add ios platform if not present
+          if [ -d "ios" ] && [ -d "ios/App" ]; then
+            echo "ios/ already exists — skipping npx cap add ios"
+          else
+            echo "Adding ios platform"
+            npx cap add ios
+          fi
+
+          # Always sync/copy to ensure native project has latest web assets
           npx cap sync ios
           npx cap copy ios
+
 
       - name: 📦 Install CocoaPods dependencies
         run: |
