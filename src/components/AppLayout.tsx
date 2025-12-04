@@ -12,6 +12,8 @@ import { ConnectionStatusIcon } from '@/components/ConnectionStatusIcon';
 import { ModernVoiceProvider } from '@/contexts/ModernVoiceContext';
 import { ModernVoiceAssistant } from '@/components/voice';
 import { VoiceIndicator } from '@/components/VoiceIndicator';
+import { NativeVoiceButton } from '@/components/voice/NativeVoiceButton';
+import { useVoiceNavigationStore } from '@/stores/voiceNavigationStore';
 
 export function AppLayout() {
   const { tenant, branding } = useTenant();
@@ -89,6 +91,14 @@ export function AppLayout() {
         {/* Voice Assistant */}
         <ModernVoiceAssistant />
         <VoiceIndicator />
+        
+        {/* Native Voice Navigation Button - Floating */}
+        <NativeVoiceButton 
+          className="bottom-24 right-4"
+          size="md"
+          showTranscript={true}
+          showExamples={true}
+        />
 
         {/* Bottom Navigation - Hidden on full-screen routes */}
         <BottomNavigation 
