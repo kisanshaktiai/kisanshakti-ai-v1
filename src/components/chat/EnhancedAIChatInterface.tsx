@@ -130,8 +130,9 @@ export function EnhancedAIChatInterface() {
     onTranscript: (text) => setTranscript(text)
   });
   
+  // Pass language code directly - nativeTTSService handles all conversions and fallbacks
   const { speak, stop: stopSpeaking, isSpeaking } = useTextToSpeech({
-    language: language === 'hi' ? 'hi-IN' : language === 'pa' ? 'pa-IN' : language === 'mr' ? 'mr-IN' : language === 'ta' ? 'ta-IN' : 'en-IN'
+    language: language // Service will convert 'mr' → 'mr-IN', handle fallbacks etc.
   });
   
   // ✅ CRITICAL FIX: ALL HOOKS MUST BE BEFORE CONDITIONAL RETURNS

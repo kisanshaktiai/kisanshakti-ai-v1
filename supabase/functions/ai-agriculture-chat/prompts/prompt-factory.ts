@@ -1,8 +1,10 @@
 // ============= SMART PROMPT FACTORY =============
 // Builds minimal, query-specific prompts to reduce token usage by 85%
+// NOW WITH RURAL LANGUAGE ENFORCEMENT
 
 import { getBaseIdentity } from './base-identity.ts';
 import { getQueryPrompt } from './query-prompts.ts';
+import { getRuralLanguageRules } from '../rural-language-dictionary.ts';
 
 export interface PromptConfig {
   queryType: string;
@@ -10,15 +12,20 @@ export interface PromptConfig {
   cropName?: string;
   hasLand: boolean;
   messageCount: number;
+  locationContext?: {
+    village?: string;
+    district?: string;
+    state?: string;
+  };
 }
 
 export function buildOptimizedSystemPrompt(config: PromptConfig): string {
-  const { queryType, language, cropName, hasLand, messageCount } = config;
+  const { queryType, language, cropName, hasLand, messageCount, locationContext } = config;
   
-  // Base identity: ~200 tokens
+  // Base identity with rural language rules: ~300 tokens
   let prompt = getBaseIdentity(language);
   
-  // Query-specific rules: ~100-150 tokens
+  // Query-specific rules with InstaScan CTAs: ~150 tokens
   prompt += '\n\n' + getQueryPrompt(queryType, language);
   
   // Formatting rules (minimal): ~100 tokens
@@ -27,12 +34,45 @@ export function buildOptimizedSystemPrompt(config: PromptConfig): string {
   // Income focus instruction: ~50 tokens
   prompt += '\n\n' + getIncomeFocusPrompt(language);
   
+  // Add location personalization if available
+  if (locationContext?.village || locationContext?.district) {
+    prompt += '\n\n' + getLocationPersonalization(locationContext, language);
+  }
+  
   // Context awareness (first message vs continuation)
   if (messageCount > 1) {
     prompt += `\n\n[Continuation - farmer already knows you, be direct]`;
   }
   
   return prompt;
+}
+
+// NEW: Location-based personalization
+function getLocationPersonalization(
+  location: { village?: string; district?: string; state?: string },
+  language: string
+): string {
+  const templates: Record<string, string> = {
+    hi: `📍 किसान का इलाका: ${location.village || ''} ${location.district ? `(${location.district})` : ''}
+- इस इलाके के हिसाब से सलाह दो
+- स्थानीय मंडी का भाव बताओ
+- यहां की मिट्टी/मौसम का ध्यान रखो`,
+
+    mr: `📍 शेतकऱ्याचा भाग: ${location.village || ''} ${location.district ? `(${location.district})` : ''}
+- या भागानुसार सल्ला द्या
+- स्थानिक बाजारभाव सांगा
+- इथली माती/हवामान लक्षात ठेवा`,
+
+    en: `📍 Farmer's area: ${location.village || ''} ${location.district ? `(${location.district})` : ''}
+- Give advice according to this area
+- Mention local market prices
+- Consider local soil/weather`,
+
+    pa: `📍 ਕਿਸਾਨ ਦਾ ਇਲਾਕਾ: ${location.village || ''} ${location.district ? `(${location.district})` : ''}
+- ਇਸ ਇਲਾਕੇ ਅਨੁਸਾਰ ਸਲਾਹ ਦਿਓ`
+  };
+
+  return templates[language] || templates['en'];
 }
 
 function getFormattingRules(language: string): string {

@@ -1,5 +1,10 @@
+/**
+ * Enhanced Text-to-Speech Hook
+ * Uses enhanced TTS service with natural voice quality
+ */
+
 import { useState, useCallback, useRef } from 'react';
-import { universalTTSService } from '@/services/universalTTSService';
+import { enhancedTTSService } from '@/services/enhancedNativeTTSService';
 
 interface UseTextToSpeechProps {
   language?: string;
@@ -9,13 +14,13 @@ interface UseTextToSpeechProps {
 }
 
 export function useTextToSpeech({ 
-  language = 'hi-IN', 
-  rate = 0.9, 
-  pitch = 1.0,
+  language = 'hi', 
+  rate,  // Will use enhanced defaults if not provided
+  pitch, // Will use enhanced defaults if not provided
   onError
 }: UseTextToSpeechProps = {}) {
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isSupported] = useState(true); // Universal TTS always has some provider
+  const [isSupported] = useState(true);
   const [isVoicesLoaded] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const speakingRef = useRef(false);
@@ -30,31 +35,37 @@ export function useTextToSpeech({
       setIsSpeaking(true);
       speakingRef.current = true;
 
-      const result = await universalTTSService.speak({
+      // Use enhanced TTS service with optimized settings
+      const result = await enhancedTTSService.speak(
         text,
         language,
-        rate,
-        onStart: () => {
-          setIsSpeaking(true);
+        {
+          onStart: () => {
+            setIsSpeaking(true);
+          },
+          onEnd: () => {
+            setIsSpeaking(false);
+            speakingRef.current = false;
+          },
+          onError: (err) => {
+            const errorMsg = err.message || 'Speech synthesis failed';
+            setError(errorMsg);
+            onError?.(errorMsg);
+            setIsSpeaking(false);
+            speakingRef.current = false;
+          }
         },
-        onEnd: () => {
-          setIsSpeaking(false);
-          speakingRef.current = false;
-        },
-        onError: (err) => {
-          const errorMsg = err.message || 'Speech synthesis failed';
-          setError(errorMsg);
-          onError?.(errorMsg);
-          setIsSpeaking(false);
-          speakingRef.current = false;
-        }
-      });
+        // Override with user-provided values if specified
+        rate !== undefined || pitch !== undefined 
+          ? { rate: rate ?? 0.9, pitch: pitch ?? 1.0 } 
+          : undefined
+      );
 
       if (!result.success) {
         throw new Error(result.error || 'TTS failed');
       }
 
-      console.log(`[TTS] Used provider: ${result.provider}`);
+      console.log(`[TTS] Voice: ${result.voiceUsed || 'default'}, Quality: ${result.voiceQuality || 'unknown'}`);
     } catch (err) {
       console.error('Error in speak function:', err);
       const errorMsg = err instanceof Error ? err.message : 'An error occurred while trying to speak';
@@ -63,11 +74,11 @@ export function useTextToSpeech({
       setIsSpeaking(false);
       speakingRef.current = false;
     }
-  }, [language, rate, onError]);
+  }, [language, rate, pitch, onError]);
 
   const stop = useCallback(() => {
     try {
-      universalTTSService.stop();
+      enhancedTTSService.stop();
       setIsSpeaking(false);
       speakingRef.current = false;
       setError(null);
@@ -76,28 +87,13 @@ export function useTextToSpeech({
     }
   }, []);
 
+  // Note: Native TTS doesn't support pause/resume
   const pause = useCallback(() => {
-    // Cloud TTS doesn't support pause - just stop
-    if (speakingRef.current) {
-      // For web speech API fallback only
-      if ('speechSynthesis' in window) {
-        try {
-          window.speechSynthesis.pause();
-        } catch (err) {
-          console.error('Error pausing speech:', err);
-        }
-      }
-    }
+    console.warn('[TTS] Pause not supported on native TTS');
   }, []);
 
   const resume = useCallback(() => {
-    if ('speechSynthesis' in window && window.speechSynthesis.paused) {
-      try {
-        window.speechSynthesis.resume();
-      } catch (err) {
-        console.error('Error resuming speech:', err);
-      }
-    }
+    console.warn('[TTS] Resume not supported on native TTS');
   }, []);
 
   const reset = useCallback(() => {

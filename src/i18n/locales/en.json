@@ -375,5 +375,30 @@
     "savedToFieldLog": "Saved to field log",
     "shareNotSupported": "Share not supported",
     "labTestRequested": "Lab test requested"
+  },
+  "tts": {
+    "enhanceVoice": "Enhance Voice Quality",
+    "downloadPrompt": "Download high-quality voices for clearer, more natural speech",
+    "howToDownload": "How to Download",
+    "openSettings": "Open Settings",
+    "voiceSettings": "Voice Settings",
+    "speechRate": "Speech Rate",
+    "pitch": "Pitch",
+    "volume": "Volume",
+    "slow": "Slow",
+    "normal": "Normal",
+    "fast": "Fast",
+    "slower": "Slower",
+    "faster": "Faster",
+    "lower": "Lower",
+    "higher": "Higher",
+    "quieter": "Quieter",
+    "louder": "Louder",
+    "resetDefaults": "Reset",
+    "testVoice": "Test Voice",
+    "playing": "Playing..."
+  },
+  "common": {
+    "notNow": "Not Now"
   }
 }
