@@ -63,6 +63,22 @@
       "available": "Available",
       "not_available": "Not Available",
       "storage": "Storage"
+    },
+    "tts": {
+      "title": "Voice Settings",
+      "description": "Configure text-to-speech settings",
+      "enable": "Voice Readout",
+      "toggle": "Toggle voice readout",
+      "language": "Voice Language",
+      "speed": "Speed",
+      "volume": "Volume",
+      "test": "Test Voice",
+      "loading": "Loading...",
+      "reset": "Reset to defaults",
+      "autoRead": "Auto Read",
+      "autoReadChat": "AI Chat Responses",
+      "autoReadAlerts": "Weather & Alerts",
+      "autoReadSchedule": "Daily Tasks"
     }
   },
   "__qa": {
