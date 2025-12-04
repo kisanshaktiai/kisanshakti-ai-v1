@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Volume2, VolumeX } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useTextToSpeech } from '@/hooks/useTextToSpeech';
+import { Volume2, VolumeX, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { universalTTSService } from '@/services/universalTTSService';
+import { toast } from 'sonner';
 
 interface VoiceWeatherSummaryProps {
   currentWeather: any;
@@ -17,8 +17,9 @@ export const VoiceWeatherSummary: React.FC<VoiceWeatherSummaryProps> = ({
   forecast,
   className
 }) => {
-  const { speak, stop, isSpeaking } = useTextToSpeech();
   const { t, i18n } = useTranslation();
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [hasSpoken, setHasSpoken] = useState(false);
 
   const generateWeatherSummary = () => {
@@ -60,13 +61,45 @@ export const VoiceWeatherSummary: React.FC<VoiceWeatherSummaryProps> = ({
     return summary;
   };
 
-  const handleToggleSpeech = () => {
+  const handleToggleSpeech = async () => {
     if (isSpeaking) {
-      stop();
+      universalTTSService.stop();
+      setIsSpeaking(false);
     } else {
       const summary = generateWeatherSummary();
-      speak(summary);
-      setHasSpoken(true);
+      if (!summary) return;
+
+      setIsLoading(true);
+      
+      try {
+        const result = await universalTTSService.speak({
+          text: summary,
+          language: i18n.language || 'en-IN',
+          onStart: () => {
+            setIsSpeaking(true);
+            setIsLoading(false);
+          },
+          onEnd: () => {
+            setIsSpeaking(false);
+          },
+          onError: (err) => {
+            setIsSpeaking(false);
+            setIsLoading(false);
+            toast.error(t('weather.voice.error', 'Failed to read weather'));
+          }
+        });
+
+        if (result.success) {
+          setHasSpoken(true);
+          console.log(`[WeatherTTS] Provider: ${result.provider}`);
+        } else {
+          setIsLoading(false);
+          toast.error(result.error || 'TTS failed');
+        }
+      } catch (err) {
+        setIsLoading(false);
+        setIsSpeaking(false);
+      }
     }
   };
 
@@ -77,8 +110,10 @@ export const VoiceWeatherSummary: React.FC<VoiceWeatherSummaryProps> = ({
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
       onClick={handleToggleSpeech}
+      disabled={isLoading}
       className={cn(
         "relative p-3 rounded-full transition-all duration-300 shadow-lg backdrop-blur-sm",
+        isLoading && "opacity-70 cursor-wait",
         isSpeaking 
           ? "bg-primary text-primary-foreground animate-pulse" 
           : "bg-background/80 hover:bg-background border border-border",
@@ -86,7 +121,9 @@ export const VoiceWeatherSummary: React.FC<VoiceWeatherSummaryProps> = ({
       )}
       title={isSpeaking ? t('weather.voice.stop', 'Stop Reading') : t('weather.voice.read', 'Read Aloud')}
     >
-      {isSpeaking ? (
+      {isLoading ? (
+        <Loader2 className="h-5 w-5 animate-spin" />
+      ) : isSpeaking ? (
         <VolumeX className="h-5 w-5" />
       ) : (
         <Volume2 className={cn("h-5 w-5", hasSpoken && "text-primary")} />
