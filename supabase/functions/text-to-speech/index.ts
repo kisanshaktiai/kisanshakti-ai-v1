@@ -155,10 +155,15 @@ serve(async (req) => {
       );
     }
 
-    // Convert to base64 for transmission
-    const base64Audio = btoa(
-      String.fromCharCode(...new Uint8Array(audioBuffer))
-    );
+    // Convert to base64 safely (avoid stack overflow with large buffers)
+    const uint8Array = new Uint8Array(audioBuffer);
+    let binaryString = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
+      binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    const base64Audio = btoa(binaryString);
 
     return new Response(
       JSON.stringify({ 
