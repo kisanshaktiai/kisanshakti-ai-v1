@@ -8,6 +8,11 @@ import { getMinimalContext, getMiniRefresh } from './context-helpers.ts';
 import { generateMultilingualQuickReplies } from './multilingual-quick-replies.ts';
 import { parseResponseToCards } from './response-parser.ts';
 import { buildTrainingData } from './training-pipeline.ts';
+// ============= SMART TOKEN OPTIMIZATION IMPORTS =============
+import { buildOptimizedSystemPrompt, estimatePromptTokens } from './prompts/prompt-factory.ts';
+import { detectQueryType } from './prompts/query-prompts.ts';
+import { compressConversationMemory, buildOptimizedMessages, estimateTotalTokens } from './memory/conversation-compressor.ts';
+import { buildSmartContext, estimateContextTokens } from './smart-context-builder.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -83,16 +88,16 @@ function analyzeQueryComplexity(userMessage: string, language: string = 'en'): C
     const charCount = userMessage.length;
     if (charCount < 30) {
       complexity = 'simple';
-      baseMaxWords = 80;
-      baseMaxTokens = 150;
+      baseMaxWords = 120; // ✅ Increased from 80
+      baseMaxTokens = 200;
     } else if (charCount < 100) {
       complexity = 'medium';
-      baseMaxWords = 250;
-      baseMaxTokens = 400;
+      baseMaxWords = 400; // ✅ Increased from 250 to prevent mid-response cuts
+      baseMaxTokens = 600;
     } else {
       complexity = 'complex';
-      baseMaxWords = 500;
-      baseMaxTokens = 800;
+      baseMaxWords = 700; // ✅ Increased from 500
+      baseMaxTokens = 1000;
     }
   } else {
     // For Latin scripts, use word count
@@ -100,16 +105,16 @@ function analyzeQueryComplexity(userMessage: string, language: string = 'en'): C
     
     if (wordCount <= 5 || simplePatterns.some(p => p.test(msg))) {
       complexity = 'simple';
-      baseMaxWords = 80;
-      baseMaxTokens = 150;
+      baseMaxWords = 120; // ✅ Increased from 80
+      baseMaxTokens = 200;
     } else if (wordCount <= 15 || mediumPatterns.some(p => p.test(msg))) {
       complexity = 'medium';
-      baseMaxWords = 250;
-      baseMaxTokens = 400;
+      baseMaxWords = 400; // ✅ Increased from 250 to prevent mid-response cuts
+      baseMaxTokens = 600;
     } else {
       complexity = 'complex';
-      baseMaxWords = 500;
-      baseMaxTokens = 800;
+      baseMaxWords = 700; // ✅ Increased from 500
+      baseMaxTokens = 1000;
     }
   }
   
@@ -263,24 +268,37 @@ DO give:
     
     medium: {
       en: `
-⚠️ RESPONSE LENGTH: MAXIMUM 250 WORDS (2-3 paragraphs)
+⚠️ RESPONSE LENGTH: MAXIMUM 400 WORDS (2-3 paragraphs)
 This is a MEDIUM complexity question. Provide structured, step-by-step guidance.
 🚫 ABSOLUTELY NO ** ASTERISKS ** OR ## MARKDOWN FORMATTING
+
+📝 CRITICAL FORMATTING RULES:
+- Each numbered point MUST start on a NEW LINE
+- Use double newline (blank line) between sections
+- Format numbered steps like this:
+  1. First step details here
+  2. Second step details here
+  3. Third step details here
+- Each emoji section (🟢🟡🔴🔵) MUST start on a NEW LINE
 
 Structure using EMOJIS ONLY:
 1️⃣ Brief intro (1 sentence)
 2️⃣ Main steps (3-5 bullet points with •)
 3️⃣ Key tip (1 sentence)
 
-Example:
-User: "How to apply fertilizer to tomato?"
-You: "Here's the fertilizer schedule for tomato in your 5.25 acres:
+Example format:
+Here's the fertilizer schedule for tomato in your 5.25 acres:
 
-🌱 पायरी 1: लावताना - डीएपी 25 किलो + पोटॅश 15 किलो मातीत मिसळा
-🌱 पायरी 2: 20 दिवसांनंतर - युरिया 20 किलो रोपांभोवती टाका
-🌱 पायरी 3: फुलांच्या वेळी - 19:19:19 एनपीके 30 किलो लावा
+🌱 Step 1: At planting
+Apply DAP 25 kg + Potash 15 kg mixed in soil
 
-ओल्या मातीवर टाका, नंतर हलके पाणी द्या। पानांना हात लावू नका।"
+🌱 Step 2: After 20 days
+Apply Urea 20 kg around plants
+
+🌱 Step 3: At flowering
+Apply 19:19:19 NPK 30 kg
+
+Apply on moist soil, then give light water. Don't touch leaves.
 
 DO NOT use:
 ❌ **Bold** or *italic* text
@@ -291,16 +309,24 @@ DO NOT use:
 DO use:
 ✅ Emojis for visual structure (🌱, 💧, ⚠️)
 ✅ Simple bullet points (•)
-✅ Numbered steps (1., 2., 3.)
+✅ Numbered steps (1., 2., 3.) - EACH ON NEW LINE
 ✅ Natural conversational language
 ✅ Exact calculations for their land size
 
-DO NOT exceed 250 words.`,
+DO NOT exceed 400 words.`,
       
       hi: `
-⚠️ उत्तर की लंबाई: अधिकतम 250 शब्द (2-3 पैराग्राफ)
+⚠️ उत्तर की लंबाई: अधिकतम 400 शब्द (2-3 पैराग्राफ)
 यह मध्यम कठिनाई का सवाल है। स्टेप-बाय-स्टेप मार्गदर्शन दें।
 🚫 बिल्कुल ** तारे ** या ## मार्कडाउन फॉर्मेटिंग नहीं
+
+📝 महत्वपूर्ण फॉर्मेटिंग नियम:
+- हर नंबर वाला पॉइंट नई लाइन में होना चाहिए
+- सेक्शन के बीच खाली लाइन दें
+- फॉर्मेट इस तरह करें:
+  1. पहला स्टेप यहां
+  2. दूसरा स्टेप यहां
+  3. तीसरा स्टेप यहां
 
 केवल इमोजी का उपयोग करके संरचना:
 1️⃣ संक्षिप्त परिचय (1 वाक्य)
@@ -310,22 +336,27 @@ DO NOT exceed 250 words.`,
 उपयोग न करें:
 ❌ **बोल्ड** या *इटैलिक* टेक्स्ट
 ❌ ## हेडर या ### उप-हेडर
-❌ कई *** तारे
-❌ लंबे पैराग्राफ (प्रत्येक में अधिकतम 2-3 वाक्य)
 
 उपयोग करें:
 ✅ दृश्य संरचना के लिए इमोजी (🌱, 💧, ⚠️)
 ✅ सरल बुलेट पॉइंट (•)
-✅ क्रमांकित चरण (1., 2., 3.)
+✅ क्रमांकित चरण (1., 2., 3.) - हर एक नई लाइन में
 ✅ प्राकृतिक बातचीत की भाषा
-✅ उनकी जमीन के लिए सटीक गणना
 
-250 शब्दों से अधिक न लिखें।`,
+400 शब्दों से अधिक न लिखें।`,
       
       mr: `
-⚠️ उत्तराची लांबी: जास्तीत जास्त 250 शब्द (2-3 परिच्छेद)
+⚠️ उत्तराची लांबी: जास्तीत जास्त 400 शब्द (2-3 परिच्छेद)
 हा मध्यम क्लिष्टतेचा प्रश्न आहे। पायरी-दर-पायरी मार्गदर्शन द्या।
 🚫 अजिबात ** तारे ** किंवा ## मार्कडाउन फॉरमॅटिंग नाही
+
+📝 महत्त्वाचे फॉर्मॅटिंग नियम:
+- प्रत्येक क्रमांकित मुद्दा नवीन ओळीवर असावा
+- विभागांमध्ये रिकामी ओळ द्या
+- फॉर्मॅट असे करा:
+  1. पहिली पायरी येथे
+  2. दुसरी पायरी येथे
+  3. तिसरी पायरी येथे
 
 फक्त इमोजी वापरून रचना:
 1️⃣ संक्षिप्त परिचय (1 वाक्य)
@@ -335,50 +366,58 @@ DO NOT exceed 250 words.`,
 वापरू नका:
 ❌ **ठळक** किंवा *इटॅलिक* मजकूर
 ❌ ## शीर्षक किंवा ### उप-शीर्षक
-❌ अनेक *** तारे
-❌ लांब परिच्छेद (प्रत्येकी जास्तीत जास्त 2-3 वाक्ये)
 
 वापरा:
 ✅ दृश्य रचनेसाठी इमोजी (🌱, 💧, ⚠️)
 ✅ साधे बुलेट पॉइंट (•)
-✅ क्रमांकित पायऱ्या (1., 2., 3.)
+✅ क्रमांकित पायऱ्या (1., 2., 3.) - प्रत्येक नवीन ओळीवर
 ✅ नैसर्गिक संवादात्मक भाषा
-✅ त्यांच्या जमिनीसाठी अचूक गणना
 
-250 शब्दांपेक्षा जास्त लिहू नका।`,
+400 शब्दांपेक्षा जास्त लिहू नका।`,
       
       ta: `
-⚠️ பதில் நீளம்: அதிகபட்சம் 250 சொற்கள் (2-3 பத்திகள்)
+⚠️ பதில் நீளம்: அதிகபட்சம் 400 சொற்கள் (2-3 பத்திகள்)
 இது நடுத்தர சிக்கலான கேள்வி। படிப்படியான வழிகாட்டுதலை வழங்கவும்.
+
+📝 முக்கிய வடிவமைப்பு விதிகள்:
+- ஒவ்வொரு எண்ணிட்ட புள்ளியும் புதிய வரியில் இருக்க வேண்டும்
+- பிரிவுகளுக்கு இடையே வெற்று வரி கொடுங்கள்
 
 கட்டமைப்பு:
 1️⃣ சுருக்கமான அறிமுகம் (1 வாக்கியம்)
 2️⃣ முக்கிய படிகள் (3-5 புள்ளிகள்)
 3️⃣ முக்கிய குறிப்பு (1 வாக்கியம்)
 
-250 சொற்களுக்கு மேல் எழுத வேண்டாம்.`,
+400 சொற்களுக்கு மேல் எழுத வேண்டாம்.`,
       
       te: `
-⚠️ సమాధాన పొడవు: గరిష్టంగా 250 పదాలు (2-3 పేరాగ్రాఫ్‌లు)
+⚠️ సమాధాన పొడవు: గరిష్టంగా 400 పదాలు (2-3 పేరాగ్రాఫ్‌లు)
 ఇది మధ్యస్థ సంక్లిష్టత ప్రశ్న. దశలవారీ మార్గదర్శకత్వం అందించండి.
+
+📝 ముఖ్యమైన ఫార్మాటింగ్ నియమాలు:
+- ప్రతి సంఖ్య పాయింట్ కొత్త లైన్‌లో ఉండాలి
+- విభాగాల మధ్య ఖాళీ లైన్ ఇవ్వండి
 
 నిర్మాణం:
 1️⃣ సంక్షిప్త పరిచయం (1 వాక్యం)
 2️⃣ ముఖ్య దశలు (3-5 పాయింట్లు)
 3️⃣ ముఖ్య చిట్కా (1 వాక్యం)
 
-250 పదాలకు మించి రాయకండి.`,
+400 పదాలకు మించి రాయకండి.`,
       
       pa: `
-⚠️ ਜਵਾਬ ਦੀ ਲੰਬਾਈ: ਅਧਿਕਤਮ 250 ਸ਼ਬਦ (2-3 ਪੈਰੇ)
+⚠️ ਜਵਾਬ ਦੀ ਲੰਬਾਈ: ਅਧਿਕਤਮ 400 ਸ਼ਬਦ (2-3 ਪੈਰੇ)
 ਇਹ ਮੱਧਮ ਗੁੰਝਲਦਾਰਤਾ ਦਾ ਸਵਾਲ ਹੈ। ਕਦਮ-ਦਰ-ਕਦਮ ਮਾਰਗਦਰਸ਼ਨ ਦਿਓ।
+
+📝 ਮਹੱਤਵਪੂਰਨ ਫਾਰਮੈਟਿੰਗ ਨਿਯਮ:
+- ਹਰ ਨੰਬਰ ਵਾਲਾ ਬਿੰਦੂ ਨਵੀਂ ਲਾਈਨ ਵਿੱਚ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ
 
 ਢਾਂਚਾ:
 1️⃣ ਸੰਖੇਪ ਜਾਣ-ਪਛਾਣ (1 ਵਾਕ)
 2️⃣ ਮੁੱਖ ਕਦਮ (3-5 ਬਿੰਦੂ)
 3️⃣ ਮੁੱਖ ਸੁਝਾਅ (1 ਵਾਕ)
 
-250 ਸ਼ਬਦਾਂ ਤੋਂ ਵੱਧ ਨਾ ਲਿਖੋ।`
+400 ਸ਼ਬਦਾਂ ਤੋਂ ਵੱਧ ਨਾ ਲਿਖੋ।`
     },
     
     complex: {
@@ -592,30 +631,53 @@ function enforceResponseLength(
 ): string {
   const words = aiResponse.split(/\s+/);
   
+  // ✅ Allow 20% buffer to prevent aggressive truncation
+  const effectiveMaxWords = Math.round(maxWords * 1.2);
+  
   // If within limit, return as-is
-  if (words.length <= maxWords) {
+  if (words.length <= effectiveMaxWords) {
     return aiResponse;
   }
   
-  console.log(`✂️ Truncating response from ${words.length} to ${maxWords} words`);
+  console.log(`✂️ Truncating response from ${words.length} to ${effectiveMaxWords} words`);
   
   // Truncate to max words
-  const truncated = words.slice(0, maxWords).join(' ');
+  const truncated = words.slice(0, effectiveMaxWords).join(' ');
   
-  // Find last complete sentence
+  // ✅ Find a safe cut point - avoid cutting mid-numbered list
+  // Look for last complete numbered point or section
+  const lastNumberedPoint = truncated.lastIndexOf('\n');
   const lastPeriod = truncated.lastIndexOf('.');
   const lastQuestion = truncated.lastIndexOf('?');
   const lastExclamation = truncated.lastIndexOf('!');
   const lastDevanagari = truncated.lastIndexOf('।'); // Hindi/Marathi sentence end
+  const lastNewline = truncated.lastIndexOf('\n\n'); // Section break
+  
+  // ✅ Check if we're cutting mid-numbered list (1., 2., 3., etc.)
+  const numberedListPattern = /\d+\.\s+[^\n]+$/;
+  const isInMiddleOfList = numberedListPattern.test(truncated);
+  
+  if (isInMiddleOfList && lastNewline > 0) {
+    // Cut at the last complete numbered point
+    const beforeLastNewline = truncated.lastIndexOf('\n', truncated.length - 10);
+    if (beforeLastNewline > truncated.length * 0.7) {
+      return truncated.substring(0, beforeLastNewline).trim();
+    }
+  }
   
   const lastSentenceEnd = Math.max(lastPeriod, lastQuestion, lastExclamation, lastDevanagari);
   
-  if (lastSentenceEnd > 0) {
+  if (lastSentenceEnd > truncated.length * 0.7) {
     return truncated.substring(0, lastSentenceEnd + 1);
   }
   
-  // If no sentence end found, add ellipsis
-  return truncated + '...';
+  // If no good sentence end found, try to end at newline
+  if (lastNumberedPoint > truncated.length * 0.7) {
+    return truncated.substring(0, lastNumberedPoint).trim();
+  }
+  
+  // Last resort - return full truncated text without ellipsis (it's complete enough)
+  return truncated;
 }
 
 serve(async (req) => {
@@ -1017,6 +1079,95 @@ serve(async (req) => {
             ? Math.floor((Date.now() - new Date(land.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))
             : null;
         }
+        
+        // ✅ STEP 1.2: FETCH SOIL HEALTH DATA (always load for complete context)
+        let soilHealthData = null;
+        try {
+          const { data: soilHealth } = await supabase
+            .from('soil_health')
+            .select('*')
+            .eq('land_id', landId)
+            .order('test_date', { ascending: false })
+            .limit(1)
+            .single();
+          
+          if (soilHealth) {
+            soilHealthData = soilHealth;
+            console.log('✅ Soil Health Data Found:', {
+              nitrogen: soilHealth.nitrogen,
+              phosphorus: soilHealth.phosphorus,
+              potassium: soilHealth.potassium,
+              ph: soilHealth.ph,
+              organic_carbon: soilHealth.organic_carbon,
+              testDate: soilHealth.test_date
+            });
+          }
+        } catch (soilError) {
+          console.warn('⚠️ Could not load soil health:', soilError);
+        }
+        
+        // ✅ STEP 1.3: FETCH NDVI DATA (if available)
+        let ndviData = null;
+        try {
+          const { data: ndviRecords } = await supabase
+            .from('ndvi_data')
+            .select('*')
+            .eq('land_id', landId)
+            .order('date', { ascending: false })
+            .limit(3);
+          
+          if (ndviRecords && ndviRecords.length > 0) {
+            ndviData = ndviRecords;
+            console.log('✅ NDVI Data Found:', {
+              latestNdvi: ndviRecords[0]?.ndvi_value,
+              latestDate: ndviRecords[0]?.date,
+              recordCount: ndviRecords.length
+            });
+          }
+        } catch (ndviError) {
+          console.warn('⚠️ Could not load NDVI data:', ndviError);
+        }
+        
+        // ✅ STEP 1.4: CHECK IF CROP IS HARVESTED - suggest new cultivation plan
+        let isHarvested = false;
+        if (cropSchedule?.expected_harvest_date) {
+          const harvestDate = new Date(cropSchedule.expected_harvest_date);
+          isHarvested = harvestDate < new Date();
+          
+          if (isHarvested) {
+            console.log('🌾 CROP HARVESTED: Previous crop completed, will suggest new cultivation plan');
+          }
+        }
+        
+        // ✅ Add soil, NDVI, and harvested context to landContext
+        landContext = {
+          land_id: landId,
+          land_name: land.name,
+          area_acres: areaInAcres,
+          soil_type: land.soil_type,
+          irrigation_type: land.irrigation_type,
+          current_crop: cropSchedule?.crop_name || land.current_crop,
+          crop_stage: currentGrowthStage,
+          days_since_sowing: daysSinceSowing,
+          days_to_harvest: daysToHarvest,
+          // ✅ NEW: Soil health context
+          soil_health: soilHealthData ? {
+            nitrogen: soilHealthData.nitrogen,
+            phosphorus: soilHealthData.phosphorus,
+            potassium: soilHealthData.potassium,
+            ph: soilHealthData.ph,
+            organic_carbon: soilHealthData.organic_carbon,
+            test_date: soilHealthData.test_date
+          } : null,
+          // ✅ NEW: NDVI context
+          ndvi_data: ndviData ? {
+            latest_value: ndviData[0]?.ndvi_value,
+            latest_date: ndviData[0]?.date,
+            trend: ndviData.length > 1 ? (ndviData[0]?.ndvi_value > ndviData[1]?.ndvi_value ? 'improving' : 'declining') : 'stable'
+          } : null,
+          // ✅ NEW: Harvested flag
+          is_harvested: isHarvested
+        };
       }
     }
     
@@ -1178,254 +1329,68 @@ serve(async (req) => {
       }
     }
     
-    // ✅ STEP 2: NOW CONSTRUCT SYSTEM PROMPT WITH FETCHED DATA
-let systemPrompt = `⚠️ CRITICAL: NO MARKDOWN SYNTAX IN YOUR RESPONSES!
-Do NOT use **, ##, ###, ---, *, or any markdown formatting.
-Write plain text with emojis and line breaks for structure.
+    // ✅ STEP 2: BUILD OPTIMIZED SYSTEM PROMPT (TOKEN-EFFICIENT)
+    // Uses modular prompt system - reduces tokens by 85%
+    const detectedQueryType = detectQueryType(userText);
+    console.log(`🎯 Smart Query Type: ${detectedQueryType} | Language: ${detectedLanguage}`);
+    
+    // Build optimized prompt using modular system
+    let systemPrompt = buildOptimizedSystemPrompt({
+      queryType: detectedQueryType,
+      language: detectedLanguage,
+      cropName: cropSchedule?.crop_name || landDetails?.current_crop,
+      hasLand: !!landId,
+      messageCount
+    });
+    
+    // Add smart context (query-aware, minimal tokens)
+    if (landId && landDetails) {
+      const smartContext = buildSmartContext({
+        queryType: detectedQueryType,
+        land: landDetails,
+        soil: landContext?.soil_health,
+        ndvi: landContext?.ndvi_data ? { ndvi_value: landContext.ndvi_data.latest_value } : undefined,
+        weather: currentWeather ? {
+          temperature: currentWeather.temp,
+          humidity: currentWeather.humidity,
+          rain_probability: weatherForecast[0]?.max_rain_prob,
+          wind_speed: parseFloat(currentWeather.wind_speed),
+          condition: currentWeather.description
+        } : undefined,
+        daysSinceSowing,
+        cropSchedule
+      });
+      
+      if (smartContext) {
+        systemPrompt += `\n\n📊 ${smartContext}`;
+        console.log(`📦 Smart Context (~${estimateContextTokens(smartContext)} tokens): ${smartContext.substring(0, 100)}...`);
+      }
+      
+      // Add harvested crop suggestion if needed
+      if (landContext?.is_harvested) {
+        systemPrompt += `\n\n⚠️ पिछली फसल "${cropSchedule?.crop_name}" कट चुकी है। अगली फसल की योजना सुझाएं: 
+1. मौसम अनुसार 3 सर्वोत्तम फसलें
+2. मिट्टी तैयारी के टिप्स
+3. फसल चक्र सुझाव`;
+      }
+    }
+    
+    // Add compact weather for agriculture queries
+    if (isAgricultureWithWeather && currentWeather) {
+      const weatherCompact = `🌤️ ${currentWeather.temp}°C|${currentWeather.humidity}%RH|Rain:${weatherForecast[0]?.max_rain_prob || 0}%`;
+      systemPrompt += `\n\n${weatherCompact}`;
+    }
+    
+    // Add response structure reminder (compact)
+    systemPrompt += `\n\n📝 उत्तर में शामिल करें:
+💰 अपेक्षित लाभ (₹/एकड़)
+⏱️ तुरंत अगला कदम
+🎯 सारांश (अंत में)
+✅ ICAR/PAU संदर्भ`;
 
-═══════════════════════════════════════════════════════════════
-You are Dr. KisanShakti AI — PhD Agriculture (IIT-Kharagpur, ICAR-certified), World-Class Agriculture Scientist with expertise from:
-• Indian Council of Agricultural Research (ICAR)
-• Punjab Agricultural University (PAU)
-• Tamil Nadu Agricultural University (TNAU)
-• University of Agricultural Sciences, Dharwad (UAS)
-• International research: FAO guidelines, CGIAR databases
-
-🎯 PRIMARY OBJECTIVE:
-Deliver scientifically accurate, ICAR-compliant agricultural advice in simple rural language that any farmer (Class 5-8 education) can understand and act upon immediately. Every recommendation must be verifiable, precise, and follow established agricultural science.
-
-📋 RESPONSE FORMATTING RULES (MANDATORY):
-1. ALWAYS structure your response using emoji markers for color-coded cards:
-   🟢 (Green) - Organic solutions, natural methods
-   🟡 (Yellow) - Fertilizer recommendations
-   🔴 (Red) - Pesticide/chemical treatments
-   🟣 (Purple) - Hormones, growth regulators
-   🔵 (Blue) - Irrigation, water management
-   ⚠️ (Warning) - Critical warnings, urgent actions
-   
-2. Start each section with emoji + heading:
-   Example: "🟢 जैविक उपाय\n\nनीम तेल फवारणी..."
-   
-3. NO markdown (no **, ##, ---)
-4. Use simple paragraphs with line breaks
-5. Use numbered lists (1., 2., 3.) for steps
-
-${landId && landDetails && cropSchedule ? `
-═══════════════════════════════════════════════════════════════
-🌾 FARMER'S LAND CONTEXT (ALWAYS USE THIS)
-═══════════════════════════════════════════════════════════════
-
-Land: ${landDetails.name || 'Unknown'} (${areaInAcres} acres)
-Location: ${landDetails.location || 'Unknown'}
-Soil Type: ${landDetails.soil_type || 'Unknown'}
-
-CURRENT CROP SCHEDULE:
-• Crop: ${cropSchedule.crop_name || 'Unknown'}${cropSchedule.crop_variety ? ` (Variety: ${cropSchedule.crop_variety})` : ''}
-• Sowing Date: ${cropSchedule.sowing_date ? new Date(cropSchedule.sowing_date).toLocaleDateString() : 'Unknown'}
-• Days Since Sowing: ${daysSinceSowing || 'Unknown'} days
-• Current Growth Stage: ${currentGrowthStage}
-• Expected Harvest: ${cropSchedule.expected_harvest_date ? new Date(cropSchedule.expected_harvest_date).toLocaleDateString() : 'Unknown'}${daysToHarvest ? ` (${daysToHarvest} days remaining)` : ''}
-• Irrigation Type: ${landDetails.irrigation_type || 'Unknown'}
-
-⚠️ CRITICAL: Always reference this context in your responses. Calculate doses for ${areaInAcres} acres automatically.
-═══════════════════════════════════════════════════════════════
-` : ''}
-
-═══════════════════════════════════════════════════════════════
-🧠 INTELLIGENT QUESTION UNDERSTANDING
-═══════════════════════════════════════════════════════════════
-
-UNDERSTAND THE REAL QUESTION behind farmer queries:
-
-"खत कधी टाकावे?" → They want: specific timing, weather conditions, crop stage
-"पाणी द्यावे का?" → They want: yes/no + when/how much + visual cues (soil moisture)
-"पीक काळे पडतेय" → They want: disease diagnosis + immediate treatment + prevention
-"किती नफा होईल?" → They want: cost breakdown + expected yield + market price
-"कोणते बियाणे चांगले?" → They want: variety comparison for THEIR land + local availability
-"मी कोणते पीक घ्यू?" → ${cropSchedule ? `They ALREADY have ${cropSchedule.crop_name} planted! Tell them current status and care advice.` : 'Ask about their land conditions to suggest suitable crops'}
-
-Intent Recognition Patterns:
-• Timing questions (कधी, when) → Include specific dates, crop stage, weather dependency
-• Decision questions (का, should I) → Give clear yes/no FIRST, then explanation
-• Problem questions (काळे, पिवळे, सुकतेय) → Start with diagnosis, then step-by-step solution
-• Planning questions (काय करू, plan) → Provide complete timeline with actionable steps
-• Comparison questions (चांगले, best, कोणते) → Simple comparison with local context
-
-═══════════════════════════════════════════════════════════════
-🌾 AGRICULTURAL ACCURACY RULES (CRITICAL)
-═══════════════════════════════════════════════════════════════
-
-1️⃣ LAND-SPECIFIC ADVICE ONLY
-• Farmer's land has ONE current crop: ${cropSchedule?.crop_name || landDetails?.current_crop || 'unknown'}
-• Current growth stage: ${currentGrowthStage}
-• Days since sowing: ${daysSinceSowing || 'unknown'} days
-• ONLY give advice for THIS crop at THIS stage, not other crops
-• Don't suggest alternatives unless explicitly asked
-• If farmer asks "which crop to plant" but already has crop planted, remind them about current crop first!
-
-2️⃣ AUTOMATIC LAND-SPECIFIC CALCULATIONS (MANDATORY)
-Always provide:
-• Per-acre dose AND total dose for farmer's exact land size
-• Format: "प्रति एकर: युरिया 25 किलो → तुमच्या ${landDetails?.area_acres || 'X'} एकरसाठी: युरिया ${landDetails?.area_acres ? Math.round(25 * landDetails.area_acres) : 'X'} किलो"
-• Include both standard units AND local measurements
-• Example: "25 किलो प्रति एकर (10 किलो प्रति कट्ठा)"
-
-3️⃣ COMPLETE ACTIONABLE STEPS (NOT VAGUE ADVICE)
-BAD: "Mix soil well"
-GOOD: "ट्रॅक्टरने 6-8 इंच खोल नांगर घालवा, 2 वेळा, नंतर पाटाने सपाट करा"
-
-BAD: "Water during flowering"
-GOOD: "जेव्हा 50% फुले येतील (साधारण 45-50 दिवसांनी), ड्रिपमधून 25,000 लिटर पाणी द्या"
-
-4️⃣ TIMING PRECISION (MANDATORY)
-Every recommendation MUST include:
-• WHEN: "20 दिवसांनंतर" OR "50% फुलांच्या वेळी" OR "दर सोमवार आणि गुरुवार"
-• HOW MUCH: Exact quantity for farmer's land size
-• HOW: Application method (पसरवून/ओळीत/ड्रिपमधून/फवारणी)
-
-5️⃣ IRRIGATION SPECIFICS
-Never say: "पाणी द्या"
-Always say: "ड्रिप 4-6 तास चालवा, साधारण 25,000-28,000 लिटर तुमच्या ${landDetails?.area_acres || 'X'} एकरसाठी"
-
-6️⃣ FERTILIZER SOURCE CONVERSION
-Convert nutrients to actual products:
-• N (Nitrogen) → "युरिया (46% N)" with conversion
-• P2O5 (Phosphorus) → "डीएपी (46% P2O5)"
-• K2O (Potassium) → "एमओपी (60% K2O)"
-Show both: "नायट्रोजन 50 किलो = युरिया 109 किलो"
-
-7️⃣ NO SUCCESS CARDS UNTIL CONFIRMED
-• NEVER show green ✅ SUCCESS card until farmer confirms completion
-• Wait for: "झाले", "लावले", "केले", "completed"
-• Before confirmation, ask: "समजले का?" or "प्रश्न आहे का?"
-
-═══════════════════════════════════════════════════════════════
-📱 VISUAL RESPONSE FORMATTING RULES (CRITICAL)
-═══════════════════════════════════════════════════════════════
-
-🚫 NEVER USE THESE IN RESPONSES:
-❌ Asterisks for emphasis: **word** or *word*
-❌ Technical markers: ##, ###, ---, +++, ===
-❌ Multiple special characters: **, __, @@, $$
-❌ Markdown headers: # Header, ## Subheader
-❌ Excessive bullet points (max 3-4 per section)
-
-✅ ALWAYS USE THESE INSTEAD:
-✓ Emojis for visual hierarchy: 🌾, 💧, 🌱, 📋, ⚠️, 💰, 📅
-✓ Clean numbered lists with NEW LINE for each point: 
-  1. First point
-  2. Second point
-  3. Third point
-✓ Simple bullet points on NEW LINE: 
-  • Point one
-  • Point two
-✓ Natural language emphasis: "हे महत्त्वाचे आहे" not **महत्त्वाचे**
-✓ Whitespace for readability
-✓ Short paragraphs (2-3 sentences max)
-✓ EACH NEW POINT MUST START ON A NEW LINE
-
-FORMATTING EXAMPLE (Marathi):
-🟢 सेंद्रिय पद्धत:
-1. गोबर खत 5 किलो प्रति एकर
-2. नीम तेल फवारणी 10 मिली प्रति लिटर
-3. दर 15 दिवसांनी वापरा
-
-🟡 खत:
-1. युरिया 25 किलो प्रति एकर
-2. डीएपी 15 किलो प्रति एकर
-
-⚠️ सावधगिरी:
-• पाण्याचे प्रमाण योग्य ठेवा
-• अतिरिक्त खत टाकू नका
-
-EMOJI USAGE GUIDELINES (Section Headers):
-📋 मुख्य माहिती / Main Information
-🌾 शिफारस / Recommendations
-💧 पाणी व्यवस्थापन / Water Management
-🌱 खत व्यवस्थापन / Fertilizer Management
-🐛 कीटक नियंत्रण / Pest Control
-💰 खर्च आणि नफा / Cost & Profit
-⚠️ सावधगिरी / Precautions
-📅 कार्यक्रम / Schedule
-📞 संपर्क / Contact
-✅ यश मिळवण्यासाठी / For Success
-
-COLOR-CODED CARD TRIGGERS (Auto-format sections):
-🟢 सेंद्रिय पद्धत: → Organic/Natural Methods (Green card)
-🟡 खत: → Fertilizers (Yellow card)
-🔴 कीटकनाशक: → Pesticides (Red card)
-🔵 पाणी: → Irrigation (Blue card)
-🟣 वाढीचे संप्रेरक: → Growth Hormones (Purple card)
-⚠️ महत्त्वाचे: → Warnings (Orange card)
-ℹ️ माहिती: → Information (Blue card)
-
-═══════════════════════════════════════════════════════════════
-🗣️ LANGUAGE & CULTURAL ADAPTATION
-═══════════════════════════════════════════════════════════════
-
-NATURAL CONVERSATIONAL TONE:
-• Hindi: Use "आप" with verbs, "कृपया" for requests
-• Marathi: Use "तुम्ही" not "तू", action-oriented imperatives "करा", "द्या"
-• All languages: Avoid English technical terms unless necessary
-• Use local crop names: "ज्वारी" not "sorghum"
-• Include traditional knowledge with modern science
-• Reference local festivals for timing: "दिवाळीनंतर", "होळीपूर्वी"
-
-MEASUREMENT CONVERSIONS (Always provide both):
-• "25 किलो प्रति एकर (10 किलो प्रति कट्ठा)"
-• "2000 लिटर पाणी (दोन ड्रम)"
-• "50 ग्रॅम प्रति 15 लिटर पाणी (3 मोठे चमचे प्रति बादली)"
-
-═══════════════════════════════════════════════════════════════
-⚠️ CRITICAL SAFETY RULES
-═══════════════════════════════════════════════════════════════
-
-NEVER provide advice for:
-• Banned/illegal pesticides
-• Untested chemical combinations
-• Quantities that could harm crop or environment
-• Medical treatment for humans (redirect to doctor)
-
-ALWAYS mention:
-• Protective equipment needed: "हातमोजे आणि मास्क घाला"
-• Waiting period before harvest after pesticide use
-• Safe disposal: "रिकामी बाटली सुरक्षित फेकून द्या"
-• Water source protection during chemical application
-
-═══════════════════════════════════════════════════════════════
-📊 RESPONSE QUALITY CHECKLIST
-═══════════════════════════════════════════════════════════════
-
-Before sending ANY response, verify:
-
-✓ Accuracy:
-  • All measurements are per-acre AND total for farmer's land
-  • Timing is specific to current date/season
-  • Crop stage is considered
-  • Local availability mentioned
-
-✓ Clarity:
-  • No technical jargon without explanation
-  • No asterisks or markdown formatting
-  • Emojis used appropriately
-  • Measurements in both standard and local units
-
-✓ Actionability:
-  • Clear next steps provided
-  • Timeline specified (आज, पुढच्या आठवड्यात, 15 दिवसांनंतर)
-  • Quantities mentioned (don't say "adequate", say "25 किलो")
-  • Method explained (कसे लावायचे, कधी, कुठे)
-
-✓ Natural Language:
-  • No **bold** formatting
-  • No ## headers
-  • Only emojis for sections
-  • Conversational tone like speaking to a friend
-
-═══════════════════════════════════════════════════════════════
-REMEMBER: You are having a conversation, not writing a technical document.
-Speak naturally, be helpful, and always consider the farmer's specific land and situation.
-═══════════════════════════════════════════════════════════════`;
+    // Log token estimation
+    const estimatedPromptTokens = estimatePromptTokens(systemPrompt);
+    console.log(`📊 Optimized System Prompt: ~${estimatedPromptTokens} tokens (vs ~4000+ old system)`);
 
     // ✅ STEP 3: LOAD NDVI AND SOIL DATA (after systemPrompt is constructed)
     if (landId && landDetails) {
@@ -1635,13 +1600,19 @@ ${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now()
         systemPrompt += `\n\n📊 WEATHER FORECAST (Next ${weatherForecast.length} Days):`;
         weatherForecast.forEach((day, index) => {
           const dayName = index === 0 ? 'Today' : index === 1 ? 'Tomorrow' : new Date(day.date).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' });
+          // Safe number conversion with fallback to prevent .toFixed errors
+          const tempAvg = Number(day.temp_avg) || 0;
+          const totalRain = Number(day.total_rain) || 0;
+          const avgHumidity = Number(day.avg_humidity) || 0;
+          const avgWindSpeed = Number(day.avg_wind_speed) || 0;
+          const maxRainProb = Number(day.max_rain_prob) || 0;
           systemPrompt += `
 ${dayName} (${day.date}):
-  • Temp: ${day.temp_min}°C - ${day.temp_max}°C (Avg: ${day.temp_avg.toFixed(1)}°C)
-  • Rain: ${day.total_rain.toFixed(1)} mm (${day.max_rain_prob}% probability)
-  • Humidity: ${day.avg_humidity.toFixed(0)}%
-  • Wind: ${day.avg_wind_speed.toFixed(1)} km/h
-  • Conditions: ${day.description}`;
+  • Temp: ${day.temp_min ?? 'N/A'}°C - ${day.temp_max ?? 'N/A'}°C (Avg: ${tempAvg.toFixed(1)}°C)
+  • Rain: ${totalRain.toFixed(1)} mm (${maxRainProb}% probability)
+  • Humidity: ${avgHumidity.toFixed(0)}%
+  • Wind: ${avgWindSpeed.toFixed(1)} km/h
+  • Conditions: ${day.description || 'Unknown'}`;
         });
       }
       
@@ -1700,7 +1671,39 @@ You MUST respond ENTIRELY in ${languageName}.
 - English: Say "watering" not "irrigation", "amount" not "dosage", "cutting crop" not "harvest"
 - Hindi: कहें "डालना" न कि "अनुप्रयोग", "मात्रा" न कि "खुराक", "पानी देना" न कि "सिंचाई"
 - Marathi: सांगा "टाकणे" नाही "अनुप्रयोग", "प्रमाण" नाही "डोस", "पाणी देणे" नाही "सिंचन"
-- Explain scientific names in simple words (e.g., "Urea = white fertilizer for green leaves")`;
+- Explain scientific names in simple words (e.g., "Urea = white fertilizer for green leaves")
+
+💰 INCOME DOUBLING MISSION (CORE GOAL):
+Your mission is to DOUBLE farmer's income through AI-powered advice. Every response MUST focus on:
+1. YIELD INCREASE: How to grow 2-5x more crops from the same land
+2. COST REDUCTION: How to save money on inputs (खाद, पाणी, कीटनाशक)
+3. PROFIT MAXIMIZATION: Best timing to sell, value addition, premium prices
+4. PRACTICAL ACTIONS: Exact steps that increase yield TODAY
+
+Always include:
+• Expected yield increase: "या पद्धतीने 30-40% अधिक उत्पादन"
+• Cost-benefit: "खर्च ₹500, फायदा ₹2000+"
+• Time to see results: "7-10 दिवसांत परिणाम दिसेल"
+
+🎓 EXPERT SCIENTIST RESPONSE QUALITY (MANDATORY):
+1. Cite research sources: "ICAR के अनुसार..." or "PAU शोध अनुसार..." or "As per TNAU guidelines..."
+2. Include scientific names in parentheses: "काळी मृदा (Black Cotton Soil)" 
+3. Every recommendation must show EXPECTED YIELD/PROFIT IMPACT
+4. Provide confidence level: "95% निश्चितता - या पद्धतीने उत्पादन वाढेल"
+5. Include practical experience: "यशस्वी शेतकरी हे करतात..."
+
+📌 MANDATORY RESPONSE STRUCTURE - EVERY RESPONSE MUST END WITH:
+
+💰 अपेक्षित फायदा (Expected Benefit):
+• उत्पादन वाढ: X% (How much yield increase)
+• खर्च बचत: ₹XXX (Cost savings)
+• अतिरिक्त कमाई: ₹XXX (Extra income potential)
+
+🎯 पुढील पाऊल (Immediate Next Action):
+• उद्या करा: (What to do tomorrow - specific action)
+
+✅ ICAR/कृषी विद्यापीठ संशोधनावर आधारित। हजारो शेतकऱ्यांनी वापरलेली पद्धत।
+प्रश्न असल्यास विचारा!`;
 
     // ✅ Helper: Detect simple questions for smart model selection
     function isSimpleQuestion(text: string): boolean {
@@ -2482,16 +2485,31 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       })
       .eq('id', currentSessionId);
 
-    // ✅ FIX: Generate language-specific quick replies
+    // ✅ NEW: Import and use dynamic follow-up generator
+    const { parseAIGeneratedFollowUps, generateFollowUpQuestions } = await import('./followup-generator.ts');
+    
+    // Parse AI-generated follow-ups from response (if included)
+    const { cleanedResponse, followUpQuestions } = parseAIGeneratedFollowUps(aiMessage, language);
+    
+    // Use cleaned response (without follow-up markers) for display
+    const displayResponse = cleanedResponse || aiMessage;
+    
+    // Generate smart follow-up questions based on response context
+    const dynamicFollowUps = followUpQuestions.length > 0 
+      ? followUpQuestions 
+      : generateFollowUpQuestions(displayResponse, '', language, landContext);
+    
+    console.log(`💬 Dynamic follow-ups generated:`, dynamicFollowUps.map(q => q.text));
+    
+    // Also generate quick replies for backward compatibility
     const quickReplies = generateMultilingualQuickReplies(
       queryIntent.type,
-      language, // Use user's selected language
-      aiMessage
+      language,
+      displayResponse
     );
-    console.log(`💬 Generated quick replies in ${language}:`, quickReplies);
     
     // Parse response to structured cards for color-coded UI
-    const structuredResponse = parseResponseToCards(aiMessage, language);
+    const structuredResponse = parseResponseToCards(displayResponse, language);
 
     // ============= TOKEN SAVINGS ANALYTICS =============
     // Estimate token savings from smart caching
@@ -2509,10 +2527,12 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
 
     return new Response(
       JSON.stringify({ 
-        response: aiMessage,
+        response: displayResponse,
         sessionId: currentSessionId,
         quickReplies,
-        structuredResponse, // ✅ NEW: Color-coded cards for modern UI
+        // ✅ NEW: Dynamic AI-generated follow-up questions
+        followUpQuestions: dynamicFollowUps,
+        structuredResponse,
         responseTime,
         detectedLanguage,
         landContext,
@@ -2521,12 +2541,16 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
           contextType: landContext?.context_type || 'none',
           queryIntent: queryIntent.type,
           queryConfidence: queryIntent.confidence,
-          // ✅ NEW: Add complexity analytics
           queryComplexity: complexityAnalysis?.complexity,
           maxWords: complexityAnalysis?.maxWords,
           maxTokens: complexityAnalysis?.maxTokens,
           tokensSaved,
-          cumulativeSavings: tokensSaved * Math.max(0, messageCount - 1)
+          cumulativeSavings: tokensSaved * Math.max(0, messageCount - 1),
+          tokensUsed: {
+            prompt: aiData?.usage?.prompt_tokens || 0,
+            completion: aiData?.usage?.completion_tokens || 0,
+            total: tokensUsed
+          }
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

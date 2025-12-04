@@ -2,6 +2,7 @@ import React from 'react';
 import { Card } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+
 interface ColorCodedCardProps {
   card: {
     id: string;
@@ -15,48 +16,90 @@ interface ColorCodedCardProps {
   };
   index: number;
 }
+
 export function ColorCodedCard({
   card,
   index
 }: ColorCodedCardProps) {
-  // Format content with proper line breaks
+  // Format content with proper line breaks and numbered list detection
   const formatContent = (text: string) => {
-    return text
-      .split('\n')
-      .map((line, idx) => {
-        const trimmedLine = line.trim();
-        if (!trimmedLine) return null;
-        
-        return (
-          <div key={idx} className="mb-2 last:mb-0">
-            {trimmedLine}
-          </div>
-        );
-      })
-      .filter(Boolean);
+    if (!text) return null;
+    
+    // ✅ Step 1: Normalize text - ensure numbered points start on new lines
+    let formattedText = text
+      // Add newline before numbered points (1. 2. 3. etc.)
+      .replace(/([^\n])(\d+\.)\s+/g, '$1\n$2 ')
+      // Add newline before Hindi numbers (१. २. ३. etc.)
+      .replace(/([^\n])([१२३४५६७८९०]+\.)\s+/g, '$1\n$2 ')
+      // Add newline before bullet points
+      .replace(/([^\n])([•·\-])\s+/g, '$1\n$2 ')
+      // Add newline before emoji markers (🌱, 💧, ⚠️, etc.)
+      .replace(/([^\n])([\u{1F300}-\u{1F9FF}])/gu, '$1\n$2')
+      // Clean up multiple newlines
+      .replace(/\n{3,}/g, '\n\n')
+      // Clean leading newlines
+      .replace(/^\n+/, '');
+    
+    // ✅ Step 2: Split into lines and render each properly
+    const lines = formattedText.split('\n');
+    
+    return lines.map((line, idx) => {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) {
+        // Empty line = spacing
+        return <div key={idx} className="h-2" />;
+      }
+      
+      // Check if it's a numbered point (1., 2., or Hindi १., २.)
+      const isNumberedPoint = /^(\d+\.|[१२३४५६७८९०]+\.)/.test(trimmedLine);
+      // Check if it's a bullet point
+      const isBulletPoint = /^[•·\-\*]/.test(trimmedLine);
+      // Check if it starts with an emoji (section header)
+      const isEmojiSection = /^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u.test(trimmedLine);
+      
+      return (
+        <div 
+          key={idx} 
+          className={cn(
+            "mb-1.5 last:mb-0 leading-relaxed",
+            isNumberedPoint && "pl-3 border-l-2 border-primary/30 ml-1",
+            isBulletPoint && "pl-3 ml-1",
+            isEmojiSection && "font-medium mt-2 first:mt-0"
+          )}
+        >
+          {trimmedLine}
+        </div>
+      );
+    });
   };
 
-  return <motion.div initial={{
-    opacity: 0,
-    y: 20
-  }} animate={{
-    opacity: 1,
-    y: 0
-  }} transition={{
-    delay: index * 0.1
-  }}>
-      <Card className={cn("w-full px-3 py-2.5 relative overflow-hidden", "border-l-4 shadow-sm", "transition-all duration-200 hover:shadow-md")} style={{
-      borderLeftColor: card.color,
-      background: `linear-gradient(135deg, ${card.gradient[0]}06 0%, ${card.gradient[2]}06 100%)`
-    }}>
+  return (
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }} 
+      animate={{ opacity: 1, y: 0 }} 
+      transition={{ delay: index * 0.1 }}
+    >
+      <Card 
+        className={cn(
+          "w-full px-4 py-3 relative overflow-hidden",
+          "border-l-4 shadow-sm",
+          "transition-all duration-200 hover:shadow-md"
+        )} 
+        style={{
+          borderLeftColor: card.color,
+          background: `linear-gradient(135deg, ${card.gradient[0]}06 0%, ${card.gradient[2]}06 100%)`
+        }}
+      >
         {card.title && (
-          <div className="font-medium text-sm mb-2 text-foreground">
-            {card.title}
+          <div className="font-semibold text-sm mb-2 text-foreground flex items-center gap-2">
+            <span>{card.icon}</span>
+            <span>{card.title}</span>
           </div>
         )}
-        <div className="w-full text-sm text-foreground/90 leading-relaxed">
+        <div className="w-full text-sm text-foreground/90">
           {formatContent(card.content)}
         </div>
       </Card>
-    </motion.div>;
+    </motion.div>
+  );
 }

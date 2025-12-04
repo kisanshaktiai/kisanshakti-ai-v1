@@ -85,17 +85,31 @@ function cleanMarkdown(text: string): string {
 
 // Helper function to format content with proper line breaks
 function formatContentWithLineBreaks(content: string): string {
-  return content
-    // Remove markdown
+  // ✅ Step 1: Remove markdown formatting
+  let formatted = content
     .replace(/\*\*(.*?)\*\*/g, '$1')
     .replace(/\*(.*?)\*/g, '$1')
-    .replace(/^#{1,6}\s+/gm, '')
-    // Ensure each numbered/bulleted point is on new line
-    .replace(/(\d+\.)/g, '\n$1')
-    .replace(/([•·])/g, '\n$1')
-    // Clean up multiple newlines
+    .replace(/^#{1,6}\s+/gm, '');
+  
+  // ✅ Step 2: Force newlines before numbered points
+  formatted = formatted
+    .replace(/([^\n\d])(\d+\.)\s+/g, '$1\n$2 ')  // "text1. text" -> "text\n1. text"
+    .replace(/([^\n])([१२३४५६७८९०]+\.)\s+/g, '$1\n$2 ')  // Hindi numbered lists
+    .replace(/([^\n])([•·\-\*])\s+(?=[A-Za-z\u0900-\u097F])/g, '$1\n$2 ');  // Bullet points
+  
+  // ✅ Step 3: Ensure emoji section markers start on new line with spacing
+  formatted = formatted.replace(/([^\n])(🟢|🟡|🔴|🟣|🔵|⚠️|✅|ℹ️|🌱|💧|🌾|📅|🎯|💰|📊|🏦|💵)/g, '$1\n\n$2');
+  
+  // ✅ Step 4: Add spacing after colons that precede text (section dividers)
+  formatted = formatted.replace(/([।:])(\s*)(?=[A-Za-z\u0900-\u097F])/g, '$1\n');
+  
+  // ✅ Step 5: Clean up excessive newlines
+  formatted = formatted
     .replace(/\n{3,}/g, '\n\n')
+    .replace(/^\n+/, '')
     .trim();
+  
+  return formatted;
 }
 
 export function parseResponseToCards(aiResponse: string, language: string): StructuredResponse {

@@ -65,6 +65,16 @@ interface Message {
   };
   feedback?: 'like' | 'dislike' | null;
   isCopied?: boolean;
+  // ✅ NEW: Analytics including token usage
+  analytics?: {
+    responseTime?: number;
+    tokensUsed?: {
+      prompt: number;
+      completion: number;
+      total: number;
+    };
+    queryComplexity?: string;
+  };
 }
 
 export function EnhancedAIChatInterface() {
@@ -578,7 +588,13 @@ export function EnhancedAIChatInterface() {
         content: data.response || t('chat.errorOccurred'),
         timestamp: new Date(),
         structured: parseStructuredResponse(data.response),
-        structuredResponse: data.structuredResponse // ✅ NEW: Color-coded cards from backend
+        structuredResponse: data.structuredResponse, // ✅ NEW: Color-coded cards from backend
+        // ✅ NEW: Include analytics for token display
+        analytics: {
+          responseTime: data.responseTime,
+          tokensUsed: data.analytics?.tokensUsed,
+          queryComplexity: data.analytics?.queryComplexity
+        }
       };
       
       setMessages(prev => ({
@@ -586,13 +602,15 @@ export function EnhancedAIChatInterface() {
         [activeTab]: [...(prev[activeTab] || []), aiMessage]
       }));
       
-      // 🎯 Save Land-Specific Quick Replies
-      // Quick replies are generated based on:
-      // 1. Land context (crop type, soil type, growth stage)
-      // 2. AI response content (what was just discussed)
-      // 3. User's last message (conversation context)
-      if (data.quickReplies && data.quickReplies.length > 0) {
-        console.log(`💬 Land-specific quick replies for ${land?.name || 'General'}:`, data.quickReplies);
+      // 🎯 Save Dynamic Follow-Up Questions (AI-generated)
+      if (data.followUpQuestions && data.followUpQuestions.length > 0) {
+        console.log(`💡 Dynamic follow-ups for ${land?.name || 'General'}:`, data.followUpQuestions);
+        setDynamicQuickReplies(prev => ({
+          ...prev,
+          [activeTab]: data.followUpQuestions.map((q: any) => q.text)
+        }));
+      } else if (data.quickReplies && data.quickReplies.length > 0) {
+        // Fallback to quick replies
         setDynamicQuickReplies(prev => ({
           ...prev,
           [activeTab]: data.quickReplies

@@ -41,3 +41,6 @@ verify_jwt = true
 
 [functions.voice-navigation-agent]
 verify_jwt = true
+
+[functions.text-to-speech]
+verify_jwt = false

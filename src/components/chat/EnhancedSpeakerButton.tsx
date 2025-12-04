@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Volume2, VolumeX, Pause, Play, Square, Settings2, Download } from 'lucide-react';
+import { Volume2, VolumeX, Pause, Play, Square, Settings2, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAdvancedTextToSpeech } from '@/hooks/useAdvancedTextToSpeech';
 import { useTTSStore } from '@/stores/ttsStore';
@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { TTSSettingsModal } from './TTSSettingsModal';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { universalTTSService } from '@/services/universalTTSService';
 
 interface EnhancedSpeakerButtonProps {
   messageId: string;
@@ -41,6 +42,7 @@ export function EnhancedSpeakerButton({
     pause,
     resume,
     isSpeaking,
+    isLoading, // NEW: Loading state for instant feedback
     isPaused,
     isSupported,
     currentSentence,
@@ -64,7 +66,7 @@ export function EnhancedSpeakerButton({
   const handlePlay = React.useCallback(async () => {
     // Stop any other playing message
     if (currentlyPlaying && currentlyPlaying !== messageId) {
-      window.speechSynthesis.cancel();
+      universalTTSService.stop();
     }
 
     setCurrentlyPlaying(messageId);
@@ -128,6 +130,8 @@ export function EnhancedSpeakerButton({
     );
   }
 
+  // Show as playing when loading OR speaking
+  const isThisMessageActive = (isSpeaking || isLoading) && currentlyPlaying === messageId;
   const isThisMessagePlaying = isSpeaking && currentlyPlaying === messageId;
 
   return (
@@ -142,8 +146,11 @@ export function EnhancedSpeakerButton({
           variant="ghost"
           size="icon"
           onClick={() => {
-            if (isThisMessagePlaying) {
-              if (isPaused) {
+            if (isThisMessageActive) {
+              if (isLoading) {
+                // Cancel if still loading
+                handleStop();
+              } else if (isPaused) {
                 handleResume();
               } else {
                 handlePause();
@@ -154,12 +161,21 @@ export function EnhancedSpeakerButton({
           }}
           className={cn(
             "h-8 w-8 relative hover:bg-muted/50 hover:scale-110 transition-all",
-            isThisMessagePlaying && "text-primary",
+            isThisMessageActive && "text-primary",
             className
           )}
         >
           <AnimatePresence mode="wait">
-            {isThisMessagePlaying ? (
+            {isLoading && currentlyPlaying === messageId ? (
+              <motion.div
+                key="loading"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0, opacity: 0 }}
+              >
+                <Loader2 className="h-4 w-4 animate-spin" />
+              </motion.div>
+            ) : isThisMessagePlaying ? (
               isPaused ? (
                 <motion.div
                   key="play"
@@ -191,8 +207,8 @@ export function EnhancedSpeakerButton({
             )}
           </AnimatePresence>
 
-          {/* Pulse animation when playing */}
-          {isThisMessagePlaying && !isPaused && (
+          {/* Pulse animation when playing or loading */}
+          {isThisMessageActive && !isPaused && (
             <motion.div
               className="absolute inset-0 rounded-md bg-primary/20 -z-10"
               animate={{
@@ -200,7 +216,7 @@ export function EnhancedSpeakerButton({
                 opacity: [0.5, 0, 0.5]
               }}
               transition={{
-                duration: 1.5,
+                duration: isLoading ? 0.8 : 1.5,
                 repeat: Infinity,
                 ease: "easeInOut"
               }}
@@ -211,7 +227,7 @@ export function EnhancedSpeakerButton({
 
       {/* Additional Controls (Stop & Settings) - Show when playing or hovered */}
       <AnimatePresence>
-        {(isThisMessagePlaying || isHovered) && (
+        {(isThisMessageActive || isHovered) && (
           <motion.div
             initial={{ opacity: 0, x: -10, scale: 0.8 }}
             animate={{ opacity: 1, x: 0, scale: 1 }}
@@ -220,7 +236,7 @@ export function EnhancedSpeakerButton({
             className="flex items-center gap-1"
           >
             {/* Stop Button */}
-            {isThisMessagePlaying && (
+            {isThisMessageActive && (
               <Button
                 variant="ghost"
                 size="icon"
