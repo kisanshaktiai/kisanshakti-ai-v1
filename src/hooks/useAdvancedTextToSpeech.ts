@@ -15,7 +15,6 @@ export function useAdvancedTextToSpeech({
 }: UseAdvancedTextToSpeechProps) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isPaused] = useState(false); // Native TTS doesn't support pause
   const [isSupported] = useState(true);
   const [currentSentence, setCurrentSentence] = useState<number>(-1);
   const [progress, setProgress] = useState(0);
@@ -25,6 +24,7 @@ export function useAdvancedTextToSpeech({
   const currentIndexRef = useRef(0);
   const isStoppedRef = useRef(false);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const speakRequestIdRef = useRef(0);
 
   const settings = useTTSStore(state => state.settings);
 
@@ -50,12 +50,37 @@ export function useAdvancedTextToSpeech({
     }
   }, []);
 
+  // Reset all state
+  const resetState = useCallback(() => {
+    clearProgressInterval();
+    setIsSpeaking(false);
+    setIsLoading(false);
+    setCurrentSentence(-1);
+    setProgress(0);
+    setFallbackLanguage(null);
+    currentIndexRef.current = 0;
+  }, [clearProgressInterval]);
+
+  // Stop function - immediately stops TTS and resets state
+  const stop = useCallback(() => {
+    console.log('[AdvancedTTS] Stop called');
+    isStoppedRef.current = true;
+    speakRequestIdRef.current++; // Invalidate any pending callbacks
+    nativeTTSService.stop();
+    resetState();
+  }, [resetState]);
+
   // Speak with sentence-by-sentence progress simulation
   const speak = useCallback(async (text: string) => {
     if (!text.trim()) return;
     
+    // Mark as stopped = false for new speech
+    isStoppedRef.current = false;
+    
+    // Increment request ID to track this specific request
+    const requestId = ++speakRequestIdRef.current;
+    
     try {
-      isStoppedRef.current = false;
       clearProgressInterval();
 
       const sentences = splitIntoSentences(text);
@@ -64,12 +89,12 @@ export function useAdvancedTextToSpeech({
       setProgress(0);
       setCurrentSentence(0);
       
-      // INSTANT: Set loading state immediately for UI feedback
+      // Set loading state immediately for instant UI feedback
       setIsLoading(true);
-      setIsSpeaking(true);
+      setIsSpeaking(false);
       setFallbackLanguage(null);
 
-      console.log(`[AdvancedTTS] Starting speech: lang=${language}, sentences=${sentences.length}`);
+      console.log(`[AdvancedTTS] Starting speech: lang=${language}, sentences=${sentences.length}, requestId=${requestId}`);
 
       const result = await nativeTTSService.speak(
         text,
@@ -77,6 +102,12 @@ export function useAdvancedTextToSpeech({
         { rate: settings.speed, pitch: 1.0, volume: 1.0 },
         {
           onStart: () => {
+            // Check if this request is still valid
+            if (requestId !== speakRequestIdRef.current || isStoppedRef.current) {
+              console.log('[AdvancedTTS] onStart ignored - request cancelled');
+              return;
+            }
+            
             // Audio is now actually playing
             setIsLoading(false);
             setIsSpeaking(true);
@@ -90,13 +121,13 @@ export function useAdvancedTextToSpeech({
             }
             
             // Simulate sentence progress for UI
-            if (sentences.length > 1 && !isStoppedRef.current) {
+            if (sentences.length > 1) {
               const avgDuration = (text.length / 12) * 1000; // ~12 chars/sec for Indian languages
               const intervalTime = avgDuration / sentences.length;
               
               let sentenceIdx = 0;
               progressIntervalRef.current = setInterval(() => {
-                if (isStoppedRef.current || sentenceIdx >= sentences.length - 1) {
+                if (isStoppedRef.current || requestId !== speakRequestIdRef.current || sentenceIdx >= sentences.length - 1) {
                   clearProgressInterval();
                   return;
                 }
@@ -107,51 +138,70 @@ export function useAdvancedTextToSpeech({
             }
           },
           onEnd: () => {
-            clearProgressInterval();
-            setIsSpeaking(false);
-            setIsLoading(false);
-            setCurrentSentence(-1);
-            setProgress(100);
-            onEnd?.();
+            // Check if this request is still valid
+            if (requestId !== speakRequestIdRef.current) {
+              console.log('[AdvancedTTS] onEnd ignored - different request active');
+              return;
+            }
+            
+            // Only call onEnd if not explicitly stopped
+            if (!isStoppedRef.current) {
+              clearProgressInterval();
+              setIsSpeaking(false);
+              setIsLoading(false);
+              setCurrentSentence(-1);
+              setProgress(100);
+              onEnd?.();
+            }
           },
           onError: (err) => {
+            // Check if this request is still valid
+            if (requestId !== speakRequestIdRef.current) {
+              console.log('[AdvancedTTS] onError ignored - different request active');
+              return;
+            }
+            
             clearProgressInterval();
-            console.error('[AdvancedTTS] Error:', err);
+            const errorMsg = err.message || 'Speech synthesis failed';
+            
+            // Ignore "interrupted" or "canceled" errors - these are expected when stopping
+            const isInterruptedError = 
+              errorMsg.toLowerCase().includes('interrupt') ||
+              errorMsg.toLowerCase().includes('cancel') ||
+              errorMsg.toLowerCase().includes('aborted');
+            
+            if (isInterruptedError) {
+              console.log('[AdvancedTTS] Ignoring interrupted/canceled error');
+              // Don't reset state or call onError for expected interruptions
+              return;
+            }
+            
+            console.error('[AdvancedTTS] Error:', errorMsg);
             setIsSpeaking(false);
             setIsLoading(false);
             setCurrentSentence(-1);
-            onError?.(err.message || 'Speech synthesis failed');
+            onError?.(errorMsg);
           }
         }
       );
 
-      if (!result.success) {
-        throw new Error(result.error || 'TTS failed');
+      // Only log if still the active request
+      if (requestId === speakRequestIdRef.current && result.success) {
+        console.log(`[AdvancedTTS] ✅ Provider: ${result.provider}, Used: ${result.usedLanguage}`);
       }
-
-      console.log(`[AdvancedTTS] ✅ Provider: ${result.provider}, Used: ${result.usedLanguage}`);
     } catch (error) {
-      clearProgressInterval();
-      console.error('[AdvancedTTS] Error in speak:', error);
-      onError?.('Failed to start speech');
-      setIsSpeaking(false);
-      setIsLoading(false);
+      // Only handle error if still the active request
+      if (requestId === speakRequestIdRef.current) {
+        clearProgressInterval();
+        console.error('[AdvancedTTS] Error in speak:', error);
+        onError?.('Failed to start speech');
+        setIsSpeaking(false);
+        setIsLoading(false);
+      }
     }
   }, [language, splitIntoSentences, settings.speed, onEnd, onError, clearProgressInterval]);
 
-  const stop = useCallback(() => {
-    isStoppedRef.current = true;
-    clearProgressInterval();
-    nativeTTSService.stop();
-    setIsSpeaking(false);
-    setIsLoading(false);
-    setCurrentSentence(-1);
-    setProgress(0);
-    setFallbackLanguage(null);
-    currentIndexRef.current = 0;
-  }, [clearProgressInterval]);
-
-  // Native TTS doesn't support pause/resume
+  // Pause/Resume not supported by native TTS
   const pause = useCallback(() => {
     console.warn('[AdvancedTTS] Pause not supported on native TTS');
   }, []);
@@ -167,7 +217,7 @@ export function useAdvancedTextToSpeech({
     resume,
     isSpeaking,
     isLoading,
-    isPaused,
+    isPaused: false, // Native TTS doesn't support pause
     isSupported,
     currentSentence,
     progress,
