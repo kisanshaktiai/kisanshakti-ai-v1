@@ -23,6 +23,7 @@ import {
   BarChart3,
   Clock
 } from 'lucide-react';
+import { TTSSettingsPanel } from '@/components/tts';
 import { useNavigate } from 'react-router-dom';
 import { format, formatDistanceToNow } from 'date-fns';
 import { 
@@ -501,6 +502,9 @@ export default function Profile() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Voice Settings */}
+      <TTSSettingsPanel />
 
       {/* Action Buttons */}
       <div className="space-y-3">
