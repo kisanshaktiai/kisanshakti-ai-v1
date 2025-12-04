@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Volume2, VolumeX, Pause, Play, Square, Settings2, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -9,7 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { TTSSettingsModal } from './TTSSettingsModal';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { universalTTSService } from '@/services/universalTTSService';
+import { nativeTTSService } from '@/services/nativeTTSService';
 
 interface EnhancedSpeakerButtonProps {
   messageId: string;
@@ -66,7 +66,7 @@ export function EnhancedSpeakerButton({
   const handlePlay = React.useCallback(async () => {
     // Stop any other playing message
     if (currentlyPlaying && currentlyPlaying !== messageId) {
-      universalTTSService.stop();
+      nativeTTSService.stop();
     }
 
     setCurrentlyPlaying(messageId);

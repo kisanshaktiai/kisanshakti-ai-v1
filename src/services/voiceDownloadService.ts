@@ -1,11 +1,12 @@
-import { useTTSStore, PREINSTALLED_VOICES } from '@/stores/ttsStore';
+import { useTTSStore, PREINSTALLED_VOICES, ALL_INDIAN_LANGUAGES } from '@/stores/ttsStore';
+import { nativeTTSService } from '@/services/nativeTTSService';
 
 /**
  * Voice Download Service
  * 
- * Note: Web Speech API doesn't actually download voices - they're provided by the OS/browser.
- * This service simulates download progress and manages voice availability checking
- * to provide a smooth UX as per requirements.
+ * For native TTS (Capacitor), voices are provided by the device OS.
+ * This service manages voice availability checking and provides
+ * guidance to users for installing language packs on their devices.
  */
 
 class VoiceDownloadService {
@@ -16,21 +17,29 @@ class VoiceDownloadService {
    * Check if a voice is pre-installed in the APK
    */
   isPreInstalledVoice(langCode: string): boolean {
-    return Object.values(PREINSTALLED_VOICES).includes(langCode as any);
+    const baseLang = langCode.split('-')[0];
+    return baseLang in PREINSTALLED_VOICES || 
+           Object.values(PREINSTALLED_VOICES).includes(langCode as any);
   }
 
   /**
    * Verify pre-installed voices are available
-   * Returns array of missing critical voices
+   * For native TTS, checks device TTS support
    */
   async verifyPreInstalledVoices(): Promise<string[]> {
-    const voices = window.speechSynthesis?.getVoices() || [];
     const missing: string[] = [];
-
+    
+    // Check native TTS availability
+    const deviceLanguages = nativeTTSService.getDeviceLanguages();
+    
     Object.entries(PREINSTALLED_VOICES).forEach(([lang, voiceLang]) => {
-      const found = voices.some(v => v.lang === voiceLang || v.lang.startsWith(lang));
+      const found = deviceLanguages.some(dl => 
+        dl.toLowerCase() === voiceLang.toLowerCase() || 
+        dl.toLowerCase().startsWith(lang.toLowerCase())
+      );
+      
       if (!found) {
-        console.error(`❌ [TTS] Critical: Pre-installed voice missing: ${lang} (${voiceLang})`);
+        console.warn(`⚠️ [TTS] Pre-installed voice may need device TTS: ${lang} (${voiceLang})`);
         missing.push(lang);
       } else {
         console.log(`✅ [TTS] Pre-installed voice verified: ${lang}`);
@@ -41,59 +50,99 @@ class VoiceDownloadService {
   }
 
   /**
-   * Simulate voice download with progress updates
-   * In production, this would trigger actual voice package download
+   * Check if a language is available on the device
+   */
+  isLanguageAvailable(langCode: string): boolean {
+    return nativeTTSService.isLanguageAvailableOnDevice(langCode);
+  }
+
+  /**
+   * Get instructions for installing voice on device
+   */
+  getInstallInstructions(langCode: string): { title: string; steps: string[] } {
+    const langInfo = nativeTTSService.getLanguageInfo(langCode);
+    const langName = langInfo?.name || langCode;
+    
+    return {
+      title: `Install ${langName} TTS Voice`,
+      steps: [
+        'Open your device Settings',
+        'Go to "System" → "Languages & input"',
+        'Tap "Text-to-speech output"',
+        'Select your TTS engine (Google TTS recommended)',
+        'Tap "Language" and select ' + langName,
+        'Download the voice data if prompted',
+        'Return to the app and try again'
+      ]
+    };
+  }
+
+  /**
+   * Get all supported languages with their availability status
+   */
+  getSupportedLanguagesWithStatus(): Array<{
+    code: string;
+    name: string;
+    nativeName: string;
+    isAvailable: boolean;
+    isPreInstalled: boolean;
+  }> {
+    const deviceLanguages = nativeTTSService.getDeviceLanguages();
+    
+    return nativeTTSService.getSupportedLanguages().map(lang => {
+      const baseLang = lang.code.split('-')[0];
+      const isAvailable = deviceLanguages.some(dl => 
+        dl.toLowerCase() === lang.code.toLowerCase() ||
+        dl.toLowerCase().startsWith(baseLang.toLowerCase())
+      );
+      
+      return {
+        code: lang.code,
+        name: lang.name,
+        nativeName: lang.nativeName,
+        isAvailable,
+        isPreInstalled: this.isPreInstalledVoice(lang.code)
+      };
+    });
+  }
+
+  /**
+   * Simulate voice download (for UI progress indication)
+   * In native TTS, voices are managed by the device OS
    */
   async downloadVoice(langCode: string, onProgress?: (progress: number) => void): Promise<boolean> {
-    console.log(`📥 [TTS] Starting download for ${langCode}`);
+    console.log(`📥 [TTS] Checking voice availability for ${langCode}`);
     const store = useTTSStore.getState();
 
-    // If it's pre-installed, no download needed
-    if (this.isPreInstalledVoice(langCode)) {
-      console.log(`✅ [TTS] ${langCode} is pre-installed, no download needed`);
-      return true;
-    }
-
-    // Check if already available
-    const voices = window.speechSynthesis?.getVoices() || [];
-    const voiceExists = voices.some(v => v.lang === langCode || v.lang.startsWith(langCode.split('-')[0]));
-    
-    if (voiceExists) {
-      console.log(`✅ [TTS] ${langCode} already available`);
+    // Check if already available on device
+    if (nativeTTSService.isLanguageAvailableOnDevice(langCode)) {
+      console.log(`✅ [TTS] ${langCode} available on device`);
       store.setVoiceAvailable(langCode, true);
+      onProgress?.(100);
       return true;
     }
 
-    // Simulate download with progress
+    // For native TTS, we can't actually download voices
+    // User needs to install from device settings
+    console.warn(`⚠️ [TTS] ${langCode} not available. User needs to install from device settings.`);
+    
+    // Simulate progress for UX
     return new Promise((resolve) => {
       let progress = 0;
       const interval = setInterval(() => {
-        progress += Math.random() * 15 + 5; // Random progress between 5-20%
-        progress = Math.min(progress, 95);
-
-        store.setVoiceDownloading(langCode, progress);
-        onProgress?.(progress);
-
-        if (progress >= 95) {
+        progress += 10;
+        onProgress?.(Math.min(progress, 90));
+        
+        if (progress >= 90) {
           clearInterval(interval);
-          
-          // Final check and complete
-          setTimeout(() => {
-            store.setVoiceDownloading(langCode, 100);
-            onProgress?.(100);
-            
-            setTimeout(() => {
-              // In real implementation, voice would be available after download
-              // For now, we mark it as available even if OS doesn't provide it
-              store.setVoiceAvailable(langCode, true);
-              console.log(`✅ [TTS] Download complete for ${langCode}`);
-              resolve(true);
-            }, 500);
-          }, 300);
+          // Check again after "download"
+          const isNowAvailable = nativeTTSService.isLanguageAvailableOnDevice(langCode);
+          store.setVoiceAvailable(langCode, isNowAvailable);
+          onProgress?.(100);
+          resolve(isNowAvailable);
         }
-      }, 200);
-
-      // Store timeout for cleanup
+      }, 100);
+      
       this.downloadTimeouts.set(langCode, interval as any);
     });
   }
@@ -104,7 +153,7 @@ class VoiceDownloadService {
   async downloadWithRetry(langCode: string, maxRetries = 3): Promise<boolean> {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`🔄 [TTS] Download attempt ${attempt}/${maxRetries} for ${langCode}`);
+        console.log(`🔄 [TTS] Check attempt ${attempt}/${maxRetries} for ${langCode}`);
         const success = await this.downloadVoice(langCode);
         
         if (success) {
@@ -112,16 +161,14 @@ class VoiceDownloadService {
           return true;
         }
       } catch (error) {
-        console.error(`❌ [TTS] Download attempt ${attempt} failed:`, error);
+        console.error(`❌ [TTS] Check attempt ${attempt} failed:`, error);
         
         if (attempt === maxRetries) {
-          console.error(`❌ [TTS] All retry attempts failed for ${langCode}`);
           this.retryQueue.add(langCode);
           return false;
         }
         
-        // Wait before retry (exponential backoff)
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        await new Promise(resolve => setTimeout(resolve, 500 * attempt));
       }
     }
     
@@ -129,12 +176,12 @@ class VoiceDownloadService {
   }
 
   /**
-   * Check network and retry failed downloads
+   * Retry failed downloads
    */
   async retryFailedDownloads(): Promise<void> {
     if (this.retryQueue.size === 0) return;
 
-    console.log(`🔄 [TTS] Retrying ${this.retryQueue.size} failed downloads`);
+    console.log(`🔄 [TTS] Retrying ${this.retryQueue.size} failed checks`);
     
     const promises = Array.from(this.retryQueue).map(langCode => 
       this.downloadWithRetry(langCode, 2)
@@ -151,12 +198,11 @@ class VoiceDownloadService {
     if (timeout) {
       clearInterval(timeout);
       this.downloadTimeouts.delete(langCode);
-      console.log(`❌ [TTS] Download cancelled for ${langCode}`);
     }
   }
 
   /**
-   * Get download progress for a language
+   * Get download progress
    */
   getDownloadProgress(langCode: string): number {
     const store = useTTSStore.getState();
@@ -164,25 +210,21 @@ class VoiceDownloadService {
   }
 
   /**
-   * Check device storage and estimate if enough space for voice download
+   * Check storage availability
    */
   async checkStorageAvailable(): Promise<{ available: boolean; freeSpace?: number }> {
     if ('storage' in navigator && 'estimate' in navigator.storage) {
       try {
         const estimate = await navigator.storage.estimate();
         const freeSpace = (estimate.quota || 0) - (estimate.usage || 0);
-        const requiredSpace = 80 * 1024 * 1024; // 80MB estimated per voice
-        
         return {
-          available: freeSpace > requiredSpace,
-          freeSpace: Math.floor(freeSpace / (1024 * 1024)) // Convert to MB
+          available: freeSpace > 50 * 1024 * 1024, // 50MB
+          freeSpace: Math.floor(freeSpace / (1024 * 1024))
         };
       } catch (error) {
-        console.warn('[TTS] Storage API not available:', error);
+        console.warn('[TTS] Storage API not available');
       }
     }
-    
-    // Assume storage is available if API not supported
     return { available: true };
   }
 
