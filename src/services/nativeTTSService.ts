@@ -47,8 +47,11 @@ const ALL_INDIAN_LANGUAGES: Record<string, { code: string; name: string; nativeN
   'gom': { code: 'gom-IN', name: 'Goan Konkani', nativeName: 'गोंयची कोंकणी' },
 };
 
-// Fallback mapping for languages not supported by device TTS
+// Fallback mapping for ALL Indian languages when voice not available on device
+// Priority: Same script family → Hindi → English (NEVER direct to English for Indian languages)
 const FALLBACK_LANGUAGES: Record<string, string> = {
+  // === DEVANAGARI SCRIPT LANGUAGES → Hindi ===
+  'mr': 'hi-IN',     // Marathi → Hindi (same Devanagari script)
   'mai': 'hi-IN',    // Maithili → Hindi
   'bh': 'hi-IN',     // Bhojpuri → Hindi
   'awa': 'hi-IN',    // Awadhi → Hindi
@@ -60,12 +63,36 @@ const FALLBACK_LANGUAGES: Record<string, string> = {
   'doi': 'hi-IN',    // Dogri → Hindi
   'kok': 'hi-IN',    // Konkani → Hindi
   'gom': 'hi-IN',    // Goan Konkani → Hindi
-  'mni': 'bn-IN',    // Manipuri → Bengali
-  'as': 'bn-IN',     // Assamese → Bengali (similar script)
-  'sat': 'hi-IN',    // Santali → Hindi
-  'ks': 'ur-IN',     // Kashmiri → Urdu
   'bo': 'hi-IN',     // Bodo → Hindi
+  'sat': 'hi-IN',    // Santali → Hindi
+  
+  // === DRAVIDIAN LANGUAGES → Hindi (as last resort) ===
+  'ta': 'hi-IN',     // Tamil → Hindi
+  'te': 'hi-IN',     // Telugu → Hindi
+  'kn': 'hi-IN',     // Kannada → Hindi
+  'ml': 'hi-IN',     // Malayalam → Hindi
+  
+  // === BENGALI SCRIPT LANGUAGES → Bengali → Hindi ===
+  'bn': 'hi-IN',     // Bengali → Hindi (when Bengali not available)
+  'as': 'bn-IN',     // Assamese → Bengali (similar script)
+  'mni': 'bn-IN',    // Manipuri → Bengali
+  
+  // === GURMUKHI SCRIPT ===
+  'pa': 'hi-IN',     // Punjabi → Hindi
+  
+  // === GUJARATI SCRIPT ===
+  'gu': 'hi-IN',     // Gujarati → Hindi
+  
+  // === ODIA SCRIPT ===
+  'or': 'hi-IN',     // Odia → Hindi
+  
+  // === PERSO-ARABIC SCRIPT → Urdu → Hindi ===
+  'ur': 'hi-IN',     // Urdu → Hindi
+  'ks': 'ur-IN',     // Kashmiri → Urdu
   'sd': 'ur-IN',     // Sindhi → Urdu
+  
+  // === HINDI ITSELF → English (only if Hindi not available) ===
+  'hi': 'en-IN',     // Hindi → English (last resort)
 };
 
 export interface TTSConfig {
@@ -111,6 +138,7 @@ class NativeTTSService {
    */
   private async initNativeTTS(): Promise<void> {
     console.log('[NativeTTS] Initializing...');
+    console.log('[NativeTTS] Platform:', Capacitor.getPlatform(), 'isNative:', Capacitor.isNativePlatform());
     
     try {
       // Import Capacitor TTS plugin
@@ -121,17 +149,30 @@ class NativeTTSService {
       try {
         const result = await this.nativeTTS.getSupportedLanguages();
         this.supportedLanguages = result.languages || [];
-        console.log('[NativeTTS] Device supported languages:', this.supportedLanguages.length);
+        console.log('[NativeTTS] Device supported languages:', this.supportedLanguages.length, this.supportedLanguages.slice(0, 10));
       } catch (e) {
         console.warn('[NativeTTS] Could not get supported languages:', e);
-        // Default to common Indian languages
-        this.supportedLanguages = ['hi-IN', 'en-IN', 'ta-IN', 'te-IN', 'mr-IN', 'bn-IN', 'gu-IN', 'kn-IN', 'ml-IN', 'pa-IN'];
+        // In browser/PWA mode, native plugin may fail - use comprehensive fallback list
+        // This ensures Indian languages are "assumed available" and will be tried
+        this.supportedLanguages = [
+          'hi-IN', 'en-IN', 'en-US', 'en-GB',
+          'mr-IN', 'ta-IN', 'te-IN', 'bn-IN', 
+          'gu-IN', 'kn-IN', 'ml-IN', 'pa-IN',
+          'ur-IN', 'or-IN', 'as-IN'
+        ];
+        console.log('[NativeTTS] Using fallback language list for browser/PWA mode');
       }
       
       this.isInitialized = true;
       console.log('[NativeTTS] ✅ Native TTS initialized successfully');
     } catch (error) {
       console.error('[NativeTTS] ❌ Failed to initialize:', error);
+      // Even if native fails, provide fallback language list
+      this.supportedLanguages = [
+        'hi-IN', 'en-IN', 'en-US', 'en-GB',
+        'mr-IN', 'ta-IN', 'te-IN', 'bn-IN', 
+        'gu-IN', 'kn-IN', 'ml-IN', 'pa-IN'
+      ];
       this.isInitialized = true; // Mark as initialized to prevent infinite waiting
     }
   }
@@ -152,10 +193,22 @@ class NativeTTSService {
 
   /**
    * Get the best language code for TTS
+   * IMPORTANT: Indian languages should NEVER fall back to English directly
+   * Fallback chain: Requested → Same script family → Hindi → English
    */
   getLanguageCode(language: string): { code: string; isFallback: boolean; originalCode: string } {
     const baseLang = language.split('-')[0].toLowerCase();
     const originalCode = ALL_INDIAN_LANGUAGES[baseLang]?.code || ALL_INDIAN_LANGUAGES[language]?.code || `${baseLang}-IN`;
+    const isNative = Capacitor.isNativePlatform();
+    const langInfo = ALL_INDIAN_LANGUAGES[baseLang];
+    
+    console.log(`[NativeTTS] 🔍 Language resolution:`, {
+      requested: language,
+      baseLang,
+      originalCode,
+      platform: isNative ? 'native' : 'browser/PWA',
+      langName: langInfo?.name || 'Unknown'
+    });
     
     // Check if device supports this language
     const isSupported = this.supportedLanguages.some(sl => 
@@ -164,29 +217,47 @@ class NativeTTSService {
     );
     
     if (isSupported) {
+      console.log(`[NativeTTS] ✅ Using requested language: ${originalCode}`);
       return { code: originalCode, isFallback: false, originalCode };
     }
     
-    // Try fallback language
+    // Check if this is an Indian language (should use Hindi fallback, not English)
+    const isIndianLanguage = baseLang in ALL_INDIAN_LANGUAGES && 
+                             !['en', 'en-US', 'en-GB', 'en-IN'].includes(baseLang);
+    
+    // Try fallback language from our mapping
     const fallbackCode = FALLBACK_LANGUAGES[baseLang];
     if (fallbackCode) {
+      const fallbackBaseLang = fallbackCode.split('-')[0].toLowerCase();
       const fallbackSupported = this.supportedLanguages.some(sl => 
         sl.toLowerCase() === fallbackCode.toLowerCase() ||
-        sl.toLowerCase().startsWith(fallbackCode.split('-')[0].toLowerCase())
+        sl.toLowerCase().startsWith(fallbackBaseLang)
       );
       
       if (fallbackSupported) {
-        console.log(`[NativeTTS] Using fallback: ${baseLang} → ${fallbackCode}`);
+        console.log(`[NativeTTS] 🔄 Using fallback: ${baseLang} (${langInfo?.name}) → ${fallbackCode}`);
         return { code: fallbackCode, isFallback: true, originalCode };
       }
     }
     
-    // Final fallback to Hindi or English
-    if (this.supportedLanguages.some(sl => sl.toLowerCase().startsWith('hi'))) {
-      console.log(`[NativeTTS] Final fallback to Hindi for: ${baseLang}`);
+    // For Indian languages: ALWAYS try Hindi before English
+    if (isIndianLanguage) {
+      const hindiSupported = this.supportedLanguages.some(sl => 
+        sl.toLowerCase().startsWith('hi')
+      );
+      
+      if (hindiSupported) {
+        console.log(`[NativeTTS] 🇮🇳 Indian language fallback to Hindi: ${baseLang} (${langInfo?.name}) → hi-IN`);
+        return { code: 'hi-IN', isFallback: true, originalCode };
+      }
+      
+      // Even if Hindi isn't in supported list, TRY Hindi anyway for Indian languages
+      // The TTS engine may still support it even if not reported
+      console.log(`[NativeTTS] 🇮🇳 Forcing Hindi for Indian language: ${baseLang} (${langInfo?.name}) → hi-IN (may work)`);
       return { code: 'hi-IN', isFallback: true, originalCode };
     }
     
+    // Only for non-Indian languages, fall back to English
     console.log(`[NativeTTS] Final fallback to English for: ${baseLang}`);
     return { code: 'en-IN', isFallback: true, originalCode };
   }
