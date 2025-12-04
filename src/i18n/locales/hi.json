@@ -266,5 +266,23 @@
   },
   "feature": {
     "title": "सुविधाएं"
+  },
+  "tts": {
+    "enhanceVoice": "आवाज़ की गुणवत्ता बढ़ाएं",
+    "downloadPrompt": "स्पष्ट और प्राकृतिक आवाज़ के लिए उच्च गुणवत्ता वाली आवाज़ें डाउनलोड करें",
+    "howToDownload": "कैसे डाउनलोड करें",
+    "openSettings": "सेटिंग्स खोलें",
+    "voiceSettings": "आवाज़ सेटिंग्स",
+    "speechRate": "बोलने की गति",
+    "pitch": "पिच",
+    "volume": "आवाज़",
+    "slow": "धीमी",
+    "normal": "सामान्य",
+    "fast": "तेज़",
+    "resetDefaults": "रीसेट",
+    "testVoice": "आवाज़ टेस्ट करें"
+  },
+  "common": {
+    "notNow": "अभी नहीं"
   }
 }

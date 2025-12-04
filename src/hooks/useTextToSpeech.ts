@@ -1,5 +1,10 @@
+/**
+ * Enhanced Text-to-Speech Hook
+ * Uses enhanced TTS service with natural voice quality
+ */
+
 import { useState, useCallback, useRef } from 'react';
-import { nativeTTSService } from '@/services/nativeTTSService';
+import { enhancedTTSService } from '@/services/enhancedNativeTTSService';
 
 interface UseTextToSpeechProps {
   language?: string;
@@ -10,8 +15,8 @@ interface UseTextToSpeechProps {
 
 export function useTextToSpeech({ 
   language = 'hi', 
-  rate = 1.0, 
-  pitch = 1.0,
+  rate,  // Will use enhanced defaults if not provided
+  pitch, // Will use enhanced defaults if not provided
   onError
 }: UseTextToSpeechProps = {}) {
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -30,10 +35,10 @@ export function useTextToSpeech({
       setIsSpeaking(true);
       speakingRef.current = true;
 
-      const result = await nativeTTSService.speak(
+      // Use enhanced TTS service with optimized settings
+      const result = await enhancedTTSService.speak(
         text,
         language,
-        { rate, pitch, volume: 1.0 },
         {
           onStart: () => {
             setIsSpeaking(true);
@@ -49,14 +54,18 @@ export function useTextToSpeech({
             setIsSpeaking(false);
             speakingRef.current = false;
           }
-        }
+        },
+        // Override with user-provided values if specified
+        rate !== undefined || pitch !== undefined 
+          ? { rate: rate ?? 0.9, pitch: pitch ?? 1.0 } 
+          : undefined
       );
 
       if (!result.success) {
         throw new Error(result.error || 'TTS failed');
       }
 
-      console.log(`[TTS] Provider: ${result.provider}, Language: ${result.usedLanguage}`);
+      console.log(`[TTS] Voice: ${result.voiceUsed || 'default'}, Quality: ${result.voiceQuality || 'unknown'}`);
     } catch (err) {
       console.error('Error in speak function:', err);
       const errorMsg = err instanceof Error ? err.message : 'An error occurred while trying to speak';
@@ -69,7 +78,7 @@ export function useTextToSpeech({
 
   const stop = useCallback(() => {
     try {
-      nativeTTSService.stop();
+      enhancedTTSService.stop();
       setIsSpeaking(false);
       speakingRef.current = false;
       setError(null);
