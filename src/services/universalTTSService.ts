@@ -239,8 +239,8 @@ class UniversalTTSService {
    * Stop current playback
    */
   stop(): void {
-    // Increment request ID to invalidate any pending requests
-    this.currentRequestId++;
+    // DO NOT increment currentRequestId here - that's only done in speak()
+    // This prevents the race condition where stop() + speak() would double-increment
 
     // Stop audio element
     if (this.currentAudio) {
