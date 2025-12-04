@@ -131,52 +131,48 @@ jobs:
 
       - name: 📱 Setup Capacitor (Android)
         run: |
+          set -euo pipefail
           npm install @capacitor/core @capacitor/cli @capacitor/android
 
-          # If no capacitor config file exists, run init (kept for compatibility)
-          if ! ls capacitor.config.* >/dev/null 2>&1; then
-            echo "No capacitor.config.* found — running npx cap init"
-            npx cap init "KisanShaktiAI" "com.kisanshaktiAi.app" --web-dir=dist
+          # Backup any existing capacitor.config.* so Capacitor won't read it
+          BACKUP_DIR="$(mktemp -d)"
+          shopt -s nullglob
+          CONFIG_FILES=(capacitor.config.*)
+          if [ ${#CONFIG_FILES[@]} -gt 0 ]; then
+            echo "Backing up existing capacitor config files to $BACKUP_DIR"
+            mv capacitor.config.* "$BACKUP_DIR"/ || true
           else
-            echo "Found capacitor.config.* — will validate appId"
+            echo "No existing capacitor.config.* files found"
           fi
 
-          # Try to extract appId from any capacitor.config.* (works for simple cases)
-          APP_ID=""
-          if grep -q "appId" capacitor.config.* 2>/dev/null; then
-            APP_ID=$(grep -oP 'appId\s*[:=]\s*["'"'"']\K[^"'"'"']+' capacitor.config.* 2>/dev/null | head -n1 || true)
-          fi
-
-          # Validate appId against required pattern: ^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$
-          VALID_REGEX='^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$'
-          if [ -z "$APP_ID" ] || ! echo "$APP_ID" | grep -Eq "$VALID_REGEX"; then
-            echo "Invalid or missing App ID detected: '${APP_ID:-<none>}'"
-            echo "Creating a temporary capacitor.config.json with a valid appId..."
-
-            cat > capacitor.config.json <<'EOF'
+          # Create a temporary, valid capacitor.config.json for CI use
+          cat > capacitor.config.json <<'EOF'
           {
-            "appId": "com.kisanshaktiAi.app",
-            "appName": "KisanShaktiAI",
+            "appId": "com.kisanshakti.app",
+            "appName": "KisanShakti",
             "webDir": "dist"
           }
           EOF
-
-            echo "Wrote capacitor.config.json (overrides invalid config for CI run)."
-          else
-            echo "Valid App ID found: $APP_ID — using existing config."
-          fi
+          echo "Wrote temporary capacitor.config.json for CI run."
 
           # Only add android platform if not present
           if [ -d "android" ]; then
             echo "android/ already exists — skipping npx cap add android"
           else
-            echo "Adding android platform"
+            echo "Adding android platform..."
             npx cap add android
           fi
 
           # Always sync/copy to ensure native project has latest web assets
           npx cap sync android
           npx cap copy android
+
+          # Restore original capacitor config files (if any)
+          if [ -d "$BACKUP_DIR" ] && [ "$(ls -A "$BACKUP_DIR")" ]; then
+            echo "Restoring original capacitor config files from $BACKUP_DIR"
+            mv "$BACKUP_DIR"/capacitor.config.* . || true
+          fi
+          rm -rf "$BACKUP_DIR" || true
 
 
 
@@ -229,27 +225,49 @@ jobs:
 
       - name: 📱 Setup Capacitor (iOS)
         run: |
+          set -euo pipefail
           npm install @capacitor/core @capacitor/cli @capacitor/ios
 
-          # If no capacitor config file exists, run init. Otherwise skip.
-          if ! ls capacitor.config.* >/dev/null 2>&1; then
-            echo "No capacitor.config.* found — running npx cap init"
-            npx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
+          # Backup any existing capacitor.config.* so Capacitor won't read it
+          BACKUP_DIR="$(mktemp -d)"
+          shopt -s nullglob
+          CONFIG_FILES=(capacitor.config.*)
+          if [ ${#CONFIG_FILES[@]} -gt 0 ]; then
+            echo "Backing up existing capacitor config files to $BACKUP_DIR"
+            mv capacitor.config.* "$BACKUP_DIR"/ || true
           else
-            echo "Found capacitor.config.* — skipping npx cap init"
+            echo "No existing capacitor.config.* files found"
           fi
+
+          # Create a temporary, valid capacitor.config.json for CI use
+          cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "com.kisanshakti.app",
+            "appName": "KisanShakti",
+            "webDir": "dist"
+          }
+          EOF
+          echo "Wrote temporary capacitor.config.json for CI run."
 
           # Only add ios platform if not present
           if [ -d "ios" ] && [ -d "ios/App" ]; then
             echo "ios/ already exists — skipping npx cap add ios"
           else
-            echo "Adding ios platform"
+            echo "Adding ios platform..."
             npx cap add ios
           fi
 
           # Always sync/copy to ensure native project has latest web assets
           npx cap sync ios
           npx cap copy ios
+
+          # Restore original capacitor config files (if any)
+          if [ -d "$BACKUP_DIR" ] && [ "$(ls -A "$BACKUP_DIR")" ]; then
+            echo "Restoring original capacitor config files from $BACKUP_DIR"
+            mv "$BACKUP_DIR"/capacitor.config.* . || true
+          fi
+          rm -rf "$BACKUP_DIR" || true
+
 
 
       - name: 📦 Install CocoaPods dependencies
