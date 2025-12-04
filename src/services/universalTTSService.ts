@@ -46,7 +46,8 @@ class UniversalTTSService {
   }
 
   /**
-   * Main speak method - tries Cloud > Native > Web Speech API
+   * Main speak method - INSTANT START with Web Speech, Cloud as quality fallback
+   * Priority: Web Speech API (instant) > Native > Cloud (async quality upgrade)
    */
   async speak(options: TTSOptions): Promise<TTSResult> {
     const { text, language = 'en-IN', rate = 1.0, onStart, onEnd, onError } = options;
@@ -59,35 +60,54 @@ class UniversalTTSService {
     const requestId = ++this.currentRequestId;
     this.stop();
 
+    // Call onStart IMMEDIATELY for instant feedback
+    onStart?.();
+    console.log('[UniversalTTS] Starting speech (instant feedback)');
+
     try {
-      // Try Cloud TTS first (best quality for Indian languages)
-      const cloudResult = await this.speakWithCloud(text, language, requestId);
+      const baseLang = language.split('-')[0];
       
-      // Check if this request is still valid (not superseded by another)
-      if (requestId !== this.currentRequestId) {
-        console.log('[UniversalTTS] Request cancelled (superseded)');
-        return { success: false, provider: 'none', error: 'Request cancelled' };
+      // Languages that need Cloud TTS for quality (Indian languages)
+      const needsCloudTTS = ['hi', 'mr', 'ta', 'te', 'bn', 'gu', 'kn', 'ml', 'pa'].includes(baseLang);
+
+      // For English and simple languages, use Web Speech API (INSTANT)
+      if (!needsCloudTTS && 'speechSynthesis' in window) {
+        console.log('[UniversalTTS] Using Web Speech API (instant)');
+        const webResult = await this.speakWithWebAPI(text, language, rate, onEnd);
+        if (webResult.success) {
+          return webResult;
+        }
       }
 
-      if (cloudResult.success) {
-        onStart?.();
-        this.waitForAudioEnd(onEnd);
-        return cloudResult;
-      }
-
-      // Try Native TTS (for APK)
+      // Try Native TTS for mobile (also instant)
       if (this.nativeTTS && requestId === this.currentRequestId) {
+        console.log('[UniversalTTS] Trying Native TTS...');
         const nativeResult = await this.speakWithNative(text, language, rate);
         if (nativeResult.success) {
-          onStart?.();
           onEnd?.();
           return nativeResult;
         }
       }
 
-      // Fallback to Web Speech API
+      // For Indian languages or when others fail, use Cloud TTS
       if (requestId === this.currentRequestId) {
-        onStart?.();
+        console.log('[UniversalTTS] Using Cloud TTS for better quality...');
+        const cloudResult = await this.speakWithCloud(text, language, requestId);
+        
+        if (requestId !== this.currentRequestId) {
+          console.log('[UniversalTTS] Request cancelled (superseded)');
+          return { success: false, provider: 'none', error: 'Request cancelled' };
+        }
+
+        if (cloudResult.success) {
+          this.waitForAudioEnd(onEnd);
+          return cloudResult;
+        }
+      }
+
+      // Final fallback to Web Speech API for any language
+      if (requestId === this.currentRequestId && 'speechSynthesis' in window) {
+        console.log('[UniversalTTS] Final fallback to Web Speech API');
         const webResult = await this.speakWithWebAPI(text, language, rate, onEnd);
         if (webResult.success) {
           return webResult;
