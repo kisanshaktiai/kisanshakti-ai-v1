@@ -136,7 +136,7 @@ jobs:
           # If no capacitor config file exists, run init (kept for compatibility)
           if ! ls capacitor.config.* >/dev/null 2>&1; then
             echo "No capacitor.config.* found — running npx cap init"
-            npx cap init "KisanShakti AI" "com.kisanshaktiAi.app" --web-dir=dist
+            npx cap init "KisanShaktiAI" "com.kisanshaktiAi.app" --web-dir=dist
           else
             echo "Found capacitor.config.* — will validate appId"
           fi
@@ -156,7 +156,7 @@ jobs:
             cat > capacitor.config.json <<'EOF'
           {
             "appId": "com.kisanshaktiAi.app",
-            "appName": "KisanShakti AI",
+            "appName": "KisanShaktiAI",
             "webDir": "dist"
           }
           EOF
