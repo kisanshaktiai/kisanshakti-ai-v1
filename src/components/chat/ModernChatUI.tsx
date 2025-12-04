@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Bot, User, Copy, ThumbsUp, ThumbsDown, Share2, Check, Zap } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -56,7 +57,9 @@ const USER_BUBBLE_GRADIENTS = [
 ];
 
 export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: ModernChatUIProps) {
+  const { i18n } = useTranslation();
   const isUser = message.role === 'user';
+  const currentLanguage = i18n.language || 'hi'; // Use i18n language, default to Hindi
   
   // Get consistent gradient based on message id hash
   const userGradient = useMemo(() => {
@@ -267,7 +270,7 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
             <EnhancedSpeakerButton
               messageId={message.id}
               content={message.content}
-              language={navigator.language || 'en-IN'}
+              language={currentLanguage}
               isPlaying={message.isPlaying}
               onPlayStateChange={() => onPlay(message.id, message.content)}
             />

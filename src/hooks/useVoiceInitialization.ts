@@ -1,72 +1,65 @@
 import { useEffect, useState } from 'react';
 import { useLanguageStore } from '@/stores/languageStore';
-import { useTTSStore, PREINSTALLED_VOICES } from '@/stores/ttsStore';
+import { nativeTTSService } from '@/services/nativeTTSService';
 import { voiceDownloadService } from '@/services/voiceDownloadService';
 
 /**
- * Hook to initialize and manage voice downloads based on app language
+ * Hook to initialize and manage native TTS voices based on app language
+ * Works with Capacitor native TTS for Android/iOS APK
  */
 export function useVoiceInitialization() {
   const { currentLanguage } = useLanguageStore();
   const [needsDownload, setNeedsDownload] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [deviceLanguages, setDeviceLanguages] = useState<string[]>([]);
+  const [isFallbackNeeded, setIsFallbackNeeded] = useState(false);
 
   useEffect(() => {
     const initializeVoices = async () => {
-      console.log('🎤 [Voice Init] Starting voice initialization...');
+      console.log('🎤 [Voice Init] Starting native TTS initialization...');
 
-      // Wait for voices to load
-      const waitForVoices = () => {
-        return new Promise<void>((resolve) => {
-          const voices = window.speechSynthesis?.getVoices() || [];
-          if (voices.length > 0) {
-            resolve();
+      try {
+        // Wait for native TTS to initialize
+        await nativeTTSService.ensureInitialized();
+        
+        // Get device supported languages
+        const languages = nativeTTSService.getDeviceLanguages();
+        setDeviceLanguages(languages);
+        console.log('🎤 [Voice Init] Device languages:', languages.length);
+
+        // Check if current language is available
+        const isAvailable = nativeTTSService.isLanguageAvailableOnDevice(currentLanguage);
+        
+        if (!isAvailable) {
+          // Check if fallback will be used
+          const langInfo = nativeTTSService.getLanguageCode(currentLanguage);
+          setIsFallbackNeeded(langInfo.isFallback);
+          
+          if (langInfo.isFallback) {
+            console.log(`⚠️ [Voice Init] ${currentLanguage} will use fallback: ${langInfo.code}`);
           } else {
-            window.speechSynthesis.onvoiceschanged = () => {
-              resolve();
-            };
+            console.log(`📥 [Voice Init] ${currentLanguage} voice needs device TTS installation`);
+            setNeedsDownload(true);
           }
-        });
-      };
-
-      await waitForVoices();
-
-      // Update voice availability using getState to avoid dependency issues
-      const voices = window.speechSynthesis.getVoices();
-      useTTSStore.getState().updateVoiceAvailability(voices);
-
-      // Verify pre-installed voices
-      const missingVoices = await voiceDownloadService.verifyPreInstalledVoices();
-      if (missingVoices.length > 0) {
-        console.error('❌ [Voice Init] Critical voices missing:', missingVoices);
-        // In production, this would trigger emergency download
-      }
-
-      // Check if current language needs download
-      const langCode = `${currentLanguage}-IN`;
-      const isPreInstalled = voiceDownloadService.isPreInstalledVoice(langCode);
-      
-      if (!isPreInstalled) {
-        const voices = window.speechSynthesis.getVoices();
-        const voiceExists = voices.some(v => 
-          v.lang === langCode || v.lang.startsWith(currentLanguage)
-        );
-
-        if (!voiceExists) {
-          console.log(`📥 [Voice Init] ${currentLanguage} voice needs download`);
-          setNeedsDownload(true);
+        } else {
+          console.log(`✅ [Voice Init] ${currentLanguage} voice available`);
+          setNeedsDownload(false);
+          setIsFallbackNeeded(false);
         }
-      }
 
-      setIsInitialized(true);
-      console.log('✅ [Voice Init] Voice initialization complete');
+        setIsInitialized(true);
+        console.log('✅ [Voice Init] Native TTS initialization complete');
+      } catch (error) {
+        console.error('❌ [Voice Init] Failed to initialize:', error);
+        setIsInitialized(true); // Still mark as initialized to allow app to continue
+      }
     };
 
     initializeVoices();
 
-    // Retry failed downloads on WiFi
+    // Retry voice checks on network restore
     const handleOnline = () => {
-      console.log('📶 [Voice Init] Network available, retrying failed downloads...');
+      console.log('📶 [Voice Init] Network available, rechecking voices...');
       voiceDownloadService.retryFailedDownloads();
     };
 
@@ -80,6 +73,12 @@ export function useVoiceInitialization() {
   return {
     needsDownload,
     isInitialized,
-    currentLanguage
+    currentLanguage,
+    deviceLanguages,
+    isFallbackNeeded,
+    // Helper to get install instructions
+    getInstallInstructions: () => voiceDownloadService.getInstallInstructions(currentLanguage),
+    // Check if a specific language is available
+    isLanguageAvailable: (lang: string) => nativeTTSService.isLanguageAvailableOnDevice(lang),
   };
 }

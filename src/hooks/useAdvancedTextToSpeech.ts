@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { universalTTSService } from '@/services/universalTTSService';
+import { nativeTTSService } from '@/services/nativeTTSService';
 import { useTTSStore } from '@/stores/ttsStore';
 
 interface UseAdvancedTextToSpeechProps {
@@ -14,9 +14,9 @@ export function useAdvancedTextToSpeech({
   onError 
 }: UseAdvancedTextToSpeechProps) {
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isLoading, setIsLoading] = useState(false); // NEW: Loading state for instant feedback
-  const [isPaused, setIsPaused] = useState(false);
-  const [isSupported] = useState(true); // Universal TTS always supported
+  const [isLoading, setIsLoading] = useState(false);
+  const [isPaused] = useState(false); // Native TTS doesn't support pause
+  const [isSupported] = useState(true);
   const [currentSentence, setCurrentSentence] = useState<number>(-1);
   const [progress, setProgress] = useState(0);
   const [fallbackLanguage, setFallbackLanguage] = useState<string | null>(null);
@@ -24,13 +24,14 @@ export function useAdvancedTextToSpeech({
   const sentencesRef = useRef<string[]>([]);
   const currentIndexRef = useRef(0);
   const isStoppedRef = useRef(false);
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const settings = useTTSStore(state => state.settings);
 
-  // Split text into sentences
+  // Split text into sentences (supports Hindi, English, and other Indian scripts)
   const splitIntoSentences = useCallback((text: string): string[] => {
     return text
-      .split(/([.!?।॥]+\s+)/)
+      .split(/([.!?।॥؟۔]+\s*)/)
       .filter(s => s.trim().length > 0)
       .reduce((acc, curr, i, arr) => {
         if (i % 2 === 0) {
@@ -41,15 +42,21 @@ export function useAdvancedTextToSpeech({
       }, [] as string[]);
   }, []);
 
-  // Speak with sentence-by-sentence progress
+  // Clean up progress interval
+  const clearProgressInterval = useCallback(() => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+  }, []);
+
+  // Speak with sentence-by-sentence progress simulation
   const speak = useCallback(async (text: string) => {
     if (!text.trim()) return;
     
-    // Don't call stop() here - the service's speak() handles stopping internally
-    // Calling stop() here would cause a race condition with the request ID
-
     try {
       isStoppedRef.current = false;
+      clearProgressInterval();
 
       const sentences = splitIntoSentences(text);
       sentencesRef.current = sentences;
@@ -57,104 +64,101 @@ export function useAdvancedTextToSpeech({
       setProgress(0);
       setCurrentSentence(0);
       
-      // INSTANT: Set loading and speaking state immediately
+      // INSTANT: Set loading state immediately for UI feedback
       setIsLoading(true);
       setIsSpeaking(true);
+      setFallbackLanguage(null);
 
-      // Track progress based on estimated timing
-      const result = await universalTTSService.speak({
+      console.log(`[AdvancedTTS] Starting speech: lang=${language}, sentences=${sentences.length}`);
+
+      const result = await nativeTTSService.speak(
         text,
         language,
-        rate: settings.speed,
-        onStart: () => {
-          // Audio is now actually playing - remove loading state
-          setIsLoading(false);
-          setIsSpeaking(true);
-          setCurrentSentence(0);
-          
-          // Simulate sentence progress for UI
-          if (sentences.length > 1) {
-            const avgDuration = (text.length / 15) * 1000; // ~15 chars/sec
-            const intervalTime = avgDuration / sentences.length;
+        { rate: settings.speed, pitch: 1.0, volume: 1.0 },
+        {
+          onStart: () => {
+            // Audio is now actually playing
+            setIsLoading(false);
+            setIsSpeaking(true);
+            setCurrentSentence(0);
             
-            let sentenceIdx = 0;
-            const progressInterval = setInterval(() => {
-              if (isStoppedRef.current || sentenceIdx >= sentences.length - 1) {
-                clearInterval(progressInterval);
-                return;
-              }
-              sentenceIdx++;
-              setCurrentSentence(sentenceIdx);
-              setProgress((sentenceIdx / sentences.length) * 100);
-            }, intervalTime);
+            // Check if fallback was used
+            const langInfo = nativeTTSService.getLanguageCode(language);
+            if (langInfo.isFallback) {
+              const fallbackInfo = nativeTTSService.getLanguageInfo(langInfo.code);
+              setFallbackLanguage(fallbackInfo?.nativeName || langInfo.code);
+            }
+            
+            // Simulate sentence progress for UI
+            if (sentences.length > 1 && !isStoppedRef.current) {
+              const avgDuration = (text.length / 12) * 1000; // ~12 chars/sec for Indian languages
+              const intervalTime = avgDuration / sentences.length;
+              
+              let sentenceIdx = 0;
+              progressIntervalRef.current = setInterval(() => {
+                if (isStoppedRef.current || sentenceIdx >= sentences.length - 1) {
+                  clearProgressInterval();
+                  return;
+                }
+                sentenceIdx++;
+                setCurrentSentence(sentenceIdx);
+                setProgress((sentenceIdx / sentences.length) * 100);
+              }, intervalTime);
+            }
+          },
+          onEnd: () => {
+            clearProgressInterval();
+            setIsSpeaking(false);
+            setIsLoading(false);
+            setCurrentSentence(-1);
+            setProgress(100);
+            onEnd?.();
+          },
+          onError: (err) => {
+            clearProgressInterval();
+            console.error('[AdvancedTTS] Error:', err);
+            setIsSpeaking(false);
+            setIsLoading(false);
+            setCurrentSentence(-1);
+            onError?.(err.message || 'Speech synthesis failed');
           }
-        },
-        onEnd: () => {
-          setIsSpeaking(false);
-          setIsLoading(false);
-          setCurrentSentence(-1);
-          setProgress(100);
-          onEnd?.();
-        },
-        onError: (err) => {
-          console.error('[AdvancedTTS] Error:', err);
-          setIsSpeaking(false);
-          setIsLoading(false);
-          onError?.(err.message || 'Speech synthesis failed');
         }
-      });
+      );
 
       if (!result.success) {
-        throw new Error(result.error);
+        throw new Error(result.error || 'TTS failed');
       }
 
-      // Check if fallback was used
-      if (result.provider === 'web') {
-        const baseLang = language.split('-')[0];
-        if (!['en', 'hi'].includes(baseLang)) {
-          setFallbackLanguage('en');
-        }
-      } else {
-        setFallbackLanguage(null);
-      }
-
-      console.log(`[AdvancedTTS] Provider: ${result.provider}, Language: ${language}`);
+      console.log(`[AdvancedTTS] ✅ Provider: ${result.provider}, Used: ${result.usedLanguage}`);
     } catch (error) {
+      clearProgressInterval();
       console.error('[AdvancedTTS] Error in speak:', error);
       onError?.('Failed to start speech');
       setIsSpeaking(false);
       setIsLoading(false);
     }
-  }, [language, splitIntoSentences, settings.speed, onEnd, onError]);
+  }, [language, splitIntoSentences, settings.speed, onEnd, onError, clearProgressInterval]);
 
   const stop = useCallback(() => {
     isStoppedRef.current = true;
-    universalTTSService.stop();
+    clearProgressInterval();
+    nativeTTSService.stop();
     setIsSpeaking(false);
     setIsLoading(false);
-    setIsPaused(false);
     setCurrentSentence(-1);
     setProgress(0);
     setFallbackLanguage(null);
     currentIndexRef.current = 0;
+  }, [clearProgressInterval]);
+
+  // Native TTS doesn't support pause/resume
+  const pause = useCallback(() => {
+    console.warn('[AdvancedTTS] Pause not supported on native TTS');
   }, []);
 
-  const pause = useCallback(() => {
-    if (isSpeaking) {
-      // Cloud TTS doesn't support pause, but web speech does
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.pause();
-        setIsPaused(true);
-      }
-    }
-  }, [isSpeaking]);
-
   const resume = useCallback(() => {
-    if (isPaused && 'speechSynthesis' in window) {
-      window.speechSynthesis.resume();
-      setIsPaused(false);
-    }
-  }, [isPaused]);
+    console.warn('[AdvancedTTS] Resume not supported on native TTS');
+  }, []);
 
   return {
     speak,
@@ -162,7 +166,7 @@ export function useAdvancedTextToSpeech({
     pause,
     resume,
     isSpeaking,
-    isLoading, // NEW: Expose loading state
+    isLoading,
     isPaused,
     isSupported,
     currentSentence,

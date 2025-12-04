@@ -3,7 +3,7 @@ import { Volume2, VolumeX, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { universalTTSService } from '@/services/universalTTSService';
+import { nativeTTSService } from '@/services/nativeTTSService';
 import { toast } from 'sonner';
 
 interface VoiceWeatherSummaryProps {
@@ -63,7 +63,7 @@ export const VoiceWeatherSummary: React.FC<VoiceWeatherSummaryProps> = ({
 
   const handleToggleSpeech = async () => {
     if (isSpeaking) {
-      universalTTSService.stop();
+      nativeTTSService.stop();
       setIsSpeaking(false);
     } else {
       const summary = generateWeatherSummary();
@@ -72,26 +72,29 @@ export const VoiceWeatherSummary: React.FC<VoiceWeatherSummaryProps> = ({
       setIsLoading(true);
       
       try {
-        const result = await universalTTSService.speak({
-          text: summary,
-          language: i18n.language || 'en-IN',
-          onStart: () => {
-            setIsSpeaking(true);
-            setIsLoading(false);
-          },
-          onEnd: () => {
-            setIsSpeaking(false);
-          },
-          onError: (err) => {
-            setIsSpeaking(false);
-            setIsLoading(false);
-            toast.error(t('weather.voice.error', 'Failed to read weather'));
+        const result = await nativeTTSService.speak(
+          summary,
+          i18n.language || 'hi',
+          { rate: 1.0, pitch: 1.0, volume: 1.0 },
+          {
+            onStart: () => {
+              setIsSpeaking(true);
+              setIsLoading(false);
+            },
+            onEnd: () => {
+              setIsSpeaking(false);
+            },
+            onError: (err) => {
+              setIsSpeaking(false);
+              setIsLoading(false);
+              toast.error(t('weather.voice.error', 'Failed to read weather'));
+            }
           }
-        });
+        );
 
         if (result.success) {
           setHasSpoken(true);
-          console.log(`[WeatherTTS] Provider: ${result.provider}`);
+          console.log(`[WeatherTTS] Provider: ${result.provider}, Language: ${result.usedLanguage}`);
         } else {
           setIsLoading(false);
           toast.error(result.error || 'TTS failed');

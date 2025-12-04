@@ -1,29 +1,53 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-// Language to voice ID mapping for pre-installed voices
-export const PREINSTALLED_VOICES = {
-  'hi': 'hi-IN', // Hindi - Primary
-  'mr': 'mr-IN', // Marathi - Secondary
-  'en': 'en-IN'  // English (Indian) - Tertiary
+// All 22 official Indian languages + major dialects for TTS
+export const ALL_INDIAN_LANGUAGES = {
+  // Primary languages (most common)
+  'hi': 'hi-IN',  // Hindi
+  'en': 'en-IN',  // English (India)
+  'mr': 'mr-IN',  // Marathi
+  'ta': 'ta-IN',  // Tamil
+  'te': 'te-IN',  // Telugu
+  'bn': 'bn-IN',  // Bengali
+  'gu': 'gu-IN',  // Gujarati
+  'kn': 'kn-IN',  // Kannada
+  'ml': 'ml-IN',  // Malayalam
+  'pa': 'pa-IN',  // Punjabi
+  'or': 'or-IN',  // Odia
+  'as': 'as-IN',  // Assamese
+  'ur': 'ur-IN',  // Urdu
+  
+  // Additional official languages
+  'mai': 'mai-IN', // Maithili
+  'sa': 'sa-IN',   // Sanskrit
+  'ne': 'ne-IN',   // Nepali
+  'sd': 'sd-IN',   // Sindhi
+  'kok': 'kok-IN', // Konkani
+  'doi': 'doi-IN', // Dogri
+  'mni': 'mni-IN', // Manipuri
+  'sat': 'sat-IN', // Santali
+  'ks': 'ks-IN',   // Kashmiri
+  'bo': 'bo-IN',   // Bodo
+  
+  // Regional dialects
+  'bh': 'bh-IN',   // Bhojpuri
+  'raj': 'raj-IN', // Rajasthani
+  'awa': 'awa-IN', // Awadhi
+  'mag': 'mag-IN', // Magahi
+  'hne': 'hne-IN', // Chhattisgarhi
+  'gom': 'gom-IN', // Goan Konkani
 } as const;
 
-// All supported Indian languages
-export const SUPPORTED_LANGUAGES = {
+// Pre-installed voices (shipped with APK)
+export const PREINSTALLED_VOICES = {
   'hi': 'hi-IN',
-  'mr': 'mr-IN',
   'en': 'en-IN',
-  'ta': 'ta-IN',
-  'te': 'te-IN',
-  'kn': 'kn-IN',
-  'pa': 'pa-IN',
-  'gu': 'gu-IN',
-  'bn': 'bn-IN',
-  'ml': 'ml-IN',
-  'or': 'or-IN',
-  'as': 'as-IN',
-  'ur': 'ur-IN'
+  'mr': 'mr-IN',
 } as const;
+
+// Legacy export for backward compatibility
+export const SUPPORTED_LANGUAGES = ALL_INDIAN_LANGUAGES;
 
 interface VoiceInfo {
   name: string;
@@ -36,20 +60,15 @@ interface VoiceInfo {
 
 interface TTSSettings {
   speed: number;
-  selectedVoices: Record<string, string>; // language -> voice name
+  selectedVoices: Record<string, string>;
   autoRead: boolean;
   highlightFullMessage: boolean;
 }
 
 interface TTSState {
-  // Voice availability tracking
   availableVoices: Record<string, VoiceInfo>;
   voicesLoaded: boolean;
-  
-  // Settings
   settings: TTSSettings;
-  
-  // Current playback state
   currentlyPlaying: string | null;
   isPaused: boolean;
   
@@ -84,8 +103,7 @@ export const useTTSStore = create<TTSState>()(
         const voiceMap: Record<string, VoiceInfo> = {};
         
         voices.forEach(voice => {
-          const lang = voice.lang;
-          voiceMap[lang] = {
+          voiceMap[voice.lang] = {
             name: voice.name,
             lang: voice.lang,
             isAvailable: true,
@@ -137,9 +155,9 @@ export const useTTSStore = create<TTSState>()(
       getPreferredVoiceForLanguage: (lang: string) => {
         const state = get();
         const voices = window.speechSynthesis?.getVoices() || [];
-        const targetLang = SUPPORTED_LANGUAGES[lang as keyof typeof SUPPORTED_LANGUAGES] || lang;
+        const targetLang = ALL_INDIAN_LANGUAGES[lang as keyof typeof ALL_INDIAN_LANGUAGES] || lang;
         
-        // Check if user has a preferred voice for this language
+        // Check if user has a preferred voice
         const preferredVoiceName = state.settings.selectedVoices[lang];
         if (preferredVoiceName) {
           const voice = voices.find(v => v.name === preferredVoiceName);
@@ -150,8 +168,8 @@ export const useTTSStore = create<TTSState>()(
         const voiceForLang = voices.find(v => v.lang === targetLang || v.lang.startsWith(lang));
         if (voiceForLang) return voiceForLang;
 
-        // Fallback chain: Hindi -> Marathi -> English-IN -> any Indian voice
-        const fallbackLangs = ['hi-IN', 'mr-IN', 'en-IN'];
+        // Fallback chain: Hindi -> English-IN -> any Indian voice
+        const fallbackLangs = ['hi-IN', 'en-IN', 'mr-IN'];
         for (const fallbackLang of fallbackLangs) {
           const fallbackVoice = voices.find(v => v.lang === fallbackLang);
           if (fallbackVoice) {
@@ -160,12 +178,9 @@ export const useTTSStore = create<TTSState>()(
           }
         }
 
-        // Last resort: any Indian voice (ending with -IN)
+        // Last resort: any Indian voice
         const anyIndianVoice = voices.find(v => v.lang.endsWith('-IN'));
-        if (anyIndianVoice) {
-          console.log(`🔄 [TTS] Using any Indian voice: ${anyIndianVoice.lang} for ${lang}`);
-          return anyIndianVoice;
-        }
+        if (anyIndianVoice) return anyIndianVoice;
 
         return voices[0] || null;
       }
