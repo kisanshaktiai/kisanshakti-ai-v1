@@ -14,3 +14,4 @@ export { VoiceTranscriptOverlay } from './VoiceTranscriptOverlay';
 export { VoiceFocusHighlight, useVoiceFocus } from './VoiceFocusHighlight';
 export { VoiceContextualHints } from './VoiceContextualHints';
 export { UnifiedVoiceOrchestrator } from './UnifiedVoiceOrchestrator';
+export { NativeVoiceButton } from './NativeVoiceButton';
