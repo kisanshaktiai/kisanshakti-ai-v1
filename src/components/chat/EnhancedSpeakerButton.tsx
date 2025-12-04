@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Volume2, VolumeX, Pause, Play, Square, Settings2, Loader2 } from 'lucide-react';
+import { Volume2, VolumeX, Square, Settings2, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAdvancedTextToSpeech } from '@/hooks/useAdvancedTextToSpeech';
 import { useTTSStore } from '@/stores/ttsStore';
@@ -9,7 +9,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { TTSSettingsModal } from './TTSSettingsModal';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { nativeTTSService } from '@/services/nativeTTSService';
 
 interface EnhancedSpeakerButtonProps {
   messageId: string;
@@ -29,26 +28,24 @@ export function EnhancedSpeakerButton({
   className
 }: EnhancedSpeakerButtonProps) {
   const { t } = useTranslation();
-  // Use stable selectors instead of full store object
   const currentlyPlaying = useTTSStore(state => state.currentlyPlaying);
   const setCurrentlyPlaying = useTTSStore(state => state.setCurrentlyPlaying);
-  const setPaused = useTTSStore(state => state.setPaused);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+  
+  // Debounce ref to prevent rapid clicks
+  const lastClickTimeRef = useRef(0);
+  const DEBOUNCE_MS = 300;
 
   const {
     speak,
     stop,
-    pause,
-    resume,
     isSpeaking,
-    isLoading, // NEW: Loading state for instant feedback
-    isPaused,
+    isLoading,
     isSupported,
     currentSentence,
     progress,
     fallbackLanguage,
-    sentences
   } = useAdvancedTextToSpeech({
     language,
     onEnd: () => {
@@ -62,41 +59,53 @@ export function EnhancedSpeakerButton({
     }
   });
 
-  // Stable handlers wrapped in useCallback
-  const handlePlay = React.useCallback(async () => {
-    // Stop any other playing message
-    if (currentlyPlaying && currentlyPlaying !== messageId) {
-      nativeTTSService.stop();
+  // Check if this message is currently active (loading or speaking)
+  const isThisMessageActive = (isSpeaking || isLoading) && currentlyPlaying === messageId;
+
+  // Handle play - with debounce
+  const handlePlay = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastClickTimeRef.current < DEBOUNCE_MS) {
+      console.log('[TTS] Click debounced');
+      return;
     }
+    lastClickTimeRef.current = now;
 
     setCurrentlyPlaying(messageId);
     onPlayStateChange?.(true);
     await speak(content);
-  }, [currentlyPlaying, messageId, setCurrentlyPlaying, onPlayStateChange, speak, content]);
+  }, [messageId, setCurrentlyPlaying, onPlayStateChange, speak, content]);
 
-  const handlePause = React.useCallback(() => {
-    pause();
-    setPaused(true);
-  }, [pause, setPaused]);
+  // Handle stop - with debounce
+  const handleStop = useCallback(() => {
+    const now = Date.now();
+    if (now - lastClickTimeRef.current < DEBOUNCE_MS) {
+      console.log('[TTS] Click debounced');
+      return;
+    }
+    lastClickTimeRef.current = now;
 
-  const handleResume = React.useCallback(() => {
-    resume();
-    setPaused(false);
-  }, [resume, setPaused]);
-
-  const handleStop = React.useCallback(() => {
     stop();
     setCurrentlyPlaying(null);
     onPlayStateChange?.(false);
   }, [stop, setCurrentlyPlaying, onPlayStateChange]);
 
-  // Use ref to track isSpeaking without triggering effects
-  const isSpeakingRef = React.useRef(isSpeaking);
+  // Simple toggle: if playing → stop, if stopped → play
+  const handleToggle = useCallback(() => {
+    if (isThisMessageActive) {
+      handleStop();
+    } else {
+      handlePlay();
+    }
+  }, [isThisMessageActive, handleStop, handlePlay]);
+
+  // Use ref to track state without triggering effects
+  const isSpeakingRef = useRef(isSpeaking);
   React.useEffect(() => {
     isSpeakingRef.current = isSpeaking;
   }, [isSpeaking]);
 
-  // Sync with external playing state - only trigger when actually needed
+  // Sync with external playing state
   React.useEffect(() => {
     if (externalIsPlaying && !isSpeakingRef.current) {
       handlePlay();
@@ -130,13 +139,9 @@ export function EnhancedSpeakerButton({
     );
   }
 
-  // Show as playing when loading OR speaking
-  const isThisMessageActive = (isSpeaking || isLoading) && currentlyPlaying === messageId;
-  const isThisMessagePlaying = isSpeaking && currentlyPlaying === messageId;
-
   return (
     <div className="relative inline-flex items-center gap-1">
-      {/* Main Speaker Button */}
+      {/* Main Speaker Button - Simple Toggle */}
       <motion.div
         onHoverStart={() => setIsHovered(true)}
         onHoverEnd={() => setIsHovered(false)}
@@ -145,20 +150,7 @@ export function EnhancedSpeakerButton({
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => {
-            if (isThisMessageActive) {
-              if (isLoading) {
-                // Cancel if still loading
-                handleStop();
-              } else if (isPaused) {
-                handleResume();
-              } else {
-                handlePause();
-              }
-            } else {
-              handlePlay();
-            }
-          }}
+          onClick={handleToggle}
           className={cn(
             "h-8 w-8 relative hover:bg-muted/50 hover:scale-110 transition-all",
             isThisMessageActive && "text-primary",
@@ -175,26 +167,15 @@ export function EnhancedSpeakerButton({
               >
                 <Loader2 className="h-4 w-4 animate-spin" />
               </motion.div>
-            ) : isThisMessagePlaying ? (
-              isPaused ? (
-                <motion.div
-                  key="play"
-                  initial={{ scale: 0, rotate: -90 }}
-                  animate={{ scale: 1, rotate: 0 }}
-                  exit={{ scale: 0, rotate: 90 }}
-                >
-                  <Play className="h-4 w-4 fill-current" />
-                </motion.div>
-              ) : (
-                <motion.div
-                  key="pause"
-                  initial={{ scale: 0, rotate: 90 }}
-                  animate={{ scale: 1, rotate: 0 }}
-                  exit={{ scale: 0, rotate: -90 }}
-                >
-                  <Pause className="h-4 w-4 fill-current animate-pulse" />
-                </motion.div>
-              )
+            ) : isThisMessageActive ? (
+              <motion.div
+                key="stop"
+                initial={{ scale: 0, rotate: 90 }}
+                animate={{ scale: 1, rotate: 0 }}
+                exit={{ scale: 0, rotate: -90 }}
+              >
+                <Square className="h-4 w-4 fill-current" />
+              </motion.div>
             ) : (
               <motion.div
                 key="speaker"
@@ -208,7 +189,7 @@ export function EnhancedSpeakerButton({
           </AnimatePresence>
 
           {/* Pulse animation when playing or loading */}
-          {isThisMessageActive && !isPaused && (
+          {isThisMessageActive && (
             <motion.div
               className="absolute inset-0 rounded-md bg-primary/20 -z-10"
               animate={{
@@ -225,7 +206,7 @@ export function EnhancedSpeakerButton({
         </Button>
       </motion.div>
 
-      {/* Additional Controls (Stop & Settings) - Show when playing or hovered */}
+      {/* Settings Button - Show when hovered or active */}
       <AnimatePresence>
         {(isThisMessageActive || isHovered) && (
           <motion.div
@@ -235,19 +216,6 @@ export function EnhancedSpeakerButton({
             transition={{ duration: 0.2 }}
             className="flex items-center gap-1"
           >
-            {/* Stop Button */}
-            {isThisMessageActive && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleStop}
-                className="h-7 w-7 hover:bg-destructive/10 hover:text-destructive transition-all"
-                title={t('chat.tts.stop', 'Stop')}
-              >
-                <Square className="h-3.5 w-3.5" />
-              </Button>
-            )}
-
             {/* Settings Button */}
             <Button
               variant="ghost"
@@ -264,7 +232,7 @@ export function EnhancedSpeakerButton({
 
       {/* Progress Bar */}
       <AnimatePresence>
-        {isThisMessagePlaying && (
+        {isThisMessageActive && isSpeaking && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -278,7 +246,7 @@ export function EnhancedSpeakerButton({
 
       {/* Fallback Language Badge */}
       <AnimatePresence>
-        {isThisMessagePlaying && fallbackLanguage && (
+        {isThisMessageActive && isSpeaking && fallbackLanguage && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -300,8 +268,8 @@ export function EnhancedSpeakerButton({
         currentLanguage={language}
       />
 
-      {/* Sentence Highlighting Overlay (renders in parent context) */}
-      {isThisMessagePlaying && currentSentence >= 0 && (
+      {/* Sentence Highlighting Overlay */}
+      {isThisMessageActive && isSpeaking && currentSentence >= 0 && (
         <style>
           {`
             [data-message-id="${messageId}"] [data-sentence="${currentSentence}"] {

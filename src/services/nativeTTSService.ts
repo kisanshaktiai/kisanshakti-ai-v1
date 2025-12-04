@@ -100,6 +100,7 @@ class NativeTTSService {
   private currentCallbacks: TTSCallbacks = {};
   private supportedLanguages: string[] = [];
   private initPromise: Promise<void> | null = null;
+  private isStopping = false;
 
   constructor() {
     this.initPromise = this.initNativeTTS();
@@ -215,15 +216,22 @@ class NativeTTSService {
 
     await this.ensureInitialized();
 
-    // Generate new request ID and stop current playback
+    // Generate new request ID
     const requestId = ++this.currentRequestId;
-    this.stop();
+    
+    // Stop any current playback with a small delay to prevent race conditions
+    if (this.isPlaying) {
+      this.stop();
+      // Small delay to allow stop to complete
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
     
     this.currentCallbacks = callbacks;
     const langInfo = this.getLanguageCode(language);
     const { rate = 1.0, pitch = 1.0, volume = 1.0 } = config;
 
     console.log(`[NativeTTS] 🎤 Starting speech:`, {
+      requestId,
       requested: language,
       using: langInfo.code,
       isFallback: langInfo.isFallback,
@@ -247,6 +255,7 @@ class NativeTTSService {
     try {
       // Call onStart immediately for instant UI feedback
       this.isPlaying = true;
+      this.isStopping = false;
       callbacks.onStart?.();
 
       // Speak using native TTS
@@ -259,8 +268,8 @@ class NativeTTSService {
         category: 'ambient', // Allow mixing with other audio
       });
 
-      // Check if this request is still valid
-      if (requestId === this.currentRequestId) {
+      // Check if this request is still valid and wasn't stopped
+      if (requestId === this.currentRequestId && !this.isStopping) {
         this.isPlaying = false;
         callbacks.onEnd?.();
         console.log('[NativeTTS] ✅ Speech completed successfully');
@@ -275,8 +284,29 @@ class NativeTTSService {
       };
 
     } catch (error) {
-      this.isPlaying = false;
       const errorMsg = error instanceof Error ? error.message : String(error);
+      
+      // Check if this was an intentional stop (interrupted)
+      const isInterrupted = 
+        this.isStopping ||
+        errorMsg.toLowerCase().includes('interrupt') ||
+        errorMsg.toLowerCase().includes('cancel') ||
+        errorMsg.toLowerCase().includes('aborted');
+      
+      if (isInterrupted) {
+        console.log('[NativeTTS] Speech interrupted (expected)');
+        // Don't call onError for intentional interruptions
+        this.isPlaying = false;
+        return { 
+          success: true, // Consider interruption as "successful stop"
+          provider: 'native',
+          startTime: performance.now() - startTime,
+          requestedLanguage: language,
+          usedLanguage: langInfo.code
+        };
+      }
+      
+      this.isPlaying = false;
       console.error('[NativeTTS] ❌ Speak error:', errorMsg);
       
       if (requestId === this.currentRequestId) {
@@ -298,10 +328,13 @@ class NativeTTSService {
    * Stop current playback
    */
   stop(): void {
+    console.log('[NativeTTS] Stop requested');
+    this.isStopping = true;
+    this.currentRequestId++; // Invalidate any pending callbacks
+    
     if (this.nativeTTS) {
       try {
         this.nativeTTS.stop();
-        console.log('[NativeTTS] Stopped playback');
       } catch (e) {
         // Ignore stop errors
       }
