@@ -43,9 +43,15 @@ export function useAdvancedTextToSpeech({
   // Speak with sentence-by-sentence progress
   const speak = useCallback(async (text: string) => {
     if (!text.trim()) return;
+    
+    // Prevent multiple concurrent calls
+    if (isSpeaking) {
+      console.log('[AdvancedTTS] Already speaking, stopping first');
+      universalTTSService.stop();
+      setIsSpeaking(false);
+    }
 
     try {
-      universalTTSService.stop();
       isStoppedRef.current = false;
 
       const sentences = splitIntoSentences(text);
