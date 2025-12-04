@@ -44,12 +44,8 @@ export function useAdvancedTextToSpeech({
   const speak = useCallback(async (text: string) => {
     if (!text.trim()) return;
     
-    // Prevent multiple concurrent calls
-    if (isSpeaking) {
-      console.log('[AdvancedTTS] Already speaking, stopping first');
-      universalTTSService.stop();
-      setIsSpeaking(false);
-    }
+    // Don't call stop() here - the service's speak() handles stopping internally
+    // Calling stop() here would cause a race condition with the request ID
 
     try {
       isStoppedRef.current = false;
