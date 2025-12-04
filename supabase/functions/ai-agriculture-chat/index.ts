@@ -13,6 +13,8 @@ import { buildOptimizedSystemPrompt, estimatePromptTokens } from './prompts/prom
 import { detectQueryType } from './prompts/query-prompts.ts';
 import { compressConversationMemory, buildOptimizedMessages, estimateTotalTokens } from './memory/conversation-compressor.ts';
 import { buildSmartContext, estimateContextTokens } from './smart-context-builder.ts';
+// ============= RURAL LANGUAGE POST-PROCESSING =============
+import { localizeResponse } from './response-localizer.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

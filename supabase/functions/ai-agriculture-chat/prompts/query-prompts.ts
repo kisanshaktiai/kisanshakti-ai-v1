@@ -49,40 +49,60 @@ Include: kg/acre, timing, method, ₹ cost`
   },
 
   pest: {
-    hi: `🐛 कीट/रोग प्रबंधन:
-- पहले जैविक नियंत्रण (नीम, जीवामृत)
-- रासायनिक: सही समय, सही मात्रा
-- IPM (एकीकृत कीट प्रबंधन) अपनाएं
-- PHI (प्री-हार्वेस्ट इंटरवल) का पालन करें
-दवाई: नाम, मात्रा/लीटर, छिड़काव समय
-खर्च: ₹ प्रति एकड़`,
-    mr: `🐛 कीड/रोग व्यवस्थापन:
-- आधी जैविक नियंत्रण (निंबोळी, जीवामृत)
-- रासायनिक: योग्य वेळ, योग्य प्रमाण
-- IPM अवलंबा
-औषध: नाव, प्रमाण/लिटर, फवारणी वेळ`,
-    en: `🐛 Pest/Disease management:
-- First try organic (neem, jeevamrut)
-- Chemical: right time, right dose
-- Follow IPM approach
-Include: medicine name, dose/litre, spray timing, ₹ cost`
+    hi: `🐛 कीड़ा/बीमारी का इलाज:
+- पहले देशी तरीका (नीम का पानी, गोमूत्र)
+- दुकान की दवा: सही वक्त, सही मात्रा
+- एक साथ कई तरीके अपनाओ (IPM)
+दवाई: नाम, कितनी/लीटर, कब छिड़को
+खर्चा: ₹ प्रति एकड़
+
+📸 जरूरी: फोटो खींचकर दिखाओ इस ऐप से!
+मैं देखकर बताऊंगा नक्की कौनसा कीड़ा/बीमारी है और कौनसी दवा लगेगी।
+[InstaScan से फोटो लो - अचूक पहचान मिलेगी]`,
+    mr: `🐛 कीड/रोग कसा घालवायचा:
+- आधी देशी उपाय (निंबोळी पाणी, गोमूत्र)
+- दुकानाची दवा: योग्य वेळ, योग्य प्रमाण
+- एकत्र अनेक उपाय करा (IPM)
+औषध: नाव, किती/लिटर, कधी फवारायचं
+खर्च: ₹ प्रति एकर
+
+📸 महत्त्वाचं: पानाचा/पिकाचा फोटो काढा या अॅपमधून!
+मी बघून सांगतो नक्की काय झालंय आणि कोणतं औषध लागेल।
+[InstaScan ने फोटो घ्या - अचूक ओळख मिळेल]`,
+    en: `🐛 How to fix pest/disease:
+- First try desi methods (neem water, cow urine)
+- Shop medicine: right time, right amount
+- Use multiple methods together (IPM)
+Medicine: name, how much/litre, when to spray
+Cost: ₹ per acre
+
+📸 Important: Take a photo with this app!
+I'll see and tell you exactly which pest/disease it is and which medicine to use.
+[Use InstaScan for accurate identification]`
   },
 
   health: {
-    hi: `🌿 फसल स्वास्थ्य:
-- NDVI मान से स्वास्थ्य आंकलन
-- पोषक तत्व कमी के लक्षण पहचानें
-- सुधारात्मक कदम तुरंत बताएं
-उपज प्रभाव: % वृद्धि/कमी अनुमान`,
-    mr: `🌿 पीक आरोग्य:
-- NDVI वरून आरोग्य मूल्यांकन
-- पोषक तत्व कमतरतेची लक्षणे ओळखा
-उत्पादन प्रभाव: % वाढ/घट अंदाज`,
-    en: `🌿 Crop health:
-- NDVI-based health assessment
-- Identify nutrient deficiency symptoms
-- Immediate corrective measures
-Include: yield impact % estimate`
+    hi: `🌿 पिकाची तबियत कैसी है:
+- सेटेलाइट (NDVI) से देखो पीक कैसा है
+- पत्ते पीले/भूरे हो तो खाद की कमी
+- तुरंत इलाज बताओ
+पैदावार पर असर: कितना % फर्क पड़ेगा
+
+📸 टिप: पीले/खराब पत्ते का फोटो खींचो इस ऐप से - देखकर बताऊंगा क्या कमी है!`,
+    mr: `🌿 पिकाची तब्येत कशी आहे:
+- सॅटेलाइट (NDVI) वरून बघा पीक कसं आहे
+- पान पिवळं/तपकिरी झालं तर खताची कमतरता
+- लगेच इलाज सांगा
+उत्पादनावर परिणाम: किती % फरक पडेल
+
+📸 टिप: पिवळं/खराब पान फोटो काढा या अॅपमधून - बघून सांगतो काय कमी आहे!`,
+    en: `🌿 How is crop health:
+- Check from satellite (NDVI) how crop is doing
+- Yellow/brown leaves means nutrient deficiency
+- Give immediate treatment
+Yield impact: how much % difference
+
+📸 Tip: Take photo of yellow/damaged leaf with this app - I'll tell you what's missing!`
   },
 
   market: {
