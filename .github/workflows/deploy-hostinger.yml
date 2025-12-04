@@ -133,12 +133,37 @@ jobs:
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
 
-          # If no capacitor config file exists, run init. Otherwise skip.
+          # If no capacitor config file exists, run init (kept for compatibility)
           if ! ls capacitor.config.* >/dev/null 2>&1; then
             echo "No capacitor.config.* found — running npx cap init"
-            npx cap init "KisanShakti" "com.kisanshakti.app" --web-dir=dist
+            npx cap init "KisanShakti AI" "com.kisanshaktiAi.app" --web-dir=dist
           else
-            echo "Found capacitor.config.* — skipping npx cap init"
+            echo "Found capacitor.config.* — will validate appId"
+          fi
+
+          # Try to extract appId from any capacitor.config.* (works for simple cases)
+          APP_ID=""
+          if grep -q "appId" capacitor.config.* 2>/dev/null; then
+            APP_ID=$(grep -oP 'appId\s*[:=]\s*["'"'"']\K[^"'"'"']+' capacitor.config.* 2>/dev/null | head -n1 || true)
+          fi
+
+          # Validate appId against required pattern: ^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$
+          VALID_REGEX='^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$'
+          if [ -z "$APP_ID" ] || ! echo "$APP_ID" | grep -Eq "$VALID_REGEX"; then
+            echo "Invalid or missing App ID detected: '${APP_ID:-<none>}'"
+            echo "Creating a temporary capacitor.config.json with a valid appId..."
+
+            cat > capacitor.config.json <<'EOF'
+          {
+            "appId": "com.kisanshaktiAi.app",
+            "appName": "KisanShakti AI",
+            "webDir": "dist"
+          }
+          EOF
+
+            echo "Wrote capacitor.config.json (overrides invalid config for CI run)."
+          else
+            echo "Valid App ID found: $APP_ID — using existing config."
           fi
 
           # Only add android platform if not present
@@ -152,6 +177,7 @@ jobs:
           # Always sync/copy to ensure native project has latest web assets
           npx cap sync android
           npx cap copy android
+
 
 
       - name: 🔨 Build Debug APK
