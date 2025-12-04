@@ -27,6 +27,7 @@ class UniversalTTSService {
   private currentAudio: HTMLAudioElement | null = null;
   private isPlaying = false;
   private nativeTTS: any = null;
+  private currentRequestId: number = 0; // Track current request to prevent race conditions
 
   constructor() {
     this.initNativeTTS();
@@ -54,32 +55,43 @@ class UniversalTTSService {
       return { success: false, provider: 'none', error: 'No text provided' };
     }
 
-    // Stop any current playback
+    // Generate new request ID and stop any current playback
+    const requestId = ++this.currentRequestId;
     this.stop();
 
     try {
-      onStart?.();
-
       // Try Cloud TTS first (best quality for Indian languages)
-      const cloudResult = await this.speakWithCloud(text, language);
+      const cloudResult = await this.speakWithCloud(text, language, requestId);
+      
+      // Check if this request is still valid (not superseded by another)
+      if (requestId !== this.currentRequestId) {
+        console.log('[UniversalTTS] Request cancelled (superseded)');
+        return { success: false, provider: 'none', error: 'Request cancelled' };
+      }
+
       if (cloudResult.success) {
+        onStart?.();
         this.waitForAudioEnd(onEnd);
         return cloudResult;
       }
 
       // Try Native TTS (for APK)
-      if (this.nativeTTS) {
+      if (this.nativeTTS && requestId === this.currentRequestId) {
         const nativeResult = await this.speakWithNative(text, language, rate);
         if (nativeResult.success) {
+          onStart?.();
           onEnd?.();
           return nativeResult;
         }
       }
 
       // Fallback to Web Speech API
-      const webResult = await this.speakWithWebAPI(text, language, rate, onEnd);
-      if (webResult.success) {
-        return webResult;
+      if (requestId === this.currentRequestId) {
+        onStart?.();
+        const webResult = await this.speakWithWebAPI(text, language, rate, onEnd);
+        if (webResult.success) {
+          return webResult;
+        }
       }
 
       throw new Error('All TTS providers failed');
@@ -94,13 +106,19 @@ class UniversalTTSService {
   /**
    * Cloud TTS using our edge function (Google/OpenAI)
    */
-  private async speakWithCloud(text: string, language: string): Promise<TTSResult> {
+  private async speakWithCloud(text: string, language: string, requestId: number): Promise<TTSResult> {
     try {
       console.log('[UniversalTTS] Trying Cloud TTS...');
       
       const { data, error } = await supabase.functions.invoke('text-to-speech', {
         body: { text, language }
       });
+
+      // Check if request is still valid before playing
+      if (requestId !== this.currentRequestId) {
+        console.log('[UniversalTTS] Cloud TTS response ignored (superseded)');
+        return { success: false, provider: 'cloud', error: 'Request superseded' };
+      }
 
       if (error) {
         console.warn('[UniversalTTS] Cloud TTS error:', error);
@@ -109,6 +127,12 @@ class UniversalTTSService {
 
       if (!data?.audioContent) {
         return { success: false, provider: 'cloud', error: 'No audio returned' };
+      }
+
+      // Stop any existing audio before creating new one
+      if (this.currentAudio) {
+        this.currentAudio.pause();
+        this.currentAudio = null;
       }
 
       // Play the audio
@@ -143,7 +167,6 @@ class UniversalTTSService {
 
       console.log('[UniversalTTS] Trying Native TTS...');
       
-      // Map language code to BCP-47 format
       const langCode = this.mapLanguageCode(language);
       
       await this.nativeTTS.speak({
@@ -178,6 +201,9 @@ class UniversalTTSService {
         return;
       }
 
+      // Cancel any existing speech first
+      window.speechSynthesis.cancel();
+
       console.log('[UniversalTTS] Trying Web Speech API...');
 
       const utterance = new SpeechSynthesisUtterance(text);
@@ -185,7 +211,6 @@ class UniversalTTSService {
       utterance.rate = rate;
       utterance.pitch = 1.0;
 
-      // Find best voice for language
       const voices = window.speechSynthesis.getVoices();
       const matchingVoice = voices.find(v => v.lang.startsWith(language.split('-')[0]));
       if (matchingVoice) {
@@ -214,6 +239,9 @@ class UniversalTTSService {
    * Stop current playback
    */
   stop(): void {
+    // Increment request ID to invalidate any pending requests
+    this.currentRequestId++;
+
     // Stop audio element
     if (this.currentAudio) {
       this.currentAudio.pause();
