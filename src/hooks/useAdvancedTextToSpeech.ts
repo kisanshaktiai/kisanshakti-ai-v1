@@ -14,6 +14,7 @@ export function useAdvancedTextToSpeech({
   onError 
 }: UseAdvancedTextToSpeechProps) {
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isLoading, setIsLoading] = useState(false); // NEW: Loading state for instant feedback
   const [isPaused, setIsPaused] = useState(false);
   const [isSupported] = useState(true); // Universal TTS always supported
   const [currentSentence, setCurrentSentence] = useState<number>(-1);
@@ -55,15 +56,19 @@ export function useAdvancedTextToSpeech({
       currentIndexRef.current = 0;
       setProgress(0);
       setCurrentSentence(0);
+      
+      // INSTANT: Set loading and speaking state immediately
+      setIsLoading(true);
       setIsSpeaking(true);
 
-      // For cloud TTS, speak all at once (better quality)
       // Track progress based on estimated timing
       const result = await universalTTSService.speak({
         text,
         language,
         rate: settings.speed,
         onStart: () => {
+          // Audio is now actually playing - remove loading state
+          setIsLoading(false);
           setIsSpeaking(true);
           setCurrentSentence(0);
           
@@ -86,6 +91,7 @@ export function useAdvancedTextToSpeech({
         },
         onEnd: () => {
           setIsSpeaking(false);
+          setIsLoading(false);
           setCurrentSentence(-1);
           setProgress(100);
           onEnd?.();
@@ -93,6 +99,7 @@ export function useAdvancedTextToSpeech({
         onError: (err) => {
           console.error('[AdvancedTTS] Error:', err);
           setIsSpeaking(false);
+          setIsLoading(false);
           onError?.(err.message || 'Speech synthesis failed');
         }
       });
@@ -116,6 +123,7 @@ export function useAdvancedTextToSpeech({
       console.error('[AdvancedTTS] Error in speak:', error);
       onError?.('Failed to start speech');
       setIsSpeaking(false);
+      setIsLoading(false);
     }
   }, [language, splitIntoSentences, settings.speed, onEnd, onError]);
 
@@ -123,6 +131,7 @@ export function useAdvancedTextToSpeech({
     isStoppedRef.current = true;
     universalTTSService.stop();
     setIsSpeaking(false);
+    setIsLoading(false);
     setIsPaused(false);
     setCurrentSentence(-1);
     setProgress(0);
@@ -153,6 +162,7 @@ export function useAdvancedTextToSpeech({
     pause,
     resume,
     isSpeaking,
+    isLoading, // NEW: Expose loading state
     isPaused,
     isSupported,
     currentSentence,
