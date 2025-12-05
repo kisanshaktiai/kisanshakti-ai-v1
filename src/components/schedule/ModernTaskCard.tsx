@@ -135,6 +135,12 @@ export default function ModernTaskCard({
   const isCompleted = task.status === 'completed';
   const isPending = task.status === 'pending';
   const taskDate = new Date(task.task_date);
+  
+  // Extract data from resources JSON if available
+  const precautions = task.precautions || task.resources?.precautions || [];
+  const idealWeather = task.ideal_weather || task.resources?.ideal_weather;
+  const icarGuideline = task.icar_guideline || task.resources?.icar_guideline;
+  const climateRisk = task.climate_risk || task.resources?.climate_risk;
 
   const getDateLabel = () => {
     if (isToday(taskDate)) return { text: t('schedule.task_card.today'), color: 'text-primary' };
@@ -253,7 +259,7 @@ export default function ModernTaskCard({
                   <span className="text-[10px] text-blue-600 dark:text-blue-400">{t('schedule.task_card.weather')}</span>
                 </div>
               )}
-              {task.climate_risk && (
+              {climateRisk && (
                 <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-orange-500/10 border border-orange-500/20">
                   <AlertTriangle className="h-3 w-3 text-orange-500" />
                   <span className="text-[10px] text-orange-600 dark:text-orange-400">⚠️</span>
@@ -262,10 +268,10 @@ export default function ModernTaskCard({
             </div>
 
             {/* Precautions Preview (if available) */}
-            {task.precautions && task.precautions.length > 0 && (
+            {precautions && precautions.length > 0 && (
               <div className="flex items-center gap-1 text-xs text-warning">
                 <Shield className="h-3 w-3" />
-                <span className="line-clamp-1">{task.precautions[0]}</span>
+                <span className="line-clamp-1">{precautions[0]}</span>
               </div>
             )}
 
@@ -330,24 +336,24 @@ export default function ModernTaskCard({
             )}
 
             {/* ICAR Guideline Reference */}
-            {task.icar_guideline && (
+            {icarGuideline && (
               <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
                 <h4 className="text-sm font-medium mb-2 flex items-center gap-2 text-blue-600 dark:text-blue-400">
                   <BookOpen className="h-4 w-4" />
                   ICAR शिफारस
                 </h4>
-                <p className="text-sm text-muted-foreground">{task.icar_guideline}</p>
+                <p className="text-sm text-muted-foreground">{icarGuideline}</p>
               </div>
             )}
 
             {/* Climate Risk Alert */}
-            {task.climate_risk && (
+            {climateRisk && (
               <div className="p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
                 <h4 className="text-sm font-medium mb-2 flex items-center gap-2 text-orange-600 dark:text-orange-400">
                   <AlertTriangle className="h-4 w-4" />
                   हवामान जोखीम
                 </h4>
-                <p className="text-sm text-muted-foreground">{task.climate_risk}</p>
+                <p className="text-sm text-muted-foreground">{climateRisk}</p>
               </div>
             )}
 
@@ -362,14 +368,14 @@ export default function ModernTaskCard({
               </div>
             )}
 
-            {task.precautions && task.precautions.length > 0 && (
+            {precautions && precautions.length > 0 && (
               <div className="p-3 rounded-lg bg-warning/5 border border-warning/20">
                 <h4 className="text-sm font-medium mb-2 flex items-center gap-2 text-warning">
                   <Shield className="h-4 w-4" />
                   {t('schedule.task_card.precautions')}
                 </h4>
                 <ul className="list-disc list-inside space-y-1">
-                  {task.precautions.map((precaution: string, index: number) => (
+                  {precautions.map((precaution: string, index: number) => (
                     <li key={index} className="text-sm text-muted-foreground">{precaution}</li>
                   ))}
                 </ul>
@@ -390,28 +396,28 @@ export default function ModernTaskCard({
               </div>
             )}
 
-            {task.ideal_weather && (
+            {idealWeather && (
               <div>
                 <h4 className="text-sm font-medium mb-2 flex items-center gap-2">
                   <Thermometer className="h-4 w-4 text-info" />
                   {t('schedule.task_card.ideal_weather')}
                 </h4>
                 <div className="grid grid-cols-2 gap-2 text-sm">
-                  {task.ideal_weather.temperature && (
+                  {idealWeather.temperature && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t('schedule.task_card.temperature')}:</span>
-                      <span>{task.ideal_weather.temperature}°C</span>
+                      <span>{idealWeather.temperature}°C</span>
                     </div>
                   )}
-                  {task.ideal_weather.humidity && (
+                  {idealWeather.humidity && (
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">{t('schedule.task_card.humidity')}:</span>
-                      <span>{task.ideal_weather.humidity}%</span>
+                      <span>{idealWeather.humidity}%</span>
                     </div>
                   )}
-                  {task.ideal_weather.conditions && (
+                  {idealWeather.conditions && (
                     <div className="col-span-2">
-                      <span className="text-muted-foreground">{t('schedule.task_card.conditions')}:</span> {task.ideal_weather.conditions}
+                      <span className="text-muted-foreground">{t('schedule.task_card.conditions')}:</span> {idealWeather.conditions}
                     </div>
                   )}
                 </div>
