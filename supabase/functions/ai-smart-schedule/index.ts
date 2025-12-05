@@ -43,6 +43,9 @@ serve(async (req) => {
     }
     
     const { landId, cropName, cropVariety, sowingDate, isReadyMadePlant = false, weather, regenerate, language = 'hi', country = 'India' } = await req.json();
+    
+    // Log received language for debugging
+    console.log('🌐 [AI-Schedule] Received language parameter:', language);
 
     // Rate limiting: 30 requests per minute per farmer
     const rateLimitKey = `${tenantId}:${farmerId}`;
@@ -132,6 +135,12 @@ serve(async (req) => {
     const region = regionalData[land.state] || { season: 'Monsoon', crop: 'Mixed', zone: 'Local' };
     const currency = country === 'India' ? '₹' : '$';
     const languageName = languageMap[language] || 'Hindi';
+    
+    console.log('🌐 [AI-Schedule] Language config:', { 
+      receivedLanguage: language, 
+      resolvedLanguageName: languageName,
+      isEnglish: language === 'en'
+    });
 
     // 5. Build Comprehensive Context-Aware Prompt with NDVI, Guidelines, NPK
     // Strong multi-language enforcement

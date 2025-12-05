@@ -159,7 +159,15 @@ export default function Schedule() {
 
       console.log('Fetched real weather data for AI:', weatherData);
 
-      // Call the updated ai-smart-schedule edge function with user's preferred language
+      // Call the updated ai-smart-schedule edge function with user's current app language
+      // Priority: currentLanguage (from language store/UI) > user.preferredLanguage > 'hi' (default)
+      const scheduleLanguage = currentLanguage || user?.preferredLanguage || 'hi';
+      console.log('🌐 [Schedule] Generating schedule in language:', scheduleLanguage, {
+        currentLanguage,
+        userPreferredLanguage: user?.preferredLanguage,
+        userLanguage: user?.language
+      });
+      
       const response = await supabase.functions.invoke('ai-smart-schedule', {
         body: {
           landId: selectedLand.id,
@@ -169,7 +177,7 @@ export default function Schedule() {
           isReadyMadePlant: isReadyMadePlant || false,
           weather: weatherData,
           regenerate: true,
-          language: user?.preferredLanguage || currentLanguage || 'en',
+          language: scheduleLanguage,
           country: 'India',
         },
         headers: {
