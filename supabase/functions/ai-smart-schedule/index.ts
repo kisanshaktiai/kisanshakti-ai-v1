@@ -703,11 +703,7 @@ ${climateAlerts.map(a => `• ${a}`).join('\n')}
         } : null,
         pgr_hormone_ml: scheduleData.pgr_hormone_ml || null,
         
-        // ICAR & Climate info
-        icar_reference: scheduleData.icar_reference || icarCropData?.icar_reference || null,
-        climate_alerts: scheduleData.climate_alerts || climateAlerts,
-        expected_pests: scheduleData.expected_pests || icarCropData?.common_pests || null,
-        expected_diseases: scheduleData.expected_diseases || icarCropData?.common_diseases || null,
+        // ICAR & Climate info stored in generation_params (columns don't exist in schema)
         
         // Product recommendations (to be populated from product_categories)
         recommended_products: {
@@ -745,6 +741,11 @@ ${climateAlerts.map(a => `• ${a}`).join('\n')}
           scheduleData,
           region: region,
           generated_at: new Date().toISOString(),
+          // ICAR & Climate info stored here
+          icar_reference: scheduleData.icar_reference || icarCropData?.icar_reference || null,
+          climate_alerts: scheduleData.climate_alerts || climateAlerts,
+          expected_pests: scheduleData.expected_pests || icarCropData?.common_pests || null,
+          expected_diseases: scheduleData.expected_diseases || icarCropData?.common_diseases || null,
           calculations: {
             seed_kg: scheduleData.seed_quantity_kg,
             water_liters: scheduleData.total_water_requirement_liters,
