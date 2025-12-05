@@ -214,7 +214,9 @@
       "task": "task",
       "tasks": "tasks",
       "ai_adjusted": "AI Adjusted",
-      "done": "Done"
+      "done": "Done",
+      "today": "Today",
+      "tomorrow": "Tomorrow"
     },
     "dialog": {
       "task_details": "Task Details",
