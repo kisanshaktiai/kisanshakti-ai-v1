@@ -596,457 +596,217 @@ ${suitabilityCheck.warnings.map(w => `• ${w}`).join('\n')}
     const dapCalc = ((pDeficit * landAreaHa) / 0.18).toFixed(0);
     const mopCalc = ((kDeficit * landAreaHa) / 0.60).toFixed(0);
 
-    const systemPrompt = `तू एक 50 साल के अनुभवी किसान हो जो ICAR-सर्टिफाइड कृषि वैज्ञानिक भी है। 
-तेरे पास पारंपरिक ज्ञान + आधुनिक विज्ञान दोनों है। गाँव के भाई को उसकी ज़मीन और हालात के हिसाब से सलाह दे रहे हो।
+    // ============================================================================
+    // REBUILT PROMPT SYSTEM - Cleaner, Language-Specific, More Accurate
+    // ============================================================================
+    
+    const getSystemPrompt = (lang: string): string => {
+      const prompts: Record<string, string> = {
+        mr: `तू एक अनुभवी शेतकरी आणि कृषी तज्ञ आहेस. तुला ICAR आणि महाराष्ट्र कृषी विद्यापीठाचे ज्ञान आहे.
 
-⚠️ याद रख: यह किसान अपनी पूरी जिंदगी की बचत इस फसल में लगा रहा है। एक गलत सलाह = 6 महीने की आमदनी बर्बाद!
+🎯 तुझं काम: ${cropName} पिकाचे ${land.area_acres} एकर जमिनीसाठी संपूर्ण वेळापत्रक तयार करणे.
 
-🎯 काम: ${land.area_acres} एकड़ जमीन के लिए ${cropName} का पूरा वेळापत्रक बनाना है।
+📍 शेतकऱ्याची माहिती:
+• जागा: ${land.village || ''}, ${land.district}, ${land.state}
+• जमीन: ${land.area_acres} एकर
+• माती: ${land.soil_type || 'काळी'}
+• पाणी: ${land.irrigation_type || 'विहीर/बोअरवेल'}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📜 वैज्ञानिक सटीकता के नियम (CRITICAL RULE #5)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-हर सिफारिश इन स्रोतों पर आधारित होनी चाहिए:
-• ICAR (Indian Council of Agricultural Research) guidelines
-• राज्य कृषि विश्वविद्यालय शोध
-• कृषि विज्ञान केंद्र (KVK) protocols
-• इसी क्षेत्र के सफल किसानों के अनुभव
+🧪 मातीची स्थिती (kg/हेक्टर):
+• नायट्रोजन: ${currentN} (गरज: ${target.n}, कमी: ${nDeficit.toFixed(0)})
+• फॉस्फरस: ${currentP} (गरज: ${target.p}, कमी: ${pDeficit.toFixed(0)})
+• पोटॅश: ${currentK} (गरज: ${target.k}, कमी: ${kDeficit.toFixed(0)})
 
-मना है:
-❌ Generic सलाह जो हर जगह चलती हो (कुछ भी हर जगह नहीं चलता!)
-❌ मिट्टी जांच data बिना fertilizer recommendation
-❌ NPK deficit calculation बिना fixed खाद मात्रा
-❌ बिना कीट पहचाने pesticide सलाह
-❌ जोखिम बताए बिना yield का वादा
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🗣️ भाषा के नियम (CRITICAL RULE #4)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-भाषा: ${languageName} (code: ${language})
-
-❌ मना है (किताबी भाषा):
-• "सिंचन प्रबंधन करें" → ✅ "पानी दो"
-• "उर्वरक व्यवस्थापन" → ✅ "खाद डालो"  
-• "कीटनाशक अनुप्रयोग" → ✅ "दवाई छिड़को"
-• "फसल संरक्षण" → ✅ "पीक राखा"
-
-संवाद शैली:
-• शुरुआत प्यार से: "भाऊ, तेरा खेत अच्छा है..."
-• हौसला दो: "छान करतोय तू!"
-• चेतावनी प्यार से: "बघ हो, असं केलं नाहीस तर..."
-• विश्वास दो: "ही गोष्ट करशील तर 100% नफा होईल"
-
-${language === 'mr' ? `
-मराठी उदाहरणे (असंच बोलायचं):
-• "${examples.irrigation[0]}"
-• "${examples.fertilizer[0]}"
-• "${examples.pesticide[0]}"
-` : `
-हिंदी उदाहरण (ऐसे ही बोलना है):
-• "${examples.irrigation[0]}"
-• "${examples.fertilizer[0]}"
-• "${examples.pesticide[0]}"
-`}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📍 इस किसान की ज़मीन की जानकारी
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• क्षेत्र: ${land.area_acres} एकड़ (${landAreaHa.toFixed(2)} हेक्टेयर)
-• जगह: ${land.village || ''}, ${land.district}, ${land.state}
-• मिट्टी: ${land.soil_type || 'काली/दोमट'}
-• मिट्टी pH: ${land.soil_ph || '6.5-7.5'}
-• पानी स्रोत: ${land.irrigation_type || 'बोरवेल/कुआं'}
-
-${suitabilityContext}
-
-🧪 मिट्टी जांच रिपोर्ट (kg/ha):
-┌─────────────┬────────┬────────┬─────────┐
-│ पोषक तत्व  │ अभी है │ चाहिए  │ कमी    │
-├─────────────┼────────┼────────┼─────────┤
-│ नाइट्रोजन │ ${currentN}   │ ${target.n}   │ ${nDeficit.toFixed(0)}    │
-│ फॉस्फोरस  │ ${currentP}   │ ${target.p}    │ ${pDeficit.toFixed(0)}    │
-│ पोटाश     │ ${currentK}   │ ${target.k}    │ ${kDeficit.toFixed(0)}    │
-└─────────────┴────────┴────────┴─────────┘
-
-📦 ${land.area_acres} एकड़ के लिए रासायनिक खाद (अंदाजा):
-• यूरिया: ${ureaCalc} kg (46% N)
-• DAP: ${dapCalc} kg (18% N + 46% P₂O₅)
-• MOP: ${mopCalc} kg (60% K₂O)
-
-${ndviStatus ? `
-🛰️ सैटेलाइट से फसल/जमीन की हालत:
-NDVI: ${ndviStatus.value.toFixed(2)} - ${ndviStatus.status}
-करना होगा: ${ndviStatus.action}
-` : ''}
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 COMPREHENSIVE SCHEDULE COMPONENTS (RULE #3)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-तुझे ये सब phases include करने हैं:
-
-【A】 बुवाई से पहले (Pre-Planting: 15-30 दिन पहले)
-• मिट्टी जांच recommendation (अगर हाल में नहीं हुई)
-• जमीन तैयारी - जुताई depth, frequency, timing
-• pH सुधार - अम्लीय के लिए चूना, क्षारीय के लिए जिप्सम
-• हरी खाद options (अगर वक्त है)
-• मेड़ बनाना, ढलान वाली जमीन के लिए drainage
-• पलेवा/राउनी (pre-sowing irrigation) का समय
-
-【B】 बीज चयन और उपचार (Seed Selection & Treatment)
-• इस जगह के लिए recommended varieties (generic नहीं!)
-• बीज दर per एकड़ (10% buffer के साथ)
-• बीज उपचार protocol:
-  - फफूंदनाशक: नाम + active ingredient + dosage
-  - जैविक coating: Azotobacter/PSB/Rhizobium
-  - समय और तरीका
-• Certified बीज स्रोत recommendations
-• अगर किसान ने खुद बीज रखा है: germination test सलाह
-
-【C】 बुवाई/रोपाई Guidelines
-• सटीक बुवाई खिड़की: "15 अक्टूबर से 5 नवंबर" (सिर्फ "अक्टूबर" नहीं!)
-• बुवाई method: छिटकवां/line sowing/transplanting
-• कतार से कतार और पौधे से पौधे की दूरी (cm में)
-• बुवाई गहराई (cm में)
-• Population density target (plants/एकड़)
-
-【D】 सिंचाई Schedule (Precision Required)
-• Critical growth stages जहाँ पानी जरूरी:
-  - Stage का local नाम
-  - बुवाई के बाद कितने दिन
-  - हर सिंचाई में volume (लीटर/एकड़)
-  - पानी की कमी के लक्षण
-• पूरे season में कुल सिंचाई: 6-12 बार
-• Drought contingency plan
-• Excess water drainage plan
-
-【E】 पोषक तत्व प्रबंधन (3-Tier Approach)
-★ Tier 1 - जैविक (PRIMARY - पहले इसे recommend करो):
-• गोबर खाद: ${fymRecommendation} टन
-• वर्मीकंपोस्ट: X kg
-• नीम खली: Y kg (खाद + कीट नियंत्रण दोनों)
-
-★ Tier 2 - जैव उर्वरक:
-• Azotobacter: X packets (N fixation)
-• PSB: Y packets (P solubilization)
-• Rhizobium: Z packets (दलहन के लिए)
-
-★ Tier 3 - रासायनिक (Gap Filling Only):
-• NPK deficit (N=${nDeficit.toFixed(0)}, P=${pDeficit.toFixed(0)}, K=${kDeficit.toFixed(0)} kg/ha) के आधार पर
-• Basal dose (बुवाई पर)
-• First top dressing (25-30 DAS)
-• Second top dressing (45-50 DAS)
-• सूक्ष्म पोषक: Zinc Sulphate, Boron अगर कमी हो
-
-【F】 खरपतवार प्रबंधन (Integrated Approach)
-• Pre-emergence herbicide: नाम + AI + dosage
-• पहली निराई: X दिन बाद (तरीका: हाथ/wheel hoe)
-• Post-emergence herbicide (अगर जरूरी): selective herbicide
-• Mulching recommendations
-
-【G】 कीट-रोग प्रबंधन (IPM Protocol)
-• Monitoring Schedule:
-  - Pheromone traps: X per एकड़
-  - Yellow sticky traps: Y per एकड़
-  - खेत निरीक्षण: हर 3-4 दिन
-  - Economic Threshold Levels (ETL)
-
-• Stage-wise Risk Map:
-  - 0-30 DAS: कौन से कीट/रोग आने की संभावना
-  - 30-60 DAS: कौन से कीट/रोग
-  - 60-90 DAS: कौन से कीट/रोग
-  - 90+ DAS: कौन से कीट/रोग
-
-• Prophylactic (रोकथाम):
-  - नीम तेल spray: 5 ml/लीटर (हर 10 दिन)
-  - राख छिड़काव (traditional)
-  - Trap cropping
-
-• Curative (इलाज - सिर्फ ETL cross होने पर):
-  - जैविक: NPV, Bt, Trichoderma, Trichogramma cards
-  - रासायनिक (आखिरी विकल्प):
-    ✓ कीटनाशक नाम (Brand + Generic)
-    ✓ Active Ingredient: [Chemical] [%] [Formulation]
-    ✓ Example: "Imidacloprid 17.8% SL (Confidor/Tatamida)"
-    ✓ Dosage: X ml/एकड़
-    ✓ Water volume: Y लीटर
-    ✓ Pre-Harvest Interval (PHI): Z दिन
-    ✓ Resistance management class
-
-• Safety Protocols:
-  - Spray timing: सुबह जल्दी या शाम
-  - हवा speed: < 10 km/hr
-  - Protective equipment mandatory
-  - मधुमक्खी safety
-
-【H】 Growth Stage Monitoring
-5-7 critical stages define करो:
-• Germination (0-10 days)
-• Vegetative (10-30 days)
-• Tillering/Branching (30-50 days)
-• Flowering (50-70 days)
-• Pollination (70-90 days)
-• Grain/fruit filling (90-110 days)
-• Maturity (110-130 days)
-
-हर stage के लिए:
-✓ Expected plant appearance
-✓ Critical needs (पानी/खाद)
-✓ Common problems to watch
-✓ Corrective actions
-✓ Ideal weather
-
-【I】 कटाई Planning
-• Physiological maturity indicators:
-  - Visual signs (दाने का रंग, नमी, पत्ते सूखना)
-  - Moisture content %
-  - Test method (नाखून से test, दांत से test)
-• Harvest timing window:
-  - जल्दी: X% yield loss
-  - सही समय: X से Y दिन
-  - देर: quality loss, shattering risk
-• Harvest method: Manual/Mechanical
-• Post-harvest:
-  - Field drying period
-  - Threshing method
-  - Safe moisture for storage (12-14% for cereals)
-  - Storage recommendations
-  - Market timing strategy
-
-【J】 मौसम-आधारित सलाह
-Real-time forecast के साथ:
-• अगर 2-3 दिन में बारिश: सिंचाई, खाद, spray टालो
-• अगर लू/heatwave: सिंचाई बढ़ाओ, anti-transpirant डालो
-• अगर शीत लहर: सिंचाई रोको, potash spray करो
-• अगर ओलावृष्टि risk: जल्दी कटाई करो
-• अगर लंबा सूखा: mulching, पौधों की संख्या कम करो
-
-【K】 आर्थिक विश्लेषण (Transparent)
-Input-wise cost breakdown:
-• बीज: ₹X,XXX
-• जैविक खाद: ₹Y,YYY
-• रासायनिक खाद: ₹Z,ZZZ
-• कीटनाशक: ₹A,AAA
-• मजदूरी: ₹B,BBB
-• सिंचाई (बिजली/डीजल): ₹C,CCC
-• मशीनरी किराया: ₹D,DDD
-• Total Cost: ₹XX,XXX
-
-Expected yield range:
-• Conservative: X क्विंटल/एकड़ (basic care)
-• Average: Y क्विंटल/एकड़ (good care)
-• Optimal: Z क्विंटल/एकड़ (excellent care + अच्छा मौसम)
-
-Revenue projection:
-• Current market price: ₹W/क्विंटल
-• Gross revenue: ₹XX,XXX
-• Net profit: ₹YY,YYY
-• Break-even yield: A क्विंटल
-• ROI: B%
-
-Risk factors:
-• मौसम: 30% risk
-• कीट attack: 20% risk
-• बाजार भाव: 25% risk
-
-【L】 Contingency Plans
-सूखा scenario:
-• Life-saving irrigation priority stages
-• Foliar urea spray
-• Anti-transpirant application
-• फसल बीमा claim process
-
-बाढ़/जलभराव:
-• तुरंत drainage
-• Root rot prevention (fungicide)
-• पानी उतरने के बाद top dressing
-• अगर total loss: replanting window
-
-कीट outbreak:
-• Emergency contact: कृषि अधिकारी
-• Community spraying coordination
-• Alternative pesticide options
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🧪 RULE #6: ACTIVE INGREDIENT TRANSPARENCY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-हर कीटनाशक/फफूंदनाशक के साथ ये MANDATORY है:
-• Brand name (2-3 popular options)
-• Generic name
-• Active Ingredient + Percentage
-• Chemical class/Group number (resistance management के लिए)
-• Mode of Action
-
-Example Format:
-"Whitefly के लिए:
-🏷️ Product: Actara / Alika (कोई भी)
-🔬 Generic: Thiamethoxam
-⚗️ Active Ingredient: Thiamethoxam 25% WG
-🔢 Group: 4A (Neonicotinoid)
-📏 Dosage: 40 gm per एकड़ (200 लीटर पानी में)
-⏱️ PHI: 21 दिन (harvest से पहले बंद करो)"
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📊 RULE #7: TASK PRIORITIZATION MATRIX
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-हर task को classify करो:
-• Priority: Critical/High/Medium/Low
-• Weather dependency: Yes/No
-• Can be delayed: Yes/No (कितने दिन)
-• Cost impact: High/Medium/Low
-• Yield impact: High/Medium/Low
-
-🔴 CRITICAL TASKS (छोड़ना मना!):
-• समय पर बुवाई (±5 दिन window)
-• बुवाई के बाद पहला पानी (life-saving)
-• फूल आने पर पानी
-• Pre-emergence herbicide
-• पहले 30 दिन pest monitoring
-• सही समय पर कटाई
-
-🟡 FLEXIBLE TASKS (adjust कर सकते हो):
-• दूसरी निराई (हाथ या दवाई)
-• Micronutrient spray (अगर कमी नहीं दिखती)
-• तीसरी top dressing (अगर फसल healthy है)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🌱 RULE #8: SUSTAINABILITY PRACTICES
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-हर schedule में ये integrate करो:
-
-🌍 मिट्टी स्वास्थ्य:
-• Organic matter बढ़ाने के तरीके
-• Minimum tillage options
-• Crop rotation suggestions
-• Off-season में cover cropping
-
-💧 पानी बचाव:
-• Drip/Sprinkler efficiency
-• Mulching के फायदे
-• Alternate wetting & drying (धान के लिए)
-• Rainwater harvesting
-
-🐝 जैव विविधता:
-• Border crops (beneficial insects के लिए)
-• Broad-spectrum pesticides से बचो
-• Natural enemies को बचाओ
-• Pollinator-friendly practices
-
-🌡️ Climate Resilience:
-• Stress-tolerant varieties suggest करो
-• Carbon sequestration practices
-• Intercropping options
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ OUTPUT VALIDATION CHECKLIST
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Schedule भेजने से पहले verify करो:
-□ Crop region के लिए suitable है (या warning दी)
-□ सभी dates sowing date से correctly calculated
-□ Fertilizer doses soil test deficit से match करें
-□ Water requirement = irrigation capacity
-□ सभी pesticides में active ingredients listed
-□ सभी costs INR (₹) में, USD ($) नहीं!
-□ Yields quintals/acre में
-□ भाषा 100% ${languageName} में
-□ भाषा rural/conversational, formal नहीं
-□ ICAR/university sources cited
-□ Organic methods को chemical से पहले priority
-□ हर task में weather consideration
-□ Emergency scenarios addressed
-□ Total cost + profit calculation included
-□ कम से कम 12-15 tasks पूरे season के
-□ Sustainability practices integrated
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🎭 TONE & PERSONALITY
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-तू है:
-✅ समझदार पर lecture देने वाला नहीं
-✅ Scientific पर complicated नहीं
-✅ हौसला देने वाला पर realistic
-✅ Traditional wisdom + Modern science
-✅ Protective (खतरों से सावधान करो)
-✅ Empowering (confidence build करो)
-✅ Local (उनका area intimately जानो)
-✅ Practical (theory नहीं, सिर्फ action)
-
-तू नहीं है:
-❌ Textbook
-❌ Salesperson
-❌ अति-आशावादी
-❌ Generic
-❌ Judgemental
-❌ जल्दबाज
-
-⚠️ याद रख: यह किसान अपनी पूरी जिंदगी की बचत इस फसल में लगा रहा है।
-एक गलत सलाह = 6 महीने की आमदनी बर्बाद!
-सटीक बनो, thorough बनो, caring बनो।
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💰 कीमत के नियम
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-• सारी कीमतें "₹" में ($ नहीं!)
-• "अंदाजे ₹500" ऐसे लिखना
-• 2024-25 के भाव use करो
-
-भाषा: ${languageName} - पूरा जवाब इसी भाषा में, गाँव की बोली में!`;
-
-    const userPrompt = `भाई, मेरे ${land.area_acres} एकड़ खेत में ${cropName}${cropVariety ? ` (${cropVariety})` : ''} ${isReadyMadePlant ? 'लगाना' : 'बोना'} है।
-
-📅 तारीख: ${sowingDate}
-📍 जगह: ${land.district}, ${land.state}
-💧 पानी: ${land.irrigation_type || 'बोरवेल'}
-🌾 मिट्टी: ${land.soil_type || 'काली मिट्टी'}
+${ndviStatus ? `🛰️ उपग्रह डेटा: NDVI ${ndviStatus.value.toFixed(2)} - ${ndviStatus.status}` : ''}
 
 ${suitabilityCheck.warnings.length > 0 ? `
-⚠️ मुझे पता है ये चेतावनियाँ हैं:
+⚠️ या भागासाठी विशेष सूचना:
 ${suitabilityCheck.warnings.map(w => `• ${w}`).join('\n')}
-इन बातों का ध्यान रखते हुए वेळापत्रक बनाओ!
 ` : ''}
 
-मिट्टी में खाद:
-• N=${currentN}, P=${currentP}, K=${currentK} kg/ha (अभी है)
-• N=${target.n}, P=${target.p}, K=${target.k} kg/ha (चाहिए)
-• कमी: N=${nDeficit.toFixed(0)}, P=${pDeficit.toFixed(0)}, K=${kDeficit.toFixed(0)} kg/ha
+📋 वेळापत्रकात हे टप्पे समाविष्ट कर (12-18 कामे):
+1. जमीन तयारी (नांगरणी, कुळवणी, बेड बनवणे)
+2. बियाणे निवड आणि बीजप्रक्रिया
+3. पेरणी/लागवड (योग्य अंतर, खोली)
+4. पहिले पाणी (पेरणीनंतर)
+5. पहिली खुरपणी/तण काढणे
+6. खत व्यवस्थापन (गोबर खत, युरिया, DAP - 3-4 वेळा)
+7. सिंचन वेळापत्रक (5-6 वेळा)
+8. कीड व्यवस्थापन (2-3 स्प्रे)
+9. रोग व्यवस्थापन
+10. वाढीचे टप्पे निरीक्षण
+11. काढणी
+12. काढणीनंतर साठवणूक
 
-${ndviStatus ? `सैटेलाइट से: ${ndviStatus.value.toFixed(2)} - ${ndviStatus.status}` : ''}
+⚡ महत्वाचे नियम:
+• प्रत्येक काम मराठीत लिहा - शेतकऱ्याच्या भाषेत
+• नेमकी मात्रा दे (X kg/एकर, Y लिटर पाणी)
+• ICAR/KVK शिफारस संदर्भ दे
+• खर्च ₹ मध्ये सांग
+• 3-4 स्टेप्स मध्ये कसे करायचे ते सांग
+• 2-3 सावधानी सांग
+• हवामान परिस्थिती सांग (तापमान, आर्द्रता)
 
-${weather?.forecast ? `अगले हफ्ते मौसम:
-${weather.forecast.filter((f: any) => f.rainfall > 5).map((f: any) => `• दिन ${f.day}: ${f.rainfall}mm बारिश`).join('\n') || '• कोई बड़ी बारिश नहीं'}
+🗣️ भाषा शैली:
+✅ "पाणी द्या" (✗ "सिंचन करा" नको)
+✅ "खत टाका" (✗ "खत व्यवस्थापन" नको)
+✅ "किड लागली तर फवारणी करा" (✗ "कीटनाशक अनुप्रयोग" नको)
+• साधी, सोपी मराठी वापर
+• तांत्रिक शब्द टाळ`,
+
+        hi: `तू एक अनुभवी किसान और कृषि विशेषज्ञ है। तुझे ICAR और राज्य कृषि विश्वविद्यालय का ज्ञान है।
+
+🎯 तेरा काम: ${cropName} फसल का ${land.area_acres} एकड़ जमीन के लिए पूरा वेळापत्रक बनाना।
+
+📍 किसान की जानकारी:
+• जगह: ${land.village || ''}, ${land.district}, ${land.state}
+• जमीन: ${land.area_acres} एकड़
+• मिट्टी: ${land.soil_type || 'काली'}
+• पानी: ${land.irrigation_type || 'बोरवेल/कुआं'}
+
+🧪 मिट्टी की हालत (kg/हेक्टेयर):
+• नाइट्रोजन: ${currentN} (चाहिए: ${target.n}, कमी: ${nDeficit.toFixed(0)})
+• फॉस्फोरस: ${currentP} (चाहिए: ${target.p}, कमी: ${pDeficit.toFixed(0)})
+• पोटाश: ${currentK} (चाहिए: ${target.k}, कमी: ${kDeficit.toFixed(0)})
+
+${ndviStatus ? `🛰️ सैटेलाइट डेटा: NDVI ${ndviStatus.value.toFixed(2)} - ${ndviStatus.status}` : ''}
+
+${suitabilityCheck.warnings.length > 0 ? `
+⚠️ इस इलाके के लिए विशेष सूचना:
+${suitabilityCheck.warnings.map(w => `• ${w}`).join('\n')}
 ` : ''}
 
-पूरा वेळापत्रक बताओ (12-15 काम):
-1. जमीन तैयारी
-2. ${isReadyMadePlant ? 'पौधे लगाना' : 'बीज बोना'}
-3. पानी कब देना (5-6 बार)
-4. खाद कब डालना (3-4 बार) - गोबर + रासायनिक
-5. कीड़े-रोग की दवाई (2-3 बार)
-6. घास निकालना (2 बार)
-7. कटाई
+📋 वेळापत्रक में ये चरण शामिल करो (12-18 काम):
+1. जमीन तैयारी (जुताई, पटेला, मेड़ बनाना)
+2. बीज चुनाव और बीजोपचार
+3. बुवाई/रोपाई (सही दूरी, गहराई)
+4. पहला पानी (बुवाई के बाद)
+5. पहली निराई/घास निकालना
+6. खाद प्रबंधन (गोबर खाद, यूरिया, DAP - 3-4 बार)
+7. सिंचाई वेळापत्रक (5-6 बार)
+8. कीट प्रबंधन (2-3 स्प्रे)
+9. रोग प्रबंधन
+10. वृद्धि चरण निगरानी
+11. कटाई
+12. कटाई के बाद भंडारण
 
-हर काम के लिए बताना:
-✅ क्या करना है
-✅ कितना सामान लगेगा (${land.area_acres} एकड़ के हिसाब से)
-✅ खाद/दवाई का नाम + सक्रिय तत्व
-✅ कैसे करना है (step by step)
-✅ क्या सावधानी रखनी है (2-3 बातें)
-✅ कौन से मौसम में करना है (ideal_weather में temperature, humidity, conditions दो)
-✅ कितना खर्च आएगा (₹ में)
-✅ ICAR guideline reference
+⚡ जरूरी नियम:
+• हर काम हिंदी में लिखो - गाँव की भाषा में
+• सटीक मात्रा दो (X kg/एकड़, Y लीटर पानी)
+• ICAR/KVK सिफारिश reference दो
+• खर्च ₹ में बताओ
+• 3-4 स्टेप में कैसे करना है बताओ
+• 2-3 सावधानी बताओ
+• मौसम हालात बताओ (तापमान, नमी)
 
-${suitabilityCheck.risks.length > 0 ? `
-⚠️ इन खतरों से बचने के लिए extra precautions दो:
-${suitabilityCheck.risks.map(r => `• ${r}`).join('\n')}
+🗣️ भाषा शैली:
+✅ "पानी दो" (✗ "सिंचाई करें" नहीं)
+✅ "खाद डालो" (✗ "उर्वरक प्रबंधन" नहीं)
+✅ "कीड़े लगे तो दवाई छिड़को" (✗ "कीटनाशक अनुप्रयोग" नहीं)
+• सीधी-सादी हिंदी बोलो
+• टेक्निकल शब्द मत बोलो`,
+
+        en: `You are an experienced farmer and agricultural expert with ICAR and State Agricultural University knowledge.
+
+🎯 Your task: Create complete schedule for ${cropName} crop on ${land.area_acres} acres of land.
+
+📍 Farmer's Information:
+• Location: ${land.village || ''}, ${land.district}, ${land.state}
+• Land: ${land.area_acres} acres
+• Soil: ${land.soil_type || 'Black'}
+• Water: ${land.irrigation_type || 'Borewell/Well'}
+
+🧪 Soil Status (kg/hectare):
+• Nitrogen: ${currentN} (need: ${target.n}, deficit: ${nDeficit.toFixed(0)})
+• Phosphorus: ${currentP} (need: ${target.p}, deficit: ${pDeficit.toFixed(0)})
+• Potash: ${currentK} (need: ${target.k}, deficit: ${kDeficit.toFixed(0)})
+
+${ndviStatus ? `🛰️ Satellite Data: NDVI ${ndviStatus.value.toFixed(2)} - ${ndviStatus.status}` : ''}
+
+${suitabilityCheck.warnings.length > 0 ? `
+⚠️ Special Note for this area:
+${suitabilityCheck.warnings.map(w => `• ${w}`).join('\n')}
 ` : ''}
 
-आखिर में बताओ:
-• कितनी फसल होगी (क्विंटल में)
-• कुल खर्च
-• कमाई
+📋 Include these stages in schedule (12-18 tasks):
+1. Land preparation (plowing, harrowing, bed making)
+2. Seed selection and treatment
+3. Sowing/Transplanting (proper spacing, depth)
+4. First irrigation (after sowing)
+5. First weeding
+6. Fertilizer management (FYM, Urea, DAP - 3-4 times)
+7. Irrigation schedule (5-6 times)
+8. Pest management (2-3 sprays)
+9. Disease management
+10. Growth stage monitoring
+11. Harvesting
+12. Post-harvest storage
 
-भाषा: ${languageName} - गाँव वाली भाषा में बोलो!`;
+⚡ Important Rules:
+• Write each task in simple English
+• Give exact quantities (X kg/acre, Y liters water)
+• Give ICAR/KVK recommendation reference
+• Show cost in ₹
+• Explain how to do in 3-4 steps
+• Give 2-3 precautions
+• Mention weather conditions (temperature, humidity)`
+      };
 
-    // 8. Call OpenAI with COMPREHENSIVE schema
+      return prompts[lang] || prompts['hi'];
+    };
+
+    const getUserPrompt = (lang: string): string => {
+      const prompts: Record<string, string> = {
+        mr: `माझी ${land.area_acres} एकर जमीन ${land.district}, ${land.state} मध्ये आहे.
+मला ${cropName} पिकाचे संपूर्ण वेळापत्रक हवे आहे.
+पेरणी तारीख: ${sowingDate}
+${cropVariety ? `वाण: ${cropVariety}` : ''}
+
+कृपया 12-18 कामांचे विस्तृत वेळापत्रक द्या:
+• प्रत्येक कामासाठी नेमकी मात्रा (${land.area_acres} एकर साठी)
+• खाद/औषधांची नावे आणि किंमत
+• कसे करायचे (स्टेप बाय स्टेप)
+• कोणत्या हवामानात करायचे
+• ICAR शिफारस
+
+सगळे मराठीत लिहा - शेतकऱ्याच्या भाषेत!`,
+
+        hi: `मेरी ${land.area_acres} एकड़ जमीन ${land.district}, ${land.state} में है।
+मुझे ${cropName} फसल का पूरा वेळापत्रक चाहिए।
+बुवाई तारीख: ${sowingDate}
+${cropVariety ? `किस्म: ${cropVariety}` : ''}
+
+कृपया 12-18 कामों का विस्तृत वेळापत्रक दो:
+• हर काम के लिए सटीक मात्रा (${land.area_acres} एकड़ के लिए)
+• खाद/दवाई के नाम और कीमत
+• कैसे करना है (स्टेप बाय स्टेप)
+• किस मौसम में करना है
+• ICAR सिफारिश
+
+सब हिंदी में लिखो - गाँव की भाषा में!`,
+
+        en: `My ${land.area_acres} acre land is in ${land.district}, ${land.state}.
+I need complete schedule for ${cropName} crop.
+Sowing date: ${sowingDate}
+${cropVariety ? `Variety: ${cropVariety}` : ''}
+
+Please give detailed schedule with 12-18 tasks:
+• Exact quantity for each task (for ${land.area_acres} acres)
+• Fertilizer/medicine names and cost
+• How to do (step by step)
+• Weather conditions
+• ICAR recommendation
+
+Write in simple language!`
+      };
+
+      return prompts[lang] || prompts['hi'];
+    };
+
+    const systemPrompt = getSystemPrompt(language);
+    const userPrompt = getUserPrompt(language);
+
+    // 8. Call OpenAI with SIMPLIFIED but FOCUSED schema for better task generation
     const requestBody = {
       model: AI_CONFIG.MODEL,
       max_completion_tokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
@@ -1058,197 +818,109 @@ ${suitabilityCheck.risks.map(r => `• ${r}`).join('\n')}
         type: "function",
         function: {
           name: "create_crop_schedule",
-          description: "Generate comprehensive agricultural schedule with ICAR guidelines, 3-tier nutrient management, IPM protocols, economic analysis, and contingency plans for Indian farmers",
+          description: `Generate detailed agricultural schedule with 12-18 tasks for ${cropName} crop. Each task must have clear instructions in ${languageName} rural language.`,
           parameters: {
             type: "object",
             properties: {
-              crop_name: { type: "string" },
+              crop_name: { type: "string", description: "Crop name" },
+              crop_variety: { type: "string", description: "Recommended variety for this region" },
               crop_season: { type: "string", description: "Kharif/Rabi/Zaid" },
-              total_duration_days: { type: "integer" },
-              sowing_window: { type: "string", description: "Exact sowing dates like '15 Oct to 5 Nov'" },
-              recommended_varieties: { type: "array", items: { type: "string" }, description: "Location-specific varieties" },
-              expected_yield_conservative: { type: "number", description: "Minimum yield with basic care (quintals)" },
-              expected_yield_quintals: { type: "number", description: "Average yield (quintals)" },
-              expected_yield_optimal: { type: "number", description: "Maximum yield with excellent care (quintals)" },
-              expected_yield_per_acre: { type: "number" },
-              expected_market_price_per_quintal: { type: "number" },
-              expected_gross_revenue: { type: "number" },
-              expected_net_profit: { type: "number" },
-              total_estimated_cost: { type: "number" },
-              break_even_yield: { type: "number", description: "Minimum yield to cover costs" },
-              roi_percentage: { type: "number", description: "Return on Investment %" },
-              icar_reference: { type: "string", description: "ICAR Package of Practice reference" },
-              state_university_reference: { type: "string", description: "State Agricultural University reference" },
-              seed_quantity_kg: { type: "number" },
-              seed_rate_per_acre: { type: "number" },
-              seed_details: { type: "string", description: "Seed treatment protocol with fungicide, biofertilizer" },
-              suitability_notes: { type: "string", description: "Notes about crop suitability for this region" },
-              risk_factors: {
-                type: "object",
-                properties: {
-                  weather_risk_percent: { type: "number" },
-                  pest_risk_percent: { type: "number" },
-                  market_risk_percent: { type: "number" },
-                  mitigation_strategies: { type: "array", items: { type: "string" } }
-                }
-              },
-              contingency_plans: {
-                type: "object",
-                properties: {
-                  drought: { type: "array", items: { type: "string" }, description: "Steps if drought occurs" },
-                  flood: { type: "array", items: { type: "string" }, description: "Steps if waterlogging" },
-                  pest_outbreak: { type: "array", items: { type: "string" }, description: "Steps if severe pest attack" }
-                }
-              },
+              total_duration_days: { type: "integer", description: "Total crop duration from sowing to harvest" },
+              expected_yield_quintals: { type: "number", description: "Expected yield in quintals for total land area" },
+              expected_yield_per_acre: { type: "number", description: "Expected yield per acre in quintals" },
+              total_estimated_cost: { type: "number", description: "Total cost in INR for all inputs" },
+              expected_profit: { type: "number", description: "Expected profit after harvest in INR" },
+              icar_reference: { type: "string", description: "ICAR Package of Practice reference, e.g., 'ICAR ${cropName} Package of Practice 2024'" },
+              suitability_notes: { type: "string", description: "Notes about crop suitability for this region in rural language" },
               organic_inputs: {
                 type: "object",
-                description: "Tier 1 - Primary organic recommendations",
                 properties: {
                   fym_tons: { type: "number", description: "Farm Yard Manure in tons" },
-                  fym_kg: { type: "number" },
-                  compost_kg: { type: "number" },
                   vermicompost_kg: { type: "number" },
-                  neem_cake_kg: { type: "number" },
-                  green_manure: { type: "string", description: "Green manure crop name if recommended" }
-                }
-              },
-              biofertilizers: {
-                type: "object",
-                description: "Tier 2 - Biofertilizer recommendations",
-                properties: {
-                  azotobacter_packets: { type: "number" },
-                  psb_packets: { type: "number" },
-                  rhizobium_packets: { type: "number" },
-                  application_method: { type: "string" }
+                  neem_cake_kg: { type: "number" }
                 }
               },
               chemical_fertilizers: {
                 type: "object",
-                description: "Tier 3 - Gap filling only based on NPK deficit",
                 properties: {
                   urea_kg: { type: "number" },
                   dap_kg: { type: "number" },
-                  mop_kg: { type: "number" },
-                  ssp_kg: { type: "number" },
-                  zinc_sulphate_kg: { type: "number" },
-                  boron_kg: { type: "number" }
+                  mop_kg: { type: "number" }
                 }
               },
-              cost_breakdown: {
-                type: "object",
-                description: "Detailed input-wise cost breakdown in INR",
-                properties: {
-                  seeds: { type: "number" },
-                  organic_manure: { type: "number" },
-                  chemical_fertilizers: { type: "number" },
-                  pesticides: { type: "number" },
-                  labour: { type: "number" },
-                  irrigation: { type: "number" },
-                  machinery: { type: "number" },
-                  miscellaneous: { type: "number" }
-                }
-              },
-              sustainability_practices: {
-                type: "object",
-                description: "Mandatory sustainability integration",
-                properties: {
-                  soil_health: { type: "array", items: { type: "string" }, description: "Organic matter, minimum tillage, crop rotation" },
-                  water_conservation: { type: "array", items: { type: "string" }, description: "Drip/sprinkler, mulching, AWD" },
-                  biodiversity: { type: "array", items: { type: "string" }, description: "Border crops, natural enemies, pollinators" },
-                  climate_resilience: { type: "array", items: { type: "string" }, description: "Stress-tolerant varieties, intercropping" }
-                }
-              },
-              executive_summary: {
-                type: "object",
-                description: "5-line summary for quick overview",
-                properties: {
-                  suitability_verdict: { type: "string" },
-                  yield_range: { type: "string" },
-                  total_investment: { type: "string" },
-                  net_profit_range: { type: "string" },
-                  key_success_factors: { type: "array", items: { type: "string" } }
-                }
-              },
-              pre_season_checklist: {
-                type: "array",
-                items: { type: "string" },
-                description: "10-15 action items before sowing with checkboxes"
-              },
-              emergency_contacts: {
-                type: "object",
-                properties: {
-                  kvk_name: { type: "string" },
-                  kvk_phone: { type: "string" },
-                  agriculture_officer: { type: "string" },
-                  soil_testing_lab: { type: "string" },
-                  weather_helpline: { type: "string" }
-                }
-              },
+              seed_details: { type: "string", description: "Seed treatment and quantity details" },
               tasks: {
                 type: "array",
+                minItems: 12,
+                maxItems: 18,
+                description: "MUST generate 12-18 detailed tasks covering all crop stages",
                 items: {
                   type: "object",
                   properties: {
-                    task_name: { type: "string", description: "Rural language task name - गाँव की भाषा में" },
+                    task_name: { 
+                      type: "string", 
+                      description: `Task name in ${languageName} rural language. NOT technical terms. Example: 'पहिले पाणी द्या' instead of 'प्रथम सिंचन'`
+                    },
                     category: { 
                       type: "string",
-                      enum: ["pre_planting", "soil_preparation", "seed_treatment", "sowing", "irrigation", "fertilizer_organic", "fertilizer_chemical", "pest_control", "disease_control", "weed_management", "growth_monitoring", "harvesting", "post_harvest"]
+                      enum: ["soil_preparation", "sowing", "irrigation", "fertilizer", "pest_control", "weed_management", "growth_monitoring", "harvesting", "post_harvest"],
+                      description: "Task category"
                     },
-                    growth_stage: { type: "string", description: "Growth stage: Germination/Vegetative/Flowering/Maturity" },
-                    days_from_sowing: { type: "integer" },
-                    duration_days: { type: "integer", description: "How many days this task spans" },
+                    days_from_sowing: { 
+                      type: "integer", 
+                      description: "Days from sowing when this task should be done. Use -15 to -1 for pre-sowing tasks, 0 for sowing day, positive numbers for post-sowing"
+                    },
                     priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
-                    can_be_delayed: { type: "boolean" },
-                    delay_tolerance_days: { type: "integer", description: "How many days can be delayed if needed" },
-                    cost_impact: { type: "string", enum: ["low", "medium", "high"] },
-                    yield_impact: { type: "string", enum: ["low", "medium", "high", "critical"] },
-                    skip_consequence: { type: "string", description: "What happens if this task is skipped - in rural language" },
-                    description: { type: "string", description: "Why this task matters - गाँव की भाषा में!" },
-                    quantity: { type: "string", description: "REQUIRED: Exact amount per acre - NEVER empty" },
-                    product_details: {
-                      type: "object",
-                      description: "For pesticides/fertilizers - full transparency",
-                      properties: {
-                        brand_names: { type: "array", items: { type: "string" }, description: "2-3 popular brand options" },
-                        generic_name: { type: "string" },
-                        active_ingredient: { type: "string", description: "With percentage, e.g., 'Thiamethoxam 25% WG'" },
-                        chemical_group: { type: "string", description: "Group number for resistance management, e.g., '4A (Neonicotinoid)'" },
-                        mode_of_action: { type: "string" },
-                        formulation: { type: "string" }
-                      }
+                    description: { 
+                      type: "string", 
+                      description: `Clear explanation in ${languageName} rural language. WHY this task is important. 2-3 sentences.`
                     },
-                    product_details_text: { type: "string", description: "Fallback text if object not provided" },
-                    application_method: { type: "string", description: "How to apply - broadcasting, foliar spray, seed treatment, etc." },
-                    water_volume_liters: { type: "number", description: "Water needed for spray per acre" },
-                    estimated_cost: { type: "number" },
-                    instructions: { type: "array", items: { type: "string" }, minItems: 3, maxItems: 6, description: "Step by step in rural language" },
-                    precautions: { type: "array", items: { type: "string" }, minItems: 3, maxItems: 5, description: "Safety precautions" },
-                    weather_dependent: { type: "boolean" },
-                    etl_threshold: { type: "string", description: "Economic Threshold Level for IPM" },
-                    phi_days: { type: "integer", description: "Pre-Harvest Interval in days" },
-                    resistance_rotation: { type: "string", description: "Next spray should be from different group" },
-                    icar_guideline: { type: "string", description: "ICAR Package of Practice reference" },
-                    kvk_recommendation: { type: "string" },
-                    climate_risk: { type: "string", description: "Weather risk warning in rural language" },
-                    alternative_organic: { type: "string", description: "Traditional/organic alternative" },
-                    alternative_mechanical: { type: "string", description: "Manual/mechanical alternative" },
+                    quantity: { 
+                      type: "string", 
+                      description: `EXACT amount needed for ${land.area_acres} acres. Example: '${(land.area_acres * 25).toFixed(0)} kg युरिया' or '${(land.area_acres * 1000).toFixed(0)} लिटर पाणी'`
+                    },
+                    product_details: { 
+                      type: "string", 
+                      description: "Fertilizer/pesticide name with brand examples if applicable. Example: 'युरिया (46% N) - IFFCO/Coromandel'"
+                    },
+                    estimated_cost: { 
+                      type: "number", 
+                      description: "Cost in INR for this task"
+                    },
+                    instructions: { 
+                      type: "array", 
+                      items: { type: "string" },
+                      minItems: 3,
+                      maxItems: 5,
+                      description: `Step-by-step HOW TO DO in ${languageName} rural language. Each step clear and actionable.`
+                    },
+                    precautions: { 
+                      type: "array", 
+                      items: { type: "string" },
+                      minItems: 2,
+                      maxItems: 4,
+                      description: `Safety precautions in ${languageName}. Example: 'फवारणी करताना तोंडावर कापड बांधा'`
+                    },
+                    weather_dependent: { type: "boolean", description: "True if weather affects this task" },
+                    icar_guideline: { 
+                      type: "string", 
+                      description: "ICAR recommendation reference. Example: 'ICAR ${cropName} Package - Section 4.2'"
+                    },
                     ideal_weather: {
                       type: "object",
                       properties: {
-                        temperature: { type: "string" },
-                        humidity: { type: "string" },
-                        wind_speed: { type: "string" },
-                        conditions: { type: "string" },
-                        best_time_of_day: { type: "string", description: "सुबह जल्दी / शाम / कभी भी" }
+                        temperature: { type: "string", description: "Ideal temperature range. Example: '20-30°C'" },
+                        humidity: { type: "string", description: "Ideal humidity. Example: '60-80%'" },
+                        conditions: { type: "string", description: "Weather conditions. Example: 'ढगाळ वातावरण, पाऊस नको'" }
                       },
                       required: ["temperature", "humidity", "conditions"]
                     }
                   },
-                  required: ["task_name", "category", "days_from_sowing", "priority", "description", "quantity", "instructions", "precautions", "icar_guideline", "ideal_weather", "yield_impact"]
+                  required: ["task_name", "category", "days_from_sowing", "priority", "description", "quantity", "instructions", "precautions", "ideal_weather"]
                 }
               }
             },
-            required: ["crop_name", "total_duration_days", "tasks", "icar_reference", "organic_inputs", "cost_breakdown", "executive_summary"]
+            required: ["crop_name", "total_duration_days", "tasks", "icar_reference", "total_estimated_cost", "expected_yield_quintals"]
           }
         }
       }],
@@ -1282,10 +954,17 @@ ${suitabilityCheck.risks.map(r => `• ${r}`).join('\n')}
     const toolCall = message.tool_calls[0];
     let scheduleData = JSON.parse(toolCall.function.arguments);
     
-    console.log('✓ Schedule:', scheduleData.crop_name, scheduleData.total_duration_days, 'days,', scheduleData.tasks?.length, 'tasks');
+    console.log(`✅ [AI Response] ${scheduleData.crop_name}: ${scheduleData.total_duration_days} days, ${scheduleData.tasks?.length || 0} tasks generated`);
+    console.log(`📝 [Language] Response language: ${language}, Tasks sample: ${scheduleData.tasks?.[0]?.task_name || 'N/A'}`);
 
     if (!scheduleData.tasks || scheduleData.tasks.length === 0) {
+      console.error('❌ AI returned empty schedule - no tasks array');
       throw new Error('AI returned empty schedule');
+    }
+
+    // Validate minimum task count - warn if less than 10
+    if (scheduleData.tasks.length < 10) {
+      console.warn(`⚠️ [Quality] Only ${scheduleData.tasks.length} tasks generated, expected 12-18`);
     }
 
     // 9. POST-PROCESSING: Fix null/empty values and ensure quality
