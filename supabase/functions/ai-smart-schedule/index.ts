@@ -1009,7 +1009,7 @@ Write in simple, easy language!`
     const userPrompt = getUserPrompt(language);
 
     // 8. Call OpenAI with SIMPLIFIED but FOCUSED schema for better task generation
-    const requestBody = {
+    const aiRequestBody = {
       model: AI_CONFIG.MODEL,
       max_completion_tokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
       messages: [
@@ -1132,12 +1132,12 @@ Write in simple, easy language!`
       tool_choice: { type: "function", function: { name: "create_crop_schedule" } },
     };
     
-    console.log('🤖 Calling AI API:', { model: requestBody.model, promptLength: systemPrompt.length + userPrompt.length });
+    console.log('🤖 Calling AI API:', { model: aiRequestBody.model, promptLength: systemPrompt.length + userPrompt.length });
     
     const aiResponse = await fetch(OPENAI_API_URL, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify(aiRequestBody),
     });
 
     if (!aiResponse.ok) {
