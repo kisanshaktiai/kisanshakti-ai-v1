@@ -182,6 +182,7 @@
       "days_until": "{{days}} days",
       "high_priority": "High Priority",
       "weather": "Weather",
+      "weather_dependent": "Weather Dependent",
       "completed": "Completed",
       "description": "Description",
       "instructions": "Instructions",
@@ -191,7 +192,12 @@
       "temperature": "Temperature",
       "humidity": "Humidity",
       "conditions": "Conditions",
-      "read_aloud": "Read Aloud"
+      "read_aloud": "Read Aloud",
+      "quantity": "Quantity",
+      "product_details": "Product Details",
+      "icar_guideline": "ICAR Recommendation",
+      "climate_risk": "Climate Risk",
+      "approx_cost": "Approx. Cost"
     },
     "schedule_card": {
       "variety": "Variety",
