@@ -135,6 +135,88 @@ const cropSuitability: Record<string, {
   }
 };
 
+// ============================================================================
+// COMPREHENSIVE CROP NAME TRANSLATIONS
+// Maps English crop names to regional languages to prevent AI mistranslation
+// ============================================================================
+const cropNameTranslations: Record<string, Record<string, string>> = {
+  'Sugarcane': { en: 'Sugarcane', hi: 'गन्ना', mr: 'ऊस', pa: 'ਗੰਨਾ', ta: 'கரும்பு', te: 'చెరకు', gu: 'શેરડી', kn: 'ಕಬ್ಬು', bn: 'আখ' },
+  'Rice': { en: 'Rice', hi: 'धान', mr: 'भात/तांदूळ', pa: 'ਝੋਨਾ', ta: 'நெல்', te: 'వరి', gu: 'ડાંગર', kn: 'ಭತ್ತ', bn: 'ধান' },
+  'Wheat': { en: 'Wheat', hi: 'गेहूं', mr: 'गहू', pa: 'ਕਣਕ', ta: 'கோதுமை', te: 'గోధుమ', gu: 'ઘઉં', kn: 'ಗೋಧಿ', bn: 'গম' },
+  'Cotton': { en: 'Cotton', hi: 'कपास', mr: 'कापूस', pa: 'ਕਪਾਹ', ta: 'பருத்தி', te: 'పత్తి', gu: 'કપાસ', kn: 'ಹತ್ತಿ', bn: 'তুলা' },
+  'Maize': { en: 'Maize', hi: 'मक्का', mr: 'मका', pa: 'ਮੱਕੀ', ta: 'மக்காச்சோளம்', te: 'మొక్కజొన్న', gu: 'મકાઈ', kn: 'ಮೆಕ್ಕೆಜೋಳ', bn: 'ভুট্টা' },
+  'Soybean': { en: 'Soybean', hi: 'सोयाबीन', mr: 'सोयाबीन', pa: 'ਸੋਇਆਬੀਨ', ta: 'சோயாபீன்', te: 'సోయాబీన్', gu: 'સોયાબીન', kn: 'ಸೋಯಾಬೀನ್', bn: 'সয়াবিন' },
+  'Groundnut': { en: 'Groundnut', hi: 'मूंगफली', mr: 'भुईमूग/शेंगदाणा', pa: 'ਮੂੰਗਫਲੀ', ta: 'நிலக்கடலை', te: 'వేరుశనగ', gu: 'મગફળી', kn: 'ಕಡಲೆಕಾಯಿ', bn: 'চিনাবাদাম' },
+  'Tomato': { en: 'Tomato', hi: 'टमाटर', mr: 'टोमॅटो', pa: 'ਟਮਾਟਰ', ta: 'தக்காளி', te: 'టమాటా', gu: 'ટામેટું', kn: 'ಟೊಮೆಟೊ', bn: 'টমেটো' },
+  'Onion': { en: 'Onion', hi: 'प्याज', mr: 'कांदा', pa: 'ਪਿਆਜ਼', ta: 'வெங்காயம்', te: 'ఉల్లిపాయ', gu: 'ડુંગળી', kn: 'ಈರುಳ್ಳಿ', bn: 'পেঁয়াজ' },
+  'Potato': { en: 'Potato', hi: 'आलू', mr: 'बटाटा', pa: 'ਆਲੂ', ta: 'உருளைக்கிழங்கு', te: 'బంగాళాదుంప', gu: 'બટાટા', kn: 'ಆಲೂಗಡ್ಡೆ', bn: 'আলু' },
+  'Turmeric': { en: 'Turmeric', hi: 'हल्दी', mr: 'हळद', pa: 'ਹਲਦੀ', ta: 'மஞ்சள்', te: 'పసుపు', gu: 'હળદર', kn: 'ಅರಿಶಿನ', bn: 'হলুদ' },
+  'Chilli': { en: 'Chilli', hi: 'मिर्च', mr: 'मिरची', pa: 'ਮਿਰਚ', ta: 'மிளகாய்', te: 'మిర్చి', gu: 'મરચું', kn: 'ಮೆಣಸಿನಕಾಯಿ', bn: 'মরিচ' },
+  'Gram': { en: 'Gram/Chickpea', hi: 'चना', mr: 'हरभरा', pa: 'ਛੋਲੇ', ta: 'கொண்டைக்கடலை', te: 'శనగలు', gu: 'ચણા', kn: 'ಕಡಲೆ', bn: 'ছোলা' },
+  'Mustard': { en: 'Mustard', hi: 'सरसों', mr: 'मोहरी', pa: 'ਸਰ੍ਹੋਂ', ta: 'கடுகு', te: 'ఆవాలు', gu: 'રાઈ', kn: 'ಸಾಸಿವೆ', bn: 'সরিষা' },
+  'Banana': { en: 'Banana', hi: 'केला', mr: 'केळी', pa: 'ਕੇਲਾ', ta: 'வாழை', te: 'అరటి', gu: 'કેળા', kn: 'ಬಾಳೆ', bn: 'কলা' },
+  'Mango': { en: 'Mango', hi: 'आम', mr: 'आंबा', pa: 'ਅੰਬ', ta: 'மாம்பழம்', te: 'మామిడి', gu: 'કેરી', kn: 'ಮಾವು', bn: 'আম' },
+  'Bajra': { en: 'Pearl Millet/Bajra', hi: 'बाजरा', mr: 'बाजरी', pa: 'ਬਾਜਰਾ', ta: 'கம்பு', te: 'సజ్జ', gu: 'બાજરી', kn: 'ಸಜ್ಜೆ', bn: 'বাজরা' },
+  'Jowar': { en: 'Sorghum/Jowar', hi: 'ज्वार', mr: 'ज्वारी', pa: 'ਜਵਾਰ', ta: 'சோளம்', te: 'జొన్న', gu: 'જુવાર', kn: 'ಜೋಳ', bn: 'জোয়ার' },
+  'Ragi': { en: 'Finger Millet/Ragi', hi: 'रागी/मंडुआ', mr: 'नाचणी', pa: 'ਰਾਗੀ', ta: 'ராகி', te: 'రాగి', gu: 'નાગલી', kn: 'ರಾಗಿ', bn: 'মাদুয়া' },
+  'Sunflower': { en: 'Sunflower', hi: 'सूरजमुखी', mr: 'सूर्यफूल', pa: 'ਸੂਰਜਮੁਖੀ', ta: 'சூரியகாந்தி', te: 'పొద్దుతిరుగుడు', gu: 'સૂર્યમુખી', kn: 'ಸೂರ್ಯಕಾಂತಿ', bn: 'সূর্যমুখী' },
+  'Sesame': { en: 'Sesame', hi: 'तिल', mr: 'तीळ', pa: 'ਤਿਲ', ta: 'எள்ளு', te: 'నువ్వులు', gu: 'તલ', kn: 'ಎಳ್ಳು', bn: 'তিল' },
+  'Cumin': { en: 'Cumin', hi: 'जीरा', mr: 'जिरे', pa: 'ਜੀਰਾ', ta: 'சீரகம்', te: 'జీలకర్ర', gu: 'જીરું', kn: 'ಜೀರಿಗೆ', bn: 'জিরা' },
+  'Coriander': { en: 'Coriander', hi: 'धनिया', mr: 'कोथिंबीर', pa: 'ਧਨੀਆ', ta: 'கொத்தமல்லி', te: 'కొత్తిమీర', gu: 'ધાણા', kn: 'ಕೊತ್ತಂಬರಿ', bn: 'ধনে' },
+  'Fenugreek': { en: 'Fenugreek', hi: 'मेथी', mr: 'मेथी', pa: 'ਮੇਥੀ', ta: 'வெந்தயம்', te: 'మెంతులు', gu: 'મેથી', kn: 'ಮೆಂತೆ', bn: 'মেথি' },
+  'Ginger': { en: 'Ginger', hi: 'अदरक', mr: 'आले', pa: 'ਅਦਰਕ', ta: 'இஞ்சி', te: 'అల్లం', gu: 'આદું', kn: 'ಶುಂಠಿ', bn: 'আদা' },
+  'Garlic': { en: 'Garlic', hi: 'लहसुन', mr: 'लसूण', pa: 'ਲਸਣ', ta: 'பூண்டு', te: 'వెల్లుల్లి', gu: 'લસણ', kn: 'ಬೆಳ್ಳುಳ್ಳಿ', bn: 'রসুন' },
+  'Cabbage': { en: 'Cabbage', hi: 'पत्तागोभी', mr: 'कोबी', pa: 'ਗੋਭੀ', ta: 'முட்டைக்கோஸ்', te: 'క్యాబేజీ', gu: 'કોબી', kn: 'ಎಲೆಕೋಸು', bn: 'বাঁধাকপি' },
+  'Cauliflower': { en: 'Cauliflower', hi: 'फूलगोभी', mr: 'फ्लॉवर', pa: 'ਫੁੱਲਗੋਭੀ', ta: 'காலிஃப்ளவர்', te: 'క్యాలీఫ్లవర్', gu: 'ફૂલકોબી', kn: 'ಹೂಕೋಸು', bn: 'ফুলকপি' },
+  'Brinjal': { en: 'Brinjal/Eggplant', hi: 'बैंगन', mr: 'वांगी', pa: 'ਬੈਂਗਣ', ta: 'கத்திரிக்காய்', te: 'వంకాయ', gu: 'રીંગણ', kn: 'ಬದನೆಕಾಯಿ', bn: 'বেগুন' },
+  'Okra': { en: 'Okra/Lady Finger', hi: 'भिंडी', mr: 'भेंडी', pa: 'ਭਿੰਡੀ', ta: 'வெண்டைக்காய்', te: 'బెండకాయ', gu: 'ભીંડા', kn: 'ಬೆಂಡೆಕಾಯಿ', bn: 'ভেন্ডি' },
+  'Pea': { en: 'Pea', hi: 'मटर', mr: 'वाटाणे', pa: 'ਮਟਰ', ta: 'பட்டாணி', te: 'బఠానీ', gu: 'વટાણા', kn: 'ಬಟಾಣಿ', bn: 'মটর' },
+  'Lentil': { en: 'Lentil', hi: 'मसूर', mr: 'मसूर', pa: 'ਮਸੂਰ', ta: 'பருப்பு', te: 'మసూర్', gu: 'મસૂર', kn: 'ಮಸೂರ', bn: 'মসুর' },
+  'Pigeon Pea': { en: 'Pigeon Pea/Tur', hi: 'अरहर/तूर', mr: 'तूर', pa: 'ਅਰਹਰ', ta: 'துவரை', te: 'కందులు', gu: 'તુવેર', kn: 'ತೊಗರಿ', bn: 'অড়হর' },
+  'Black Gram': { en: 'Black Gram/Urad', hi: 'उड़द', mr: 'उडीद', pa: 'ਮਾਂਹ', ta: 'உளுந்து', te: 'మినుములు', gu: 'અડદ', kn: 'ಉದ್ದು', bn: 'মাসকলাই' },
+  'Green Gram': { en: 'Green Gram/Moong', hi: 'मूंग', mr: 'मूग', pa: 'ਮੂੰਗ', ta: 'பாசிப்பயறு', te: 'పెసలు', gu: 'મગ', kn: 'ಹೆಸರು', bn: 'মুগ' },
+  'Coconut': { en: 'Coconut', hi: 'नारियल', mr: 'नारळ', pa: 'ਨਾਰੀਅਲ', ta: 'தேங்காய்', te: 'కొబ్బరి', gu: 'નાળિયેર', kn: 'ತೆಂಗಿನಕಾಯಿ', bn: 'নারকেল' },
+  'Papaya': { en: 'Papaya', hi: 'पपीता', mr: 'पपई', pa: 'ਪਪੀਤਾ', ta: 'பப்பாளி', te: 'బొప్పాయి', gu: 'પપૈયું', kn: 'ಪರಂಗಿ', bn: 'পেঁপে' },
+  'Guava': { en: 'Guava', hi: 'अमरूद', mr: 'पेरू', pa: 'ਅਮਰੂਦ', ta: 'கொய்யா', te: 'జామ', gu: 'જામફળ', kn: 'ಪೇರಲ', bn: 'পেয়ারা' },
+  'Pomegranate': { en: 'Pomegranate', hi: 'अनार', mr: 'डाळिंब', pa: 'ਅਨਾਰ', ta: 'மாதுளை', te: 'దానిమ్మ', gu: 'દાડમ', kn: 'ದಾಳಿಂಬೆ', bn: 'ডালিম' },
+  'Grapes': { en: 'Grapes', hi: 'अंगूर', mr: 'द्राक्षे', pa: 'ਅੰਗੂਰ', ta: 'திராட்சை', te: 'ద్రాక్ష', gu: 'દ્રાક્ષ', kn: 'ದ್ರಾಕ್ಷಿ', bn: 'আঙুর' }
+};
+
+// Helper function to get localized crop name
+function getLocalizedCropName(englishName: string, language: string): { local: string; english: string; combined: string } {
+  // Normalize crop name for lookup
+  const normalizedName = englishName.charAt(0).toUpperCase() + englishName.slice(1).toLowerCase();
+  
+  // Try exact match first, then normalized match
+  let translations = cropNameTranslations[englishName] || cropNameTranslations[normalizedName];
+  
+  // Try case-insensitive search
+  if (!translations) {
+    const matchedKey = Object.keys(cropNameTranslations).find(
+      key => key.toLowerCase() === englishName.toLowerCase()
+    );
+    if (matchedKey) {
+      translations = cropNameTranslations[matchedKey];
+    }
+  }
+  
+  if (!translations) {
+    console.log(`⚠️ [CropTranslation] No translation found for "${englishName}", using original`);
+    return { local: englishName, english: englishName, combined: englishName };
+  }
+  
+  const localName = translations[language] || translations['hi'] || englishName;
+  const engName = translations['en'] || englishName;
+  
+  console.log(`✅ [CropTranslation] "${englishName}" -> "${localName}" (${language})`);
+  
+  return {
+    local: localName,
+    english: engName,
+    combined: `${localName} (${engName})`
+  };
+}
+
 // Alternative crop suggestions by region
 const regionalAlternatives: Record<string, string[]> = {
   'Punjab': ['Wheat', 'Rice', 'Cotton', 'Maize', 'Potato', 'Sugarcane'],
@@ -547,6 +629,10 @@ serve(async (req) => {
     const languageName = languageMap[language] || 'Hindi';
     const examples = ruralExamples[language as keyof typeof ruralExamples] || ruralExamples.hi;
 
+    // CRITICAL: Get localized crop name to prevent AI mistranslation
+    const localizedCrop = getLocalizedCropName(cropName, language);
+    console.log(`🌾 [CropName] Using localized name: "${localizedCrop.local}" for "${cropName}" in ${languageName}`);
+
     // 5. Calculate NPK deficit
     const landAreaHa = land.area_acres * 0.404686;
     const currentN = land.nitrogen_kg_per_ha || 0;
@@ -604,7 +690,12 @@ ${suitabilityCheck.warnings.map(w => `• ${w}`).join('\n')}
       const prompts: Record<string, string> = {
         mr: `तू एक अनुभवी शेतकरी आणि कृषी तज्ञ आहेस. तुला ICAR आणि महाराष्ट्र कृषी विद्यापीठाचे ज्ञान आहे.
 
-🎯 तुझं काम: ${cropName} पिकाचे ${land.area_acres} एकर जमिनीसाठी संपूर्ण वेळापत्रक तयार करणे.
+🌾 पिकाचे नाव: ${localizedCrop.local}
+⚠️ महत्वाचे: पिकाचे नाव "${localizedCrop.local}" असेच लिहा - कोणतेही भाषांतर करू नकोस!
+❌ चुकीचे: "साखर कांदा", "शुगरकेन" वगैरे - हे चुकीचे आहे!
+✅ योग्य: "${localizedCrop.local}" - हेच नाव वापर!
+
+🎯 तुझं काम: ${localizedCrop.local} पिकाचे ${land.area_acres} एकर जमिनीसाठी संपूर्ण वेळापत्रक तयार करणे.
 
 📍 शेतकऱ्याची माहिती:
 • जागा: ${land.village || ''}, ${land.district}, ${land.state}
@@ -624,39 +715,54 @@ ${suitabilityCheck.warnings.length > 0 ? `
 ${suitabilityCheck.warnings.map(w => `• ${w}`).join('\n')}
 ` : ''}
 
-📋 वेळापत्रकात हे टप्पे समाविष्ट कर (12-18 कामे):
-1. जमीन तयारी (नांगरणी, कुळवणी, बेड बनवणे)
+📋 ${localizedCrop.local} वेळापत्रकात हे टप्पे समाविष्ट कर (12-18 कामे):
+1. जमीन तयारी (नांगरणी, कुळवणी, सरी/वरंबे बनवणे)
 2. बियाणे निवड आणि बीजप्रक्रिया
 3. पेरणी/लागवड (योग्य अंतर, खोली)
-4. पहिले पाणी (पेरणीनंतर)
-5. पहिली खुरपणी/तण काढणे
-6. खत व्यवस्थापन (गोबर खत, युरिया, DAP - 3-4 वेळा)
-7. सिंचन वेळापत्रक (5-6 वेळा)
-8. कीड व्यवस्थापन (2-3 स्प्रे)
-9. रोग व्यवस्थापन
-10. वाढीचे टप्पे निरीक्षण
-11. काढणी
-12. काढणीनंतर साठवणूक
+4. पहिले पाणी (पेरणीनंतर लगेच)
+5. पहिली खुरपणी/निंदणी/तण काढणे
+6. पहिला खत डोस (गोबर खत + बेसल डोस)
+7. दुसरा खत डोस (युरिया - 20-25 दिवसांनी)
+8. तिसरा खत डोस (टॉप ड्रेसिंग - 45-50 दिवसांनी)
+9. कीड व्यवस्थापन (पहिली फवारणी)
+10. रोग व्यवस्थापन (बुरशीनाशक फवारणी)
+11. सिंचन वेळापत्रक (नियमित पाणी)
+12. वाढीचे टप्पे निरीक्षण
+13. दुसरी कीड फवारणी (गरजेनुसार)
+14. काढणीपूर्व तयारी
+15. काढणी
+16. काढणीनंतर साठवणूक
 
 ⚡ महत्वाचे नियम:
-• प्रत्येक काम मराठीत लिहा - शेतकऱ्याच्या भाषेत
+• प्रत्येक काम शुद्ध मराठीत लिहा - शेतकऱ्याच्या गावठी भाषेत
+• पिकाचे नाव नेहमी "${localizedCrop.local}" असेच लिहा
 • नेमकी मात्रा दे (X kg/एकर, Y लिटर पाणी)
-• ICAR/KVK शिफारस संदर्भ दे
-• खर्च ₹ मध्ये सांग
-• 3-4 स्टेप्स मध्ये कसे करायचे ते सांग
-• 2-3 सावधानी सांग
+• ICAR/KVK/वसंतराव नाईक मराठवाडा कृषी विद्यापीठ शिफारस संदर्भ दे
+• खर्च ₹ मध्ये सांग (बाजारभाव)
+• 3-4 स्टेप्स मध्ये कसे करायचे ते सोप्या भाषेत सांग
+• 2-3 सावधानी सांग (औषध फवारणीसाठी मास्क, हातमोजे)
 • हवामान परिस्थिती सांग (तापमान, आर्द्रता)
 
-🗣️ भाषा शैली:
-✅ "पाणी द्या" (✗ "सिंचन करा" नको)
-✅ "खत टाका" (✗ "खत व्यवस्थापन" नको)
-✅ "किड लागली तर फवारणी करा" (✗ "कीटनाशक अनुप्रयोग" नको)
-• साधी, सोपी मराठी वापर
-• तांत्रिक शब्द टाळ`,
+🗣️ भाषा शैली - गावठी मराठी वापर:
+✅ "पाणी द्या", "पाणी टाका"
+✅ "खत टाका", "युरिया फेकून द्या"
+✅ "किड लागली तर फवारणी करा"
+✅ "औषध मारा"
+✅ "खुरपणी करा", "गवत काढा"
+❌ "सिंचन करा" नको
+❌ "खत व्यवस्थापन" नको
+❌ "कीटनाशक अनुप्रयोग" नको
+• साधी, सोपी, गावठी मराठी वापर
+• तांत्रिक/इंग्रजी शब्द टाळ`,
 
         hi: `तू एक अनुभवी किसान और कृषि विशेषज्ञ है। तुझे ICAR और राज्य कृषि विश्वविद्यालय का ज्ञान है।
 
-🎯 तेरा काम: ${cropName} फसल का ${land.area_acres} एकड़ जमीन के लिए पूरा वेळापत्रक बनाना।
+🌾 फसल का नाम: ${localizedCrop.local}
+⚠️ जरूरी: फसल का नाम "${localizedCrop.local}" ऐसे ही लिखो - कोई अनुवाद मत करो!
+❌ गलत: "शुगर केन", "चीनी प्याज" वगैरह - ये गलत है!
+✅ सही: "${localizedCrop.local}" - यही नाम इस्तेमाल करो!
+
+🎯 तेरा काम: ${localizedCrop.local} फसल का ${land.area_acres} एकड़ जमीन के लिए पूरा शेड्यूल बनाना।
 
 📍 किसान की जानकारी:
 • जगह: ${land.village || ''}, ${land.district}, ${land.state}
@@ -676,39 +782,53 @@ ${suitabilityCheck.warnings.length > 0 ? `
 ${suitabilityCheck.warnings.map(w => `• ${w}`).join('\n')}
 ` : ''}
 
-📋 वेळापत्रक में ये चरण शामिल करो (12-18 काम):
+📋 ${localizedCrop.local} शेड्यूल में ये चरण शामिल करो (12-18 काम):
 1. जमीन तैयारी (जुताई, पटेला, मेड़ बनाना)
 2. बीज चुनाव और बीजोपचार
 3. बुवाई/रोपाई (सही दूरी, गहराई)
-4. पहला पानी (बुवाई के बाद)
+4. पहला पानी (बुवाई के तुरंत बाद)
 5. पहली निराई/घास निकालना
-6. खाद प्रबंधन (गोबर खाद, यूरिया, DAP - 3-4 बार)
-7. सिंचाई वेळापत्रक (5-6 बार)
-8. कीट प्रबंधन (2-3 स्प्रे)
-9. रोग प्रबंधन
-10. वृद्धि चरण निगरानी
-11. कटाई
-12. कटाई के बाद भंडारण
+6. पहला खाद डोज (गोबर खाद + बेसल डोज)
+7. दूसरा खाद डोज (यूरिया - 20-25 दिन बाद)
+8. तीसरा खाद डोज (टॉप ड्रेसिंग - 45-50 दिन बाद)
+9. कीट प्रबंधन (पहला स्प्रे)
+10. रोग प्रबंधन (फफूंदनाशक स्प्रे)
+11. सिंचाई शेड्यूल (नियमित पानी)
+12. वृद्धि चरण निगरानी
+13. दूसरा कीट स्प्रे (जरूरत पड़े तो)
+14. कटाई पूर्व तैयारी
+15. कटाई
+16. कटाई के बाद भंडारण
 
 ⚡ जरूरी नियम:
-• हर काम हिंदी में लिखो - गाँव की भाषा में
+• हर काम शुद्ध हिंदी में लिखो - गाँव की देसी भाषा में
+• फसल का नाम हमेशा "${localizedCrop.local}" ही लिखो
 • सटीक मात्रा दो (X kg/एकड़, Y लीटर पानी)
 • ICAR/KVK सिफारिश reference दो
-• खर्च ₹ में बताओ
-• 3-4 स्टेप में कैसे करना है बताओ
-• 2-3 सावधानी बताओ
+• खर्च ₹ में बताओ (बाजार भाव)
+• 3-4 स्टेप में कैसे करना है समझाओ
+• 2-3 सावधानी बताओ (दवाई छिड़कते वक्त मास्क, दस्ताने)
 • मौसम हालात बताओ (तापमान, नमी)
 
-🗣️ भाषा शैली:
-✅ "पानी दो" (✗ "सिंचाई करें" नहीं)
-✅ "खाद डालो" (✗ "उर्वरक प्रबंधन" नहीं)
-✅ "कीड़े लगे तो दवाई छिड़को" (✗ "कीटनाशक अनुप्रयोग" नहीं)
-• सीधी-सादी हिंदी बोलो
-• टेक्निकल शब्द मत बोलो`,
+🗣️ भाषा शैली - देसी हिंदी बोलो:
+✅ "पानी दो", "पानी लगाओ"
+✅ "खाद डालो", "यूरिया फेंको"
+✅ "कीड़े लगे तो दवाई छिड़को"
+✅ "दवाई मारो"
+✅ "निराई करो", "घास निकालो"
+❌ "सिंचाई करें" नहीं
+❌ "उर्वरक प्रबंधन" नहीं
+❌ "कीटनाशक अनुप्रयोग" नहीं
+• सीधी-सादी, देसी हिंदी बोलो
+• टेक्निकल/अंग्रेजी शब्द मत बोलो`,
 
         en: `You are an experienced farmer and agricultural expert with ICAR and State Agricultural University knowledge.
 
-🎯 Your task: Create complete schedule for ${cropName} crop on ${land.area_acres} acres of land.
+🌾 Crop Name: ${localizedCrop.combined}
+⚠️ IMPORTANT: Always use the crop name "${localizedCrop.local}" - DO NOT translate or change it!
+✅ Correct: "${localizedCrop.local}" (${localizedCrop.english})
+
+🎯 Your task: Create complete schedule for ${localizedCrop.local} crop on ${land.area_acres} acres of land.
 
 📍 Farmer's Information:
 • Location: ${land.village || ''}, ${land.district}, ${land.state}
@@ -728,27 +848,32 @@ ${suitabilityCheck.warnings.length > 0 ? `
 ${suitabilityCheck.warnings.map(w => `• ${w}`).join('\n')}
 ` : ''}
 
-📋 Include these stages in schedule (12-18 tasks):
+📋 Include these stages in ${localizedCrop.local} schedule (12-18 tasks):
 1. Land preparation (plowing, harrowing, bed making)
 2. Seed selection and treatment
 3. Sowing/Transplanting (proper spacing, depth)
-4. First irrigation (after sowing)
+4. First irrigation (immediately after sowing)
 5. First weeding
-6. Fertilizer management (FYM, Urea, DAP - 3-4 times)
-7. Irrigation schedule (5-6 times)
-8. Pest management (2-3 sprays)
-9. Disease management
-10. Growth stage monitoring
-11. Harvesting
-12. Post-harvest storage
+6. First fertilizer dose (FYM + basal dose)
+7. Second fertilizer dose (Urea - 20-25 days)
+8. Third fertilizer dose (Top dressing - 45-50 days)
+9. Pest management (first spray)
+10. Disease management (fungicide spray)
+11. Irrigation schedule (regular watering)
+12. Growth stage monitoring
+13. Second pest spray (if needed)
+14. Pre-harvest preparation
+15. Harvesting
+16. Post-harvest storage
 
 ⚡ Important Rules:
 • Write each task in simple English
+• Always use crop name "${localizedCrop.local}"
 • Give exact quantities (X kg/acre, Y liters water)
 • Give ICAR/KVK recommendation reference
-• Show cost in ₹
+• Show cost in ₹ (market rates)
 • Explain how to do in 3-4 steps
-• Give 2-3 precautions
+• Give 2-3 precautions (mask, gloves for spraying)
 • Mention weather conditions (temperature, humidity)`
       };
 
@@ -758,46 +883,55 @@ ${suitabilityCheck.warnings.map(w => `• ${w}`).join('\n')}
     const getUserPrompt = (lang: string): string => {
       const prompts: Record<string, string> = {
         mr: `माझी ${land.area_acres} एकर जमीन ${land.district}, ${land.state} मध्ये आहे.
-मला ${cropName} पिकाचे संपूर्ण वेळापत्रक हवे आहे.
-पेरणी तारीख: ${sowingDate}
+मला ${localizedCrop.local} पिकाचे संपूर्ण वेळापत्रक हवे आहे.
+पेरणी/लागवड तारीख: ${sowingDate}
 ${cropVariety ? `वाण: ${cropVariety}` : ''}
+
+⚠️ महत्वाचे: पिकाचे नाव "${localizedCrop.local}" असेच वापरा!
 
 कृपया 12-18 कामांचे विस्तृत वेळापत्रक द्या:
 • प्रत्येक कामासाठी नेमकी मात्रा (${land.area_acres} एकर साठी)
-• खाद/औषधांची नावे आणि किंमत
-• कसे करायचे (स्टेप बाय स्टेप)
+• खाद/औषधांची नावे आणि बाजारभाव किंमत
+• कसे करायचे (स्टेप बाय स्टेप सोप्या भाषेत)
 • कोणत्या हवामानात करायचे
-• ICAR शिफारस
+• ICAR/KVK शिफारस
+• सावधानी (औषध फवारणीसाठी मास्क, हातमोजे)
 
-सगळे मराठीत लिहा - शेतकऱ्याच्या भाषेत!`,
+सगळे शुद्ध मराठीत लिहा - शेतकऱ्याच्या गावठी भाषेत!`,
 
         hi: `मेरी ${land.area_acres} एकड़ जमीन ${land.district}, ${land.state} में है।
-मुझे ${cropName} फसल का पूरा वेळापत्रक चाहिए।
-बुवाई तारीख: ${sowingDate}
+मुझे ${localizedCrop.local} फसल का पूरा शेड्यूल चाहिए।
+बुवाई/रोपाई तारीख: ${sowingDate}
 ${cropVariety ? `किस्म: ${cropVariety}` : ''}
 
-कृपया 12-18 कामों का विस्तृत वेळापत्रक दो:
-• हर काम के लिए सटीक मात्रा (${land.area_acres} एकड़ के लिए)
-• खाद/दवाई के नाम और कीमत
-• कैसे करना है (स्टेप बाय स्टेप)
-• किस मौसम में करना है
-• ICAR सिफारिश
+⚠️ जरूरी: फसल का नाम "${localizedCrop.local}" ही इस्तेमाल करो!
 
-सब हिंदी में लिखो - गाँव की भाषा में!`,
+कृपया 12-18 कामों का विस्तृत शेड्यूल दो:
+• हर काम के लिए सटीक मात्रा (${land.area_acres} एकड़ के लिए)
+• खाद/दवाई के नाम और बाजार भाव कीमत
+• कैसे करना है (स्टेप बाय स्टेप आसान भाषा में)
+• किस मौसम में करना है
+• ICAR/KVK सिफारिश
+• सावधानी (दवाई छिड़कते वक्त मास्क, दस्ताने)
+
+सब शुद्ध हिंदी में लिखो - गाँव की देसी भाषा में!`,
 
         en: `My ${land.area_acres} acre land is in ${land.district}, ${land.state}.
-I need complete schedule for ${cropName} crop.
-Sowing date: ${sowingDate}
+I need complete schedule for ${localizedCrop.local} (${localizedCrop.english}) crop.
+Sowing/Planting date: ${sowingDate}
 ${cropVariety ? `Variety: ${cropVariety}` : ''}
+
+⚠️ IMPORTANT: Use crop name "${localizedCrop.local}" only!
 
 Please give detailed schedule with 12-18 tasks:
 • Exact quantity for each task (for ${land.area_acres} acres)
-• Fertilizer/medicine names and cost
-• How to do (step by step)
+• Fertilizer/medicine names and market cost
+• How to do (step by step in simple language)
 • Weather conditions
-• ICAR recommendation
+• ICAR/KVK recommendation
+• Precautions (mask, gloves for spraying)
 
-Write in simple language!`
+Write in simple, easy language!`
       };
 
       return prompts[lang] || prompts['hi'];
@@ -818,11 +952,14 @@ Write in simple language!`
         type: "function",
         function: {
           name: "create_crop_schedule",
-          description: `Generate detailed agricultural schedule with 12-18 tasks for ${cropName} crop. Each task must have clear instructions in ${languageName} rural language.`,
+          description: `Generate detailed agricultural schedule with 12-18 tasks for ${localizedCrop.local} (${localizedCrop.english}) crop. Each task must have clear instructions in ${languageName} rural language. IMPORTANT: Use crop name "${localizedCrop.local}" exactly - do NOT translate it!`,
           parameters: {
             type: "object",
             properties: {
-              crop_name: { type: "string", description: "Crop name" },
+              crop_name: { 
+                type: "string", 
+                description: `MUST use exactly: "${localizedCrop.local}" - DO NOT translate or change this name! This is the correct ${languageName} name for ${localizedCrop.english}.`
+              },
               crop_variety: { type: "string", description: "Recommended variety for this region" },
               crop_season: { type: "string", description: "Kharif/Rabi/Zaid" },
               total_duration_days: { type: "integer", description: "Total crop duration from sowing to harvest" },
@@ -830,8 +967,8 @@ Write in simple language!`
               expected_yield_per_acre: { type: "number", description: "Expected yield per acre in quintals" },
               total_estimated_cost: { type: "number", description: "Total cost in INR for all inputs" },
               expected_profit: { type: "number", description: "Expected profit after harvest in INR" },
-              icar_reference: { type: "string", description: "ICAR Package of Practice reference, e.g., 'ICAR ${cropName} Package of Practice 2024'" },
-              suitability_notes: { type: "string", description: "Notes about crop suitability for this region in rural language" },
+              icar_reference: { type: "string", description: `ICAR Package of Practice reference, e.g., 'ICAR ${localizedCrop.english} Package of Practice 2024'` },
+              suitability_notes: { type: "string", description: `Notes about ${localizedCrop.local} suitability for this region in rural ${languageName} language` },
               organic_inputs: {
                 type: "object",
                 properties: {
@@ -853,13 +990,13 @@ Write in simple language!`
                 type: "array",
                 minItems: 12,
                 maxItems: 18,
-                description: "MUST generate 12-18 detailed tasks covering all crop stages",
+                description: `MUST generate 12-18 detailed tasks for ${localizedCrop.local} covering all crop stages`,
                 items: {
                   type: "object",
                   properties: {
                     task_name: { 
                       type: "string", 
-                      description: `Task name in ${languageName} rural language. NOT technical terms. Example: 'पहिले पाणी द्या' instead of 'प्रथम सिंचन'`
+                      description: `Task name in ${languageName} rural language. NOT technical terms. Example for Marathi: 'पहिले पाणी द्या' instead of 'प्रथम सिंचन'. Example for Hindi: 'पहला पानी दो' instead of 'प्रथम सिंचाई'`
                     },
                     category: { 
                       type: "string",
@@ -873,7 +1010,7 @@ Write in simple language!`
                     priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
                     description: { 
                       type: "string", 
-                      description: `Clear explanation in ${languageName} rural language. WHY this task is important. 2-3 sentences.`
+                      description: `Clear explanation in ${languageName} rural language. WHY this task is important for ${localizedCrop.local}. 2-3 sentences in simple village language.`
                     },
                     quantity: { 
                       type: "string", 
@@ -892,26 +1029,26 @@ Write in simple language!`
                       items: { type: "string" },
                       minItems: 3,
                       maxItems: 5,
-                      description: `Step-by-step HOW TO DO in ${languageName} rural language. Each step clear and actionable.`
+                      description: `Step-by-step HOW TO DO in ${languageName} rural language. Each step clear and actionable. Use simple village words.`
                     },
                     precautions: { 
                       type: "array", 
                       items: { type: "string" },
                       minItems: 2,
                       maxItems: 4,
-                      description: `Safety precautions in ${languageName}. Example: 'फवारणी करताना तोंडावर कापड बांधा'`
+                      description: `Safety precautions in ${languageName} village language. Example for Marathi: 'फवारणी करताना तोंडावर कापड बांधा'. Example for Hindi: 'दवाई छिड़कते वक्त मुंह पर कपड़ा बांधो'`
                     },
                     weather_dependent: { type: "boolean", description: "True if weather affects this task" },
                     icar_guideline: { 
                       type: "string", 
-                      description: "ICAR recommendation reference. Example: 'ICAR ${cropName} Package - Section 4.2'"
+                      description: `ICAR recommendation reference. Example: 'ICAR ${localizedCrop.english} Package - Section 4.2'`
                     },
                     ideal_weather: {
                       type: "object",
                       properties: {
                         temperature: { type: "string", description: "Ideal temperature range. Example: '20-30°C'" },
                         humidity: { type: "string", description: "Ideal humidity. Example: '60-80%'" },
-                        conditions: { type: "string", description: "Weather conditions. Example: 'ढगाळ वातावरण, पाऊस नको'" }
+                        conditions: { type: "string", description: `Weather conditions in ${languageName}. Example: 'ढगाळ वातावरण, पाऊस नको' (Marathi) or 'साफ मौसम' (Hindi)` }
                       },
                       required: ["temperature", "humidity", "conditions"]
                     }
@@ -956,6 +1093,12 @@ Write in simple language!`
     
     console.log(`✅ [AI Response] ${scheduleData.crop_name}: ${scheduleData.total_duration_days} days, ${scheduleData.tasks?.length || 0} tasks generated`);
     console.log(`📝 [Language] Response language: ${language}, Tasks sample: ${scheduleData.tasks?.[0]?.task_name || 'N/A'}`);
+
+    // CRITICAL: Validate and fix crop name if AI returned wrong translation
+    if (scheduleData.crop_name !== localizedCrop.local) {
+      console.warn(`⚠️ [CropName] AI returned wrong crop name: "${scheduleData.crop_name}" instead of "${localizedCrop.local}" - FIXING!`);
+      scheduleData.crop_name = localizedCrop.local;
+    }
 
     if (!scheduleData.tasks || scheduleData.tasks.length === 0) {
       console.error('❌ AI returned empty schedule - no tasks array');
