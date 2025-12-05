@@ -135,9 +135,37 @@ serve(async (req) => {
     const languageName = languageMap[language] || 'Hindi';
 
     // 5. Build Comprehensive Context-Aware Prompt with NDVI, Guidelines, NPK
-    const systemPrompt = `Expert agricultural advisor for ${land.state}, India. Generate schedule in ${languageName} language.
-Land: ${land.area_acres} acres (${(land.area_acres * 0.404686).toFixed(2)} ha).
-Scale all quantities to this land size. Use ${currency} for costs.`;
+    // Strong multi-language enforcement
+    const languageInstruction = language === 'en' 
+      ? 'Generate ALL content in English.'
+      : `CRITICAL: Generate ALL task_name, description, instructions, and text content in ${languageName} (${language}) language ONLY. 
+DO NOT use English for any text fields. Use ${languageName} script (e.g., ${
+        language === 'hi' ? 'हिंदी में लिखें' : 
+        language === 'mr' ? 'मराठीत लिहा' : 
+        language === 'pa' ? 'ਪੰਜਾਬੀ ਵਿੱਚ ਲਿਖੋ' : 
+        language === 'ta' ? 'தமிழில் எழுதுங்கள்' : 
+        language === 'te' ? 'తెలుగులో వ్రాయండి' : 
+        language === 'bn' ? 'বাংলায় লিখুন' : 
+        language === 'gu' ? 'ગુજરાતીમાં લખો' : 
+        language === 'kn' ? 'ಕನ್ನಡದಲ್ಲಿ ಬರೆಯಿರಿ' : 
+        `in ${languageName}`
+      }).
+Numbers and units can remain in standard format (kg, liters, etc.).`;
+
+    const systemPrompt = `You are an expert agricultural advisor for ${land.state}, India.
+
+${languageInstruction}
+
+Land Details:
+- Size: ${land.area_acres} acres (${(land.area_acres * 0.404686).toFixed(2)} hectares)
+- Scale all quantities to this land size
+- Use ${currency} for all costs
+
+LANGUAGE REQUIREMENT: ${languageName} (code: ${language})
+- task_name: Must be in ${languageName}
+- description: Must be in ${languageName}  
+- instructions: Must be in ${languageName}
+- All farmer-facing text MUST be in ${languageName}`;
 
     // Build crop baseline context
     const guidelineContext = guidelines ? `
@@ -231,7 +259,9 @@ ${weather?.forecast ? `Rain forecast: ${weather.forecast.filter((f: any) => f.ra
 
 Generate 10-12 tasks: ${isReadyMadePlant ? 'transplant irrigation, stress mgmt,' : 'land prep, sowing,'} irrigation (6-8x), fertilizer (2-3 splits based on deficit), pest control (2-3x), weeding (2x), harvest.
 
-Calculate: yield (quintals), market price, revenue, costs, profit. Include organic inputs, pest mgmt, growth regulators if beneficial.`;
+Calculate: yield (quintals), market price, revenue, costs, profit. Include organic inputs, pest mgmt, growth regulators if beneficial.
+
+⚠️ MANDATORY: Write ALL task_name, description, and instructions in ${languageName} language (${language}). The farmer only understands ${languageName}.`;
 
 
     // 5. Validate critical data before calling OpenAI
@@ -330,7 +360,7 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
                 items: {
                   type: "object",
                   properties: {
-                    task_name: { type: "string", description: "Simple name in local language" },
+                    task_name: { type: "string", description: `Task name in ${languageName} language ONLY. Must use ${languageName} script.` },
                     category: { 
                       type: "string",
                       enum: ["soil_preparation", "sowing", "irrigation", "fertilizer", "pest_control", "weed_management", "harvesting"]
@@ -340,13 +370,13 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
                       type: "string",
                       enum: ["low", "medium", "high"]
                     },
-                    description: { type: "string", description: "What to do in simple words" },
+                    description: { type: "string", description: `Task description in ${languageName} language ONLY. Must use ${languageName} script.` },
                     quantity: { type: "string", description: "Specific quantity for this task (e.g., '50 kg urea', '2000 liters water')" },
                     estimated_cost: { type: "number", description: "Cost in local currency" },
                     instructions: {
                       type: "array",
                       items: { type: "string" },
-                      description: "Step-by-step simple instructions"
+                      description: `Step-by-step instructions in ${languageName} language ONLY. Must use ${languageName} script.`
                     },
                     weather_dependent: { type: "boolean", description: "Should this task be rescheduled based on weather?" }
                   },
