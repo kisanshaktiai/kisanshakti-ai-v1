@@ -228,31 +228,47 @@ function checkCropSuitability(
   currentTemp: number | null,
   language: string
 ): SuitabilityResult {
-  const cropData = cropSuitability[cropName];
+  // Case-insensitive crop lookup - CRITICAL FIX
+  const normalizedCropName = cropName.charAt(0).toUpperCase() + cropName.slice(1).toLowerCase();
+  const cropData = cropSuitability[normalizedCropName] || cropSuitability[cropName];
+  
+  // Also try to find by matching against keys
+  const matchedCropKey = Object.keys(cropSuitability).find(
+    key => key.toLowerCase() === cropName.toLowerCase()
+  );
+  const finalCropData = cropData || (matchedCropKey ? cropSuitability[matchedCropKey] : null);
+  
   const alternatives = regionalAlternatives[state] || regionalAlternatives['Default'];
   
+  console.log(`🔍 Suitability check for "${cropName}" -> normalized: "${normalizedCropName}", found: ${!!finalCropData}`);
+  
   // Default result for unknown crops - allow with warning
-  if (!cropData) {
+  if (!finalCropData) {
     return {
       suitable: true,
       score: 70,
-      warnings: [`${cropName} की जानकारी उपलब्ध नहीं है, सावधानी से आगे बढ़ें`],
+      warnings: [language === 'mr' 
+        ? `${cropName} ची माहिती उपलब्ध नाही, सावधानीने पुढे जा`
+        : `${cropName} की जानकारी उपलब्ध नहीं है, सावधानी से आगे बढ़ें`],
       risks: [],
       alternatives: alternatives.slice(0, 3).map(c => ({ crop: c, successRate: 80, potentialProfit: '₹20,000-40,000/एकड़' })),
       proceedAnyway: true,
       warningMessage: ''
     };
   }
+  
+  // Use finalCropData instead of cropData for rest of function
+  const cropDataToUse = finalCropData;
 
   let score = 100;
   const warnings: string[] = [];
   const risks: string[] = [];
 
   // 1. Check state suitability
-  const isUnsuitableState = cropData.unsuitableStates.some(s => 
+  const isUnsuitableState = cropDataToUse.unsuitableStates.some(s => 
     state.toLowerCase().includes(s.toLowerCase()) || s.toLowerCase().includes(state.toLowerCase())
   );
-  const isBestState = cropData.bestStates.some(s => 
+  const isBestState = cropDataToUse.bestStates.some(s => 
     state.toLowerCase().includes(s.toLowerCase()) || s.toLowerCase().includes(state.toLowerCase())
   );
 
@@ -276,43 +292,43 @@ function checkCropSuitability(
 
   // 2. Check soil type
   if (soilType) {
-    const soilMatch = cropData.soilTypes.some(s => 
+    const soilMatch = cropDataToUse.soilTypes.some(s => 
       soilType.toLowerCase().includes(s.toLowerCase())
     );
     if (!soilMatch) {
       score -= 20;
       if (language === 'mr') {
         warnings.push(`${soilType} माती ${cropName} साठी कमी योग्य आहे`);
-        warnings.push(`चांगली माती: ${cropData.soilTypes.join(', ')}`);
+        warnings.push(`चांगली माती: ${cropDataToUse.soilTypes.join(', ')}`);
       } else {
         warnings.push(`${soilType} मिट्टी ${cropName} के लिए कम उपयुक्त है`);
-        warnings.push(`अच्छी मिट्टी: ${cropData.soilTypes.join(', ')}`);
+        warnings.push(`अच्छी मिट्टी: ${cropDataToUse.soilTypes.join(', ')}`);
       }
     }
   }
 
   // 3. Check temperature (if available)
   if (currentTemp !== null) {
-    if (currentTemp < cropData.optimalTemp[0] - 5) {
+    if (currentTemp < cropDataToUse.optimalTemp[0] - 5) {
       score -= 25;
       if (language === 'mr') {
-        warnings.push(`तापमान खूप कमी (${currentTemp}°C) - ${cropName} ला ${cropData.optimalTemp[0]}-${cropData.optimalTemp[1]}°C लागतं`);
+        warnings.push(`तापमान खूप कमी (${currentTemp}°C) - ${cropName} ला ${cropDataToUse.optimalTemp[0]}-${cropDataToUse.optimalTemp[1]}°C लागतं`);
       } else {
-        warnings.push(`तापमान बहुत कम (${currentTemp}°C) - ${cropName} को ${cropData.optimalTemp[0]}-${cropData.optimalTemp[1]}°C चाहिए`);
+        warnings.push(`तापमान बहुत कम (${currentTemp}°C) - ${cropName} को ${cropDataToUse.optimalTemp[0]}-${cropDataToUse.optimalTemp[1]}°C चाहिए`);
       }
-    } else if (currentTemp > cropData.optimalTemp[1] + 5) {
+    } else if (currentTemp > cropDataToUse.optimalTemp[1] + 5) {
       score -= 25;
       if (language === 'mr') {
-        warnings.push(`तापमान खूप जास्त (${currentTemp}°C) - ${cropName} ला ${cropData.optimalTemp[0]}-${cropData.optimalTemp[1]}°C लागतं`);
+        warnings.push(`तापमान खूप जास्त (${currentTemp}°C) - ${cropName} ला ${cropDataToUse.optimalTemp[0]}-${cropDataToUse.optimalTemp[1]}°C लागतं`);
       } else {
-        warnings.push(`तापमान बहुत ज्यादा (${currentTemp}°C) - ${cropName} को ${cropData.optimalTemp[0]}-${cropData.optimalTemp[1]}°C चाहिए`);
+        warnings.push(`तापमान बहुत ज्यादा (${currentTemp}°C) - ${cropName} को ${cropDataToUse.optimalTemp[0]}-${cropDataToUse.optimalTemp[1]}°C चाहिए`);
       }
     }
   }
 
   // 4. Check irrigation for water-intensive crops
   if (!irrigationType || irrigationType.toLowerCase() === 'rainfed') {
-    if (cropData.rainfall[0] > 1000) {
+    if (cropDataToUse.rainfall[0] > 1000) {
       score -= 20;
       if (language === 'mr') {
         warnings.push(`${cropName} ला भरपूर पाणी लागतं - सिंचन व्यवस्था करा`);
@@ -323,7 +339,7 @@ function checkCropSuitability(
   }
 
   // Add risk factors
-  cropData.riskFactors.forEach(risk => {
+  cropDataToUse.riskFactors.forEach(risk => {
     if (language === 'mr') {
       risks.push(`सावधान: ${risk}`);
     } else {

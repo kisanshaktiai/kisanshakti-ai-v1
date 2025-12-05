@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, Loader2, Sparkles } from 'lucide-react';
+import { CalendarIcon, Loader2, Sparkles, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -23,19 +23,26 @@ interface ScheduleGeneratorProps {
   onCancel: () => void;
 }
 
+interface SuitabilityWarning {
+  score: number;
+  warnings: string[];
+  risks: string[];
+  alternatives: { crop: string; successRate: number; potentialProfit: string }[];
+  warningMessage: string;
+}
+
 const popularCrops = [
-  { value: 'rice', label: 'Rice', season: 'Kharif' },
-  { value: 'wheat', label: 'Wheat', season: 'Rabi' },
-  { value: 'cotton', label: 'Cotton', season: 'Kharif' },
-  { value: 'sugarcane', label: 'Sugarcane', season: 'All' },
-  { value: 'maize', label: 'Maize', season: 'Kharif' },
-  { value: 'soybean', label: 'Soybean', season: 'Kharif' },
-  { value: 'groundnut', label: 'Groundnut', season: 'Kharif' },
-  { value: 'pulses', label: 'Pulses', season: 'Both' },
-  { value: 'potato', label: 'Potato', season: 'Rabi' },
-  { value: 'onion', label: 'Onion', season: 'Both' },
-  { value: 'tomato', label: 'Tomato', season: 'All' },
-  { value: 'chilli', label: 'Chilli', season: 'Both' },
+  { value: 'Rice', label: 'Rice', season: 'Kharif' },
+  { value: 'Wheat', label: 'Wheat', season: 'Rabi' },
+  { value: 'Cotton', label: 'Cotton', season: 'Kharif' },
+  { value: 'Sugarcane', label: 'Sugarcane', season: 'All' },
+  { value: 'Maize', label: 'Maize', season: 'Kharif' },
+  { value: 'Soybean', label: 'Soybean', season: 'Kharif' },
+  { value: 'Groundnut', label: 'Groundnut', season: 'Kharif' },
+  { value: 'Potato', label: 'Potato', season: 'Rabi' },
+  { value: 'Onion', label: 'Onion', season: 'Both' },
+  { value: 'Tomato', label: 'Tomato', season: 'All' },
+  { value: 'Turmeric', label: 'Turmeric', season: 'Kharif' },
 ];
 
 const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({ 
@@ -51,14 +58,18 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
   const { currentLanguage } = useLanguageStore();
   
   const [cropName, setCropName] = useState(currentCrop || '');
+  const [customCropName, setCustomCropName] = useState('');
   const [cropVariety, setCropVariety] = useState('');
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
   const [isReadyMadePlant, setIsReadyMadePlant] = useState<boolean>(false);
   const [generating, setGenerating] = useState(false);
-  const [step, setStep] = useState(1);
+  const [suitabilityWarning, setSuitabilityWarning] = useState<SuitabilityWarning | null>(null);
+  const [showWarning, setShowWarning] = useState(false);
 
-  const handleGenerate = async () => {
-    if (!cropName || !sowingDate) {
+  const effectiveCropName = cropName === 'other' ? customCropName : cropName;
+
+  const handleGenerate = async (forceGenerate = false) => {
+    if (!effectiveCropName || !sowingDate) {
       toast({
         title: 'Missing Information',
         description: 'Please select a crop and sowing date',
@@ -69,18 +80,20 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
 
     try {
       setGenerating(true);
+      setSuitabilityWarning(null);
+      setShowWarning(false);
 
       // Prepare weather data
       const weatherData = currentWeather ? {
         current: currentWeather,
-        forecast: forecast?.slice(0, 2), // Next 48 hours
+        forecast: forecast?.slice(0, 2),
       } : null;
 
       // Call edge function to generate schedule
       const response = await supabase.functions.invoke('ai-smart-schedule', {
         body: {
           landId,
-          cropName,
+          cropName: effectiveCropName,
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
           isReadyMadePlant,
@@ -88,6 +101,7 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
           regenerate: false,
           language: currentLanguage,
           country: 'India',
+          forceGenerate, // Pass force flag
         },
         headers: {
           'x-tenant-id': user?.tenantId || '',
@@ -99,17 +113,32 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
       if (response.error) throw response.error;
 
       const { data } = response;
+      
+      // Check for suitability warning
+      if (data.suitabilityWarning && !forceGenerate) {
+        setSuitabilityWarning({
+          score: data.score,
+          warnings: data.warnings || [],
+          risks: data.risks || [],
+          alternatives: data.alternatives || [],
+          warningMessage: data.warningMessage || '',
+        });
+        setShowWarning(true);
+        setGenerating(false);
+        return;
+      }
+
       if (!data.success) {
         throw new Error(data.error || 'Failed to generate schedule');
       }
 
       toast({
         title: 'Success!',
-        description: 'Crop schedule generated successfully',
+        description: `Crop schedule generated with ${data.totalTasks} tasks`,
       });
 
       onComplete();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating schedule:', error);
       toast({
         title: 'Error',
@@ -120,6 +149,143 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
       setGenerating(false);
     }
   };
+
+  const handleProceedAnyway = () => {
+    handleGenerate(true); // Force generate
+  };
+
+  const handleSelectAlternative = (altCrop: string) => {
+    setCropName(altCrop);
+    setSuitabilityWarning(null);
+    setShowWarning(false);
+  };
+
+  // Warning UI Component
+  if (showWarning && suitabilityWarning) {
+    return (
+      <Card className="bg-background/60 backdrop-blur-2xl border-destructive/50 shadow-2xl">
+        <CardHeader className="bg-gradient-to-r from-destructive/20 to-orange-500/20 border-b border-destructive/50">
+          <CardTitle className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="h-6 w-6" />
+            <span>⚠️ Crop Suitability Warning</span>
+          </CardTitle>
+          <CardDescription>
+            Suitability Score: <span className="font-bold text-destructive">{suitabilityWarning.score}%</span>
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="space-y-4 pt-4">
+          {/* Warning Message */}
+          <div className="p-4 bg-destructive/10 rounded-lg border border-destructive/30 whitespace-pre-wrap text-sm">
+            {suitabilityWarning.warningMessage}
+          </div>
+
+          {/* Warnings List */}
+          {suitabilityWarning.warnings.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="font-medium flex items-center gap-2 text-orange-600">
+                <XCircle className="h-4 w-4" />
+                Why not suitable:
+              </h4>
+              <ul className="space-y-1 text-sm text-muted-foreground">
+                {suitabilityWarning.warnings.map((w, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-destructive">•</span>
+                    {w}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Risks */}
+          {suitabilityWarning.risks.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="font-medium flex items-center gap-2 text-red-600">
+                <AlertTriangle className="h-4 w-4" />
+                Risks:
+              </h4>
+              <ul className="space-y-1 text-sm text-muted-foreground">
+                {suitabilityWarning.risks.map((r, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-red-500">⚡</span>
+                    {r}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Alternative Crops */}
+          {suitabilityWarning.alternatives.length > 0 && (
+            <div className="space-y-2">
+              <h4 className="font-medium flex items-center gap-2 text-green-600">
+                <CheckCircle2 className="h-4 w-4" />
+                Better alternatives for your area:
+              </h4>
+              <div className="grid gap-2">
+                {suitabilityWarning.alternatives.map((alt, i) => (
+                  <Button
+                    key={i}
+                    variant="outline"
+                    className="justify-between h-auto py-3 hover:bg-green-50 hover:border-green-300"
+                    onClick={() => handleSelectAlternative(alt.crop)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{alt.crop}</span>
+                    </div>
+                    <div className="text-right text-xs">
+                      <div className="text-green-600 font-medium">{alt.successRate}% success</div>
+                      <div className="text-muted-foreground">{alt.potentialProfit}</div>
+                    </div>
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex flex-col gap-2 pt-4 border-t border-border/50">
+            <Button
+              variant="destructive"
+              onClick={handleProceedAnyway}
+              disabled={generating}
+              className="w-full"
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="mr-2 h-4 w-4" />
+                  Proceed Anyway (At Your Risk)
+                </>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowWarning(false);
+                setSuitabilityWarning(null);
+              }}
+              disabled={generating}
+            >
+              Choose Different Crop
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={onCancel}
+              disabled={generating}
+            >
+              Cancel
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="bg-background/60 backdrop-blur-2xl border-border/50 shadow-2xl">
@@ -137,130 +303,128 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
         </CardDescription>
       </CardHeader>
 
-      <CardContent className="space-y-6">
-        {step === 1 && (
-          <>
-            {/* Crop Selection */}
-            <div className="space-y-2">
-              <Label htmlFor="crop">Select Crop *</Label>
-              <Select value={cropName} onValueChange={setCropName}>
-                <SelectTrigger id="crop">
-                  <SelectValue placeholder="Choose a crop" />
-                </SelectTrigger>
-                <SelectContent>
-                  {popularCrops.map((crop) => (
-                    <SelectItem key={crop.value} value={crop.value}>
-                      <div className="flex justify-between items-center w-full">
-                        <span>{crop.label}</span>
-                        <span className="text-xs text-gray-500 ml-2">{crop.season}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="other">Other (Custom)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+      <CardContent className="space-y-6 pt-6">
+        {/* Crop Selection */}
+        <div className="space-y-2">
+          <Label htmlFor="crop">Select Crop *</Label>
+          <Select value={cropName} onValueChange={setCropName}>
+            <SelectTrigger id="crop">
+              <SelectValue placeholder="Choose a crop" />
+            </SelectTrigger>
+            <SelectContent>
+              {popularCrops.map((crop) => (
+                <SelectItem key={crop.value} value={crop.value}>
+                  <div className="flex justify-between items-center w-full">
+                    <span>{crop.label}</span>
+                    <span className="text-xs text-muted-foreground ml-2">{crop.season}</span>
+                  </div>
+                </SelectItem>
+              ))}
+              <SelectItem value="other">Other (Custom)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
 
-            {cropName === 'other' && (
-              <div className="space-y-2">
-                <Label htmlFor="custom-crop">Enter Crop Name</Label>
-                <Input
-                  id="custom-crop"
-                  placeholder="e.g., Brinjal, Cabbage, etc."
-                  onChange={(e) => setCropName(e.target.value)}
-                />
-              </div>
-            )}
-
-            {/* Crop Variety */}
-            <div className="space-y-2">
-              <Label htmlFor="variety">Crop Variety (Optional)</Label>
-              <Input
-                id="variety"
-                placeholder="e.g., Basmati, BT Cotton, etc."
-                value={cropVariety}
-                onChange={(e) => setCropVariety(e.target.value)}
-              />
-            </div>
-
-            {/* Ready-made Plant Option */}
-            <div className="space-y-3 p-4 bg-accent/20 rounded-lg border border-border/50">
-              <div className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  id="ready-made"
-                  checked={isReadyMadePlant}
-                  onChange={(e) => setIsReadyMadePlant(e.target.checked)}
-                  className="mt-1 h-4 w-4 rounded border-gray-300"
-                />
-                <div className="flex-1">
-                  <Label htmlFor="ready-made" className="text-sm font-medium cursor-pointer">
-                    Using ready-made nursery plants/transplants
-                  </Label>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Check this if you're planting ready-made seedlings from nursery instead of sowing seeds 
-                    (applicable for vegetables, sugarcane sets, etc.)
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Sowing/Planting Date */}
-            <div className="space-y-2">
-              <Label>{isReadyMadePlant ? 'Planting Date *' : 'Sowing Date *'}</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !sowingDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {sowingDate ? format(sowingDate, "PPP") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={sowingDate}
-                    onSelect={setSowingDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            {/* Weather Info */}
-            {currentWeather && (
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <p className="text-sm font-medium text-blue-900 mb-2">Current Weather</p>
-                <div className="grid grid-cols-2 gap-2 text-sm text-blue-700">
-                  <div>Temperature: {currentWeather.temp}°C</div>
-                  <div>Humidity: {currentWeather.humidity}%</div>
-                  <div>Clouds: {currentWeather.clouds}%</div>
-                  <div>Wind: {currentWeather.wind_speed} km/h</div>
-                </div>
-                <p className="text-xs text-blue-600 mt-2">
-                  Schedule will be optimized based on weather forecast
-                </p>
-              </div>
-            )}
-
-            {/* AI Features */}
-            <div className="p-4 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg border border-purple-200">
-              <p className="text-sm font-medium text-purple-900 mb-2">AI-Powered Features</p>
-              <ul className="text-sm text-purple-700 space-y-1">
-                <li>✓ Weather-adaptive scheduling</li>
-                <li>✓ FAO & ICAR best practices</li>
-                <li>✓ Soil-based recommendations</li>
-                <li>✓ Pest & disease prevention</li>
-                <li>✓ Resource optimization</li>
-              </ul>
-            </div>
-          </>
+        {cropName === 'other' && (
+          <div className="space-y-2">
+            <Label htmlFor="custom-crop">Enter Crop Name</Label>
+            <Input
+              id="custom-crop"
+              placeholder="e.g., Brinjal, Cabbage, etc."
+              value={customCropName}
+              onChange={(e) => setCustomCropName(e.target.value)}
+            />
+          </div>
         )}
+
+        {/* Crop Variety */}
+        <div className="space-y-2">
+          <Label htmlFor="variety">Crop Variety (Optional)</Label>
+          <Input
+            id="variety"
+            placeholder="e.g., Basmati, BT Cotton, etc."
+            value={cropVariety}
+            onChange={(e) => setCropVariety(e.target.value)}
+          />
+        </div>
+
+        {/* Ready-made Plant Option */}
+        <div className="space-y-3 p-4 bg-accent/20 rounded-lg border border-border/50">
+          <div className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              id="ready-made"
+              checked={isReadyMadePlant}
+              onChange={(e) => setIsReadyMadePlant(e.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-border"
+            />
+            <div className="flex-1">
+              <Label htmlFor="ready-made" className="text-sm font-medium cursor-pointer">
+                Using ready-made nursery plants/transplants
+              </Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                Check this if you're planting ready-made seedlings from nursery instead of sowing seeds 
+                (applicable for vegetables, sugarcane sets, etc.)
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Sowing/Planting Date */}
+        <div className="space-y-2">
+          <Label>{isReadyMadePlant ? 'Planting Date *' : 'Sowing Date *'}</Label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  "w-full justify-start text-left font-normal",
+                  !sowingDate && "text-muted-foreground"
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {sowingDate ? format(sowingDate, "PPP") : "Pick a date"}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={sowingDate}
+                onSelect={setSowingDate}
+                initialFocus
+              />
+            </PopoverContent>
+          </Popover>
+        </div>
+
+        {/* Weather Info */}
+        {currentWeather && (
+          <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/30">
+            <p className="text-sm font-medium text-blue-700 dark:text-blue-300 mb-2">Current Weather</p>
+            <div className="grid grid-cols-2 gap-2 text-sm text-blue-600 dark:text-blue-400">
+              <div>Temperature: {currentWeather.temp}°C</div>
+              <div>Humidity: {currentWeather.humidity}%</div>
+              <div>Clouds: {currentWeather.clouds}%</div>
+              <div>Wind: {currentWeather.wind_speed} km/h</div>
+            </div>
+            <p className="text-xs text-blue-500 dark:text-blue-400 mt-2">
+              Schedule will be optimized based on weather forecast
+            </p>
+          </div>
+        )}
+
+        {/* AI Features */}
+        <div className="p-4 bg-gradient-to-r from-purple-500/10 to-blue-500/10 rounded-lg border border-purple-500/30">
+          <p className="text-sm font-medium text-purple-700 dark:text-purple-300 mb-2">AI-Powered Features</p>
+          <ul className="text-sm text-purple-600 dark:text-purple-400 space-y-1">
+            <li>✓ Crop-Climate Suitability Check</li>
+            <li>✓ Weather-adaptive scheduling</li>
+            <li>✓ ICAR & State University guidelines</li>
+            <li>✓ Soil-based recommendations</li>
+            <li>✓ Pest & disease prevention</li>
+            <li>✓ 3-Tier Nutrient Management</li>
+          </ul>
+        </div>
 
         {/* Action Buttons */}
         <div className="flex gap-3">
@@ -273,14 +437,14 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
             Cancel
           </Button>
           <Button
-            onClick={handleGenerate}
-            disabled={generating || !cropName || !sowingDate}
+            onClick={() => handleGenerate(false)}
+            disabled={generating || !effectiveCropName || !sowingDate}
             className="flex-1"
           >
             {generating ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Generating...
+                Checking & Generating...
               </>
             ) : (
               <>
