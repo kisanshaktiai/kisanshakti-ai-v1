@@ -507,6 +507,8 @@ ${warnings.map(w => `• ${w}`).join('\n')}
 }
 
 serve(async (req) => {
+  console.log('🚀 [AI-Schedule] Request received');
+  
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -514,16 +516,27 @@ serve(async (req) => {
   const startTime = Date.now();
   
   try {
+    console.log('🔑 [AI-Schedule] Validating OpenAI key...');
     const OPENAI_API_KEY = validateOpenAIKey();
     console.log(`🤖 [AI-Schedule] Using model: ${AI_CONFIG.MODEL}`);
     
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
     const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+      console.error('❌ Missing Supabase credentials');
+      return new Response(
+        JSON.stringify({ error: 'Server configuration error', details: 'Missing Supabase credentials' }),
+        { status: 500, headers: corsHeaders }
+      );
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     
     const tenantId = req.headers.get('x-tenant-id');
     const farmerId = req.headers.get('x-farmer-id');
+    
+    console.log('📋 [AI-Schedule] Headers:', { tenantId, farmerId });
     
     if (!tenantId || !farmerId) {
       return new Response(
@@ -532,9 +545,27 @@ serve(async (req) => {
       );
     }
     
-    const { landId, cropName, cropVariety, sowingDate, isReadyMadePlant = false, weather, regenerate, language = 'hi', country = 'India', forceGenerate = false } = await req.json();
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (parseError) {
+      console.error('❌ Failed to parse request body:', parseError);
+      return new Response(
+        JSON.stringify({ error: 'Invalid request body', details: 'Could not parse JSON' }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
     
-    console.log('🌐 [AI-Schedule] Received:', { language, sowingDate, isReadyMadePlant, cropName });
+    const { landId, cropName, cropVariety, sowingDate, isReadyMadePlant = false, weather, regenerate, language = 'hi', country = 'India', forceGenerate = false } = requestBody;
+    
+    console.log('🌐 [AI-Schedule] Received:', { language, sowingDate, isReadyMadePlant, cropName, landId });
+    
+    if (!landId || !cropName) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required fields', details: 'landId and cropName are required' }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
     
     // CRITICAL FIX: Validate and parse sowing date correctly
     // sowingDate format should be "YYYY-MM-DD"
