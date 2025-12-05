@@ -534,7 +534,21 @@ serve(async (req) => {
     
     const { landId, cropName, cropVariety, sowingDate, isReadyMadePlant = false, weather, regenerate, language = 'hi', country = 'India', forceGenerate = false } = await req.json();
     
-    console.log('🌐 [AI-Schedule] Received language:', language);
+    console.log('🌐 [AI-Schedule] Received:', { language, sowingDate, isReadyMadePlant, cropName });
+    
+    // CRITICAL FIX: Validate and parse sowing date correctly
+    // sowingDate format should be "YYYY-MM-DD"
+    if (!sowingDate || !/^\d{4}-\d{2}-\d{2}$/.test(sowingDate)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid sowing date format', details: 'Expected format: YYYY-MM-DD' }),
+        { status: 400, headers: corsHeaders }
+      );
+    }
+    
+    // Parse date correctly to avoid timezone issues
+    const [year, month, day] = sowingDate.split('-').map(Number);
+    const sowingDateParsed = new Date(year, month - 1, day); // month is 0-indexed
+    console.log(`📅 [Date] Parsed sowing date: ${sowingDateParsed.toISOString()} from "${sowingDate}"`);
 
     const rateLimitKey = `${tenantId}:${farmerId}`;
     const rateLimit = await checkRateLimit(rateLimitKey, 'ai-smart-schedule', { maxRequests: 30, windowMs: 60000 });
@@ -686,16 +700,28 @@ ${suitabilityCheck.warnings.map(w => `• ${w}`).join('\n')}
     // REBUILT PROMPT SYSTEM - Cleaner, Language-Specific, More Accurate
     // ============================================================================
     
+    // Determine planting method label based on isReadyMadePlant
+    const plantingMethod = {
+      mr: isReadyMadePlant ? 'तयार रोपे/कांड्या लावणे' : 'बियाणे पेरणे',
+      hi: isReadyMadePlant ? 'तैयार पौधे/कांड लगाना' : 'बीज बोना',
+      en: isReadyMadePlant ? 'Transplanting ready plants/sets' : 'Sowing seeds'
+    };
+
     const getSystemPrompt = (lang: string): string => {
       const prompts: Record<string, string> = {
         mr: `तू एक अनुभवी शेतकरी आणि कृषी तज्ञ आहेस. तुला ICAR आणि महाराष्ट्र कृषी विद्यापीठाचे ज्ञान आहे.
 
-🌾 पिकाचे नाव: ${localizedCrop.local}
+🌾 पिकाचे नाव: ${localizedCrop.local} (${localizedCrop.english})
 ⚠️ महत्वाचे: पिकाचे नाव "${localizedCrop.local}" असेच लिहा - कोणतेही भाषांतर करू नकोस!
 ❌ चुकीचे: "साखर कांदा", "शुगरकेन" वगैरे - हे चुकीचे आहे!
 ✅ योग्य: "${localizedCrop.local}" - हेच नाव वापर!
 
+📅 लागवड तारीख: ${sowingDate}
+🌱 लागवड पद्धत: ${plantingMethod.mr}
+${isReadyMadePlant ? '⚠️ शेतकरी तयार रोपे/कांड्या वापरत आहे - रोपवाटिका टप्पा वगळा, थेट लागवडीपासून सुरू कर!' : '📍 शेतकरी बियाणे पेरणार आहे - बियाणे प्रक्रिया व उगवण टप्पे समाविष्ट कर'}
+
 🎯 तुझं काम: ${localizedCrop.local} पिकाचे ${land.area_acres} एकर जमिनीसाठी संपूर्ण वेळापत्रक तयार करणे.
+📅 सर्व कामांच्या तारखा ${sowingDate} या लागवड तारखेवर आधारित ठेव!
 
 📍 शेतकऱ्याची माहिती:
 • जागा: ${land.village || ''}, ${land.district}, ${land.state}
@@ -716,10 +742,13 @@ ${suitabilityCheck.warnings.map(w => `• ${w}`).join('\n')}
 ` : ''}
 
 📋 ${localizedCrop.local} वेळापत्रकात हे टप्पे समाविष्ट कर (12-18 कामे):
-1. जमीन तयारी (नांगरणी, कुळवणी, सरी/वरंबे बनवणे)
+${isReadyMadePlant ? `1. जमीन तयारी (नांगरणी, कुळवणी, सरी/वरंबे बनवणे) - लागवडीच्या 7-15 दिवस आधी
+2. तयार रोपे/कांड्या निवड व तपासणी
+3. रोपे/कांड्या लागवड (योग्य अंतर, खोली) - दिवस 0
+4. पहिले पाणी (लागवडीनंतर लगेच)` : `1. जमीन तयारी (नांगरणी, कुळवणी, सरी/वरंबे बनवणे) - पेरणीच्या 7-15 दिवस आधी
 2. बियाणे निवड आणि बीजप्रक्रिया
-3. पेरणी/लागवड (योग्य अंतर, खोली)
-4. पहिले पाणी (पेरणीनंतर लगेच)
+3. पेरणी (योग्य अंतर, खोली) - दिवस 0
+4. पहिले पाणी (पेरणीनंतर लगेच)`}
 5. पहिली खुरपणी/निंदणी/तण काढणे
 6. पहिला खत डोस (गोबर खत + बेसल डोस)
 7. दुसरा खत डोस (युरिया - 20-25 दिवसांनी)
@@ -735,13 +764,13 @@ ${suitabilityCheck.warnings.map(w => `• ${w}`).join('\n')}
 
 ⚡ महत्वाचे नियम:
 • प्रत्येक काम शुद्ध मराठीत लिहा - शेतकऱ्याच्या गावठी भाषेत
-• पिकाचे नाव नेहमी "${localizedCrop.local}" असेच लिहा
+• पिकाचे नाव नेहमी "${localizedCrop.local}" असेच लिहा - प्रत्येक task_name मध्ये पिकाचे नाव समाविष्ट कर
+• days_from_sowing: लागवड दिवस = 0, लागवडीपूर्वी = -15 ते -1, लागवडीनंतर = 1, 7, 14, 21...
 • नेमकी मात्रा दे (X kg/एकर, Y लिटर पाणी)
 • ICAR/KVK/वसंतराव नाईक मराठवाडा कृषी विद्यापीठ शिफारस संदर्भ दे
 • खर्च ₹ मध्ये सांग (बाजारभाव)
 • 3-4 स्टेप्स मध्ये कसे करायचे ते सोप्या भाषेत सांग
 • 2-3 सावधानी सांग (औषध फवारणीसाठी मास्क, हातमोजे)
-• हवामान परिस्थिती सांग (तापमान, आर्द्रता)
 
 🗣️ भाषा शैली - गावठी मराठी वापर:
 ✅ "पाणी द्या", "पाणी टाका"
@@ -757,12 +786,17 @@ ${suitabilityCheck.warnings.map(w => `• ${w}`).join('\n')}
 
         hi: `तू एक अनुभवी किसान और कृषि विशेषज्ञ है। तुझे ICAR और राज्य कृषि विश्वविद्यालय का ज्ञान है।
 
-🌾 फसल का नाम: ${localizedCrop.local}
+🌾 फसल का नाम: ${localizedCrop.local} (${localizedCrop.english})
 ⚠️ जरूरी: फसल का नाम "${localizedCrop.local}" ऐसे ही लिखो - कोई अनुवाद मत करो!
 ❌ गलत: "शुगर केन", "चीनी प्याज" वगैरह - ये गलत है!
 ✅ सही: "${localizedCrop.local}" - यही नाम इस्तेमाल करो!
 
+📅 बुवाई/रोपाई तारीख: ${sowingDate}
+🌱 रोपाई का तरीका: ${plantingMethod.hi}
+${isReadyMadePlant ? '⚠️ किसान तैयार पौधे/कांड इस्तेमाल कर रहा है - नर्सरी स्टेज छोड़ दो, सीधे रोपाई से शुरू करो!' : '📍 किसान बीज बोएगा - बीज उपचार और अंकुरण स्टेज शामिल करो'}
+
 🎯 तेरा काम: ${localizedCrop.local} फसल का ${land.area_acres} एकड़ जमीन के लिए पूरा शेड्यूल बनाना।
+📅 सभी कामों की तारीखें ${sowingDate} इस बुवाई तारीख पर आधारित रखो!
 
 📍 किसान की जानकारी:
 • जगह: ${land.village || ''}, ${land.district}, ${land.state}
@@ -783,10 +817,13 @@ ${suitabilityCheck.warnings.map(w => `• ${w}`).join('\n')}
 ` : ''}
 
 📋 ${localizedCrop.local} शेड्यूल में ये चरण शामिल करो (12-18 काम):
-1. जमीन तैयारी (जुताई, पटेला, मेड़ बनाना)
+${isReadyMadePlant ? `1. जमीन तैयारी (जुताई, पटेला, मेड़ बनाना) - रोपाई से 7-15 दिन पहले
+2. तैयार पौधे/कांड का चुनाव और जांच
+3. पौधे/कांड की रोपाई (सही दूरी, गहराई) - दिवस 0
+4. पहला पानी (रोपाई के तुरंत बाद)` : `1. जमीन तैयारी (जुताई, पटेला, मेड़ बनाना) - बुवाई से 7-15 दिन पहले
 2. बीज चुनाव और बीजोपचार
-3. बुवाई/रोपाई (सही दूरी, गहराई)
-4. पहला पानी (बुवाई के तुरंत बाद)
+3. बुवाई (सही दूरी, गहराई) - दिवस 0
+4. पहला पानी (बुवाई के तुरंत बाद)`}
 5. पहली निराई/घास निकालना
 6. पहला खाद डोज (गोबर खाद + बेसल डोज)
 7. दूसरा खाद डोज (यूरिया - 20-25 दिन बाद)
@@ -802,13 +839,13 @@ ${suitabilityCheck.warnings.map(w => `• ${w}`).join('\n')}
 
 ⚡ जरूरी नियम:
 • हर काम शुद्ध हिंदी में लिखो - गाँव की देसी भाषा में
-• फसल का नाम हमेशा "${localizedCrop.local}" ही लिखो
+• फसल का नाम हमेशा "${localizedCrop.local}" ही लिखो - हर task_name में फसल का नाम शामिल करो
+• days_from_sowing: बुवाई दिन = 0, बुवाई से पहले = -15 से -1, बुवाई के बाद = 1, 7, 14, 21...
 • सटीक मात्रा दो (X kg/एकड़, Y लीटर पानी)
 • ICAR/KVK सिफारिश reference दो
 • खर्च ₹ में बताओ (बाजार भाव)
 • 3-4 स्टेप में कैसे करना है समझाओ
 • 2-3 सावधानी बताओ (दवाई छिड़कते वक्त मास्क, दस्ताने)
-• मौसम हालात बताओ (तापमान, नमी)
 
 🗣️ भाषा शैली - देसी हिंदी बोलो:
 ✅ "पानी दो", "पानी लगाओ"
@@ -1204,17 +1241,26 @@ Write in simple, easy language!`
     // 11. Save schedule with all context for training
     // NOTE: Removed non-existent columns: crop_season, status (use is_active instead)
     console.log('📝 [DB] Saving schedule to crop_schedules...');
+    
+    // CRITICAL FIX: Calculate expected harvest date using parsed date to avoid timezone issues
+    const harvestDate = new Date(sowingDateParsed.getTime());
+    harvestDate.setDate(harvestDate.getDate() + (scheduleData.total_duration_days || 120));
+    const harvestDateStr = `${harvestDate.getFullYear()}-${String(harvestDate.getMonth() + 1).padStart(2, '0')}-${String(harvestDate.getDate()).padStart(2, '0')}`;
+    
+    console.log(`📅 [Date] Sowing: ${sowingDate}, Harvest: ${harvestDateStr}, Duration: ${scheduleData.total_duration_days} days`);
+    
     const { data: savedSchedule, error: scheduleError } = await supabase
       .from('crop_schedules')
       .insert({
         tenant_id: tenantId,
         farmer_id: farmerId,
         land_id: landId,
-        crop_name: cropName,
+        // CRITICAL FIX: Save localized crop name (e.g., "ऊस") not English name ("Sugarcane")
+        crop_name: localizedCrop.local,
         crop_variety: cropVariety || scheduleData.crop_variety,
         // crop_season moved to generation_params (column doesn't exist in table)
         sowing_date: sowingDate,
-        expected_harvest_date: new Date(new Date(sowingDate).getTime() + (scheduleData.total_duration_days || 120) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        expected_harvest_date: harvestDateStr,
         is_active: true,
         // status removed (column doesn't exist, use is_active instead)
         expected_yield_quintals: scheduleData.expected_yield_quintals || scheduleData.expected_yield_per_acre * land.area_acres,
@@ -1222,7 +1268,10 @@ Write in simple, easy language!`
         generation_params: {
           model: AI_CONFIG.MODEL,
           language,
+          isReadyMadePlant, // Store planting method for reference
           crop_season: scheduleData.crop_season, // Stored here since column doesn't exist
+          crop_name_english: cropName, // Keep English name for reference
+          crop_name_local: localizedCrop.local, // Keep local name for reference
           suitability_check: {
             score: suitabilityCheck.score,
             suitable: suitabilityCheck.suitable,
@@ -1237,7 +1286,7 @@ Write in simple, easy language!`
           },
           ndvi_status: ndviStatus,
           weather_at_generation: weather?.current,
-          prompt_version: 'v4_suitability_enhanced',
+          prompt_version: 'v5_date_planting_fix',
           ai_response: {
             organic_inputs: scheduleData.organic_inputs,
             chemical_fertilizers: scheduleData.chemical_fertilizers,
@@ -1267,13 +1316,19 @@ Write in simple, easy language!`
     // Task metadata is merged into resources column
     console.log(`📝 [DB] Preparing ${scheduleData.tasks.length} tasks...`);
     const tasksToInsert = scheduleData.tasks.map((task: any, index: number) => {
-      const taskDate = new Date(sowingDate);
-      taskDate.setDate(taskDate.getDate() + (task.days_from_sowing || index * 7));
+      // CRITICAL FIX: Use parsed date to avoid timezone issues
+      const taskDate = new Date(sowingDateParsed.getTime());
+      taskDate.setDate(taskDate.getDate() + (task.days_from_sowing ?? index * 7));
+      
+      // Format date properly as YYYY-MM-DD
+      const taskDateStr = `${taskDate.getFullYear()}-${String(taskDate.getMonth() + 1).padStart(2, '0')}-${String(taskDate.getDate()).padStart(2, '0')}`;
+      
+      console.log(`📅 Task ${index + 1}: "${task.task_name}" - days_from_sowing: ${task.days_from_sowing}, date: ${taskDateStr}`);
       
       return {
         schedule_id: savedSchedule.id,
         // tenant_id and farmer_id removed (columns don't exist in schedule_tasks)
-        task_date: taskDate.toISOString().split('T')[0],
+        task_date: taskDateStr,
         task_type: task.category || 'other',
         task_name: task.task_name,
         task_description: task.description,
@@ -1291,7 +1346,8 @@ Write in simple, easy language!`
           // Metadata merged into resources (column doesn't exist)
           days_from_sowing: task.days_from_sowing,
           ai_generated: true,
-          land_area: land.area_acres
+          land_area: land.area_acres,
+          crop_name: localizedCrop.local // Include crop name in resources
         },
         ideal_weather: task.ideal_weather,
         estimated_cost: task.estimated_cost,
@@ -1350,7 +1406,10 @@ Write in simple, easy language!`
       JSON.stringify({
         success: true,
         scheduleId: savedSchedule.id,
-        cropName: scheduleData.crop_name,
+        cropName: localizedCrop.local, // Return localized crop name
+        cropNameEnglish: cropName, // Also return English name for reference
+        sowingDate: sowingDate,
+        isReadyMadePlant: isReadyMadePlant,
         totalTasks: scheduleData.tasks.length,
         duration: scheduleData.total_duration_days,
         expectedYield: scheduleData.expected_yield_quintals,
