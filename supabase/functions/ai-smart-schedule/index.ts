@@ -598,26 +598,31 @@ ${weather.forecast.filter((f: any) => f.rainfall > 5).map((f: any) => `• द�
     if (tasksError) console.error('Tasks insert error:', tasksError);
     else console.log(`✓ Inserted ${insertedTasks?.length || 0} tasks`);
 
-    // Log for AI training
-    await supabase.from('ai_decision_log').insert({
-      tenant_id: tenantId,
-      farmer_id: farmerId,
-      land_id: landId,
-      schedule_id: savedSchedule.id,
-      decision_type: 'schedule_generation',
-      input_data: {
-        land: { area: land.area_acres, soil: land.soil_type, irrigation: land.irrigation_type, npk: { n: currentN, p: currentP, k: currentK } },
-        crop: cropName,
-        sowingDate,
-        weather: weather?.current,
-        ndvi: ndviStatus
-      },
-      output_data: scheduleData,
-      reasoning: `Generated ${scheduleData.tasks.length} tasks for ${cropName} on ${land.area_acres} acres with ${land.soil_type || 'unknown'} soil`,
-      model_version: AI_CONFIG.MODEL,
-      success: true,
-      execution_time_ms: Date.now() - startTime
-    }).catch(e => console.warn('Failed to log decision:', e));
+    // Log for AI training (non-blocking)
+    try {
+      const { error: logError } = await supabase.from('ai_decision_log').insert({
+        tenant_id: tenantId,
+        farmer_id: farmerId,
+        land_id: landId,
+        schedule_id: savedSchedule.id,
+        decision_type: 'schedule_generation',
+        input_data: {
+          land: { area: land.area_acres, soil: land.soil_type, irrigation: land.irrigation_type, npk: { n: currentN, p: currentP, k: currentK } },
+          crop: cropName,
+          sowingDate,
+          weather: weather?.current,
+          ndvi: ndviStatus
+        },
+        output_data: scheduleData,
+        reasoning: `Generated ${scheduleData.tasks.length} tasks for ${cropName} on ${land.area_acres} acres with ${land.soil_type || 'unknown'} soil`,
+        model_version: AI_CONFIG.MODEL,
+        success: true,
+        execution_time_ms: Date.now() - startTime
+      });
+      if (logError) console.warn('Failed to log decision:', logError);
+    } catch (e) {
+      console.warn('Failed to log decision:', e);
+    }
 
     const executionTime = Date.now() - startTime;
     console.log(`✅ Schedule generated in ${executionTime}ms`);
