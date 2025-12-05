@@ -1396,14 +1396,15 @@ ${suitabilityCheck.risks.map(r => `• ${r}`).join('\n')}
           },
           ndvi_status: ndviStatus,
           weather_at_generation: weather?.current,
-          prompt_version: 'v4_suitability_enhanced'
-        },
-        ai_response_metadata: {
-          organic_inputs: scheduleData.organic_inputs,
-          chemical_fertilizers: scheduleData.chemical_fertilizers,
-          icar_reference: scheduleData.icar_reference,
-          seed_details: scheduleData.seed_details,
-          suitability_notes: scheduleData.suitability_notes
+          prompt_version: 'v4_suitability_enhanced',
+          // AI response metadata merged here (column ai_response_metadata doesn't exist)
+          ai_response: {
+            organic_inputs: scheduleData.organic_inputs,
+            chemical_fertilizers: scheduleData.chemical_fertilizers,
+            icar_reference: scheduleData.icar_reference,
+            seed_details: scheduleData.seed_details,
+            suitability_notes: scheduleData.suitability_notes
+          }
         }
       })
       .select()
