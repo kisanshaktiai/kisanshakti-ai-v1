@@ -169,10 +169,12 @@ export default function Schedule() {
           isReadyMadePlant: isReadyMadePlant || false,
           weather: weatherData,
           regenerate: true,
-          tenantId: tenant?.id || user?.tenantId || '',
-          farmerId: user?.id || '',
           language: user?.preferredLanguage || currentLanguage || 'en',
           country: 'India',
+        },
+        headers: {
+          'x-tenant-id': tenant?.id || user?.tenantId || '',
+          'x-farmer-id': user?.id || '',
         },
       });
 
