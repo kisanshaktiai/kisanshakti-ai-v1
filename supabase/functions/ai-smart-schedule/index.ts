@@ -780,7 +780,8 @@ ${climateAlerts.map(a => `• ${a}`).join('\n')}
 
     if (scheduleError) throw scheduleError;
 
-    // 9. Save individual tasks with quantities, precautions, and weather dependency
+    // 9. Save individual tasks with quantities and weather dependency
+    // Note: precautions, ideal_weather, icar_guideline, climate_risk stored in resources JSON
     const tasks = scheduleData.tasks.map((task: any) => ({
       schedule_id: savedSchedule.id,
       task_name: task.task_name,
@@ -791,14 +792,16 @@ ${climateAlerts.map(a => `• ${a}`).join('\n')}
       status: 'pending',
       estimated_cost: task.estimated_cost || null,
       instructions: task.instructions || [],
-      precautions: task.precautions || [],
       language: language,
       currency: 'INR', // Always INR for India
-      resources: task.quantity ? { quantity: task.quantity } : null,
+      resources: {
+        quantity: task.quantity || null,
+        precautions: task.precautions || [],
+        ideal_weather: task.ideal_weather || null,
+        icar_guideline: task.icar_guideline || null,
+        climate_risk: task.climate_risk || null,
+      },
       weather_dependent: task.weather_dependent || (task.category === 'irrigation' || task.category === 'pest_control'),
-      ideal_weather: task.ideal_weather || null,
-      icar_guideline: task.icar_guideline || null,
-      climate_risk: task.climate_risk || null,
     }));
 
     const { data: insertedTasks, error: tasksError } = await supabase
