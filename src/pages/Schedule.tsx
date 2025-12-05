@@ -186,9 +186,21 @@ export default function Schedule() {
         },
       });
 
-      if (response.error) throw response.error;
+      console.log('🔍 [Schedule] Edge function response:', { error: response.error, data: response.data });
+
+      // Handle edge function errors
+      if (response.error) {
+        console.error('❌ [Schedule] Edge function error:', response.error);
+        throw new Error(response.error.message || 'Edge function returned an error');
+      }
 
       const { data } = response;
+      
+      // Check if data contains an error response from the edge function
+      if (data?.error) {
+        console.error('❌ [Schedule] API error:', data.error, data.details);
+        throw new Error(data.error + (data.details ? `: ${data.details}` : ''));
+      }
       
       // Enhanced error handling with retry logic
       if (!data || !data.success) {
