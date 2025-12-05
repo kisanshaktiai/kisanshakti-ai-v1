@@ -4,6 +4,8 @@ import { toast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { tenantIsolationService } from './tenantIsolationService';
 import { networkStatusService } from './networkStatusService';
+import { landsApi } from './landsApi';
+import { schedulesApi } from './schedulesApi';
 
 interface SyncResult {
   success: boolean;
@@ -544,19 +546,17 @@ class SyncService {
         });
       }
 
-      // Download lands data
-      console.log('📥 [Sync] Fetching lands from server...');
-      const { data: lands, error: landsError } = await client
-        .from('lands')
-        .select('*')
-        .eq('tenant_id', tenant)
-        .eq('farmer_id', userId)
-        .order('created_at', { ascending: false });
-
-      if (landsError) {
-        console.error('❌ [Sync] Failed to fetch lands:', landsError);
-      } else {
-        console.log(`✅ [Sync] Fetched ${lands?.length || 0} lands from server`);
+      // Download lands data using edge function (bypasses RLS issues)
+      console.log('📥 [Sync] Fetching lands via lands-api edge function...');
+      let lands: any[] = [];
+      let landsError: Error | null = null;
+      
+      try {
+        lands = await landsApi.fetchLands();
+        console.log(`✅ [Sync] Fetched ${lands?.length || 0} lands from server via API`);
+      } catch (error) {
+        landsError = error as Error;
+        console.error('❌ [Sync] Failed to fetch lands via API:', landsError);
       }
 
       // CRITICAL: Clear existing lands before saving new data from server
@@ -660,20 +660,17 @@ class SyncService {
         console.log('ℹ️ [Sync] No lands to save from server');
       }
 
-      // Download schedules data
-      console.log('📥 [Sync] Fetching schedules from server...');
-      const { data: schedules, error: schedulesError } = await client
-        .from('crop_schedules')
-        .select('*')
-        .eq('tenant_id', tenant)
-        .eq('farmer_id', userId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-
-      if (schedulesError) {
-        console.error('❌ [Sync] Failed to fetch schedules:', schedulesError);
-      } else {
-        console.log(`✅ [Sync] Fetched ${schedules?.length || 0} schedules from server`);
+      // Download schedules data using edge function (bypasses RLS issues)
+      console.log('📥 [Sync] Fetching schedules via schedules-api edge function...');
+      let schedules: any[] = [];
+      let schedulesError: Error | null = null;
+      
+      try {
+        schedules = await schedulesApi.fetchSchedules();
+        console.log(`✅ [Sync] Fetched ${schedules?.length || 0} schedules from server via API`);
+      } catch (error) {
+        schedulesError = error as Error;
+        console.error('❌ [Sync] Failed to fetch schedules via API:', schedulesError);
       }
 
       // Clear existing schedules before saving

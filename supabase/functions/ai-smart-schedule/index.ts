@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
+import { AI_CONFIG, OPENAI_API_URL, validateOpenAIKey } from '../_shared/aiConfig.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,10 +17,9 @@ serve(async (req) => {
   const startTime = Date.now();
   
   try {
-    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-    if (!OPENAI_API_KEY) {
-      console.error('OPENAI_API_KEY is not configured in Supabase secrets');
-      throw new Error('OpenAI API key not configured. Please set OPENAI_API_KEY in Supabase secrets.');
+    // Use centralized AI config
+    const OPENAI_API_KEY = validateOpenAIKey();
+    console.log(`🤖 [AI-Schedule] Using model: ${AI_CONFIG.MODEL}`);
     }
     
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -246,10 +246,10 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
       console.warn('Missing area_acres - this may affect AI quality');
     }
 
-    // 6. Call OpenAI GPT-5-mini with tool calling
+    // 6. Call OpenAI with tool calling (using centralized config)
     const requestBody = {
-      model: 'gpt-5-mini-2025-08-07',
-      max_completion_tokens: 4096, // Critical for GPT-5 models to complete tool calls
+      model: AI_CONFIG.MODEL,
+      max_completion_tokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
@@ -359,14 +359,18 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
         }
       }],
       tool_choice: { type: "function", function: { name: "create_crop_schedule" } },
-      max_completion_tokens: 8192,
+      // Note: max_completion_tokens already set above from AI_CONFIG
     };
     
-    console.log('Calling OpenAI API with model:', requestBody.model);
-    console.log('Prompt stats - System:', systemPrompt.length, 'chars, User:', userPrompt.length, 'chars');
-    console.log('Estimated tokens:', Math.ceil((systemPrompt.length + userPrompt.length) / 4));
+    console.log('🤖 [AI-Schedule] Calling OpenAI API:', {
+      model: requestBody.model,
+      maxTokens: requestBody.max_completion_tokens,
+      systemPromptLength: systemPrompt.length,
+      userPromptLength: userPrompt.length,
+      estimatedTokens: Math.ceil((systemPrompt.length + userPrompt.length) / 4)
+    });
     
-    const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+    const aiResponse = await fetch(OPENAI_API_URL, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENAI_API_KEY}`,
