@@ -4,8 +4,6 @@ import { toast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { tenantIsolationService } from './tenantIsolationService';
 import { networkStatusService } from './networkStatusService';
-import { landsApi } from './landsApi';
-import { schedulesApi } from './schedulesApi';
 
 interface SyncResult {
   success: boolean;
@@ -546,17 +544,19 @@ class SyncService {
         });
       }
 
-      // Download lands data using edge function (bypasses RLS issues)
-      console.log('📥 [Sync] Fetching lands via lands-api edge function...');
-      let lands: any[] = [];
-      let landsError: Error | null = null;
-      
-      try {
-        lands = await landsApi.fetchLands();
-        console.log(`✅ [Sync] Fetched ${lands?.length || 0} lands from server via API`);
-      } catch (error) {
-        landsError = error as Error;
-        console.error('❌ [Sync] Failed to fetch lands via API:', landsError);
+      // Download lands data
+      console.log('📥 [Sync] Fetching lands from server...');
+      const { data: lands, error: landsError } = await client
+        .from('lands')
+        .select('*')
+        .eq('tenant_id', tenant)
+        .eq('farmer_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (landsError) {
+        console.error('❌ [Sync] Failed to fetch lands:', landsError);
+      } else {
+        console.log(`✅ [Sync] Fetched ${lands?.length || 0} lands from server`);
       }
 
       // CRITICAL: Clear existing lands before saving new data from server
@@ -660,75 +660,72 @@ class SyncService {
         console.log('ℹ️ [Sync] No lands to save from server');
       }
 
-      // Download schedules data using edge function (bypasses RLS issues)
-      console.log('📥 [Sync] Fetching schedules via schedules-api edge function...');
-      let schedules: any[] = [];
-      let schedulesError: Error | null = null;
-      
-      try {
-        schedules = await schedulesApi.fetchSchedules();
-        console.log(`✅ [Sync] Fetched ${schedules?.length || 0} schedules from server via API`);
-      } catch (error) {
-        schedulesError = error as Error;
-        console.error('❌ [Sync] Failed to fetch schedules via API:', schedulesError);
+      // Download schedules data
+      console.log('📥 [Sync] Fetching schedules from server...');
+      const { data: schedules, error: schedulesError } = await client
+        .from('crop_schedules')
+        .select('*')
+        .eq('tenant_id', tenant)
+        .eq('farmer_id', userId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (schedulesError) {
+        console.error('❌ [Sync] Failed to fetch schedules:', schedulesError);
+      } else {
+        console.log(`✅ [Sync] Fetched ${schedules?.length || 0} schedules from server`);
       }
 
-      // SAFETY CHECK: Only clear local data if API fetch succeeded with data
-      // This prevents data loss when the API fails
-      if (schedulesError) {
-        console.warn('⚠️ [Sync] Schedules API failed - preserving local data to prevent loss');
-      } else {
-        // Clear existing schedules before saving new data
-        console.log('🗑️ [Sync] Clearing existing schedules before server data download...');
-        const existingSchedules = await localDB.getAllSchedules(userId);
-        console.log(`📊 [Sync] Found ${existingSchedules.length} existing schedules to clear`);
-        
-        // Clear all schedules from the store
-        if (existingSchedules.length > 0) {
-          const db = (localDB as any).db;
-          if (db) {
-            const tx = db.transaction('cropSchedules', 'readwrite');
-            const store = tx.objectStore('cropSchedules');
-            for (const schedule of existingSchedules) {
-              await store.delete(schedule.id);
-            }
-            await tx.done;
-            console.log(`✅ [Sync] Cleared ${existingSchedules.length} existing schedules`);
+      // Clear existing schedules before saving
+      console.log('🗑️ [Sync] Clearing existing schedules before server data download...');
+      const existingSchedules = await localDB.getAllSchedules(userId);
+      console.log(`📊 [Sync] Found ${existingSchedules.length} existing schedules to clear`);
+      
+      // Clear all schedules from the store
+      if (existingSchedules.length > 0) {
+        const db = (localDB as any).db;
+        if (db) {
+          const tx = db.transaction('cropSchedules', 'readwrite');
+          const store = tx.objectStore('cropSchedules');
+          for (const schedule of existingSchedules) {
+            await store.delete(schedule.id);
           }
+          await tx.done;
+          console.log(`✅ [Sync] Cleared ${existingSchedules.length} existing schedules`);
         }
+      }
 
-        if (schedules && schedules.length > 0) {
-          console.log('💾 [Sync] Saving schedules to localDB...');
-          await localDB.bulkSave({
-            schedules: schedules.map(s => ({
-              id: s.id,
-              tenant_id: tenantId,
-              farmer_id: s.farmer_id,
-              land_id: s.land_id,
-              crop_name: s.crop_name,
-              crop_variety: s.crop_variety,
-              sowing_date: s.sowing_date || new Date().toISOString(),
-              expected_harvest_date: s.expected_harvest_date,
-              schedule_version: s.schedule_version,
-              generated_at: s.generated_at,
-              generation_language: s.generation_language,
-              generation_params: s.generation_params,
-              country: s.country,
-              last_weather_update: s.last_weather_update,
-              weather_data: s.weather_data,
-              ai_model: s.ai_model,
-              is_active: s.is_active,
-              completed_at: s.completed_at,
-              created_at: s.created_at,
-              updated_at: s.updated_at,
-              lastModified: new Date(s.updated_at || s.created_at).getTime(),
-              syncStatus: 'synced' as const,
-            })),
-          });
-          console.log(`✅ [Sync] Saved ${schedules.length} schedules to localDB`);
-        } else {
-          console.log('ℹ️ [Sync] No schedules to save from server');
-        }
+      if (schedules && schedules.length > 0) {
+        console.log('💾 [Sync] Saving schedules to localDB...');
+        await localDB.bulkSave({
+          schedules: schedules.map(s => ({
+            id: s.id,
+            tenant_id: tenantId,
+            farmer_id: s.farmer_id,
+            land_id: s.land_id,
+            crop_name: s.crop_name,
+            crop_variety: s.crop_variety,
+            sowing_date: s.sowing_date || new Date().toISOString(),
+            expected_harvest_date: s.expected_harvest_date,
+            schedule_version: s.schedule_version,
+            generated_at: s.generated_at,
+            generation_language: s.generation_language,
+            generation_params: s.generation_params,
+            country: s.country,
+            last_weather_update: s.last_weather_update,
+            weather_data: s.weather_data,
+            ai_model: s.ai_model,
+            is_active: s.is_active,
+            completed_at: s.completed_at,
+            created_at: s.created_at,
+            updated_at: s.updated_at,
+            lastModified: new Date(s.updated_at || s.created_at).getTime(),
+            syncStatus: 'synced' as const,
+          })),
+        });
+        console.log(`✅ [Sync] Saved ${schedules.length} schedules to localDB`);
+      } else {
+        console.log('ℹ️ [Sync] No schedules to save from server');
       }
       
       // VERIFY data was actually saved correctly

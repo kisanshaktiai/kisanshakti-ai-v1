@@ -186,7 +186,7 @@ async function checkCache(
       wind_deg: cachedCurrent.wind_direction_degrees || 0,
       description: cachedCurrent.weather_description || 'Unknown', // FIXED: column name
       main: cachedCurrent.weather_main || 'Unknown', // FIXED: column name
-      icon: '01d', // Default icon - column removed from schema
+      icon: cachedCurrent.icon_code || '01d',
       clouds: cachedCurrent.cloud_cover_percent || 0,
       visibility: (cachedCurrent.visibility_km || 10) * 1000, // FIXED: Convert km back to meters
       sunrise: cachedCurrent.sunrise ? Math.floor(new Date(cachedCurrent.sunrise).getTime() / 1000) : 0,
@@ -195,7 +195,7 @@ async function checkCache(
       dt: Math.floor(new Date(cachedCurrent.observation_time).getTime() / 1000),
       provider: cachedCurrent.data_source || 'Cache',
       uv_index: cachedCurrent.uv_index || 0,
-      dew_point: 0, // Column removed from schema
+      dew_point: cachedCurrent.dew_point_celsius || 0,
       rain_1h: cachedCurrent.rain_1h_mm || 0, // Return rainfall data
       rain_3h: (cachedCurrent.rain_24h_mm || 0) / 8 // Estimate 3h from 24h
     }
@@ -242,7 +242,7 @@ async function checkCache(
           weather: [{
             description: forecast.weather_description || 'Unknown', // FIXED: column name
             main: forecast.weather_main || 'Unknown', // FIXED: column name
-            icon: '01d' // Default icon - column removed from schema
+            icon: forecast.icon_code || '01d'
           }],
           pop: (forecast.precipitation_probability || 0) / 100,
           uv_index: forecast.uv_index || 0
@@ -260,7 +260,7 @@ async function checkCache(
               weather: [{
                 description: forecast.weather_description || 'Unknown', // FIXED: column name
                 main: forecast.weather_main || 'Unknown', // FIXED: column name
-                icon: '01d' // Default icon - column removed from schema
+                icon: forecast.icon_code || '01d'
               }],
                 pop: (forecast.precipitation_probability || 0) / 100,
                 uv_index: forecast.uv_index || 0
@@ -582,8 +582,7 @@ async function cacheWeatherData(
     
     // 1. Store in weather_current (cache table)
     // CRITICAL: Use correct column names and unit conversions
-    // Note: Removed icon_code and dew_point_celsius as they may not exist in schema
-    const currentRecord: Record<string, any> = {
+    const { error: currentError } = await supabase.from('weather_current').upsert({
       location_key: locationKey,
       latitude: rounded.lat,
       longitude: rounded.lon,
@@ -597,9 +596,11 @@ async function cacheWeatherData(
       wind_direction_degrees: current.wind_deg,
       weather_description: current.description, // FIXED: Use correct column name
       weather_main: current.main, // FIXED: Use correct column name
+      icon_code: current.icon,
       cloud_cover_percent: current.clouds,
       visibility_km: current.visibility / 1000, // Convert meters to km
       uv_index: current.uv_index || 0,
+      dew_point_celsius: current.dew_point || 0,
       rain_1h_mm: current.rain_1h || 0, // Store rainfall data
       rain_24h_mm: (current.rain_3h || 0) * 8, // Estimate 24h from 3h
       sunrise: current.sunrise ? new Date(current.sunrise * 1000).toISOString() : null,
@@ -608,9 +609,7 @@ async function cacheWeatherData(
       data_source: current.provider || 'API',
       expires_at: expiresAt.toISOString(),
       created_at: now.toISOString()
-    };
-    
-    const { error: currentError } = await supabase.from('weather_current').upsert(currentRecord, { onConflict: 'location_key' })
+    }, { onConflict: 'location_key' })
     
     if (currentError) {
       console.error('❌ [Weather] Failed to cache current weather:', currentError)
@@ -624,31 +623,29 @@ async function cacheWeatherData(
     
     // 2. Store forecasts with proper unique constraints
     if (forecast && forecast.length > 0) {
-      const forecastRecords = forecast.map(day => {
-        const record: Record<string, any> = {
-          location_key: locationKey,
-          latitude: rounded.lat,
-          longitude: rounded.lon,
-          forecast_time: new Date(day.dt * 1000).toISOString(),
-          forecast_type: 'daily' as const,
-          temperature_celsius: day.temp.day,
-          temperature_min_celsius: day.temp.min,
-          temperature_max_celsius: day.temp.max,
-          feels_like_celsius: day.temp.day,
-          humidity_percent: Math.round(day.humidity),
-          pressure_hpa: day.pressure || null,
-          wind_speed_kmh: day.wind_speed * 3.6, // FIXED: Convert m/s to km/h
-          wind_direction_degrees: day.wind_deg || null,
-          weather_description: day.weather[0]?.description || 'Unknown', // FIXED: column name
-          weather_main: day.weather[0]?.main || 'Unknown', // FIXED: column name
-          precipitation_probability: Math.round(day.pop * 100), // FIXED: column name
-          rain_amount_mm: day.rain || 0, // Store rainfall
-          uv_index: day.uv_index || 0,
-          moon_phase: day.moon_phase || 0,
-          data_source: current.provider || 'API'
-        };
-        return record;
-      });
+      const forecastRecords = forecast.map(day => ({
+        location_key: locationKey,
+        latitude: rounded.lat,
+        longitude: rounded.lon,
+        forecast_time: new Date(day.dt * 1000).toISOString(),
+        forecast_type: 'daily' as const,
+        temperature_celsius: day.temp.day,
+        temperature_min_celsius: day.temp.min,
+        temperature_max_celsius: day.temp.max,
+        feels_like_celsius: day.temp.day,
+        humidity_percent: Math.round(day.humidity),
+        pressure_hpa: day.pressure || null,
+        wind_speed_kmh: day.wind_speed * 3.6, // FIXED: Convert m/s to km/h
+        wind_direction_degrees: day.wind_deg || null,
+        weather_description: day.weather[0]?.description || 'Unknown', // FIXED: column name
+        weather_main: day.weather[0]?.main || 'Unknown', // FIXED: column name
+        icon_code: day.weather[0]?.icon || '01d',
+        precipitation_probability: Math.round(day.pop * 100), // FIXED: column name
+        rain_amount_mm: day.rain || 0, // Store rainfall
+        uv_index: day.uv_index || 0,
+        moon_phase: day.moon_phase || 0,
+        data_source: current.provider || 'API'
+      }))
       
       // Insert forecasts one by one to handle conflicts better
       let successCount = 0
@@ -671,25 +668,23 @@ async function cacheWeatherData(
     
     // 3. Store hourly forecasts
     if (hourly && hourly.length > 0) {
-      const hourlyRecords = hourly.map(hour => {
-        const record: Record<string, any> = {
-          location_key: locationKey,
-          latitude: rounded.lat,
-          longitude: rounded.lon,
-          forecast_time: new Date(hour.dt * 1000).toISOString(),
-          forecast_type: 'hourly' as const,
-          temperature_celsius: hour.temp,
-          feels_like_celsius: hour.feels_like,
-          humidity_percent: Math.round(hour.humidity),
-          wind_speed_kmh: hour.wind_speed * 3.6, // FIXED: Convert m/s to km/h
-          weather_description: hour.weather[0]?.description || 'Unknown', // FIXED: column name
-          weather_main: hour.weather[0]?.main || 'Unknown', // FIXED: column name
-          precipitation_probability: Math.round(hour.pop * 100), // FIXED: column name
-          uv_index: hour.uv_index || null,
-          data_source: current.provider || 'API'
-        };
-        return record;
-      });
+      const hourlyRecords = hourly.map(hour => ({
+        location_key: locationKey,
+        latitude: rounded.lat,
+        longitude: rounded.lon,
+        forecast_time: new Date(hour.dt * 1000).toISOString(),
+        forecast_type: 'hourly' as const,
+        temperature_celsius: hour.temp,
+        feels_like_celsius: hour.feels_like,
+        humidity_percent: Math.round(hour.humidity),
+        wind_speed_kmh: hour.wind_speed * 3.6, // FIXED: Convert m/s to km/h
+        weather_description: hour.weather[0]?.description || 'Unknown', // FIXED: column name
+        weather_main: hour.weather[0]?.main || 'Unknown', // FIXED: column name
+        icon_code: hour.weather[0]?.icon || '01d',
+        precipitation_probability: Math.round(hour.pop * 100), // FIXED: column name
+        uv_index: hour.uv_index || null,
+        data_source: current.provider || 'API'
+      }))
       
       let successCount = 0
       for (const record of hourlyRecords) {
