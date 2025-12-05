@@ -14,12 +14,20 @@ export interface ScheduleData {
   crop_variety?: string;
   sowing_date: string;
   expected_harvest_date?: string;
-  status: string;
+  status?: string;
   is_active: boolean;
   ai_generated?: boolean;
   generation_params?: any;
   schedule_summary?: any;
   weather_adjustments?: any;
+  schedule_version?: string;
+  generated_at?: string;
+  generation_language?: string;
+  country?: string;
+  last_weather_update?: string;
+  weather_data?: any;
+  ai_model?: string;
+  completed_at?: string;
   created_at: string;
   updated_at: string;
 }

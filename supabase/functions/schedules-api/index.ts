@@ -50,7 +50,7 @@ serve(async (req) => {
     try {
       await supabase.rpc('set_app_session', {
         p_tenant_id: tenantId,
-        p_user_id: farmerId
+        p_farmer_id: farmerId
       });
     } catch (rpcError) {
       console.warn('⚠️ [SchedulesAPI] set_app_session RPC not available:', rpcError);
