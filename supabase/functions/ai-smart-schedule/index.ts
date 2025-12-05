@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
 import { AI_CONFIG, OPENAI_API_URL, validateOpenAIKey } from '../_shared/aiConfig.ts';
+import { ruralLanguageGuide, icarGuidelines, getIcarGuidance, getClimateAlerts } from '../_shared/ruralLanguageGuide.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -133,8 +134,10 @@ serve(async (req) => {
     };
 
     const region = regionalData[land.state] || { season: 'Monsoon', crop: 'Mixed', zone: 'Local' };
-    const currency = country === 'India' ? '₹' : '$';
     const languageName = languageMap[language] || 'Hindi';
+    
+    // Get rural language terms for this language
+    const ruralTerms = ruralLanguageGuide[language] || ruralLanguageGuide['hi'];
     
     console.log('🌐 [AI-Schedule] Language config:', { 
       receivedLanguage: language, 
@@ -142,38 +145,78 @@ serve(async (req) => {
       isEnglish: language === 'en'
     });
 
-    // 5. Build Comprehensive Context-Aware Prompt with NDVI, Guidelines, NPK
-    // Strong multi-language enforcement
-    const languageInstruction = language === 'en' 
-      ? 'Generate ALL content in English.'
-      : `CRITICAL: Generate ALL task_name, description, instructions, and text content in ${languageName} (${language}) language ONLY. 
-DO NOT use English for any text fields. Use ${languageName} script (e.g., ${
-        language === 'hi' ? 'हिंदी में लिखें' : 
-        language === 'mr' ? 'मराठीत लिहा' : 
-        language === 'pa' ? 'ਪੰਜਾਬੀ ਵਿੱਚ ਲਿਖੋ' : 
-        language === 'ta' ? 'தமிழில் எழுதுங்கள்' : 
-        language === 'te' ? 'తెలుగులో వ్రాయండి' : 
-        language === 'bn' ? 'বাংলায় লিখুন' : 
-        language === 'gu' ? 'ગુજરાતીમાં લખો' : 
-        language === 'kn' ? 'ಕನ್ನಡದಲ್ಲಿ ಬರೆಯಿರಿ' : 
-        `in ${languageName}`
-      }).
-Numbers and units can remain in standard format (kg, liters, etc.).`;
+    // 5. Get ICAR guidance and climate alerts
+    const icarGuidance = getIcarGuidance(cropName);
+    const climateAlerts = getClimateAlerts(cropName, weather);
+    const icarCropData = icarGuidelines[cropName];
+    
+    console.log('📚 [AI-Schedule] ICAR guidance available:', !!icarGuidance);
+    console.log('⚠️ [AI-Schedule] Climate alerts:', climateAlerts.length);
 
-    const systemPrompt = `You are an expert agricultural advisor for ${land.state}, India.
+    // 6. Build Comprehensive Context-Aware Prompt with Rural Language
+    // Strong multi-language enforcement with rural terminology
+    const languageInstruction = language === 'en' 
+      ? `Generate ALL content in simple, farmer-friendly English. Avoid textbook language.
+Use terms like "${ruralTerms.fertilizer}", "${ruralTerms.irrigation}", "${ruralTerms.precaution}".
+Always prefix costs with "${ruralTerms.approximately}" (e.g., "Approximately ₹5,000").`
+      : `🚨 अति महत्वपूर्ण: सारी माहिती ${languageName} भाषेत लिहा!
+
+⛔ किताबी भाषा वापरू नका! गावाकडची सोपी बोली वापरा:
+• "${ruralTerms.fertilizer}" (खत घालणे)
+• "${ruralTerms.irrigation}" (पाणी देणे)
+• "${ruralTerms.pesticide}" (औषध फवारणी)
+• "${ruralTerms.weeding}" (तण काढणे)
+• "${ruralTerms.precaution}" (काळजी घ्या)
+
+💰 किंमती नेहमी "${ruralTerms.approximately}" सोबत लिहा (उदा: "${ruralTerms.approximately} ₹5,000")
+🚫 $ चिन्ह वापरू नका! फक्त ₹ (रुपये) वापरा!
+
+📝 task_name, description, instructions सर्व ${languageName} मध्येच असावे!`;
+
+    // Build system prompt with rural language focus and ICAR references
+    const systemPrompt = `तुम्ही ${land.state}, भारतातील एक अनुभवी शेतकरी मित्र आहात.
 
 ${languageInstruction}
 
-Land Details:
-- Size: ${land.area_acres} acres (${(land.area_acres * 0.404686).toFixed(2)} hectares)
-- Scale all quantities to this land size
-- Use ${currency} for all costs
+🌾 तुमची भूमिका:
+- शेतकऱ्याशी गावाच्या बोलीत बोला, किताबी भाषा नको
+- प्रत्येक सल्ल्यासोबत "का करायचे" सांगा
+- ICAR आणि कृषी विद्यापीठाच्या शिफारशी सांगा
+- हवामानानुसार कीड-रोगांची चेतावणी द्या
+- प्रत्येक कामासाठी सावधानी जरूर सांगा
 
-LANGUAGE REQUIREMENT: ${languageName} (code: ${language})
-- task_name: Must be in ${languageName}
-- description: Must be in ${languageName}  
-- instructions: Must be in ${languageName}
-- All farmer-facing text MUST be in ${languageName}`;
+📊 जमीन माहिती:
+- आकार: ${land.area_acres} एकर (${(land.area_acres * 0.404686).toFixed(2)} हेक्टर)
+- सर्व प्रमाण या जमिनीनुसार द्या
+- फक्त ₹ (रुपये) वापरा, $ नाही!
+- किंमती "${ruralTerms.approximately}" सोबत लिहा
+
+${icarGuidance ? `
+📚 ICAR मार्गदर्शन (${cropName}):
+${icarGuidance}
+` : ''}
+
+${climateAlerts.length > 0 ? `
+⚠️ सध्याच्या हवामानानुसार सावधानता:
+${climateAlerts.map(a => `• ${a}`).join('\n')}
+` : ''}
+
+${icarCropData ? `
+🐛 या पिकात सामान्यपणे आढळणारे कीड:
+${icarCropData.common_pests?.map((p: string) => `• ${p}`).join('\n') || 'माहिती उपलब्ध नाही'}
+
+🦠 या पिकात सामान्यपणे आढळणारे रोग:
+${icarCropData.common_diseases?.map((d: string) => `• ${d}`).join('\n') || 'माहिती उपलब्ध नाही'}
+` : ''}
+
+💡 महत्त्वाचे नियम:
+1. किंमत लिहिताना "${ruralTerms.approximately} ₹X,XXX" असे लिहा
+2. प्रत्येक टास्कसाठी 2-3 सावधानी (precautions) द्या
+3. कीड-रोगांसाठी ICAR शिफारशींचा उल्लेख करा
+4. हवामानावर अवलंबून असलेले काम नमूद करा
+5. शेतकऱ्याची भाषा वापरा - "युरिया टाका" ऐवजी "युरियाची मात्रा द्या"
+
+भाषा: ${languageName} (code: ${language})`;
 
     // Build crop baseline context
     const guidelineContext = guidelines ? `
@@ -256,20 +299,31 @@ ${weather.forecast.some((f: any) => f.rainfall > 10) ?
 ${weather.current.temp > 35 ? '- HIGH TEMPERATURE ALERT: Increase irrigation frequency, water in early morning/evening' : ''}
 ${weather.current.temp < 10 ? '- LOW TEMPERATURE ALERT: Delay sowing if below minimum germination temp' : ''}` : 'Weather data not available';
 
-    const userPrompt = `Crop: ${cropName}${cropVariety ? ` (${cropVariety})` : ''}, Sowing: ${sowingDate}, Method: ${isReadyMadePlant ? 'Transplants (reduce duration 20 days, skip germination)' : 'Direct seed'}
-Location: ${land.district}, ${land.state}. Irrigation: ${land.irrigation_type || 'Standard'}
+    const userPrompt = `पीक: ${cropName}${cropVariety ? ` (${cropVariety})` : ''}, पेरणी: ${sowingDate}, पद्धत: ${isReadyMadePlant ? 'रोपे लावणी (20 दिवस कमी, उगवण नाही)' : 'बियाणे पेरणी'}
+स्थान: ${land.district}, ${land.state}. सिंचन: ${land.irrigation_type || 'सामान्य'}
 
-Soil NPK: N=${currentN} P=${currentP} K=${currentK}, Target: N=${target.n} P=${target.p} K=${target.k}. Apply deficit: N=${nDeficit.toFixed(0)} P=${pDeficit.toFixed(0)} K=${kDeficit.toFixed(0)} kg/ha
+माती NPK: N=${currentN} P=${currentP} K=${currentK}, लक्ष्य: N=${target.n} P=${target.p} K=${target.k}. कमतरता भरून काढा: N=${nDeficit.toFixed(0)} P=${pDeficit.toFixed(0)} K=${kDeficit.toFixed(0)} kg/ha
 
-${ndviData && ndviData.length > 0 ? `NDVI: ${ndviData[0].ndvi_value} ${ndviData[0].ndvi_value < 0.4 ? '(STRESSED - increase N by 25%)' : '(Healthy)'}` : ''}
+${ndviData && ndviData.length > 0 ? `NDVI: ${ndviData[0].ndvi_value} ${ndviData[0].ndvi_value < 0.4 ? '(ताण आहे - N 25% वाढवा)' : '(निरोगी)'}` : ''}
 
-${weather?.forecast ? `Rain forecast: ${weather.forecast.filter((f: any) => f.rainfall > 5).map((f: any) => `Day ${f.day}: ${f.rainfall}mm`).join(', ') || 'None'}` : ''}
+${weather?.forecast ? `पावसाचा अंदाज: ${weather.forecast.filter((f: any) => f.rainfall > 5).map((f: any) => `दिवस ${f.day}: ${f.rainfall}mm`).join(', ') || 'नाही'}` : ''}
 
-Generate 10-12 tasks: ${isReadyMadePlant ? 'transplant irrigation, stress mgmt,' : 'land prep, sowing,'} irrigation (6-8x), fertilizer (2-3 splits based on deficit), pest control (2-3x), weeding (2x), harvest.
+${climateAlerts.length > 0 ? `
+⚠️ हवामान सावधानता:
+${climateAlerts.map(a => `• ${a}`).join('\n')}
+` : ''}
 
-Calculate: yield (quintals), market price, revenue, costs, profit. Include organic inputs, pest mgmt, growth regulators if beneficial.
+10-12 कामे तयार करा: ${isReadyMadePlant ? 'रोपे लावणी, ताण व्यवस्थापन,' : 'जमीन तयारी, पेरणी,'} पाणी देणे (6-8 वेळा), खत (2-3 वेळा कमतरतेनुसार), कीड नियंत्रण (2-3 वेळा), तण काढणे (2 वेळा), कापणी.
 
-⚠️ MANDATORY: Write ALL task_name, description, and instructions in ${languageName} language (${language}). The farmer only understands ${languageName}.`;
+गणना करा: उत्पादन (क्विंटल), बाजारभाव, उत्पन्न, खर्च, नफा. सेंद्रिय खत, कीड व्यवस्थापन, वाढ नियामक सुचवा.
+
+⚠️ अनिवार्य: 
+1. सर्व task_name, description, instructions ${languageName} भाषेत लिहा
+2. किंमती "${ruralTerms.approximately} ₹X,XXX" स्वरूपात लिहा ($ वापरू नका!)
+3. प्रत्येक कामासाठी 2-3 सावधानी (precautions) द्या
+4. ICAR शिफारशींचा संदर्भ द्या
+5. कीड-रोगांची सध्याच्या हवामानानुसार चेतावणी द्या
+6. सोप्या गावाकडच्या भाषेत लिहा`;
 
 
     // 5. Validate critical data before calling OpenAI
@@ -307,10 +361,14 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
               // Yield & Revenue
               expected_yield_quintals: { type: "number", description: "Total harvest in quintals (100kg) for entire land" },
               expected_yield_per_acre: { type: "number", description: "Yield per acre in quintals" },
-              expected_market_price_per_quintal: { type: "number", description: "Market price per quintal in INR" },
-              expected_gross_revenue: { type: "number", description: "Total revenue = yield × price" },
-              expected_net_profit: { type: "number", description: "Net profit = revenue - costs" },
-              total_estimated_cost: { type: "number", description: "Total cost in local currency" },
+              expected_market_price_per_quintal: { type: "number", description: "Market price per quintal in INR (₹)" },
+              expected_gross_revenue: { type: "number", description: "Total revenue = yield × price in ₹" },
+              expected_net_profit: { type: "number", description: "Net profit = revenue - costs in ₹" },
+              total_estimated_cost: { type: "number", description: "Total cost in ₹ (Rupees only, no $)" },
+              
+              // ICAR Reference
+              icar_reference: { type: "string", description: "ICAR bulletin or guideline reference" },
+              university_recommendation: { type: "string", description: "Agricultural university recommendation if any" },
               
               // Seeds & Water
               seed_quantity_kg: { type: "number", description: "Exact seed quantity in kg for this land size" },
@@ -363,12 +421,32 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
                 type: "number", 
                 description: "Plant growth regulator in ml (GA3, NAA, etc.)" 
               },
+              
+              // Climate-based alerts
+              climate_alerts: {
+                type: "array",
+                items: { type: "string" },
+                description: "Weather-based pest/disease alerts for this crop"
+              },
+              
+              // Common pests/diseases for this crop
+              expected_pests: {
+                type: "array",
+                items: { type: "string" },
+                description: "Common pests expected in this crop based on region and season"
+              },
+              expected_diseases: {
+                type: "array",
+                items: { type: "string" },
+                description: "Common diseases expected in this crop based on region and climate"
+              },
+              
               tasks: {
                 type: "array",
                 items: {
                   type: "object",
                   properties: {
-                    task_name: { type: "string", description: `Task name in ${languageName} language ONLY. Must use ${languageName} script.` },
+                    task_name: { type: "string", description: `Task name in ${languageName} language ONLY using rural/village terminology. Must use ${languageName} script.` },
                     category: { 
                       type: "string",
                       enum: ["soil_preparation", "sowing", "irrigation", "fertilizer", "pest_control", "weed_management", "harvesting"]
@@ -378,17 +456,32 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
                       type: "string",
                       enum: ["low", "medium", "high"]
                     },
-                    description: { type: "string", description: `Task description in ${languageName} language ONLY. Must use ${languageName} script.` },
-                    quantity: { type: "string", description: "Specific quantity for this task (e.g., '50 kg urea', '2000 liters water')" },
-                    estimated_cost: { type: "number", description: "Cost in local currency" },
+                    description: { type: "string", description: `Task description in ${languageName} language ONLY using simple village terms. Explain "why" this task is important.` },
+                    quantity: { type: "string", description: "Specific quantity for this task (e.g., '50 kg युरिया', '2000 लीटर पाणी')" },
+                    estimated_cost: { type: "number", description: "Cost in ₹ (Rupees). Will be displayed as 'अंदाजे ₹X,XXX'" },
                     instructions: {
                       type: "array",
                       items: { type: "string" },
-                      description: `Step-by-step instructions in ${languageName} language ONLY. Must use ${languageName} script.`
+                      description: `Step-by-step instructions in ${languageName} language using village terminology. Be practical and specific.`
                     },
-                    weather_dependent: { type: "boolean", description: "Should this task be rescheduled based on weather?" }
+                    precautions: {
+                      type: "array",
+                      items: { type: "string" },
+                      description: `2-3 safety precautions in ${languageName}. Include timing, weather conditions, and safety measures.`
+                    },
+                    weather_dependent: { type: "boolean", description: "Should this task be rescheduled based on weather?" },
+                    icar_guideline: { type: "string", description: "Relevant ICAR recommendation for this task if any" },
+                    climate_risk: { type: "string", description: "Pest/disease risk based on current climate conditions" },
+                    ideal_weather: {
+                      type: "object",
+                      properties: {
+                        temperature: { type: "string", description: "Ideal temperature range (e.g., '20-30')" },
+                        humidity: { type: "string", description: "Ideal humidity range (e.g., '60-80')" },
+                        conditions: { type: "string", description: "Weather conditions (e.g., 'cloudy', 'no rain expected')" }
+                      }
+                    }
                   },
-                  required: ["task_name", "category", "days_from_sowing", "priority", "description"]
+                  required: ["task_name", "category", "days_from_sowing", "priority", "description", "precautions"]
                 }
               }
             },
@@ -397,7 +490,6 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
         }
       }],
       tool_choice: { type: "function", function: { name: "create_crop_schedule" } },
-      // Note: max_completion_tokens already set above from AI_CONFIG
     };
     
     console.log('🤖 [AI-Schedule] Calling OpenAI API:', {
@@ -510,7 +602,7 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
       console.log('✓ Crop:', scheduleData.crop_name);
       console.log('✓ Duration:', scheduleData.total_duration_days, 'days');
       console.log('✓ Tasks count:', scheduleData.tasks?.length || 0);
-      console.log('✓ Confidence:', scheduleData.confidence_score);
+      console.log('✓ ICAR Reference:', scheduleData.icar_reference || 'None');
     } catch (parseError) {
       console.error('Failed to parse tool call arguments as JSON:', parseError);
       console.error('Raw arguments:', toolCall.function.arguments);
@@ -542,6 +634,7 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
       has_fertilizer_plan: !!scheduleData.fertilizer_plan,
       has_water_req: !!scheduleData.total_water_requirement_liters,
       tasks_with_quantities: scheduleData.tasks.filter((t: any) => t.quantity).length,
+      tasks_with_precautions: scheduleData.tasks.filter((t: any) => t.precautions?.length).length,
       total_tasks: scheduleData.tasks.length
     };
     
@@ -563,7 +656,7 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
         sowing_date: sowingDate,
         expected_harvest_date: new Date(new Date(sowingDate).getTime() + scheduleData.total_duration_days * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         
-        // ✅ FIX: Save ALL quantities to dedicated columns (not just JSON)
+        // Save ALL quantities to dedicated columns (not just JSON)
         seed_quantity_kg: scheduleData.seed_quantity_kg || null,
         total_water_requirement_liters: scheduleData.total_water_requirement_liters || null,
         calculated_for_area_acres: land.area_acres,
@@ -610,6 +703,12 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
         } : null,
         pgr_hormone_ml: scheduleData.pgr_hormone_ml || null,
         
+        // ICAR & Climate info
+        icar_reference: scheduleData.icar_reference || icarCropData?.icar_reference || null,
+        climate_alerts: scheduleData.climate_alerts || climateAlerts,
+        expected_pests: scheduleData.expected_pests || icarCropData?.common_pests || null,
+        expected_diseases: scheduleData.expected_diseases || icarCropData?.common_diseases || null,
+        
         // Product recommendations (to be populated from product_categories)
         recommended_products: {
           seeds: scheduleData.seed_quantity_kg ? {
@@ -639,7 +738,7 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
           } : null
         },
         
-        ai_model: 'gpt-5-mini-2025-08-07',
+        ai_model: AI_CONFIG.MODEL,
         generation_language: language,
         country: country,
         generation_params: {
@@ -680,7 +779,7 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
 
     if (scheduleError) throw scheduleError;
 
-    // 9. Save individual tasks with quantities and weather dependency
+    // 9. Save individual tasks with quantities, precautions, and weather dependency
     const tasks = scheduleData.tasks.map((task: any) => ({
       schedule_id: savedSchedule.id,
       task_name: task.task_name,
@@ -691,10 +790,14 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
       status: 'pending',
       estimated_cost: task.estimated_cost || null,
       instructions: task.instructions || [],
+      precautions: task.precautions || [],
       language: language,
-      currency: country === 'India' ? 'INR' : 'USD',
+      currency: 'INR', // Always INR for India
       resources: task.quantity ? { quantity: task.quantity } : null,
       weather_dependent: task.weather_dependent || (task.category === 'irrigation' || task.category === 'pest_control'),
+      ideal_weather: task.ideal_weather || null,
+      icar_guideline: task.icar_guideline || null,
+      climate_risk: task.climate_risk || null,
     }));
 
     const { data: insertedTasks, error: tasksError } = await supabase
@@ -707,10 +810,11 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
     } else {
       console.log(`✓ Inserted ${insertedTasks?.length || 0} tasks`);
       
-      // 9.5. Auto-schedule notifications for each task (5 days, 1 day, same day)
+      // 9.5. Auto-schedule rich notifications for each task
       if (insertedTasks && insertedTasks.length > 0) {
         const notificationRecords = [];
         const now = new Date();
+        const approxText = ruralTerms.approximately || 'अंदाजे';
 
         for (const task of insertedTasks) {
           const taskDate = new Date(task.task_date);
@@ -729,12 +833,35 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
 
             // Only schedule if notification time is in the future
             if (scheduledTime > now) {
+              // Build rich notification content
+              const notificationTitle = type === 'same_day' 
+                ? `आज: ${task.task_name}`
+                : type === '1_day'
+                ? `उद्या: ${task.task_name}`
+                : `${daysBefore} दिवसांत: ${task.task_name}`;
+              
+              const notificationBody = task.task_description?.substring(0, 200) || '';
+              
               notificationRecords.push({
                 task_id: task.id,
                 user_id: farmerId,
                 notification_type: type,
                 scheduled_for: scheduledTime.toISOString(),
                 status: 'pending',
+                // Rich notification content
+                title: notificationTitle,
+                body: notificationBody,
+                data: {
+                  task_name: task.task_name,
+                  task_type: task.task_type,
+                  task_date: task.task_date,
+                  priority: task.priority,
+                  precautions: task.precautions || [],
+                  estimated_cost: task.estimated_cost ? `${approxText} ₹${task.estimated_cost.toLocaleString('en-IN')}` : null,
+                  weather_dependent: task.weather_dependent,
+                  icar_guideline: task.icar_guideline,
+                  climate_risk: task.climate_risk,
+                }
               });
             }
           });
@@ -749,7 +876,7 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
           if (notifError) {
             console.error('Error scheduling notifications:', notifError);
           } else {
-            console.log(`✓ Scheduled ${notificationRecords.length} notifications for ${insertedTasks.length} tasks`);
+            console.log(`✓ Scheduled ${notificationRecords.length} rich notifications for ${insertedTasks.length} tasks`);
           }
         }
       }
@@ -763,10 +890,10 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
       land_id: landId,
       schedule_id: savedSchedule.id,
       decision_type: 'schedule_generation',
-      model_version: 'openai/gpt-5-mini-2025-08-07',
-      input_data: { landId, cropName, cropVariety, sowingDate },
+      model_version: `openai/${AI_CONFIG.MODEL}`,
+      input_data: { landId, cropName, cropVariety, sowingDate, icarGuidanceUsed: !!icarGuidance, climateAlertsCount: climateAlerts.length },
       output_data: scheduleData,
-      reasoning: `Generated for ${land.state} region in ${languageName}`,
+      reasoning: `Generated for ${land.state} region in ${languageName}. ICAR: ${scheduleData.icar_reference || 'N/A'}. Climate alerts: ${climateAlerts.length}`,
       confidence_score: 0.9,
       execution_time_ms: executionTime,
       weather_data: weather,
@@ -790,15 +917,21 @@ Calculate: yield (quintals), market price, revenue, costs, profit. Include organ
         success: true,
         schedule_id: savedSchedule.id,
         schedule: scheduleData,
-        execution_time_ms: executionTime,
+        tasks: insertedTasks,
+        icar_reference: scheduleData.icar_reference || icarCropData?.icar_reference,
+        climate_alerts: climateAlerts,
+        language: language,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('Error in ai-smart-schedule:', error);
+    console.error('AI Schedule Error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        details: 'Failed to generate crop schedule'
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
