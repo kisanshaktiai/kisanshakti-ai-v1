@@ -159,7 +159,9 @@
       "task": "कार्य",
       "tasks": "कार्य",
       "ai_adjusted": "AI समायोजित",
-      "done": "पूर्ण"
+      "done": "पूर्ण",
+      "today": "आज",
+      "tomorrow": "कल"
     },
     "dialog": {
       "task_details": "कार्य विवरण",

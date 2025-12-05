@@ -3,11 +3,60 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
 import { AI_CONFIG, OPENAI_API_URL, validateOpenAIKey } from '../_shared/aiConfig.ts';
-import { ruralLanguageGuide, icarGuidelines, getIcarGuidance, getClimateAlerts } from '../_shared/ruralLanguageGuide.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id',
+};
+
+// Rural language examples for TRUE village speech
+const ruralExamples = {
+  hi: {
+    irrigation: [
+      "भाऊ, आज पानी देने का वक्त आ गया है",
+      "पौधों को प्यास लगी है, पानी दो",
+      "कल बारिश होगी तो आज पानी मत दो"
+    ],
+    fertilizer: [
+      "खेत में दम नहीं रहा, खाद डालो",
+      "पत्ते पीले पड़ रहे हैं, यूरिया डालो",
+      "जड़ें मजबूत करने के लिए DAP डालो"
+    ],
+    pesticide: [
+      "कीड़े लग गए हैं, फौरन दवाई छिड़को",
+      "पत्तों पर धब्बे दिख रहे हैं, फफूंदनाशक डालो",
+      "सुबह जल्दी फवारणी करो, धूप में दवाई उड़ जाती है"
+    ],
+    precautions: [
+      "दवाई छिड़कते वक्त मुंह पर कपड़ा बांधो",
+      "बच्चों को दूर रखो",
+      "खाली पेट दवाई मत छिड़को",
+      "हवा की दिशा देखकर छिड़काव करो"
+    ]
+  },
+  mr: {
+    irrigation: [
+      "भाऊ, आज पाणी द्यायची वेळ आली",
+      "पिकाला तहान लागली, पाणी दे",
+      "उद्या पाऊस येणार, आज पाणी देऊ नको"
+    ],
+    fertilizer: [
+      "जमिनीला ताकद नाही राहिली, खत टाक",
+      "पानं पिवळी पडतायत, युरिया टाक",
+      "मुळं भक्कम करायला DAP टाक"
+    ],
+    pesticide: [
+      "किड लागली, लगेच औषध फवार",
+      "पानांवर डाग दिसतायत, बुरशीनाशक टाक",
+      "सकाळी लवकर फवारणी कर, उन्हात औषध उडून जातं"
+    ],
+    precautions: [
+      "औषध फवारताना तोंडावर कापड बांध",
+      "पोरांना दूर ठेव",
+      "उपाशीपोटी औषध फवारू नको",
+      "वाऱ्याची दिशा बघून फवारणी कर"
+    ]
+  }
 };
 
 serve(async (req) => {
@@ -52,7 +101,7 @@ serve(async (req) => {
 
     console.log(`📍 AI Schedule - Land: ${landId}, Crop: ${cropName}, Farmer: ${farmerId}`);
 
-    // 1. Fetch comprehensive land details with ALL context
+    // 1. Fetch comprehensive land details
     const { data: land, error: landError } = await supabase
       .from('lands')
       .select('*')
@@ -71,7 +120,7 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    // 3. Fetch recent NDVI data (satellite vegetation health)
+    // 3. Fetch recent NDVI data
     const { data: ndviData } = await supabase
       .from('ndvi_cache')
       .select('*')
@@ -79,52 +128,24 @@ serve(async (req) => {
       .order('cached_at', { ascending: false })
       .limit(5);
 
-    // 4. Fetch soil test reports if available
-    const { data: soilReports } = await supabase
-      .from('lands')
-      .select('soil_type, soil_ph, organic_carbon_percent, nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, last_soil_test_date')
-      .eq('id', landId)
-      .single();
-
     console.log('📊 Land Context:', {
       area: land.area_acres,
       soilType: land.soil_type,
       irrigation: land.irrigation_type,
       ndviPoints: ndviData?.length || 0,
-      hasSoilData: !!(soilReports?.nitrogen_kg_per_ha || soilReports?.phosphorus_kg_per_ha)
+      hasSoilData: !!(land.nitrogen_kg_per_ha || land.phosphorus_kg_per_ha)
     });
 
-    // 5. Language & Regional Context
+    // 4. Language & Regional Context
     const languageMap: Record<string, string> = {
       hi: 'Hindi', mr: 'Marathi', pa: 'Punjabi', ta: 'Tamil', te: 'Telugu',
       bn: 'Bengali', gu: 'Gujarati', kn: 'Kannada', en: 'English'
     };
 
-    const regionalData: Record<string, any> = {
-      'Punjab': { season: 'Rabi', zone: 'Trans-Gangetic Plains' },
-      'Haryana': { season: 'Rabi', zone: 'Trans-Gangetic Plains' },
-      'Maharashtra': { season: 'Kharif', zone: 'Western Maharashtra Plains' },
-      'Karnataka': { season: 'Kharif', zone: 'Deccan Plateau' },
-      'Tamil Nadu': { season: 'Samba', zone: 'Cauvery Delta' },
-      'Andhra Pradesh': { season: 'Kharif', zone: 'Coastal Andhra' },
-      'Telangana': { season: 'Kharif', zone: 'Telangana Plateau' },
-      'Uttar Pradesh': { season: 'Rabi', zone: 'Indo-Gangetic Plains' },
-      'West Bengal': { season: 'Kharif', zone: 'Gangetic Delta' },
-      'Gujarat': { season: 'Kharif', zone: 'Gujarat Plains' },
-      'Madhya Pradesh': { season: 'Kharif', zone: 'Central Highlands' },
-      'Rajasthan': { season: 'Kharif', zone: 'Western Arid Region' }
-    };
-
-    const region = regionalData[land.state] || { season: 'Monsoon', zone: 'Local' };
     const languageName = languageMap[language] || 'Hindi';
-    const ruralTerms = ruralLanguageGuide[language] || ruralLanguageGuide['hi'];
-    
-    // 6. Get ICAR guidance and climate alerts
-    const icarGuidance = getIcarGuidance(cropName);
-    const climateAlerts = getClimateAlerts(cropName, weather);
-    const icarCropData = icarGuidelines[cropName];
+    const examples = ruralExamples[language as keyof typeof ruralExamples] || ruralExamples.hi;
 
-    // 7. Calculate NPK deficit based on soil data
+    // 5. Calculate NPK deficit
     const landAreaHa = land.area_acres * 0.404686;
     const currentN = land.nitrogen_kg_per_ha || 0;
     const currentP = land.phosphorus_kg_per_ha || 0;
@@ -142,142 +163,119 @@ serve(async (req) => {
     const pDeficit = Math.max(0, target.p - currentP);
     const kDeficit = Math.max(0, target.k - currentK);
 
-    // 8. Build NDVI health context
+    // 6. Build NDVI health context
     const ndviStatus = ndviData && ndviData.length > 0 ? {
       value: ndviData[0].ndvi_value,
-      status: ndviData[0].ndvi_value > 0.6 ? 'निरोगी' : 
-              ndviData[0].ndvi_value > 0.4 ? 'सामान्य' :
-              ndviData[0].ndvi_value > 0.2 ? 'कमजोर' : 'गंभीर',
-      action: ndviData[0].ndvi_value < 0.4 ? 'खताची मात्रा 25% वाढवा!' : 'सामान्य खत द्या'
+      status: ndviData[0].ndvi_value > 0.6 ? 'अच्छी' : 
+              ndviData[0].ndvi_value > 0.4 ? 'ठीक-ठाक' :
+              ndviData[0].ndvi_value > 0.2 ? 'कमजोर' : 'बहुत खराब',
+      action: ndviData[0].ndvi_value < 0.4 ? 'खाद की मात्रा 25% बढ़ाओ!' : 'सामान्य खाद दो'
     } : null;
 
-    // 9. Build comprehensive RURAL language system prompt
-    const systemPrompt = `तू ${land.state} मधला जुना अनुभवी शेतकरी आहेस. 50 वर्षांचा अनुभव आहे. गावातल्या भावाला सल्ला देतोय - किताबी भाषा नाही!
+    // 7. Build CLEAR & SIMPLE system prompt
+    const systemPrompt = `तू एक 50 साल के अनुभवी किसान हो। गाँव के भाई को सलाह दे रहे हो। किताबी भाषा नहीं बोलनी!
 
-🎯 तुझं काम: या शेतकऱ्याला त्याच्या ${land.area_acres} एकर शेतासाठी ${cropName} पिकाचं संपूर्ण वेळापत्रक द्यायचं आहे.
+🎯 काम: ${land.area_acres} एकड़ जमीन के लिए ${cropName} का पूरा वेळापत्रक बनाना है।
 
-🗣️ बोलण्याची पद्धत (CRITICAL - हे पाळच!):
-❌ चुकीचं (किताबी): "सिंचन प्रबंधन करा", "उर्वरक व्यवस्थापन", "कीटक नियंत्रण उपाय"
-✅ बरोबर (गावाकडचं): "भाऊ पाणी द्यायची वेळ आली", "खत टाकायचं बघ", "किडे लागलेत, औषध फवार"
+⚠️ भाषा के नियम (सबसे जरूरी!):
+❌ गलत: "सिंचन प्रबंधन करें", "उर्वरक अनुप्रयोग", "कीटनाशक व्यवस्थापन"
+✅ सही: "पानी दो", "खाद डालो", "दवाई छिड़को"
 
-उदाहरणं:
-- "पोरा, आता पाणी दे नाहीतर पीक सुकून जाईल"
-- "भाऊ, युरिया टाक - पानं पिवळी पडायला लागलीत"
-- "लक्षात ठेव - सकाळी लवकर फवारणी कर, ऊन झालं की औषध उडून जातं"
-- "3 दिवसांनी पाऊस येणार, आज पाणी देऊ नकोस"
+${language === 'mr' ? `
+मराठी उदाहरणे (असंच बोलायचं):
+${examples.irrigation.map((e: string) => `• ${e}`).join('\n')}
+${examples.fertilizer.map((e: string) => `• ${e}`).join('\n')}
+${examples.pesticide.map((e: string) => `• ${e}`).join('\n')}
+` : `
+हिंदी उदाहरण (ऐसे ही बोलना है):
+${examples.irrigation.map((e: string) => `• ${e}`).join('\n')}
+${examples.fertilizer.map((e: string) => `• ${e}`).join('\n')}
+${examples.pesticide.map((e: string) => `• ${e}`).join('\n')}
+`}
 
-📊 या शेताची संपूर्ण माहिती:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🏞️ जमीन: ${land.area_acres} एकर (${landAreaHa.toFixed(2)} हेक्टर)
-📍 ठिकाण: ${land.village || ''}, ${land.taluka || ''}, ${land.district}, ${land.state}
-🌾 माती: ${land.soil_type || 'माहिती नाही'}
-💧 पाण्याची सोय: ${land.irrigation_type || land.water_source || 'बोअर/विहीर'}
-📐 जमिनीचा उतार: ${land.slope_percentage ? `${land.slope_percentage}%` : 'सपाट'}
+📊 इस जमीन की जानकारी:
+• क्षेत्र: ${land.area_acres} एकड़ (${landAreaHa.toFixed(2)} हेक्टेयर)
+• जगह: ${land.village || ''}, ${land.district}, ${land.state}
+• मिट्टी: ${land.soil_type || 'काली/दोमट'}
+• पानी: ${land.irrigation_type || 'बोरवेल/कुआं'}
+• pH: ${land.soil_ph || '6.5-7.5'}
 
-🧪 मातीची तपासणी (${land.last_soil_test_date ? `तारीख: ${land.last_soil_test_date}` : 'तपासणी केलेली नाही'}):
-- pH: ${land.soil_ph || 'माहिती नाही'} ${land.soil_ph ? (land.soil_ph < 6 ? '(आम्लयुक्त - चुना लागेल)' : land.soil_ph > 7.5 ? '(क्षारयुक्त - जिप्सम लागेल)' : '(योग्य)') : ''}
-- सेंद्रिय कार्बन: ${land.organic_carbon_percent ? `${land.organic_carbon_percent}%` : 'माहिती नाही'}
-- नायट्रोजन (N): ${currentN || 0} kg/ha ${currentN < 50 ? '⚠️ कमी!' : currentN < 100 ? '(मध्यम)' : '(चांगला)'}
-- फॉस्फरस (P): ${currentP || 0} kg/ha ${currentP < 20 ? '⚠️ कमी!' : currentP < 40 ? '(मध्यम)' : '(चांगला)'}
-- पोटॅश (K): ${currentK || 0} kg/ha ${currentK < 20 ? '⚠️ कमी!' : currentK < 40 ? '(मध्यम)' : '(चांगला)'}
+🧪 मिट्टी में पोषक तत्व (kg/ha):
+• नाइट्रोजन: ${currentN} (चाहिए: ${target.n}, कमी: ${nDeficit.toFixed(0)})
+• फॉस्फोरस: ${currentP} (चाहिए: ${target.p}, कमी: ${pDeficit.toFixed(0)})  
+• पोटाश: ${currentK} (चाहिए: ${target.k}, कमी: ${kDeficit.toFixed(0)})
 
-📊 ${cropName} पिकासाठी लागणारं (Target):
-- N: ${target.n} kg/ha, P: ${target.p} kg/ha, K: ${target.k} kg/ha
-- कमतरता भरायची: N=${nDeficit.toFixed(0)}, P=${pDeficit.toFixed(0)}, K=${kDeficit.toFixed(0)} kg/ha
-- एकूण ${land.area_acres} एकरसाठी:
-  * युरिया: ${((nDeficit * landAreaHa) / 0.46).toFixed(0)} kg (46% N असतं)
-  * DAP: ${((pDeficit * landAreaHa) / 0.18).toFixed(0)} kg (18% N + 46% P)
-  * MOP: ${((kDeficit * landAreaHa) / 0.60).toFixed(0)} kg (60% K)
+📦 ${land.area_acres} एकड़ के लिए खाद (अंदाजा):
+• यूरिया: ${((nDeficit * landAreaHa) / 0.46).toFixed(0)} kg
+• DAP: ${((pDeficit * landAreaHa) / 0.18).toFixed(0)} kg
+• MOP: ${((kDeficit * landAreaHa) / 0.60).toFixed(0)} kg
 
 ${ndviStatus ? `
-🛰️ सॅटेलाइट आकडा (NDVI): ${ndviStatus.value.toFixed(2)}
-स्थिती: ${ndviStatus.status}
-कृती: ${ndviStatus.action}
+🛰️ सैटेलाइट से फसल की हालत: ${ndviStatus.value.toFixed(2)} - ${ndviStatus.status}
+करना होगा: ${ndviStatus.action}
 ` : ''}
 
-${icarGuidance ? `
-📚 ICAR/कृषी विद्यापीठ शिफारस (${cropName}):
-${icarGuidance}
+💰 खर्च के नियम:
+• सारी कीमतें "₹" में लिखना ($ नहीं!)
+• "अंदाजे ₹500" ऐसे लिखना
+• 2024-25 के भाव
+
+🌿 खाद की प्राथमिकता:
+1. गोबर की खाद, कंपोस्ट (पहले)
+2. जैविक खाद - अजोटोबैक्टर, PSB
+3. रासायनिक खाद (सिर्फ कमी पूरी करने को)
+
+🧪 दवाई/खाद के साथ जरूर बताना:
+• नाम (ब्रांड + साल्ट नाम)
+• सक्रिय तत्व और % (जैसे: "इमिडाक्लोप्रिड 17.8% SL")
+• कितना लगेगा (जैसे: "50 kg यूरिया 1 एकड़ के लिए")
+
+भाषा: ${languageName} - पूरा जवाब इसी भाषा में!`;
+
+    const userPrompt = `भाई, मेरे ${land.area_acres} एकड़ खेत में ${cropName}${cropVariety ? ` (${cropVariety})` : ''} ${isReadyMadePlant ? 'लगाना' : 'बोना'} है।
+
+📅 तारीख: ${sowingDate}
+📍 जगह: ${land.district}, ${land.state}
+💧 पानी: ${land.irrigation_type || 'बोरवेल'}
+🌾 मिट्टी: ${land.soil_type || 'काली मिट्टी'}
+
+मिट्टी में खाद:
+• N=${currentN}, P=${currentP}, K=${currentK} kg/ha (अभी है)
+• N=${target.n}, P=${target.p}, K=${target.k} kg/ha (चाहिए)
+• कमी: N=${nDeficit.toFixed(0)}, P=${pDeficit.toFixed(0)}, K=${kDeficit.toFixed(0)} kg/ha
+
+${ndviStatus ? `सैटेलाइट से: ${ndviStatus.value.toFixed(2)} - ${ndviStatus.status}` : ''}
+
+${weather?.forecast ? `अगले हफ्ते मौसम:
+${weather.forecast.filter((f: any) => f.rainfall > 5).map((f: any) => `• दिन ${f.day}: ${f.rainfall}mm बारिश`).join('\n') || '• कोई बड़ी बारिश नहीं'}
 ` : ''}
 
-${icarCropData ? `
-🐛 ${cropName} मध्ये येणारे कीड: ${icarCropData.common_pests?.join(', ') || 'माहिती नाही'}
-🦠 ${cropName} मध्ये येणारे रोग: ${icarCropData.common_diseases?.join(', ') || 'माहिती नाही'}
-` : ''}
+पूरा वेळापत्रक बताओ (12-15 काम):
+1. जमीन तैयारी
+2. ${isReadyMadePlant ? 'पौधे लगाना' : 'बीज बोना'}
+3. पानी कब देना (5-6 बार)
+4. खाद कब डालना (3-4 बार) - गोबर + रासायनिक
+5. कीड़े-रोग की दवाई (2-3 बार)
+6. घास निकालना (2 बार)
+7. कटाई
 
-${climateAlerts.length > 0 ? `
-⚠️ हवामान धोका:
-${climateAlerts.map(a => `• ${a}`).join('\n')}
-` : ''}
+हर काम के लिए बताना:
+✅ क्या करना है
+✅ कितना सामान लगेगा (${land.area_acres} एकड़ के हिसाब से)
+✅ खाद/दवाई का नाम + सक्रिय तत्व
+✅ कैसे करना है (step by step)
+✅ क्या सावधानी रखनी है (2-3 बातें)
+✅ कौन से मौसम में करना है
+✅ कितना खर्च आएगा
 
-💰 खर्चाबद्दल (CRITICAL):
-- सर्व किंमती "अंदाजे ₹X,XXX" अशा लिहा
-- $ कधीच वापरू नका - फक्त ₹ (INR)!
-- बाजारभाव 2024-25 च्या दरानुसार
+आखिर में बताओ:
+• कितनी फसल होगी (क्विंटल में)
+• कुल खर्च
+• कमाई
 
-🌿 खत शिफारस प्राधान्य:
-1. पहिलं प्राधान्य: सेंद्रिय खत (शेणखत, कंपोस्ट, गांडूळ खत)
-2. जैविक खत (अझोटोबॅक्टर, PSB, राइझोबियम)
-3. रासायनिक खत (फक्त कमतरता भरण्यासाठी)
+भाषा: ${languageName} - गाँव वाली भाषा में बोलो!`;
 
-🌱 खत/कीटकनाशक घटक (CRITICAL - हे सांगणे आवश्यक!):
-प्रत्येक खत/औषधासाठी सांगा:
-- नाव (ब्रँड + जेनेरिक)
-- सक्रिय घटक (Active Ingredient) आणि टक्केवारी
-- उदा: "इमिडाक्लोप्रिड 17.8% SL (Confidor/Admire)" किंवा "युरिया (46% नायट्रोजन)"
-
-भाषा: ${languageName} (code: ${language}) - पूर्ण ${languageName} मध्येच!`;
-
-    const userPrompt = `भाऊ, माझं ${land.area_acres} एकर शेत आहे ${land.district}, ${land.state} मध्ये.
-
-🌱 पीक: ${cropName}${cropVariety ? ` (${cropVariety} जात)` : ''}
-📅 ${isReadyMadePlant ? 'रोपे लावणी' : 'पेरणी'} तारीख: ${sowingDate}
-💧 पाण्याची सोय: ${land.irrigation_type || land.water_source || 'बोअर/विहीर'}
-🌾 माती: ${land.soil_type || 'सामान्य'}
-
-मातीची स्थिती:
-- N=${currentN}, P=${currentP}, K=${currentK} kg/ha (सध्या)
-- N=${target.n}, P=${target.p}, K=${target.k} kg/ha (पिकाला लागणारं)
-- भरायची कमतरता: N=${nDeficit.toFixed(0)}, P=${pDeficit.toFixed(0)}, K=${kDeficit.toFixed(0)} kg/ha
-
-${ndviStatus ? `सॅटेलाइट आकडा: ${ndviStatus.value.toFixed(2)} - ${ndviStatus.status}` : ''}
-
-${weather?.forecast ? `
-पुढच्या आठवड्याचा पाऊस:
-${weather.forecast.filter((f: any) => f.rainfall > 5).map((f: any) => `• दिवस ${f.day}: ${f.rainfall}mm`).join('\n') || '• मोठा पाऊस नाही'}
-` : ''}
-
-आजोबा, मला पूर्ण वेळापत्रक सांगा:
-
-1. कोणकोणती कामं (12-15 कामं)?
-   - जमीन तयारी, ${isReadyMadePlant ? 'रोपे लावणी' : 'पेरणी'}
-   - पाणी कधी द्यायचं (6-8 वेळा)
-   - खत कधी टाकायचं (3-4 वेळा) - सेंद्रिय + रासायनिक
-   - कीड-रोगावर औषध (2-3 वेळा)
-   - तण काढणे (2 वेळा)
-   - कापणी
-
-2. खत/औषधासाठी सांगा:
-   - नाव (ब्रँड + जेनेरिक)
-   - सक्रिय घटक (Active Ingredient) + टक्केवारी
-   - किती लागेल (${land.area_acres} एकरसाठी)
-   - कसं द्यायचं
-
-3. प्रत्येक कामासाठी:
-   - का करायचं (धमकी: "नाही केलं तर...")
-   - कसं करायचं (step by step)
-   - काळजी घ्या (2-3 गोष्टी)
-   - कोणत्या हवामानात करायचं
-
-💰 हिशोब सांगा:
-- उत्पादन किती होईल (क्विंटल)
-- खर्च किती येईल
-- नफा किती राहील
-
-💬 गावाकडच्या भाषेत सांग - "सिंचन प्रबंधन" नको, "पाणी देणे" सांग!
-भाषा: ${languageName}`;
-
-    // 10. Call OpenAI with comprehensive tool schema
+    // 8. Call OpenAI
     const requestBody = {
       model: AI_CONFIG.MODEL,
       max_completion_tokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
@@ -289,150 +287,59 @@ ${weather.forecast.filter((f: any) => f.rainfall > 5).map((f: any) => `• द�
         type: "function",
         function: {
           name: "create_crop_schedule",
-          description: "Generate comprehensive agricultural schedule with land-specific recommendations",
+          description: "Generate agricultural schedule with land-specific recommendations",
           parameters: {
             type: "object",
             properties: {
               crop_name: { type: "string" },
               crop_season: { type: "string" },
               total_duration_days: { type: "integer" },
-              
-              // Yield & Revenue
-              expected_yield_quintals: { type: "number", description: "Total yield in quintals for entire land" },
-              expected_yield_per_acre: { type: "number", description: "Yield per acre in quintals" },
-              expected_market_price_per_quintal: { type: "number", description: "Price in ₹ per quintal" },
-              expected_gross_revenue: { type: "number", description: "Total revenue in ₹" },
-              expected_net_profit: { type: "number", description: "Net profit in ₹" },
-              total_estimated_cost: { type: "number", description: "Total cost in ₹" },
-              
-              // ICAR Reference
+              expected_yield_quintals: { type: "number" },
+              expected_yield_per_acre: { type: "number" },
+              expected_market_price_per_quintal: { type: "number" },
+              expected_gross_revenue: { type: "number" },
+              expected_net_profit: { type: "number" },
+              total_estimated_cost: { type: "number" },
               icar_reference: { type: "string" },
-              university_recommendation: { type: "string" },
-              
-              // Seeds & Water
-              seed_quantity_kg: { type: "number", description: "Seed quantity for this land size" },
-              seed_details: { type: "string", description: "Seed variety, treatment, source" },
-              total_water_requirement_liters: { type: "number" },
-              
-              // Organic Fertilizers (PRIORITY)
+              seed_quantity_kg: { type: "number" },
+              seed_details: { type: "string" },
               organic_inputs: {
                 type: "object",
                 properties: {
-                  fym_kg: { type: "number", description: "Farm Yard Manure in kg" },
-                  compost_kg: { type: "number", description: "Compost in kg" },
-                  vermicompost_kg: { type: "number", description: "Vermicompost in kg" },
-                  green_manure: { type: "string", description: "Green manure crop name if applicable" },
-                  neem_cake_kg: { type: "number", description: "Neem cake in kg" }
+                  fym_kg: { type: "number" },
+                  compost_kg: { type: "number" },
+                  vermicompost_kg: { type: "number" }
                 }
               },
-              
-              // Bio Fertilizers
-              bio_fertilizers: {
-                type: "object",
-                properties: {
-                  azotobacter_packets: { type: "number" },
-                  psb_packets: { type: "number", description: "Phosphate Solubilizing Bacteria" },
-                  rhizobium_packets: { type: "number", description: "For legumes" },
-                  mycorrhiza_kg: { type: "number" }
-                }
-              },
-              
-              // Chemical Fertilizers (to fill deficit only)
               chemical_fertilizers: {
                 type: "object",
                 properties: {
-                  urea_kg: { type: "number", description: "Urea (46% N)" },
-                  dap_kg: { type: "number", description: "DAP (18% N + 46% P)" },
-                  mop_kg: { type: "number", description: "MOP (60% K)" },
-                  ssp_kg: { type: "number", description: "SSP (16% P)" },
-                  complex_npk_kg: { type: "number", description: "NPK complex" },
-                  micronutrients: { type: "string", description: "Zinc, Boron, etc." }
+                  urea_kg: { type: "number" },
+                  dap_kg: { type: "number" },
+                  mop_kg: { type: "number" }
                 }
               },
-              
-              // Pest Management with Active Ingredients
-              pest_management: {
-                type: "object",
-                properties: {
-                  bio_pesticides: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        name: { type: "string", description: "Product name" },
-                        active_ingredient: { type: "string", description: "Active ingredient and %" },
-                        quantity: { type: "string", description: "Quantity with unit" },
-                        target_pest: { type: "string" }
-                      }
-                    }
-                  },
-                  chemical_pesticides: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        name: { type: "string", description: "Brand name + generic" },
-                        active_ingredient: { type: "string", description: "Active ingredient and %" },
-                        quantity: { type: "string" },
-                        target_pest: { type: "string" },
-                        phi_days: { type: "number", description: "Pre-harvest interval" }
-                      }
-                    }
-                  },
-                  fungicides: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        name: { type: "string" },
-                        active_ingredient: { type: "string" },
-                        quantity: { type: "string" },
-                        target_disease: { type: "string" }
-                      }
-                    }
-                  },
-                  herbicides: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        name: { type: "string" },
-                        active_ingredient: { type: "string" },
-                        quantity: { type: "string" },
-                        application_timing: { type: "string" }
-                      }
-                    }
-                  }
-                }
-              },
-              
-              // Climate alerts
-              climate_alerts: { type: "array", items: { type: "string" } },
-              expected_pests: { type: "array", items: { type: "string" } },
-              expected_diseases: { type: "array", items: { type: "string" } },
-              
-              // Tasks
               tasks: {
                 type: "array",
                 items: {
                   type: "object",
                   properties: {
-                    task_name: { type: "string", description: `In ${languageName} using rural terms` },
+                    task_name: { type: "string", description: "Rural language task name" },
                     category: { 
                       type: "string",
                       enum: ["soil_preparation", "sowing", "irrigation", "fertilizer", "pest_control", "weed_management", "harvesting"]
                     },
                     days_from_sowing: { type: "integer" },
                     priority: { type: "string", enum: ["low", "medium", "high"] },
-                    description: { type: "string", description: `In ${languageName}, explain why this is important` },
-                    quantity: { type: "string", description: "Specific quantity (e.g., '50 kg युरिया', '2000 लीटर पाणी')" },
-                    product_details: { type: "string", description: "Product name + active ingredient + %" },
-                    estimated_cost: { type: "number", description: "Cost in ₹" },
-                    instructions: { type: "array", items: { type: "string" }, description: `Step-by-step in ${languageName}` },
-                    precautions: { type: "array", items: { type: "string" }, description: "2-3 safety points" },
+                    description: { type: "string", description: "Why this task matters, in rural speech" },
+                    quantity: { type: "string", description: "Exact amount like '50 kg यूरिया' or '2000 लीटर पानी'" },
+                    product_details: { type: "string", description: "Product name + active ingredient + percentage" },
+                    estimated_cost: { type: "number" },
+                    instructions: { type: "array", items: { type: "string" } },
+                    precautions: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 4 },
                     weather_dependent: { type: "boolean" },
-                    icar_guideline: { type: "string" },
-                    climate_risk: { type: "string" },
+                    icar_guideline: { type: "string", description: "ICAR recommendation if applicable" },
+                    climate_risk: { type: "string", description: "Weather risk warning if any" },
                     ideal_weather: {
                       type: "object",
                       properties: {
@@ -442,7 +349,7 @@ ${weather.forecast.filter((f: any) => f.rainfall > 5).map((f: any) => `• द�
                       }
                     }
                   },
-                  required: ["task_name", "category", "days_from_sowing", "priority", "description", "precautions"]
+                  required: ["task_name", "category", "days_from_sowing", "priority", "description", "instructions", "precautions"]
                 }
               }
             },
@@ -478,7 +385,7 @@ ${weather.forecast.filter((f: any) => f.rainfall > 5).map((f: any) => `• द�
     }
 
     const toolCall = message.tool_calls[0];
-    const scheduleData = JSON.parse(toolCall.function.arguments);
+    let scheduleData = JSON.parse(toolCall.function.arguments);
     
     console.log('✓ Schedule:', scheduleData.crop_name, scheduleData.total_duration_days, 'days,', scheduleData.tasks?.length, 'tasks');
 
@@ -486,13 +393,77 @@ ${weather.forecast.filter((f: any) => f.rainfall > 5).map((f: any) => `• द�
       throw new Error('AI returned empty schedule');
     }
 
-    // Deactivate old schedules if regenerating
+    // 9. POST-PROCESSING: Fix null/empty values and ensure quality
+    const defaultPrecautions = language === 'mr' 
+      ? ["औषध फवारताना तोंडावर कापड बांधा", "पोरांना दूर ठेवा", "हातात ग्लोव्ह्ज घाला"]
+      : ["दवाई छिड़कते वक्त मुंह पर कपड़ा बांधो", "बच्चों को दूर रखो", "हाथों में दस्ताने पहनो"];
+
+    scheduleData.tasks = scheduleData.tasks.map((task: any) => {
+      // Fix precautions - ensure it's an array with meaningful values
+      if (!task.precautions || !Array.isArray(task.precautions) || task.precautions.length < 2) {
+        task.precautions = defaultPrecautions;
+      } else {
+        // Filter out empty strings and single characters
+        task.precautions = task.precautions.filter((p: string) => p && p.length > 3);
+        if (task.precautions.length < 2) {
+          task.precautions = defaultPrecautions;
+        }
+      }
+
+      // Fix instructions - ensure array
+      if (!task.instructions || !Array.isArray(task.instructions) || task.instructions.length === 0) {
+        task.instructions = [task.description || "कृपया विवरण देखें"];
+      }
+
+      // Ensure quantity has value
+      if (!task.quantity || task.quantity === 'null' || task.quantity.trim() === '') {
+        if (task.category === 'irrigation') {
+          task.quantity = `${(land.area_acres * 1000).toFixed(0)} लीटर पानी`;
+        } else if (task.category === 'fertilizer') {
+          task.quantity = `${(land.area_acres * 25).toFixed(0)} kg खाद`;
+        }
+      }
+
+      // Ensure product_details has value for relevant tasks
+      if (!task.product_details || task.product_details === 'null') {
+        if (task.category === 'fertilizer') {
+          task.product_details = "यूरिया (46% नाइट्रोजन) या DAP (18% N + 46% P)";
+        } else if (task.category === 'pest_control' || task.category === 'pesticide') {
+          task.product_details = "इमिडाक्लोप्रिड 17.8% SL या क्लोरपायरीफॉस 20% EC";
+        }
+      }
+
+      // Ensure ICAR guideline
+      if (!task.icar_guideline || task.icar_guideline === 'null') {
+        task.icar_guideline = `ICAR ${cropName} मार्गदर्शिका अनुसार`;
+      }
+
+      // Ensure climate risk
+      if (!task.climate_risk || task.climate_risk === 'null') {
+        if (task.weather_dependent) {
+          task.climate_risk = "बारिश/तेज धूप में न करें";
+        }
+      }
+
+      // Ensure ideal_weather
+      if (!task.ideal_weather || typeof task.ideal_weather !== 'object') {
+        task.ideal_weather = {
+          temperature: "25-30",
+          humidity: "60-70",
+          conditions: "साफ मौसम"
+        };
+      }
+
+      return task;
+    });
+
+    // 10. Deactivate old schedules if regenerating
     if (regenerate) {
       await supabase.from('crop_schedules').update({ is_active: false })
         .eq('land_id', landId).eq('is_active', true);
     }
 
-    // Save schedule with all land context for training
+    // 11. Save schedule with all context for training
     const { data: savedSchedule, error: scheduleError } = await supabase
       .from('crop_schedules')
       .insert({
@@ -500,105 +471,89 @@ ${weather.forecast.filter((f: any) => f.rainfall > 5).map((f: any) => `• द�
         farmer_id: farmerId,
         land_id: landId,
         crop_name: cropName,
-        crop_variety: cropVariety,
+        crop_variety: cropVariety || scheduleData.crop_variety,
+        crop_season: scheduleData.crop_season,
         sowing_date: sowingDate,
-        expected_harvest_date: new Date(new Date(sowingDate).getTime() + scheduleData.total_duration_days * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        
-        seed_quantity_kg: scheduleData.seed_quantity_kg || null,
-        total_water_requirement_liters: scheduleData.total_water_requirement_liters || null,
-        calculated_for_area_acres: land.area_acres,
-        
-        // Chemical Fertilizers
-        fertilizer_n_kg: scheduleData.chemical_fertilizers?.urea_kg ? scheduleData.chemical_fertilizers.urea_kg * 0.46 : null,
-        fertilizer_p_kg: scheduleData.chemical_fertilizers?.dap_kg ? scheduleData.chemical_fertilizers.dap_kg * 0.46 : null,
-        fertilizer_k_kg: scheduleData.chemical_fertilizers?.mop_kg ? scheduleData.chemical_fertilizers.mop_kg * 0.60 : null,
-        
-        // Yield & Revenue
-        expected_yield_quintals: scheduleData.expected_yield_quintals || null,
-        expected_yield_per_acre: scheduleData.expected_yield_per_acre || null,
-        expected_market_price_per_quintal: scheduleData.expected_market_price_per_quintal || null,
-        expected_gross_revenue: scheduleData.expected_gross_revenue || null,
-        expected_net_profit: scheduleData.expected_net_profit || null,
-        total_estimated_cost: scheduleData.total_estimated_cost || null,
-        
-        // Organic Inputs
-        organic_fertilizer_kg: scheduleData.organic_inputs?.fym_kg || null,
-        vermicompost_kg: scheduleData.organic_inputs?.vermicompost_kg || null,
-        organic_input_details: scheduleData.organic_inputs || null,
-        
-        // Pest Management
-        pesticide_requirements: scheduleData.pest_management || null,
-        
-        ai_model: AI_CONFIG.MODEL,
-        generation_language: language,
-        country: country,
-        
-        // Store FULL context for AI training
+        expected_harvest_date: new Date(new Date(sowingDate).getTime() + (scheduleData.total_duration_days || 120) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        is_active: true,
+        status: 'active',
+        expected_yield_quintals: scheduleData.expected_yield_quintals || scheduleData.expected_yield_per_acre * land.area_acres,
+        total_estimated_cost: scheduleData.total_estimated_cost,
         generation_params: {
-          scheduleData,
+          model: AI_CONFIG.MODEL,
+          language,
           land_context: {
             area_acres: land.area_acres,
             soil_type: land.soil_type,
-            soil_ph: land.soil_ph,
             irrigation_type: land.irrigation_type,
-            current_npk: { n: currentN, p: currentP, k: currentK },
-            target_npk: target,
-            deficit_npk: { n: nDeficit, p: pDeficit, k: kDeficit },
-            ndvi: ndviStatus,
-            location: { village: land.village, taluka: land.taluka, district: land.district, state: land.state }
+            npk: { current: { n: currentN, p: currentP, k: currentK }, target, deficit: { n: nDeficit, p: pDeficit, k: kDeficit } }
           },
-          weather_context: weather,
-          region,
-          icar_reference: scheduleData.icar_reference || icarCropData?.icar_reference || null,
-          climate_alerts: scheduleData.climate_alerts || climateAlerts,
-          expected_pests: scheduleData.expected_pests || icarCropData?.common_pests || null,
-          expected_diseases: scheduleData.expected_diseases || icarCropData?.common_diseases || null,
-          organic_inputs: scheduleData.organic_inputs,
-          bio_fertilizers: scheduleData.bio_fertilizers,
-          chemical_fertilizers: scheduleData.chemical_fertilizers,
-          pest_management: scheduleData.pest_management,
-          generated_at: new Date().toISOString()
+          ndvi_status: ndviStatus,
+          weather_at_generation: weather?.current,
+          prompt_version: 'v3_rural_enhanced'
         },
-        is_active: true,
+        ai_response_metadata: {
+          organic_inputs: scheduleData.organic_inputs,
+          chemical_fertilizers: scheduleData.chemical_fertilizers,
+          icar_reference: scheduleData.icar_reference,
+          seed_details: scheduleData.seed_details
+        }
       })
       .select()
       .single();
 
-    if (scheduleError) throw scheduleError;
+    if (scheduleError || !savedSchedule) {
+      console.error('Schedule save error:', scheduleError);
+      throw new Error('Failed to save schedule');
+    }
 
-    // Save tasks with all details
-    const tasks = scheduleData.tasks.map((task: any) => ({
-      schedule_id: savedSchedule.id,
-      task_name: task.task_name,
-      task_type: task.category || 'general',
-      task_description: task.description,
-      task_date: new Date(new Date(sowingDate).getTime() + task.days_from_sowing * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-      priority: task.priority || 'medium',
-      status: 'pending',
-      estimated_cost: task.estimated_cost || null,
-      instructions: task.instructions || [],
-      language: language,
-      currency: 'INR',
-      resources: {
-        quantity: task.quantity || null,
-        product_details: task.product_details || null,
+    console.log(`✓ Schedule saved: ${savedSchedule.id}`);
+
+    // 12. Prepare and insert tasks
+    const tasksToInsert = scheduleData.tasks.map((task: any, index: number) => {
+      const taskDate = new Date(sowingDate);
+      taskDate.setDate(taskDate.getDate() + (task.days_from_sowing || index * 7));
+      
+      return {
+        schedule_id: savedSchedule.id,
+        tenant_id: tenantId,
+        farmer_id: farmerId,
+        task_date: taskDate.toISOString().split('T')[0],
+        task_type: task.category || 'other',
+        task_name: task.task_name,
+        task_description: task.description,
+        status: 'pending',
+        priority: task.priority || 'medium',
+        weather_dependent: task.weather_dependent || false,
+        instructions: task.instructions || [],
         precautions: task.precautions || [],
-        ideal_weather: task.ideal_weather || null,
-        icar_guideline: task.icar_guideline || null,
-        climate_risk: task.climate_risk || null,
-      },
-      weather_dependent: task.weather_dependent || (task.category === 'irrigation' || task.category === 'pest_control'),
-    }));
+        resources: {
+          quantity: task.quantity,
+          product_details: task.product_details,
+          icar_guideline: task.icar_guideline,
+          climate_risk: task.climate_risk,
+          ideal_weather: task.ideal_weather
+        },
+        ideal_weather: task.ideal_weather,
+        estimated_cost: task.estimated_cost,
+        currency: 'INR',
+        metadata: {
+          days_from_sowing: task.days_from_sowing,
+          ai_generated: true,
+          land_area: land.area_acres
+        }
+      };
+    });
 
     const { data: insertedTasks, error: tasksError } = await supabase
       .from('schedule_tasks')
-      .insert(tasks)
+      .insert(tasksToInsert)
       .select();
 
     if (tasksError) console.error('Tasks insert error:', tasksError);
     else console.log(`✓ Inserted ${insertedTasks?.length || 0} tasks`);
 
-    // Log for AI training (non-blocking)
+    // 13. Log for AI training (non-blocking)
     try {
       const { error: logError } = await supabase.from('ai_decision_log').insert({
         tenant_id: tenantId,
@@ -631,24 +586,20 @@ ${weather.forecast.filter((f: any) => f.rainfall > 5).map((f: any) => `• द�
       JSON.stringify({
         success: true,
         scheduleId: savedSchedule.id,
-        taskCount: insertedTasks?.length || 0,
         cropName: scheduleData.crop_name,
+        totalTasks: scheduleData.tasks.length,
         duration: scheduleData.total_duration_days,
-        executionTimeMs: executionTime,
-        landContext: {
-          area: land.area_acres,
-          soilType: land.soil_type,
-          irrigation: land.irrigation_type,
-          ndviStatus: ndviStatus?.status
-        }
+        expectedYield: scheduleData.expected_yield_quintals,
+        totalCost: scheduleData.total_estimated_cost,
+        executionTimeMs: executionTime
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('❌ AI Schedule Error:', error);
     return new Response(
-      JSON.stringify({ error: error.message || 'Failed to generate schedule', details: 'Failed to generate crop schedule' }),
+      JSON.stringify({ error: error.message, details: 'Failed to generate crop schedule' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

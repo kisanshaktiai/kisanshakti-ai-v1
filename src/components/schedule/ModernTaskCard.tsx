@@ -6,13 +6,11 @@ import { useTranslation } from 'react-i18next';
 import { 
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { 
   Calendar,
-  Clock, 
   Check, 
   Volume2,
   VolumeX,
@@ -31,11 +29,12 @@ import {
   Sprout,
   Sun,
   Droplet,
-  Info
+  Sparkles,
+  ChevronRight
 } from 'lucide-react';
 import { format, isToday, isTomorrow } from 'date-fns';
 import { cn } from '@/lib/utils';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface TaskCardProps {
   task: any;
@@ -47,31 +46,24 @@ interface TaskCardProps {
 }
 
 const taskTypeConfig = {
-  irrigation: { icon: Droplets, color: 'text-blue-500', bg: 'from-blue-500/20 to-blue-500/5', borderColor: 'border-blue-500/30', emoji: '💧' },
-  fertilizer: { icon: Leaf, color: 'text-green-500', bg: 'from-green-500/20 to-green-500/5', borderColor: 'border-green-500/30', emoji: '🌿' },
-  pesticide: { icon: Bug, color: 'text-orange-500', bg: 'from-orange-500/20 to-orange-500/5', borderColor: 'border-orange-500/30', emoji: '🐛' },
-  pest_control: { icon: Bug, color: 'text-orange-500', bg: 'from-orange-500/20 to-orange-500/5', borderColor: 'border-orange-500/30', emoji: '🛡️' },
-  weeding: { icon: Scissors, color: 'text-purple-500', bg: 'from-purple-500/20 to-purple-500/5', borderColor: 'border-purple-500/30', emoji: '✂️' },
-  weed_management: { icon: Scissors, color: 'text-purple-500', bg: 'from-purple-500/20 to-purple-500/5', borderColor: 'border-purple-500/30', emoji: '🌾' },
-  harvest: { icon: Package, color: 'text-amber-500', bg: 'from-amber-500/20 to-amber-500/5', borderColor: 'border-amber-500/30', emoji: '🌾' },
-  harvesting: { icon: Package, color: 'text-amber-500', bg: 'from-amber-500/20 to-amber-500/5', borderColor: 'border-amber-500/30', emoji: '📦' },
-  soil_preparation: { icon: Sprout, color: 'text-amber-700', bg: 'from-amber-700/20 to-amber-700/5', borderColor: 'border-amber-700/30', emoji: '🚜' },
-  sowing: { icon: Sprout, color: 'text-emerald-500', bg: 'from-emerald-500/20 to-emerald-500/5', borderColor: 'border-emerald-500/30', emoji: '🌱' },
-  other: { icon: AlertCircle, color: 'text-gray-500', bg: 'from-gray-500/20 to-gray-500/5', borderColor: 'border-gray-500/30', emoji: '📋' }
+  irrigation: { icon: Droplets, color: 'text-blue-500', bg: 'from-blue-500/20 to-blue-600/5', borderColor: 'border-blue-500/30', gradient: 'from-blue-500 to-cyan-500', emoji: '💧' },
+  fertilizer: { icon: Leaf, color: 'text-emerald-500', bg: 'from-emerald-500/20 to-green-600/5', borderColor: 'border-emerald-500/30', gradient: 'from-emerald-500 to-green-500', emoji: '🌿' },
+  pesticide: { icon: Bug, color: 'text-orange-500', bg: 'from-orange-500/20 to-amber-600/5', borderColor: 'border-orange-500/30', gradient: 'from-orange-500 to-amber-500', emoji: '🐛' },
+  pest_control: { icon: Bug, color: 'text-orange-500', bg: 'from-orange-500/20 to-amber-600/5', borderColor: 'border-orange-500/30', gradient: 'from-orange-500 to-red-500', emoji: '🛡️' },
+  weeding: { icon: Scissors, color: 'text-purple-500', bg: 'from-purple-500/20 to-pink-600/5', borderColor: 'border-purple-500/30', gradient: 'from-purple-500 to-pink-500', emoji: '✂️' },
+  weed_management: { icon: Scissors, color: 'text-purple-500', bg: 'from-purple-500/20 to-pink-600/5', borderColor: 'border-purple-500/30', gradient: 'from-purple-500 to-fuchsia-500', emoji: '🌾' },
+  harvest: { icon: Package, color: 'text-amber-500', bg: 'from-amber-500/20 to-yellow-600/5', borderColor: 'border-amber-500/30', gradient: 'from-amber-500 to-yellow-500', emoji: '📦' },
+  harvesting: { icon: Package, color: 'text-amber-500', bg: 'from-amber-500/20 to-yellow-600/5', borderColor: 'border-amber-500/30', gradient: 'from-amber-500 to-orange-500', emoji: '🌾' },
+  soil_preparation: { icon: Sprout, color: 'text-amber-700', bg: 'from-amber-700/20 to-orange-600/5', borderColor: 'border-amber-700/30', gradient: 'from-amber-700 to-orange-600', emoji: '🚜' },
+  sowing: { icon: Sprout, color: 'text-green-500', bg: 'from-green-500/20 to-emerald-600/5', borderColor: 'border-green-500/30', gradient: 'from-green-500 to-emerald-500', emoji: '🌱' },
+  other: { icon: AlertCircle, color: 'text-slate-500', bg: 'from-slate-500/20 to-gray-600/5', borderColor: 'border-slate-500/30', gradient: 'from-slate-500 to-gray-500', emoji: '📋' }
 };
 
-// Format cost with "approximately" prefix
-const formatCost = (cost: number | null | undefined): string => {
-  if (!cost || cost <= 0) return '';
-  return `₹${cost.toLocaleString('en-IN')}`;
-};
-
-// Check if a value is valid (not null, undefined, empty string, or "null" string)
+// Check if a value is valid
 const isValidValue = (value: any): boolean => {
   if (value === null || value === undefined) return false;
-  if (typeof value === 'string' && (value.trim() === '' || value.toLowerCase() === 'null')) return false;
+  if (typeof value === 'string' && (value.trim() === '' || value.toLowerCase() === 'null' || value === 'undefined')) return false;
   if (Array.isArray(value) && value.length === 0) return false;
-  if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) return false;
   return true;
 };
 
@@ -95,157 +87,225 @@ export default function ModernTaskCard({
   
   // Extract data from resources JSON
   const resources = task.resources || {};
-  const precautions = task.precautions || resources.precautions || [];
+  const precautions = Array.isArray(task.precautions) && task.precautions.length > 0 
+    ? task.precautions.filter((p: string) => p && p.length > 3)
+    : Array.isArray(resources.precautions) && resources.precautions.length > 0 
+    ? resources.precautions.filter((p: string) => p && p.length > 3)
+    : [];
   const idealWeather = task.ideal_weather || resources.ideal_weather;
   const icarGuideline = task.icar_guideline || resources.icar_guideline;
   const climateRisk = task.climate_risk || resources.climate_risk;
   const quantity = task.quantity || resources.quantity;
-  const productDetails = resources.product_details;
+  const productDetails = task.product_details || resources.product_details;
 
   const getDateLabel = () => {
-    if (isToday(taskDate)) return { text: t('schedule.task_card.today'), color: 'text-primary', badge: 'bg-primary/10 border-primary/30' };
-    if (isTomorrow(taskDate)) return { text: t('schedule.task_card.tomorrow'), color: 'text-info', badge: 'bg-info/10 border-info/30' };
-    if (isOverdue) return { text: t('schedule.task_card.overdue'), color: 'text-destructive', badge: 'bg-destructive/10 border-destructive/30' };
-    if (daysUntil <= 7) return { text: t('schedule.task_card.days_until', { days: daysUntil }), color: 'text-warning', badge: 'bg-warning/10 border-warning/30' };
-    return { text: format(taskDate, 'dd MMM'), color: 'text-muted-foreground', badge: 'bg-muted/50' };
+    if (isToday(taskDate)) return { text: t('schedule.task_card.today'), color: 'text-primary', badge: 'bg-primary/10 border-primary/30 text-primary' };
+    if (isTomorrow(taskDate)) return { text: t('schedule.task_card.tomorrow'), color: 'text-blue-500', badge: 'bg-blue-500/10 border-blue-500/30 text-blue-500' };
+    if (isOverdue) return { text: t('schedule.task_card.overdue'), color: 'text-destructive', badge: 'bg-destructive/10 border-destructive/30 text-destructive' };
+    if (daysUntil <= 7) return { text: t('schedule.task_card.days_until', { days: daysUntil }), color: 'text-amber-500', badge: 'bg-amber-500/10 border-amber-500/30 text-amber-500' };
+    return { text: format(taskDate, 'dd MMM'), color: 'text-muted-foreground', badge: 'bg-muted/50 border-border' };
   };
 
   const dateLabel = getDateLabel();
 
   return (
     <>
-      <motion.div whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} transition={{ type: "spring", stiffness: 400, damping: 20 }}>
+      <motion.div 
+        whileHover={{ scale: 1.02, y: -2 }} 
+        whileTap={{ scale: 0.98 }} 
+        transition={{ type: "spring", stiffness: 400, damping: 25 }}
+      >
         <Card 
           className={cn(
-            "relative overflow-hidden cursor-pointer bg-card/80 backdrop-blur-xl border-2 transition-all duration-300",
-            config.borderColor, "hover:shadow-xl hover:shadow-primary/5",
-            isCompleted && "opacity-60"
+            "relative overflow-hidden cursor-pointer border-2 transition-all duration-300",
+            "bg-gradient-to-br from-card via-card to-muted/20 backdrop-blur-xl",
+            config.borderColor, 
+            "hover:shadow-2xl hover:shadow-primary/10",
+            isCompleted && "opacity-60 grayscale-[30%]"
           )}
           onClick={() => setShowDetails(true)}
         >
-          <div className={cn("absolute inset-0 bg-gradient-to-br opacity-40", config.bg)} />
+          {/* Glass overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none" />
+          
+          {/* Animated gradient border indicator */}
           <div className={cn(
-            "absolute left-0 top-0 bottom-0 w-1.5 rounded-l",
-            isOverdue && isPending && "bg-destructive",
-            isToday(taskDate) && isPending && "bg-primary animate-pulse",
-            isCompleted && "bg-success"
+            "absolute left-0 top-0 bottom-0 w-1.5",
+            isOverdue && isPending && "bg-gradient-to-b from-destructive to-destructive/50",
+            isToday(taskDate) && isPending && "bg-gradient-to-b from-primary via-accent to-primary animate-pulse",
+            isCompleted && "bg-gradient-to-b from-emerald-500 to-green-500"
           )} />
 
           <div className="relative p-4 space-y-3">
-            <div className="flex items-start justify-between gap-2">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3 flex-1 min-w-0">
-                <div className={cn("p-2.5 rounded-xl bg-gradient-to-br shrink-0 border", config.bg, config.borderColor)}>
-                  <TaskIcon className={cn("h-5 w-5", config.color)} />
+                {/* Icon with gradient background */}
+                <div className={cn(
+                  "relative p-3 rounded-2xl shrink-0 shadow-lg",
+                  `bg-gradient-to-br ${config.gradient}`
+                )}>
+                  <TaskIcon className="h-5 w-5 text-white" />
+                  <div className="absolute -top-1 -right-1 text-sm">{config.emoji}</div>
                 </div>
+                
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-sm text-foreground leading-tight">{task.task_name}</h3>
-                  <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                    <Badge variant="outline" className={cn("text-[10px] px-2 py-0.5 font-medium", dateLabel.badge)}>
+                  <h3 className="font-bold text-sm text-foreground leading-tight line-clamp-2">{task.task_name}</h3>
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    <Badge variant="outline" className={cn("text-[10px] px-2 py-0.5 font-semibold", dateLabel.badge)}>
+                      <Calendar className="h-3 w-3 mr-1" />
                       {dateLabel.text}
                     </Badge>
                     {task.priority === 'high' && (
-                      <Badge variant="destructive" className="text-[10px] px-2 py-0.5">🔥 {t('schedule.task_card.high_priority')}</Badge>
+                      <Badge className="bg-gradient-to-r from-red-500 to-orange-500 text-white text-[10px] px-2 py-0.5 border-0">
+                        🔥 {t('schedule.task_card.high_priority')}
+                      </Badge>
                     )}
                   </div>
                 </div>
               </div>
               
-              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full hover:bg-primary/10 shrink-0"
-                onClick={(e) => { e.stopPropagation(); onSpeak(); }}>
-                {isSpeaking ? <VolumeX className="h-4 w-4 text-primary" /> : <Volume2 className="h-4 w-4 text-muted-foreground" />}
+              {/* Speaker button */}
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className={cn(
+                  "h-9 w-9 rounded-full shrink-0 transition-all",
+                  isSpeaking ? "bg-primary/20 text-primary" : "hover:bg-primary/10"
+                )}
+                onClick={(e) => { e.stopPropagation(); onSpeak(); }}
+              >
+                {isSpeaking ? <VolumeX className="h-4 w-4 animate-pulse" /> : <Volume2 className="h-4 w-4" />}
               </Button>
             </div>
 
+            {/* Description preview */}
             {task.task_description && (
-              <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">{task.task_description}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 pl-1">{task.task_description}</p>
             )}
 
             {/* Quick Info Pills */}
             <div className="flex flex-wrap gap-2">
               {task.estimated_cost > 0 && (
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-primary/5 border border-primary/20">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/20">
                   <IndianRupee className="h-3.5 w-3.5 text-primary" />
-                  <span className="text-xs font-medium text-primary">{t('schedule.task_card.approx_cost')} {formatCost(task.estimated_cost)}</span>
+                  <span className="text-xs font-bold text-primary">₹{task.estimated_cost.toLocaleString('en-IN')}</span>
                 </div>
               )}
               {task.weather_dependent && (
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-500/10 border border-blue-500/20">
-                  <CloudRain className="h-3.5 w-3.5 text-blue-500" />
-                  <span className="text-xs text-blue-600 dark:text-blue-400">{t('schedule.task_card.weather_dependent')}</span>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-sky-500/10 border border-sky-500/20">
+                  <CloudRain className="h-3.5 w-3.5 text-sky-500" />
+                  <span className="text-xs font-medium text-sky-600 dark:text-sky-400">{t('schedule.task_card.weather_dependent')}</span>
                 </div>
               )}
             </div>
 
             {/* First Precaution Preview */}
-            {isValidValue(precautions) && precautions.length > 0 && (
-              <div className="flex items-start gap-2 p-2.5 rounded-lg bg-warning/5 border border-warning/20">
-                <Shield className="h-4 w-4 text-warning shrink-0 mt-0.5" />
-                <span className="text-xs text-warning leading-relaxed line-clamp-2">{precautions[0]}</span>
+            {precautions.length > 0 && (
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-gradient-to-r from-amber-500/5 to-orange-500/5 border border-amber-500/20">
+                <Shield className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                <span className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed line-clamp-2">{precautions[0]}</span>
               </div>
             )}
 
+            {/* Completed badge */}
             {isCompleted && (
-              <div className="flex items-center gap-2 pt-1">
-                <Badge variant="outline" className="bg-success/10 text-success border-success/20">
+              <div className="flex items-center gap-2">
+                <Badge className="bg-gradient-to-r from-emerald-500 to-green-500 text-white border-0">
                   <Check className="h-3 w-3 mr-1" />{t('schedule.task_card.completed')}
                 </Badge>
               </div>
             )}
+
+            {/* View details hint */}
+            <div className="flex items-center justify-end text-xs text-muted-foreground">
+              <span className="flex items-center gap-1 opacity-60">
+                {t('schedule.land_selector.click_to_view')} <ChevronRight className="h-3 w-3" />
+              </span>
+            </div>
           </div>
         </Card>
       </motion.div>
 
-      {/* Task Details Dialog - Line by Line Layout */}
+      {/* Modern Task Details Dialog */}
       <Dialog open={showDetails} onOpenChange={setShowDetails}>
-        <DialogContent className="max-w-md max-h-[85vh] overflow-hidden flex flex-col p-0">
-          <div className={cn("p-4 bg-gradient-to-br border-b", config.bg)}>
-            <DialogHeader className="space-y-2">
-              <div className="flex items-center gap-3">
-                <div className={cn("p-3 rounded-xl bg-background/80 backdrop-blur border shadow-sm")}>
-                  <TaskIcon className={cn("h-6 w-6", config.color)} />
+        <DialogContent className="max-w-md max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0 rounded-3xl">
+          {/* Header with gradient */}
+          <div className={cn("relative p-5 bg-gradient-to-br", config.bg)}>
+            <div className="absolute inset-0 bg-gradient-to-br from-black/5 to-transparent" />
+            <DialogHeader className="relative space-y-3">
+              <div className="flex items-center gap-4">
+                <div className={cn(
+                  "p-4 rounded-2xl shadow-xl",
+                  `bg-gradient-to-br ${config.gradient}`
+                )}>
+                  <TaskIcon className="h-7 w-7 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <DialogTitle className="text-lg leading-tight">{task.task_name}</DialogTitle>
-                  <DialogDescription className="text-sm mt-1">📅 {format(taskDate, 'EEEE, dd MMMM yyyy')}</DialogDescription>
+                  <DialogTitle className="text-lg font-bold leading-tight">{task.task_name}</DialogTitle>
+                  <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
+                    <Calendar className="h-4 w-4" />
+                    {format(taskDate, 'EEEE, dd MMMM yyyy')}
+                  </p>
                 </div>
               </div>
             </DialogHeader>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {/* Cost - Prominent */}
+          {/* Scrollable content */}
+          <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            
+            {/* Cost - Hero display */}
             {task.estimated_cost > 0 && (
-              <div className="p-4 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20">
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="p-4 rounded-2xl bg-gradient-to-r from-primary/10 via-accent/10 to-primary/5 border border-primary/20"
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">{t('schedule.task_card.approx_cost')}</span>
-                  <span className="text-xl font-bold text-primary">₹{task.estimated_cost.toLocaleString('en-IN')}</span>
+                  <div className="flex items-center gap-2">
+                    <IndianRupee className="h-5 w-5 text-primary" />
+                    <span className="text-sm text-muted-foreground">{t('schedule.task_card.approx_cost')}</span>
+                  </div>
+                  <span className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                    ₹{task.estimated_cost.toLocaleString('en-IN')}
+                  </span>
                 </div>
-              </div>
+              </motion.div>
             )}
 
             {/* Description */}
             {task.task_description && (
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2">📝 {t('schedule.task_card.description')}</h4>
-                <p className="text-sm text-muted-foreground leading-relaxed bg-muted/30 p-3 rounded-lg">{task.task_description}</p>
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  {t('schedule.task_card.description')}
+                </h4>
+                <p className="text-sm text-muted-foreground leading-relaxed p-3 rounded-xl bg-muted/30">{task.task_description}</p>
               </div>
             )}
 
-            {/* Quantity - Line format */}
+            {/* Quantity */}
             {isValidValue(quantity) && (
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2">📦 {t('schedule.task_card.quantity')}</h4>
-                <div className="bg-muted/30 p-3 rounded-lg">
-                  <p className="text-sm text-foreground font-medium">{quantity}</p>
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <Package className="h-4 w-4 text-blue-500" />
+                  {t('schedule.task_card.quantity')}
+                </h4>
+                <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/20">
+                  <p className="text-sm font-medium text-foreground">{quantity}</p>
                 </div>
               </div>
             )}
 
-            {/* Product Details with Active Ingredients */}
+            {/* Product Details */}
             {isValidValue(productDetails) && (
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2">🧪 {t('schedule.task_card.product_details')}</h4>
-                <div className="bg-green-500/5 border border-green-500/20 p-3 rounded-lg">
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <Leaf className="h-4 w-4 text-emerald-500" />
+                  {t('schedule.task_card.product_details')}
+                </h4>
+                <div className="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
                   <p className="text-sm text-muted-foreground leading-relaxed">{productDetails}</p>
                 </div>
               </div>
@@ -255,9 +315,10 @@ export default function ModernTaskCard({
             {isValidValue(icarGuideline) && (
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold flex items-center gap-2 text-blue-600 dark:text-blue-400">
-                  <BookOpen className="h-4 w-4" /> {t('schedule.task_card.icar_guideline')}
+                  <BookOpen className="h-4 w-4" />
+                  {t('schedule.task_card.icar_guideline')}
                 </h4>
-                <div className="bg-blue-500/5 border border-blue-500/20 p-3 rounded-lg">
+                <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/20">
                   <p className="text-sm text-muted-foreground leading-relaxed">{icarGuideline}</p>
                 </div>
               </div>
@@ -267,69 +328,91 @@ export default function ModernTaskCard({
             {isValidValue(climateRisk) && (
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold flex items-center gap-2 text-orange-600 dark:text-orange-400">
-                  <AlertTriangle className="h-4 w-4" /> {t('schedule.task_card.climate_risk')}
+                  <AlertTriangle className="h-4 w-4" />
+                  {t('schedule.task_card.climate_risk')}
                 </h4>
-                <div className="bg-orange-500/5 border border-orange-500/20 p-3 rounded-lg">
-                  <p className="text-sm text-muted-foreground leading-relaxed">{climateRisk}</p>
+                <div className="p-3 rounded-xl bg-gradient-to-r from-orange-500/10 to-red-500/5 border border-orange-500/20">
+                  <p className="text-sm text-orange-700 dark:text-orange-300 leading-relaxed">{climateRisk}</p>
                 </div>
               </div>
             )}
 
-            {/* Instructions - Line by Line */}
-            {isValidValue(task.instructions) && task.instructions.length > 0 && (
+            {/* Instructions */}
+            {Array.isArray(task.instructions) && task.instructions.length > 0 && (
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2">📋 {t('schedule.task_card.instructions')}</h4>
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  📋 {t('schedule.task_card.instructions')}
+                </h4>
                 <div className="space-y-2">
                   {task.instructions.map((instruction: string, index: number) => (
-                    <div key={index} className="flex items-start gap-3 text-sm text-muted-foreground bg-muted/30 p-3 rounded-lg">
-                      <span className="text-primary font-bold shrink-0 min-w-[20px]">{index + 1}.</span>
-                      <span className="leading-relaxed">{instruction}</span>
-                    </div>
+                    <motion.div 
+                      key={index} 
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      className="flex items-start gap-3 text-sm p-3 rounded-xl bg-muted/30"
+                    >
+                      <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary font-bold text-xs shrink-0">
+                        {index + 1}
+                      </span>
+                      <span className="text-muted-foreground leading-relaxed">{instruction}</span>
+                    </motion.div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Precautions - Line by Line */}
-            {isValidValue(precautions) && precautions.length > 0 && (
+            {/* Precautions */}
+            {precautions.length > 0 && (
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2 text-warning">
-                  <Shield className="h-4 w-4" /> {t('schedule.task_card.precautions')}
+                <h4 className="text-sm font-semibold flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                  <Shield className="h-4 w-4" />
+                  {t('schedule.task_card.precautions')}
                 </h4>
                 <div className="space-y-2">
                   {precautions.map((precaution: string, index: number) => (
-                    <div key={index} className="flex items-start gap-3 text-sm bg-warning/5 border border-warning/20 p-3 rounded-lg">
-                      <span className="text-warning shrink-0">⚠️</span>
-                      <span className="text-muted-foreground leading-relaxed">{precaution}</span>
-                    </div>
+                    <motion.div 
+                      key={index}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.05 }}
+                      className="flex items-start gap-3 text-sm p-3 rounded-xl bg-gradient-to-r from-amber-500/5 to-orange-500/5 border border-amber-500/20"
+                    >
+                      <span className="text-amber-500 shrink-0 text-base">⚠️</span>
+                      <span className="text-amber-700 dark:text-amber-300 leading-relaxed">{precaution}</span>
+                    </motion.div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Ideal Weather - Line by Line */}
-            {isValidValue(idealWeather) && (
+            {/* Ideal Weather */}
+            {isValidValue(idealWeather) && typeof idealWeather === 'object' && (
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold flex items-center gap-2 text-sky-600 dark:text-sky-400">
-                  <Sun className="h-4 w-4" /> {t('schedule.task_card.ideal_weather')}
+                  <Sun className="h-4 w-4" />
+                  {t('schedule.task_card.ideal_weather')}
                 </h4>
-                <div className="space-y-2">
+                <div className="grid gap-2">
                   {isValidValue(idealWeather.temperature) && (
-                    <div className="flex items-center gap-3 text-sm bg-sky-500/5 border border-sky-500/20 p-3 rounded-lg">
+                    <div className="flex items-center gap-3 text-sm p-3 rounded-xl bg-sky-500/5 border border-sky-500/20">
                       <Thermometer className="h-4 w-4 text-sky-500 shrink-0" />
-                      <span className="text-muted-foreground">{t('schedule.task_card.temperature')}: <strong>{idealWeather.temperature}°C</strong></span>
+                      <span className="text-muted-foreground">{t('schedule.task_card.temperature')}:</span>
+                      <span className="font-semibold ml-auto">{idealWeather.temperature}°C</span>
                     </div>
                   )}
                   {isValidValue(idealWeather.humidity) && (
-                    <div className="flex items-center gap-3 text-sm bg-sky-500/5 border border-sky-500/20 p-3 rounded-lg">
+                    <div className="flex items-center gap-3 text-sm p-3 rounded-xl bg-sky-500/5 border border-sky-500/20">
                       <Droplet className="h-4 w-4 text-sky-500 shrink-0" />
-                      <span className="text-muted-foreground">{t('schedule.task_card.humidity')}: <strong>{idealWeather.humidity}%</strong></span>
+                      <span className="text-muted-foreground">{t('schedule.task_card.humidity')}:</span>
+                      <span className="font-semibold ml-auto">{idealWeather.humidity}%</span>
                     </div>
                   )}
                   {isValidValue(idealWeather.conditions) && (
-                    <div className="flex items-center gap-3 text-sm bg-sky-500/5 border border-sky-500/20 p-3 rounded-lg">
+                    <div className="flex items-center gap-3 text-sm p-3 rounded-xl bg-sky-500/5 border border-sky-500/20">
                       <CloudRain className="h-4 w-4 text-sky-500 shrink-0" />
-                      <span className="text-muted-foreground">{t('schedule.task_card.conditions')}: <strong>{idealWeather.conditions}</strong></span>
+                      <span className="text-muted-foreground">{t('schedule.task_card.conditions')}:</span>
+                      <span className="font-semibold ml-auto">{idealWeather.conditions}</span>
                     </div>
                   )}
                 </div>
@@ -339,7 +422,7 @@ export default function ModernTaskCard({
 
           {/* Footer */}
           <div className="p-4 border-t bg-muted/20">
-            <Button onClick={() => setShowDetails(false)} className="w-full">
+            <Button onClick={() => setShowDetails(false)} className="w-full rounded-xl h-11 font-semibold">
               {t('schedule.close')}
             </Button>
           </div>
