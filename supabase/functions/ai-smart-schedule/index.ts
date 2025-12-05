@@ -1380,6 +1380,8 @@ ${suitabilityCheck.risks.map(r => `• ${r}`).join('\n')}
     }
 
     // 11. Save schedule with all context for training
+    // NOTE: Removed non-existent columns: crop_season, status (use is_active instead)
+    console.log('📝 [DB] Saving schedule to crop_schedules...');
     const { data: savedSchedule, error: scheduleError } = await supabase
       .from('crop_schedules')
       .insert({
@@ -1388,16 +1390,17 @@ ${suitabilityCheck.risks.map(r => `• ${r}`).join('\n')}
         land_id: landId,
         crop_name: cropName,
         crop_variety: cropVariety || scheduleData.crop_variety,
-        crop_season: scheduleData.crop_season,
+        // crop_season moved to generation_params (column doesn't exist in table)
         sowing_date: sowingDate,
         expected_harvest_date: new Date(new Date(sowingDate).getTime() + (scheduleData.total_duration_days || 120) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         is_active: true,
-        status: 'active',
+        // status removed (column doesn't exist, use is_active instead)
         expected_yield_quintals: scheduleData.expected_yield_quintals || scheduleData.expected_yield_per_acre * land.area_acres,
         total_estimated_cost: scheduleData.total_estimated_cost,
         generation_params: {
           model: AI_CONFIG.MODEL,
           language,
+          crop_season: scheduleData.crop_season, // Stored here since column doesn't exist
           suitability_check: {
             score: suitabilityCheck.score,
             suitable: suitabilityCheck.suitable,
@@ -1413,7 +1416,6 @@ ${suitabilityCheck.risks.map(r => `• ${r}`).join('\n')}
           ndvi_status: ndviStatus,
           weather_at_generation: weather?.current,
           prompt_version: 'v4_suitability_enhanced',
-          // AI response metadata merged here (column ai_response_metadata doesn't exist)
           ai_response: {
             organic_inputs: scheduleData.organic_inputs,
             chemical_fertilizers: scheduleData.chemical_fertilizers,
@@ -1427,21 +1429,28 @@ ${suitabilityCheck.risks.map(r => `• ${r}`).join('\n')}
       .single();
 
     if (scheduleError || !savedSchedule) {
-      console.error('Schedule save error:', scheduleError);
-      throw new Error('Failed to save schedule');
+      console.error('❌ [DB] Schedule save error:', {
+        code: scheduleError?.code,
+        message: scheduleError?.message,
+        details: scheduleError?.details,
+        hint: scheduleError?.hint
+      });
+      throw new Error(`Failed to save schedule: ${scheduleError?.message || 'Unknown error'}`);
     }
 
-    console.log(`✓ Schedule saved: ${savedSchedule.id}`);
+    console.log(`✅ [DB] Schedule saved: ${savedSchedule.id}`);
 
     // 12. Prepare and insert tasks
+    // NOTE: Removed non-existent columns: tenant_id, farmer_id, metadata
+    // Task metadata is merged into resources column
+    console.log(`📝 [DB] Preparing ${scheduleData.tasks.length} tasks...`);
     const tasksToInsert = scheduleData.tasks.map((task: any, index: number) => {
       const taskDate = new Date(sowingDate);
       taskDate.setDate(taskDate.getDate() + (task.days_from_sowing || index * 7));
       
       return {
         schedule_id: savedSchedule.id,
-        tenant_id: tenantId,
-        farmer_id: farmerId,
+        // tenant_id and farmer_id removed (columns don't exist in schedule_tasks)
         task_date: taskDate.toISOString().split('T')[0],
         task_type: task.category || 'other',
         task_name: task.task_name,
@@ -1456,16 +1465,16 @@ ${suitabilityCheck.risks.map(r => `• ${r}`).join('\n')}
           product_details: task.product_details,
           icar_guideline: task.icar_guideline,
           climate_risk: task.climate_risk,
-          ideal_weather: task.ideal_weather
-        },
-        ideal_weather: task.ideal_weather,
-        estimated_cost: task.estimated_cost,
-        currency: 'INR',
-        metadata: {
+          ideal_weather: task.ideal_weather,
+          // Metadata merged into resources (column doesn't exist)
           days_from_sowing: task.days_from_sowing,
           ai_generated: true,
           land_area: land.area_acres
-        }
+        },
+        ideal_weather: task.ideal_weather,
+        estimated_cost: task.estimated_cost,
+        currency: 'INR'
+        // metadata removed (column doesn't exist in schedule_tasks)
       };
     });
 
@@ -1474,8 +1483,16 @@ ${suitabilityCheck.risks.map(r => `• ${r}`).join('\n')}
       .insert(tasksToInsert)
       .select();
 
-    if (tasksError) console.error('Tasks insert error:', tasksError);
-    else console.log(`✓ Inserted ${insertedTasks?.length || 0} tasks`);
+    if (tasksError) {
+      console.error('❌ [DB] Tasks insert error:', {
+        code: tasksError.code,
+        message: tasksError.message,
+        details: tasksError.details,
+        hint: tasksError.hint
+      });
+    } else {
+      console.log(`✅ [DB] Inserted ${insertedTasks?.length || 0} tasks`);
+    }
 
     // 13. Log for AI training (non-blocking)
     try {
