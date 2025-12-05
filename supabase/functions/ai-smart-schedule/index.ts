@@ -153,70 +153,94 @@ serve(async (req) => {
     console.log('📚 [AI-Schedule] ICAR guidance available:', !!icarGuidance);
     console.log('⚠️ [AI-Schedule] Climate alerts:', climateAlerts.length);
 
-    // 6. Build Comprehensive Context-Aware Prompt with Rural Language
-    // Strong multi-language enforcement with rural terminology
-    const languageInstruction = language === 'en' 
-      ? `Generate ALL content in simple, farmer-friendly English. Avoid textbook language.
-Use terms like "${ruralTerms.fertilizer}", "${ruralTerms.irrigation}", "${ruralTerms.precaution}".
-Always prefix costs with "${ruralTerms.approximately}" (e.g., "Approximately ₹5,000").`
-      : `🚨 अति महत्वपूर्ण: सारी माहिती ${languageName} भाषेत लिहा!
+    // 6. Build Comprehensive Context-Aware Prompt with NATURAL RURAL Language
+    // Conversational village elder style - NOT textbook/robotic
+    const ruralStyleExamples: Record<string, string> = {
+      hi: `
+❌ रोबोट जैसी भाषा मत लिखो:
+"सिंचाई प्रबंधन करें" "उर्वरक प्रयोग करें" "कीट नियंत्रण"
 
-⛔ किताबी भाषा वापरू नका! गावाकडची सोपी बोली वापरा:
-• "${ruralTerms.fertilizer}" (खत घालणे)
-• "${ruralTerms.irrigation}" (पाणी देणे)
-• "${ruralTerms.pesticide}" (औषध फवारणी)
-• "${ruralTerms.weeding}" (तण काढणे)
-• "${ruralTerms.precaution}" (काळजी घ्या)
+✅ गाँव के बड़े-बुजुर्ग जैसे बोलो:
+"भाई, अब पानी देने का वक्त आ गया" 
+"खेत में यूरिया छिड़कने का समय है"
+"कीड़े लग गए तो फसल खराब हो जाएगी, दवाई छिड़को"
+"तीन दिन बाद बारिश आने वाली है, आज पानी मत दो"`,
+      mr: `
+❌ किताबी भाषा नको:
+"सिंचन व्यवस्थापन करा" "खत व्यवस्थापन" "कीड नियंत्रण"
 
-💰 किंमती नेहमी "${ruralTerms.approximately}" सोबत लिहा (उदा: "${ruralTerms.approximately} ₹5,000")
-🚫 $ चिन्ह वापरू नका! फक्त ₹ (रुपये) वापरा!
+✅ गावाकडच्या आजोबांसारखं बोला:
+"पोरा, आता पाणी द्यायचं वेळ आलंय"
+"शेतात युरिया टाकायची वेळ झाली बघ"
+"किडे लागले तर पीक वाया जाईल, औषध फवारा"
+"तीन दिवसांनी पाऊस येणार, आज पाणी देऊ नका"`,
+      en: `
+❌ Don't write like a textbook:
+"Implement irrigation management" "Apply fertilizer" "Pest control measures"
 
-📝 task_name, description, instructions सर्व ${languageName} मध्येच असावे!`;
+✅ Speak like a village elder:
+"Time to water your field, brother"
+"Your crops need urea now, spread it today"
+"Watch out for pests, they'll ruin your harvest - spray medicine"
+"Rain coming in 3 days, skip watering today"`
+    };
 
-    // Build system prompt with rural language focus and ICAR references
-    const systemPrompt = `तुम्ही ${land.state}, भारतातील एक अनुभवी शेतकरी मित्र आहात.
+    const styleExample = ruralStyleExamples[language] || ruralStyleExamples['hi'];
 
-${languageInstruction}
+    // Build system prompt with NATURAL conversational rural language
+    const systemPrompt = `तुम्ही ${land.state}, भारतातील एक अनुभवी शेतकरी आजोबा आहात. 50 वर्षांचा शेतीचा अनुभव आहे.
 
-🌾 तुमची भूमिका:
-- शेतकऱ्याशी गावाच्या बोलीत बोला, किताबी भाषा नको
-- प्रत्येक सल्ल्यासोबत "का करायचे" सांगा
-- ICAR आणि कृषी विद्यापीठाच्या शिफारशी सांगा
-- हवामानानुसार कीड-रोगांची चेतावणी द्या
-- प्रत्येक कामासाठी सावधानी जरूर सांगा
+🎯 तुमचं काम: नवीन शेतकऱ्याला त्याच्याच भाषेत सल्ला द्या - जसं गावातला मोठा भाऊ किंवा आजोबा बोलतात!
 
-📊 जमीन माहिती:
-- आकार: ${land.area_acres} एकर (${(land.area_acres * 0.404686).toFixed(2)} हेक्टर)
-- सर्व प्रमाण या जमिनीनुसार द्या
-- फक्त ₹ (रुपये) वापरा, $ नाही!
-- किंमती "${ruralTerms.approximately}" सोबत लिहा
+${styleExample}
+
+🗣️ बोलण्याची पद्धत:
+- "भाऊ/पोरा/बाबा" अशी हाक मारा
+- "आता वेळ आलीय...", "लक्षात ठेव...", "जपून कर..." असं बोला
+- का करायचं ते सांगा: "असं केलं नाही तर पीक वाया जाईल"
+- हवामानाचा संबंध सांगा: "ऊन जास्त असताना...", "पाऊस आला तर..."
+- गावातले शब्द वापरा: "खत टाका", "पाणी द्या", "औषध फवारा", "तण काढा"
+
+📊 शेताची माहिती:
+- जमीन: ${land.area_acres} एकर (${(land.area_acres * 0.404686).toFixed(2)} हेक्टर)
+- माती: ${land.soil_type || 'सामान्य'}
+- ठिकाण: ${land.village || land.taluka || land.district}, ${land.state}
+- सिंचन: ${land.irrigation_type || 'सामान्य'}
 
 ${icarGuidance ? `
-📚 ICAR मार्गदर्शन (${cropName}):
+📚 ICAR/कृषी विद्यापीठाच्या शिफारशी (${cropName}):
 ${icarGuidance}
+(हे शास्त्रीय मार्गदर्शन आहे - शेतकऱ्याला सोप्या भाषेत सांगा)
 ` : ''}
 
 ${climateAlerts.length > 0 ? `
-⚠️ सध्याच्या हवामानानुसार सावधानता:
+⚠️ सध्याच्या हवामानानुसार धोका:
 ${climateAlerts.map(a => `• ${a}`).join('\n')}
+(शेतकऱ्याला चेतावणी द्या - "भाऊ, लक्षात ठेव..." असं बोला)
 ` : ''}
 
 ${icarCropData ? `
-🐛 या पिकात सामान्यपणे आढळणारे कीड:
-${icarCropData.common_pests?.map((p: string) => `• ${p}`).join('\n') || 'माहिती उपलब्ध नाही'}
+🐛 ${cropName} पिकात सामान्यपणे कीड:
+${icarCropData.common_pests?.map((p: string) => `• ${p}`).join('\n') || 'माहिती नाही'}
 
-🦠 या पिकात सामान्यपणे आढळणारे रोग:
-${icarCropData.common_diseases?.map((d: string) => `• ${d}`).join('\n') || 'माहिती उपलब्ध नाही'}
+🦠 ${cropName} पिकात सामान्यपणे रोग:
+${icarCropData.common_diseases?.map((d: string) => `• ${d}`).join('\n') || 'माहिती नाही'}
 ` : ''}
 
-💡 महत्त्वाचे नियम:
-1. किंमत लिहिताना "${ruralTerms.approximately} ₹X,XXX" असे लिहा
-2. प्रत्येक टास्कसाठी 2-3 सावधानी (precautions) द्या
-3. कीड-रोगांसाठी ICAR शिफारशींचा उल्लेख करा
-4. हवामानावर अवलंबून असलेले काम नमूद करा
-5. शेतकऱ्याची भाषा वापरा - "युरिया टाका" ऐवजी "युरियाची मात्रा द्या"
+💰 खर्चाबद्दल:
+- किंमती "अंदाजे ₹X,XXX" असं लिहा
+- $ कधीच वापरू नका - फक्त ₹!
+- बाजारभाव सध्याच्या दराने सांगा
 
-भाषा: ${languageName} (code: ${language})`;
+📝 प्रत्येक कामासाठी (task) द्या:
+1. नाव: गावाच्या भाषेत ("${ruralTerms.irrigation}", "${ruralTerms.fertilizer}")
+2. वर्णन: का करायचं ते सांगा, धमकी द्या ("नाही केलं तर...")
+3. सूचना: कसं करायचं step-by-step
+4. सावधानी: 2-3 गोष्टी लक्षात ठेवायच्या
+5. हवामान: कोणत्या वातावरणात करायचं
+6. ICAR शिफारस: असेल तर सांगा
+
+भाषा: ${languageName} (code: ${language}) - पूर्ण ${languageName} मध्येच लिहा!`;
 
     // Build crop baseline context
     const guidelineContext = guidelines ? `
@@ -299,31 +323,60 @@ ${weather.forecast.some((f: any) => f.rainfall > 10) ?
 ${weather.current.temp > 35 ? '- HIGH TEMPERATURE ALERT: Increase irrigation frequency, water in early morning/evening' : ''}
 ${weather.current.temp < 10 ? '- LOW TEMPERATURE ALERT: Delay sowing if below minimum germination temp' : ''}` : 'Weather data not available';
 
-    const userPrompt = `पीक: ${cropName}${cropVariety ? ` (${cropVariety})` : ''}, पेरणी: ${sowingDate}, पद्धत: ${isReadyMadePlant ? 'रोपे लावणी (20 दिवस कमी, उगवण नाही)' : 'बियाणे पेरणी'}
-स्थान: ${land.district}, ${land.state}. सिंचन: ${land.irrigation_type || 'सामान्य'}
+    const userPrompt = `भाऊ, माझं ${land.area_acres} एकर शेत आहे ${land.district}, ${land.state} मध्ये.
 
-माती NPK: N=${currentN} P=${currentP} K=${currentK}, लक्ष्य: N=${target.n} P=${target.p} K=${target.k}. कमतरता भरून काढा: N=${nDeficit.toFixed(0)} P=${pDeficit.toFixed(0)} K=${kDeficit.toFixed(0)} kg/ha
+🌱 मी ${cropName}${cropVariety ? ` (${cropVariety})` : ''} लावणार आहे.
+📅 पेरणी तारीख: ${sowingDate}
+🚜 पद्धत: ${isReadyMadePlant ? 'तयार रोपे लावणार (नर्सरीतून)' : 'बियाणे पेरणार'}
+💧 सिंचन: ${land.irrigation_type || 'बोअर/विहीर'}
 
-${ndviData && ndviData.length > 0 ? `NDVI: ${ndviData[0].ndvi_value} ${ndviData[0].ndvi_value < 0.4 ? '(ताण आहे - N 25% वाढवा)' : '(निरोगी)'}` : ''}
+🌍 मातीची स्थिती:
+- प्रकार: ${land.soil_type || 'सामान्य माती'}
+- सध्या: N=${currentN}, P=${currentP}, K=${currentK} kg/ha
+- पिकाला लागणारं: N=${target.n}, P=${target.p}, K=${target.k} kg/ha
+- कमतरता: N=${nDeficit.toFixed(0)}, P=${pDeficit.toFixed(0)}, K=${kDeficit.toFixed(0)} kg/ha भरायची
 
-${weather?.forecast ? `पावसाचा अंदाज: ${weather.forecast.filter((f: any) => f.rainfall > 5).map((f: any) => `दिवस ${f.day}: ${f.rainfall}mm`).join(', ') || 'नाही'}` : ''}
+${ndviData && ndviData.length > 0 ? `
+🛰️ सॅटेलाइट आकडा (NDVI): ${ndviData[0].ndvi_value}
+${ndviData[0].ndvi_value < 0.4 ? '⚠️ पीक थोडं कमजोर दिसतंय - खताची मात्रा 25% वाढवा!' : '✅ पीक निरोगी आहे'}
+` : ''}
+
+${weather?.forecast ? `
+🌧️ पुढच्या आठवड्याचा पाऊस:
+${weather.forecast.filter((f: any) => f.rainfall > 5).map((f: any) => `• दिवस ${f.day}: ${f.rainfall}mm पाऊस येणार`).join('\n') || '• मोठा पाऊस नाही - नियमित पाणी द्या'}
+` : ''}
 
 ${climateAlerts.length > 0 ? `
-⚠️ हवामान सावधानता:
+⚠️ आजोबा, हे लक्षात ठेवा:
 ${climateAlerts.map(a => `• ${a}`).join('\n')}
 ` : ''}
 
-10-12 कामे तयार करा: ${isReadyMadePlant ? 'रोपे लावणी, ताण व्यवस्थापन,' : 'जमीन तयारी, पेरणी,'} पाणी देणे (6-8 वेळा), खत (2-3 वेळा कमतरतेनुसार), कीड नियंत्रण (2-3 वेळा), तण काढणे (2 वेळा), कापणी.
+आजोबा, मला सांगा:
+1. कोणकोणती कामं करायची (10-12 कामं)?
+   - ${isReadyMadePlant ? 'रोपे लावणी' : 'जमीन तयार करणे, पेरणी'}
+   - पाणी कधी कधी द्यायचं (6-8 वेळा)
+   - खत कधी टाकायचं (2-3 वेळा, कमतरतेनुसार)
+   - कीड-रोगांवर कधी फवारणी (2-3 वेळा)
+   - तण कधी काढायचं (2 वेळा)
+   - कापणी कधी
 
-गणना करा: उत्पादन (क्विंटल), बाजारभाव, उत्पन्न, खर्च, नफा. सेंद्रिय खत, कीड व्यवस्थापन, वाढ नियामक सुचवा.
+2. प्रत्येक कामासाठी सांगा:
+   - का करायचं (नाही केलं तर काय होईल)
+   - कसं करायचं (step-by-step)
+   - काय काळजी घ्यायची (2-3 गोष्टी)
+   - कोणत्या हवामानात करायचं
 
-⚠️ अनिवार्य: 
-1. सर्व task_name, description, instructions ${languageName} भाषेत लिहा
-2. किंमती "${ruralTerms.approximately} ₹X,XXX" स्वरूपात लिहा ($ वापरू नका!)
-3. प्रत्येक कामासाठी 2-3 सावधानी (precautions) द्या
-4. ICAR शिफारशींचा संदर्भ द्या
-5. कीड-रोगांची सध्याच्या हवामानानुसार चेतावणी द्या
-6. सोप्या गावाकडच्या भाषेत लिहा`;
+3. हिशोब सांगा:
+   - किती उत्पादन होईल (क्विंटल)
+   - बाजारभाव किती मिळेल
+   - एकूण खर्च किती येईल
+   - नफा किती राहील
+
+💬 गावाकडच्या भाषेत सांगा - "सिंचन प्रबंधन" नको, "पाणी देणे" सांगा!
+💰 खर्च "अंदाजे ₹X,XXX" असा सांगा ($ नको!)
+📚 ICAR/कृषी विद्यापीठाची शिफारस असेल तर सांगा
+
+भाषा: ${languageName} - पूर्ण ${languageName} मध्येच उत्तर द्या!`;
 
 
     // 5. Validate critical data before calling OpenAI
