@@ -11,14 +11,10 @@ import {
   DialogTitle,
   DialogFooter 
 } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
 import { 
   Calendar,
   Clock, 
   Check, 
-  X, 
-  SkipForward,
   Volume2,
   VolumeX,
   AlertCircle,
@@ -27,13 +23,13 @@ import {
   Bug,
   Scissors,
   Package,
-  ChevronRight,
-  MapPin,
-  DollarSign,
   CloudRain,
-  Thermometer
+  Thermometer,
+  BookOpen,
+  AlertTriangle,
+  Shield
 } from 'lucide-react';
-import { format, isToday, isTomorrow, isPast } from 'date-fns';
+import { format, isToday, isTomorrow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 
@@ -65,7 +61,19 @@ const taskTypeConfig = {
     bg: 'from-orange-500/20 to-orange-500/10',
     borderColor: 'border-orange-500/30'
   },
+  pest_control: { 
+    icon: Bug, 
+    color: 'text-orange-500', 
+    bg: 'from-orange-500/20 to-orange-500/10',
+    borderColor: 'border-orange-500/30'
+  },
   weeding: { 
+    icon: Scissors, 
+    color: 'text-purple-500', 
+    bg: 'from-purple-500/20 to-purple-500/10',
+    borderColor: 'border-purple-500/30'
+  },
+  weed_management: { 
     icon: Scissors, 
     color: 'text-purple-500', 
     bg: 'from-purple-500/20 to-purple-500/10',
@@ -77,12 +85,37 @@ const taskTypeConfig = {
     bg: 'from-amber-500/20 to-amber-500/10',
     borderColor: 'border-amber-500/30'
   },
+  harvesting: { 
+    icon: Package, 
+    color: 'text-amber-500', 
+    bg: 'from-amber-500/20 to-amber-500/10',
+    borderColor: 'border-amber-500/30'
+  },
+  soil_preparation: { 
+    icon: Leaf, 
+    color: 'text-brown-500', 
+    bg: 'from-amber-700/20 to-amber-700/10',
+    borderColor: 'border-amber-700/30'
+  },
+  sowing: { 
+    icon: Leaf, 
+    color: 'text-emerald-500', 
+    bg: 'from-emerald-500/20 to-emerald-500/10',
+    borderColor: 'border-emerald-500/30'
+  },
   other: { 
     icon: AlertCircle, 
     color: 'text-gray-500', 
     bg: 'from-gray-500/20 to-gray-500/10',
     borderColor: 'border-gray-500/30'
   }
+};
+
+// Format cost with "approximately" prefix
+const formatCost = (cost: number | null | undefined, currency?: string): string => {
+  if (!cost) return '';
+  // Always show "अंदाजे" (approximately) prefix and use ₹
+  return `अंदाजे ₹${cost.toLocaleString('en-IN')}`;
 };
 
 export default function ModernTaskCard({ 
@@ -209,9 +242,8 @@ export default function ModernTaskCard({
               )}
               {task.estimated_cost && (
                 <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-background/80 border border-border/50">
-                  <DollarSign className="h-3 w-3 text-muted-foreground" />
                   <span className="text-[10px] text-muted-foreground">
-                    {task.currency === 'INR' ? '₹' : '$'}{task.estimated_cost}
+                    {formatCost(task.estimated_cost, task.currency)}
                   </span>
                 </div>
               )}
@@ -221,8 +253,21 @@ export default function ModernTaskCard({
                   <span className="text-[10px] text-blue-600 dark:text-blue-400">{t('schedule.task_card.weather')}</span>
                 </div>
               )}
+              {task.climate_risk && (
+                <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-orange-500/10 border border-orange-500/20">
+                  <AlertTriangle className="h-3 w-3 text-orange-500" />
+                  <span className="text-[10px] text-orange-600 dark:text-orange-400">⚠️</span>
+                </div>
+              )}
             </div>
 
+            {/* Precautions Preview (if available) */}
+            {task.precautions && task.precautions.length > 0 && (
+              <div className="flex items-center gap-1 text-xs text-warning">
+                <Shield className="h-3 w-3" />
+                <span className="line-clamp-1">{task.precautions[0]}</span>
+              </div>
+            )}
 
             {/* Completed Status */}
             {isCompleted && (
@@ -265,10 +310,44 @@ export default function ModernTaskCard({
           </DialogHeader>
 
           <div className="space-y-4 py-4">
+            {/* Cost Display */}
+            {task.estimated_cost && (
+              <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">अंदाजे खर्च:</span>
+                  <span className="text-lg font-semibold text-primary">
+                    {formatCost(task.estimated_cost, task.currency)}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {task.task_description && (
               <div>
                 <h4 className="text-sm font-medium mb-2">{t('schedule.task_card.description')}</h4>
                 <p className="text-sm text-muted-foreground">{task.task_description}</p>
+              </div>
+            )}
+
+            {/* ICAR Guideline Reference */}
+            {task.icar_guideline && (
+              <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                <h4 className="text-sm font-medium mb-2 flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                  <BookOpen className="h-4 w-4" />
+                  ICAR शिफारस
+                </h4>
+                <p className="text-sm text-muted-foreground">{task.icar_guideline}</p>
+              </div>
+            )}
+
+            {/* Climate Risk Alert */}
+            {task.climate_risk && (
+              <div className="p-3 rounded-lg bg-orange-500/5 border border-orange-500/20">
+                <h4 className="text-sm font-medium mb-2 flex items-center gap-2 text-orange-600 dark:text-orange-400">
+                  <AlertTriangle className="h-4 w-4" />
+                  हवामान जोखीम
+                </h4>
+                <p className="text-sm text-muted-foreground">{task.climate_risk}</p>
               </div>
             )}
 
@@ -284,8 +363,11 @@ export default function ModernTaskCard({
             )}
 
             {task.precautions && task.precautions.length > 0 && (
-              <div>
-                <h4 className="text-sm font-medium mb-2 text-warning">⚠️ {t('schedule.task_card.precautions')}</h4>
+              <div className="p-3 rounded-lg bg-warning/5 border border-warning/20">
+                <h4 className="text-sm font-medium mb-2 flex items-center gap-2 text-warning">
+                  <Shield className="h-4 w-4" />
+                  {t('schedule.task_card.precautions')}
+                </h4>
                 <ul className="list-disc list-inside space-y-1">
                   {task.precautions.map((precaution: string, index: number) => (
                     <li key={index} className="text-sm text-muted-foreground">{precaution}</li>
