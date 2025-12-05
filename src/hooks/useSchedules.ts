@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/integrations/supabase/client';
 import { localDB } from '@/services/localDB';
+import { schedulesApi } from '@/services/schedulesApi';
 import { useToast } from '@/hooks/use-toast';
 import { useState, useEffect } from 'react';
 
@@ -143,14 +144,39 @@ export function useSchedules(landId?: string) {
             console.log('💾 [useSchedules] Saved to local DB for offline use');
           }
 
+          // If direct Supabase query returns 0 results, try edge function as fallback
+          if (!data || data.length === 0) {
+            console.log('⚠️ [useSchedules] Direct query returned 0 results, trying edge function fallback...');
+            try {
+              const edgeData = await schedulesApi.fetchSchedules(landId);
+              if (edgeData && edgeData.length > 0) {
+                console.log(`✅ [useSchedules] Edge function returned ${edgeData.length} schedules`);
+                return edgeData as any[];
+              }
+            } catch (edgeError) {
+              console.warn('⚠️ [useSchedules] Edge function fallback also failed:', edgeError);
+            }
+          }
+
           return data || [];
         } catch (apiError) {
-          // Only fall back to localDB if API fails
-          console.warn('⚠️ [useSchedules] API failed, falling back to localDB:', apiError);
+          // Only fall back to edge function then localDB if direct API fails
+          console.warn('⚠️ [useSchedules] Direct API failed, trying edge function:', apiError);
+          try {
+            const edgeData = await schedulesApi.fetchSchedules(landId);
+            if (edgeData && edgeData.length > 0) {
+              console.log(`✅ [useSchedules] Edge function fallback returned ${edgeData.length} schedules`);
+              return edgeData as any[];
+            }
+          } catch (edgeError) {
+            console.warn('⚠️ [useSchedules] Edge function also failed:', edgeError);
+          }
+          
+          // Final fallback: localDB
           const localData = landId 
             ? await localDB.getSchedulesByLand(landId)
             : await localDB.getAllSchedules(user.id);
-          console.log(`📦 [useSchedules] Fallback: Local DB has ${localData?.length || 0} schedules for farmer ${user.id}`);
+          console.log(`📦 [useSchedules] Final fallback: Local DB has ${localData?.length || 0} schedules for farmer ${user.id}`);
           return localData || [];
         }
       }

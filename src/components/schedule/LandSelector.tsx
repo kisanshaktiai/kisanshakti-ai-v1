@@ -27,6 +27,7 @@ import {
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { supabaseWithAuth } from '@/integrations/supabase/client';
+import { schedulesApi } from '@/services/schedulesApi';
 import { useAuthStore } from '@/stores/authStore';
 import {
   AlertDialog,
@@ -131,15 +132,29 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
         .in('land_id', landIds)
         .eq('is_active', true);
 
-      if (error) {
-        console.error('Error fetching schedules:', error);
-        throw error;
+      let scheduleData = data;
+
+      // If direct query fails or returns no data, try edge function fallback
+      if (error || !data || data.length === 0) {
+        console.warn('⚠️ [LandSelector] Direct query failed or empty, trying edge function fallback');
+        try {
+          const edgeData = await schedulesApi.fetchSchedules();
+          if (edgeData && edgeData.length > 0) {
+            console.log(`✅ [LandSelector] Edge function returned ${edgeData.length} schedules`);
+            // Filter to only include schedules for the current lands
+            scheduleData = edgeData
+              .filter(s => landIds.includes(s.land_id))
+              .map(s => ({ id: s.id, land_id: s.land_id, crop_name: s.crop_name }));
+          }
+        } catch (edgeError) {
+          console.warn('⚠️ [LandSelector] Edge function fallback also failed:', edgeError);
+        }
       }
       
-      console.log('Fetched schedules:', data);
+      console.log('Fetched schedules:', scheduleData);
 
       const statuses: LandScheduleStatus[] = lands.map(land => {
-        const schedule = data?.find(s => s.land_id === land.id);
+        const schedule = scheduleData?.find(s => s.land_id === land.id);
         return {
           landId: land.id,
           hasSchedule: !!schedule,
