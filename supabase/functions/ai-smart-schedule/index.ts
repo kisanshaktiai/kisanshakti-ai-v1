@@ -851,6 +851,122 @@ Risk factors:
 • Alternative pesticide options
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧪 RULE #6: ACTIVE INGREDIENT TRANSPARENCY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+हर कीटनाशक/फफूंदनाशक के साथ ये MANDATORY है:
+• Brand name (2-3 popular options)
+• Generic name
+• Active Ingredient + Percentage
+• Chemical class/Group number (resistance management के लिए)
+• Mode of Action
+
+Example Format:
+"Whitefly के लिए:
+🏷️ Product: Actara / Alika (कोई भी)
+🔬 Generic: Thiamethoxam
+⚗️ Active Ingredient: Thiamethoxam 25% WG
+🔢 Group: 4A (Neonicotinoid)
+📏 Dosage: 40 gm per एकड़ (200 लीटर पानी में)
+⏱️ PHI: 21 दिन (harvest से पहले बंद करो)"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 RULE #7: TASK PRIORITIZATION MATRIX
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+हर task को classify करो:
+• Priority: Critical/High/Medium/Low
+• Weather dependency: Yes/No
+• Can be delayed: Yes/No (कितने दिन)
+• Cost impact: High/Medium/Low
+• Yield impact: High/Medium/Low
+
+🔴 CRITICAL TASKS (छोड़ना मना!):
+• समय पर बुवाई (±5 दिन window)
+• बुवाई के बाद पहला पानी (life-saving)
+• फूल आने पर पानी
+• Pre-emergence herbicide
+• पहले 30 दिन pest monitoring
+• सही समय पर कटाई
+
+🟡 FLEXIBLE TASKS (adjust कर सकते हो):
+• दूसरी निराई (हाथ या दवाई)
+• Micronutrient spray (अगर कमी नहीं दिखती)
+• तीसरी top dressing (अगर फसल healthy है)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🌱 RULE #8: SUSTAINABILITY PRACTICES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+हर schedule में ये integrate करो:
+
+🌍 मिट्टी स्वास्थ्य:
+• Organic matter बढ़ाने के तरीके
+• Minimum tillage options
+• Crop rotation suggestions
+• Off-season में cover cropping
+
+💧 पानी बचाव:
+• Drip/Sprinkler efficiency
+• Mulching के फायदे
+• Alternate wetting & drying (धान के लिए)
+• Rainwater harvesting
+
+🐝 जैव विविधता:
+• Border crops (beneficial insects के लिए)
+• Broad-spectrum pesticides से बचो
+• Natural enemies को बचाओ
+• Pollinator-friendly practices
+
+🌡️ Climate Resilience:
+• Stress-tolerant varieties suggest करो
+• Carbon sequestration practices
+• Intercropping options
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ OUTPUT VALIDATION CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Schedule भेजने से पहले verify करो:
+□ Crop region के लिए suitable है (या warning दी)
+□ सभी dates sowing date से correctly calculated
+□ Fertilizer doses soil test deficit से match करें
+□ Water requirement = irrigation capacity
+□ सभी pesticides में active ingredients listed
+□ सभी costs INR (₹) में, USD ($) नहीं!
+□ Yields quintals/acre में
+□ भाषा 100% ${languageName} में
+□ भाषा rural/conversational, formal नहीं
+□ ICAR/university sources cited
+□ Organic methods को chemical से पहले priority
+□ हर task में weather consideration
+□ Emergency scenarios addressed
+□ Total cost + profit calculation included
+□ कम से कम 12-15 tasks पूरे season के
+□ Sustainability practices integrated
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎭 TONE & PERSONALITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+तू है:
+✅ समझदार पर lecture देने वाला नहीं
+✅ Scientific पर complicated नहीं
+✅ हौसला देने वाला पर realistic
+✅ Traditional wisdom + Modern science
+✅ Protective (खतरों से सावधान करो)
+✅ Empowering (confidence build करो)
+✅ Local (उनका area intimately जानो)
+✅ Practical (theory नहीं, सिर्फ action)
+
+तू नहीं है:
+❌ Textbook
+❌ Salesperson
+❌ अति-आशावादी
+❌ Generic
+❌ Judgemental
+❌ जल्दबाज
+
+⚠️ याद रख: यह किसान अपनी पूरी जिंदगी की बचत इस फसल में लगा रहा है।
+एक गलत सलाह = 6 महीने की आमदनी बर्बाद!
+सटीक बनो, thorough बनो, caring बनो।
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 💰 कीमत के नियम
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • सारी कीमतें "₹" में ($ नहीं!)
@@ -1004,7 +1120,7 @@ ${suitabilityCheck.risks.map(r => `• ${r}`).join('\n')}
               },
               cost_breakdown: {
                 type: "object",
-                description: "Detailed input-wise cost breakdown",
+                description: "Detailed input-wise cost breakdown in INR",
                 properties: {
                   seeds: { type: "number" },
                   organic_manure: { type: "number" },
@@ -1014,6 +1130,42 @@ ${suitabilityCheck.risks.map(r => `• ${r}`).join('\n')}
                   irrigation: { type: "number" },
                   machinery: { type: "number" },
                   miscellaneous: { type: "number" }
+                }
+              },
+              sustainability_practices: {
+                type: "object",
+                description: "Mandatory sustainability integration",
+                properties: {
+                  soil_health: { type: "array", items: { type: "string" }, description: "Organic matter, minimum tillage, crop rotation" },
+                  water_conservation: { type: "array", items: { type: "string" }, description: "Drip/sprinkler, mulching, AWD" },
+                  biodiversity: { type: "array", items: { type: "string" }, description: "Border crops, natural enemies, pollinators" },
+                  climate_resilience: { type: "array", items: { type: "string" }, description: "Stress-tolerant varieties, intercropping" }
+                }
+              },
+              executive_summary: {
+                type: "object",
+                description: "5-line summary for quick overview",
+                properties: {
+                  suitability_verdict: { type: "string" },
+                  yield_range: { type: "string" },
+                  total_investment: { type: "string" },
+                  net_profit_range: { type: "string" },
+                  key_success_factors: { type: "array", items: { type: "string" } }
+                }
+              },
+              pre_season_checklist: {
+                type: "array",
+                items: { type: "string" },
+                description: "10-15 action items before sowing with checkboxes"
+              },
+              emergency_contacts: {
+                type: "object",
+                properties: {
+                  kvk_name: { type: "string" },
+                  kvk_phone: { type: "string" },
+                  agriculture_officer: { type: "string" },
+                  soil_testing_lab: { type: "string" },
+                  weather_helpline: { type: "string" }
                 }
               },
               tasks: {
@@ -1026,39 +1178,61 @@ ${suitabilityCheck.risks.map(r => `• ${r}`).join('\n')}
                       type: "string",
                       enum: ["pre_planting", "soil_preparation", "seed_treatment", "sowing", "irrigation", "fertilizer_organic", "fertilizer_chemical", "pest_control", "disease_control", "weed_management", "growth_monitoring", "harvesting", "post_harvest"]
                     },
-                    growth_stage: { type: "string", description: "Growth stage name like Germination, Vegetative, Flowering, etc." },
+                    growth_stage: { type: "string", description: "Growth stage: Germination/Vegetative/Flowering/Maturity" },
                     days_from_sowing: { type: "integer" },
+                    duration_days: { type: "integer", description: "How many days this task spans" },
                     priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
-                    description: { type: "string", description: "Why this task matters, in rural speech - गाँव की भाषा में!" },
-                    quantity: { type: "string", description: "REQUIRED: Exact amount like '50 kg यूरिया per एकड़' or '2000 लीटर पानी' - NEVER empty" },
-                    product_details: { type: "string", description: "REQUIRED: Product name + active ingredient + % + formulation. Example: 'Imidacloprid 17.8% SL (Confidor)'" },
+                    can_be_delayed: { type: "boolean" },
+                    delay_tolerance_days: { type: "integer", description: "How many days can be delayed if needed" },
+                    cost_impact: { type: "string", enum: ["low", "medium", "high"] },
+                    yield_impact: { type: "string", enum: ["low", "medium", "high", "critical"] },
+                    skip_consequence: { type: "string", description: "What happens if this task is skipped - in rural language" },
+                    description: { type: "string", description: "Why this task matters - गाँव की भाषा में!" },
+                    quantity: { type: "string", description: "REQUIRED: Exact amount per acre - NEVER empty" },
+                    product_details: {
+                      type: "object",
+                      description: "For pesticides/fertilizers - full transparency",
+                      properties: {
+                        brand_names: { type: "array", items: { type: "string" }, description: "2-3 popular brand options" },
+                        generic_name: { type: "string" },
+                        active_ingredient: { type: "string", description: "With percentage, e.g., 'Thiamethoxam 25% WG'" },
+                        chemical_group: { type: "string", description: "Group number for resistance management, e.g., '4A (Neonicotinoid)'" },
+                        mode_of_action: { type: "string" },
+                        formulation: { type: "string" }
+                      }
+                    },
+                    product_details_text: { type: "string", description: "Fallback text if object not provided" },
                     application_method: { type: "string", description: "How to apply - broadcasting, foliar spray, seed treatment, etc." },
+                    water_volume_liters: { type: "number", description: "Water needed for spray per acre" },
                     estimated_cost: { type: "number" },
-                    instructions: { type: "array", items: { type: "string" }, minItems: 2, description: "Step by step instructions in rural language" },
-                    precautions: { type: "array", items: { type: "string" }, minItems: 2, maxItems: 5, description: "Safety precautions in rural language" },
+                    instructions: { type: "array", items: { type: "string" }, minItems: 3, maxItems: 6, description: "Step by step in rural language" },
+                    precautions: { type: "array", items: { type: "string" }, minItems: 3, maxItems: 5, description: "Safety precautions" },
                     weather_dependent: { type: "boolean" },
-                    etl_threshold: { type: "string", description: "Economic Threshold Level for pest/disease tasks" },
-                    phi_days: { type: "integer", description: "Pre-Harvest Interval for pesticides" },
-                    icar_guideline: { type: "string", description: "REQUIRED: ICAR Package of Practice reference" },
-                    kvk_contact: { type: "string", description: "Local KVK contact if available" },
-                    climate_risk: { type: "string", description: "REQUIRED: Weather risk warning in rural language" },
-                    alternative_method: { type: "string", description: "Traditional/organic alternative if chemical recommended" },
+                    etl_threshold: { type: "string", description: "Economic Threshold Level for IPM" },
+                    phi_days: { type: "integer", description: "Pre-Harvest Interval in days" },
+                    resistance_rotation: { type: "string", description: "Next spray should be from different group" },
+                    icar_guideline: { type: "string", description: "ICAR Package of Practice reference" },
+                    kvk_recommendation: { type: "string" },
+                    climate_risk: { type: "string", description: "Weather risk warning in rural language" },
+                    alternative_organic: { type: "string", description: "Traditional/organic alternative" },
+                    alternative_mechanical: { type: "string", description: "Manual/mechanical alternative" },
                     ideal_weather: {
                       type: "object",
                       properties: {
-                        temperature: { type: "string", description: "Like '20-25°C'" },
-                        humidity: { type: "string", description: "Like '60-70%'" },
-                        wind_speed: { type: "string", description: "Like '<10 km/hr for spraying'" },
-                        conditions: { type: "string", description: "Like 'साफ मौसम' or 'हल्की धूप'" }
+                        temperature: { type: "string" },
+                        humidity: { type: "string" },
+                        wind_speed: { type: "string" },
+                        conditions: { type: "string" },
+                        best_time_of_day: { type: "string", description: "सुबह जल्दी / शाम / कभी भी" }
                       },
                       required: ["temperature", "humidity", "conditions"]
                     }
                   },
-                  required: ["task_name", "category", "days_from_sowing", "priority", "description", "quantity", "instructions", "precautions", "icar_guideline", "ideal_weather"]
+                  required: ["task_name", "category", "days_from_sowing", "priority", "description", "quantity", "instructions", "precautions", "icar_guideline", "ideal_weather", "yield_impact"]
                 }
               }
             },
-            required: ["crop_name", "total_duration_days", "tasks", "icar_reference", "organic_inputs", "cost_breakdown"]
+            required: ["crop_name", "total_duration_days", "tasks", "icar_reference", "organic_inputs", "cost_breakdown", "executive_summary"]
           }
         }
       }],
