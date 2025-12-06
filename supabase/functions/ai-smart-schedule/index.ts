@@ -12,6 +12,7 @@ const corsHeaders = {
 // ============================================================================
 // CROP-CLIMATE SUITABILITY DATABASE
 // Based on India's 15 Agro-Climatic Zones and ICAR guidelines
+// Enhanced with rainfall zones and photoperiod requirements
 // ============================================================================
 const cropSuitability: Record<string, {
   optimalTemp: [number, number];
@@ -22,6 +23,9 @@ const cropSuitability: Record<string, {
   photoperiod: 'short' | 'long' | 'neutral';
   season: string[];
   riskFactors: string[];
+  daysToMaturity: [number, number];
+  waterRequirementMM: number;
+  criticalStages: string[];
 }> = {
   'Wheat': {
     optimalTemp: [15, 25],
@@ -31,17 +35,23 @@ const cropSuitability: Record<string, {
     unsuitableStates: ['Kerala', 'Tamil Nadu', 'Karnataka', 'Andhra Pradesh', 'Goa'],
     photoperiod: 'long',
     season: ['Rabi'],
-    riskFactors: ['high humidity', 'waterlogging', 'heat waves']
+    riskFactors: ['high humidity', 'waterlogging', 'heat waves at grain filling', 'rust disease'],
+    daysToMaturity: [110, 140],
+    waterRequirementMM: 450,
+    criticalStages: ['CRI (21 days)', 'Tillering (35 days)', 'Jointing (65 days)', 'Flowering (85 days)', 'Grain filling (100 days)']
   },
   'Rice': {
     optimalTemp: [20, 35],
     rainfall: [1000, 2500],
     soilTypes: ['clay', 'clay loam', 'alluvial', 'laterite'],
     bestStates: ['West Bengal', 'Uttar Pradesh', 'Punjab', 'Bihar', 'Odisha', 'Andhra Pradesh', 'Tamil Nadu', 'Chhattisgarh'],
-    unsuitableStates: ['Rajasthan', 'Gujarat'], // Except irrigated areas
+    unsuitableStates: ['Rajasthan', 'Gujarat'],
     photoperiod: 'short',
     season: ['Kharif', 'Rabi'],
-    riskFactors: ['drought', 'flooding', 'cold snap']
+    riskFactors: ['drought at flowering', 'flooding', 'cold snap', 'blast disease', 'BPH'],
+    daysToMaturity: [90, 160],
+    waterRequirementMM: 1200,
+    criticalStages: ['Transplanting', 'Tillering (25 days)', 'Panicle initiation (45 days)', 'Flowering (70 days)', 'Grain filling (90 days)']
   },
   'Cotton': {
     optimalTemp: [21, 35],
@@ -51,7 +61,10 @@ const cropSuitability: Record<string, {
     unsuitableStates: ['Kerala', 'Assam', 'Himachal Pradesh', 'Uttarakhand'],
     photoperiod: 'neutral',
     season: ['Kharif'],
-    riskFactors: ['heavy rainfall', 'pink bollworm', 'whitefly']
+    riskFactors: ['heavy rainfall at boll opening', 'pink bollworm', 'whitefly', 'sucking pests'],
+    daysToMaturity: [150, 210],
+    waterRequirementMM: 700,
+    criticalStages: ['Germination', 'Square formation (35 days)', 'Flowering (50 days)', 'Boll development (80 days)', 'Boll opening (120 days)']
   },
   'Maize': {
     optimalTemp: [18, 32],
@@ -61,7 +74,10 @@ const cropSuitability: Record<string, {
     unsuitableStates: [],
     photoperiod: 'neutral',
     season: ['Kharif', 'Rabi', 'Zaid'],
-    riskFactors: ['waterlogging', 'fall armyworm']
+    riskFactors: ['waterlogging', 'fall armyworm', 'stem borer', 'drought at tasseling'],
+    daysToMaturity: [80, 120],
+    waterRequirementMM: 500,
+    criticalStages: ['Germination', 'V6 stage (25 days)', 'Tasseling (50 days)', 'Silking (55 days)', 'Grain filling (80 days)']
   },
   'Sugarcane': {
     optimalTemp: [20, 35],
@@ -71,7 +87,10 @@ const cropSuitability: Record<string, {
     unsuitableStates: ['Himachal Pradesh', 'Uttarakhand', 'Jammu Kashmir'],
     photoperiod: 'neutral',
     season: ['Annual'],
-    riskFactors: ['frost', 'waterlogging', 'red rot']
+    riskFactors: ['frost', 'waterlogging', 'red rot', 'top borer', 'pyrilla'],
+    daysToMaturity: [300, 420],
+    waterRequirementMM: 2000,
+    criticalStages: ['Germination (30 days)', 'Tillering (90 days)', 'Grand growth (150 days)', 'Maturation (300 days)']
   },
   'Soybean': {
     optimalTemp: [20, 30],
@@ -81,7 +100,10 @@ const cropSuitability: Record<string, {
     unsuitableStates: ['Punjab', 'Haryana', 'West Bengal', 'Kerala'],
     photoperiod: 'short',
     season: ['Kharif'],
-    riskFactors: ['waterlogging', 'rust', 'pod borer']
+    riskFactors: ['waterlogging', 'rust', 'pod borer', 'yellow mosaic'],
+    daysToMaturity: [85, 120],
+    waterRequirementMM: 450,
+    criticalStages: ['Germination', 'V3 stage (20 days)', 'Flowering (40 days)', 'Pod filling (65 days)', 'Maturity (90 days)']
   },
   'Groundnut': {
     optimalTemp: [25, 35],
@@ -91,7 +113,10 @@ const cropSuitability: Record<string, {
     unsuitableStates: ['Kerala', 'Assam', 'West Bengal'],
     photoperiod: 'neutral',
     season: ['Kharif', 'Rabi'],
-    riskFactors: ['heavy rainfall', 'aflatoxin']
+    riskFactors: ['heavy rainfall at harvest', 'aflatoxin', 'tikka disease', 'collar rot'],
+    daysToMaturity: [100, 130],
+    waterRequirementMM: 500,
+    criticalStages: ['Germination', 'Flowering (30 days)', 'Pegging (45 days)', 'Pod development (75 days)', 'Maturity (110 days)']
   },
   'Tomato': {
     optimalTemp: [18, 30],
@@ -101,7 +126,10 @@ const cropSuitability: Record<string, {
     unsuitableStates: [],
     photoperiod: 'neutral',
     season: ['Kharif', 'Rabi', 'Zaid'],
-    riskFactors: ['high humidity', 'blight', 'fruit borer']
+    riskFactors: ['high humidity', 'early blight', 'late blight', 'fruit borer', 'leaf curl virus'],
+    daysToMaturity: [90, 120],
+    waterRequirementMM: 500,
+    criticalStages: ['Transplanting', 'Vegetative (30 days)', 'Flowering (45 days)', 'Fruit setting (60 days)', 'Harvesting (90+ days)']
   },
   'Onion': {
     optimalTemp: [13, 28],
@@ -111,7 +139,10 @@ const cropSuitability: Record<string, {
     unsuitableStates: ['Kerala', 'Assam'],
     photoperiod: 'long',
     season: ['Rabi', 'Kharif'],
-    riskFactors: ['waterlogging', 'purple blotch', 'thrips']
+    riskFactors: ['waterlogging', 'purple blotch', 'thrips', 'stemphylium blight'],
+    daysToMaturity: [120, 150],
+    waterRequirementMM: 450,
+    criticalStages: ['Transplanting', 'Vegetative (45 days)', 'Bulb initiation (75 days)', 'Bulb development (100 days)', 'Maturity (130 days)']
   },
   'Potato': {
     optimalTemp: [15, 25],
@@ -121,7 +152,10 @@ const cropSuitability: Record<string, {
     unsuitableStates: ['Kerala', 'Tamil Nadu', 'Andhra Pradesh'],
     photoperiod: 'short',
     season: ['Rabi'],
-    riskFactors: ['frost', 'late blight', 'heat stress']
+    riskFactors: ['frost', 'late blight', 'heat stress', 'viral diseases'],
+    daysToMaturity: [80, 120],
+    waterRequirementMM: 500,
+    criticalStages: ['Germination (15 days)', 'Vegetative (30 days)', 'Tuber initiation (45 days)', 'Tuber bulking (70 days)', 'Maturity (90 days)']
   },
   'Turmeric': {
     optimalTemp: [20, 30],
@@ -131,7 +165,62 @@ const cropSuitability: Record<string, {
     unsuitableStates: ['Punjab', 'Haryana', 'Rajasthan'],
     photoperiod: 'neutral',
     season: ['Kharif'],
-    riskFactors: ['waterlogging', 'rhizome rot']
+    riskFactors: ['waterlogging', 'rhizome rot', 'leaf spot', 'shoot borer'],
+    daysToMaturity: [240, 300],
+    waterRequirementMM: 1500,
+    criticalStages: ['Germination (30 days)', 'Vegetative (90 days)', 'Rhizome development (180 days)', 'Maturity (270 days)']
+  },
+  'Chilli': {
+    optimalTemp: [20, 30],
+    rainfall: [600, 1200],
+    soilTypes: ['loamy', 'sandy loam', 'black'],
+    bestStates: ['Andhra Pradesh', 'Telangana', 'Karnataka', 'Maharashtra', 'Madhya Pradesh'],
+    unsuitableStates: [],
+    photoperiod: 'neutral',
+    season: ['Kharif', 'Rabi'],
+    riskFactors: ['anthracnose', 'leaf curl', 'thrips', 'mites', 'fruit rot'],
+    daysToMaturity: [120, 180],
+    waterRequirementMM: 600,
+    criticalStages: ['Transplanting', 'Vegetative (30 days)', 'Flowering (60 days)', 'Fruit setting (90 days)', 'Harvesting (120+ days)']
+  },
+  'Gram': {
+    optimalTemp: [10, 25],
+    rainfall: [300, 600],
+    soilTypes: ['loamy', 'clay loam', 'black'],
+    bestStates: ['Madhya Pradesh', 'Maharashtra', 'Rajasthan', 'Uttar Pradesh', 'Karnataka'],
+    unsuitableStates: ['Kerala', 'Assam', 'West Bengal'],
+    photoperiod: 'long',
+    season: ['Rabi'],
+    riskFactors: ['pod borer', 'wilt', 'root rot', 'frost'],
+    daysToMaturity: [95, 130],
+    waterRequirementMM: 350,
+    criticalStages: ['Germination', 'Vegetative (30 days)', 'Flowering (50 days)', 'Pod filling (75 days)', 'Maturity (100 days)']
+  },
+  'Mustard': {
+    optimalTemp: [10, 25],
+    rainfall: [250, 500],
+    soilTypes: ['loamy', 'sandy loam', 'alluvial'],
+    bestStates: ['Rajasthan', 'Uttar Pradesh', 'Haryana', 'Madhya Pradesh', 'Gujarat'],
+    unsuitableStates: ['Kerala', 'Tamil Nadu', 'Karnataka'],
+    photoperiod: 'long',
+    season: ['Rabi'],
+    riskFactors: ['aphids', 'white rust', 'alternaria blight', 'frost'],
+    daysToMaturity: [100, 140],
+    waterRequirementMM: 300,
+    criticalStages: ['Germination', 'Rosette (25 days)', 'Flowering (50 days)', 'Silique development (80 days)', 'Maturity (110 days)']
+  },
+  'Banana': {
+    optimalTemp: [20, 35],
+    rainfall: [1500, 2500],
+    soilTypes: ['loamy', 'clay loam', 'alluvial'],
+    bestStates: ['Tamil Nadu', 'Maharashtra', 'Gujarat', 'Andhra Pradesh', 'Karnataka', 'Kerala'],
+    unsuitableStates: ['Punjab', 'Haryana', 'Rajasthan'],
+    photoperiod: 'neutral',
+    season: ['Annual'],
+    riskFactors: ['panama disease', 'sigatoka', 'bunchy top', 'pseudostem weevil'],
+    daysToMaturity: [300, 420],
+    waterRequirementMM: 2000,
+    criticalStages: ['Planting', 'Vegetative (150 days)', 'Flowering (240 days)', 'Bunch development (300 days)', 'Harvest (360 days)']
   }
 };
 
@@ -184,13 +273,9 @@ const cropNameTranslations: Record<string, Record<string, string>> = {
 
 // Helper function to get localized crop name
 function getLocalizedCropName(englishName: string, language: string): { local: string; english: string; combined: string } {
-  // Normalize crop name for lookup
   const normalizedName = englishName.charAt(0).toUpperCase() + englishName.slice(1).toLowerCase();
-  
-  // Try exact match first, then normalized match
   let translations = cropNameTranslations[englishName] || cropNameTranslations[normalizedName];
   
-  // Try case-insensitive search
   if (!translations) {
     const matchedKey = Object.keys(cropNameTranslations).find(
       key => key.toLowerCase() === englishName.toLowerCase()
@@ -217,88 +302,40 @@ function getLocalizedCropName(englishName: string, language: string): { local: s
   };
 }
 
-// Alternative crop suggestions by region
+// Regional alternative crop suggestions
 const regionalAlternatives: Record<string, string[]> = {
   'Punjab': ['Wheat', 'Rice', 'Cotton', 'Maize', 'Potato', 'Sugarcane'],
   'Haryana': ['Wheat', 'Rice', 'Cotton', 'Mustard', 'Sugarcane', 'Bajra'],
   'Uttar Pradesh': ['Wheat', 'Rice', 'Sugarcane', 'Potato', 'Maize', 'Pea'],
   'Madhya Pradesh': ['Soybean', 'Wheat', 'Gram', 'Maize', 'Cotton', 'Onion'],
   'Maharashtra': ['Cotton', 'Soybean', 'Sugarcane', 'Onion', 'Grapes', 'Pomegranate'],
-  'Gujarat': ['Cotton', 'Groundnut', 'Castor', 'Cumin', 'Wheat', 'Tobacco'],
+  'Gujarat': ['Cotton', 'Groundnut', 'Cumin', 'Wheat', 'Castor', 'Banana'],
   'Rajasthan': ['Bajra', 'Wheat', 'Mustard', 'Gram', 'Groundnut', 'Cumin'],
-  'Bihar': ['Rice', 'Wheat', 'Maize', 'Litchi', 'Potato', 'Onion'],
-  'West Bengal': ['Rice', 'Jute', 'Potato', 'Tea', 'Vegetables'],
-  'Karnataka': ['Ragi', 'Maize', 'Cotton', 'Sugarcane', 'Coffee', 'Arecanut'],
+  'Bihar': ['Rice', 'Wheat', 'Maize', 'Potato', 'Onion', 'Banana'],
+  'West Bengal': ['Rice', 'Potato', 'Jute', 'Vegetables', 'Mustard'],
+  'Karnataka': ['Ragi', 'Maize', 'Cotton', 'Sugarcane', 'Onion', 'Turmeric'],
   'Tamil Nadu': ['Rice', 'Sugarcane', 'Banana', 'Cotton', 'Groundnut', 'Coconut'],
   'Andhra Pradesh': ['Rice', 'Cotton', 'Groundnut', 'Turmeric', 'Chilli', 'Tobacco'],
   'Telangana': ['Cotton', 'Rice', 'Turmeric', 'Maize', 'Soybean'],
-  'Kerala': ['Rice', 'Coconut', 'Rubber', 'Pepper', 'Cardamom', 'Banana'],
+  'Kerala': ['Rice', 'Coconut', 'Rubber', 'Pepper', 'Banana', 'Cardamom'],
   'Odisha': ['Rice', 'Groundnut', 'Turmeric', 'Vegetables', 'Jute'],
   'Assam': ['Rice', 'Tea', 'Jute', 'Mustard', 'Potato'],
   'Default': ['Rice', 'Wheat', 'Maize', 'Pulses', 'Vegetables']
 };
 
-// Rural language examples for TRUE village speech
-const ruralExamples = {
-  hi: {
-    irrigation: [
-      "भाऊ, आज पानी देने का वक्त आ गया है",
-      "पौधों को प्यास लगी है, पानी दो",
-      "कल बारिश होगी तो आज पानी मत दो"
-    ],
-    fertilizer: [
-      "खेत में दम नहीं रहा, खाद डालो",
-      "पत्ते पीले पड़ रहे हैं, यूरिया डालो",
-      "जड़ें मजबूत करने के लिए DAP डालो"
-    ],
-    pesticide: [
-      "कीड़े लग गए हैं, फौरन दवाई छिड़को",
-      "पत्तों पर धब्बे दिख रहे हैं, फफूंदनाशक डालो",
-      "सुबह जल्दी फवारणी करो, धूप में दवाई उड़ जाती है"
-    ],
-    precautions: [
-      "दवाई छिड़कते वक्त मुंह पर कपड़ा बांधो",
-      "बच्चों को दूर रखो",
-      "खाली पेट दवाई मत छिड़को",
-      "हवा की दिशा देखकर छिड़काव करो"
-    ]
-  },
-  mr: {
-    irrigation: [
-      "भाऊ, आज पाणी द्यायची वेळ आली",
-      "पिकाला तहान लागली, पाणी दे",
-      "उद्या पाऊस येणार, आज पाणी देऊ नको"
-    ],
-    fertilizer: [
-      "जमिनीला ताकद नाही राहिली, खत टाक",
-      "पानं पिवळी पडतायत, युरिया टाक",
-      "मुळं भक्कम करायला DAP टाक"
-    ],
-    pesticide: [
-      "किड लागली, लगेच औषध फवार",
-      "पानांवर डाग दिसतायत, बुरशीनाशक टाक",
-      "सकाळी लवकर फवारणी कर, उन्हात औषध उडून जातं"
-    ],
-    precautions: [
-      "औषध फवारताना तोंडावर कापड बांध",
-      "पोरांना दूर ठेव",
-      "उपाशीपोटी औषध फवारू नको",
-      "वाऱ्याची दिशा बघून फवारणी कर"
-    ]
-  }
-};
-
 // ============================================================================
-// CROP-CLIMATE SUITABILITY CHECKER
+// ENHANCED CROP-CLIMATE SUITABILITY CHECKER
 // ============================================================================
 interface SuitabilityResult {
   suitable: boolean;
-  score: number; // 0-100
+  score: number;
   warnings: string[];
   risks: string[];
   alternatives: { crop: string; successRate: number; potentialProfit: string }[];
   proceedAnyway: boolean;
   warningMessage: string;
+  failureRate: number;
+  estimatedLoss: string;
 }
 
 function checkCropSuitability(
@@ -310,11 +347,9 @@ function checkCropSuitability(
   currentTemp: number | null,
   language: string
 ): SuitabilityResult {
-  // Case-insensitive crop lookup - CRITICAL FIX
   const normalizedCropName = cropName.charAt(0).toUpperCase() + cropName.slice(1).toLowerCase();
   const cropData = cropSuitability[normalizedCropName] || cropSuitability[cropName];
   
-  // Also try to find by matching against keys
   const matchedCropKey = Object.keys(cropSuitability).find(
     key => key.toLowerCase() === cropName.toLowerCase()
   );
@@ -322,9 +357,8 @@ function checkCropSuitability(
   
   const alternatives = regionalAlternatives[state] || regionalAlternatives['Default'];
   
-  console.log(`🔍 Suitability check for "${cropName}" -> normalized: "${normalizedCropName}", found: ${!!finalCropData}`);
+  console.log(`🔍 Suitability check for "${cropName}" in ${state} - found data: ${!!finalCropData}`);
   
-  // Default result for unknown crops - allow with warning
   if (!finalCropData) {
     return {
       suitable: true,
@@ -335,113 +369,116 @@ function checkCropSuitability(
       risks: [],
       alternatives: alternatives.slice(0, 3).map(c => ({ crop: c, successRate: 80, potentialProfit: '₹20,000-40,000/एकड़' })),
       proceedAnyway: true,
-      warningMessage: ''
+      warningMessage: '',
+      failureRate: 30,
+      estimatedLoss: '₹10,000-15,000'
     };
   }
-  
-  // Use finalCropData instead of cropData for rest of function
-  const cropDataToUse = finalCropData;
 
   let score = 100;
   const warnings: string[] = [];
   const risks: string[] = [];
 
-  // 1. Check state suitability
-  const isUnsuitableState = cropDataToUse.unsuitableStates.some(s => 
+  // 1. Check state suitability (40% weight)
+  const isUnsuitableState = finalCropData.unsuitableStates.some(s => 
     state.toLowerCase().includes(s.toLowerCase()) || s.toLowerCase().includes(state.toLowerCase())
   );
-  const isBestState = cropDataToUse.bestStates.some(s => 
+  const isBestState = finalCropData.bestStates.some(s => 
     state.toLowerCase().includes(s.toLowerCase()) || s.toLowerCase().includes(state.toLowerCase())
   );
 
   if (isUnsuitableState) {
-    score -= 40;
+    score -= 45;
     if (language === 'mr') {
-      warnings.push(`${state} मध्ये ${cropName} पीक चांगलं येत नाही`);
-      risks.push(`हवामान अनुकूल नाही - पीक फेल होण्याची शक्यता जास्त`);
+      warnings.push(`${state} मध्ये ${cropName} पीक चांगलं येत नाही - हवामान अनुकूल नाही`);
+      risks.push(`100 पैकी फक्त 10-20 शेतकरी यशस्वी होतात`);
     } else {
-      warnings.push(`${state} में ${cropName} की खेती अच्छी नहीं होती`);
-      risks.push(`जलवायु अनुकूल नहीं है - फसल फेल होने का खतरा`);
+      warnings.push(`${state} में ${cropName} की खेती अच्छी नहीं होती - जलवायु अनुकूल नहीं`);
+      risks.push(`100 में से सिर्फ 10-20 किसान सफल होते हैं`);
     }
   } else if (!isBestState) {
     score -= 15;
     if (language === 'mr') {
-      warnings.push(`${state} ${cropName} साठी सर्वोत्तम नाही, पण चालेल`);
+      warnings.push(`${state} ${cropName} साठी सर्वोत्तम नाही, पण योग्य काळजी घेतली तर चालेल`);
     } else {
-      warnings.push(`${state} ${cropName} के लिए सबसे अच्छा नहीं, पर चलेगा`);
+      warnings.push(`${state} ${cropName} के लिए सबसे अच्छा नहीं, पर सही देखभाल से चल जाएगा`);
     }
   }
 
-  // 2. Check soil type
+  // 2. Check soil type (25% weight)
   if (soilType) {
-    const soilMatch = cropDataToUse.soilTypes.some(s => 
-      soilType.toLowerCase().includes(s.toLowerCase())
+    const soilMatch = finalCropData.soilTypes.some(s => 
+      soilType.toLowerCase().includes(s.toLowerCase()) || s.toLowerCase().includes(soilType.toLowerCase())
     );
     if (!soilMatch) {
-      score -= 20;
+      score -= 25;
       if (language === 'mr') {
-        warnings.push(`${soilType} माती ${cropName} साठी कमी योग्य आहे`);
-        warnings.push(`चांगली माती: ${cropDataToUse.soilTypes.join(', ')}`);
+        warnings.push(`${soilType} माती ${cropName} साठी योग्य नाही`);
+        warnings.push(`चांगली माती: ${finalCropData.soilTypes.join(', ')}`);
       } else {
-        warnings.push(`${soilType} मिट्टी ${cropName} के लिए कम उपयुक्त है`);
-        warnings.push(`अच्छी मिट्टी: ${cropDataToUse.soilTypes.join(', ')}`);
+        warnings.push(`${soilType} मिट्टी ${cropName} के लिए उपयुक्त नहीं`);
+        warnings.push(`अच्छी मिट्टी: ${finalCropData.soilTypes.join(', ')}`);
       }
     }
   }
 
-  // 3. Check temperature (if available)
+  // 3. Check temperature (20% weight)
   if (currentTemp !== null) {
-    if (currentTemp < cropDataToUse.optimalTemp[0] - 5) {
-      score -= 25;
+    if (currentTemp < finalCropData.optimalTemp[0] - 5) {
+      score -= 20;
       if (language === 'mr') {
-        warnings.push(`तापमान खूप कमी (${currentTemp}°C) - ${cropName} ला ${cropDataToUse.optimalTemp[0]}-${cropDataToUse.optimalTemp[1]}°C लागतं`);
+        warnings.push(`तापमान खूप कमी (${currentTemp}°C) - ${cropName} ला ${finalCropData.optimalTemp[0]}-${finalCropData.optimalTemp[1]}°C लागतं`);
       } else {
-        warnings.push(`तापमान बहुत कम (${currentTemp}°C) - ${cropName} को ${cropDataToUse.optimalTemp[0]}-${cropDataToUse.optimalTemp[1]}°C चाहिए`);
+        warnings.push(`तापमान बहुत कम (${currentTemp}°C) - ${cropName} को ${finalCropData.optimalTemp[0]}-${finalCropData.optimalTemp[1]}°C चाहिए`);
       }
-    } else if (currentTemp > cropDataToUse.optimalTemp[1] + 5) {
-      score -= 25;
+    } else if (currentTemp > finalCropData.optimalTemp[1] + 5) {
+      score -= 20;
       if (language === 'mr') {
-        warnings.push(`तापमान खूप जास्त (${currentTemp}°C) - ${cropName} ला ${cropDataToUse.optimalTemp[0]}-${cropDataToUse.optimalTemp[1]}°C लागतं`);
+        warnings.push(`तापमान खूप जास्त (${currentTemp}°C) - ${cropName} ला ${finalCropData.optimalTemp[0]}-${finalCropData.optimalTemp[1]}°C लागतं`);
       } else {
-        warnings.push(`तापमान बहुत ज्यादा (${currentTemp}°C) - ${cropName} को ${cropDataToUse.optimalTemp[0]}-${cropDataToUse.optimalTemp[1]}°C चाहिए`);
+        warnings.push(`तापमान बहुत ज्यादा (${currentTemp}°C) - ${cropName} को ${finalCropData.optimalTemp[0]}-${finalCropData.optimalTemp[1]}°C चाहिए`);
       }
     }
   }
 
-  // 4. Check irrigation for water-intensive crops
+  // 4. Check irrigation for water-intensive crops (15% weight)
   if (!irrigationType || irrigationType.toLowerCase() === 'rainfed') {
-    if (cropDataToUse.rainfall[0] > 1000) {
+    if (finalCropData.waterRequirementMM > 800) {
       score -= 20;
       if (language === 'mr') {
-        warnings.push(`${cropName} ला भरपूर पाणी लागतं - सिंचन व्यवस्था करा`);
+        warnings.push(`${cropName} ला ${finalCropData.waterRequirementMM} mm पाणी लागतं - सिंचन व्यवस्था करा`);
       } else {
-        warnings.push(`${cropName} को ज्यादा पानी चाहिए - सिंचाई का इंतजाम करो`);
+        warnings.push(`${cropName} को ${finalCropData.waterRequirementMM} mm पानी चाहिए - सिंचाई का इंतजाम करो`);
       }
     }
   }
 
   // Add risk factors
-  cropDataToUse.riskFactors.forEach(risk => {
-    if (language === 'mr') {
-      risks.push(`सावधान: ${risk}`);
-    } else {
-      risks.push(`सावधान: ${risk}`);
-    }
+  finalCropData.riskFactors.forEach(risk => {
+    risks.push(`⚠️ ${risk}`);
   });
 
-  // Build alternatives with success rates
+  // Calculate failure rate and estimated loss
+  const failureRate = Math.max(0, 100 - score);
+  const estimatedLoss = failureRate > 50 
+    ? '₹30,000-50,000/एकड़' 
+    : failureRate > 30 
+      ? '₹15,000-30,000/एकड़' 
+      : '₹5,000-15,000/एकड़';
+
+  // Build alternatives
   const altCrops = alternatives
-    .filter(c => c !== cropName)
+    .filter(c => c.toLowerCase() !== cropName.toLowerCase())
     .slice(0, 5)
     .map(crop => ({
       crop,
       successRate: Math.min(95, 75 + Math.floor(Math.random() * 20)),
-      potentialProfit: `₹${(15000 + Math.floor(Math.random() * 25000)).toLocaleString()}/एकड़`
+      potentialProfit: `₹${(20000 + Math.floor(Math.random() * 30000)).toLocaleString()}/एकड़`
     }));
 
   const suitable = score >= 50;
   
-  // Build warning message
+  // Build comprehensive warning message
   let warningMessage = '';
   if (!suitable) {
     if (language === 'mr') {
@@ -450,15 +487,17 @@ function checkCropSuitability(
 ❌ का नाही योग्य:
 ${warnings.map(w => `• ${w}`).join('\n')}
 
-⚡ धोके:
-${risks.map(r => `• ${r}`).join('\n')}
+⚡ मुख्य धोके:
+${risks.slice(0, 4).map(r => `• ${r}`).join('\n')}
 
 💸 नुकसान होईल:
-• पीक ${100 - score}% फेल होण्याची शक्यता
+• पीक ${failureRate}% फेल होण्याची शक्यता
+• 100 पैकी फक्त ${100 - failureRate} शेतकरी यशस्वी
+• अंदाजे ${estimatedLoss} नुकसान
 • महिन्यांची मेहनत वाया जाईल
 • बियाणे, खत, औषधांचा खर्च वाया
 
-✅ तुझ्या भागासाठी चांगले पर्याय:
+✅ तुझ्या ${state} साठी चांगले पर्याय:
 ${altCrops.map((a, i) => `${i + 1}. ${a.crop} - ${a.successRate}% यश दर, ${a.potentialProfit} नफा`).join('\n')}
 
 तरीही ${cropName} घ्यायचं असेल तर मी वेळापत्रक बनवतो, पण जबाबदारी तुझी!`;
@@ -468,30 +507,32 @@ ${altCrops.map((a, i) => `${i + 1}. ${a.crop} - ${a.successRate}% यश दर,
 ❌ क्यों नहीं सही:
 ${warnings.map(w => `• ${w}`).join('\n')}
 
-⚡ खतरे:
-${risks.map(r => `• ${r}`).join('\n')}
+⚡ मुख्य खतरे:
+${risks.slice(0, 4).map(r => `• ${r}`).join('\n')}
 
 💸 नुकसान होगा:
-• फसल ${100 - score}% फेल होने की संभावना
+• फसल ${failureRate}% फेल होने की संभावना
+• 100 में से सिर्फ ${100 - failureRate} किसान सफल
+• अंदाजा ${estimatedLoss} नुकसान
 • महीनों की मेहनत बेकार जाएगी
 • बीज, खाद, दवाई का खर्च बेकार
 
-✅ तुम्हारे इलाके के लिए अच्छे विकल्प:
+✅ तुम्हारे ${state} के लिए अच्छे विकल्प:
 ${altCrops.map((a, i) => `${i + 1}. ${a.crop} - ${a.successRate}% सफलता दर, ${a.potentialProfit} मुनाफा`).join('\n')}
 
-फिर भी ${cropName} लगाना है तो मैं वेळापत्रक बना देता हूं, लेकिन जिम्मेदारी तुम्हारी!`;
+फिर भी ${cropName} लगाना है तो मैं schedule बना देता हूं, लेकिन जिम्मेदारी तुम्हारी!`;
     }
   } else if (warnings.length > 0) {
     if (language === 'mr') {
       warningMessage = `⚡ लक्षात ठेव (${cropName} साठी):
 ${warnings.map(w => `• ${w}`).join('\n')}
 
-सावधगिरी बाळगली तर पीक चांगलं येईल!`;
+सावधगिरी बाळगली तर पीक 3X ते 5X चांगलं येईल!`;
     } else {
       warningMessage = `⚡ ध्यान रखो (${cropName} के लिए):
 ${warnings.map(w => `• ${w}`).join('\n')}
 
-सावधानी रखोगे तो फसल अच्छी होगी!`;
+सावधानी रखोगे तो फसल 3X से 5X बेहतर होगी!`;
     }
   }
 
@@ -501,13 +542,38 @@ ${warnings.map(w => `• ${w}`).join('\n')}
     warnings,
     risks,
     alternatives: altCrops,
-    proceedAnyway: true, // Always allow proceeding with warning
-    warningMessage
+    proceedAnyway: true,
+    warningMessage,
+    failureRate,
+    estimatedLoss
   };
 }
 
+// ============================================================================
+// NPK TARGET RECOMMENDATIONS BY CROP (kg/ha)
+// Based on ICAR Package of Practices
+// ============================================================================
+const targetNPK: Record<string, { n: number; p: number; k: number; source: string }> = {
+  'Wheat': { n: 120, p: 60, k: 40, source: 'ICAR-IARI DWR' },
+  'Rice': { n: 120, p: 60, k: 40, source: 'ICAR-CRRI' },
+  'Cotton': { n: 120, p: 60, k: 50, source: 'ICAR-CICR' },
+  'Maize': { n: 150, p: 75, k: 50, source: 'ICAR-IIMR' },
+  'Sugarcane': { n: 250, p: 115, k: 115, source: 'ICAR-IISR' },
+  'Soybean': { n: 30, p: 60, k: 40, source: 'ICAR-IISR Indore' },
+  'Groundnut': { n: 25, p: 50, k: 45, source: 'ICAR-DGR' },
+  'Tomato': { n: 100, p: 60, k: 80, source: 'ICAR-IIHR' },
+  'Onion': { n: 100, p: 50, k: 50, source: 'ICAR-DOGR' },
+  'Potato': { n: 150, p: 80, k: 100, source: 'ICAR-CPRI' },
+  'Turmeric': { n: 120, p: 60, k: 120, source: 'ICAR-IISR Calicut' },
+  'Chilli': { n: 100, p: 50, k: 50, source: 'ICAR-IIHR' },
+  'Gram': { n: 20, p: 50, k: 0, source: 'ICAR-IIPR' },
+  'Mustard': { n: 80, p: 40, k: 0, source: 'ICAR-DRMR' },
+  'Banana': { n: 200, p: 60, k: 300, source: 'ICAR-NRCB' },
+  'Default': { n: 100, p: 50, k: 40, source: 'General ICAR guidelines' }
+};
+
 serve(async (req) => {
-  console.log('🚀 [AI-Schedule] Request received');
+  console.log('🚀 [AI-Schedule V6] Request received - Enhanced World-Class System');
   
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -556,7 +622,18 @@ serve(async (req) => {
       );
     }
     
-    const { landId, cropName, cropVariety, sowingDate, isReadyMadePlant = false, weather, regenerate, language = 'hi', country = 'India', forceGenerate = false } = requestBody;
+    const { 
+      landId, 
+      cropName, 
+      cropVariety, 
+      sowingDate, 
+      isReadyMadePlant = false, 
+      weather, 
+      regenerate, 
+      language = 'hi', 
+      country = 'India', 
+      forceGenerate = false 
+    } = requestBody;
     
     console.log('🌐 [AI-Schedule] Received:', { language, sowingDate, isReadyMadePlant, cropName, landId });
     
@@ -567,8 +644,7 @@ serve(async (req) => {
       );
     }
     
-    // CRITICAL FIX: Validate and parse sowing date correctly
-    // sowingDate format should be "YYYY-MM-DD"
+    // Validate sowing date format
     if (!sowingDate || !/^\d{4}-\d{2}-\d{2}$/.test(sowingDate)) {
       return new Response(
         JSON.stringify({ error: 'Invalid sowing date format', details: 'Expected format: YYYY-MM-DD' }),
@@ -578,9 +654,10 @@ serve(async (req) => {
     
     // Parse date correctly to avoid timezone issues
     const [year, month, day] = sowingDate.split('-').map(Number);
-    const sowingDateParsed = new Date(year, month - 1, day); // month is 0-indexed
+    const sowingDateParsed = new Date(year, month - 1, day);
     console.log(`📅 [Date] Parsed sowing date: ${sowingDateParsed.toISOString()} from "${sowingDate}"`);
 
+    // Rate limiting
     const rateLimitKey = `${tenantId}:${farmerId}`;
     const rateLimit = await checkRateLimit(rateLimitKey, 'ai-smart-schedule', { maxRequests: 30, windowMs: 60000 });
     
@@ -602,9 +679,7 @@ serve(async (req) => {
 
     if (landError || !land) throw new Error('Land not found');
 
-    // ========================================================================
-    // CRITICAL RULE #1: MANDATORY CROP-CLIMATE SUITABILITY CHECK
-    // ========================================================================
+    // 2. MANDATORY CROP-CLIMATE SUITABILITY CHECK
     const currentTemp = weather?.current?.temperature || null;
     const suitabilityCheck = checkCropSuitability(
       cropName,
@@ -630,6 +705,8 @@ serve(async (req) => {
           risks: suitabilityCheck.risks,
           alternatives: suitabilityCheck.alternatives,
           warningMessage: suitabilityCheck.warningMessage,
+          failureRate: suitabilityCheck.failureRate,
+          estimatedLoss: suitabilityCheck.estimatedLoss,
           canProceed: true,
           message: language === 'mr' 
             ? `${cropName} तुमच्या भागात योग्य नाही. पर्याय पहा किंवा तरीही सुरू ठेवा.`
@@ -639,7 +716,7 @@ serve(async (req) => {
       );
     }
 
-    // 2. Fetch crop baseline guidelines
+    // 3. Fetch crop baseline guidelines
     const { data: guidelines } = await supabase
       .from('crop_baseline_guidelines')
       .select('*')
@@ -649,7 +726,7 @@ serve(async (req) => {
       .limit(1)
       .maybeSingle();
 
-    // 3. Fetch recent NDVI data
+    // 4. Fetch recent NDVI data
     const { data: ndviData } = await supabase
       .from('ndvi_cache')
       .select('*')
@@ -665,323 +742,348 @@ serve(async (req) => {
       hasSoilData: !!(land.nitrogen_kg_per_ha || land.phosphorus_kg_per_ha)
     });
 
-    // 4. Language & Regional Context
+    // 5. Language & Regional Context
     const languageMap: Record<string, string> = {
       hi: 'Hindi', mr: 'Marathi', pa: 'Punjabi', ta: 'Tamil', te: 'Telugu',
       bn: 'Bengali', gu: 'Gujarati', kn: 'Kannada', en: 'English'
     };
 
     const languageName = languageMap[language] || 'Hindi';
-    const examples = ruralExamples[language as keyof typeof ruralExamples] || ruralExamples.hi;
-
-    // CRITICAL: Get localized crop name to prevent AI mistranslation
     const localizedCrop = getLocalizedCropName(cropName, language);
     console.log(`🌾 [CropName] Using localized name: "${localizedCrop.local}" for "${cropName}" in ${languageName}`);
 
-    // 5. Calculate NPK deficit
+    // 6. Calculate NPK deficit
     const landAreaHa = land.area_acres * 0.404686;
     const currentN = land.nitrogen_kg_per_ha || 0;
     const currentP = land.phosphorus_kg_per_ha || 0;
     const currentK = land.potassium_kg_per_ha || 0;
-    
-    const targetNPK: Record<string, {n: number, p: number, k: number}> = {
-      'Wheat': {n: 120, p: 60, k: 40}, 'Rice': {n: 120, p: 60, k: 40},
-      'Cotton': {n: 120, p: 60, k: 50}, 'Maize': {n: 150, p: 75, k: 50},
-      'Sugarcane': {n: 250, p: 115, k: 115}, 'Soybean': {n: 30, p: 60, k: 40},
-      'Default': {n: 100, p: 50, k: 40}
-    };
     
     const target = targetNPK[cropName] || targetNPK['Default'];
     const nDeficit = Math.max(0, target.n - currentN);
     const pDeficit = Math.max(0, target.p - currentP);
     const kDeficit = Math.max(0, target.k - currentK);
 
-    // 6. Build NDVI health context
-    const ndviStatus = ndviData && ndviData.length > 0 ? {
-      value: ndviData[0].ndvi_value,
-      status: ndviData[0].ndvi_value > 0.6 ? 'अच्छी' : 
-              ndviData[0].ndvi_value > 0.4 ? 'ठीक-ठाक' :
-              ndviData[0].ndvi_value > 0.2 ? 'कमजोर' : 'बहुत खराब',
-      action: ndviData[0].ndvi_value < 0.4 ? 'खाद की मात्रा 25% बढ़ाओ!' : 'सामान्य खाद दो'
-    } : null;
-
-    // 7. Build COMPREHENSIVE system prompt with suitability context
-    const cropSuitabilityData = cropSuitability[cropName];
-    const suitabilityContext = cropSuitabilityData ? `
-🌡️ ${cropName} की जरूरतें:
-• तापमान: ${cropSuitabilityData.optimalTemp[0]}-${cropSuitabilityData.optimalTemp[1]}°C
-• बारिश: ${cropSuitabilityData.rainfall[0]}-${cropSuitabilityData.rainfall[1]} mm/साल
-• मिट्टी: ${cropSuitabilityData.soilTypes.join(', ')}
-• मौसम: ${cropSuitabilityData.season.join(', ')}
-
-⚠️ खतरे जिनसे बचना है: ${cropSuitabilityData.riskFactors.join(', ')}
-
-${suitabilityCheck.warnings.length > 0 ? `
-🔴 इस किसान के लिए विशेष चेतावनी:
-${suitabilityCheck.warnings.map(w => `• ${w}`).join('\n')}
-` : ''}` : '';
-
-    // Calculate additional metrics
-    const fymRecommendation = (land.area_acres * 2.5).toFixed(1); // 2.5 tons/acre
+    // 7. Calculate fertilizer quantities
+    const fymRecommendation = (land.area_acres * 2.5).toFixed(1);
     const ureaCalc = ((nDeficit * landAreaHa) / 0.46).toFixed(0);
     const dapCalc = ((pDeficit * landAreaHa) / 0.18).toFixed(0);
     const mopCalc = ((kDeficit * landAreaHa) / 0.60).toFixed(0);
+    const sspCalc = ((pDeficit * landAreaHa) / 0.16).toFixed(0);
+
+    // 8. Build NDVI health context
+    const ndviStatus = ndviData && ndviData.length > 0 ? {
+      value: ndviData[0].ndvi_value,
+      status: ndviData[0].ndvi_value > 0.6 ? 'Good' : ndviData[0].ndvi_value > 0.4 ? 'Moderate' : ndviData[0].ndvi_value > 0.2 ? 'Poor' : 'Critical',
+      action: ndviData[0].ndvi_value < 0.4 ? 'Increase fertilizer by 25%' : 'Normal application'
+    } : null;
+
+    // Get crop-specific data
+    const cropData = cropSuitability[cropName] || cropSuitability[cropName.charAt(0).toUpperCase() + cropName.slice(1).toLowerCase()];
+    const daysToMaturity = cropData?.daysToMaturity || [90, 120];
+    const criticalStages = cropData?.criticalStages || [];
 
     // ============================================================================
-    // ENGLISH-BASED PROMPT SYSTEM - World-Class Agriculture Scientist
-    // AI reasons in English, outputs in user's selected language
+    // WORLD-CLASS ENGLISH SYSTEM PROMPT
+    // AI reasons in English for maximum accuracy, outputs in user's language
     // ============================================================================
     
-    // Build weather context for AI
-    const buildWeatherContext = (): string => {
-      if (!weather?.current) return '';
-      
-      const temp = weather.current.temperature || weather.current.temp || 0;
-      const humidity = weather.current.humidity || 0;
-      const windSpeed = weather.current.wind_speed || 0;
-      const conditions = weather.current.weather_description || weather.current.main || 'Normal';
-      
-      let advisories: string[] = [];
-      if (temp > 35) advisories.push('HIGH TEMPERATURE WARNING: Schedule irrigation for early morning/evening. Include heat stress mitigation.');
-      if (temp < 10) advisories.push('LOW TEMPERATURE WARNING: Risk of frost damage. Delay sensitive operations.');
-      if (humidity > 80) advisories.push('HIGH HUMIDITY WARNING: Increased fungal disease risk. Include preventive fungicide recommendations.');
-      if (humidity < 40) advisories.push('LOW HUMIDITY WARNING: Increased water stress. Increase irrigation frequency.');
-      if (windSpeed > 20) advisories.push('HIGH WIND WARNING: Avoid spraying operations. Risk of spray drift.');
-      
-      return `
-## CURRENT WEATHER DATA (${land.district}, ${land.state}):
-- Temperature: ${temp}°C
-- Humidity: ${humidity}%
-- Wind Speed: ${windSpeed} km/h
-- Conditions: ${conditions}
-
-${advisories.length > 0 ? `### WEATHER ADVISORIES (incorporate into schedule):
-${advisories.map(a => `- ${a}`).join('\n')}` : ''}`;
-    };
-
-    // Build soil analysis context
-    const buildSoilContext = (): string => {
-      const soilPh = land.soil_ph || null;
-      const organicCarbon = land.organic_carbon_percent || null;
-      
-      let soilAdvice: string[] = [];
-      if (soilPh && soilPh < 6) soilAdvice.push('ACIDIC SOIL: Recommend lime application (2-3 quintal/acre) before sowing');
-      if (soilPh && soilPh > 7.5) soilAdvice.push('ALKALINE SOIL: Recommend gypsum application (2-4 quintal/acre)');
-      if (organicCarbon && organicCarbon < 0.5) soilAdvice.push('LOW ORGANIC MATTER: Increase FYM/compost application - critical for yield');
-      if (nDeficit > 50) soilAdvice.push('SEVERE NITROGEN DEFICIENCY: Split urea application essential');
-      if (pDeficit > 30) soilAdvice.push('PHOSPHORUS DEFICIENCY: Apply DAP as basal dose');
-      if (kDeficit > 30) soilAdvice.push('POTASSIUM DEFICIENCY: Apply MOP for fruit/grain quality');
-      
-      return `
-## SOIL ANALYSIS DATA:
-- Soil Type: ${land.soil_type || 'Not specified'}
-- pH Level: ${soilPh || 'Not tested'} ${soilPh ? (soilPh < 6 ? '(Acidic)' : soilPh > 7.5 ? '(Alkaline)' : '(Normal)') : ''}
-- Organic Carbon: ${organicCarbon ? `${organicCarbon}%` : 'Not tested'} ${organicCarbon && organicCarbon < 0.5 ? '(LOW - needs organic matter)' : ''}
-
-## NPK STATUS (kg/hectare):
-| Nutrient | Current | Required | Deficit | Status |
-|----------|---------|----------|---------|--------|
-| Nitrogen (N) | ${currentN} | ${target.n} | ${nDeficit.toFixed(0)} | ${nDeficit > 50 ? 'CRITICAL' : nDeficit > 20 ? 'LOW' : 'OK'} |
-| Phosphorus (P) | ${currentP} | ${target.p} | ${pDeficit.toFixed(0)} | ${pDeficit > 30 ? 'CRITICAL' : pDeficit > 15 ? 'LOW' : 'OK'} |
-| Potassium (K) | ${currentK} | ${target.k} | ${kDeficit.toFixed(0)} | ${kDeficit > 30 ? 'CRITICAL' : kDeficit > 15 ? 'LOW' : 'OK'} |
-
-## FERTILIZER CALCULATIONS (for ${land.area_acres} acres):
-- FYM/Compost: ${fymRecommendation} tons (₹${(Number(fymRecommendation) * 500).toFixed(0)})
-- Urea (46% N): ${ureaCalc} kg (₹${(Number(ureaCalc) * 6).toFixed(0)})
-- DAP (18-46-0): ${dapCalc} kg (₹${(Number(dapCalc) * 27).toFixed(0)})
-- MOP (0-0-60): ${mopCalc} kg (₹${(Number(mopCalc) * 18).toFixed(0)})
-
-${soilAdvice.length > 0 ? `### SOIL IMPROVEMENT RECOMMENDATIONS:
-${soilAdvice.map(a => `- ${a}`).join('\n')}` : ''}`;
-    };
-
-    // Main English System Prompt
-    const getEnglishSystemPrompt = (): string => {
+    const getWorldClassSystemPrompt = (): string => {
       const plantingMethod = isReadyMadePlant ? 'Transplanting ready plants/sets' : 'Direct seed sowing';
       const plantingInstructions = isReadyMadePlant 
         ? 'SKIP all nursery/seed treatment stages. Start directly with transplanting preparation.'
-        : 'Include seed selection, treatment, and germination stages.';
+        : 'Include seed selection, treatment, germination, and early stage care.';
       
       return `# ROLE: WORLD-CLASS AGRICULTURE SCIENTIST
 
-You are a world-class agriculture scientist with PhD-level expertise from ICAR (Indian Council of Agricultural Research), IARI (Indian Agricultural Research Institute), and state agricultural universities. You have 30+ years of field experience helping Indian farmers achieve exceptional yields.
+You are an exceptionally experienced agricultural scientist with 50+ years of combined TRADITIONAL FARMING WISDOM and MODERN AGRO-TECHNOLOGY expertise. You hold PhD-level knowledge from:
+- ICAR (Indian Council of Agricultural Research)
+- IARI (Indian Agricultural Research Institute)
+- State Agricultural Universities across India
+- International research experience from IRRI, CIMMYT, ICRISAT
 
 ## YOUR MISSION:
-Help this farmer achieve 3X to 5X HIGHER YIELD at LOW COST using scientific methods and proven techniques.
+Help this farmer achieve 3X to 5X HIGHER YIELD at LOW COST using scientifically proven methods. Your advice must be:
+- PRACTICAL: Implementable by a village farmer with basic resources
+- SCIENTIFIC: Based on ICAR, KVK, and university research
+- COST-EFFECTIVE: Maximize profit, minimize waste
+- REGION-SPECIFIC: Tailored to ${land.state}, ${land.district}
 
 ## CRITICAL OUTPUT LANGUAGE REQUIREMENT:
-⚠️ GENERATE ALL CONTENT IN ${languageName.toUpperCase()} (${language}) USING RURAL VILLAGE LANGUAGE
-- Use words that village farmers actually speak daily
-- AVOID formal/technical/bookish language
+⚠️ GENERATE ALL CONTENT IN ${languageName.toUpperCase()} (${language}) USING PURE RURAL VILLAGE LANGUAGE
+
+### Language Style Rules:
+- Use words village farmers actually speak DAILY
+- AVOID formal/technical/bookish/textbook language
 - AVOID mixing English words in the response
-- For Marathi: Use "पाणी द्या" NOT "सिंचन करा", Use "खत टाका" NOT "खत व्यवस्थापन"
-- For Hindi: Use "पानी दो" NOT "सिंचाई करें", Use "खाद डालो" NOT "उर्वरक प्रबंधन"
-- Be respectful and warm like an elder farmer advising a younger one
+- Be warm, respectful - like a wise elder farmer advising a younger one
+- Address farmer respectfully (भाऊ/भाई/அண்ணா based on language)
+
+### FORBIDDEN formal terms → USE INSTEAD:
+- ❌ "सिंचन प्रबंधन करें" → ✅ "पाणी द्या" / "पानी दो"
+- ❌ "उर्वरक व्यवस्थापन" → ✅ "खत टाका" / "खाद डालो"
+- ❌ "कीटनाशक अनुप्रयोग" → ✅ "औषध फवारा" / "दवाई छिड़को"
+- ❌ "फसल संरक्षण" → ✅ "पीक राखा" / "फसल बचाओ"
+- ❌ "आर्द्रता बनाए रखें" → ✅ "ओलसर ठेवा" / "गीला रखो"
+- ❌ "रोग निवारण" → ✅ "रोग थांबवा" / "बीमारी रोको"
 
 ## CROP INFORMATION:
 - Crop Name (USE THIS EXACTLY): ${localizedCrop.local}
 - English Name: ${localizedCrop.english}
-- ⚠️ ALWAYS write crop name as "${localizedCrop.local}" - DO NOT translate or change this!
+- ⚠️ ALWAYS write crop name as "${localizedCrop.local}" - DO NOT translate differently!
 - Sowing/Planting Date: ${sowingDate}
 - Planting Method: ${plantingMethod}
 - ${plantingInstructions}
+- Days to Maturity: ${daysToMaturity[0]}-${daysToMaturity[1]} days
+${criticalStages.length > 0 ? `- Critical Growth Stages: ${criticalStages.join(', ')}` : ''}
 
 ## FARMER'S LAND DETAILS:
 - Location: ${land.village || ''}, ${land.district}, ${land.state}, India
 - Total Area: ${land.area_acres} acres (${(land.area_acres * 0.404686).toFixed(2)} hectares)
-- Soil Type: ${land.soil_type || 'Black soil (assumed)'}
-- Irrigation Source: ${land.irrigation_type || 'Borewell/Well (assumed)'}
-- GPS Coordinates: ${land.coordinates?.[0] || 'Not available'}
+- Soil Type: ${land.soil_type || 'Not specified (assume Black soil)'}
+- Irrigation: ${land.irrigation_type || 'Borewell/Well (assumed)'}
+- GPS: ${land.coordinates?.[0] || 'Not available'}
 
-${buildSoilContext()}
+## SOIL HEALTH ANALYSIS:
+| Nutrient | Current (kg/ha) | Required (kg/ha) | Deficit | Status | Action |
+|----------|-----------------|------------------|---------|--------|--------|
+| Nitrogen (N) | ${currentN} | ${target.n} | ${nDeficit.toFixed(0)} | ${nDeficit > 50 ? '🔴 CRITICAL' : nDeficit > 20 ? '🟡 LOW' : '🟢 OK'} | ${nDeficit > 50 ? 'URGENT: Add urea!' : nDeficit > 20 ? 'Add supplemental N' : 'Maintain'} |
+| Phosphorus (P) | ${currentP} | ${target.p} | ${pDeficit.toFixed(0)} | ${pDeficit > 30 ? '🔴 CRITICAL' : pDeficit > 15 ? '🟡 LOW' : '🟢 OK'} | ${pDeficit > 30 ? 'URGENT: Add DAP!' : pDeficit > 15 ? 'Add supplemental P' : 'Maintain'} |
+| Potassium (K) | ${currentK} | ${target.k} | ${kDeficit.toFixed(0)} | ${kDeficit > 30 ? '🔴 CRITICAL' : kDeficit > 15 ? '🟡 LOW' : '🟢 OK'} | ${kDeficit > 30 ? 'URGENT: Add MOP!' : kDeficit > 15 ? 'Add supplemental K' : 'Maintain'} |
 
-${buildWeatherContext()}
+## FERTILIZER CALCULATIONS (for ${land.area_acres} acres):
+### Tier 1 - ORGANIC (Primary - Always Recommend First):
+- FYM/Compost: ${fymRecommendation} tons (~₹${(Number(fymRecommendation) * 500).toFixed(0)})
+- Vermicompost: ${(land.area_acres * 0.5).toFixed(1)} tons (~₹${(land.area_acres * 0.5 * 2000).toFixed(0)})
+- Neem Cake: ${(land.area_acres * 50).toFixed(0)} kg (~₹${(land.area_acres * 50 * 30).toFixed(0)})
+
+### Tier 2 - BIOFERTILIZERS:
+- Azotobacter: ${land.area_acres} packets (N fixation)
+- PSB: ${land.area_acres} packets (P solubilization)
+${cropName.toLowerCase().includes('soy') || cropName.toLowerCase().includes('gram') || cropName.toLowerCase().includes('pea') ? `- Rhizobium: ${land.area_acres} packets (For legumes)` : ''}
+
+### Tier 3 - CHEMICAL (Gap Filling Only):
+- Urea (46% N): ${ureaCalc} kg (~₹${(Number(ureaCalc) * 6).toFixed(0)})
+- DAP (18-46-0): ${dapCalc} kg (~₹${(Number(dapCalc) * 27).toFixed(0)})
+- MOP (0-0-60): ${mopCalc} kg (~₹${(Number(mopCalc) * 18).toFixed(0)})
+- SSP (16% P, 11% S): ${sspCalc} kg (~₹${(Number(sspCalc) * 9).toFixed(0)})
+
+${weather?.current ? `
+## CURRENT WEATHER DATA (${land.district}):
+- Temperature: ${weather.current.temperature || weather.current.temp || 'N/A'}°C
+- Humidity: ${weather.current.humidity || 'N/A'}%
+- Wind: ${weather.current.wind_speed || 'N/A'} km/h
+- Conditions: ${weather.current.weather_description || weather.current.main || 'Normal'}
+
+### WEATHER-BASED ADVISORIES:
+${weather.current.temperature > 35 || weather.current.temp > 35 ? '🔴 HIGH TEMP: Schedule irrigation for early morning (5-7 AM) or evening (5-7 PM). Warn about heat stress.' : ''}
+${weather.current.temperature < 10 || weather.current.temp < 10 ? '🔴 LOW TEMP: Frost risk - delay sensitive operations. Apply potash for cold tolerance.' : ''}
+${weather.current.humidity > 80 ? '🟡 HIGH HUMIDITY: Increased fungal disease risk. Include preventive fungicide.' : ''}
+${weather.current.humidity < 40 ? '🟡 LOW HUMIDITY: Increase irrigation frequency. Consider mulching.' : ''}
+` : ''}
 
 ${ndviStatus ? `
-## SATELLITE CROP HEALTH DATA (NDVI):
-- Current NDVI Value: ${ndviStatus.value.toFixed(2)}
-- Health Status: ${ndviStatus.value > 0.6 ? 'GOOD' : ndviStatus.value > 0.4 ? 'MODERATE' : ndviStatus.value > 0.2 ? 'POOR' : 'CRITICAL'}
-- Recommendation: ${ndviStatus.value < 0.4 ? 'Increase fertilizer dose by 25%' : 'Normal fertilizer application'}
+## SATELLITE CROP HEALTH (NDVI):
+- Current Value: ${ndviStatus.value.toFixed(2)}
+- Health Status: ${ndviStatus.status}
+- Recommendation: ${ndviStatus.action}
 ` : ''}
 
 ${suitabilityCheck.warnings.length > 0 ? `
-## ⚠️ REGIONAL SUITABILITY WARNINGS:
+## ⚠️ REGIONAL WARNINGS (MUST ADDRESS IN SCHEDULE):
 ${suitabilityCheck.warnings.map((w: string) => `- ${w}`).join('\n')}
 
-IMPORTANT: Incorporate mitigation strategies for these warnings in your schedule!
+🎯 IMPORTANT: Include MITIGATION STRATEGIES for each warning in relevant tasks!
 ` : ''}
 
-## SCHEDULE REQUIREMENTS:
+## SCHEDULE GENERATION RULES:
 
 ### Task Timeline (days_from_sowing):
-- Days -15 to -1: Pre-sowing activities (land preparation, input procurement)
+- Days -15 to -1: Pre-sowing activities (land prep, inputs)
 - Day 0: Sowing/Planting day
 - Days 1+: Post-sowing activities
 
-### REQUIRED STAGES (Generate 12-18 tasks covering ALL):
+### MANDATORY STAGES (Generate 15-18 comprehensive tasks):
+
+#### A. PRE-PLANTING PHASE (Days -15 to -1):
 ${isReadyMadePlant ? `
-1. Land Preparation (plowing, harrowing, bed/furrow making) - Days -15 to -7
-2. Ready plant/sets procurement and quality inspection - Days -5 to -2
-3. Transplanting with proper spacing and depth - Day 0
-4. Immediate first irrigation after transplanting - Day 0-1
+1. Land Preparation (plowing, harrowing, bed/ridge making) - Days -15 to -10
+2. Soil amendments (lime/gypsum if needed) - Days -12 to -10
+3. Basal fertilizer application (FYM + DAP + MOP) - Days -5 to -3
+4. Ready plant/sets procurement and quality inspection - Days -3 to -1
+5. Field marking and irrigation channels - Days -2 to -1
 ` : `
-1. Land Preparation (plowing, harrowing, bed/furrow making) - Days -15 to -7
-2. Seed selection, quality check, and purchase - Days -7 to -5
-3. Seed treatment (fungicide + insecticide coating) - Days -3 to -1
-4. Sowing with proper spacing and depth - Day 0
-5. Immediate first irrigation after sowing - Day 0-1
+1. Land Preparation (deep plowing, harrowing, planking) - Days -15 to -10
+2. Soil amendments (lime/gypsum if pH imbalance) - Days -12 to -10
+3. Basal fertilizer application (FYM + DAP + MOP) - Days -5 to -3
+4. Seed selection and quality test - Days -5 to -3
+5. Seed treatment (fungicide + insecticide + biofertilizer) - Days -2 to -1
+6. Field marking and bed preparation - Days -2 to -1
 `}
-6. First weeding/hoeing - Days 15-25
-7. First fertilizer dose (FYM + basal NPK) - Days 0-5
-8. Second fertilizer dose (Urea top dressing) - Days 25-35
-9. Third fertilizer dose (if needed) - Days 50-65
-10. Integrated Pest Management (scouting + spray) - Days 30-40
-11. Disease Management (preventive + curative) - Days 40-55
-12. Critical growth stage irrigation - Multiple points
-13. Micronutrient spray (if deficiency observed) - Days 45-60
-14. Second pest/disease spray (if needed) - Days 60-75
-15. Pre-harvest preparation - Days before harvest
-16. Harvesting at optimal maturity - Final stage
-17. Post-harvest handling and storage - After harvest
 
-## YIELD OPTIMIZATION RULES (for 3X-5X yield increase):
+#### B. PLANTING PHASE (Day 0-3):
+${isReadyMadePlant ? `
+7. Transplanting with proper spacing and depth - Day 0
+8. Immediate first irrigation - Day 0-1
+9. Gap filling (replanting dead seedlings) - Days 5-7
+` : `
+7. Sowing with optimal spacing and depth - Day 0
+8. First irrigation (immediately after sowing) - Day 0-1
+9. Germination monitoring and gap filling - Days 7-10
+`}
 
-### 1. TIMING IS EVERYTHING:
-- On-time operations = +25-35% yield increase
-- Delayed operations = -30-50% yield LOSS
-- Golden rule: "Right input, right time, right quantity"
+#### C. VEGETATIVE PHASE:
+10. First weeding/hoeing - Days 15-25
+11. First top dressing (Urea) - Days 20-30
+12. Pest scouting and IPM traps installation - Days 20-30
+
+#### D. ACTIVE GROWTH PHASE:
+13. Second weeding or herbicide - Days 35-45
+14. Second top dressing - Days 40-50
+15. Disease management (preventive + curative) - Days 45-55
+16. Micronutrient spray - Days 50-60
+
+#### E. REPRODUCTIVE PHASE:
+17. Critical stage irrigation (flowering) - Days 60-75
+18. Third top dressing (if needed) - Days 65-75
+19. Pest management (bollworm/borer control) - Days 70-85
+
+#### F. MATURATION & HARVEST:
+20. Pre-harvest preparation - Days -10 to -5 before harvest
+21. Harvest at optimal maturity - Final stage
+22. Post-harvest handling and storage - After harvest
+
+## YIELD OPTIMIZATION RULES (3X-5X INCREASE):
+
+### 1. TIMING IS EVERYTHING (Golden Rule):
+- On-time operations = +25-40% yield INCREASE
+- 7-day delay = -15-25% yield LOSS
+- 14-day delay = -30-50% yield LOSS
+- "Right input, right time, right quantity, right method"
 
 ### 2. SPLIT FERTILIZER APPLICATION:
-- NEVER apply all fertilizer at once (waste + pollution)
-- Urea: Apply in 3-4 splits for maximum efficiency
-- DAP/MOP: Apply as basal dose at sowing
+- NEVER apply all nitrogen at once (waste + pollution + lodging)
+- Urea: Split into 3-4 doses at critical stages
+- DAP/MOP: Mostly as basal dose
+- Follow 50-25-25 or 40-30-20-10 split for nitrogen
 
 ### 3. INTEGRATED PEST MANAGEMENT (IPM):
-- Scout fields weekly for pest/disease symptoms
-- Use pheromone traps, yellow sticky traps
-- Chemical spray only when Economic Threshold Level (ETL) reached
-- IPM reduces pesticide cost by 40%
+- Install pheromone traps: ${Math.ceil(land.area_acres * 5)}/acre
+- Yellow sticky traps: ${Math.ceil(land.area_acres * 10)}/acre
+- Scout fields every 3-4 days
+- Chemical spray ONLY when ETL (Economic Threshold Level) crossed
+- IPM = 40% pesticide cost reduction
 
 ### 4. WATER MANAGEMENT:
 - Drip irrigation = 40% water saving + 20% yield increase
-- Critical stages: Flowering, grain filling (never stress at these times)
-- Avoid waterlogging (causes root rot)
+- Critical stages: NEVER stress during flowering, grain filling
+- Avoid waterlogging (causes root rot, 50% yield loss)
 
 ### 5. SOIL HEALTH FIRST:
-- Always recommend FYM/compost for long-term soil health
-- Green manuring where possible
+- Always include FYM/compost - improves soil structure
+- Green manuring if time permits
 - Avoid excessive chemical fertilizers
+- Maintain soil organic carbon > 0.5%
 
-### 6. COMMON MISTAKES TO WARN AGAINST:
-- Excess urea = leafy growth, poor grain/fruit
-- Excess water = root rot, fungal diseases
-- Wrong spray timing = wasted money
-- Delayed harvesting = quality loss
+## ACTIVE INGREDIENT TRANSPARENCY (MANDATORY):
+For EVERY pesticide/fungicide/herbicide, MUST provide:
+1. Brand name(s): 2-3 popular Indian brands
+2. Generic name
+3. Active Ingredient with percentage
+4. Chemical class/group number (for resistance management)
+5. Dosage per acre (in ml or gm)
+6. Water volume for spray (liters)
+7. Pre-Harvest Interval (PHI) in days
+8. Safety precautions
 
-## COST OPTIMIZATION RULES:
-1. Calculate EXACT quantities for ${land.area_acres} acres (not generic)
-2. Show current market prices in ₹ (Indian Rupees)
-3. Recommend cost-effective alternatives where available
-4. Show potential ROI for each major input
-5. Suggest government subsidies if applicable (PM-KISAN, PKVY)
+Example format:
+"Product: Confidor / Tatamida / Admire
+Generic: Imidacloprid 17.8% SL
+Group: 4A (Neonicotinoid)
+Dosage: 80-100 ml/acre in 200L water
+PHI: 21 days (harvest के 21 दिन पहले बंद करो)"
+
+## TASK PRIORITIZATION (Include in each task):
+- Priority: critical/high/medium/low
+- Can be delayed: Yes/No (by how many days)
+- Skip penalty: What happens if skipped (yield loss %)
+- Weather dependent: Yes/No
+
+## ECONOMIC ANALYSIS (Include in schedule):
+Calculate transparent cost breakdown:
+- Total input cost for ${land.area_acres} acres
+- Expected yield range (conservative/average/optimal)
+- Expected revenue at current market prices
+- Net profit projection
+- Break-even yield
+- ROI percentage
 
 ## OUTPUT QUALITY REQUIREMENTS:
 
 ### Each task MUST have:
-1. **task_name**: Clear name in ${languageName} rural language (include crop name "${localizedCrop.local}")
-2. **description**: WHY this task is important (2-3 sentences, village language)
-3. **quantity**: EXACT amounts for ${land.area_acres} acres (e.g., "${(land.area_acres * 25).toFixed(0)} kg", "${(land.area_acres * 1000).toFixed(0)} liters")
-4. **instructions**: 3-5 actionable steps (HOW to do)
-5. **precautions**: 2-4 safety warnings (mask, gloves, timing)
-6. **estimated_cost**: Cost in ₹ for this task
-7. **ideal_weather**: Temperature, humidity, conditions
+1. **task_name**: Clear, action-oriented in ${languageName} rural language (include "${localizedCrop.local}")
+2. **description**: WHY important (2-3 sentences, village language, include consequence of not doing)
+3. **quantity**: EXACT for ${land.area_acres} acres (e.g., "${(land.area_acres * 25).toFixed(0)} kg")
+4. **product_details**: Brand + Generic + Active Ingredient + % (for chemicals)
+5. **instructions**: 3-5 step-by-step HOW TO DO
+6. **precautions**: 2-4 safety warnings (mask, gloves, timing, re-entry)
+7. **estimated_cost**: Cost in ₹ for this task
+8. **yield_impact**: How this affects yield (e.g., "+20% if on time, -30% if skipped")
+9. **skip_penalty**: What happens if skipped (in farmer language)
+10. **ideal_weather**: Temperature, humidity, conditions needed
 
-### SCIENTIFIC REFERENCES (Include in tasks):
+## SCIENTIFIC REFERENCES:
+- Source: ${target.source}
 - ICAR Package of Practices for ${cropName}
 - ${land.state} State Agricultural University guidelines
-- KVK (Krishi Vigyan Kendra) recommendations
-- Relevant government schemes
+- KVK ${land.district} recommendations
 
-## TOKEN EFFICIENCY:
-- Be concise but complete
-- Avoid repetition across tasks
-- Focus on actionable, practical advice`;
+## CONTINGENCY PLANS (Include where relevant):
+- Drought scenario: Life-saving irrigation, anti-transpirant
+- Flood scenario: Drainage, fungicide for root rot
+- Pest outbreak: Emergency contact, alternative pesticides
+- Market timing: When to sell for best price
+
+## REMEMBER:
+This farmer is trusting you with their family's livelihood. One wrong advice = 6 months of income lost.
+BE ACCURATE. BE THOROUGH. BE CARING. BE PRACTICAL.`;
     };
 
-    // Simplified English User Prompt
-    const getEnglishUserPrompt = (): string => {
-      return `Generate a comprehensive crop schedule for:
+    // User Prompt
+    const getEnhancedUserPrompt = (): string => {
+      return `Generate a COMPREHENSIVE crop schedule for:
 
-CROP: ${localizedCrop.local} (${localizedCrop.english})
-LOCATION: ${land.district}, ${land.state}, India
-LAND AREA: ${land.area_acres} acres
-SOWING DATE: ${sowingDate}
-PLANTING METHOD: ${isReadyMadePlant ? 'Ready plants/sets (transplanting)' : 'Direct seed sowing'}
-${cropVariety ? `VARIETY: ${cropVariety}` : ''}
+🌾 CROP: ${localizedCrop.local} (${localizedCrop.english})
+📍 LOCATION: ${land.district}, ${land.state}, India
+📐 AREA: ${land.area_acres} acres
+📅 SOWING DATE: ${sowingDate}
+🌱 METHOD: ${isReadyMadePlant ? 'Ready plants/sets (transplanting)' : 'Direct seed sowing'}
+${cropVariety ? `🏷️ VARIETY: ${cropVariety}` : ''}
 
 REQUIREMENTS:
-1. Generate 12-18 detailed tasks covering entire crop cycle
-2. Output ALL content in ${languageName} rural village language
-3. Use crop name "${localizedCrop.local}" exactly (do not translate)
-4. Calculate exact quantities for ${land.area_acres} acres
-5. Include current market prices in ₹
-6. Provide step-by-step instructions a village farmer can follow
-7. Include ICAR/KVK references for credibility
-8. Focus on 3X-5X yield increase at low cost
+1. Generate 15-18 detailed tasks covering ENTIRE crop cycle (pre-sowing to post-harvest)
+2. Output ALL content in ${languageName} RURAL VILLAGE LANGUAGE (not formal/bookish)
+3. Use crop name "${localizedCrop.local}" exactly - DO NOT translate differently
+4. Calculate EXACT quantities for ${land.area_acres} acres
+5. Include ACTIVE INGREDIENT details for all chemicals (Brand + Generic + AI%)
+6. Provide step-by-step instructions a VILLAGE FARMER can follow
+7. Include ICAR/KVK/University references for credibility
+8. Focus on achieving 3X-5X YIELD at MINIMUM COST
+9. Include cost breakdown and profit projection
+10. Add weather-based advisories and contingency plans
 
-Generate the complete schedule now.`;
+CRITICAL: Every task must have yield_impact and skip_penalty to help farmer understand importance.
+
+Generate the complete world-class schedule now.`;
     };
 
-    // Token estimation for logging
-    const estimateTokens = (text: string): number => Math.ceil(text.length / 4);
-
-    const systemPrompt = getEnglishSystemPrompt();
-    const userPrompt = getEnglishUserPrompt();
+    const systemPrompt = getWorldClassSystemPrompt();
+    const userPrompt = getEnhancedUserPrompt();
     
+    const estimateTokens = (text: string): number => Math.ceil(text.length / 4);
     console.log(`📊 Token Estimate: System=${estimateTokens(systemPrompt)}, User=${estimateTokens(userPrompt)}, Total≈${estimateTokens(systemPrompt) + estimateTokens(userPrompt)}`);
     console.log(`🌍 Language: ${languageName} (${language}) - AI will output in this language`);
 
-    // 8. Call OpenAI with SIMPLIFIED but FOCUSED schema for better task generation
+    // 9. Call OpenAI with comprehensive schema
     const aiRequestBody = {
       model: AI_CONFIG.MODEL,
       max_completion_tokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
@@ -993,7 +1095,7 @@ Generate the complete schedule now.`;
         type: "function",
         function: {
           name: "create_crop_schedule",
-          description: `Generate 12-18 task schedule for ${localizedCrop.local} (${localizedCrop.english}). Output in ${languageName} rural language. Use crop name "${localizedCrop.local}" exactly.`,
+          description: `Generate 15-18 task schedule for ${localizedCrop.local}. Output in ${languageName} rural language. Use crop name "${localizedCrop.local}" exactly.`,
           parameters: {
             type: "object",
             properties: {
@@ -1004,22 +1106,27 @@ Generate the complete schedule now.`;
               crop_variety: { type: "string", description: "Best variety for region" },
               crop_season: { type: "string", description: "Kharif/Rabi/Zaid" },
               total_duration_days: { type: "integer", description: "Days from sowing to harvest" },
-              expected_yield_quintals: { type: "number", description: `Expected yield for ${land.area_acres} acres` },
               expected_yield_per_acre: { type: "number", description: "Yield per acre (quintals)" },
+              expected_yield_quintals: { type: "number", description: `Total expected yield for ${land.area_acres} acres` },
               total_estimated_cost: { type: "number", description: "Total input cost (₹)" },
-              expected_profit: { type: "number", description: "Expected profit (₹)" },
+              expected_revenue: { type: "number", description: "Expected revenue at market price (₹)" },
+              expected_profit: { type: "number", description: "Expected net profit (₹)" },
+              roi_percentage: { type: "number", description: "Return on Investment %" },
+              break_even_yield: { type: "number", description: "Minimum yield to cover costs (quintals)" },
               yield_optimization_notes: { 
                 type: "string", 
                 description: `Key tips for 3X-5X yield in ${languageName} rural language`
               },
               icar_reference: { type: "string", description: "ICAR Package reference" },
+              university_reference: { type: "string", description: "State University reference" },
               suitability_notes: { type: "string", description: `Region suitability notes in ${languageName}` },
               organic_inputs: {
                 type: "object",
                 properties: {
                   fym_tons: { type: "number" },
                   vermicompost_kg: { type: "number" },
-                  neem_cake_kg: { type: "number" }
+                  neem_cake_kg: { type: "number" },
+                  biofertilizers: { type: "string" }
                 }
               },
               chemical_fertilizers: {
@@ -1027,15 +1134,25 @@ Generate the complete schedule now.`;
                 properties: {
                   urea_kg: { type: "number" },
                   dap_kg: { type: "number" },
-                  mop_kg: { type: "number" }
+                  mop_kg: { type: "number" },
+                  ssp_kg: { type: "number" },
+                  micronutrients: { type: "string" }
                 }
               },
-              seed_details: { type: "string", description: "Seed treatment and quantity" },
+              seed_details: {
+                type: "object",
+                properties: {
+                  variety: { type: "string" },
+                  seed_rate_kg: { type: "number" },
+                  treatment: { type: "string" },
+                  source: { type: "string" }
+                }
+              },
               tasks: {
                 type: "array",
-                minItems: 12,
+                minItems: 15,
                 maxItems: 18,
-                description: `12-18 tasks for ${localizedCrop.local} - all stages`,
+                description: `15-18 comprehensive tasks for ${localizedCrop.local}`,
                 items: {
                   type: "object",
                   properties: {
@@ -1045,13 +1162,15 @@ Generate the complete schedule now.`;
                     },
                     category: { 
                       type: "string",
-                      enum: ["soil_preparation", "sowing", "irrigation", "fertilizer", "pest_control", "weed_management", "growth_monitoring", "harvesting", "post_harvest"]
+                      enum: ["land_preparation", "soil_amendment", "seed_treatment", "sowing", "irrigation", "fertilizer_organic", "fertilizer_chemical", "pest_control", "disease_control", "weed_management", "growth_monitoring", "micronutrient", "harvesting", "post_harvest"]
                     },
                     days_from_sowing: { 
                       type: "integer", 
                       description: "-15 to -1 pre-sowing, 0 sowing, 1+ post-sowing"
                     },
                     priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
+                    can_be_delayed: { type: "boolean" },
+                    max_delay_days: { type: "integer" },
                     description: { 
                       type: "string", 
                       description: `WHY important - 2-3 sentences in ${languageName} village language`
@@ -1062,8 +1181,12 @@ Generate the complete schedule now.`;
                     },
                     product_details: { 
                       type: "string", 
-                      description: "Product name + brand. E.g., 'युरिया - IFFCO'"
+                      description: "Brand + Generic + Active Ingredient %. E.g., 'Confidor/Tatamida - Imidacloprid 17.8% SL'"
                     },
+                    chemical_group: { type: "string", description: "Resistance management group (e.g., Group 4A)" },
+                    dosage_per_acre: { type: "string", description: "Exact dosage per acre" },
+                    water_volume_liters: { type: "number", description: "Spray water volume in liters" },
+                    pre_harvest_interval_days: { type: "integer", description: "PHI - days before harvest to stop" },
                     estimated_cost: { type: "number", description: "Cost in ₹" },
                     instructions: { 
                       type: "array", 
@@ -1076,38 +1199,40 @@ Generate the complete schedule now.`;
                       type: "array", 
                       items: { type: "string" },
                       minItems: 2,
-                      maxItems: 4,
-                      description: `Safety tips in ${languageName}. E.g., mask, gloves`
-                    },
-                    cost_saving_tip: {
-                      type: "string",
-                      description: `How to save money on this task - in ${languageName}`
+                      maxItems: 5,
+                      description: `Safety tips including mask, gloves, timing, re-entry interval`
                     },
                     yield_impact: {
                       type: "string",
-                      description: `How this affects yield. E.g., '+20% if on time' - in ${languageName}`
+                      description: `How this affects yield. E.g., '+25% if on time, -30% if late'`
                     },
                     skip_penalty: {
                       type: "string",
-                      description: `What happens if skipped. E.g., '30% yield loss' - in ${languageName}`
+                      description: `Consequence of skipping. E.g., '40% yield loss, pest outbreak'`
+                    },
+                    cost_saving_tip: {
+                      type: "string",
+                      description: `How to save money. E.g., 'Use own FYM instead of buying'`
                     },
                     weather_dependent: { type: "boolean" },
-                    icar_guideline: { type: "string", description: "ICAR reference" },
                     ideal_weather: {
                       type: "object",
                       properties: {
                         temperature: { type: "string", description: "E.g., '20-30°C'" },
                         humidity: { type: "string", description: "E.g., '60-80%'" },
-                        conditions: { type: "string", description: `In ${languageName}` }
+                        conditions: { type: "string", description: `Weather in ${languageName}` },
+                        avoid_conditions: { type: "string", description: "When NOT to do this task" }
                       },
                       required: ["temperature", "humidity", "conditions"]
-                    }
+                    },
+                    icar_guideline: { type: "string", description: "ICAR/KVK reference" },
+                    alternative_option: { type: "string", description: "Alternative if primary not available" }
                   },
-                  required: ["task_name", "category", "days_from_sowing", "priority", "description", "quantity", "instructions", "precautions", "ideal_weather"]
+                  required: ["task_name", "category", "days_from_sowing", "priority", "description", "quantity", "instructions", "precautions", "yield_impact", "skip_penalty", "ideal_weather"]
                 }
               }
             },
-            required: ["crop_name", "total_duration_days", "tasks", "icar_reference", "total_estimated_cost", "expected_yield_quintals"]
+            required: ["crop_name", "total_duration_days", "tasks", "icar_reference", "total_estimated_cost", "expected_yield_quintals", "expected_profit"]
           }
         }
       }],
@@ -1144,7 +1269,7 @@ Generate the complete schedule now.`;
     console.log(`✅ [AI Response] ${scheduleData.crop_name}: ${scheduleData.total_duration_days} days, ${scheduleData.tasks?.length || 0} tasks generated`);
     console.log(`📝 [Language] Response language: ${language}, Tasks sample: ${scheduleData.tasks?.[0]?.task_name || 'N/A'}`);
 
-    // CRITICAL: Validate and fix crop name if AI returned wrong translation
+    // CRITICAL: Validate and fix crop name
     if (scheduleData.crop_name !== localizedCrop.local) {
       console.warn(`⚠️ [CropName] AI returned wrong crop name: "${scheduleData.crop_name}" instead of "${localizedCrop.local}" - FIXING!`);
       scheduleData.crop_name = localizedCrop.local;
@@ -1155,107 +1280,102 @@ Generate the complete schedule now.`;
       throw new Error('AI returned empty schedule');
     }
 
-    // Validate minimum task count - warn if less than 10
-    if (scheduleData.tasks.length < 10) {
-      console.warn(`⚠️ [Quality] Only ${scheduleData.tasks.length} tasks generated, expected 12-18`);
+    // Validate minimum task count
+    if (scheduleData.tasks.length < 12) {
+      console.warn(`⚠️ [Quality] Only ${scheduleData.tasks.length} tasks generated, expected 15-18`);
     }
 
-    // 9. POST-PROCESSING: Fix null/empty values and ensure quality
+    // 10. POST-PROCESSING: Fix null/empty values and ensure quality
     const defaultPrecautions = language === 'mr' 
-      ? ["औषध फवारताना तोंडावर कापड बांधा", "पोरांना दूर ठेवा", "हातात ग्लोव्ह्ज घाला"]
-      : ["दवाई छिड़कते वक्त मुंह पर कपड़ा बांधो", "बच्चों को दूर रखो", "हाथों में दस्ताने पहनो"];
+      ? ["औषध फवारताना तोंडावर कापड/मास्क बांधा", "हातात रबरी ग्लोव्ह्ज घाला", "पोरांना आणि जनावरांना दूर ठेवा", "फवारणीनंतर अंघोळ करा"]
+      : ["दवाई छिड़कते वक्त मुंह पर मास्क बांधो", "हाथों में रबर के दस्ताने पहनो", "बच्चों और जानवरों को दूर रखो", "छिड़काव के बाद नहा लो"];
 
-    scheduleData.tasks = scheduleData.tasks.map((task: any) => {
-      // Fix precautions - ensure it's an array with meaningful values
+    scheduleData.tasks = scheduleData.tasks.map((task: any, index: number) => {
+      // Fix precautions
       if (!task.precautions || !Array.isArray(task.precautions) || task.precautions.length < 2) {
         task.precautions = defaultPrecautions;
       } else {
-        // Filter out empty strings and single characters
         task.precautions = task.precautions.filter((p: string) => p && p.length > 3);
         if (task.precautions.length < 2) {
           task.precautions = defaultPrecautions;
         }
       }
 
-      // Fix instructions - ensure array
+      // Fix instructions
       if (!task.instructions || !Array.isArray(task.instructions) || task.instructions.length === 0) {
         task.instructions = [task.description || "कृपया विवरण देखें"];
       }
 
       // Ensure quantity has value
       if (!task.quantity || task.quantity === 'null' || task.quantity.trim() === '') {
-        if (task.category === 'irrigation') {
+        if (task.category?.includes('irrigation')) {
           task.quantity = `${(land.area_acres * 1000).toFixed(0)} लीटर पानी`;
-        } else if (task.category === 'fertilizer') {
-          task.quantity = `${(land.area_acres * 25).toFixed(0)} kg खाद`;
-        } else if (task.category === 'pest_control') {
-          task.quantity = `${(land.area_acres * 0.5).toFixed(1)} लीटर दवाई`;
+        } else if (task.category?.includes('fertilizer')) {
+          task.quantity = `${(land.area_acres * 25).toFixed(0)} kg`;
+        } else if (task.category?.includes('pest') || task.category?.includes('disease')) {
+          task.quantity = `${(land.area_acres * 200).toFixed(0)} लीटर spray solution`;
         } else {
           task.quantity = `${land.area_acres} एकड़ के हिसाब से`;
         }
       }
 
-      // Ensure product_details has value for relevant tasks
+      // Ensure yield_impact and skip_penalty
+      if (!task.yield_impact) {
+        task.yield_impact = task.priority === 'critical' 
+          ? (language === 'mr' ? 'वेळेवर केलं तर +25% उत्पादन, उशीर केला तर -30% नुकसान' : 'समय पर करो तो +25% उत्पादन, देर की तो -30% नुकसान')
+          : (language === 'mr' ? 'चांगल्या उत्पादनासाठी महत्त्वाचं' : 'अच्छे उत्पादन के लिए जरूरी');
+      }
+      
+      if (!task.skip_penalty) {
+        task.skip_penalty = task.priority === 'critical'
+          ? (language === 'mr' ? 'न केलं तर 30-40% पीक खराब होईल' : 'नहीं किया तो 30-40% फसल खराब होगी')
+          : (language === 'mr' ? 'उत्पादन कमी होऊ शकतं' : 'उत्पादन कम हो सकता है');
+      }
+
+      // Ensure product_details for relevant tasks
       if (!task.product_details || task.product_details === 'null') {
-        if (task.category === 'fertilizer') {
-          task.product_details = "यूरिया (46% नाइट्रोजन) या DAP (18% N + 46% P)";
-        } else if (task.category === 'pest_control' || task.category === 'pesticide') {
-          task.product_details = "इमिडाक्लोप्रिड 17.8% SL या क्लोरपायरीफॉस 20% EC";
-        } else if (task.category === 'soil_preparation') {
-          task.product_details = "गोबर खाद 2-3 टन/एकड़ या वर्मीकंपोस्ट";
-        } else {
-          task.product_details = "स्थानीय बाजार से उपलब्ध सामग्री";
+        if (task.category?.includes('fertilizer_chemical')) {
+          task.product_details = "यूरिया (46% N) - IFFCO/KRIBHCO | DAP (18-46-0) - IFFCO";
+        } else if (task.category?.includes('pest') || task.category === 'pesticide') {
+          task.product_details = "Confidor/Tatamida - Imidacloprid 17.8% SL (Group 4A)";
+        } else if (task.category?.includes('disease')) {
+          task.product_details = "Ridomil Gold/Krilaxyl - Metalaxyl-M + Mancozeb 68% WP";
+        } else if (task.category?.includes('weed')) {
+          task.product_details = "Atrazine 50% WP / Pendimethalin 30% EC";
         }
       }
 
       // Ensure ICAR guideline
       if (!task.icar_guideline || task.icar_guideline === 'null') {
-        task.icar_guideline = `ICAR ${cropName} Package of Practice ${new Date().getFullYear()} अनुसार`;
-      }
-
-      // Ensure climate risk
-      if (!task.climate_risk || task.climate_risk === 'null') {
-        if (task.weather_dependent) {
-          if (task.category === 'irrigation') {
-            task.climate_risk = language === 'mr' ? "बारिश असताना पाणी देऊ नको" : "बारिश में पानी मत दो";
-          } else if (task.category === 'pest_control') {
-            task.climate_risk = language === 'mr' ? "पाऊस किंवा तेज वारा असताना फवारणी करू नको" : "बारिश या तेज हवा में दवाई मत छिड़को";
-          } else if (task.category === 'fertilizer') {
-            task.climate_risk = language === 'mr' ? "पाऊस पडण्यापूर्वी खत टाक" : "बारिश से पहले खाद डालो";
-          } else {
-            task.climate_risk = language === 'mr' ? "अति पाऊस किंवा उन्हापासून वाचवा" : "ज्यादा बारिश या धूप से बचाओ";
-          }
-        }
+        task.icar_guideline = `ICAR-${target.source} Package of Practices ${new Date().getFullYear()}`;
       }
 
       // Ensure ideal_weather
       if (!task.ideal_weather || typeof task.ideal_weather !== 'object') {
         task.ideal_weather = {
-          temperature: "25-30°C",
-          humidity: "60-70%",
-          conditions: language === 'mr' ? "स्वच्छ हवामान" : "साफ मौसम"
+          temperature: "25-32°C",
+          humidity: "60-75%",
+          conditions: language === 'mr' ? "स्वच्छ/ढगाळ हवामान" : "साफ/बादल वाला मौसम",
+          avoid_conditions: language === 'mr' ? "पाऊस किंवा तेज वारा" : "बारिश या तेज हवा"
         };
       } else {
-        // Ensure all fields exist
-        if (!task.ideal_weather.temperature) task.ideal_weather.temperature = "25-30°C";
-        if (!task.ideal_weather.humidity) task.ideal_weather.humidity = "60-70%";
+        if (!task.ideal_weather.temperature) task.ideal_weather.temperature = "25-32°C";
+        if (!task.ideal_weather.humidity) task.ideal_weather.humidity = "60-75%";
         if (!task.ideal_weather.conditions) task.ideal_weather.conditions = language === 'mr' ? "स्वच्छ हवामान" : "साफ मौसम";
       }
 
       return task;
     });
 
-    // 10. Deactivate old schedules if regenerating
+    // 11. Deactivate old schedules if regenerating
     if (regenerate) {
       await supabase.from('crop_schedules').update({ is_active: false })
         .eq('land_id', landId).eq('is_active', true);
     }
 
-    // 11. Save schedule with all context for training
-    // NOTE: Removed non-existent columns: crop_season, status (use is_active instead)
+    // 12. Save schedule with all context
     console.log('📝 [DB] Saving schedule to crop_schedules...');
     
-    // CRITICAL FIX: Calculate expected harvest date using parsed date to avoid timezone issues
     const harvestDate = new Date(sowingDateParsed.getTime());
     harvestDate.setDate(harvestDate.getDate() + (scheduleData.total_duration_days || 120));
     const harvestDateStr = `${harvestDate.getFullYear()}-${String(harvestDate.getMonth() + 1).padStart(2, '0')}-${String(harvestDate.getDate()).padStart(2, '0')}`;
@@ -1268,27 +1388,26 @@ Generate the complete schedule now.`;
         tenant_id: tenantId,
         farmer_id: farmerId,
         land_id: landId,
-        // CRITICAL FIX: Save localized crop name (e.g., "ऊस") not English name ("Sugarcane")
         crop_name: localizedCrop.local,
         crop_variety: cropVariety || scheduleData.crop_variety,
-        // crop_season moved to generation_params (column doesn't exist in table)
         sowing_date: sowingDate,
         expected_harvest_date: harvestDateStr,
         is_active: true,
-        // status removed (column doesn't exist, use is_active instead)
         expected_yield_quintals: scheduleData.expected_yield_quintals || scheduleData.expected_yield_per_acre * land.area_acres,
         total_estimated_cost: scheduleData.total_estimated_cost,
         generation_params: {
           model: AI_CONFIG.MODEL,
+          prompt_version: 'v6_world_class_enhanced',
           language,
-          isReadyMadePlant, // Store planting method for reference
-          crop_season: scheduleData.crop_season, // Stored here since column doesn't exist
-          crop_name_english: cropName, // Keep English name for reference
-          crop_name_local: localizedCrop.local, // Keep local name for reference
+          isReadyMadePlant,
+          crop_season: scheduleData.crop_season,
+          crop_name_english: cropName,
+          crop_name_local: localizedCrop.local,
           suitability_check: {
             score: suitabilityCheck.score,
             suitable: suitabilityCheck.suitable,
             warnings: suitabilityCheck.warnings,
+            risks: suitabilityCheck.risks,
             forced: forceGenerate && !suitabilityCheck.suitable
           },
           land_context: {
@@ -1297,14 +1416,22 @@ Generate the complete schedule now.`;
             irrigation_type: land.irrigation_type,
             npk: { current: { n: currentN, p: currentP, k: currentK }, target, deficit: { n: nDeficit, p: pDeficit, k: kDeficit } }
           },
+          economic_projection: {
+            total_cost: scheduleData.total_estimated_cost,
+            expected_revenue: scheduleData.expected_revenue,
+            expected_profit: scheduleData.expected_profit,
+            roi_percentage: scheduleData.roi_percentage,
+            break_even_yield: scheduleData.break_even_yield
+          },
           ndvi_status: ndviStatus,
           weather_at_generation: weather?.current,
-          prompt_version: 'v5_date_planting_fix',
           ai_response: {
             organic_inputs: scheduleData.organic_inputs,
             chemical_fertilizers: scheduleData.chemical_fertilizers,
-            icar_reference: scheduleData.icar_reference,
             seed_details: scheduleData.seed_details,
+            icar_reference: scheduleData.icar_reference,
+            university_reference: scheduleData.university_reference,
+            yield_optimization_notes: scheduleData.yield_optimization_notes,
             suitability_notes: scheduleData.suitability_notes
           }
         }
@@ -1313,34 +1440,21 @@ Generate the complete schedule now.`;
       .single();
 
     if (scheduleError || !savedSchedule) {
-      console.error('❌ [DB] Schedule save error:', {
-        code: scheduleError?.code,
-        message: scheduleError?.message,
-        details: scheduleError?.details,
-        hint: scheduleError?.hint
-      });
+      console.error('❌ [DB] Schedule save error:', scheduleError);
       throw new Error(`Failed to save schedule: ${scheduleError?.message || 'Unknown error'}`);
     }
 
     console.log(`✅ [DB] Schedule saved: ${savedSchedule.id}`);
 
-    // 12. Prepare and insert tasks
-    // NOTE: Removed non-existent columns: tenant_id, farmer_id, metadata
-    // Task metadata is merged into resources column
+    // 13. Prepare and insert tasks
     console.log(`📝 [DB] Preparing ${scheduleData.tasks.length} tasks...`);
     const tasksToInsert = scheduleData.tasks.map((task: any, index: number) => {
-      // CRITICAL FIX: Use parsed date to avoid timezone issues
       const taskDate = new Date(sowingDateParsed.getTime());
       taskDate.setDate(taskDate.getDate() + (task.days_from_sowing ?? index * 7));
-      
-      // Format date properly as YYYY-MM-DD
       const taskDateStr = `${taskDate.getFullYear()}-${String(taskDate.getMonth() + 1).padStart(2, '0')}-${String(taskDate.getDate()).padStart(2, '0')}`;
-      
-      console.log(`📅 Task ${index + 1}: "${task.task_name}" - days_from_sowing: ${task.days_from_sowing}, date: ${taskDateStr}`);
       
       return {
         schedule_id: savedSchedule.id,
-        // tenant_id and farmer_id removed (columns don't exist in schedule_tasks)
         task_date: taskDateStr,
         task_type: task.category || 'other',
         task_name: task.task_name,
@@ -1353,19 +1467,26 @@ Generate the complete schedule now.`;
         resources: {
           quantity: task.quantity,
           product_details: task.product_details,
+          chemical_group: task.chemical_group,
+          dosage_per_acre: task.dosage_per_acre,
+          water_volume_liters: task.water_volume_liters,
+          pre_harvest_interval_days: task.pre_harvest_interval_days,
           icar_guideline: task.icar_guideline,
-          climate_risk: task.climate_risk,
           ideal_weather: task.ideal_weather,
-          // Metadata merged into resources (column doesn't exist)
+          yield_impact: task.yield_impact,
+          skip_penalty: task.skip_penalty,
+          cost_saving_tip: task.cost_saving_tip,
+          alternative_option: task.alternative_option,
           days_from_sowing: task.days_from_sowing,
+          can_be_delayed: task.can_be_delayed,
+          max_delay_days: task.max_delay_days,
           ai_generated: true,
           land_area: land.area_acres,
-          crop_name: localizedCrop.local // Include crop name in resources
+          crop_name: localizedCrop.local
         },
         ideal_weather: task.ideal_weather,
         estimated_cost: task.estimated_cost,
         currency: 'INR'
-        // metadata removed (column doesn't exist in schedule_tasks)
       };
     });
 
@@ -1375,24 +1496,19 @@ Generate the complete schedule now.`;
       .select();
 
     if (tasksError) {
-      console.error('❌ [DB] Tasks insert error:', {
-        code: tasksError.code,
-        message: tasksError.message,
-        details: tasksError.details,
-        hint: tasksError.hint
-      });
+      console.error('❌ [DB] Tasks insert error:', tasksError);
     } else {
       console.log(`✅ [DB] Inserted ${insertedTasks?.length || 0} tasks`);
     }
 
-    // 13. Log for AI training (non-blocking)
+    // 14. Log for AI training
     try {
-      const { error: logError } = await supabase.from('ai_decision_log').insert({
+      await supabase.from('ai_decision_log').insert({
         tenant_id: tenantId,
         farmer_id: farmerId,
         land_id: landId,
         schedule_id: savedSchedule.id,
-        decision_type: 'schedule_generation',
+        decision_type: 'schedule_generation_v6',
         input_data: {
           land: { area: land.area_acres, soil: land.soil_type, irrigation: land.irrigation_type, npk: { n: currentN, p: currentP, k: currentK } },
           crop: cropName,
@@ -1402,12 +1518,11 @@ Generate the complete schedule now.`;
           suitability: suitabilityCheck
         },
         output_data: scheduleData,
-        reasoning: `Generated ${scheduleData.tasks.length} tasks for ${cropName} on ${land.area_acres} acres. Suitability: ${suitabilityCheck.score}% ${suitabilityCheck.suitable ? '✓' : '⚠️'}`,
+        reasoning: `Generated ${scheduleData.tasks.length} tasks for ${cropName} on ${land.area_acres} acres. Suitability: ${suitabilityCheck.score}%. Expected yield: ${scheduleData.expected_yield_quintals} qtl. Profit: ₹${scheduleData.expected_profit}`,
         model_version: AI_CONFIG.MODEL,
         success: true,
         execution_time_ms: Date.now() - startTime
       });
-      if (logError) console.warn('Failed to log decision:', logError);
     } catch (e) {
       console.warn('Failed to log decision:', e);
     }
@@ -1419,20 +1534,28 @@ Generate the complete schedule now.`;
       JSON.stringify({
         success: true,
         scheduleId: savedSchedule.id,
-        cropName: localizedCrop.local, // Return localized crop name
-        cropNameEnglish: cropName, // Also return English name for reference
+        cropName: localizedCrop.local,
+        cropNameEnglish: cropName,
         sowingDate: sowingDate,
         isReadyMadePlant: isReadyMadePlant,
         totalTasks: scheduleData.tasks.length,
         duration: scheduleData.total_duration_days,
         expectedYield: scheduleData.expected_yield_quintals,
         totalCost: scheduleData.total_estimated_cost,
+        expectedProfit: scheduleData.expected_profit,
         executionTimeMs: executionTime,
         suitability: {
           score: suitabilityCheck.score,
           suitable: suitabilityCheck.suitable,
           warnings: suitabilityCheck.warnings.length > 0 ? suitabilityCheck.warnings : undefined,
+          risks: suitabilityCheck.risks.length > 0 ? suitabilityCheck.risks : undefined,
           warningMessage: suitabilityCheck.warningMessage || undefined
+        },
+        economicProjection: {
+          totalCost: scheduleData.total_estimated_cost,
+          expectedRevenue: scheduleData.expected_revenue,
+          expectedProfit: scheduleData.expected_profit,
+          roiPercentage: scheduleData.roi_percentage
         }
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
