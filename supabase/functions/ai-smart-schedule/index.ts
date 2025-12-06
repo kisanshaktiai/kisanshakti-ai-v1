@@ -282,8 +282,158 @@ const ACTIVITY_PRECAUTIONS: Record<string, Record<string, string[]>> = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════
-// COST CALCULATION FUNCTION
+// MINIMUM COSTS BY CATEGORY (Realistic floor values per acre)
 // ═══════════════════════════════════════════════════════════════════════
+const CATEGORY_MIN_COSTS: Record<string, { productMin: number; laborDays: number; description: string }> = {
+  land_preparation: { productMin: 0, laborDays: 0, description: "Tractor work" },
+  seed_treatment: { productMin: 50, laborDays: 0.25, description: "Treatment chemicals" }, // Thiram/Carbendazim ~₹50/acre
+  sowing: { productMin: 0, laborDays: 0.5, description: "Manual sowing" }, // Seed cost added separately
+  transplanting: { productMin: 500, laborDays: 4, description: "Seedlings/nursery" },
+  fertilizer: { productMin: 200, laborDays: 0.3, description: "Fertilizer per application" },
+  irrigation: { productMin: 0, laborDays: 0.2, description: "Water management" },
+  weeding: { productMin: 0, laborDays: 3, description: "Manual weeding" },
+  pest_control: { productMin: 350, laborDays: 0.5, description: "Insecticide + spraying" },
+  disease_control: { productMin: 250, laborDays: 0.5, description: "Fungicide + spraying" },
+  intercultural: { productMin: 0, laborDays: 1, description: "Cultivation work" },
+  harvest: { productMin: 0, laborDays: 4, description: "Manual harvest" },
+  other: { productMin: 0, laborDays: 0.5, description: "General task" },
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// COST CALCULATION FUNCTION WITH VALIDATION
+// ═══════════════════════════════════════════════════════════════════════
+interface CostCalculationParams {
+  taskCategory: string;
+  taskName: string;
+  landAcres: number;
+  state: string;
+  aiProductCost?: number;
+  aiLaborCost?: number;
+  isMachineWork?: boolean;
+  machineryType?: string;
+  isSeedTask?: boolean;
+  seedCost?: number;
+  isFertilizerTask?: boolean;
+  fertilizerCost?: number;
+  language?: string;
+}
+
+interface CostResult {
+  totalCost: number;
+  laborCost: number;
+  productCost: number;
+  laborDays: number;
+  sprayingCost: number;
+  machineryCost: number;
+  breakdown: string;
+}
+
+function calculateTaskCostWithValidation(params: CostCalculationParams): CostResult {
+  const {
+    taskCategory,
+    taskName,
+    landAcres,
+    state,
+    aiProductCost = 0,
+    aiLaborCost = 0,
+    isMachineWork = false,
+    machineryType,
+    isSeedTask = false,
+    seedCost = 0,
+    isFertilizerTask = false,
+    fertilizerCost = 0,
+    language = "hi",
+  } = params;
+
+  const laborRate = STATE_LABOR_RATES[state] || STATE_LABOR_RATES["default"];
+  const categoryConfig = CATEGORY_MIN_COSTS[taskCategory] || CATEGORY_MIN_COSTS["other"];
+
+  // Determine labor category based on machine work
+  let laborCategory = taskCategory;
+  if (taskCategory === "weeding" && isMachineWork) laborCategory = "weeding_chemical";
+  if (taskCategory === "weeding" && !isMachineWork) laborCategory = "weeding_manual";
+  if (taskCategory === "harvest" && isMachineWork) laborCategory = "harvest_machine";
+  if (taskCategory === "harvest" && !isMachineWork) laborCategory = "harvest_manual";
+  if (taskCategory === "sowing" && isMachineWork) laborCategory = "sowing_machine";
+
+  // Calculate labor
+  const laborReq = ACTIVITY_LABOR[laborCategory] || ACTIVITY_LABOR[taskCategory] || { labor_per_acre: categoryConfig.laborDays };
+  const laborDays = laborReq.labor_per_acre * landAcres;
+  let laborCost = Math.round(laborDays * laborRate);
+
+  // If AI gave labor cost, use max of AI value and calculated value
+  if (aiLaborCost > 0) {
+    laborCost = Math.max(laborCost, aiLaborCost);
+  }
+
+  // Calculate product cost with category-specific logic
+  let productCost = aiProductCost;
+  const minProductCost = Math.round(categoryConfig.productMin * landAcres);
+
+  // SEED TASK: Must include seed cost
+  if (isSeedTask && seedCost > 0) {
+    // Seed treatment: add treatment chemical cost on top of seed cost
+    if (taskCategory === "seed_treatment" || taskName.toLowerCase().includes("उपचार") || taskName.toLowerCase().includes("treatment")) {
+      const treatmentCost = Math.round(50 * landAcres); // ~₹50/acre for treatment chemicals
+      productCost = seedCost + treatmentCost;
+      console.log(`💰 [Cost] Seed treatment: Seed ₹${seedCost} + Treatment ₹${treatmentCost} = ₹${productCost}`);
+    } else if (taskCategory === "sowing") {
+      // Sowing task: include seed cost
+      productCost = seedCost;
+      console.log(`💰 [Cost] Sowing: Seed cost ₹${seedCost}`);
+    }
+  }
+
+  // FERTILIZER TASK: Use calculated fertilizer cost if provided
+  if (isFertilizerTask && fertilizerCost > 0) {
+    productCost = Math.max(productCost, fertilizerCost);
+    console.log(`💰 [Cost] Fertilizer: Using ₹${fertilizerCost} (provided), AI was ₹${aiProductCost}`);
+  }
+
+  // Ensure minimum product cost for category
+  if (productCost < minProductCost && minProductCost > 0) {
+    console.log(`💰 [Cost] ${taskCategory}: AI ₹${productCost} < min ₹${minProductCost}, adjusting`);
+    productCost = minProductCost;
+  }
+
+  // Add spraying cost for pest/disease control
+  let sprayingCost = 0;
+  if (["pest_control", "disease_control"].includes(taskCategory)) {
+    sprayingCost = Math.round(SPRAYING_COSTS.manual_knapsack * landAcres);
+  }
+
+  // Add machinery cost if applicable
+  let machineryCost = 0;
+  if (machineryType && MACHINERY_COSTS[machineryType]) {
+    machineryCost = Math.round(MACHINERY_COSTS[machineryType] * landAcres);
+  } else if (taskCategory === "land_preparation") {
+    // Default to tractor plowing for land preparation
+    machineryCost = Math.round(MACHINERY_COSTS.tractor_plowing * landAcres);
+  }
+
+  const totalCost = productCost + laborCost + sprayingCost + machineryCost;
+
+  // Build breakdown string based on language
+  const labels = language === "mr" 
+    ? { product: "सामग्री", labor: "मजूरी", days: "दिन", spray: "फवारणी", machine: "यंत्र", total: "एकूण" }
+    : language === "en"
+    ? { product: "Material", labor: "Labor", days: "days", spray: "Spraying", machine: "Machinery", total: "Total" }
+    : { product: "सामग्री", labor: "मजूरी", days: "दिन", spray: "फवारणी", machine: "यंत्र", total: "कुल" };
+
+  const parts: string[] = [];
+  if (productCost > 0) parts.push(`${labels.product}: ₹${productCost}`);
+  if (laborCost > 0) parts.push(`${labels.labor} (${laborDays.toFixed(1)} ${labels.days} × ₹${laborRate}): ₹${laborCost}`);
+  if (sprayingCost > 0) parts.push(`${labels.spray}: ₹${sprayingCost}`);
+  if (machineryCost > 0) parts.push(`${labels.machine}: ₹${machineryCost}`);
+
+  const breakdown = parts.length > 0 
+    ? parts.join(" + ") + ` = ${labels.total}: ₹${totalCost}` 
+    : `${labels.total}: ₹${totalCost}`;
+
+  return { totalCost, laborCost, productCost, laborDays, sprayingCost, machineryCost, breakdown };
+}
+
+// Legacy function for backward compatibility
 function calculateTaskCost(
   taskCategory: string,
   landAcres: number,
@@ -292,45 +442,22 @@ function calculateTaskCost(
   isMachineWork: boolean = false,
   machineryType?: string
 ): { totalCost: number; laborCost: number; productCost: number; laborDays: number; breakdown: string } {
-  
-  const laborRate = STATE_LABOR_RATES[state] || STATE_LABOR_RATES["default"];
-  
-  // Determine labor category
-  let laborCategory = taskCategory;
-  if (taskCategory === "weeding" && isMachineWork) laborCategory = "weeding_chemical";
-  if (taskCategory === "weeding" && !isMachineWork) laborCategory = "weeding_manual";
-  if (taskCategory === "harvest" && isMachineWork) laborCategory = "harvest_machine";
-  if (taskCategory === "harvest" && !isMachineWork) laborCategory = "harvest_manual";
-  if (taskCategory === "sowing" && isMachineWork) laborCategory = "sowing_machine";
-  
-  const laborReq = ACTIVITY_LABOR[laborCategory] || ACTIVITY_LABOR[taskCategory] || { labor_per_acre: 0.5 };
-  const laborDays = laborReq.labor_per_acre * landAcres;
-  const laborCost = Math.round(laborDays * laborRate);
-  
-  // Add spraying cost for pest/disease control
-  let sprayingCost = 0;
-  if (["pest_control", "disease_control"].includes(taskCategory)) {
-    sprayingCost = Math.round(SPRAYING_COSTS.manual_knapsack * landAcres);
-  }
-  
-  // Add machinery cost if applicable
-  let machineryCost = 0;
-  if (machineryType && MACHINERY_COSTS[machineryType]) {
-    machineryCost = Math.round(MACHINERY_COSTS[machineryType] * landAcres);
-  }
-  
-  const totalCost = laborCost + productCost + sprayingCost + machineryCost;
-  
-  // Build breakdown string
-  const parts: string[] = [];
-  if (productCost > 0) parts.push(`सामग्री: ₹${productCost}`);
-  if (laborCost > 0) parts.push(`मजूरी (${laborDays.toFixed(1)} दिन × ₹${laborRate}): ₹${laborCost}`);
-  if (sprayingCost > 0) parts.push(`फवारणी: ₹${sprayingCost}`);
-  if (machineryCost > 0) parts.push(`यंत्र: ₹${machineryCost}`);
-  
-  const breakdown = parts.length > 0 ? parts.join(" + ") + ` = कुल: ₹${totalCost}` : `कुल: ₹${totalCost}`;
-  
-  return { totalCost, laborCost, productCost, laborDays, breakdown };
+  const result = calculateTaskCostWithValidation({
+    taskCategory,
+    taskName: "",
+    landAcres,
+    state,
+    aiProductCost: productCost,
+    isMachineWork,
+    machineryType,
+  });
+  return {
+    totalCost: result.totalCost,
+    laborCost: result.laborCost,
+    productCost: result.productCost,
+    laborDays: result.laborDays,
+    breakdown: result.breakdown,
+  };
 }
 
 // Map task categories to precaution types
@@ -692,9 +819,16 @@ IMPORTANT:
       throw new Error("AI returned empty schedule");
     }
 
-    // POST-PROCESS: Validate precautions and costs
-    const processedTasks = scheduleData.tasks.map((task: any) => {
-      const precautionType = getPrecautionType(task.category || "other", task.task_name || "");
+    // POST-PROCESS: Validate precautions and RECALCULATE COSTS properly
+    let totalLaborCost = 0;
+    let totalMaterialCost = 0;
+
+    const processedTasks = scheduleData.tasks.map((task: any, idx: number) => {
+      const category = task.category || "other";
+      const taskName = task.task_name || "";
+      
+      // Determine precaution type
+      const precautionType = getPrecautionType(category, taskName);
       const langPrecautions = ACTIVITY_PRECAUTIONS[langKey] || ACTIVITY_PRECAUTIONS["hi"];
       const activityPrecautions = langPrecautions[precautionType] || langPrecautions["intercultural"];
       
@@ -705,39 +839,97 @@ IMPORTANT:
          p.includes("मुखौटा") || p.includes("ముఖమూడి") || p.includes("முகமூடி"))
       );
       
-      const isChemicalTask = ["pest_control", "disease_control"].includes(task.category?.toLowerCase()) ||
-                            task.task_name?.toLowerCase().includes("फवारणी") ||
-                            task.task_name?.toLowerCase().includes("spray") ||
-                            task.task_name?.toLowerCase().includes("कीट") ||
-                            task.task_name?.toLowerCase().includes("फफूंद") ||
-                            task.product_details?.toLowerCase().includes("pesticide") ||
-                            task.product_details?.toLowerCase().includes("fungicide");
+      const isChemicalTask = ["pest_control", "disease_control"].includes(category.toLowerCase()) ||
+                            taskName.toLowerCase().includes("फवारणी") ||
+                            taskName.toLowerCase().includes("spray") ||
+                            taskName.toLowerCase().includes("कीट") ||
+                            taskName.toLowerCase().includes("फफूंद") ||
+                            (task.product_details || "").toLowerCase().includes("pesticide") ||
+                            (task.product_details || "").toLowerCase().includes("fungicide");
       
       let finalPrecautions = aiPrecautions;
       if (!isChemicalTask && hasGenericPrecautions) {
         finalPrecautions = activityPrecautions;
-        console.log(`🔄 Replaced generic precautions for ${task.task_name} with ${precautionType} precautions`);
+        console.log(`🔄 [Precaution] Replaced for ${taskName} with ${precautionType} precautions`);
       }
 
-      // Validate labor cost exists
-      if (!task.labor_cost && task.labor_days) {
-        task.labor_cost = Math.round(task.labor_days * laborRate);
-      }
+      // Determine if this is a seed-related or fertilizer-related task
+      const isSeedTask = category === "seed_treatment" || category === "sowing" ||
+                        taskName.toLowerCase().includes("बीज") || 
+                        taskName.toLowerCase().includes("बियाणे") ||
+                        taskName.toLowerCase().includes("seed");
       
-      // Recalculate cost breakdown if missing
-      if (!task.cost_breakdown && task.estimated_cost) {
-        const productCost = task.product_cost || 0;
-        const laborCost = task.labor_cost || 0;
-        const sprayingCost = task.spraying_cost || 0;
-        task.cost_breakdown = `सामग्री: ₹${productCost} + मजूरी: ₹${laborCost}${sprayingCost > 0 ? ` + फवारणी: ₹${sprayingCost}` : ""} = कुल: ₹${task.estimated_cost}`;
+      const isFertilizerTask = category === "fertilizer" ||
+                              taskName.toLowerCase().includes("खाद") ||
+                              taskName.toLowerCase().includes("खत") ||
+                              taskName.toLowerCase().includes("उर्वरक") ||
+                              taskName.toLowerCase().includes("urea") ||
+                              taskName.toLowerCase().includes("dap") ||
+                              taskName.toLowerCase().includes("fertilizer");
+
+      // Calculate individual fertilizer cost for this task
+      let taskFertilizerCost = 0;
+      if (isFertilizerTask) {
+        // Determine which fertilizer application this is based on task name/description
+        const desc = (task.description || "").toLowerCase() + (taskName || "").toLowerCase();
+        if (desc.includes("fym") || desc.includes("सड़ी") || desc.includes("शेणखत") || desc.includes("गोबर")) {
+          taskFertilizerCost = fymCost;
+        } else if (desc.includes("dap") || desc.includes("फॉस्फेट")) {
+          taskFertilizerCost = dapCost + Math.round(0.3 * land.area_acres * laborRate);
+        } else if (desc.includes("urea") || desc.includes("यूरिया") || desc.includes("ऊरिया")) {
+          taskFertilizerCost = ureaCost + Math.round(0.3 * land.area_acres * laborRate);
+        } else if (desc.includes("mop") || desc.includes("पोटाश")) {
+          taskFertilizerCost = mopCost + Math.round(0.3 * land.area_acres * laborRate);
+        } else {
+          // General fertilizer task - use portion of total
+          taskFertilizerCost = Math.round(totalFertilizerCost / 3) + Math.round(0.3 * land.area_acres * laborRate);
+        }
       }
+
+      // RECALCULATE COSTS using our validated function
+      const costResult = calculateTaskCostWithValidation({
+        taskCategory: category,
+        taskName: taskName,
+        landAcres: land.area_acres,
+        state,
+        aiProductCost: task.product_cost || 0,
+        aiLaborCost: task.labor_cost || 0,
+        isMachineWork: category === "land_preparation" || (task.product_details || "").toLowerCase().includes("tractor"),
+        machineryType: category === "land_preparation" ? "tractor_plowing" : 
+                       category === "harvest" && (task.product_details || "").toLowerCase().includes("combine") ? "combine_harvester" : undefined,
+        isSeedTask,
+        seedCost: isSeedTask ? seedCost : 0,
+        isFertilizerTask,
+        fertilizerCost: taskFertilizerCost,
+        language,
+      });
+
+      // Log significant cost corrections
+      if (Math.abs((task.estimated_cost || 0) - costResult.totalCost) > 100) {
+        console.log(`💰 [Cost Correction] ${taskName}: AI ₹${task.estimated_cost || 0} → Calculated ₹${costResult.totalCost}`);
+      }
+
+      totalLaborCost += costResult.laborCost;
+      totalMaterialCost += costResult.productCost;
 
       return {
         ...task,
+        product_cost: costResult.productCost,
+        labor_cost: costResult.laborCost,
+        labor_days: costResult.laborDays,
+        spraying_cost: costResult.sprayingCost,
+        machinery_cost: costResult.machineryCost,
+        estimated_cost: costResult.totalCost,
+        cost_breakdown: costResult.breakdown,
         precautions: finalPrecautions.length > 0 ? finalPrecautions.slice(0, 3) : activityPrecautions.slice(0, 3),
         instructions: (task.instructions || [task.description]).slice(0, 4),
       };
     });
+
+    // Recalculate schedule totals
+    const correctedTotalCost = processedTasks.reduce((sum: number, t: any) => sum + (t.estimated_cost || 0), 0);
+    console.log(`💰 [Total Cost] AI: ₹${scheduleData.total_estimated_cost} → Calculated: ₹${correctedTotalCost}`);
+    console.log(`💰 [Labor Total]: ₹${totalLaborCost} | [Material Total]: ₹${totalMaterialCost}`);
 
     // Deactivate old schedules if regenerating
     if (regenerate) {
@@ -749,7 +941,7 @@ IMPORTANT:
     harvestDate.setDate(harvestDate.getDate() + (scheduleData.total_duration_days || 120));
     const harvestDateStr = harvestDate.toISOString().split("T")[0];
 
-    // Save schedule
+    // Save schedule with CORRECTED totals
     const { data: savedSchedule, error: scheduleError } = await supabase
       .from("crop_schedules")
       .insert({
@@ -762,7 +954,7 @@ IMPORTANT:
         expected_harvest_date: harvestDateStr,
         is_active: true,
         expected_yield_quintals: scheduleData.expected_yield_quintals,
-        total_estimated_cost: scheduleData.total_estimated_cost,
+        total_estimated_cost: correctedTotalCost, // Use corrected total, not AI total
         generation_params: {
           model: AI_CONFIG.MODEL,
           language,
@@ -774,8 +966,9 @@ IMPORTANT:
           fertilizer_data: { urea: ureaKg, dap: dapKg, mop: mopKg, fym: fymTons, total_cost: totalFertilizerCost },
           npk_deficit: { n: nDeficit, p: pDeficit, k: kDeficit },
           irrigation_type: irrigationType,
-          total_labor_cost: scheduleData.total_labor_cost,
-          total_material_cost: scheduleData.total_material_cost,
+          total_labor_cost: totalLaborCost,     // Use corrected labor total
+          total_material_cost: totalMaterialCost, // Use corrected material total
+          ai_original_cost: scheduleData.total_estimated_cost, // Store AI's original for comparison
         },
       })
       .select()
@@ -807,16 +1000,17 @@ IMPORTANT:
         resources: {
           quantity: task.quantity || `${land.area_acres} acres`,
           product_details: task.product_details,
-          product_cost: task.product_cost,
-          labor_days: task.labor_days,
-          labor_cost: task.labor_cost,
-          spraying_cost: task.spraying_cost,
-          cost_breakdown: task.cost_breakdown,
+          product_cost: task.product_cost,       // Validated product cost
+          labor_days: task.labor_days,           // Validated labor days
+          labor_cost: task.labor_cost,           // Validated labor cost
+          spraying_cost: task.spraying_cost,     // Validated spraying cost
+          machinery_cost: task.machinery_cost,   // Machinery cost
+          cost_breakdown: task.cost_breakdown,   // Formatted breakdown
           yield_impact: task.yield_impact,
           skip_penalty: task.skip_penalty,
           days_from_sowing: task.days_from_sowing,
         },
-        estimated_cost: task.estimated_cost,
+        estimated_cost: task.estimated_cost,     // Validated total
         currency: "INR",
       };
     });
@@ -829,7 +1023,7 @@ IMPORTANT:
     if (tasksError) {
       console.error("❌ Tasks insert error:", tasksError);
     } else {
-      console.log(`✅ [DB] Inserted ${insertedTasks?.length || 0} tasks with accurate pricing`);
+      console.log(`✅ [DB] Inserted ${insertedTasks?.length || 0} tasks with validated pricing`);
     }
 
     const executionTime = Date.now() - startTime;
@@ -844,14 +1038,20 @@ IMPORTANT:
         totalTasks: processedTasks.length,
         duration: scheduleData.total_duration_days,
         expectedYield: scheduleData.expected_yield_quintals,
-        totalCost: scheduleData.total_estimated_cost,
-        totalLaborCost: scheduleData.total_labor_cost,
-        totalMaterialCost: scheduleData.total_material_cost,
+        totalCost: correctedTotalCost,           // Corrected total
+        totalLaborCost: totalLaborCost,          // Corrected labor
+        totalMaterialCost: totalMaterialCost,    // Corrected material
         expectedProfit: scheduleData.expected_profit,
         seedData: { quantity: exactSeedQty, rate: seedData.rate_kg_per_acre, cost: seedCost },
+        fertilizerData: { urea: ureaKg, dap: dapKg, mop: mopKg, fym: fymTons, totalCost: totalFertilizerCost },
         laborRate,
         state,
         executionTimeMs: executionTime,
+        costValidation: {
+          aiOriginal: scheduleData.total_estimated_cost,
+          calculated: correctedTotalCost,
+          difference: correctedTotalCost - (scheduleData.total_estimated_cost || 0),
+        },
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
