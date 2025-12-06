@@ -47,3 +47,6 @@ verify_jwt = true
 
 [functions.text-to-speech]
 verify_jwt = false
+
+[functions.mcp-handler]
+verify_jwt = false
