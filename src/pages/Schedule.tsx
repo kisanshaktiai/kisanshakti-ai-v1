@@ -14,6 +14,7 @@ import { landsApi } from '@/services/landsApi';
 import LandSelector from '@/components/schedule/LandSelector';
 import CropDateInput from '@/components/schedule/CropDateInput';
 import CropScheduleView from '@/components/schedule/CropScheduleView';
+import ScheduleLoadingOverlay from '@/components/schedule/ScheduleLoadingOverlay';
 import { format } from 'date-fns';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useLocation } from '@/hooks/useLocation';
@@ -61,6 +62,8 @@ export default function Schedule() {
   } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [generatingCropName, setGeneratingCropName] = useState('');
+  const [generatingFarmingType, setGeneratingFarmingType] = useState('');
   const { scheduleTaskReminder } = useNotifications();
 
   // Get device location and weather data for AI schedule generation
@@ -117,10 +120,15 @@ export default function Schedule() {
   const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string) => {
     if (!selectedLand) return;
 
+    console.log('🚀 [Schedule] Starting schedule generation:', { cropName, farmingType });
+    
+    // Set generating state FIRST before anything else
+    setGenerating(true);
+    setGeneratingCropName(cropName);
+    setGeneratingFarmingType(farmingType);
     setScheduleData({ cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType });
     
     try {
-      setGenerating(true);
 
       // First, deactivate any existing active schedules for this land
       const { error: deactivateError } = await supabase
@@ -489,6 +497,13 @@ export default function Schedule() {
           </div>
         </div>
       </div>
+
+      {/* Global Loading Overlay - shows during API call */}
+      <ScheduleLoadingOverlay
+        isLoading={generating}
+        cropName={generatingCropName || scheduleData?.cropName || ''}
+        farmingType={generatingFarmingType || scheduleData?.farmingType || 'organic_fertilizer'}
+      />
     </div>
   );
 }
