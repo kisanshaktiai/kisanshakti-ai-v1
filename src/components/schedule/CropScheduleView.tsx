@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Clock, Volume2, Sparkles, RefreshCw, MapPin, ArrowLeft, Plus } from 'lucide-react';
+import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Clock, Volume2, Sparkles, RefreshCw, MapPin, ArrowLeft, Plus, FlaskConical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,7 @@ import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useTranslation } from 'react-i18next';
 import { format, addDays, isToday, isTomorrow, isPast, differenceInDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '@/lib/utils';
 import TaskTimeline from './TaskTimeline';
 import ModernTaskCard from './ModernTaskCard';
 import TaskActionDialog from './TaskActionDialog';
@@ -32,6 +33,7 @@ interface CropSchedule {
   is_active: boolean;
   generated_at: string;
   last_weather_update?: string;
+  farming_type?: string;
 }
 
 interface ScheduleTask {
@@ -450,9 +452,31 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                 </p>
               </div>
             </div>
-            <Badge className="bg-primary/10 text-primary border-primary/20">
-              {t('schedule.schedule_view.ai_schedule')}
-            </Badge>
+            <div className="flex flex-col items-end gap-1">
+              <Badge className="bg-primary/10 text-primary border-primary/20">
+                {t('schedule.schedule_view.ai_schedule')}
+              </Badge>
+              {schedule.farming_type && (
+                <Badge 
+                  className={cn(
+                    "text-xs border",
+                    schedule.farming_type === 'organic_only' && "bg-green-500/10 text-green-700 border-green-500/30",
+                    schedule.farming_type === 'organic_fertilizer' && "bg-blue-500/10 text-blue-700 border-blue-500/30",
+                    schedule.farming_type === 'fertilizer_pesticide' && "bg-orange-500/10 text-orange-700 border-orange-500/30"
+                  )}
+                >
+                  {schedule.farming_type === 'organic_only' && (
+                    <><Leaf className="h-3 w-3 mr-1" />{i18n.language === 'hi' ? 'जैविक' : i18n.language === 'mr' ? 'सेंद्रिय' : 'Organic'}</>
+                  )}
+                  {schedule.farming_type === 'organic_fertilizer' && (
+                    <><Leaf className="h-3 w-3 mr-1" /><FlaskConical className="h-3 w-3 mr-1" />{i18n.language === 'hi' ? 'जैविक+रासा.' : i18n.language === 'mr' ? 'सेंद्रिय+रासा.' : 'Organic+Chem'}</>
+                  )}
+                  {schedule.farming_type === 'fertilizer_pesticide' && (
+                    <><FlaskConical className="h-3 w-3 mr-1" /><Bug className="h-3 w-3 mr-1" />{i18n.language === 'hi' ? 'रासायनिक' : i18n.language === 'mr' ? 'रासायनिक' : 'Chemical'}</>
+                  )}
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
       </div>

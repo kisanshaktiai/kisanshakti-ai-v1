@@ -57,6 +57,7 @@ export default function Schedule() {
     cropVariety: string;
     sowingDate: Date;
     isReadyMadePlant?: boolean;
+    farmingType?: string;
   } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -113,10 +114,10 @@ export default function Schedule() {
     }
   };
 
-  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant?: boolean) => {
+  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string) => {
     if (!selectedLand) return;
 
-    setScheduleData({ cropName, cropVariety, sowingDate, isReadyMadePlant });
+    setScheduleData({ cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType });
     
     try {
       setGenerating(true);
@@ -175,6 +176,7 @@ export default function Schedule() {
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
           isReadyMadePlant: isReadyMadePlant || false,
+          farmingType: farmingType,
           weather: weatherData,
           regenerate: true,
           language: scheduleLanguage,
@@ -213,7 +215,7 @@ export default function Schedule() {
           });
           // Retry after 2 seconds
           setTimeout(() => {
-            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant);
+            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType);
           }, 2000);
           return;
         }
@@ -257,7 +259,7 @@ export default function Schedule() {
             variant="outline"
             onClick={() => {
               setRetryCount(0);
-              handleCropDateSubmit(cropName, cropVariety, sowingDate, scheduleData?.isReadyMadePlant);
+              handleCropDateSubmit(cropName, cropVariety, sowingDate, scheduleData?.isReadyMadePlant || false, scheduleData?.farmingType || 'organic_fertilizer');
             }}
           >
             Try Again

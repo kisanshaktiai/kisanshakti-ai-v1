@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Badge } from '@/components/ui/badge';
-import { CalendarIcon, MapPin, ChevronLeft, Sparkles, Wheat, Droplets, Sun } from 'lucide-react';
+import { CalendarIcon, ChevronLeft, Sparkles, Droplets } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { CentralizedCropSelector } from '@/components/crops/CentralizedCropSelector';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
+import FarmingTypeDialog, { FarmingMode } from './FarmingTypeDialog';
+import ScheduleLoadingOverlay from './ScheduleLoadingOverlay';
 
 interface CropDateInputProps {
   land: {
@@ -25,7 +25,7 @@ interface CropDateInputProps {
     soil_type?: string;
     water_source?: string;
   };
-  onSubmit: (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant?: boolean) => void;
+  onSubmit: (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: FarmingMode) => void;
   onBack: () => void;
   loading?: boolean;
 }
@@ -43,6 +43,8 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   const [cropVariety, setCropVariety] = useState('');
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
   const [isReadyMadePlant, setIsReadyMadePlant] = useState(false);
+  const [showFarmingTypeDialog, setShowFarmingTypeDialog] = useState(false);
+  const [selectedFarmingType, setSelectedFarmingType] = useState<FarmingMode | null>(null);
 
   const handleSubmit = () => {
     if (!cropName) {
@@ -63,7 +65,17 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
       return;
     }
 
-    onSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant);
+    // Open farming type dialog instead of submitting directly
+    setShowFarmingTypeDialog(true);
+  };
+
+  const handleFarmingTypeSelect = (farmingType: FarmingMode) => {
+    setSelectedFarmingType(farmingType);
+    setShowFarmingTypeDialog(false);
+    // Now submit with the farming type
+    if (sowingDate) {
+      onSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType);
+    }
   };
 
   const handleCropSelect = (id: string, name: string) => {
@@ -233,6 +245,21 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         )}
 
       </motion.div>
+
+      {/* Farming Type Dialog */}
+      <FarmingTypeDialog
+        open={showFarmingTypeDialog}
+        onOpenChange={setShowFarmingTypeDialog}
+        onSelect={handleFarmingTypeSelect}
+        cropName={cropName}
+      />
+
+      {/* Loading Overlay - shown when loading prop is true */}
+      <ScheduleLoadingOverlay
+        isLoading={loading}
+        cropName={cropName}
+        farmingType={selectedFarmingType || 'organic_fertilizer'}
+      />
     </div>
   );
 };
