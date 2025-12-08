@@ -3908,6 +3908,8 @@ export type Database = {
           bio_pesticide_ml: number | null
           calculated_for_area_acres: number | null
           completed_at: string | null
+          cost_by_category: Json | null
+          cost_by_stage: Json | null
           country: string | null
           created_at: string | null
           crop_name: string
@@ -3949,12 +3951,14 @@ export type Database = {
           outcome_recorded_at: string | null
           pesticide_requirements: Json | null
           pgr_hormone_ml: number | null
+          products_recommended_count: number | null
           recommendation_order: string | null
           recommended_products: Json | null
           schedule_accuracy_score: number | null
           schedule_version: number | null
           seed_quantity_kg: number | null
           sowing_date: string
+          stages_covered: Json | null
           state_region: string | null
           status: string | null
           suitability_score: number | null
@@ -3974,6 +3978,8 @@ export type Database = {
           updated_at: string | null
           vermicompost_kg: number | null
           weather_data: Json | null
+          yield_boosting_techniques: Json | null
+          yield_multiplier_target: number | null
         }
         Insert: {
           actual_harvest_date?: string | null
@@ -3986,6 +3992,8 @@ export type Database = {
           bio_pesticide_ml?: number | null
           calculated_for_area_acres?: number | null
           completed_at?: string | null
+          cost_by_category?: Json | null
+          cost_by_stage?: Json | null
           country?: string | null
           created_at?: string | null
           crop_name: string
@@ -4027,12 +4035,14 @@ export type Database = {
           outcome_recorded_at?: string | null
           pesticide_requirements?: Json | null
           pgr_hormone_ml?: number | null
+          products_recommended_count?: number | null
           recommendation_order?: string | null
           recommended_products?: Json | null
           schedule_accuracy_score?: number | null
           schedule_version?: number | null
           seed_quantity_kg?: number | null
           sowing_date: string
+          stages_covered?: Json | null
           state_region?: string | null
           status?: string | null
           suitability_score?: number | null
@@ -4052,6 +4062,8 @@ export type Database = {
           updated_at?: string | null
           vermicompost_kg?: number | null
           weather_data?: Json | null
+          yield_boosting_techniques?: Json | null
+          yield_multiplier_target?: number | null
         }
         Update: {
           actual_harvest_date?: string | null
@@ -4064,6 +4076,8 @@ export type Database = {
           bio_pesticide_ml?: number | null
           calculated_for_area_acres?: number | null
           completed_at?: string | null
+          cost_by_category?: Json | null
+          cost_by_stage?: Json | null
           country?: string | null
           created_at?: string | null
           crop_name?: string
@@ -4105,12 +4119,14 @@ export type Database = {
           outcome_recorded_at?: string | null
           pesticide_requirements?: Json | null
           pgr_hormone_ml?: number | null
+          products_recommended_count?: number | null
           recommendation_order?: string | null
           recommended_products?: Json | null
           schedule_accuracy_score?: number | null
           schedule_version?: number | null
           seed_quantity_kg?: number | null
           sowing_date?: string
+          stages_covered?: Json | null
           state_region?: string | null
           status?: string | null
           suitability_score?: number | null
@@ -4130,6 +4146,8 @@ export type Database = {
           updated_at?: string | null
           vermicompost_kg?: number | null
           weather_data?: Json | null
+          yield_boosting_techniques?: Json | null
+          yield_multiplier_target?: number | null
         }
         Relationships: [
           {
@@ -15155,10 +15173,15 @@ export type Database = {
           original_date_before_climate_adjust: string | null
           precautions: string[] | null
           priority: string | null
+          product_recommendations: Json | null
           reschedule_reason: string | null
           resources: Json | null
           schedule_id: string
           sequence_order: number | null
+          skip_penalty: string | null
+          stage_key: string | null
+          stage_name: string | null
+          stage_order: number | null
           status: string | null
           task_date: string
           task_description: string | null
@@ -15168,6 +15191,8 @@ export type Database = {
           updated_at: string | null
           weather_dependent: boolean | null
           weather_risk_level: string | null
+          yield_boost_technique: string | null
+          yield_impact: string | null
         }
         Insert: {
           auto_rescheduled?: boolean | null
@@ -15190,10 +15215,15 @@ export type Database = {
           original_date_before_climate_adjust?: string | null
           precautions?: string[] | null
           priority?: string | null
+          product_recommendations?: Json | null
           reschedule_reason?: string | null
           resources?: Json | null
           schedule_id: string
           sequence_order?: number | null
+          skip_penalty?: string | null
+          stage_key?: string | null
+          stage_name?: string | null
+          stage_order?: number | null
           status?: string | null
           task_date: string
           task_description?: string | null
@@ -15203,6 +15233,8 @@ export type Database = {
           updated_at?: string | null
           weather_dependent?: boolean | null
           weather_risk_level?: string | null
+          yield_boost_technique?: string | null
+          yield_impact?: string | null
         }
         Update: {
           auto_rescheduled?: boolean | null
@@ -15225,10 +15257,15 @@ export type Database = {
           original_date_before_climate_adjust?: string | null
           precautions?: string[] | null
           priority?: string | null
+          product_recommendations?: Json | null
           reschedule_reason?: string | null
           resources?: Json | null
           schedule_id?: string
           sequence_order?: number | null
+          skip_penalty?: string | null
+          stage_key?: string | null
+          stage_name?: string | null
+          stage_order?: number | null
           status?: string | null
           task_date?: string
           task_description?: string | null
@@ -15238,6 +15275,8 @@ export type Database = {
           updated_at?: string | null
           weather_dependent?: boolean | null
           weather_risk_level?: string | null
+          yield_boost_technique?: string | null
+          yield_impact?: string | null
         }
         Relationships: [
           {
