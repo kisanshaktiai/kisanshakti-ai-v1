@@ -3898,6 +3898,11 @@ export type Database = {
       }
       crop_schedules: {
         Row: {
+          actual_harvest_date: string | null
+          actual_profit: number | null
+          actual_total_cost: number | null
+          actual_yield_quintals: number | null
+          agro_climatic_zone: string | null
           ai_model: string | null
           bio_fertilizer_units: number | null
           bio_pesticide_ml: number | null
@@ -3907,13 +3912,17 @@ export type Database = {
           created_at: string | null
           crop_name: string
           crop_variety: string | null
+          data_quality_score: number | null
           expected_gross_revenue: number | null
           expected_harvest_date: string | null
           expected_market_price_per_quintal: number | null
           expected_net_profit: number | null
+          expected_profit: number | null
           expected_yield_per_acre: number | null
           expected_yield_quintals: number | null
+          farmer_feedback: string | null
           farmer_id: string
+          farmer_rating: number | null
           fertilizer_k_kg: number | null
           fertilizer_n_kg: number | null
           fertilizer_p_kg: number | null
@@ -3924,27 +3933,54 @@ export type Database = {
           growth_regulators: Json | null
           herbicide_ml: number | null
           id: string
+          input_land_coordinates: Json | null
+          input_soil_data: Json | null
+          input_weather_data: Json | null
           insecticide_ml: number | null
           is_active: boolean | null
+          is_training_candidate: boolean | null
+          labor_rate_used: number | null
           land_id: string
           last_weather_update: string | null
+          metadata: Json | null
           organic_fertilizer_kg: number | null
           organic_input_details: Json | null
           organic_manure_kg: number | null
+          outcome_recorded_at: string | null
           pesticide_requirements: Json | null
           pgr_hormone_ml: number | null
+          recommendation_order: string | null
           recommended_products: Json | null
+          schedule_accuracy_score: number | null
           schedule_version: number | null
           seed_quantity_kg: number | null
           sowing_date: string
+          state_region: string | null
+          status: string | null
+          suitability_score: number | null
+          suitability_warnings: Json | null
+          tasks_completed_count: number | null
+          tasks_on_time_count: number | null
+          tasks_total_count: number | null
           tenant_id: string
+          total_duration_days: number | null
           total_estimated_cost: number | null
+          total_labor_cost: number | null
+          total_material_cost: number | null
           total_water_requirement_liters: number | null
+          training_batch_id: string | null
+          training_excluded_reason: string | null
+          training_processed: boolean | null
           updated_at: string | null
           vermicompost_kg: number | null
           weather_data: Json | null
         }
         Insert: {
+          actual_harvest_date?: string | null
+          actual_profit?: number | null
+          actual_total_cost?: number | null
+          actual_yield_quintals?: number | null
+          agro_climatic_zone?: string | null
           ai_model?: string | null
           bio_fertilizer_units?: number | null
           bio_pesticide_ml?: number | null
@@ -3954,13 +3990,17 @@ export type Database = {
           created_at?: string | null
           crop_name: string
           crop_variety?: string | null
+          data_quality_score?: number | null
           expected_gross_revenue?: number | null
           expected_harvest_date?: string | null
           expected_market_price_per_quintal?: number | null
           expected_net_profit?: number | null
+          expected_profit?: number | null
           expected_yield_per_acre?: number | null
           expected_yield_quintals?: number | null
+          farmer_feedback?: string | null
           farmer_id: string
+          farmer_rating?: number | null
           fertilizer_k_kg?: number | null
           fertilizer_n_kg?: number | null
           fertilizer_p_kg?: number | null
@@ -3971,27 +4011,54 @@ export type Database = {
           growth_regulators?: Json | null
           herbicide_ml?: number | null
           id?: string
+          input_land_coordinates?: Json | null
+          input_soil_data?: Json | null
+          input_weather_data?: Json | null
           insecticide_ml?: number | null
           is_active?: boolean | null
+          is_training_candidate?: boolean | null
+          labor_rate_used?: number | null
           land_id: string
           last_weather_update?: string | null
+          metadata?: Json | null
           organic_fertilizer_kg?: number | null
           organic_input_details?: Json | null
           organic_manure_kg?: number | null
+          outcome_recorded_at?: string | null
           pesticide_requirements?: Json | null
           pgr_hormone_ml?: number | null
+          recommendation_order?: string | null
           recommended_products?: Json | null
+          schedule_accuracy_score?: number | null
           schedule_version?: number | null
           seed_quantity_kg?: number | null
           sowing_date: string
+          state_region?: string | null
+          status?: string | null
+          suitability_score?: number | null
+          suitability_warnings?: Json | null
+          tasks_completed_count?: number | null
+          tasks_on_time_count?: number | null
+          tasks_total_count?: number | null
           tenant_id: string
+          total_duration_days?: number | null
           total_estimated_cost?: number | null
+          total_labor_cost?: number | null
+          total_material_cost?: number | null
           total_water_requirement_liters?: number | null
+          training_batch_id?: string | null
+          training_excluded_reason?: string | null
+          training_processed?: boolean | null
           updated_at?: string | null
           vermicompost_kg?: number | null
           weather_data?: Json | null
         }
         Update: {
+          actual_harvest_date?: string | null
+          actual_profit?: number | null
+          actual_total_cost?: number | null
+          actual_yield_quintals?: number | null
+          agro_climatic_zone?: string | null
           ai_model?: string | null
           bio_fertilizer_units?: number | null
           bio_pesticide_ml?: number | null
@@ -4001,13 +4068,17 @@ export type Database = {
           created_at?: string | null
           crop_name?: string
           crop_variety?: string | null
+          data_quality_score?: number | null
           expected_gross_revenue?: number | null
           expected_harvest_date?: string | null
           expected_market_price_per_quintal?: number | null
           expected_net_profit?: number | null
+          expected_profit?: number | null
           expected_yield_per_acre?: number | null
           expected_yield_quintals?: number | null
+          farmer_feedback?: string | null
           farmer_id?: string
+          farmer_rating?: number | null
           fertilizer_k_kg?: number | null
           fertilizer_n_kg?: number | null
           fertilizer_p_kg?: number | null
@@ -4018,22 +4089,44 @@ export type Database = {
           growth_regulators?: Json | null
           herbicide_ml?: number | null
           id?: string
+          input_land_coordinates?: Json | null
+          input_soil_data?: Json | null
+          input_weather_data?: Json | null
           insecticide_ml?: number | null
           is_active?: boolean | null
+          is_training_candidate?: boolean | null
+          labor_rate_used?: number | null
           land_id?: string
           last_weather_update?: string | null
+          metadata?: Json | null
           organic_fertilizer_kg?: number | null
           organic_input_details?: Json | null
           organic_manure_kg?: number | null
+          outcome_recorded_at?: string | null
           pesticide_requirements?: Json | null
           pgr_hormone_ml?: number | null
+          recommendation_order?: string | null
           recommended_products?: Json | null
+          schedule_accuracy_score?: number | null
           schedule_version?: number | null
           seed_quantity_kg?: number | null
           sowing_date?: string
+          state_region?: string | null
+          status?: string | null
+          suitability_score?: number | null
+          suitability_warnings?: Json | null
+          tasks_completed_count?: number | null
+          tasks_on_time_count?: number | null
+          tasks_total_count?: number | null
           tenant_id?: string
+          total_duration_days?: number | null
           total_estimated_cost?: number | null
+          total_labor_cost?: number | null
+          total_material_cost?: number | null
           total_water_requirement_liters?: number | null
+          training_batch_id?: string | null
+          training_excluded_reason?: string | null
+          training_processed?: boolean | null
           updated_at?: string | null
           vermicompost_kg?: number | null
           weather_data?: Json | null
