@@ -4,14 +4,15 @@
  */
 
 export const AI_CONFIG = {
-  // Primary model for schedule generation, chat, and complex tasks
-  MODEL: "gpt-4.1-2025-04-14",
+  // Primary model for schedule generation - using efficient model
+  MODEL: "gpt-4o-mini",
 
-  // Token limits - INCREASED for comprehensive schedule generation
-  MAX_TOKENS: 16384,
-  MAX_TOKENS_SCHEDULE: 32768, // Increased for ALL 10 farming stages with detailed tasks
-  MAX_TOKENS_CHAT: 8192,
-  MAX_TOKENS_ANALYSIS: 8192,
+  // Token limits - OPTIMIZED for edge function resource limits
+  // Note: 32768 causes WORKER_LIMIT errors, 16384 is the safe maximum
+  MAX_TOKENS: 8192,
+  MAX_TOKENS_SCHEDULE: 16384, // Balanced for all 10 farming stages without resource exhaustion
+  MAX_TOKENS_CHAT: 4096,
+  MAX_TOKENS_ANALYSIS: 4096,
 
   // Rate limiting
   RATE_LIMIT_SCHEDULE: { maxRequests: 30, windowMs: 60000 },
