@@ -1408,21 +1408,10 @@ IMPORTANT:
         total_duration_days: scheduleData.total_duration_days,
         expected_yield: scheduleData.expected_yield_quintals,
         total_estimated_cost: correctedTotalCost,
-        total_labor_cost: totalLaborCost,
-        total_material_cost: totalMaterialCost,
         expected_profit: scheduleData.expected_profit,
         status: "active",
         ai_model: AI_CONFIG.MODEL,
-        metadata: {
-          suitability_score: suitabilityCheck.score,
-          suitability_warnings: suitabilityCheck.warnings,
-          seed_data: { quantity: exactSeedQty, rate: seedData.rate_kg_per_acre, cost: seedCost },
-          fertilizer_data: { urea: ureaKg, dap: dapKg, mop: mopKg, fym: fymTons, total: totalFertilizerCost + fymCost },
-          labor_rate: laborRate,
-          state,
-          language,
-          recommendation_order: "organic → growth_promoter → fertilizer → pesticide",
-        },
+        is_active: true,
       })
       .select()
       .single();
