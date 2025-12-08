@@ -30,11 +30,14 @@ import {
   Sun,
   Droplet,
   Sparkles,
-  ChevronRight
+  ChevronRight,
+  TrendingUp,
+  TrendingDown
 } from 'lucide-react';
 import { format, isToday, isTomorrow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import ProductRecommendationCard from './ProductRecommendationCard';
 
 interface TaskCardProps {
   task: any;
@@ -384,6 +387,40 @@ export default function ModernTaskCard({
                   ))}
                 </div>
               </div>
+            )}
+
+            {/* Yield Impact */}
+            {isValidValue(task.yield_impact) && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold flex items-center gap-2 text-green-600 dark:text-green-400">
+                  <TrendingUp className="h-4 w-4" />
+                  {t('schedule.task_card.yield_impact') || 'Yield Impact'}
+                </h4>
+                <div className="p-3 rounded-xl bg-gradient-to-r from-green-500/10 to-emerald-500/5 border border-green-500/20">
+                  <p className="text-sm text-green-700 dark:text-green-300 leading-relaxed">{task.yield_impact}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Skip Penalty */}
+            {isValidValue(task.skip_penalty) && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold flex items-center gap-2 text-red-600 dark:text-red-400">
+                  <TrendingDown className="h-4 w-4" />
+                  {t('schedule.task_card.skip_penalty') || 'If Skipped'}
+                </h4>
+                <div className="p-3 rounded-xl bg-gradient-to-r from-red-500/10 to-orange-500/5 border border-red-500/20">
+                  <p className="text-sm text-red-700 dark:text-red-300 leading-relaxed">{task.skip_penalty}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Product Recommendations */}
+            {Array.isArray(task.product_recommendations) && task.product_recommendations.length > 0 && (
+              <ProductRecommendationCard 
+                products={task.product_recommendations} 
+                landAreaAcres={1} 
+              />
             )}
 
             {/* Ideal Weather */}
