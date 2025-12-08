@@ -1063,7 +1063,7 @@ YIELD TARGET: ${farmingType === 'organic_only' ? '1.5x-2.5x' : farmingType === '
 
 BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stages: ${allStageKeys.join(", ")}`;
 
-    console.log("🤖 [AI] Calling API with enhanced ${totalStages}-stage prompt, max_tokens: ${AI_CONFIG.MAX_TOKENS_SCHEDULE}");
+    console.log(`🤖 [AI] Calling API with enhanced ${totalStages}-stage prompt, max_tokens: ${AI_CONFIG.MAX_TOKENS_SCHEDULE}`);
 
     const aiResponse = await fetch(OPENAI_API_URL, {
       method: "POST",
