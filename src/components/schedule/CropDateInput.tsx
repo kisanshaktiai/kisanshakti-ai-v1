@@ -12,7 +12,6 @@ import { CentralizedCropSelector } from '@/components/crops/CentralizedCropSelec
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import FarmingTypeDialog, { FarmingMode } from './FarmingTypeDialog';
-import ScheduleLoadingOverlay from './ScheduleLoadingOverlay';
 
 interface CropDateInputProps {
   land: {
@@ -66,14 +65,17 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     }
 
     // Open farming type dialog instead of submitting directly
+    console.log('🔔 [CropDateInput] Opening farming type dialog for:', cropName);
     setShowFarmingTypeDialog(true);
   };
 
   const handleFarmingTypeSelect = (farmingType: FarmingMode) => {
+    console.log('✅ [CropDateInput] Farming type selected:', farmingType);
     setSelectedFarmingType(farmingType);
     setShowFarmingTypeDialog(false);
-    // Now submit with the farming type
+    // Now submit with the farming type - parent will handle loading state
     if (sowingDate) {
+      console.log('🚀 [CropDateInput] Calling onSubmit with farmingType:', farmingType);
       onSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType);
     }
   };
@@ -252,13 +254,6 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         onOpenChange={setShowFarmingTypeDialog}
         onSelect={handleFarmingTypeSelect}
         cropName={cropName}
-      />
-
-      {/* Loading Overlay - shown when loading prop is true */}
-      <ScheduleLoadingOverlay
-        isLoading={loading}
-        cropName={cropName}
-        farmingType={selectedFarmingType || 'organic_fertilizer'}
       />
     </div>
   );
