@@ -969,7 +969,8 @@ serve(async (req) => {
     const ruralTerms = RURAL_TERMS[language] || RURAL_TERMS["hi"];
     const state = land.state || land.district?.split(",").pop()?.trim() || "Maharashtra";
     const laborRate = STATE_LABOR_RATES[state] || STATE_LABOR_RATES["default"];
-    const landAreaHa = land.area_acres * 0.4047;
+    const landAreaAcres = land.area_acres || land.area_in_acres || 1;
+    const landAreaHa = landAreaAcres * 0.4047;
 
     // ═══════════════════════════════════════════════════════════════════
     // STEP 1: VALIDATE CROP SUITABILITY
