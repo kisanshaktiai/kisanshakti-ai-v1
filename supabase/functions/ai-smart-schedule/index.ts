@@ -72,6 +72,11 @@ const YIELD_BOOST_TECHNIQUES: Record<string, {
     yieldImpact: "25% income boost through quality & market timing",
     skipPenalty: "Storage loss, low price, 20-30% income loss",
   },
+  fallow_restoration: {
+    techniques: ["Green manuring with Dhaincha/Sunhemp", "Crop rotation planning", "Soil testing for next crop", "Deep plowing for aeration", "Organic matter incorporation"],
+    yieldImpact: "20-30% yield boost in next crop through soil health restoration",
+    skipPenalty: "Soil degradation, nutrient depletion, reduced yield potential in subsequent crops",
+  },
 };
 
 // Stage to category mapping
@@ -85,6 +90,7 @@ const STAGE_CATEGORY_MAP: Record<string, string[]> = {
   maturity: ["irrigation", "fertilizer", "disease_control"],
   harvest: ["harvest"],
   post_harvest: ["post_harvest", "other"],
+  fallow_restoration: ["land_preparation", "organic_input", "other"],
 };
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -825,18 +831,33 @@ serve(async (req) => {
     const irrigationRules = buildIrrigationRules(land.irrigation_type || "manual");
 
     // ═══════════════════════════════════════════════════════════════════
-    // STEP 5: BUILD STAGE-BASED AI PROMPT
+    // STEP 5: BUILD STAGE-BASED AI PROMPT - ALL 10 STAGES MANDATORY
     // ═══════════════════════════════════════════════════════════════════
+    const totalStages = farmingStages.length;
+    console.log(`📋 [AI] Building prompt for ALL ${totalStages} farming stages`);
+    
     const stagesPrompt = farmingStages.map((stage: FarmingStage) => {
-      const yieldTech = YIELD_BOOST_TECHNIQUES[stage.stage_key] || { techniques: [], yieldImpact: "", skipPenalty: "" };
+      const yieldTech = YIELD_BOOST_TECHNIQUES[stage.stage_key] || { 
+        techniques: ["Follow standard practices"], 
+        yieldImpact: "Optimal yield through proper management", 
+        skipPenalty: "Potential yield loss if skipped" 
+      };
       return `
-STAGE ${stage.stage_order}: ${stage.stage_name} (${stage.stage_key})
+══════════════════════════════════════════════════════════════
+MANDATORY STAGE ${stage.stage_order} of ${totalStages}: ${stage.stage_name} (stage_key: "${stage.stage_key}")
+══════════════════════════════════════════════════════════════
 ${stage.stage_icon} ${stage.stage_description}
 YIELD BOOST TECHNIQUES: ${yieldTech.techniques.join(", ")}
 YIELD IMPACT: ${yieldTech.yieldImpact}
 SKIP PENALTY: ${yieldTech.skipPenalty}
-Generate 1-3 tasks for this stage.`;
+
+⚠️ YOU MUST GENERATE 2-4 TASKS FOR THIS STAGE. DO NOT SKIP THIS STAGE.
+Each task must have: task_name, description (100+ words), yield_impact, skip_penalty, instructions (5+ steps)`;
     }).join("\n\n");
+    
+    // Create list of all stage keys that MUST be covered
+    const allStageKeys = farmingStages.map((s: FarmingStage) => s.stage_key);
+    console.log(`📋 [AI] Required stages: ${allStageKeys.join(", ")}`);
 
     // Build farming type specific rules for 3 modes
     const district = land.district || "";
@@ -932,11 +953,13 @@ Maximum yield focus. Full chemical program with 20% organic base.
     const systemPrompt = `You are a senior agricultural expert from India's Krishi Vigyan Kendra with 40+ years of experience.
 
 ═══════════════════════════════════════════════════════════════
-🎯 CRITICAL: STAGE-BASED ${farmingType.toUpperCase()} SCHEDULE GENERATION
+🚨 CRITICAL MANDATE: COMPLETE ${totalStages}-STAGE SCHEDULE GENERATION
 ═══════════════════════════════════════════════════════════════
-You MUST generate tasks for ALL 9 farming stages in EXACT sequence.
-NEVER skip, reorder, merge, or mix stages.
-Each stage must have 1-3 practical, ground-reality tasks.
+You MUST generate tasks for ALL ${totalStages} farming stages listed below. 
+EVERY stage_key MUST appear in your output: [${allStageKeys.join(", ")}]
+NEVER skip, reorder, merge, or omit ANY stage.
+Generate 2-4 practical tasks per stage = MINIMUM ${totalStages * 2} tasks total.
+FAILURE TO COVER ALL STAGES IS UNACCEPTABLE.
 
 ${stagesPrompt}
 
@@ -1006,24 +1029,41 @@ SPRAYING: Manual ₹200/acre, Power sprayer ₹400/acre
 For EVERY task calculate: Product + Labor + Spraying = Total
 Show detailed cost breakdown in cost_breakdown field`;
 
-    const userPrompt = `Generate DETAILED stage-based ${cropName} schedule for ${landAreaAcres} acres starting ${sowingDate}.
+    const userPrompt = `Generate COMPLETE stage-based ${cropName} schedule for ${landAreaAcres} acres starting ${sowingDate}.
 
 FARMING MODE: ${farmingType.toUpperCase().replace("_", " ")}
 
-REQUIREMENTS:
-1. Cover ALL 9 farming stages in sequence
-2. 2-3 tasks per stage (18-25 total tasks)
-3. DETAILED description (100-200 words per task) explaining WHY, WHAT, HOW, WHEN
-4. 5-7 step-by-step instructions per task
-5. Include yield_impact with percentage and scientific reason
-6. Include skip_penalty with percentage loss and symptoms
-7. Include product_recommendations with COMPLETE details (product_type, dose, method, timing, precautions, price)
-8. Calculate stage-wise cost breakdown
-9. Output in ${languageName} rural dialect with regional term variations where applicable
+🚨 MANDATORY REQUIREMENTS - READ CAREFULLY:
 
-YIELD TARGET: ${farmingType === 'organic_only' ? '1.5x-2.5x' : farmingType === 'organic_fertilizer' ? '3x-5x' : '5x-7x'} increase through proper agronomy techniques`;
+1. ✅ COVER ALL ${totalStages} FARMING STAGES - NO EXCEPTIONS:
+   Required stages: [${allStageKeys.join(", ")}]
+   EVERY single stage MUST have 2-4 tasks. Check your output before finishing.
 
-    console.log("🤖 [AI] Calling API with stage-based prompt");
+2. ✅ MINIMUM ${totalStages * 2} TASKS TOTAL (2-4 per stage × ${totalStages} stages)
+
+3. ✅ DETAILED DESCRIPTIONS (100-200 words per task) explaining:
+   - WHY this task is critical for yield
+   - WHAT exactly to do (specific quantities, methods)
+   - HOW to do it correctly (technique details)
+   - WHEN is the best time (morning/evening, weather conditions)
+
+4. ✅ 5-7 STEP-BY-STEP INSTRUCTIONS per task that a farmer can follow
+
+5. ✅ Include yield_impact with percentage and scientific reason
+
+6. ✅ Include skip_penalty with percentage loss and visible symptoms
+
+7. ✅ Include product_recommendations with COMPLETE details (product_type, dose, method, timing, precautions, price)
+
+8. ✅ Calculate stage-wise cost breakdown
+
+9. ✅ Output in ${languageName} rural dialect
+
+YIELD TARGET: ${farmingType === 'organic_only' ? '1.5x-2.5x' : farmingType === 'organic_fertilizer' ? '3x-5x' : '5x-7x'} increase through proper agronomy techniques
+
+BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stages: ${allStageKeys.join(", ")}`;
+
+    console.log("🤖 [AI] Calling API with enhanced ${totalStages}-stage prompt, max_tokens: ${AI_CONFIG.MAX_TOKENS_SCHEDULE}");
 
     const aiResponse = await fetch(OPENAI_API_URL, {
       method: "POST",

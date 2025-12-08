@@ -5,18 +5,13 @@
 
 export const AI_CONFIG = {
   // Primary model for schedule generation, chat, and complex tasks
-  MODEL: "gpt-4.1",
+  MODEL: "gpt-4.1-2025-04-14",
 
-  // Token limits
-  MAX_TOKENS: 8192,
-  MAX_TOKENS_SCHEDULE: 8192,
-  MAX_TOKENS_CHAT: 4096,
-  MAX_TOKENS_ANALYSIS: 4096,
-
-  // Temperature settings
-  TEMPERATURE_CREATIVE: 0.7,
-  TEMPERATURE_PRECISE: 0.3,
-  TEMPERATURE_DEFAULT: 0.5,
+  // Token limits - INCREASED for comprehensive schedule generation
+  MAX_TOKENS: 16384,
+  MAX_TOKENS_SCHEDULE: 32768, // Increased for ALL 10 farming stages with detailed tasks
+  MAX_TOKENS_CHAT: 8192,
+  MAX_TOKENS_ANALYSIS: 8192,
 
   // Rate limiting
   RATE_LIMIT_SCHEDULE: { maxRequests: 30, windowMs: 60000 },
