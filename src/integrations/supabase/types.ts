@@ -15143,8 +15143,10 @@ export type Database = {
           completion_notes: string | null
           created_at: string | null
           currency: string | null
+          days_from_sowing: number | null
           duration_hours: number | null
           estimated_cost: number | null
+          farmer_id: string | null
           id: string
           ideal_weather: Json | null
           instructions: string[] | null
@@ -15156,11 +15158,13 @@ export type Database = {
           reschedule_reason: string | null
           resources: Json | null
           schedule_id: string
+          sequence_order: number | null
           status: string | null
           task_date: string
           task_description: string | null
           task_name: string
           task_type: string
+          tenant_id: string
           updated_at: string | null
           weather_dependent: boolean | null
           weather_risk_level: string | null
@@ -15174,8 +15178,10 @@ export type Database = {
           completion_notes?: string | null
           created_at?: string | null
           currency?: string | null
+          days_from_sowing?: number | null
           duration_hours?: number | null
           estimated_cost?: number | null
+          farmer_id?: string | null
           id?: string
           ideal_weather?: Json | null
           instructions?: string[] | null
@@ -15187,11 +15193,13 @@ export type Database = {
           reschedule_reason?: string | null
           resources?: Json | null
           schedule_id: string
+          sequence_order?: number | null
           status?: string | null
           task_date: string
           task_description?: string | null
           task_name: string
           task_type: string
+          tenant_id?: string
           updated_at?: string | null
           weather_dependent?: boolean | null
           weather_risk_level?: string | null
@@ -15205,8 +15213,10 @@ export type Database = {
           completion_notes?: string | null
           created_at?: string | null
           currency?: string | null
+          days_from_sowing?: number | null
           duration_hours?: number | null
           estimated_cost?: number | null
+          farmer_id?: string | null
           id?: string
           ideal_weather?: Json | null
           instructions?: string[] | null
@@ -15218,11 +15228,13 @@ export type Database = {
           reschedule_reason?: string | null
           resources?: Json | null
           schedule_id?: string
+          sequence_order?: number | null
           status?: string | null
           task_date?: string
           task_description?: string | null
           task_name?: string
           task_type?: string
+          tenant_id?: string
           updated_at?: string | null
           weather_dependent?: boolean | null
           weather_risk_level?: string | null
