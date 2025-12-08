@@ -6,7 +6,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, Loader2, Sparkles, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { CalendarIcon, Loader2, Sparkles, AlertTriangle, CheckCircle2, XCircle, Leaf, FlaskConical } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -14,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { useWeather } from '@/hooks/useWeather';
 import { useLanguageStore } from '@/stores/languageStore';
+import { useTranslation } from 'react-i18next';
 
 interface ScheduleGeneratorProps {
   landId: string;
@@ -56,12 +58,14 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
   const { user, session } = useAuthStore();
   const { currentWeather, forecast, loading: weatherLoading } = useWeather();
   const { currentLanguage } = useLanguageStore();
+  const { t } = useTranslation();
   
   const [cropName, setCropName] = useState(currentCrop || '');
   const [customCropName, setCustomCropName] = useState('');
   const [cropVariety, setCropVariety] = useState('');
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
   const [isReadyMadePlant, setIsReadyMadePlant] = useState<boolean>(false);
+  const [farmingType, setFarmingType] = useState<'organic' | 'fertilizer'>('organic');
   const [generating, setGenerating] = useState(false);
   const [suitabilityWarning, setSuitabilityWarning] = useState<SuitabilityWarning | null>(null);
   const [showWarning, setShowWarning] = useState(false);
@@ -97,6 +101,7 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
           isReadyMadePlant,
+          farmingType, // Pass farming type selection
           weather: weatherData,
           regenerate: false,
           language: currentLanguage,
@@ -348,6 +353,60 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
           />
         </div>
 
+        {/* Farming Type Selection - Organic vs Fertilizer */}
+        <div className="space-y-3 p-4 bg-gradient-to-r from-green-500/10 to-blue-500/10 rounded-lg border border-green-500/30">
+          <Label className="text-sm font-medium flex items-center gap-2">
+            🌱 {currentLanguage === 'hi' ? 'खेती का प्रकार चुनें' : currentLanguage === 'mr' ? 'शेतीचा प्रकार निवडा' : 'Select Farming Type'}
+          </Label>
+          <RadioGroup
+            value={farmingType}
+            onValueChange={(value) => setFarmingType(value as 'organic' | 'fertilizer')}
+            className="grid grid-cols-2 gap-3"
+          >
+            <div className={cn(
+              "flex items-center space-x-3 p-4 rounded-lg border-2 cursor-pointer transition-all",
+              farmingType === 'organic' 
+                ? "border-green-500 bg-green-500/10" 
+                : "border-border/50 hover:border-green-500/50"
+            )}>
+              <RadioGroupItem value="organic" id="organic" />
+              <Label htmlFor="organic" className="flex flex-col cursor-pointer flex-1">
+                <span className="flex items-center gap-2 font-medium text-green-700 dark:text-green-400">
+                  <Leaf className="h-4 w-4" />
+                  {currentLanguage === 'hi' ? 'जैविक खेती' : currentLanguage === 'mr' ? 'सेंद्रिय शेती' : 'Organic'}
+                </span>
+                <span className="text-xs text-muted-foreground mt-1">
+                  {currentLanguage === 'hi' ? 'केवल जैविक उत्पाद, कोई रसायन नहीं' : currentLanguage === 'mr' ? 'फक्त सेंद्रिय, रसायन नाही' : 'Only organic inputs, no chemicals'}
+                </span>
+              </Label>
+            </div>
+            <div className={cn(
+              "flex items-center space-x-3 p-4 rounded-lg border-2 cursor-pointer transition-all",
+              farmingType === 'fertilizer' 
+                ? "border-blue-500 bg-blue-500/10" 
+                : "border-border/50 hover:border-blue-500/50"
+            )}>
+              <RadioGroupItem value="fertilizer" id="fertilizer" />
+              <Label htmlFor="fertilizer" className="flex flex-col cursor-pointer flex-1">
+                <span className="flex items-center gap-2 font-medium text-blue-700 dark:text-blue-400">
+                  <FlaskConical className="h-4 w-4" />
+                  {currentLanguage === 'hi' ? 'रासायनिक खाद' : currentLanguage === 'mr' ? 'रासायनिक खत' : 'Fertilizer'}
+                </span>
+                <span className="text-xs text-muted-foreground mt-1">
+                  {currentLanguage === 'hi' ? 'रासायनिक + कुछ जैविक' : currentLanguage === 'mr' ? 'रासायनिक + थोडे सेंद्रिय' : 'Chemical + some organic'}
+                </span>
+              </Label>
+            </div>
+          </RadioGroup>
+          <p className="text-xs text-muted-foreground">
+            {currentLanguage === 'hi' 
+              ? '✓ दोनों में ग्रोथ प्रमोटर (सीवीड, ह्यूमिक एसिड) शामिल होंगे' 
+              : currentLanguage === 'mr' 
+              ? '✓ दोन्हींमध्ये ग्रोथ प्रमोटर (सीवीड, ह्यूमिक अॅसिड) समाविष्ट' 
+              : '✓ Both include growth promoters (Seaweed, Humic acid) for yield boost'}
+          </p>
+        </div>
+
         {/* Ready-made Plant Option */}
         <div className="space-y-3 p-4 bg-accent/20 rounded-lg border border-border/50">
           <div className="flex items-start gap-3">
@@ -360,11 +419,14 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
             />
             <div className="flex-1">
               <Label htmlFor="ready-made" className="text-sm font-medium cursor-pointer">
-                Using ready-made nursery plants/transplants
+                {currentLanguage === 'hi' ? 'नर्सरी के तैयार पौधे लगा रहे हैं' : currentLanguage === 'mr' ? 'नर्सरीचे तयार रोपे लावत आहात' : 'Using ready-made nursery plants/transplants'}
               </Label>
               <p className="text-xs text-muted-foreground mt-1">
-                Check this if you're planting ready-made seedlings from nursery instead of sowing seeds 
-                (applicable for vegetables, sugarcane sets, etc.)
+                {currentLanguage === 'hi' 
+                  ? 'यदि आप बीज बोने के बजाय नर्सरी से तैयार पौधे लगा रहे हैं तो इसे चेक करें' 
+                  : currentLanguage === 'mr' 
+                  ? 'बियाणे पेरण्याऐवजी नर्सरीतून तयार रोपे लावत असाल तर हे चेक करा' 
+                  : 'Check this if planting ready seedlings instead of sowing seeds'}
               </p>
             </div>
           </div>

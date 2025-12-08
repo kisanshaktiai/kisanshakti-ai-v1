@@ -3925,6 +3925,7 @@ export type Database = {
           farmer_feedback: string | null
           farmer_id: string
           farmer_rating: number | null
+          farming_type: string | null
           fertilizer_k_kg: number | null
           fertilizer_n_kg: number | null
           fertilizer_p_kg: number | null
@@ -3939,10 +3940,12 @@ export type Database = {
           input_soil_data: Json | null
           input_weather_data: Json | null
           insecticide_ml: number | null
+          irrigation_count_total: number | null
           is_active: boolean | null
           is_training_candidate: boolean | null
           labor_rate_used: number | null
           land_id: string
+          last_weather_check: string | null
           last_weather_update: string | null
           metadata: Json | null
           organic_fertilizer_kg: number | null
@@ -3977,6 +3980,9 @@ export type Database = {
           training_processed: boolean | null
           updated_at: string | null
           vermicompost_kg: number | null
+          water_per_irrigation_liters: number | null
+          water_requirement_liters_total: number | null
+          weather_auto_update_enabled: boolean | null
           weather_data: Json | null
           yield_boosting_techniques: Json | null
           yield_multiplier_target: number | null
@@ -4009,6 +4015,7 @@ export type Database = {
           farmer_feedback?: string | null
           farmer_id: string
           farmer_rating?: number | null
+          farming_type?: string | null
           fertilizer_k_kg?: number | null
           fertilizer_n_kg?: number | null
           fertilizer_p_kg?: number | null
@@ -4023,10 +4030,12 @@ export type Database = {
           input_soil_data?: Json | null
           input_weather_data?: Json | null
           insecticide_ml?: number | null
+          irrigation_count_total?: number | null
           is_active?: boolean | null
           is_training_candidate?: boolean | null
           labor_rate_used?: number | null
           land_id: string
+          last_weather_check?: string | null
           last_weather_update?: string | null
           metadata?: Json | null
           organic_fertilizer_kg?: number | null
@@ -4061,6 +4070,9 @@ export type Database = {
           training_processed?: boolean | null
           updated_at?: string | null
           vermicompost_kg?: number | null
+          water_per_irrigation_liters?: number | null
+          water_requirement_liters_total?: number | null
+          weather_auto_update_enabled?: boolean | null
           weather_data?: Json | null
           yield_boosting_techniques?: Json | null
           yield_multiplier_target?: number | null
@@ -4093,6 +4105,7 @@ export type Database = {
           farmer_feedback?: string | null
           farmer_id?: string
           farmer_rating?: number | null
+          farming_type?: string | null
           fertilizer_k_kg?: number | null
           fertilizer_n_kg?: number | null
           fertilizer_p_kg?: number | null
@@ -4107,10 +4120,12 @@ export type Database = {
           input_soil_data?: Json | null
           input_weather_data?: Json | null
           insecticide_ml?: number | null
+          irrigation_count_total?: number | null
           is_active?: boolean | null
           is_training_candidate?: boolean | null
           labor_rate_used?: number | null
           land_id?: string
+          last_weather_check?: string | null
           last_weather_update?: string | null
           metadata?: Json | null
           organic_fertilizer_kg?: number | null
@@ -4145,6 +4160,9 @@ export type Database = {
           training_processed?: boolean | null
           updated_at?: string | null
           vermicompost_kg?: number | null
+          water_per_irrigation_liters?: number | null
+          water_requirement_liters_total?: number | null
+          weather_auto_update_enabled?: boolean | null
           weather_data?: Json | null
           yield_boosting_techniques?: Json | null
           yield_multiplier_target?: number | null
@@ -15174,6 +15192,7 @@ export type Database = {
           precautions: string[] | null
           priority: string | null
           product_recommendations: Json | null
+          product_type: string | null
           reschedule_reason: string | null
           resources: Json | null
           schedule_id: string
@@ -15189,6 +15208,7 @@ export type Database = {
           task_type: string
           tenant_id: string
           updated_at: string | null
+          water_required_liters: number | null
           weather_dependent: boolean | null
           weather_risk_level: string | null
           yield_boost_technique: string | null
@@ -15216,6 +15236,7 @@ export type Database = {
           precautions?: string[] | null
           priority?: string | null
           product_recommendations?: Json | null
+          product_type?: string | null
           reschedule_reason?: string | null
           resources?: Json | null
           schedule_id: string
@@ -15231,6 +15252,7 @@ export type Database = {
           task_type: string
           tenant_id?: string
           updated_at?: string | null
+          water_required_liters?: number | null
           weather_dependent?: boolean | null
           weather_risk_level?: string | null
           yield_boost_technique?: string | null
@@ -15258,6 +15280,7 @@ export type Database = {
           precautions?: string[] | null
           priority?: string | null
           product_recommendations?: Json | null
+          product_type?: string | null
           reschedule_reason?: string | null
           resources?: Json | null
           schedule_id?: string
@@ -15273,6 +15296,7 @@ export type Database = {
           task_type?: string
           tenant_id?: string
           updated_at?: string | null
+          water_required_liters?: number | null
           weather_dependent?: boolean | null
           weather_risk_level?: string | null
           yield_boost_technique?: string | null
