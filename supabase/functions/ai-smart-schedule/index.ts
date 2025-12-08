@@ -944,8 +944,12 @@ serve(async (req) => {
 
     console.log(`🌾 [AI-Schedule] Starting: ${cropName} on ${sowingDate} for land ${landId}`);
 
-    // Rate limiting
-    const rateLimitResult = await checkRateLimit(supabase, farmerId, tenantId, "schedule");
+    // Rate limiting - use correct signature: identifier, endpoint, config
+    const rateLimitResult = await checkRateLimit(
+      `${farmerId}-${tenantId}`,
+      "ai-smart-schedule",
+      { maxRequests: 20, windowMs: 60000 }
+    );
     if (!rateLimitResult.allowed) {
       return new Response(
         JSON.stringify({ error: "Rate limit exceeded", retryAfter: rateLimitResult.retryAfter }),
@@ -1480,20 +1484,20 @@ IMPORTANT:
       throw new Error(`Failed to save schedule: ${scheduleError.message}`);
     }
 
-    // Save tasks
+    // Save tasks - use correct column names matching schedule_tasks table
     const tasksToInsert = processedTasks.map((task: any, idx: number) => ({
       schedule_id: savedSchedule.id,
       farmer_id: farmerId,
       tenant_id: tenantId,
       task_name: task.task_name,
-      category: task.category,
-      scheduled_date: new Date(new Date(sowingDate).getTime() + task.days_from_sowing * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      task_type: task.category || "general", // category → task_type
+      task_date: new Date(new Date(sowingDate).getTime() + task.days_from_sowing * 24 * 60 * 60 * 1000).toISOString().split("T")[0], // scheduled_date → task_date
       days_from_sowing: task.days_from_sowing,
-      priority: task.priority,
-      description: task.description,
-      instructions: task.instructions,
-      precautions: task.precautions,
-      weather_dependent: task.weather_dependent,
+      priority: task.priority || "medium",
+      task_description: task.description || "", // description → task_description
+      instructions: task.instructions || [],
+      precautions: task.precautions || [],
+      weather_dependent: task.weather_dependent || false,
       status: "pending",
       sequence_order: idx + 1,
       resources: {
@@ -1509,7 +1513,7 @@ IMPORTANT:
         yield_impact: task.yield_impact,
         skip_penalty: task.skip_penalty,
       },
-      estimated_cost: task.estimated_cost,
+      estimated_cost: task.estimated_cost || 0,
       currency: "INR",
     }));
 
