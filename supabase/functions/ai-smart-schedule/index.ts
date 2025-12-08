@@ -1526,27 +1526,90 @@ IMPORTANT:
     const executionTime = Date.now() - startTime;
     console.log(`✅ Schedule complete in ${executionTime}ms`);
 
+    // Training-ready response with all fields for model feedback loop
     return new Response(
       JSON.stringify({
         success: true,
+        
+        // Core identifiers
         scheduleId: savedSchedule.id,
+        landId,
+        farmerId,
+        tenantId,
+        
+        // Crop details
         cropName,
+        cropVariety: cropVariety || cropName,
         sowingDate,
-        suitability: suitabilityCheck,
-        totalTasks: processedTasks.length,
-        duration: scheduleData.total_duration_days,
-        expectedYield: scheduleData.expected_yield_quintals,
-        totalCost: correctedTotalCost,
-        totalLaborCost,
-        totalMaterialCost,
-        expectedProfit: scheduleData.expected_profit,
-        seedData: { quantity: exactSeedQty, rate: seedData.rate_kg_per_acre, cost: seedCost },
-        organicData: { fym: fymTons, cost: fymCost },
-        fertilizerData: { urea: ureaKg, dap: dapKg, mop: mopKg, total: totalFertilizerCost },
-        laborRate,
-        state,
-        language,
+        expectedHarvestDate: scheduleData.harvest_date,
+        
+        // Suitability validation
+        suitability: {
+          score: suitabilityCheck.score,
+          suitable: suitabilityCheck.suitable,
+          warnings: suitabilityCheck.warnings,
+          alternatives: suitabilityCheck.alternatives,
+        },
+        
+        // Task summary
+        tasks: {
+          total: processedTasks.length,
+          categories: [...new Set(processedTasks.map((t: any) => t.category))],
+          durationDays: scheduleData.total_duration_days,
+        },
+        
+        // Cost breakdown (training: predicted costs)
+        costs: {
+          total: correctedTotalCost,
+          labor: totalLaborCost,
+          material: totalMaterialCost,
+          seed: seedCost,
+          fertilizer: totalFertilizerCost,
+          organic: fymCost,
+          currency: "INR",
+        },
+        
+        // Yield prediction (training: predicted outcome)
+        yield: {
+          expectedQuintals: scheduleData.expected_yield_quintals,
+          expectedProfit: scheduleData.expected_profit || (scheduleData.expected_yield_quintals * 2500 - correctedTotalCost),
+          yieldPerAcre: scheduleData.expected_yield_quintals / landAreaAcres,
+        },
+        
+        // Input quantities (training: what was recommended)
+        inputs: {
+          seed: { quantityKg: exactSeedQty, ratePerAcre: seedData.rate_kg_per_acre },
+          fertilizer: { ureaKg, dapKg, mopKg, nKg: ureaKg * 0.46, pKg: dapKg * 0.46, kKg: mopKg * 0.60 },
+          organic: { fymTons, organicManureKg: fymTons * 1000 },
+        },
+        
+        // Context used (training: input features)
+        context: {
+          landAreaAcres,
+          state,
+          laborRate,
+          laborRateSource: "MGNREGA_2024_25",
+          language,
+          agroClimaticZone: land?.agro_climatic_zone || null,
+          irrigationType: land?.irrigation_type || "manual",
+          soilType: land?.soil_type || null,
+          soilPh: land?.soil_ph || null,
+        },
+        
+        // Recommendation order followed
+        recommendationOrder: "organic → growth_promoter → fertilizer → pesticide",
+        
+        // Training pipeline metadata
+        training: {
+          isCandidate: true,
+          processed: false,
+          dataQualityScore: calculateDataQualityScore(land, scheduleData, processedTasks),
+        },
+        
+        // Execution metadata
+        aiModel: AI_CONFIG.MODEL,
         executionTimeMs: executionTime,
+        generatedAt: new Date().toISOString(),
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -1626,4 +1689,46 @@ function buildSoilRecommendations(land: any): string {
   }
 
   return recs.length > 0 ? "\n═══════════════════════════════════════════════════════════════\n🌍 SOIL AMENDMENTS\n═══════════════════════════════════════════════════════════════\n" + recs.join("\n") : "";
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// TRAINING DATA QUALITY SCORING
+// ═══════════════════════════════════════════════════════════════════════
+function calculateDataQualityScore(land: any, scheduleData: any, tasks: any[]): number {
+  let score = 0;
+  const maxScore = 100;
+  
+  // Land data completeness (40 points)
+  if (land?.latitude && land?.longitude) score += 8;
+  if (land?.area_in_acres) score += 5;
+  if (land?.soil_type) score += 5;
+  if (land?.soil_ph) score += 5;
+  if (land?.irrigation_type) score += 5;
+  if (land?.boundary_coordinates) score += 4;
+  if (land?.agro_climatic_zone) score += 4;
+  if (land?.organic_carbon_percent) score += 4;
+  
+  // Schedule data completeness (30 points)
+  if (scheduleData?.expected_yield_quintals > 0) score += 6;
+  if (scheduleData?.total_duration_days > 0) score += 4;
+  if (scheduleData?.harvest_date) score += 4;
+  if (scheduleData?.expected_profit) score += 4;
+  if (scheduleData?.weather_context) score += 6;
+  if (scheduleData?.variety) score += 6;
+  
+  // Task data quality (30 points)
+  if (tasks.length >= 10) score += 10;
+  else if (tasks.length >= 5) score += 5;
+  
+  const tasksWithCosts = tasks.filter((t: any) => t.estimated_cost > 0).length;
+  if (tasksWithCosts === tasks.length) score += 10;
+  else if (tasksWithCosts > tasks.length * 0.8) score += 7;
+  else if (tasksWithCosts > tasks.length * 0.5) score += 4;
+  
+  const tasksWithDescriptions = tasks.filter((t: any) => t.description && t.description.length > 20).length;
+  if (tasksWithDescriptions === tasks.length) score += 10;
+  else if (tasksWithDescriptions > tasks.length * 0.8) score += 7;
+  else if (tasksWithDescriptions > tasks.length * 0.5) score += 4;
+  
+  return Math.min(score, maxScore);
 }
