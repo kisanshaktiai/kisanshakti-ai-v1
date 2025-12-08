@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.mcp-handler]
 verify_jwt = false
+
+[functions.ai-weather-schedule-sync]
+verify_jwt = false
