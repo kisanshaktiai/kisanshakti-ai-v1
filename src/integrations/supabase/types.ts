@@ -3915,6 +3915,7 @@ export type Database = {
           crop_name: string
           crop_variety: string | null
           data_quality_score: number | null
+          district_name: string | null
           expected_gross_revenue: number | null
           expected_harvest_date: string | null
           expected_market_price_per_quintal: number | null
@@ -3957,6 +3958,7 @@ export type Database = {
           products_recommended_count: number | null
           recommendation_order: string | null
           recommended_products: Json | null
+          regional_dialect_zone: string | null
           schedule_accuracy_score: number | null
           schedule_version: number | null
           seed_quantity_kg: number | null
@@ -3966,6 +3968,7 @@ export type Database = {
           status: string | null
           suitability_score: number | null
           suitability_warnings: Json | null
+          taluka_name: string | null
           tasks_completed_count: number | null
           tasks_on_time_count: number | null
           tasks_total_count: number | null
@@ -4005,6 +4008,7 @@ export type Database = {
           crop_name: string
           crop_variety?: string | null
           data_quality_score?: number | null
+          district_name?: string | null
           expected_gross_revenue?: number | null
           expected_harvest_date?: string | null
           expected_market_price_per_quintal?: number | null
@@ -4047,6 +4051,7 @@ export type Database = {
           products_recommended_count?: number | null
           recommendation_order?: string | null
           recommended_products?: Json | null
+          regional_dialect_zone?: string | null
           schedule_accuracy_score?: number | null
           schedule_version?: number | null
           seed_quantity_kg?: number | null
@@ -4056,6 +4061,7 @@ export type Database = {
           status?: string | null
           suitability_score?: number | null
           suitability_warnings?: Json | null
+          taluka_name?: string | null
           tasks_completed_count?: number | null
           tasks_on_time_count?: number | null
           tasks_total_count?: number | null
@@ -4095,6 +4101,7 @@ export type Database = {
           crop_name?: string
           crop_variety?: string | null
           data_quality_score?: number | null
+          district_name?: string | null
           expected_gross_revenue?: number | null
           expected_harvest_date?: string | null
           expected_market_price_per_quintal?: number | null
@@ -4137,6 +4144,7 @@ export type Database = {
           products_recommended_count?: number | null
           recommendation_order?: string | null
           recommended_products?: Json | null
+          regional_dialect_zone?: string | null
           schedule_accuracy_score?: number | null
           schedule_version?: number | null
           seed_quantity_kg?: number | null
@@ -4146,6 +4154,7 @@ export type Database = {
           status?: string | null
           suitability_score?: number | null
           suitability_warnings?: Json | null
+          taluka_name?: string | null
           tasks_completed_count?: number | null
           tasks_on_time_count?: number | null
           tasks_total_count?: number | null
@@ -15180,6 +15189,7 @@ export type Database = {
           created_at: string | null
           currency: string | null
           days_from_sowing: number | null
+          detailed_steps: Json | null
           duration_hours: number | null
           estimated_cost: number | null
           farmer_id: string | null
@@ -15193,11 +15203,13 @@ export type Database = {
           priority: string | null
           product_recommendations: Json | null
           product_type: string | null
+          regional_terms: Json | null
           reschedule_reason: string | null
           resources: Json | null
           schedule_id: string
           sequence_order: number | null
           skip_penalty: string | null
+          skip_penalty_details: Json | null
           stage_key: string | null
           stage_name: string | null
           stage_order: number | null
@@ -15213,6 +15225,7 @@ export type Database = {
           weather_risk_level: string | null
           yield_boost_technique: string | null
           yield_impact: string | null
+          yield_impact_details: Json | null
         }
         Insert: {
           auto_rescheduled?: boolean | null
@@ -15224,6 +15237,7 @@ export type Database = {
           created_at?: string | null
           currency?: string | null
           days_from_sowing?: number | null
+          detailed_steps?: Json | null
           duration_hours?: number | null
           estimated_cost?: number | null
           farmer_id?: string | null
@@ -15237,11 +15251,13 @@ export type Database = {
           priority?: string | null
           product_recommendations?: Json | null
           product_type?: string | null
+          regional_terms?: Json | null
           reschedule_reason?: string | null
           resources?: Json | null
           schedule_id: string
           sequence_order?: number | null
           skip_penalty?: string | null
+          skip_penalty_details?: Json | null
           stage_key?: string | null
           stage_name?: string | null
           stage_order?: number | null
@@ -15257,6 +15273,7 @@ export type Database = {
           weather_risk_level?: string | null
           yield_boost_technique?: string | null
           yield_impact?: string | null
+          yield_impact_details?: Json | null
         }
         Update: {
           auto_rescheduled?: boolean | null
@@ -15268,6 +15285,7 @@ export type Database = {
           created_at?: string | null
           currency?: string | null
           days_from_sowing?: number | null
+          detailed_steps?: Json | null
           duration_hours?: number | null
           estimated_cost?: number | null
           farmer_id?: string | null
@@ -15281,11 +15299,13 @@ export type Database = {
           priority?: string | null
           product_recommendations?: Json | null
           product_type?: string | null
+          regional_terms?: Json | null
           reschedule_reason?: string | null
           resources?: Json | null
           schedule_id?: string
           sequence_order?: number | null
           skip_penalty?: string | null
+          skip_penalty_details?: Json | null
           stage_key?: string | null
           stage_name?: string | null
           stage_order?: number | null
@@ -15301,6 +15321,7 @@ export type Database = {
           weather_risk_level?: string | null
           yield_boost_technique?: string | null
           yield_impact?: string | null
+          yield_impact_details?: Json | null
         }
         Relationships: [
           {

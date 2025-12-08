@@ -208,6 +208,125 @@ const RURAL_TERMS: Record<string, Record<string, string>> = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════
+// REGIONAL DIALECT MAPPING (Maharashtra Districts)
+// For words that vary by region, we show both terms: "Local/General"
+// ═══════════════════════════════════════════════════════════════════════
+const MAHARASHTRA_REGIONS: Record<string, string[]> = {
+  vidarbha: ["Nagpur", "Amravati", "Akola", "Yavatmal", "Chandrapur", "Wardha", "Bhandara", "Gondia", "Gadchiroli", "Buldhana", "Washim"],
+  marathwada: ["Aurangabad", "Chhatrapati Sambhaji Nagar", "Latur", "Osmanabad", "Dharashiv", "Nanded", "Beed", "Parbhani", "Jalna", "Hingoli"],
+  western_maha: ["Pune", "Kolhapur", "Sangli", "Satara", "Solapur"],
+  konkan: ["Mumbai", "Thane", "Raigad", "Ratnagiri", "Sindhudurg", "Palghar"],
+  north_maha: ["Nashik", "Jalgaon", "Dhule", "Nandurbar", "Ahmednagar"],
+  khandesh: ["Jalgaon", "Dhule", "Nandurbar"],
+};
+
+const REGIONAL_TERMS: Record<string, Record<string, Record<string, string>>> = {
+  mr: {
+    vidarbha: {
+      weeding: "निंदणी",
+      irrigation: "पाणी देणे",
+      harvesting: "कापणी",
+      fertilizer: "खत/खाद",
+      sowing: "पेरणी",
+      transplanting: "लागवड",
+    },
+    western_maha: {
+      weeding: "खुरपणी/काट काढणे",
+      irrigation: "पाणी सोडणे",
+      harvesting: "काढणी",
+      fertilizer: "खत",
+      sowing: "पेरणी",
+      transplanting: "रोपणी",
+    },
+    marathwada: {
+      weeding: "खोदणी/निवडणी",
+      irrigation: "ओलित करणे",
+      harvesting: "कापणी",
+      fertilizer: "खत",
+      sowing: "पेरणी",
+      transplanting: "लागवड",
+    },
+    konkan: {
+      weeding: "निंदणी",
+      irrigation: "पाणी घालणे",
+      harvesting: "काढणी",
+      fertilizer: "खत",
+      sowing: "पेरणी",
+      transplanting: "रोपणे",
+    },
+    north_maha: {
+      weeding: "खुरपणी",
+      irrigation: "पाणी देणे",
+      harvesting: "कापणी",
+      fertilizer: "खत",
+      sowing: "पेरणी",
+      transplanting: "लावणी",
+    },
+    khandesh: {
+      weeding: "निंदाई",
+      irrigation: "पाणी देणं",
+      harvesting: "कापणी",
+      fertilizer: "खत",
+      sowing: "पेरणी",
+      transplanting: "लावणी",
+    },
+  },
+};
+
+function getRegionFromDistrict(district: string, state: string): string {
+  if (state?.toLowerCase() !== "maharashtra") return "default";
+  
+  const districtLower = district?.toLowerCase() || "";
+  
+  for (const [region, districts] of Object.entries(MAHARASHTRA_REGIONS)) {
+    if (districts.some(d => districtLower.includes(d.toLowerCase()))) {
+      return region;
+    }
+  }
+  return "western_maha"; // Default for Maharashtra
+}
+
+function getRegionalDialectTerms(language: string, region: string): Record<string, string> {
+  const regionalTerms = REGIONAL_TERMS[language]?.[region];
+  const baseTerms = RURAL_TERMS[language] || RURAL_TERMS["hi"];
+  
+  if (!regionalTerms) return baseTerms;
+  
+  // Merge regional terms with base terms
+  return { ...baseTerms, ...regionalTerms };
+}
+
+function buildRegionalLanguageRules(language: string, region: string, district: string): string {
+  if (language !== "mr" || !REGIONAL_TERMS[language]?.[region]) {
+    return "";
+  }
+  
+  const regionalTerms = REGIONAL_TERMS[language][region];
+  const baseTerms = RURAL_TERMS[language];
+  
+  const termMappings: string[] = [];
+  for (const [key, localTerm] of Object.entries(regionalTerms)) {
+    const generalTerm = baseTerms[key];
+    if (localTerm !== generalTerm) {
+      termMappings.push(`${key}: "${localTerm}/${generalTerm}" (use local term first)`);
+    }
+  }
+  
+  if (termMappings.length === 0) return "";
+  
+  return `
+═══════════════════════════════════════════════════════════════
+📍 REGIONAL DIALECT ADAPTATION (${district}, ${region.replace("_", " ").toUpperCase()})
+═══════════════════════════════════════════════════════════════
+For agricultural terms with regional variations, show BOTH terms:
+${termMappings.join("\n")}
+
+Example output: "खुरपणी/निंदणी करा" (shows local term first, then general term)
+This helps farmers from different areas understand the content.
+`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // STATE-WISE LABOR RATES (MGNREGA 2024-25 Daily Wages in ₹) - UPDATED
 // Source: Ministry of Rural Development, Govt of India
 // ═══════════════════════════════════════════════════════════════════════
@@ -611,7 +730,7 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
     );
 
-    const { landId, cropName, cropVariety, sowingDate, language = "hi", isReadyMadePlant = false, farmingType = "organic" } = await req.json();
+    const { landId, cropName, cropVariety, sowingDate, language = "hi", isReadyMadePlant = false, farmingType = "organic_fertilizer" } = await req.json();
     const tenantId = req.headers.get("x-tenant-id") || "";
     const farmerId = req.headers.get("x-farmer-id") || "";
 
@@ -719,41 +838,96 @@ SKIP PENALTY: ${yieldTech.skipPenalty}
 Generate 1-3 tasks for this stage.`;
     }).join("\n\n");
 
-    // Build farming type specific rules
-    const farmingTypeRules = farmingType === "organic" 
-      ? `
+    // Build farming type specific rules for 3 modes
+    const district = land.district || "";
+    const region = getRegionFromDistrict(district, state);
+    const regionalDialectTerms = getRegionalDialectTerms(language, region);
+    const regionalLanguageRules = buildRegionalLanguageRules(language, region, district);
+    
+    let farmingTypeRules = "";
+    if (farmingType === "organic_only") {
+      farmingTypeRules = `
 ═══════════════════════════════════════════════════════════════
-🌿 ORGANIC FARMING MODE (जैविक खेती / सेंद्रिय शेती)
+🌿 100% ORGANIC FARMING MODE (पूर्ण जैविक खेती / संपूर्ण सेंद्रिय शेती)
 ═══════════════════════════════════════════════════════════════
-✅ ALLOWED PRODUCTS:
-- Organic manures: FYM (${ruralTerms.fym}), Vermicompost, Jeevamrut, Panchagavya
-- Bio-fertilizers: Rhizobium, Azotobacter, PSB, KSB
-- Bio-pesticides: Trichoderma, Pseudomonas, Beauveria, Metarhizium
-- Botanical pesticides: Neem oil, Neem cake, Garlic extract
-- Growth promoters: Seaweed extract, Humic acid, Amino acids (YES - allowed!)
+This farmer wants ZERO chemicals. Premium pricing for organic produce.
 
-❌ STRICTLY NOT ALLOWED:
-- Chemical fertilizers (Urea, DAP, MOP, NPK complexes)
-- Chemical pesticides/insecticides
+✅ ALLOWED PRODUCTS (100% organic):
+- Organic manures: FYM (${regionalDialectTerms.fym}), Vermicompost, Jeevamrut, Panchagavya
+- Bio-fertilizers: Rhizobium, Azotobacter, PSB, KSB, Azospirillum
+- Bio-pesticides: Trichoderma, Pseudomonas, Beauveria, Metarhizium, Verticillium
+- Botanical pesticides: Neem oil, Neem cake, Garlic extract, Chilli extract
+- Growth promoters: Seaweed extract, Humic acid, Amino acids, Fulvic acid
+- Soil amendments: Green manure, Mulching, Cover crops
+
+❌ STRICTLY NOT ALLOWED - DO NOT RECOMMEND:
+- Chemical fertilizers (Urea, DAP, MOP, NPK complexes, SSP)
+- Chemical pesticides/insecticides (Imidacloprid, Chlorpyriphos, etc.)
+- Chemical fungicides (Carbendazim, Mancozeb, etc.)
 - Synthetic growth regulators
 
 💰 ORGANIC INPUT COSTS (2024-25 Rates):
 - FYM: ₹1200/ton | Vermicompost: ₹12/kg | Neem oil: ₹380/L
-- Trichoderma: ₹280/kg | Seaweed: ₹550/500ml | Humic acid: ₹480/L`
-      : `
+- Trichoderma: ₹280/kg | Pseudomonas: ₹320/kg | Beauveria: ₹350/kg
+- Seaweed: ₹550/500ml | Humic acid: ₹480/L | Amino acid: ₹620/L
+- Jeevamrut: ₹80/batch | Panchagavya: ₹150/batch`;
+    } else if (farmingType === "organic_fertilizer") {
+      farmingTypeRules = `
 ═══════════════════════════════════════════════════════════════
-🧪 FERTILIZER-BASED FARMING MODE (रासायनिक खाद / रासायनिक खत)
+🌱🧪 ORGANIC + FERTILIZER MODE (जैविक + रासायनिक / सेंद्रिय + रासायनिक)
 ═══════════════════════════════════════════════════════════════
-✅ ALLOWED PRODUCTS (in order of priority):
-1. ORGANIC BASE (30%): FYM 2-3 tons/acre, Vermicompost for nursery
-2. GROWTH PROMOTERS: Seaweed, Humic acid, Amino acids (YES - mandatory!)
-3. CHEMICAL FERTILIZERS (soil test based): 
-   - Urea ${ureaKg}kg = ₹${ureaCost} | DAP ${dapKg}kg = ₹${dapCost} | MOP ${mopKg}kg = ₹${mopCost}
-4. IPM-BASED PEST CONTROL: Start with bio, use chemical if needed
+Best of both worlds - 60% organic base, 40% chemical boost. IPM approach.
 
-💰 2024-25 SUBSIDIZED RATES:
-- Urea: ₹6.5/kg (₹293/45kg bag) | DAP: ₹30/kg (₹1500/50kg bag)
-- MOP: ₹20/kg | SSP: ₹9/kg | Zinc Sulphate: ₹110/kg`;
+✅ ALLOWED PRODUCTS (in priority order):
+1. ORGANIC BASE (60%): 
+   - FYM ${fymTons} tons = ₹${fymCost} | Vermicompost for nursery
+   - Green manure incorporation | Mulching where possible
+   
+2. GROWTH PROMOTERS (mandatory for yield boost):
+   - Seaweed extract ₹${seaweedCost} | Humic acid ₹${humicCost}
+   - Amino acids for stress tolerance | Fulvic acid for nutrient transport
+   
+3. CHEMICAL FERTILIZERS (40% - soil test based):
+   - Urea ${ureaKg}kg = ₹${ureaCost} | DAP ${dapKg}kg = ₹${dapCost} | MOP ${mopKg}kg = ₹${mopCost}
+   - Micronutrients: Zinc Sulphate, Borax as needed
+   
+4. IPM-BASED PEST CONTROL (bio-first approach):
+   - First choice: Trichoderma, Pseudomonas, Beauveria, Neem
+   - If severe: Use chemical with proper PHI compliance
+
+💰 2024-25 RATES:
+- Organic: FYM ₹1200/ton | Vermicompost ₹12/kg
+- Fertilizers: Urea ₹6.5/kg | DAP ₹30/kg | MOP ₹20/kg`;
+    } else {
+      farmingTypeRules = `
+═══════════════════════════════════════════════════════════════
+🧪🐛 FULL CHEMICAL FARMING MODE (पूर्ण रासायनिक / पूर्ण रासायनिक)
+═══════════════════════════════════════════════════════════════
+Maximum yield focus. Full chemical program with 20% organic base.
+
+✅ ALLOWED PRODUCTS (in priority order):
+1. ORGANIC BASE (20%): FYM 2 tons/acre for soil health
+   
+2. GROWTH PROMOTERS (for maximum yield):
+   - Seaweed, Humic acid, Amino acids, Gibberellic acid
+   - Brassinolide for stress tolerance
+   
+3. CHEMICAL FERTILIZERS (full program):
+   - Urea ${ureaKg}kg = ₹${ureaCost} | DAP ${dapKg}kg = ₹${dapCost} | MOP ${mopKg}kg = ₹${mopCost}
+   - NPK complexes as per crop stage | All micronutrients
+   
+4. FULL PEST & DISEASE CONTROL:
+   - Insecticides: Imidacloprid, Thiamethoxam, Chlorpyriphos
+   - Fungicides: Carbendazim, Mancozeb, Copper fungicides
+   - ⚠️ ALWAYS include PHI (Pre-Harvest Interval) warnings
+
+❌ NOT ALLOWED:
+- Banned pesticides (Endosulfan, Monocrotophos, etc.)
+
+💰 2024-25 RATES:
+- Fertilizers: Urea ₹6.5/kg | DAP ₹30/kg | MOP ₹20/kg
+- Pesticides: Imidacloprid ₹450/250ml | Chlorpyriphos ₹380/L`;
+    }
 
     const systemPrompt = `You are a senior agricultural expert from India's Krishi Vigyan Kendra with 40+ years of experience.
 
@@ -772,15 +946,41 @@ ${farmingTypeRules}
 🗣️ LANGUAGE RULES (CRITICAL!)
 ═══════════════════════════════════════════════════════════════
 1. Think in English, output in ${languageName} PURE RURAL VILLAGE DIALECT
-2. Use local words: "${ruralTerms.fertilizer}", "${ruralTerms.sowing}", "${ruralTerms.weeding}"
+2. Use local words: "${regionalDialectTerms.fertilizer}", "${regionalDialectTerms.sowing}", "${regionalDialectTerms.weeding}"
 3. Keep sentences SHORT and PRACTICAL like a village elder speaks
-4. Each task description should be 30-50 words with SPECIFIC details
+4. Each task description should be 100-200 words with DETAILED PRACTICAL information
+5. Include 5-7 step-by-step instructions per task
+
+${regionalLanguageRules}
+
+═══════════════════════════════════════════════════════════════
+📝 DETAILED TASK REQUIREMENTS (VERY IMPORTANT)
+═══════════════════════════════════════════════════════════════
+Each task MUST include detailed information:
+
+1. DESCRIPTION (100-200 words): 
+   - WHY this task is important
+   - WHAT exactly to do (specific quantities, methods)
+   - HOW to do it correctly (technique details)
+   - WHEN is the best time (morning/evening, weather conditions)
+   - WHAT to observe/check before and after
+
+2. INSTRUCTIONS (5-7 practical steps):
+   - Step-by-step actions a farmer can follow
+   - Include timing (e.g., "Do in early morning 6-8 AM")
+   - Include tools needed
+   - Include safety precautions where relevant
+
+3. YIELD_IMPACT: Explain percentage increase and scientific reason
+4. SKIP_PENALTY: Explain percentage loss and visible symptoms
+5. PRODUCT_RECOMMENDATIONS: Complete product details with dose, method, timing
 
 ═══════════════════════════════════════════════════════════════
 🌱 CROP & LAND DETAILS
 ═══════════════════════════════════════════════════════════════
 CROP: ${cropName} ${cropVariety ? `(${cropVariety})` : ""}
 LOCATION: ${land.village || ""}, ${land.district || ""}, ${state}
+REGIONAL DIALECT ZONE: ${region}
 AREA: ${landAreaAcres} acres (${landAreaHa.toFixed(2)} hectares)
 SOIL: ${land.soil_type || "Black"} | pH: ${land.soil_ph || 7.0}
 IRRIGATION: ${land.irrigation_type || "manual"}
@@ -806,17 +1006,22 @@ SPRAYING: Manual ₹200/acre, Power sprayer ₹400/acre
 For EVERY task calculate: Product + Labor + Spraying = Total
 Show detailed cost breakdown in cost_breakdown field`;
 
-    const userPrompt = `Generate stage-based ${cropName} schedule for ${landAreaAcres} acres starting ${sowingDate}.
+    const userPrompt = `Generate DETAILED stage-based ${cropName} schedule for ${landAreaAcres} acres starting ${sowingDate}.
+
+FARMING MODE: ${farmingType.toUpperCase().replace("_", " ")}
 
 REQUIREMENTS:
 1. Cover ALL 9 farming stages in sequence
 2. 2-3 tasks per stage (18-25 total tasks)
-3. Include yield_impact and skip_penalty for each task
-4. Include product_recommendations with organic/growth/fertilizer priority
-5. Calculate stage-wise cost breakdown
-6. Output in ${languageName} rural dialect
+3. DETAILED description (100-200 words per task) explaining WHY, WHAT, HOW, WHEN
+4. 5-7 step-by-step instructions per task
+5. Include yield_impact with percentage and scientific reason
+6. Include skip_penalty with percentage loss and symptoms
+7. Include product_recommendations with COMPLETE details (product_type, dose, method, timing, precautions, price)
+8. Calculate stage-wise cost breakdown
+9. Output in ${languageName} rural dialect with regional term variations where applicable
 
-YIELD TARGET: 3x-7x increase through proper agronomy techniques`;
+YIELD TARGET: ${farmingType === 'organic_only' ? '1.5x-2.5x' : farmingType === 'organic_fertilizer' ? '3x-5x' : '5x-7x'} increase through proper agronomy techniques`;
 
     console.log("🤖 [AI] Calling API with stage-based prompt");
 
@@ -881,10 +1086,42 @@ YIELD TARGET: 3x-7x increase through proper agronomy techniques`;
                         },
                         days_from_sowing: { type: "integer" },
                         priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
-                        description: { type: "string", description: "Village-style description (max 40 words)" },
-                        yield_impact: { type: "string", description: "How this task impacts yield" },
-                        skip_penalty: { type: "string", description: "What farmer loses if skipped" },
+                        description: { type: "string", description: "Detailed village-style description (100-200 words) explaining WHY, WHAT, HOW, WHEN" },
+                        yield_impact: { type: "string", description: "Detailed yield impact with percentage and scientific reason (e.g., '20-30% yield increase due to improved nutrient uptake')" },
+                        skip_penalty: { type: "string", description: "Detailed skip penalty with percentage loss and visible symptoms (e.g., '15-25% yield loss, yellowing leaves, stunted growth')" },
+                        yield_impact_details: {
+                          type: "object",
+                          properties: {
+                            percentage_increase: { type: "string" },
+                            scientific_reason: { type: "string" },
+                            farmer_benefit: { type: "string" }
+                          },
+                          description: "Structured yield impact details"
+                        },
+                        skip_penalty_details: {
+                          type: "object",
+                          properties: {
+                            percentage_loss: { type: "string" },
+                            symptoms: { type: "array", items: { type: "string" } },
+                            recovery_possible: { type: "boolean" }
+                          },
+                          description: "Structured skip penalty details"
+                        },
                         yield_boost_technique: { type: "string", description: "Specific yield boosting technique" },
+                        detailed_steps: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              step_number: { type: "integer" },
+                              action: { type: "string" },
+                              timing: { type: "string", description: "e.g., 'Morning 6-8 AM' or 'Evening 4-6 PM'" },
+                              weather_condition: { type: "string" },
+                              tools_needed: { type: "string" }
+                            }
+                          },
+                          description: "5-7 detailed steps with timing and tools"
+                        },
                         product_recommendations: {
                           type: "array",
                           items: {
@@ -894,10 +1131,12 @@ YIELD TARGET: 3x-7x increase through proper agronomy techniques`;
                               product_type: { type: "string", enum: ["organic", "growth_promoter", "fertilizer", "pesticide"] },
                               active_ingredient: { type: "string" },
                               dose_per_acre: { type: "string" },
-                              application_method: { type: "string" },
+                              application_method: { type: "string", description: "spray/drench/broadcast/soil application" },
+                              timing: { type: "string", description: "Best time to apply (morning/evening, crop stage)" },
                               precautions: { type: "string" },
-                              weather_conditions: { type: "string" },
-                              price_estimate: { type: "number" }
+                              weather_conditions: { type: "string", description: "Avoid rain, avoid hot sun, etc." },
+                              price_estimate: { type: "number" },
+                              phi_days: { type: "integer", description: "Pre-harvest interval for pesticides" }
                             }
                           }
                         },
@@ -1033,6 +1272,9 @@ YIELD TARGET: 3x-7x increase through proper agronomy techniques`;
         crop_name: cropName,
         crop_variety: cropVariety || cropName,
         sowing_date: sowingDate,
+        regional_dialect_zone: region,
+        district_name: district,
+        taluka_name: land.taluka || null,
         total_estimated_cost: correctedTotalCost,
         total_labor_cost: totalLaborCost,
         total_material_cost: totalMaterialCost,
