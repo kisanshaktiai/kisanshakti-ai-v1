@@ -1370,42 +1370,57 @@ BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stage
     }
 
     // Save tasks with stage information
-    const tasksToInsert = processedTasks.map((task: any, idx: number) => ({
-      schedule_id: savedSchedule.id,
-      farmer_id: farmerId,
-      tenant_id: tenantId,
-      task_name: task.task_name,
-      task_type: task.category || "general",
-      task_date: new Date(new Date(sowingDate).getTime() + task.days_from_sowing * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-      days_from_sowing: task.days_from_sowing,
-      priority: task.priority || "medium",
-      task_description: task.description || "",
-      instructions: task.instructions || [],
-      precautions: task.precautions || [],
-      weather_dependent: task.weather_dependent || false,
-      status: "pending",
-      sequence_order: idx + 1,
-      // Stage-based fields
-      stage_key: task.stage_key,
-      stage_order: task.stage_order,
-      stage_name: task.stage_name,
-      yield_impact: task.yield_impact,
-      skip_penalty: task.skip_penalty,
-      yield_boost_technique: task.yield_boost_technique,
-      product_recommendations: task.product_recommendations || [],
-      resources: {
-        quantity: task.quantity,
-        product_details: task.product_details,
-        product_cost: task.product_cost,
-        labor_days: task.labor_days,
-        labor_cost: task.labor_cost,
-        spraying_cost: task.spraying_cost,
-        machinery_cost: task.machinery_cost,
-        cost_breakdown: task.cost_breakdown,
-      },
-      estimated_cost: task.estimated_cost || 0,
-      currency: "INR",
-    }));
+    // Parse sowing date safely
+    const baseSowingDate = new Date(sowingDate);
+    if (isNaN(baseSowingDate.getTime())) {
+      throw new Error(`Invalid sowing date: ${sowingDate}`);
+    }
+
+    const tasksToInsert = processedTasks.map((task: any, idx: number) => {
+      // Safely calculate task date with fallback
+      const daysFromSowing = typeof task.days_from_sowing === 'number' && !isNaN(task.days_from_sowing) 
+        ? task.days_from_sowing 
+        : 0;
+      const taskDate = new Date(baseSowingDate.getTime() + daysFromSowing * 24 * 60 * 60 * 1000);
+      const taskDateStr = taskDate.toISOString().split("T")[0];
+
+      return {
+        schedule_id: savedSchedule.id,
+        farmer_id: farmerId,
+        tenant_id: tenantId,
+        task_name: task.task_name,
+        task_type: task.category || "general",
+        task_date: taskDateStr,
+        days_from_sowing: daysFromSowing,
+        priority: task.priority || "medium",
+        task_description: task.description || "",
+        instructions: task.instructions || [],
+        precautions: task.precautions || [],
+        weather_dependent: task.weather_dependent || false,
+        status: "pending",
+        sequence_order: idx + 1,
+        // Stage-based fields
+        stage_key: task.stage_key,
+        stage_order: task.stage_order,
+        stage_name: task.stage_name,
+        yield_impact: task.yield_impact,
+        skip_penalty: task.skip_penalty,
+        yield_boost_technique: task.yield_boost_technique,
+        product_recommendations: task.product_recommendations || [],
+        resources: {
+          quantity: task.quantity,
+          product_details: task.product_details,
+          product_cost: task.product_cost,
+          labor_days: task.labor_days,
+          labor_cost: task.labor_cost,
+          spraying_cost: task.spraying_cost,
+          machinery_cost: task.machinery_cost,
+          cost_breakdown: task.cost_breakdown,
+        },
+        estimated_cost: task.estimated_cost || 0,
+        currency: "INR",
+      };
+    });
 
     const { data: insertedTasks, error: tasksError } = await supabase
       .from("schedule_tasks")
