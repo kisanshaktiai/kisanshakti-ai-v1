@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -16,6 +16,7 @@ import { useWeather } from '@/hooks/useWeather';
 import { useLanguageStore } from '@/stores/languageStore';
 import { useTranslation } from 'react-i18next';
 import FarmingTypeDialog, { FarmingMode } from './FarmingTypeDialog';
+import ScheduleLoadingOverlay from './ScheduleLoadingOverlay';
 
 interface ScheduleGeneratorProps {
   landId: string;
@@ -70,10 +71,13 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
   const [generating, setGenerating] = useState(false);
   const [suitabilityWarning, setSuitabilityWarning] = useState<SuitabilityWarning | null>(null);
   const [showWarning, setShowWarning] = useState(false);
+  
+  // Use ref to track pending farming type for immediate generation
+  const pendingFarmingTypeRef = useRef<FarmingMode | null>(null);
 
   const effectiveCropName = cropName === 'other' ? customCropName : cropName;
 
-  const handleGenerate = async (forceGenerate = false) => {
+  const handleGenerate = async (forceGenerate = false, overrideFarmingType?: FarmingMode) => {
     if (!effectiveCropName || !sowingDate) {
       toast({
         title: 'Missing Information',
@@ -82,6 +86,9 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
       });
       return;
     }
+
+    // Use override farming type if provided (from dialog selection)
+    const effectiveFarmingType = overrideFarmingType || farmingType;
 
     try {
       setGenerating(true);
@@ -102,7 +109,7 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
           isReadyMadePlant,
-          farmingType, // Pass farming type selection
+          farmingType: effectiveFarmingType, // Pass farming type selection
           weather: weatherData,
           regenerate: false,
           language: currentLanguage,
@@ -474,9 +481,17 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
         onSelect={(mode) => {
           setFarmingType(mode);
           setShowFarmingTypeDialog(false);
-          handleGenerate(false);
+          // Pass the selected mode directly to avoid state timing issues
+          handleGenerate(false, mode);
         }}
         cropName={effectiveCropName}
+      />
+      
+      {/* Loading Overlay with Animation */}
+      <ScheduleLoadingOverlay 
+        isLoading={generating} 
+        cropName={effectiveCropName}
+        farmingType={farmingType}
       />
     </Card>
   );
