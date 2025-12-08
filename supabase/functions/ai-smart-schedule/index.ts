@@ -1395,10 +1395,11 @@ IMPORTANT:
 
     const correctedTotalCost = totalLaborCost + totalMaterialCost;
 
-    // Save schedule to database
+    // Save schedule to database with training-data ready format
     const { data: savedSchedule, error: scheduleError } = await supabase
       .from("crop_schedules")
       .insert({
+        // Core identification
         land_id: landId,
         farmer_id: farmerId,
         tenant_id: tenantId,
@@ -1406,17 +1407,64 @@ IMPORTANT:
         crop_variety: cropVariety || cropName,
         sowing_date: sowingDate,
         expected_harvest_date: scheduleData.harvest_date,
-        expected_yield_quintals: scheduleData.expected_yield_quintals,
+        
+        // Cost breakdown (training: predicted costs)
         total_estimated_cost: correctedTotalCost,
+        total_labor_cost: totalLaborCost,
+        total_material_cost: totalMaterialCost,
+        expected_yield_quintals: scheduleData.expected_yield_quintals,
+        expected_profit: scheduleData.expected_profit || (scheduleData.expected_yield_quintals * 2500 - correctedTotalCost),
+        
+        // Generation metadata
         ai_model: AI_CONFIG.MODEL,
         is_active: true,
+        status: "active",
         generation_language: language,
         calculated_for_area_acres: landAreaAcres,
+        total_duration_days: scheduleData.total_duration_days,
+        
+        // Fertilizer/seed data (training: input quantities)
         seed_quantity_kg: exactSeedQty,
         fertilizer_n_kg: ureaKg * 0.46,
         fertilizer_p_kg: dapKg * 0.46,
         fertilizer_k_kg: mopKg * 0.60,
         organic_manure_kg: fymTons * 1000,
+        
+        // Training-specific fields
+        suitability_score: suitabilityCheck.score,
+        suitability_warnings: suitabilityCheck.warnings || [],
+        recommendation_order: "organic → growth_promoter → fertilizer → pesticide",
+        state_region: state,
+        labor_rate_used: laborRate,
+        agro_climatic_zone: land?.agro_climatic_zone || null,
+        
+        // Input context for training (what the model saw)
+        input_soil_data: land?.soil_data || null,
+        input_weather_data: scheduleData.weather_context || null,
+        input_land_coordinates: land?.boundary_coordinates ? { 
+          lat: land.latitude, 
+          lng: land.longitude,
+          boundary: land.boundary_coordinates 
+        } : null,
+        
+        // Metadata for extended training context
+        metadata: {
+          seed_data: { quantity: exactSeedQty, rate: seedData.rate_kg_per_acre, cost: seedCost },
+          fertilizer_data: { urea_kg: ureaKg, dap_kg: dapKg, mop_kg: mopKg, fym_tons: fymTons, total_cost: totalFertilizerCost + fymCost },
+          labor_rate_source: "MGNREGA_2024_25",
+          pricing_date: new Date().toISOString().split("T")[0],
+          ai_version: AI_CONFIG.MODEL,
+          generation_timestamp: new Date().toISOString(),
+        },
+        
+        // Training pipeline flags
+        is_training_candidate: true,
+        training_processed: false,
+        tasks_total_count: processedTasks.length,
+        tasks_completed_count: 0,
+        tasks_on_time_count: 0,
+        
+        // Generation params (legacy)
         generation_params: {
           suitability_score: suitabilityCheck.score,
           labor_rate: laborRate,
