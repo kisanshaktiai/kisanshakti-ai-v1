@@ -647,6 +647,158 @@ function mapCategoryToStage(category: string, farmingStages: FarmingStage[]): Fa
   return farmingStages.find(s => s.stage_key === "vegetative_growth") || null;
 }
 
+// Fallback task templates for when AI misses stages
+const FALLBACK_TASK_TEMPLATES: Record<string, {
+  task_name_en: string;
+  task_name_hi: string;
+  task_name_mr: string;
+  category: string;
+  days_offset: number;
+  description_en: string;
+  priority: string;
+}> = {
+  planning: {
+    task_name_en: "Crop planning and preparation",
+    task_name_hi: "फसल की योजना और तैयारी",
+    task_name_mr: "पीक नियोजन आणि तयारी",
+    category: "planning",
+    days_offset: -7,
+    description_en: "Plan your crop activities including seed selection, input procurement, and scheduling",
+    priority: "high",
+  },
+  land_preparation: {
+    task_name_en: "Land preparation and plowing",
+    task_name_hi: "खेत की तैयारी और जुताई",
+    task_name_mr: "जमीन तयारी आणि नांगरणी",
+    category: "land_preparation",
+    days_offset: -5,
+    description_en: "Prepare the land by plowing, leveling, and adding organic manure",
+    priority: "high",
+  },
+  sowing: {
+    task_name_en: "Seed sowing/planting",
+    task_name_hi: "बीज बुवाई/रोपाई",
+    task_name_mr: "बियाणे पेरणी/लागवड",
+    category: "sowing",
+    days_offset: 0,
+    description_en: "Sow seeds at proper depth and spacing as per crop requirements",
+    priority: "critical",
+  },
+  germination: {
+    task_name_en: "Germination monitoring and gap filling",
+    task_name_hi: "अंकुरण निगरानी और गैप भरना",
+    task_name_mr: "उगवण तपासणी आणि गॅप भरणे",
+    category: "irrigation",
+    days_offset: 7,
+    description_en: "Monitor seed germination and fill gaps where seeds failed to germinate",
+    priority: "high",
+  },
+  vegetative_growth: {
+    task_name_en: "Vegetative growth management",
+    task_name_hi: "वृद्धि प्रबंधन",
+    task_name_mr: "वाढ व्यवस्थापन",
+    category: "growth_promoter",
+    days_offset: 30,
+    description_en: "Apply growth promoters and manage plant nutrition during vegetative stage",
+    priority: "high",
+  },
+  reproductive: {
+    task_name_en: "Flowering and fruit setting care",
+    task_name_hi: "फूल और फल आने का ध्यान",
+    task_name_mr: "फुलोरा आणि फळ धारणा काळजी",
+    category: "fertilizer",
+    days_offset: 60,
+    description_en: "Provide proper nutrition during flowering and fruiting for maximum yield",
+    priority: "critical",
+  },
+  maturity: {
+    task_name_en: "Crop maturity observation",
+    task_name_hi: "फसल पकने की निगरानी",
+    task_name_mr: "पीक पक्वता निरीक्षण",
+    category: "irrigation",
+    days_offset: 90,
+    description_en: "Monitor crop maturity signs and prepare for harvest",
+    priority: "medium",
+  },
+  harvest: {
+    task_name_en: "Harvesting",
+    task_name_hi: "फसल कटाई",
+    task_name_mr: "काढणी/कापणी",
+    category: "harvest",
+    days_offset: 120,
+    description_en: "Harvest the crop at optimal maturity for best quality and yield",
+    priority: "critical",
+  },
+  post_harvest: {
+    task_name_en: "Post-harvest processing",
+    task_name_hi: "कटाई के बाद प्रक्रिया",
+    task_name_mr: "काढणी नंतर प्रक्रिया",
+    category: "post_harvest",
+    days_offset: 125,
+    description_en: "Process, dry, grade and store the harvested produce properly",
+    priority: "high",
+  },
+  fallow_restoration: {
+    task_name_en: "Soil restoration and preparation",
+    task_name_hi: "मिट्टी सुधार और तैयारी",
+    task_name_mr: "माती सुधारणा आणि तयारी",
+    category: "land_preparation",
+    days_offset: 130,
+    description_en: "Restore soil health after harvest through green manuring and organic inputs",
+    priority: "medium",
+  },
+};
+
+function generateFallbackTask(
+  stage: FarmingStage,
+  cropName: string,
+  landAreaAcres: number,
+  farmingType: string,
+  language: string
+): any {
+  const template = FALLBACK_TASK_TEMPLATES[stage.stage_key];
+  if (!template) {
+    // Generic fallback if template not found
+    return {
+      task_name: `${stage.stage_name} - ${cropName}`,
+      stage_key: stage.stage_key,
+      stage_order: stage.stage_order,
+      category: "other",
+      days_from_sowing: stage.stage_order * 15,
+      priority: "medium",
+      description: `Complete ${stage.stage_name} activities for ${cropName} cultivation`,
+      instructions: [`Follow standard ${stage.stage_name.toLowerCase()} practices for ${cropName}`],
+      yield_impact: "10-15% yield improvement with proper execution",
+      skip_penalty: "5-10% yield loss if skipped",
+      estimated_cost: Math.round(landAreaAcres * 200),
+    };
+  }
+
+  // Select task name based on language
+  let taskName = template.task_name_en;
+  if (language === "hi") taskName = template.task_name_hi;
+  if (language === "mr") taskName = template.task_name_mr;
+
+  return {
+    task_name: `${taskName} - ${cropName}`,
+    stage_key: stage.stage_key,
+    stage_order: stage.stage_order,
+    category: template.category,
+    days_from_sowing: template.days_offset,
+    priority: template.priority,
+    description: template.description_en,
+    instructions: [
+      `Follow recommended ${stage.stage_name.toLowerCase()} practices for ${cropName}`,
+      `Consider land area: ${landAreaAcres} acres`,
+      `Farming type: ${farmingType.replace("_", " ")}`,
+    ],
+    yield_impact: YIELD_BOOST_TECHNIQUES[stage.stage_key]?.yieldImpact || "15-20% yield improvement",
+    skip_penalty: YIELD_BOOST_TECHNIQUES[stage.stage_key]?.skipPenalty || "10-15% yield loss",
+    estimated_cost: Math.round(landAreaAcres * 300),
+    is_fallback: true,
+  };
+}
+
 function calculateTaskCost(
   category: string, taskName: string, landAcres: number, laborRate: number,
   seedCost: number, fertilizerCost: number, fymCost: number, language: string
@@ -1227,14 +1379,41 @@ BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stage
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // POST-PROCESS: Validate stage coverage and costs
+    // FILTER INVALID TASKS: Remove tasks with null/empty task_name
     // ═══════════════════════════════════════════════════════════════════
-    const stagesCovered = new Set(scheduleData.tasks.map((t: any) => t.stage_key));
+    const validTasks = scheduleData.tasks.filter((task: any) => {
+      if (!task.task_name || task.task_name.trim() === '') {
+        console.warn(`⚠️ Skipping task with null/empty name in stage: ${task.stage_key}`);
+        return false;
+      }
+      return true;
+    });
+
+    console.log(`✅ [Validation] ${validTasks.length}/${scheduleData.tasks.length} tasks have valid names`);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // POST-PROCESS: Validate stage coverage and generate fallback tasks
+    // ═══════════════════════════════════════════════════════════════════
+    const stagesCovered = new Set(validTasks.map((t: any) => t.stage_key));
     const missingStages = farmingStages.filter((s: FarmingStage) => !stagesCovered.has(s.stage_key));
     
+    // Generate fallback tasks for missing stages
+    const fallbackTasks: any[] = [];
     if (missingStages.length > 0) {
-      console.warn(`⚠️ Missing stages: ${missingStages.map((s: FarmingStage) => s.stage_key).join(", ")}`);
+      console.warn(`⚠️ Missing ${missingStages.length} stages: ${missingStages.map((s: FarmingStage) => s.stage_key).join(", ")}`);
+      console.log(`🔧 [Fallback] Generating default tasks for missing stages...`);
+      
+      for (const stage of missingStages) {
+        const fallbackTask = generateFallbackTask(stage, cropName, landAreaAcres, farmingType, language);
+        fallbackTasks.push(fallbackTask);
+        stagesCovered.add(stage.stage_key);
+      }
+      console.log(`✅ [Fallback] Generated ${fallbackTasks.length} fallback tasks`);
     }
+
+    // Combine valid AI tasks with fallback tasks
+    const allTasks = [...validTasks, ...fallbackTasks];
+    console.log(`📋 [Total] ${allTasks.length} tasks ready for processing`);
 
     let totalLaborCost = 0;
     let totalMaterialCost = 0;
@@ -1250,7 +1429,7 @@ BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stage
       machinery: 0,
     };
 
-    const processedTasks = scheduleData.tasks.map((task: any, idx: number) => {
+    const processedTasks = allTasks.map((task: any, idx: number) => {
       const category = task.category || "other";
       const stageKey = task.stage_key || "vegetative_growth";
       
