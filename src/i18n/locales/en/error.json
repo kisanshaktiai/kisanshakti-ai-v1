@@ -6,6 +6,10 @@
     "last_updated": "2025-11-29"
   },
   "error": {
+    "notFound": {
+      "title": "Oops! Page not found",
+      "message": "The page you're looking for doesn't exist"
+    },
     "boundary": {
       "something_went_wrong": "Oops! Something went wrong",
       "sorry_inconvenience": "We're sorry for the inconvenience. Please try refreshing the page.",
