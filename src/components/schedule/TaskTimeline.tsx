@@ -28,6 +28,15 @@ interface Task {
   instructions?: string[];
   precautions?: string[];
   resources?: Record<string, any>;
+  product_recommendations?: Array<{
+    product_name: string;
+    brand?: string;
+    dose_per_acre?: string;
+    price_estimate?: number;
+    product_type?: string;
+    active_ingredient?: string;
+    application_method?: string;
+  }>;
   ideal_weather?: {
     temperature?: string;
     humidity?: string;
@@ -606,6 +615,47 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                                     </p>
                                   </div>
                                 )}
+                              </div>
+                            )}
+
+                            {/* Product Recommendations - Show in Timeline */}
+                            {Array.isArray(task.product_recommendations) && task.product_recommendations.length > 0 && (
+                              <div className="space-y-2">
+                                <h5 className="text-sm font-medium mb-2 flex items-center gap-2 text-primary">
+                                  <Leaf className="h-4 w-4" />
+                                  {t('schedule.task_card.recommended_products') || 'Recommended Products'}
+                                </h5>
+                                <div className="space-y-2">
+                                  {task.product_recommendations.slice(0, 3).map((product: any, idx: number) => (
+                                    <div 
+                                      key={idx} 
+                                      className="p-3 rounded-lg bg-gradient-to-r from-primary/5 to-accent/5 border border-primary/20"
+                                    >
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-medium text-foreground truncate">
+                                            {product.product_name}
+                                          </p>
+                                          {product.brand && (
+                                            <p className="text-xs text-muted-foreground">
+                                              {product.brand}
+                                            </p>
+                                          )}
+                                          {product.dose_per_acre && (
+                                            <p className="text-xs text-primary mt-1">
+                                              📊 {product.dose_per_acre}
+                                            </p>
+                                          )}
+                                        </div>
+                                        {product.price_estimate && (
+                                          <span className="text-sm font-bold text-primary whitespace-nowrap">
+                                            ₹{product.price_estimate}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             )}
 
