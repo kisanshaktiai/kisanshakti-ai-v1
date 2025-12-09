@@ -1320,34 +1320,48 @@ const FALLBACK_TASK_TEMPLATES: Record<
     days_offset: number;
     description_en: string;
     priority: string;
+    seed_details?: {
+      treatment_organic: string;
+      treatment_chemical: string;
+      beejamrut: string;
+      depth_cm: string;
+      spacing_note: string;
+    };
   }
 > = {
   planning: {
-    task_name_en: "Crop planning and seed selection",
-    task_name_hi: "फसल योजना और बीज चयन",
-    task_name_mr: "पीक नियोजन आणि बियाणे निवड",
+    task_name_en: "Crop planning, seed selection and procurement",
+    task_name_hi: "फसल योजना, बीज चयन और खरीद",
+    task_name_mr: "पीक नियोजन, बियाणे निवड आणि खरेदी",
     category: "planning",
     days_offset: -7,
-    description_en: "Select high-yielding certified seeds, prepare land plan, and arrange inputs",
+    description_en: "Select high-yielding certified seeds from trusted sources, prepare land plan, calculate input requirements, and arrange all inputs",
     priority: "high",
   },
   land_preparation: {
-    task_name_en: "Land preparation and soil treatment",
-    task_name_hi: "खेत तैयारी और मिट्टी उपचार",
-    task_name_mr: "जमीन तयारी आणि माती सुधारणा",
+    task_name_en: "Land preparation, FYM application and soil treatment",
+    task_name_hi: "खेत तैयारी, गोबर खाद और मिट्टी उपचार",
+    task_name_mr: "जमीन तयारी, शेणखत आणि माती सुधारणा",
     category: "land_preparation",
     days_offset: -5,
-    description_en: "Deep plowing, leveling, FYM application, and soil treatment for optimal growth",
+    description_en: "Deep plowing 25-30cm, 2-3 harrowing, leveling, FYM 5-10 tons/acre application, and soil treatment for optimal growth",
     priority: "critical",
   },
   sowing: {
-    task_name_en: "Sowing and seed treatment",
-    task_name_hi: "बुवाई और बीज उपचार",
-    task_name_mr: "पेरणी आणि बियाणे प्रक्रिया",
+    task_name_en: "Seed treatment and sowing",
+    task_name_hi: "बीज उपचार और बुवाई",
+    task_name_mr: "बियाणे प्रक्रिया आणि पेरणी",
     category: "sowing",
     days_offset: 0,
-    description_en: "Treat seeds with Trichoderma/Rhizobium and sow at optimal spacing",
+    description_en: "Treat seeds with Trichoderma/Rhizobium, sow at optimal spacing and depth for uniform germination",
     priority: "critical",
+    seed_details: {
+      treatment_organic: "Trichoderma viride @ 4g/kg + Rhizobium/Azotobacter",
+      treatment_chemical: "Thiram @ 2.5g/kg or Carbendazim @ 2g/kg",
+      beejamrut: "Soak seeds in Beejamrut for 20-30 minutes",
+      depth_cm: "3-5 cm depending on seed size",
+      spacing_note: "Maintain proper row and plant spacing"
+    }
   },
   germination: {
     task_name_en: "Germination monitoring and gap filling",
@@ -1823,93 +1837,256 @@ PRODUCT BRANDS TO RECOMMEND:
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // OPTIMIZED AI PROMPT - Reduced token count for stability
+    // WORLD-CLASS AGRICULTURE SCIENTIST AI PROMPT
+    // Using CTID Framework: Context → Task → Instruction → Data
     // ═══════════════════════════════════════════════════════════════════
-    const systemPrompt = `You are Dr. AgriGenius, Agricultural Scientist from IARI with 40+ years experience.
-Create ${translatedCropName} (${cropName}) crop schedule for ${landAreaAcres} acres.
+    
+    // Build seed preparation details
+    const seedInfo = SEED_RATES[cropLower] || {
+      rate_kg_per_acre: 10,
+      spacing_cm: "Standard",
+      price_per_kg: 50,
+      treatment: "Trichoderma 4g/kg",
+    };
+    
+    const seedPreparationDetails = `
+SEED PREPARATION (बियाणे तयारी):
+- Seed Rate: ${seedInfo.rate_kg_per_acre} kg/acre (${Math.round(seedInfo.rate_kg_per_acre * landAreaAcres)} kg total)
+- Spacing: ${seedInfo.spacing_cm}
+- Treatment: ${seedInfo.treatment}
+- Cost: ₹${seedInfo.price_per_kg}/kg (Total: ₹${seedCost})
+${farmingType === "organic_only" ? "- Use Trichoderma viride @ 4g/kg + Rhizobium for legumes" : ""}
+${farmingType === "organic_only" ? "- Avoid chemical seed treatment, use Beejamrut soak (1 liter)" : "- Seed treatment: Thiram/Carbendazim @ 2-3g/kg"}`;
 
-CRITICAL RULES:
-1. CROP: "${translatedCropName}" must be in EVERY task_name
-2. LANGUAGE: ${languageName} ONLY - rural dialect
-3. FARMING: ${farmingTypeLabel}
-${
-  farmingType === "organic_only"
-    ? "   Use ONLY: FYM, Vermicompost, Neem, Trichoderma. NO chemicals."
-    : farmingType === "fertilizer_pesticide"
-      ? "   Use: Urea, DAP, MOP, pesticides. Brands: IFFCO, Bayer, Syngenta"
-      : "   Balanced: Organic first, then fertilizers if needed"
-}
+    // CONTEXT Section
+    const contextSection = `
+═══════════════════════════════════════════════════════════════════════════
+📚 CONTEXT (संदर्भ)
+═══════════════════════════════════════════════════════════════════════════
+You are Dr. AgriGenius - World's Leading Agricultural Scientist with 45+ years of research experience at ICAR-IARI, New Delhi. You have published 200+ research papers on precision agriculture and helped 1 million+ farmers achieve 3x-7x yield increase.
 
-STAGES (2-3 tasks each):
+Your expertise includes:
+- Crop physiology and phenology across all agro-climatic zones
+- Integrated Nutrient Management (INM) and Integrated Pest Management (IPM)
+- Climate-smart agriculture and precision farming
+- Traditional farming wisdom combined with modern science
+- Regional farming practices across all Indian states
+
+KNOWLEDGE BASE:
+- ICAR crop production guidelines (latest 2024)
+- State Agricultural University recommendations
+- Traditional farmer wisdom (Desi knowledge)
+- Market dynamics and value chain optimization`;
+
+    // TASK Section
+    const taskSection = `
+═══════════════════════════════════════════════════════════════════════════
+🎯 TASK (कार्य)
+═══════════════════════════════════════════════════════════════════════════
+Generate a COMPLETE, ACCURATE crop schedule for ${translatedCropName} (${cropName}) cultivation.
+
+CROP DETAILS:
+- Crop: ${translatedCropName} ${cropVariety ? `(Variety: ${cropVariety})` : ""}
+- Land Area: ${landAreaAcres} acres (${landAreaHa.toFixed(2)} hectares)
+- Sowing Date: ${sowingDate}
+- Location: ${land.village || district}, ${district}, ${state}
+- Soil Type: ${land.soil_type || "Black/Alluvial"}
+- Irrigation: ${land.irrigation_type || "manual"} (${irrigationRules})
+
+FARMING MODE: ${farmingTypeLabel}
+${farmingTypeRules}
+
+${seedPreparationDetails}
+
+NUTRIENT STATUS:
+- Current N/P/K: ${land.nitrogen_kg_ha || 50}/${land.phosphorus_kg_ha || 25}/${land.potassium_kg_ha || 25} kg/ha
+- Required N/P/K: ${target.n}/${target.p}/${target.k} kg/ha
+- Deficit N/P/K: ${nDeficit}/${pDeficit}/${kDeficit} kg/ha
+- Labor Rate: ₹${laborRate}/day`;
+
+    // INSTRUCTION Section
+    const instructionSection = `
+═══════════════════════════════════════════════════════════════════════════
+📋 INSTRUCTIONS (निर्देश)
+═══════════════════════════════════════════════════════════════════════════
+
+1. MANDATORY STAGES (सभी ${totalStages} चरण अनिवार्य):
 ${stagesPrompt}
 
-LAND: ${land.village || district}, ${state} | ${land.soil_type || "Black"} soil | ${land.irrigation_type || "manual"} irrigation
-SOWING: ${sowingDate}
-N/P/K deficit: ${nDeficit}/${pDeficit}/${kDeficit} kg/ha
-Labor: ₹${laborRate}/day`;
+2. TASK REQUIREMENTS:
+   - Generate 2-3 tasks per stage (Total: ${totalStages * 2}-${totalStages * 3} tasks)
+   - Each task MUST include: "${translatedCropName} - [action]" in ${languageName}
+   - Include SPECIFIC quantities (kg/acre, liters/acre)
+   - Include SPECIFIC product brands with prices
+   - Include yield_impact and skip_penalty for each task
 
-    const userPrompt = `Generate ${translatedCropName} schedule with ${totalStages * 2}-${totalStages * 3} tasks.
+3. SEED PREPARATION RULES (Stage: sowing):
+   - ALWAYS include seed treatment task with exact method
+   - Include seed rate, spacing, and depth
+   - For organic: Beejamrut/Trichoderma treatment
+   - For chemical: Thiram/Carbendazim treatment
 
-CRITICAL: You MUST call the create_schedule function with proper JSON structure.
+4. PRODUCT RECOMMENDATIONS:
+   - Include 2-3 products per task where applicable
+   - Specify: brand, dose_per_acre, price_estimate
+   - ${farmingType === "organic_only" ? "ONLY organic products (Trichoderma, Neem, Bio-fertilizers)" : ""}
+   - ${farmingType === "fertilizer_pesticide" ? "Chemical fertilizers and pesticides with brands" : ""}
 
-RULES:
-- task_name: "${translatedCropName} - [action]" in ${languageName}
-- All ${totalStages} stages required: ${allStageKeys.join(", ")}
-- Include brand recommendations
-- Calculate costs per task
+5. COST CALCULATION:
+   - Calculate estimated_cost per task
+   - Include labor days and material costs
+   - Use ₹${laborRate}/day for labor
 
-RESPOND ONLY by calling the create_schedule function. Do NOT respond with text.`;
+6. LANGUAGE RULES:
+   - Write ALL task_name, description, instructions in ${languageName}
+   - Use rural/village dialect terms: ${JSON.stringify(Object.entries(ruralTerms).slice(0, 10).reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {}))}
+   ${regionalLanguageRules}
+
+7. WEATHER DEPENDENCY:
+   - Mark irrigation, spraying tasks as weather_dependent: true
+   - Include ideal_weather conditions for sensitive tasks`;
+
+    // DATA Section
+    const dataSection = `
+═══════════════════════════════════════════════════════════════════════════
+📊 DATA (डेटा)
+═══════════════════════════════════════════════════════════════════════════
+
+YIELD BOOSTING TECHNIQUES PER STAGE:
+${Object.entries(YIELD_BOOST_TECHNIQUES).map(([stage, data]) => 
+  `${stage}: ${data.techniques.slice(0, 2).join(", ")} | Impact: ${data.yieldImpact.substring(0, 50)}...`
+).join("\n")}
+
+FYM/ORGANIC INPUTS (for ${landAreaAcres} acres):
+- FYM: ${fymTons} tons @ ₹800/ton = ₹${fymCost}
+- Vermicompost: ${Math.round(landAreaAcres * 200)} kg @ ₹12/kg
+- Jeevamrut: ${Math.round(landAreaAcres)} batches @ ₹80/batch
+
+FERTILIZER REQUIREMENTS (if applicable):
+- Urea: ${ureaKg} kg @ ₹${FERTILIZER_PRICES.urea.price_per_kg}/kg = ₹${ureaCost}
+- DAP: ${dapKg} kg @ ₹${FERTILIZER_PRICES.dap.price_per_kg}/kg = ₹${dapCost}
+- MOP: ${mopKg} kg @ ₹${FERTILIZER_PRICES.mop.price_per_kg}/kg = ₹${mopCost}
+
+GROWTH PROMOTERS:
+- Seaweed Extract: ₹550/500ml (root development)
+- Humic Acid: ₹480/L (nutrient uptake)
+- Amino Acid: ₹620/L (protein synthesis)`;
+
+    // Combine all sections into system prompt
+    const systemPrompt = `${contextSection}
+${taskSection}
+${instructionSection}
+${dataSection}
+
+═══════════════════════════════════════════════════════════════════════════
+⚠️ CRITICAL OUTPUT RULES
+═══════════════════════════════════════════════════════════════════════════
+1. You MUST call the create_schedule function with properly structured JSON
+2. Every task_name MUST start with "${translatedCropName} -"
+3. All ${totalStages} stages (${allStageKeys.join(", ")}) MUST have at least 1 task
+4. Include seed_treatment task in sowing stage with EXACT treatment method
+5. NO text responses - ONLY function call with JSON data`;
+
+    const userPrompt = `Generate COMPLETE ${translatedCropName} crop schedule NOW.
+
+MANDATORY CHECKLIST:
+✓ All ${totalStages} stages covered: ${allStageKeys.join(", ")}
+✓ Seed preparation with treatment details
+✓ Product recommendations with brands
+✓ Instructions in ${languageName} rural dialect
+✓ Cost estimates per task
+
+Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tasks.`;
 
     console.log(`🤖 [AI] Calling ${aiProvider}/${model} with optimized ${totalStages}-stage prompt`);
 
-    // Build simplified tool schema to reduce payload size
+    // Build comprehensive tool schema for accurate schedule generation
     const toolSchema = {
       type: "function",
       function: {
         name: "create_schedule",
-        description: `Create ${translatedCropName} schedule`,
+        description: `Create complete ${translatedCropName} crop schedule with all ${totalStages} farming stages`,
         parameters: {
           type: "object",
           properties: {
-            crop_name: { type: "string" },
-            total_duration_days: { type: "integer" },
-            stages_covered: { type: "array", items: { type: "string" } },
+            crop_name: { type: "string", description: "Translated crop name" },
+            total_duration_days: { type: "integer", description: "Total crop duration in days" },
+            expected_yield_quintals: { type: "number", description: "Expected yield in quintals per acre" },
+            expected_profit: { type: "number", description: "Expected profit in INR" },
+            yield_multiplier_target: { type: "number", description: "Target yield multiplier (3-7x)" },
+            stages_covered: { 
+              type: "array", 
+              items: { type: "string" },
+              description: `Must include all stages: ${allStageKeys.join(", ")}`
+            },
             tasks: {
               type: "array",
+              minItems: totalStages * 2,
               items: {
                 type: "object",
                 properties: {
-                  task_name: { type: "string" },
+                  task_name: { type: "string", description: `Must start with "${translatedCropName} -"` },
                   stage_key: { type: "string", enum: allStageKeys },
-                  stage_order: { type: "integer" },
-                  category: { type: "string" },
-                  days_from_sowing: { type: "integer" },
+                  stage_order: { type: "integer", minimum: 1, maximum: totalStages },
+                  category: { 
+                    type: "string", 
+                    enum: ["planning", "land_preparation", "organic_input", "seed_treatment", "sowing", "transplanting", "irrigation", "growth_promoter", "fertilizer", "weeding", "pest_control", "disease_control", "intercultural", "harvest", "post_harvest", "other"]
+                  },
+                  days_from_sowing: { type: "integer", description: "Days from sowing date (-7 to 180)" },
                   priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
-                  description: { type: "string" },
-                  yield_impact: { type: "string" },
-                  skip_penalty: { type: "string" },
+                  description: { type: "string", description: "Detailed task description in user language" },
+                  instructions: { 
+                    type: "array", 
+                    items: { type: "string" },
+                    minItems: 2,
+                    description: "Step-by-step instructions (minimum 2)"
+                  },
+                  precautions: { 
+                    type: "array", 
+                    items: { type: "string" },
+                    description: "Safety precautions"
+                  },
+                  quantity: { type: "string", description: "Quantity required (e.g., '40 kg/acre', '2 liters')" },
+                  product_details: { type: "string", description: "Product application details" },
+                  yield_impact: { type: "string", description: "Impact on yield if done correctly" },
+                  skip_penalty: { type: "string", description: "Yield loss if task is skipped" },
+                  weather_dependent: { type: "boolean" },
+                  ideal_weather: {
+                    type: "object",
+                    properties: {
+                      temperature: { type: "string" },
+                      humidity: { type: "string" },
+                      conditions: { type: "string" }
+                    }
+                  },
                   product_recommendations: {
                     type: "array",
                     items: {
                       type: "object",
                       properties: {
-                        product_name: { type: "string" },
-                        brand: { type: "string" },
-                        dose_per_acre: { type: "string" },
-                        price_estimate: { type: "number" },
+                        product_name: { type: "string", description: "Product name with brand" },
+                        brand: { type: "string", description: "Brand name (IFFCO, Bayer, Multiplex, etc.)" },
+                        product_type: { type: "string", enum: ["organic", "bio-fertilizer", "fertilizer", "pesticide", "fungicide", "growth_promoter"] },
+                        dose_per_acre: { type: "string", description: "Dosage per acre" },
+                        application_method: { type: "string", description: "How to apply" },
+                        price_estimate: { type: "number", description: "Price in INR" },
+                        active_ingredient: { type: "string" }
                       },
+                      required: ["product_name", "dose_per_acre", "price_estimate"]
                     },
+                    description: "Product recommendations with brands and prices"
                   },
-                  estimated_cost: { type: "number" },
-                  instructions: { type: "array", items: { type: "string" } },
+                  estimated_cost: { type: "number", description: "Total task cost in INR" },
+                  labor_days: { type: "number", description: "Labor days required" },
+                  icar_guideline: { type: "string", description: "ICAR recommendation if applicable" }
                 },
-                required: ["task_name", "stage_key", "days_from_sowing", "description", "instructions"],
-              },
-            },
+                required: ["task_name", "stage_key", "stage_order", "days_from_sowing", "description", "instructions", "priority"]
+              }
+            }
           },
-          required: ["crop_name", "tasks", "stages_covered"],
-        },
-      },
+          required: ["crop_name", "tasks", "stages_covered", "total_duration_days"]
+        }
+      }
     };
 
     // Retry logic for handling 502/503/429 errors with provider fallback
@@ -2344,6 +2521,7 @@ RESPOND ONLY by calling the create_schedule function. Do NOT respond with text.`
         skip_penalty: task.skip_penalty,
         yield_boost_technique: task.yield_boost_technique,
         product_recommendations: task.product_recommendations || [],
+        ideal_weather: task.ideal_weather || null,
         resources: {
           quantity: task.quantity,
           product_details: task.product_details,
@@ -2351,6 +2529,8 @@ RESPOND ONLY by calling the create_schedule function. Do NOT respond with text.`
           labor_days: task.labor_days,
           labor_cost: task.labor_cost,
           cost_breakdown: task.cost_breakdown,
+          icar_guideline: task.icar_guideline,
+          climate_risk: task.climate_risk,
         },
         estimated_cost: task.estimated_cost || 0,
         currency: "INR",
