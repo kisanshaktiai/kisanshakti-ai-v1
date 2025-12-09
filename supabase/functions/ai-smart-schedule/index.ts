@@ -1283,6 +1283,31 @@ const CROP_SPECIFIC_PRODUCTS: Record<string, Record<string, Array<{
 };
 
 // ═══════════════════════════════════════════════════════════════════════
+// CROP WATER REQUIREMENTS - FOR LAND-SPECIFIC WATER PRESCRIPTION
+// ═══════════════════════════════════════════════════════════════════════
+const CROP_WATER_REQUIREMENTS: Record<string, { 
+  etc_mm_per_day: number; // Crop evapotranspiration
+  total_mm: number; // Total water need for full cycle
+  critical_stages: string[];
+  irrigation_interval_days: number;
+}> = {
+  wheat: { etc_mm_per_day: 4.5, total_mm: 450, critical_stages: ['crown_root', 'flowering', 'grain_filling'], irrigation_interval_days: 20 },
+  rice: { etc_mm_per_day: 6.0, total_mm: 1200, critical_stages: ['transplanting', 'tillering', 'flowering'], irrigation_interval_days: 3 },
+  cotton: { etc_mm_per_day: 5.5, total_mm: 700, critical_stages: ['flowering', 'boll_formation'], irrigation_interval_days: 12 },
+  sugarcane: { etc_mm_per_day: 7.0, total_mm: 2000, critical_stages: ['tillering', 'grand_growth'], irrigation_interval_days: 10 },
+  okra: { etc_mm_per_day: 4.0, total_mm: 400, critical_stages: ['flowering', 'fruiting'], irrigation_interval_days: 5 },
+  tomato: { etc_mm_per_day: 5.0, total_mm: 600, critical_stages: ['flowering', 'fruit_setting'], irrigation_interval_days: 4 },
+  onion: { etc_mm_per_day: 3.5, total_mm: 350, critical_stages: ['bulb_formation'], irrigation_interval_days: 7 },
+  potato: { etc_mm_per_day: 4.5, total_mm: 500, critical_stages: ['tuber_initiation', 'tuber_bulking'], irrigation_interval_days: 7 },
+  maize: { etc_mm_per_day: 5.0, total_mm: 500, critical_stages: ['tasseling', 'silking', 'grain_filling'], irrigation_interval_days: 10 },
+  soybean: { etc_mm_per_day: 4.0, total_mm: 400, critical_stages: ['flowering', 'pod_filling'], irrigation_interval_days: 12 },
+  groundnut: { etc_mm_per_day: 4.0, total_mm: 450, critical_stages: ['flowering', 'pegging', 'pod_development'], irrigation_interval_days: 10 },
+  chilli: { etc_mm_per_day: 4.5, total_mm: 550, critical_stages: ['flowering', 'fruit_development'], irrigation_interval_days: 5 },
+  brinjal: { etc_mm_per_day: 4.5, total_mm: 500, critical_stages: ['flowering', 'fruiting'], irrigation_interval_days: 5 },
+  default: { etc_mm_per_day: 4.5, total_mm: 500, critical_stages: ['vegetative', 'reproductive'], irrigation_interval_days: 7 }
+};
+
+// ═══════════════════════════════════════════════════════════════════════
 // CROP TASK MULTIPLIERS - MINIMUM TASKS FOR LONG-DURATION CROPS
 // ═══════════════════════════════════════════════════════════════════════
 const CROP_TASK_MULTIPLIERS: Record<string, { minTasks: number; durationDays: number; mandatoryCategories: string[] }> = {
@@ -2561,13 +2586,353 @@ KNOWLEDGE BASE:
 - Traditional farmer wisdom (Desi knowledge)
 - Market dynamics and value chain optimization`;
 
+    // ═══════════════════════════════════════════════════════════════════
+    // WATER REQUIREMENT CALCULATIONS FOR THIS LAND
+    // ═══════════════════════════════════════════════════════════════════
+    const waterReq = CROP_WATER_REQUIREMENTS[cropLower] || CROP_WATER_REQUIREMENTS.default;
+    const totalWaterLiters = Math.round(waterReq.total_mm * landAreaHa * 10000); // mm to liters/ha
+    const perIrrigationLiters = Math.round(waterReq.etc_mm_per_day * waterReq.irrigation_interval_days * landAreaHa * 10000);
+    const irrigationType = land.irrigation_type || 'manual';
+    
+    // Adjust water based on irrigation type efficiency
+    let adjustedWaterPerIrrigation = perIrrigationLiters;
+    let irrigationEfficiencyNote = "";
+    if (irrigationType === 'drip') {
+      adjustedWaterPerIrrigation = Math.round(perIrrigationLiters * 0.5);
+      irrigationEfficiencyNote = language === "mr" 
+        ? `✅ ठिबक सिंचन: 40-60% पाणी बचत, प्रत्येक सिंचनासाठी ${Math.round(adjustedWaterPerIrrigation / 1000)} KL लागेल`
+        : language === "hi"
+        ? `✅ ड्रिप सिंचाई: 40-60% पानी बचत, हर सिंचाई में ${Math.round(adjustedWaterPerIrrigation / 1000)} KL लगेगा`
+        : `✅ DRIP: Save 40-60% water, apply ${Math.round(adjustedWaterPerIrrigation / 1000)} KL per irrigation`;
+    } else if (irrigationType === 'sprinkler') {
+      adjustedWaterPerIrrigation = Math.round(perIrrigationLiters * 0.7);
+      irrigationEfficiencyNote = language === "mr"
+        ? `✅ तुषार सिंचन: 30% पाणी बचत, प्रत्येक सिंचनासाठी ${Math.round(adjustedWaterPerIrrigation / 1000)} KL लागेल`
+        : language === "hi"
+        ? `✅ स्प्रिंकलर सिंचाई: 30% पानी बचत, हर सिंचाई में ${Math.round(adjustedWaterPerIrrigation / 1000)} KL लगेगा`
+        : `✅ SPRINKLER: Save 30% water, apply ${Math.round(adjustedWaterPerIrrigation / 1000)} KL per irrigation`;
+    } else {
+      adjustedWaterPerIrrigation = Math.round(perIrrigationLiters * 1.2);
+      irrigationEfficiencyNote = language === "mr"
+        ? `⚠️ मॅन्युअल/पूर सिंचन: पाण्याचा अपव्यय, प्रत्येक सिंचनासाठी ${Math.round(adjustedWaterPerIrrigation / 1000)} KL लागेल`
+        : language === "hi"
+        ? `⚠️ मैन्युअल/बाढ़ सिंचाई: पानी की बर्बादी, हर सिंचाई में ${Math.round(adjustedWaterPerIrrigation / 1000)} KL लगेगा`
+        : `⚠️ FLOOD/MANUAL: Wasteful, apply ${Math.round(adjustedWaterPerIrrigation / 1000)} KL per irrigation`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // PRESCRIPTION FRAMING - SOIL TEST CONDITIONAL LOGIC
+    // ═══════════════════════════════════════════════════════════════════
+    const hasSoilData = soilData && (soilData.ph_level || soilData.nitrogen_kg_per_ha);
+    const soilTestDate = soilData?.test_date || null;
+    const isSoilTestRecent = soilTestDate && 
+      (new Date().getTime() - new Date(soilTestDate).getTime()) < 180 * 24 * 60 * 60 * 1000; // Less than 6 months
+    
+    let prescriptionFraming = "";
+    let soilTestInstruction = "";
+    
+    if (hasSoilData) {
+      prescriptionFraming = language === "mr" ? `
+═══════════════════════════════════════════════════════════════
+🩺 माती आरोग्य अहवाल उपलब्ध - औषध मोड
+═══════════════════════════════════════════════════════════════
+⚠️ महत्त्वाचे: शेतकऱ्याने आधीच माती परीक्षण केले आहे!
+❌ "माती परीक्षण करा" किंवा "Soil Test" टास्क देऊ नका - आधीच झाले!
+✅ खालील माती डेटा तुमचे DIAGNOSIS आहे
+✅ तुमच्या शिफारसी या जमिनीसाठी औषध (उपचार) आहेत
+
+हे रक्त तपासणी अहवालासारखे आहे → तुम्ही नेमके औषध देता, "रक्त तपासणी करा" असे सांगत नाही!
+` : language === "hi" ? `
+═══════════════════════════════════════════════════════════════
+🩺 मिट्टी स्वास्थ्य रिपोर्ट उपलब्ध - दवाई मोड
+═══════════════════════════════════════════════════════════════
+⚠️ महत्वपूर्ण: किसान ने पहले ही मिट्टी परीक्षण किया है!
+❌ "मिट्टी परीक्षण करें" या "Soil Test" टास्क मत दें - पहले ही हो गया!
+✅ नीचे दिया गया मिट्टी डेटा आपका DIAGNOSIS है
+✅ आपकी सिफारिशें इस जमीन के लिए दवाई (इलाज) हैं
+
+यह खून की जांच रिपोर्ट जैसा है → आप सही दवाई देते हैं, "खून की जांच करो" नहीं कहते!
+` : `
+═══════════════════════════════════════════════════════════════
+🩺 SOIL HEALTH REPORT ALREADY AVAILABLE - PRESCRIPTION MODE
+═══════════════════════════════════════════════════════════════
+⚠️ CRITICAL: Farmer has ALREADY conducted soil test!
+❌ DO NOT recommend "माती परीक्षण करा" or "Soil Test" - ALREADY DONE!
+✅ USE the existing soil data below as your DIAGNOSIS
+✅ Your recommendations are MEDICINE (औषध/उपचार) for this specific land
+
+This is like a BLOOD REPORT → You prescribe exact medicine, not "get a blood test"!
+`;
+      soilTestInstruction = language === "mr" 
+        ? `❌ "Soil Test" टास्क टाळा - वैध माती अहवाल अस्तित्वात आहे`
+        : language === "hi"
+        ? `❌ "Soil Test" टास्क छोड़ें - वैध मिट्टी रिपोर्ट मौजूद है`
+        : `❌ SKIP "Soil Test" task - Valid soil report exists`;
+    } else {
+      prescriptionFraming = language === "mr" ? `
+⚠️ या जमिनीसाठी माती परीक्षण डेटा उपलब्ध नाही
+✅ नियोजन टप्प्यात "माती परीक्षण" टास्क समाविष्ट करा
+` : language === "hi" ? `
+⚠️ इस जमीन के लिए मिट्टी परीक्षण डेटा उपलब्ध नहीं है
+✅ योजना चरण में "मिट्टी परीक्षण" टास्क शामिल करें
+` : `
+⚠️ No soil test data available for this land
+✅ Include "Soil Test" task in planning stage
+`;
+      soilTestInstruction = language === "mr"
+        ? `✅ "माती परीक्षण" टास्क समाविष्ट करा - अलीकडील माती डेटा उपलब्ध नाही`
+        : language === "hi"
+        ? `✅ "मिट्टी परीक्षण" टास्क शामिल करें - हाल का मिट्टी डेटा उपलब्ध नहीं`
+        : `✅ Include "Soil Test" task - No recent soil data available`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // NPK PRESCRIPTION - DEFICIT-BASED DOSING (NOT GENERIC)
+    // ═══════════════════════════════════════════════════════════════════
+    let npkPrescription = "";
+    if (hasSoilData) {
+      // Calculate organic alternatives
+      const vermicompostKgForN = nDeficit > 0 ? Math.round((nDeficit * landAreaHa) / 0.015) : 0; // ~1.5% N in vermicompost
+      const bonemealKgForP = pDeficit > 0 ? Math.round((pDeficit * landAreaHa) / 0.23) : 0; // ~23% P in bone meal
+      const woodashKgForK = kDeficit > 0 ? Math.round((kDeficit * landAreaHa) / 0.05) : 0; // ~5% K in wood ash
+      
+      npkPrescription = language === "mr" ? `
+═══════════════════════════════════════════════════════════════
+💊 NPK औषध - नेमके या कमतरता भरून काढा
+═══════════════════════════════════════════════════════════════
+निदान (DIAGNOSIS):
+- सध्याचे N: ${soilN} kg/ha | आवश्यक: ${target.n} kg/ha | कमतरता: ${nDeficit} kg/ha
+- सध्याचे P: ${soilP} kg/ha | आवश्यक: ${target.p} kg/ha | कमतरता: ${pDeficit} kg/ha  
+- सध्याचे K: ${soilK} kg/ha | आवश्यक: ${target.k} kg/ha | कमतरता: ${kDeficit} kg/ha
+
+${landAreaAcres.toFixed(2)} एकर साठी औषध (PRESCRIPTION):
+${nDeficit > 0 ? `- N कमतरता: ${ureaKg} kg युरिया द्या किंवा ${vermicompostKgForN} kg गांडूळखत (सेंद्रिय)` : '- N: पुरेसे ✓ - युरिया/N खत लागत नाही'}
+${pDeficit > 0 ? `- P कमतरता: ${dapKg} kg DAP/SSP द्या किंवा ${bonemealKgForP} kg हाडांची पूड (सेंद्रिय)` : '- P: पुरेसे ✓ - DAP/P खत लागत नाही'}
+${kDeficit > 0 ? `- K कमतरता: ${mopKg} kg MOP द्या किंवा ${woodashKgForK} kg राख (सेंद्रिय)` : '- K: पुरेसे ✓ - MOP/K खत लागत नाही'}
+
+⚠️ महत्त्वाचे: फक्त कमतरता असलेले खत द्या! जास्त खत देऊ नका!
+` : language === "hi" ? `
+═══════════════════════════════════════════════════════════════
+💊 NPK दवाई - केवल इन कमियों को पूरा करें
+═══════════════════════════════════════════════════════════════
+निदान (DIAGNOSIS):
+- वर्तमान N: ${soilN} kg/ha | आवश्यक: ${target.n} kg/ha | कमी: ${nDeficit} kg/ha
+- वर्तमान P: ${soilP} kg/ha | आवश्यक: ${target.p} kg/ha | कमी: ${pDeficit} kg/ha  
+- वर्तमान K: ${soilK} kg/ha | आवश्यक: ${target.k} kg/ha | कमी: ${kDeficit} kg/ha
+
+${landAreaAcres.toFixed(2)} एकड़ के लिए दवाई (PRESCRIPTION):
+${nDeficit > 0 ? `- N कमी: ${ureaKg} kg यूरिया डालें या ${vermicompostKgForN} kg वर्मीकम्पोस्ट (जैविक)` : '- N: पर्याप्त ✓ - यूरिया/N खाद की जरूरत नहीं'}
+${pDeficit > 0 ? `- P कमी: ${dapKg} kg DAP/SSP डालें या ${bonemealKgForP} kg हड्डी का चूरा (जैविक)` : '- P: पर्याप्त ✓ - DAP/P खाद की जरूरत नहीं'}
+${kDeficit > 0 ? `- K कमी: ${mopKg} kg MOP डालें या ${woodashKgForK} kg राख (जैविक)` : '- K: पर्याप्त ✓ - MOP/K खाद की जरूरत नहीं'}
+
+⚠️ महत्वपूर्ण: केवल कमी वाले खाद डालें! अधिक खाद मत डालें!
+` : `
+═══════════════════════════════════════════════════════════════
+💊 NPK PRESCRIPTION - BALANCE THESE EXACT DEFICITS
+═══════════════════════════════════════════════════════════════
+DIAGNOSIS:
+- Current N: ${soilN} kg/ha | Target: ${target.n} kg/ha | DEFICIT: ${nDeficit} kg/ha
+- Current P: ${soilP} kg/ha | Target: ${target.p} kg/ha | DEFICIT: ${pDeficit} kg/ha  
+- Current K: ${soilK} kg/ha | Target: ${target.k} kg/ha | DEFICIT: ${kDeficit} kg/ha
+
+PRESCRIPTION FOR ${landAreaAcres.toFixed(2)} ACRES:
+${nDeficit > 0 ? `- N Deficiency: Apply ${ureaKg} kg Urea OR ${vermicompostKgForN} kg Vermicompost (organic)` : '- N: SUFFICIENT ✓ - No urea/N fertilizer needed'}
+${pDeficit > 0 ? `- P Deficiency: Apply ${dapKg} kg DAP/SSP OR ${bonemealKgForP} kg Bone meal (organic)` : '- P: SUFFICIENT ✓ - No DAP/P fertilizer needed'}
+${kDeficit > 0 ? `- K Deficiency: Apply ${mopKg} kg MOP OR ${woodashKgForK} kg Wood ash (organic)` : '- K: SUFFICIENT ✓ - No MOP/K fertilizer needed'}
+
+⚠️ CRITICAL: Only prescribe what's DEFICIENT! Do not over-fertilize!
+`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // pH-BASED FERTILIZER COMPATIBILITY RULES
+    // ═══════════════════════════════════════════════════════════════════
+    let phCompatibility = "";
+    if (hasSoilData) {
+      if (soilPh < 6.5) {
+        const limeKg = Math.round(landAreaAcres * 200);
+        phCompatibility = language === "mr" ? `
+═══════════════════════════════════════════════════════════════
+⚗️ pH आधारित खत सुसंगतता (pH = ${soilPh.toFixed(1)} - आम्लयुक्त)
+═══════════════════════════════════════════════════════════════
+❌ टाळा: अमोनियम सल्फेट, सल्फर (जमीन अजून आम्लयुक्त होईल)
+✅ वापरा: युरिया, कॅल्शियम अमोनियम नायट्रेट
+💊 औषध: खत देण्यापूर्वी ${limeKg} kg चुना द्या
+` : language === "hi" ? `
+═══════════════════════════════════════════════════════════════
+⚗️ pH आधारित खाद संगतता (pH = ${soilPh.toFixed(1)} - अम्लीय)
+═══════════════════════════════════════════════════════════════
+❌ बचें: अमोनियम सल्फेट, सल्फर (मिट्टी और अम्लीय होगी)
+✅ उपयोग करें: यूरिया, कैल्शियम अमोनियम नाइट्रेट
+💊 दवाई: खाद देने से पहले ${limeKg} kg चूना डालें
+` : `
+═══════════════════════════════════════════════════════════════
+⚗️ pH-BASED FERTILIZER COMPATIBILITY (pH = ${soilPh.toFixed(1)} - ACIDIC)
+═══════════════════════════════════════════════════════════════
+❌ AVOID: Ammonium sulfate, Elemental sulfur (will further acidify)
+✅ USE: Urea, Calcium Ammonium Nitrate, Lime application first
+💊 PRESCRIPTION: Apply ${limeKg} kg lime before fertilizers
+`;
+      } else if (soilPh > 7.5) {
+        const gypsumKg = Math.round(landAreaAcres * 500);
+        phCompatibility = language === "mr" ? `
+═══════════════════════════════════════════════════════════════
+⚗️ pH आधारित खत सुसंगतता (pH = ${soilPh.toFixed(1)} - क्षारयुक्त)
+═══════════════════════════════════════════════════════════════
+❌ टाळा: युरिया (N वाया जातो), DAP (P लॉक होतो)
+✅ वापरा: अमोनियम सल्फेट, SSP, जिप्सम
+💊 औषध: लागवडीपूर्वी ${gypsumKg} kg जिप्सम द्या
+` : language === "hi" ? `
+═══════════════════════════════════════════════════════════════
+⚗️ pH आधारित खाद संगतता (pH = ${soilPh.toFixed(1)} - क्षारीय)
+═══════════════════════════════════════════════════════════════
+❌ बचें: यूरिया (N बर्बाद होगा), DAP (P लॉक होगा)
+✅ उपयोग करें: अमोनियम सल्फेट, SSP, जिप्सम
+💊 दवाई: रोपण से पहले ${gypsumKg} kg जिप्सम डालें
+` : `
+═══════════════════════════════════════════════════════════════
+⚗️ pH-BASED FERTILIZER COMPATIBILITY (pH = ${soilPh.toFixed(1)} - ALKALINE)
+═══════════════════════════════════════════════════════════════
+❌ AVOID: Urea (high N loss at alkaline pH), DAP (P locks up)
+✅ USE: Ammonium sulfate, SSP, Gypsum for soil correction
+💊 PRESCRIPTION: Apply ${gypsumKg} kg gypsum before planting
+`;
+      } else {
+        phCompatibility = language === "mr" ? `
+═══════════════════════════════════════════════════════════════
+⚗️ pH आधारित खत सुसंगतता (pH = ${soilPh.toFixed(1)} - संतुलित)
+═══════════════════════════════════════════════════════════════
+✅ तटस्थ pH: सर्व खते योग्य
+💊 वरील औषधानुसार मानक खते वापरा
+` : language === "hi" ? `
+═══════════════════════════════════════════════════════════════
+⚗️ pH आधारित खाद संगतता (pH = ${soilPh.toFixed(1)} - संतुलित)
+═══════════════════════════════════════════════════════════════
+✅ तटस्थ pH: सभी खाद उपयुक्त
+💊 ऊपर दी गई दवाई के अनुसार मानक खाद उपयोग करें
+` : `
+═══════════════════════════════════════════════════════════════
+⚗️ pH-BASED FERTILIZER COMPATIBILITY (pH = ${soilPh.toFixed(1)} - NEUTRAL)
+═══════════════════════════════════════════════════════════════
+✅ NEUTRAL pH: All fertilizers compatible
+💊 Use standard fertilizers as prescribed above
+`;
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // WATER PRESCRIPTION SECTION
+    // ═══════════════════════════════════════════════════════════════════
+    const waterPrescription = language === "mr" ? `
+═══════════════════════════════════════════════════════════════
+💧 पाणी औषध - ${landAreaAcres.toFixed(2)} एकर साठी
+═══════════════════════════════════════════════════════════════
+- एकूण हंगाम पाणी गरज: ${Math.round(totalWaterLiters / 1000)} KL (${totalWaterLiters.toLocaleString()} लिटर)
+- प्रत्येक सिंचन: ${Math.round(adjustedWaterPerIrrigation / 1000)} KL दर ${waterReq.irrigation_interval_days} दिवसांनी
+- गंभीर टप्पे: ${waterReq.critical_stages.join(', ')} (दुप्पट पाणी द्या)
+- सिंचन प्रकार: ${irrigationType}
+${irrigationEfficiencyNote}
+
+⚠️ प्रत्येक सिंचन टास्कमध्ये water_required_liters समाविष्ट करा!
+` : language === "hi" ? `
+═══════════════════════════════════════════════════════════════
+💧 पानी दवाई - ${landAreaAcres.toFixed(2)} एकड़ के लिए
+═══════════════════════════════════════════════════════════════
+- कुल सीजन पानी जरूरत: ${Math.round(totalWaterLiters / 1000)} KL (${totalWaterLiters.toLocaleString()} लीटर)
+- प्रत्येक सिंचाई: ${Math.round(adjustedWaterPerIrrigation / 1000)} KL हर ${waterReq.irrigation_interval_days} दिन
+- गंभीर चरण: ${waterReq.critical_stages.join(', ')} (दुगना पानी दें)
+- सिंचाई प्रकार: ${irrigationType}
+${irrigationEfficiencyNote}
+
+⚠️ हर सिंचाई टास्क में water_required_liters शामिल करें!
+` : `
+═══════════════════════════════════════════════════════════════
+💧 WATER PRESCRIPTION FOR ${landAreaAcres.toFixed(2)} ACRES
+═══════════════════════════════════════════════════════════════
+- Total Season Water Need: ${Math.round(totalWaterLiters / 1000)} KL (${totalWaterLiters.toLocaleString()} liters)
+- Per Irrigation: ${Math.round(adjustedWaterPerIrrigation / 1000)} KL every ${waterReq.irrigation_interval_days} days
+- Critical Stages: ${waterReq.critical_stages.join(', ')} (double water)
+- Irrigation Type: ${irrigationType}
+${irrigationEfficiencyNote}
+
+⚠️ Include water_required_liters in each irrigation task!
+`;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // APPLICATION METHOD RULES (FOR CORRECT METHODS IN AI OUTPUT)
+    // ═══════════════════════════════════════════════════════════════════
+    const applicationMethodRules = language === "mr" ? `
+═══════════════════════════════════════════════════════════════
+📋 योग्य वापर पद्धती (सही तरीका)
+═══════════════════════════════════════════════════════════════
+खते:
+- युरिया/DAP/MOP/NPK → "broadcasting" किंवा "band_placement" (फवारणी नाही!)
+- सूक्ष्म अन्नद्रव्ये (जस्त/बोरॉन/लोह) → "foliar_spray" (2-3 फवारण्या)
+- सेंद्रिय (शेणखत/गांडूळखत) → "basal_application" (पेरणीपूर्वी)
+- जीवामृत/पंचगव्य → "drenching" (आळवणी)
+
+किडनाशके:
+- द्रव किडनाशके → "foliar_spray" शिफारस केलेल्या पाण्यासह
+- दाणेदार (कार्बोफ्युरान/फोरेट) → "soil_application" मुळांजवळ
+- प्रणालीगत → "seed_treatment" किंवा "root_dip"
+
+बुरशीनाशके:
+- बीज-जन्य रोग → "seed_treatment"
+- पानावरील रोग → "foliar_spray"
+- माती/मूळ रोग → "soil_drenching"
+
+⚠️ घन खतांसाठी किंवा शेणखतासाठी "foliar_spray" वापरू नका!
+` : language === "hi" ? `
+═══════════════════════════════════════════════════════════════
+📋 सही उपयोग विधि (सही तरीका)
+═══════════════════════════════════════════════════════════════
+खाद:
+- यूरिया/DAP/MOP/NPK → "broadcasting" या "band_placement" (फोलियर स्प्रे नहीं!)
+- सूक्ष्म पोषक (जिंक/बोरान/आयरन) → "foliar_spray" (2-3 छिड़काव)
+- जैविक (FYM/वर्मीकम्पोस्ट) → "basal_application" (बुवाई से पहले)
+- जीवामृत/पंचगव्य → "drenching" (आलवणी)
+
+कीटनाशक:
+- तरल कीटनाशक → "foliar_spray" अनुशंसित पानी मात्रा के साथ
+- दानेदार (कार्बोफ्यूरान/फोरेट) → "soil_application" जड़ क्षेत्र में
+- प्रणालीगत → "seed_treatment" या "root_dip"
+
+फफूंदनाशक:
+- बीज जनित रोग → "seed_treatment"
+- पत्ती रोग → "foliar_spray"
+- मिट्टी/जड़ रोग → "soil_drenching"
+
+⚠️ ठोस खाद या FYM के लिए "foliar_spray" का उपयोग न करें!
+` : `
+═══════════════════════════════════════════════════════════════
+📋 CORRECT APPLICATION METHODS (सही तरीका)
+═══════════════════════════════════════════════════════════════
+FERTILIZERS:
+- Urea/DAP/MOP/NPK → "broadcasting" or "band_placement" (NOT foliar_spray!)
+- Micronutrients (Zinc/Boron/Iron) → "foliar_spray" (2-3 sprays)
+- Organic (FYM/Vermicompost) → "basal_application" (before sowing)
+- Jeevamrut/Panchagavya → "drenching" (आळवणी)
+
+PESTICIDES:
+- Liquid concentrates → "foliar_spray" with recommended water volume
+- Granules (Carbofuran/Phorate) → "soil_application" near root zone
+- Systemic → "seed_treatment" or "root_dip"
+
+FUNGICIDES:
+- Seed-borne diseases → "seed_treatment" 
+- Foliar diseases → "foliar_spray"
+- Soil-borne/Root → "soil_drenching"
+
+⚠️ NEVER use "foliar_spray" for solid fertilizers or FYM!
+`;
+
     // TASK Section - Include soil data and land area specific calculations
     const taskSection = `
 ═══════════════════════════════════════════════════════════════════════════
 🎯 TASK (कार्य)
 ═══════════════════════════════════════════════════════════════════════════
 Generate a COMPLETE, ACCURATE crop schedule for ${translatedCropName} (${cropName}) cultivation.
-
+${prescriptionFraming}
 ⚠️ CRITICAL: ALL QUANTITIES MUST BE CALCULATED FOR THIS EXACT LAND AREA ⚠️
 Land Area: ${landAreaAcres.toFixed(2)} acres (${landAreaGuntha} guntha / ${landAreaHa.toFixed(2)} hectares)
 
@@ -2591,20 +2956,18 @@ CROP DETAILS:
 - Potassium (K): ${soilK} kg/ha ${soilK < 120 ? "(Low)" : soilK > 280 ? "(High)" : "(Medium)"}
 - Organic Carbon: ${soilData?.organic_carbon || "N/A"}%
 - Fertility Class: ${soilData?.fertility_class || "Medium"}
-
-⚠️ SOIL pH BASED FERTILIZER ADVICE:
-${soilPhAdvice}
+${npkPrescription}
+${phCompatibility}
+${waterPrescription}
+${applicationMethodRules}
 
 FARMING MODE: ${farmingTypeLabel}
 ${farmingTypeRules}
 
 ${seedPreparationDetails}
 
-NUTRIENT STATUS (Based on ACTUAL Soil Report):
-- Current N/P/K: ${currentN}/${currentP}/${currentK} kg/ha
-- Required N/P/K: ${target.n}/${target.p}/${target.k} kg/ha
-- Deficit N/P/K: ${nDeficit}/${pDeficit}/${kDeficit} kg/ha
-- For ${landAreaAcres.toFixed(2)} acres: Urea ${ureaKg} kg, DAP ${dapKg} kg, MOP ${mopKg} kg
+${soilTestInstruction}
+
 - Labor Rate: ₹${laborRate}/day`;
 
     // INSTRUCTION Section
@@ -2638,39 +3001,51 @@ ${stagesPrompt}
    - Include SPECIFIC product brands with prices
    - Include yield_impact and skip_penalty for each task
 ${seedRules}
-4. PRODUCT RECOMMENDATIONS (CRITICAL - ONLY WHERE NEEDED):
-   ⚠️ IMPORTANT: NOT ALL TASKS NEED PRODUCTS! Only add products for:
-   - fertilizer, nutrient_management, organic_input → Add fertilizer/organic products
-   - pest_control, disease_control, fungicide → Add pesticides/fungicides
-   - seed_treatment, sowing → Add seeds, treatment chemicals
-   - growth_promoter → Add growth boosters
+
+4. PRESCRIPTION-BASED PRODUCT RECOMMENDATIONS (CRITICAL):
+   ⚠️ USE THE PRESCRIPTION ABOVE, NOT GENERIC DOSES!
    
-   🚫 DO NOT ADD PRODUCTS FOR THESE (labor-only tasks):
-   - irrigation, watering → No products, only labor cost
+   FOR FERTILIZER TASKS (ONLY if deficit exists):
+   ${nDeficit <= 0 ? '- SKIP Urea/N fertilizers (N is SUFFICIENT based on soil report)' : `- Urea: ${ureaKg} kg TOTAL for this land (not per acre!)`}
+   ${pDeficit <= 0 ? '- SKIP DAP/P fertilizers (P is SUFFICIENT based on soil report)' : `- DAP/SSP: ${dapKg} kg TOTAL for this land`}
+   ${kDeficit <= 0 ? '- SKIP MOP/K fertilizers (K is SUFFICIENT based on soil report)' : `- MOP: ${mopKg} kg TOTAL for this land`}
+   
+   FOR IRRIGATION TASKS:
+   - Include water_required_liters: ${adjustedWaterPerIrrigation} liters for each irrigation
+   - Specify irrigation type: ${irrigationType}
+   - Critical stages needing double water: ${waterReq.critical_stages.join(', ')}
+   
+   FOR APPLICATION METHODS (CRITICAL - USE CORRECT METHOD):
+   - Solid fertilizers (Urea/DAP/MOP) → "broadcasting" or "band_placement"
+   - Micronutrients (Zn/B/Fe sprays) → "foliar_spray"
+   - Organic matter (FYM/Vermicompost) → "basal_application"
+   - Liquid bio-inputs (Jeevamrut) → "drenching"
+   - Granular pesticides → "soil_application"
+   - Liquid pesticides → "foliar_spray"
+   ⚠️ NEVER use "foliar_spray" for solid fertilizers!
+   
+   🚫 NO PRODUCTS NEEDED FOR (labor-only tasks):
+   - irrigation, watering → No products, only labor cost + water_required_liters
    - land_preparation, ploughing → No products, only machinery/labor
    - harvesting, post_harvest → No products, only labor cost
    - monitoring, field_visit → No products, only labor
-   - pruning, mulching, intercultural → No products, only labor
-   
-   ✅ For tasks that need products:
-   - ALL product_names, dose_per_acre, application_method MUST be in ${languageName}
-   - Specify: brand, dose FOR THIS LAND (${landAreaAcres.toFixed(2)} acres), price_estimate
-   - ${farmingType === "organic_only" ? "ONLY organic products (Trichoderma, Neem, Bio-fertilizers)" : ""}
-   - ${farmingType === "fertilizer_pesticide" ? "Chemical fertilizers and pesticides with brands" : ""}
-   - price_estimate = (per-unit-price × quantity for ${landAreaAcres.toFixed(2)} acres)
 
-5. COST CALCULATION (FOR ${landAreaAcres.toFixed(2)} ACRES):
+5. SOIL TEST TASK RULE:
+   ${soilTestInstruction}
+
+6. COST CALCULATION (FOR ${landAreaAcres.toFixed(2)} ACRES):
    - Calculate estimated_cost = sum of all product prices + labor cost
    - Labor: (days × ₹${laborRate}/day)
    - Products: actual market prices × quantity for this land
+   - Include "total_for_land" field showing total quantity for ${landAreaAcres.toFixed(2)} acres
 
-6. LANGUAGE RULES (CRITICAL - PRODUCT NAMES IN ${languageName}):
+7. LANGUAGE RULES (CRITICAL - PRODUCT NAMES IN ${languageName}):
    - Write ALL task_name, description, instructions in ${languageName}
    - Product names MUST be in ${languageName}: युरिया, डीएपी, गांडूळ खत, कडुनिंबाचे तेल etc.
    - Use rural/village dialect: ${JSON.stringify(Object.entries(ruralTerms).slice(0, 10).reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {}))}
    ${regionalLanguageRules}
 
-7. WEATHER DEPENDENCY:
+8. WEATHER DEPENDENCY:
    - Mark irrigation, spraying tasks as weather_dependent: true
    - Include ideal_weather conditions for sensitive tasks`;
 
@@ -2712,8 +3087,11 @@ ${dataSection}
 1. You MUST call the create_schedule function with properly structured JSON
 2. Every task_name MUST start with "${translatedCropName} -"
 3. All ${totalStages} stages (${allStageKeys.join(", ")}) MUST have at least 1 task
-4. Include seed_treatment task in sowing stage with EXACT treatment method
-5. NO text responses - ONLY function call with JSON data`;
+4. ${hasSoilData ? 'DO NOT include soil test task - soil data already exists!' : 'Include soil test task in planning stage'}
+5. Use PRESCRIPTION doses from NPK PRESCRIPTION section above - NOT generic doses
+6. Use CORRECT application_method for each product type
+7. Include water_required_liters for irrigation tasks: ${adjustedWaterPerIrrigation} liters
+8. NO text responses - ONLY function call with JSON data`;
 
     // Build mandatory task categories string for long-duration crops
     const mandatoryCategoriesPrompt = cropTaskConfig.mandatoryCategories.length > 0
