@@ -444,7 +444,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               <div>
                 <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-primary animate-pulse" />
-                  {schedule.crop_name}
+                  {(schedule as any).metadata?.translated_crop_name || schedule.crop_name}
                 </h2>
                 <p className="text-xs text-muted-foreground font-medium">
                   <MapPin className="h-3 w-3 inline mr-1" />
@@ -488,13 +488,13 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
             <div className="p-3 space-y-1">
               <div className="flex items-center justify-between">
                 <Calendar className="h-4 w-4 text-green-600 dark:text-green-400" />
-                <span className="text-[10px] font-medium text-green-700 dark:text-green-300 uppercase tracking-wider">Sowing</span>
+                <span className="text-[10px] font-medium text-green-700 dark:text-green-300 uppercase tracking-wider">{t('schedule.sowing')}</span>
               </div>
               <p className="text-base font-bold text-green-900 dark:text-green-100">
                 {format(new Date(schedule.sowing_date), 'dd MMM')}
               </p>
               <p className="text-[10px] text-green-700 dark:text-green-300">
-                {differenceInDays(new Date(), new Date(schedule.sowing_date))} days ago
+                {differenceInDays(new Date(), new Date(schedule.sowing_date))} {t('schedule.days_ago')}
               </p>
             </div>
           </Card>
@@ -503,13 +503,21 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
             <div className="p-3 space-y-1">
               <div className="flex items-center justify-between">
                 <Package className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300 uppercase tracking-wider">Harvest</span>
+                <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300 uppercase tracking-wider">{t('schedule.harvest')}</span>
               </div>
               <p className="text-base font-bold text-amber-900 dark:text-amber-100">
-                {schedule.expected_harvest_date ? format(new Date(schedule.expected_harvest_date), 'dd MMM') : 'TBD'}
+                {schedule.expected_harvest_date 
+                  ? format(new Date(schedule.expected_harvest_date), 'dd MMM') 
+                  : (schedule as any).total_duration_days && schedule.sowing_date
+                    ? format(addDays(new Date(schedule.sowing_date), (schedule as any).total_duration_days), 'dd MMM')
+                    : t('schedule.schedule_card.tbd')}
               </p>
               <p className="text-[10px] text-amber-700 dark:text-amber-300">
-                {schedule.expected_harvest_date && differenceInDays(new Date(schedule.expected_harvest_date), new Date())} days left
+                {schedule.expected_harvest_date 
+                  ? `${differenceInDays(new Date(schedule.expected_harvest_date), new Date())} ${t('schedule.days_remaining')}`
+                  : (schedule as any).total_duration_days && schedule.sowing_date
+                    ? `${differenceInDays(addDays(new Date(schedule.sowing_date), (schedule as any).total_duration_days), new Date())} ${t('schedule.days_remaining')}`
+                    : ''}
               </p>
             </div>
           </Card>
@@ -528,10 +536,10 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                   <Clock className="h-4 w-4 text-primary" />
-                  {i18n.t('schedule.todaysTasks')}
+                  {t('schedule.todays_tasks')}
                 </h3>
                 <Badge variant="destructive" className="text-[10px]">
-                  {todayTasks.length} {i18n.t('schedule.pending')}
+                  {todayTasks.length} {t('schedule.pending')}
                 </Badge>
               </div>
               <div className="space-y-2">

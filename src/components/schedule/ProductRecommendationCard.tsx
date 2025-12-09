@@ -81,14 +81,15 @@ export default function ProductRecommendationCard({ products, landAreaAcres = 1 
     <div className="space-y-3">
       <h4 className="text-sm font-semibold flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-primary" />
-        {lang === 'hi' ? 'सुझाए गए उत्पाद' : lang === 'mr' ? 'सुचवलेली उत्पादने' : 'Recommended Products'}
+        {lang === 'hi' ? 'सुझाए गए उत्पाद' : lang === 'mr' ? 'शिफारस केलेली उत्पादने' : 'Recommended Products'}
       </h4>
       
       <div className="grid gap-3">
         {products.map((product, index) => {
           const config = productTypeConfig[product.product_type] || productTypeConfig.organic;
           const ProductIcon = config.icon;
-          const totalPrice = (product.price_estimate || 0) * landAreaAcres;
+          // price_estimate already includes land area calculation from backend
+          const totalPrice = product.price_estimate || 0;
 
           return (
             <Card
@@ -129,7 +130,7 @@ export default function ProductRecommendationCard({ products, landAreaAcres = 1 
                         <span>₹{totalPrice.toLocaleString('en-IN')}</span>
                       </div>
                       <span className="text-[10px] text-muted-foreground">
-                        {landAreaAcres > 1 ? `(₹${product.price_estimate}/acre)` : '/acre'}
+                        {lang === 'hi' ? 'अंदाजे' : lang === 'mr' ? 'अंदाजे' : 'approx'}
                       </span>
                     </div>
                   )}
