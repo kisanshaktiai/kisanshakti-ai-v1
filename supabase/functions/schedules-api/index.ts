@@ -33,14 +33,21 @@ serve(async (req) => {
       );
     }
 
-    // Parse URL to get schedule ID if present
+    // Parse URL to get path segments
     const url = new URL(req.url);
     const pathParts = url.pathname.split('/').filter(Boolean);
-    const scheduleId = pathParts.length > 1 ? pathParts[pathParts.length - 1] : null;
+    const lastPart = pathParts.length > 1 ? pathParts[pathParts.length - 1] : null;
+    
+    // Check if this is a /tasks route
+    const isTasksRoute = lastPart === 'tasks';
+    const scheduleId = (lastPart && lastPart !== 'schedules-api' && !isTasksRoute) ? lastPart : null;
     const landIdParam = url.searchParams.get('land_id');
+    const scheduleIdParam = url.searchParams.get('schedule_id');
 
     console.log(`📅 [SchedulesAPI] ${req.method} request:`, { 
+      isTasksRoute,
       scheduleId, 
+      scheduleIdParam,
       landIdParam, 
       tenantId, 
       farmerId 
@@ -58,7 +65,39 @@ serve(async (req) => {
 
     switch (req.method) {
       case 'GET': {
-        if (scheduleId && scheduleId !== 'schedules-api') {
+        // Handle /tasks route
+        if (isTasksRoute) {
+          console.log('📋 [SchedulesAPI] Fetching tasks:', { scheduleIdParam });
+          
+          let query = supabase
+            .from('schedule_tasks')
+            .select('*')
+            .eq('tenant_id', tenantId)
+            .eq('farmer_id', farmerId)
+            .order('scheduled_date', { ascending: true });
+
+          if (scheduleIdParam) {
+            query = query.eq('schedule_id', scheduleIdParam);
+          }
+
+          const { data, error } = await query;
+
+          if (error) {
+            console.error('❌ [SchedulesAPI] Error fetching tasks:', error);
+            return new Response(
+              JSON.stringify({ error: 'Failed to fetch tasks', details: error.message }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          console.log(`✅ [SchedulesAPI] Fetched ${data?.length || 0} tasks`);
+          return new Response(
+            JSON.stringify({ data: data || [] }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        if (scheduleId) {
           // Get single schedule
           console.log('📅 [SchedulesAPI] Fetching schedule by ID:', scheduleId);
           const { data, error } = await supabase
