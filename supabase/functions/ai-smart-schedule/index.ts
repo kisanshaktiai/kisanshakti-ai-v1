@@ -1943,121 +1943,283 @@ function validateCropSuitability(
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// APPLICATION METHOD HELPER - CORRECT METHOD BASED ON PRODUCT TYPE
 // ═══════════════════════════════════════════════════════════════════════
+// APPLICATION METHOD HELPER - INTELLIGENT DETECTION BASED ON PRODUCT FORM
+// ═══════════════════════════════════════════════════════════════════════
+// CRITICAL FIX: Solid fertilizers (DAP, Urea, MOP, NPK) cannot be sprayed!
+// This function determines correct application method based on product form.
+
+// PRODUCT FORM DATABASE - Defines physical form of products
+const SOLID_GRANULAR_PRODUCTS = [
+  'urea', 'युरिया', 'यूरिया',
+  'dap', 'डीएपी', 'डीएपी',
+  'mop', 'एमओपी', 
+  'npk', 'एनपीके',
+  'ssp', 'एसएसपी',
+  'superphosphate', 'सुपरफॉस्फेट',
+  'ammonium sulphate', 'अमोनियम सल्फेट',
+  'potash', 'पोटाश',
+  'calcium ammonium nitrate', 'can',
+  'zinc sulphate', 'जिंक सल्फेट', 'जस्त सल्फेट',
+  'ferrous sulphate', 'फेरस सल्फेट',
+  'borax', 'बोरेक्स',
+  'gypsum', 'जिप्सम',
+  'lime', 'चुना', 'stone chalk',
+  'carbofuran', 'कार्बोफ्युरान', 'furadan',
+  'phorate', 'फोरेट',
+  'fym', 'farm yard manure', 'शेणखत', 'गोबर खाद', 'गोबर की खाद',
+  'vermicompost', 'गांडूळ खत', 'केंचुआ खाद',
+  'compost', 'कंपोस्ट',
+  'neem cake', 'निंबोळी पेंड', 'neem khali',
+  'bone meal', 'हाड चूर्ण',
+  'rock phosphate', 'रॉक फॉस्फेट',
+];
+
+const LIQUID_SPRAY_PRODUCTS = [
+  'imidacloprid', 'इमिडाक्लोप्रिड',
+  'chlorpyriphos', 'क्लोरपायरीफॉस',
+  'monocrotophos', 'मोनोक्रोटोफॉस',
+  'acephate', 'एसीफेट',
+  'spinosad', 'स्पिनोसैड',
+  'emamectin', 'एमामेक्टिन',
+  'cypermethrin', 'सायपरमेथ्रिन',
+  'lambda cyhalothrin', 'लॅम्बडा',
+  'thiamethoxam', 'थियामेथोक्सम',
+  'acetamiprid', 'एसीटामिप्रिड',
+  'fipronil', 'फिप्रोनिल',
+  'neem oil', 'नीम तेल', 'नीम का तेल',
+  'mancozeb', 'मॅन्कोझेब',
+  'carbendazim', 'कार्बेंडाज़िम',
+  'propiconazole', 'प्रोपिकोनाझोल',
+  'tricyclazole', 'ट्राइसाइक्लाज़ोल',
+  'hexaconazole', 'हेक्साकोनाझोल',
+  'copper oxychloride', 'कॉपर ऑक्सिक्लोराईड', 'coc',
+  'bordeaux mixture', 'बोर्डो मिश्रण',
+  'humic acid', 'ह्यूमिक एसिड', 'ह्युमिक ॲसिड',
+  'fulvic acid', 'फुल्विक एसिड',
+  'seaweed', 'सीव्हीड', 'समुद्री शैवाल',
+  'amino acid', 'अमीनो एसिड',
+  'gibberellic acid', 'ga3', 'जिब्बेरेलिक',
+  'naa', 'naphthalene acetic', 'नेप्थालीन',
+  '2,4-d', '2,4-डी',
+  'glyphosate', 'ग्लायफोसेट',
+  'paraquat', 'पैराक्वाट',
+  'pendimethalin', 'पेंडीमेथालिन',
+  'quizalofop', 'क्विज़ालोफॉप',
+  'beauveria', 'ब्युव्हेरिया',
+  'metarhizium', 'मेटारायझियम',
+  'npv', 'nuclear polyhedrosis',
+  'bt', 'bacillus thuringiensis',
+];
+
+const SEED_TREATMENT_PRODUCTS = [
+  'thiram', 'थायरम',
+  'captan', 'कैप्टन',
+  'vitavax', 'विटावैक्स',
+  'carboxin', 'कार्बोक्सिन',
+  'trichoderma', 'ट्रायकोडर्मा', 'ट्राइकोडर्मा',
+  'rhizobium', 'राइज़ोबियम',
+  'azotobacter', 'एज़ोटोबैक्टर',
+  'azospirillum', 'एज़ोस्पिरिलम',
+  'psb', 'फॉस्फेट सोल्युबिलाइजिंग',
+  'mycorrhiza', 'माइकोराइजा',
+  'pseudomonas', 'स्यूडोमोनास',
+  'beejamrut', 'बीजामृत',
+];
+
+const DRENCH_PRODUCTS = [
+  'jeevamrut', 'जीवामृत',
+  'panchagavya', 'पंचगव्य',
+  'amritpani', 'अमृतपानी',
+  'cow urine', 'गोमूत्र', 'गौमूत्र',
+  'buttermilk', 'ताक', 'छाछ',
+  'trichoderma liquid', 'द्रव ट्रायकोडर्मा',
+  'pseudomonas liquid', 'द्रव स्यूडोमोनास',
+];
+
 function getApplicationMethod(productName: string, productType: string, taskCategory: string): string {
   const nameLower = (productName || "").toLowerCase();
   const typeLower = (productType || "").toLowerCase();
   const categoryLower = (taskCategory || "").toLowerCase();
   
-  // SEED TREATMENT METHODS
+  // ═══════════════════════════════════════════════════════════════════════
+  // PRIORITY 1: CHECK PRODUCT NAME FOR SOLID GRANULAR PRODUCTS
+  // These CANNOT be applied via foliar spray - CRITICAL CHECK FIRST!
+  // ═══════════════════════════════════════════════════════════════════════
+  for (const solidProduct of SOLID_GRANULAR_PRODUCTS) {
+    if (nameLower.includes(solidProduct)) {
+      // Determine exact method based on product sub-type
+      if (solidProduct.includes('carbofuran') || solidProduct.includes('phorate')) {
+        return 'soil_application';  // ग्रॅन्युल्स मातीत टाकणे
+      }
+      if (solidProduct.includes('fym') || solidProduct.includes('शेणखत') || solidProduct.includes('गोबर') || 
+          solidProduct.includes('vermicompost') || solidProduct.includes('गांडूळ') || solidProduct.includes('compost') ||
+          solidProduct.includes('केंचुआ')) {
+        return 'basal_application';  // पायाभूत खत / मातीत मिश्रण
+      }
+      if (solidProduct.includes('lime') || solidProduct.includes('gypsum') || solidProduct.includes('चुना')) {
+        return 'soil_application';  // माती सुधारक
+      }
+      if (solidProduct.includes('urea') || solidProduct.includes('युरिया') || solidProduct.includes('यूरिया')) {
+        // Urea can be basal or top_dressing depending on timing
+        if (categoryLower.includes('sowing') || categoryLower.includes('basal')) {
+          return 'basal_application';  // पेरणीवेळी पायाभूत
+        }
+        return 'top_dressing';  // वाढीच्या वेळी वरून टाकणे
+      }
+      if (solidProduct.includes('dap') || solidProduct.includes('डीएपी')) {
+        return 'basal_application';  // DAP नेहमी पायाभूत
+      }
+      if (solidProduct.includes('mop') || solidProduct.includes('एमओपी') || solidProduct.includes('potash')) {
+        return 'basal_application';  // MOP नेहमी पायाभूत
+      }
+      if (solidProduct.includes('npk') || solidProduct.includes('एनपीके')) {
+        return 'broadcasting';  // NPK विखुरणे / पसरवणे
+      }
+      if (solidProduct.includes('ssp') || solidProduct.includes('superphosphate')) {
+        return 'basal_application';  // SSP पायाभूत
+      }
+      if (solidProduct.includes('zinc') || solidProduct.includes('जिंक') || solidProduct.includes('जस्त') ||
+          solidProduct.includes('ferrous') || solidProduct.includes('borax') || solidProduct.includes('बोरेक्स')) {
+        return 'soil_application';  // सूक्ष्म अन्नद्रव्ये मातीत
+      }
+      if (solidProduct.includes('neem cake') || solidProduct.includes('निंबोळी') || solidProduct.includes('khali')) {
+        return 'basal_application';  // पेंड पायाभूत
+      }
+      // Default for other solid products
+      return 'broadcasting';  // छिड़काव / विखुरणे
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // PRIORITY 2: CHECK FOR SEED TREATMENT PRODUCTS
+  // ═══════════════════════════════════════════════════════════════════════
+  for (const seedProduct of SEED_TREATMENT_PRODUCTS) {
+    if (nameLower.includes(seedProduct)) {
+      if (seedProduct.includes('trichoderma') || seedProduct.includes('rhizobium') || 
+          seedProduct.includes('azotobacter') || seedProduct.includes('psb') || seedProduct.includes('mycorrhiza')) {
+        return 'seed_inoculation';  // जैविक बीज उपचार
+      }
+      return 'seed_coating';  // बीज लेपन
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // PRIORITY 3: CHECK FOR DRENCH PRODUCTS
+  // ═══════════════════════════════════════════════════════════════════════
+  for (const drenchProduct of DRENCH_PRODUCTS) {
+    if (nameLower.includes(drenchProduct)) {
+      return 'drenching';  // आळवणी / जड़ों में डालें
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // PRIORITY 4: CHECK FOR LIQUID SPRAY PRODUCTS  
+  // ═══════════════════════════════════════════════════════════════════════
+  for (const liquidProduct of LIQUID_SPRAY_PRODUCTS) {
+    if (nameLower.includes(liquidProduct)) {
+      // Check for herbicides - need specific spray type
+      if (liquidProduct.includes('pendimethalin') || liquidProduct.includes('atrazine')) {
+        return 'pre_emergence_spray';  // पेरणीपूर्व फवारणी
+      }
+      if (liquidProduct.includes('2,4-d') || liquidProduct.includes('quizalofop') || 
+          liquidProduct.includes('glyphosate') || liquidProduct.includes('paraquat')) {
+        return 'post_emergence_spray';  // तणांवर फवारणी
+      }
+      return 'foliar_spray';  // पानांवर फवारणी
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // FALLBACK: CATEGORY-BASED DETECTION (if product not in known lists)
+  // ═══════════════════════════════════════════════════════════════════════
+  
+  // SEED TREATMENT by category
   if (categoryLower.includes('seed') || typeLower.includes('seed')) {
-    if (nameLower.includes('thiram') || nameLower.includes('carbendazim') || nameLower.includes('captan')) {
-      return 'seed_coating';  // बीज लेप / बियाणे लेपन
-    }
-    if (nameLower.includes('trichoderma') || nameLower.includes('rhizobium') || nameLower.includes('azotobacter') || nameLower.includes('psb')) {
-      return 'seed_inoculation';  // बीज शोधन / जैविक उपचार
-    }
-    if (nameLower.includes('imidacloprid') || nameLower.includes('thiamethoxam')) {
-      return 'seed_treatment';  // बीज उपचार
-    }
     return 'seed_treatment';
   }
   
-  // FERTILIZER/NUTRIENT APPLICATION METHODS
+  // FERTILIZER category - defaults to broadcasting/soil
   if (categoryLower.includes('fertilizer') || typeLower.includes('fertilizer') || categoryLower.includes('nutrient')) {
-    if (nameLower.includes('urea') || nameLower.includes('dap') || nameLower.includes('mop') || nameLower.includes('npk') || nameLower.includes('ssp')) {
-      return 'broadcasting';  // छिड़काव / पसरवणे
+    if (typeLower.includes('micro') || nameLower.includes('micro')) {
+      return 'foliar_spray';  // Micronutrients can be sprayed if in chelated liquid form
     }
-    if (nameLower.includes('zinc') || nameLower.includes('boron') || nameLower.includes('iron') || nameLower.includes('micro')) {
-      return 'foliar_spray';  // पर्णांवर फवारणी
-    }
-    if (nameLower.includes('drip') || nameLower.includes('fertigation')) {
-      return 'fertigation';  // ठिबक द्वारे
-    }
-    return 'soil_application';  // मातीत मिसळणे
+    return 'broadcasting';  // Default for unrecognized fertilizers
   }
   
-  // ORGANIC INPUT METHODS
+  // ORGANIC category
   if (typeLower.includes('organic') || categoryLower.includes('organic')) {
-    if (nameLower.includes('fym') || nameLower.includes('farm yard') || nameLower.includes('shenkhat') || nameLower.includes('शेणखत') || nameLower.includes('गोबर')) {
-      return 'basal_application';  // पायाभूत खत
-    }
-    if (nameLower.includes('vermicompost') || nameLower.includes('gandulkhat') || nameLower.includes('गांडूळ')) {
-      return 'top_dressing';  // मातीत मिश्रण
-    }
-    if (nameLower.includes('jeevamrut') || nameLower.includes('जीवामृत') || nameLower.includes('panchagavya')) {
-      return 'drenching';  // आळवणी / drench
-    }
-    if (nameLower.includes('neem') || nameLower.includes('कडुनिंब') || nameLower.includes('नीम')) {
-      return 'foliar_spray';  // फवारणी
+    if (nameLower.includes('liquid') || nameLower.includes('द्रव')) {
+      return 'drenching';
     }
     return 'soil_application';
   }
   
-  // BIO-FERTILIZER METHODS
-  if (typeLower.includes('bio') || nameLower.includes('trichoderma') || nameLower.includes('pseudomonas') || nameLower.includes('beauveria')) {
-    if (nameLower.includes('trichoderma') || nameLower.includes('pseudomonas')) {
-      return 'soil_drenching';  // मुळ्यांजवळ आळवणी
-    }
-    if (nameLower.includes('beauveria') || nameLower.includes('metarhizium')) {
-      return 'foliar_spray';  // फवारणी
-    }
-    return 'soil_application';
+  // BIO-FERTILIZER category
+  if (typeLower.includes('bio')) {
+    return 'soil_drenching';
   }
   
-  // GROWTH PROMOTER METHODS
+  // GROWTH PROMOTER category
   if (categoryLower.includes('growth') || typeLower.includes('growth')) {
-    if (nameLower.includes('seaweed') || nameLower.includes('humic') || nameLower.includes('amino') || nameLower.includes('fulvic')) {
-      return 'foliar_spray';  // पर्णांवर फवारणी
+    return 'foliar_spray';  // Most growth promoters are liquid sprays
+  }
+  
+  // PEST CONTROL category
+  if (categoryLower.includes('pest') || typeLower.includes('pesticide') || typeLower.includes('insecticide')) {
+    if (nameLower.includes('granule') || nameLower.includes('gr ') || nameLower.includes('g ') || nameLower.includes('cg')) {
+      return 'soil_application';
     }
-    if (nameLower.includes('gibberellic') || nameLower.includes('ga3')) {
-      return 'foliar_spray';
+    if (nameLower.includes('trap') || nameLower.includes('pheromone')) {
+      return 'trap_installation';
+    }
+    if (nameLower.includes('dust') || nameLower.includes('dp')) {
+      return 'dusting';
     }
     return 'foliar_spray';
   }
   
-  // PEST CONTROL METHODS
-  if (categoryLower.includes('pest') || typeLower.includes('pesticide') || typeLower.includes('insecticide')) {
-    if (nameLower.includes('granule') || nameLower.includes('gr ') || nameLower.includes('carbofuran') || nameLower.includes('phorate')) {
-      return 'soil_application';  // मातीत टाकणे
-    }
-    if (nameLower.includes('pheromone') || nameLower.includes('trap')) {
-      return 'trap_installation';  // सापळे लावणे
-    }
-    if (nameLower.includes('dust') || nameLower.includes('dp ')) {
-      return 'dusting';  // धुरळणी
-    }
-    return 'foliar_spray';  // फवारणी
-  }
-  
-  // FUNGICIDE/DISEASE CONTROL METHODS
+  // DISEASE CONTROL category
   if (categoryLower.includes('disease') || typeLower.includes('fungicide')) {
-    if (nameLower.includes('copper') || nameLower.includes('bordeaux')) {
-      return 'foliar_spray';
-    }
-    if (nameLower.includes('seed') || nameLower.includes('बीज')) {
-      return 'seed_treatment';
-    }
-    if (nameLower.includes('drench') || nameLower.includes('root')) {
+    if (nameLower.includes('drench') || nameLower.includes('root') || nameLower.includes('मुळ')) {
       return 'soil_drenching';
     }
     return 'foliar_spray';
   }
   
-  // HERBICIDE/WEED CONTROL METHODS
+  // WEED CONTROL category
   if (categoryLower.includes('weed') || typeLower.includes('herbicide')) {
-    if (nameLower.includes('pre-emergence') || nameLower.includes('pendimethalin') || nameLower.includes('atrazine')) {
-      return 'pre_emergence_spray';  // पेरणीपूर्व फवारणी
-    }
-    if (nameLower.includes('post-emergence') || nameLower.includes('2,4-d') || nameLower.includes('quizalofop')) {
-      return 'post_emergence_spray';  // पेरणीनंतर फवारणी
-    }
-    return 'directed_spray';  // तणांवर थेट फवारणी
+    return 'directed_spray';
   }
   
-  // DEFAULT - Most common is foliar spray for liquid inputs
-  return 'foliar_spray';
+  // IRRIGATION category - should have water amount, not spray
+  if (categoryLower.includes('irrigation') || categoryLower.includes('watering')) {
+    return 'irrigation';  // पाणी देणे
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // FINAL DEFAULT: If nothing matched, use category-aware default
+  // NOT blindly foliar_spray - prevent DAP spray bug!
+  // ═══════════════════════════════════════════════════════════════════════
+  console.warn(`⚠️ [ApplicationMethod] Unknown product: "${productName}", type: "${productType}", category: "${taskCategory}" - using safe default`);
+  
+  // Check if product name suggests solid form
+  if (nameLower.includes('kg') || nameLower.includes('granule') || nameLower.includes('powder') || 
+      nameLower.includes('चूर्ण') || nameLower.includes('पावडर')) {
+    return 'soil_application';
+  }
+  
+  // Check if product name suggests liquid form
+  if (nameLower.includes('ml') || nameLower.includes('liter') || nameLower.includes('liquid') || 
+      nameLower.includes('द्रव') || nameLower.includes('ec') || nameLower.includes('sl') || nameLower.includes('sc')) {
+    return 'foliar_spray';
+  }
+  
+  // Ultimate fallback based on most common category defaults
+  if (categoryLower.includes('fertilizer')) return 'broadcasting';
+  if (categoryLower.includes('organic')) return 'soil_application';
+  
+  return 'soil_application';  // Safe default - can't go wrong with soil application
 }
 
 // ═══════════════════════════════════════════════════════════════════════
