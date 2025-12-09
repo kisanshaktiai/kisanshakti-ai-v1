@@ -5,6 +5,7 @@ import hi from './locales/hi.json';
 import pa from './locales/pa.json';
 import mr from './locales/mr.json';
 import ta from './locales/ta.json';
+// Page-level imports
 import enWeather from './locales/en/weather.json';
 import hiWeather from './locales/hi/weather.json';
 import mrWeather from './locales/mr/weather.json';
@@ -62,6 +63,22 @@ import mrError from './locales/mr/error.json';
 import enSync from './locales/en/sync.json';
 import hiSync from './locales/hi/sync.json';
 import mrSync from './locales/mr/sync.json';
+// New locale files
+import enCommon from './locales/en/common.json';
+import hiCommon from './locales/hi/common.json';
+import mrCommon from './locales/mr/common.json';
+import enVoice from './locales/en/voice.json';
+import hiVoice from './locales/hi/voice.json';
+import mrVoice from './locales/mr/voice.json';
+import enNotification from './locales/en/notification.json';
+import hiNotification from './locales/hi/notification.json';
+import mrNotification from './locales/mr/notification.json';
+import enSoil from './locales/en/soil.json';
+import hiSoil from './locales/hi/soil.json';
+import mrSoil from './locales/mr/soil.json';
+import enProfileEdit from './locales/en/profile_edit.json';
+import hiProfileEdit from './locales/hi/profile_edit.json';
+import mrProfileEdit from './locales/mr/profile_edit.json';
 
 // Helper function to dynamically merge base and page-level translations
 // This makes adding new languages in the future seamless - just add JSON files!
@@ -117,6 +134,11 @@ i18n
           video: enVideo,
           error: enError,
           sync: enSync,
+          common: enCommon,
+          voice: enVoice,
+          notification: enNotification,
+          soil: enSoil,
+          profile_edit: enProfileEdit,
         })
       },
       hi: { 
@@ -140,6 +162,11 @@ i18n
           video: hiVideo,
           error: hiError,
           sync: hiSync,
+          common: hiCommon,
+          voice: hiVoice,
+          notification: hiNotification,
+          soil: hiSoil,
+          profile_edit: hiProfileEdit,
         })
       },
       pa: { translation: pa },
@@ -164,6 +191,11 @@ i18n
           video: mrVideo,
           error: mrError,
           sync: mrSync,
+          common: mrCommon,
+          voice: mrVoice,
+          notification: mrNotification,
+          soil: mrSoil,
+          profile_edit: mrProfileEdit,
         })
       },
       ta: { translation: ta },

@@ -7,6 +7,10 @@
     "translation_status": "MACHINE_ASSISTED"
   },
   "error": {
+    "notFound": {
+      "title": "अरेरे! पृष्ठ सापडले नाही",
+      "message": "तुम्ही शोधत असलेले पृष्ठ अस्तित्वात नाही"
+    },
     "boundary": {
       "something_went_wrong": "अरेरे! काहीतरी चूक झाली",
       "sorry_inconvenience": "गैरसोयीबद्दल क्षमस्व. कृपया पृष्ठ रीफ्रेश करण्याचा प्रयत्न करा.",
