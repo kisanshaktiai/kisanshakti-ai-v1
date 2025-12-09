@@ -117,14 +117,14 @@ export default function Schedule() {
     }
   };
 
-  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string) => {
+  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '') => {
     if (!selectedLand) return;
 
-    console.log('🚀 [Schedule] Starting schedule generation:', { cropName, farmingType });
+    console.log('🚀 [Schedule] Starting schedule generation:', { cropName, localizedCropName, farmingType, isReadyMadePlant, nurseryDays });
     
     // Set generating state FIRST before anything else
     setGenerating(true);
-    setGeneratingCropName(cropName);
+    setGeneratingCropName(localizedCropName || cropName);
     setGeneratingFarmingType(farmingType);
     setScheduleData({ cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType });
     
@@ -184,6 +184,8 @@ export default function Schedule() {
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
           isReadyMadePlant: isReadyMadePlant || false,
+          nurseryDays: nurseryDays || 0,
+          localizedCropName: localizedCropName || cropName,
           farmingType: farmingType,
           weather: weatherData,
           regenerate: true,

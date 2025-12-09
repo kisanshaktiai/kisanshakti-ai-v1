@@ -1645,6 +1645,8 @@ serve(async (req) => {
       sowingDate,
       language = "hi",
       isReadyMadePlant = false,
+      nurseryDays = 0,
+      localizedCropName = "",
       farmingType = "organic_fertilizer",
       aiProvider: requestedProvider,
     } = await req.json();
@@ -1663,9 +1665,38 @@ serve(async (req) => {
     const fallbackModel = getModel(aiProvider, "fallback");
     
     console.log(`🤖 [AI-Schedule] Provider: ${aiProvider} | Model: ${model} | Endpoint: ${apiEndpoint}`);
+    console.log(`🌾 [AI-Schedule] isReadyMadePlant: ${isReadyMadePlant}, nurseryDays: ${nurseryDays}`);
 
-    // CRITICAL: Get translated crop name immediately
-    const translatedCropName = getTranslatedCropName(cropName, language);
+    // ═══════════════════════════════════════════════════════════════════
+    // FETCH CROP TRANSLATION FROM DATABASE FIRST
+    // ═══════════════════════════════════════════════════════════════════
+    let translatedCropName = localizedCropName || "";
+    
+    // Try to fetch from crops table for accurate translation
+    const { data: cropData, error: cropError } = await supabase
+      .from('crops')
+      .select('label, label_hi, label_mr')
+      .or(`label.ilike.%${cropName}%,label_hi.ilike.%${cropName}%,label_mr.ilike.%${cropName}%`)
+      .limit(1)
+      .single();
+    
+    if (cropData && !cropError) {
+      if (language === 'mr' && cropData.label_mr) {
+        translatedCropName = cropData.label_mr;
+      } else if (language === 'hi' && cropData.label_hi) {
+        translatedCropName = cropData.label_hi;
+      } else if (cropData.label) {
+        translatedCropName = cropData.label;
+      }
+      console.log(`📦 [DB] Fetched crop translation from DB: ${translatedCropName}`);
+    }
+    
+    // Fallback to hardcoded translations if DB fetch failed
+    if (!translatedCropName) {
+      translatedCropName = getTranslatedCropName(cropName, language);
+      console.log(`📦 [Fallback] Using hardcoded translation: ${translatedCropName}`);
+    }
+    
     console.log(`🌾 [AI-Schedule] Crop: ${cropName} → ${translatedCropName} (${language})`);
     console.log(`🌾 [AI-Schedule] Starting ${farmingType} schedule for ${translatedCropName} on ${sowingDate}`);
 
@@ -1849,14 +1880,49 @@ PRODUCT BRANDS TO RECOMMEND:
       treatment: "Trichoderma 4g/kg",
     };
     
-    const seedPreparationDetails = `
+    // Build seed preparation or nursery plant details
+    let seedPreparationDetails = "";
+    
+    if (isReadyMadePlant && nurseryDays > 0) {
+      // READY-MADE NURSERY PLANTS - Skip seed preparation
+      const nurseryLabel = language === "mr" ? "तयार रोपे वापरत आहात" :
+                          language === "hi" ? "तैयार पौधे उपयोग कर रहे हैं" :
+                          "USING READY-MADE NURSERY PLANTS";
+      
+      seedPreparationDetails = `
+═══════════════════════════════════════════════════════════════
+🌱 ${nurseryLabel}
+═══════════════════════════════════════════════════════════════
+⚠️ CRITICAL: User is using READY-MADE NURSERY PLANTS (${nurseryDays} days old)
+- DO NOT include seed_treatment task
+- DO NOT include seed sowing task  
+- START schedule from transplanting stage
+- Nursery plant age: ${nurseryDays} days from seed sowing
+- All days_from_sowing should be calculated from transplanting date (day 0)
+- Seed preparation was already done ${nurseryDays} days ago in nursery
+
+TRANSPLANTING DETAILS:
+- Number of plants needed: ${Math.round(landAreaAcres * 10000 / 2)} plants (approx. 2 sq ft spacing)
+- Transplanting depth: 3-5 cm
+- Water immediately after transplanting
+- Apply root dip solution (Trichoderma @ 10g/liter)`;
+    } else {
+      // REGULAR SOWING - Include full seed preparation
+      seedPreparationDetails = `
 SEED PREPARATION (बियाणे तयारी):
 - Seed Rate: ${seedInfo.rate_kg_per_acre} kg/acre (${Math.round(seedInfo.rate_kg_per_acre * landAreaAcres)} kg total)
 - Spacing: ${seedInfo.spacing_cm}
 - Treatment: ${seedInfo.treatment}
 - Cost: ₹${seedInfo.price_per_kg}/kg (Total: ₹${seedCost})
 ${farmingType === "organic_only" ? "- Use Trichoderma viride @ 4g/kg + Rhizobium for legumes" : ""}
-${farmingType === "organic_only" ? "- Avoid chemical seed treatment, use Beejamrut soak (1 liter)" : "- Seed treatment: Thiram/Carbendazim @ 2-3g/kg"}`;
+${farmingType === "organic_only" ? "- Avoid chemical seed treatment, use Beejamrut soak (1 liter)" : "- Seed treatment: Thiram/Carbendazim @ 2-3g/kg"}
+
+SEED TREATMENT TASK IS MANDATORY:
+- Include detailed seed_treatment task in sowing stage
+- Specify exact treatment method, duration, and drying time
+- Include Beejamrut/Trichoderma for organic farming
+- Include Thiram/Carbendazim for chemical farming`;
+    }
 
     // CONTEXT Section
     const contextSection = `
@@ -1905,6 +1971,21 @@ NUTRIENT STATUS:
 - Labor Rate: ₹${laborRate}/day`;
 
     // INSTRUCTION Section
+    const seedRules = isReadyMadePlant ? `
+3. READY-MADE PLANT RULES (तयार रोपे नियम):
+   - DO NOT include seed_treatment or seed sowing tasks
+   - START from transplanting (day 0 is transplanting date)
+   - Nursery plant age: ${nurseryDays} days
+   - Include transplanting task with spacing, depth, root dip details
+   - Adjust all days_from_sowing relative to transplanting (not seeding)
+` : `
+3. SEED PREPARATION RULES (Stage: sowing):
+   - ALWAYS include seed treatment task with exact method
+   - Include seed rate, spacing, and depth
+   - For organic: Beejamrut/Trichoderma treatment
+   - For chemical: Thiram/Carbendazim treatment
+`;
+
     const instructionSection = `
 ═══════════════════════════════════════════════════════════════════════════
 📋 INSTRUCTIONS (निर्देश)
@@ -1919,13 +2000,7 @@ ${stagesPrompt}
    - Include SPECIFIC quantities (kg/acre, liters/acre)
    - Include SPECIFIC product brands with prices
    - Include yield_impact and skip_penalty for each task
-
-3. SEED PREPARATION RULES (Stage: sowing):
-   - ALWAYS include seed treatment task with exact method
-   - Include seed rate, spacing, and depth
-   - For organic: Beejamrut/Trichoderma treatment
-   - For chemical: Thiram/Carbendazim treatment
-
+${seedRules}
 4. PRODUCT RECOMMENDATIONS:
    - Include 2-3 products per task where applicable
    - Specify: brand, dose_per_acre, price_estimate
@@ -1937,10 +2012,11 @@ ${stagesPrompt}
    - Include labor days and material costs
    - Use ₹${laborRate}/day for labor
 
-6. LANGUAGE RULES:
-   - Write ALL task_name, description, instructions in ${languageName}
+6. LANGUAGE RULES (CRITICAL - NO ENGLISH ALLOWED):
+   - Write ALL task_name, description, instructions ONLY in ${languageName}
    - Use rural/village dialect terms: ${JSON.stringify(Object.entries(ruralTerms).slice(0, 10).reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {}))}
    ${regionalLanguageRules}
+   - DO NOT use English words except for brand names
 
 7. WEATHER DEPENDENCY:
    - Mark irrigation, spraying tasks as weather_dependent: true
