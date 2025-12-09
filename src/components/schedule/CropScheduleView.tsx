@@ -424,6 +424,15 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const upcomingCount = pendingTasks.filter(t => !isPast(new Date(t.task_date))).length;
   const todayTasks = tasks.filter(t => isToday(new Date(t.task_date)) && t.status === 'pending');
 
+  // Find real harvest date from tasks (harvest/harvesting task)
+  const harvestTask = tasks.find(t => 
+    t.task_type?.toLowerCase().includes('harvest') || 
+    t.task_name?.toLowerCase().includes('harvest') ||
+    t.task_name?.toLowerCase().includes('कटाई') ||
+    t.task_name?.toLowerCase().includes('काढणी')
+  );
+  const realHarvestDate = harvestTask?.task_date || schedule.expected_harvest_date;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-accent/5 to-primary/5">
       {/* Modern Mobile-First Header - 2025 Design */}
@@ -506,18 +515,14 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                 <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300 uppercase tracking-wider">{t('schedule.harvest')}</span>
               </div>
               <p className="text-base font-bold text-amber-900 dark:text-amber-100">
-                {schedule.expected_harvest_date 
-                  ? format(new Date(schedule.expected_harvest_date), 'dd MMM') 
-                  : (schedule as any).total_duration_days && schedule.sowing_date
-                    ? format(addDays(new Date(schedule.sowing_date), (schedule as any).total_duration_days), 'dd MMM')
-                    : t('schedule.schedule_card.tbd')}
+                {realHarvestDate 
+                  ? format(new Date(realHarvestDate), 'dd MMM yyyy')
+                  : t('schedule.schedule_card.tbd')}
               </p>
               <p className="text-[10px] text-amber-700 dark:text-amber-300">
-                {schedule.expected_harvest_date 
-                  ? `${differenceInDays(new Date(schedule.expected_harvest_date), new Date())} ${t('schedule.days_remaining')}`
-                  : (schedule as any).total_duration_days && schedule.sowing_date
-                    ? `${differenceInDays(addDays(new Date(schedule.sowing_date), (schedule as any).total_duration_days), new Date())} ${t('schedule.days_remaining')}`
-                    : ''}
+                {realHarvestDate 
+                  ? `${Math.max(0, differenceInDays(new Date(realHarvestDate), new Date()))} ${t('schedule.days_remaining')}`
+                  : ''}
               </p>
             </div>
           </Card>
