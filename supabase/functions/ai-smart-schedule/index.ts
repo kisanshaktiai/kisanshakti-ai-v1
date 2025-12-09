@@ -1129,6 +1129,216 @@ const FERTILIZER_PRICES: Record<string, { price_per_kg: number; bag_kg: number; 
 // SEED RATES & PRICES - UPDATED 2024-25 INDIAN MARKET RATES
 // Sources: ICAR, Krishi Vigyan Kendras, State Seed Corporations
 // ═══════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════
+// EXPERT CROP SCIENCE: NPK SPLIT APPLICATION SCHEDULE (3x-7x Yield)
+// Based on ICAR/IARI research - Crop physiology based nutrition
+// ═══════════════════════════════════════════════════════════════════════
+const EXPERT_NPK_SPLIT_SCHEDULE: Record<string, {
+  n_splits: Array<{ stage: string; percent: number; das_range: string; method: string; why: string }>;
+  p_application: { timing: string; method: string; why: string };
+  k_splits: Array<{ stage: string; percent: number; das_range: string; method: string; why: string }>;
+  micronutrients: Array<{ nutrient: string; dose_per_acre: string; timing: string; method: string; deficiency_signs: string }>;
+  growth_boosters: Array<{ name: string; dose_per_acre: string; timing: string; yield_impact: string }>;
+}> = {
+  wheat: {
+    n_splits: [
+      { stage: 'basal', percent: 33, das_range: '0 DAS', method: 'broadcasting', why: 'Root establishment' },
+      { stage: 'crown_root', percent: 33, das_range: '21-25 DAS', method: 'top_dressing', why: 'Tillering boost - 50% yield decided here' },
+      { stage: 'flag_leaf', percent: 34, das_range: '45-50 DAS', method: 'top_dressing', why: 'Grain protein & weight' },
+    ],
+    p_application: { timing: 'Basal (100%)', method: 'drilling', why: 'P immobile in soil, must be near roots' },
+    k_splits: [
+      { stage: 'basal', percent: 50, das_range: '0 DAS', method: 'broadcasting', why: 'Root development' },
+      { stage: 'flowering', percent: 50, das_range: '60-65 DAS', method: 'foliar_spray', why: 'Grain filling & lodging resistance' },
+    ],
+    micronutrients: [
+      { nutrient: 'Zinc Sulphate', dose_per_acre: '10 kg soil + 0.5% foliar', timing: 'Basal + 45 DAS', method: 'soil + foliar', deficiency_signs: 'Khaira disease, stunted' },
+      { nutrient: 'Iron Sulphate', dose_per_acre: '0.5% foliar', timing: '30 & 50 DAS', method: 'foliar_spray', deficiency_signs: 'Interveinal chlorosis' },
+      { nutrient: 'Boron', dose_per_acre: '0.2% Borax', timing: '45-50 DAS', method: 'foliar_spray', deficiency_signs: 'Empty grains, poor pollination' },
+    ],
+    growth_boosters: [
+      { name: 'Seaweed Extract', dose_per_acre: '500ml', timing: '25 & 50 DAS', yield_impact: '+15-20% tillering' },
+      { name: 'Humic Acid', dose_per_acre: '1L', timing: 'With first irrigation', yield_impact: '+10-15% root mass' },
+      { name: '0:52:34 (MKP)', dose_per_acre: '1kg foliar', timing: '70-80 DAS', yield_impact: '+12% grain weight' },
+    ],
+  },
+  rice: {
+    n_splits: [
+      { stage: 'basal', percent: 25, das_range: '0-3 DAT', method: 'broadcasting', why: 'Initial establishment' },
+      { stage: 'active_tillering', percent: 40, das_range: '21-25 DAT', method: 'top_dressing', why: 'Maximum tiller production' },
+      { stage: 'panicle_initiation', percent: 35, das_range: '45-50 DAT', method: 'top_dressing', why: 'Spikelet number & filling' },
+    ],
+    p_application: { timing: 'Basal (100%)', method: 'incorporation', why: 'P fixes quickly in flooded conditions' },
+    k_splits: [
+      { stage: 'basal', percent: 50, das_range: '0-3 DAT', method: 'broadcasting', why: 'Root & tiller development' },
+      { stage: 'panicle', percent: 50, das_range: '45-50 DAT', method: 'top_dressing', why: 'Grain filling, disease resistance' },
+    ],
+    micronutrients: [
+      { nutrient: 'Zinc Sulphate', dose_per_acre: '10 kg', timing: 'Basal', method: 'soil_application', deficiency_signs: 'Khaira - bronze/rusty leaves' },
+      { nutrient: 'Iron Sulphate', dose_per_acre: '1% foliar', timing: '25 & 45 DAT', method: 'foliar_spray', deficiency_signs: 'Yellowing in alkaline soils' },
+    ],
+    growth_boosters: [
+      { name: 'Silica (Potassium Silicate)', dose_per_acre: '2kg', timing: '30 DAT', yield_impact: '+20% lodging resistance' },
+      { name: 'Seaweed Extract', dose_per_acre: '500ml', timing: '20 & 45 DAT', yield_impact: '+15% tiller count' },
+    ],
+  },
+  cotton: {
+    n_splits: [
+      { stage: 'basal', percent: 20, das_range: '0 DAS', method: 'band_placement', why: 'Early vegetative' },
+      { stage: 'squaring', percent: 30, das_range: '35-40 DAS', method: 'side_dressing', why: 'Square formation' },
+      { stage: 'flowering', percent: 30, das_range: '60-70 DAS', method: 'fertigation/foliar', why: 'Boll retention' },
+      { stage: 'boll_development', percent: 20, das_range: '90-100 DAS', method: 'foliar_spray', why: 'Boll weight' },
+    ],
+    p_application: { timing: 'Basal (100%)', method: 'band_placement', why: 'Deep root P access' },
+    k_splits: [
+      { stage: 'basal', percent: 25, das_range: '0 DAS', method: 'broadcasting', why: 'Root development' },
+      { stage: 'squaring', percent: 25, das_range: '35-40 DAS', method: 'side_dressing', why: 'Fiber initiation' },
+      { stage: 'flowering', percent: 25, das_range: '60-70 DAS', method: 'fertigation', why: 'Boll retention' },
+      { stage: 'boll_opening', percent: 25, das_range: '100-110 DAS', method: 'foliar_spray', why: 'Fiber quality' },
+    ],
+    micronutrients: [
+      { nutrient: 'Magnesium Sulphate', dose_per_acre: '5kg soil + 1% foliar', timing: '40 & 70 DAS', method: 'soil + foliar', deficiency_signs: 'Reddening between veins' },
+      { nutrient: 'Boron', dose_per_acre: '0.2% Borax', timing: '50 & 80 DAS', method: 'foliar_spray', deficiency_signs: 'Square/boll drop' },
+      { nutrient: 'Zinc Sulphate', dose_per_acre: '0.5% foliar', timing: '30 & 60 DAS', method: 'foliar_spray', deficiency_signs: 'Bronzing, small leaves' },
+    ],
+    growth_boosters: [
+      { name: 'NAA (Planofix)', dose_per_acre: '40ml', timing: '60 & 90 DAS', yield_impact: '+25% boll retention' },
+      { name: 'Mepiquat Chloride', dose_per_acre: '250ml', timing: '80-90 DAS', yield_impact: 'Controls vegetative growth' },
+    ],
+  },
+  sugarcane: {
+    n_splits: [
+      { stage: 'basal', percent: 10, das_range: '0 DAP', method: 'furrow_application', why: 'Germination' },
+      { stage: 'tillering', percent: 30, das_range: '45-60 DAP', method: 'side_dressing', why: 'Tiller production' },
+      { stage: 'grand_growth', percent: 35, das_range: '90-120 DAP', method: 'earthing_up', why: 'Cane elongation' },
+      { stage: 'maturity', percent: 25, das_range: '150-180 DAP', method: 'fertigation', why: 'Sugar accumulation' },
+    ],
+    p_application: { timing: 'Basal (100%)', method: 'furrow_application', why: 'Root zone placement' },
+    k_splits: [
+      { stage: 'basal', percent: 25, das_range: '0 DAP', method: 'furrow_application', why: 'Root development' },
+      { stage: 'tillering', percent: 25, das_range: '45-60 DAP', method: 'side_dressing', why: 'Tiller strength' },
+      { stage: 'grand_growth', percent: 25, das_range: '90-120 DAP', method: 'earthing_up', why: 'Cane quality' },
+      { stage: 'maturity', percent: 25, das_range: '210-240 DAP', method: 'foliar_spray', why: 'Sugar recovery' },
+    ],
+    micronutrients: [
+      { nutrient: 'Ferrous Sulphate', dose_per_acre: '25kg soil', timing: 'Basal', method: 'soil_application', deficiency_signs: 'Yellowing in ratoon' },
+      { nutrient: 'Zinc Sulphate', dose_per_acre: '10kg', timing: 'Basal', method: 'soil_application', deficiency_signs: 'Stunted internodes' },
+      { nutrient: 'Manganese Sulphate', dose_per_acre: '5kg', timing: '60 DAP', method: 'soil_application', deficiency_signs: 'Grey specks' },
+    ],
+    growth_boosters: [
+      { name: 'Ethrel (Ethephon)', dose_per_acre: '200ml', timing: '30 days before harvest', yield_impact: '+1-2% sugar recovery' },
+      { name: 'Gibberellic Acid', dose_per_acre: '35gm', timing: '90 & 150 DAP', yield_impact: '+15-20% cane weight' },
+    ],
+  },
+  soybean: {
+    n_splits: [
+      { stage: 'starter', percent: 100, das_range: 'Basal only', method: 'band_placement', why: 'Starter dose only - Rhizobium fixes rest' },
+    ],
+    p_application: { timing: 'Basal (100%)', method: 'band_placement', why: 'Nodulation & root development' },
+    k_splits: [
+      { stage: 'basal', percent: 50, das_range: '0 DAS', method: 'broadcasting', why: 'Root establishment' },
+      { stage: 'pod_filling', percent: 50, das_range: '50-60 DAS', method: 'foliar_spray', why: 'Seed weight' },
+    ],
+    micronutrients: [
+      { nutrient: 'Sulphur', dose_per_acre: '20kg Gypsum', timing: 'Basal', method: 'soil_application', deficiency_signs: 'Pale green, stunted' },
+      { nutrient: 'Molybdenum', dose_per_acre: '50gm Ammonium Molybdate', timing: 'Seed treatment', method: 'seed_coating', deficiency_signs: 'Poor nodulation' },
+      { nutrient: 'Boron', dose_per_acre: '0.2% Borax', timing: '35 & 55 DAS', method: 'foliar_spray', deficiency_signs: 'Hollow heart in seeds' },
+    ],
+    growth_boosters: [
+      { name: 'Rhizobium Culture', dose_per_acre: '200gm/10kg seed', timing: 'Seed treatment', yield_impact: '+20-25% yield via N fixation' },
+      { name: 'PSB Culture', dose_per_acre: '200gm/10kg seed', timing: 'Seed treatment', yield_impact: '+15% P availability' },
+    ],
+  },
+  default: {
+    n_splits: [
+      { stage: 'basal', percent: 33, das_range: '0 DAS', method: 'broadcasting', why: 'Initial growth' },
+      { stage: 'vegetative', percent: 33, das_range: '25-30 DAS', method: 'top_dressing', why: 'Vegetative growth' },
+      { stage: 'reproductive', percent: 34, das_range: '50-60 DAS', method: 'top_dressing', why: 'Reproductive growth' },
+    ],
+    p_application: { timing: 'Basal (100%)', method: 'broadcasting', why: 'Root zone availability' },
+    k_splits: [
+      { stage: 'basal', percent: 50, das_range: '0 DAS', method: 'broadcasting', why: 'Root development' },
+      { stage: 'reproductive', percent: 50, das_range: '50-60 DAS', method: 'top_dressing', why: 'Fruit/grain quality' },
+    ],
+    micronutrients: [
+      { nutrient: 'Zinc Sulphate', dose_per_acre: '0.5% foliar', timing: '25 & 50 DAS', method: 'foliar_spray', deficiency_signs: 'Interveinal chlorosis' },
+    ],
+    growth_boosters: [
+      { name: 'Seaweed Extract', dose_per_acre: '500ml', timing: '25 & 50 DAS', yield_impact: '+10-15% growth' },
+    ],
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// EXPERT IPM THRESHOLDS - Economic Threshold Levels (ETL)
+// Based on ICAR-NCIPM guidelines for decision-making
+// ═══════════════════════════════════════════════════════════════════════
+const IPM_THRESHOLDS: Record<string, Array<{
+  pest: string;
+  local_name: string;
+  etl: string;
+  monitoring_method: string;
+  organic_control: string;
+  chemical_control: string;
+  critical_stage: string;
+}>> = {
+  cotton: [
+    { pest: 'American Bollworm', local_name: 'अमेरिकी बोंडअळी', etl: '1 larva/plant or 5% damaged squares', monitoring_method: 'Pheromone trap: 8-10 moths/trap/week', organic_control: 'Trichogramma cards 50000/acre + NPV @ 250LE', chemical_control: 'Emamectin Benzoate 5SG @ 100gm/acre', critical_stage: 'Squaring to boll formation' },
+    { pest: 'Pink Bollworm', local_name: 'गुलाबी बोंडअळी', etl: '8-10 moths/pheromone trap', monitoring_method: 'Pheromone trap weekly check', organic_control: 'Mass trapping + Bt spray', chemical_control: 'Profenofos 50EC @ 600ml/acre', critical_stage: 'Flowering onwards' },
+    { pest: 'Whitefly', local_name: 'पांढरी माशी', etl: '5-10 adults/leaf or 30% honeydew', monitoring_method: 'Yellow sticky traps + visual count', organic_control: 'Neem oil 2% + Verticillium lecanii', chemical_control: 'Diafenthiuron 50WP @ 250gm/acre', critical_stage: 'Throughout' },
+    { pest: 'Aphids', local_name: 'मावा', etl: '10-15% infested plants', monitoring_method: 'Visual observation on tender parts', organic_control: 'Neem soap spray + Ladybird beetle release', chemical_control: 'Imidacloprid 17.8SL @ 60ml/acre', critical_stage: 'Seedling & flowering' },
+  ],
+  rice: [
+    { pest: 'Stem Borer', local_name: 'खोड किडा', etl: '5% dead hearts or 2% white ear', monitoring_method: 'Count dead hearts/white ears in 20 hills', organic_control: 'Trichogramma japonicum 50000/acre + Neem cake', chemical_control: 'Cartap Hydrochloride 4G @ 10kg/acre', critical_stage: 'Tillering & flowering' },
+    { pest: 'BPH (Brown Planthopper)', local_name: 'तपकिरी फुदका', etl: '5-10 hoppers/hill', monitoring_method: 'Tap base of plant, count fallen hoppers', organic_control: 'Alternate wetting-drying + Neem oil', chemical_control: 'Pymetrozine 50WG @ 120gm/acre', critical_stage: 'Tillering to maturity' },
+    { pest: 'Leaf Folder', local_name: 'पान गुंडाळ्या अळी', etl: '2 damaged leaves/hill', monitoring_method: 'Count folded leaves in 20 hills', organic_control: 'Bt spray + Trichogramma', chemical_control: 'Chlorantraniliprole 18.5SC @ 60ml/acre', critical_stage: 'Tillering' },
+  ],
+  wheat: [
+    { pest: 'Aphids', local_name: 'माव्हा', etl: '5-10 aphids/ear', monitoring_method: 'Count on 10 random ears', organic_control: 'Neem oil 2% + Ladybird beetle', chemical_control: 'Thiamethoxam 25WG @ 50gm/acre', critical_stage: 'Ear emergence to milky stage' },
+    { pest: 'Termites', local_name: 'वाळवी', etl: '5% damaged plants', monitoring_method: 'Check wilted/dead patches', organic_control: 'Neem cake 80kg/acre + flood irrigation', chemical_control: 'Chlorpyriphos 20EC @ 2L/acre (drench)', critical_stage: 'Seedling & grain filling' },
+  ],
+  sugarcane: [
+    { pest: 'Early Shoot Borer', local_name: 'सुरुवातीचा खोड किडा', etl: '10% dead hearts', monitoring_method: 'Count dead hearts in 100 clumps', organic_control: 'Trichogramma chilonis 50000/acre', chemical_control: 'Chlorantraniliprole 0.4GR @ 8kg/acre', critical_stage: '1-3 months' },
+    { pest: 'Internode Borer', local_name: 'कांडी पोखरणारी अळी', etl: '5% bored internodes', monitoring_method: 'Light trap: >25 moths/week', organic_control: 'Trichogramma + trash mulching', chemical_control: 'Monocrotophos 36SL @ 500ml/acre', critical_stage: '4-7 months' },
+    { pest: 'Top Borer', local_name: 'शेंडा पोखरणारी अळी', etl: '5% dead hearts/bunchy top', monitoring_method: 'Count dead hearts + bunchy tops', organic_control: 'Detrashing + Trichogramma', chemical_control: 'Carbofuran 3G @ 13kg/acre', critical_stage: 'Grand growth' },
+  ],
+  soybean: [
+    { pest: 'Girdle Beetle', local_name: 'देठ पोखरणारा भुंगा', etl: '2-3 girdled plants/meter row', monitoring_method: 'Count girdled stems in 5 spots', organic_control: 'Collection & destruction + Neem spray', chemical_control: 'Triazophos 40EC @ 400ml/acre', critical_stage: 'Flowering to pod formation' },
+    { pest: 'Tobacco Caterpillar', local_name: 'तंबाखूची पाने खाणारी अळी', etl: '4-5 larvae/meter row or 25% defoliation', monitoring_method: 'Pheromone trap + visual', organic_control: 'NPV @ 250LE + Neem', chemical_control: 'Emamectin Benzoate 5SG @ 100gm/acre', critical_stage: 'Vegetative & pod filling' },
+  ],
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// EXPERT DISEASE MANAGEMENT - Disease-specific recommendations
+// ═══════════════════════════════════════════════════════════════════════
+const DISEASE_MANAGEMENT: Record<string, Array<{
+  disease: string;
+  local_name: string;
+  symptoms: string;
+  favorable_conditions: string;
+  organic_control: string;
+  chemical_control: string;
+  preventive_measures: string;
+}>> = {
+  wheat: [
+    { disease: 'Yellow Rust', local_name: 'पिवळा तांबेरा', symptoms: 'Yellow stripes on leaves', favorable_conditions: 'Cool (10-15°C), humid weather', organic_control: 'Resistant varieties + Trichoderma', chemical_control: 'Propiconazole 25EC @ 200ml/acre at first sign', preventive_measures: 'Early sowing, resistant varieties (HD3086, DBW187)' },
+    { disease: 'Loose Smut', local_name: 'कांगियारी', symptoms: 'Black powdery mass instead of grain', favorable_conditions: 'Seed-borne, moderate temp', organic_control: 'Hot water seed treatment (52°C, 10 min)', chemical_control: 'Carboxin+Thiram @ 2.5gm/kg seed', preventive_measures: 'Certified seed, seed treatment mandatory' },
+  ],
+  rice: [
+    { disease: 'Blast', local_name: 'कडक्या/ब्लास्ट', symptoms: 'Diamond shaped lesions on leaves/neck', favorable_conditions: 'High humidity, 25-28°C, excess N', organic_control: 'Pseudomonas fluorescens seed treatment', chemical_control: 'Tricyclazole 75WP @ 240gm/acre', preventive_measures: 'Balanced N, avoid late planting, resistant varieties' },
+    { disease: 'Bacterial Leaf Blight', local_name: 'जिवाणूजन्य पान करपा', symptoms: 'Water-soaked lesions, milky ooze', favorable_conditions: 'Heavy rain, wounds, high N', organic_control: 'Streptocyclin 6gm + COC 500gm in 200L water', chemical_control: 'Same as organic (antibiotic needed)', preventive_measures: 'Avoid clipping seedlings, balanced N, drainage' },
+  ],
+  cotton: [
+    { disease: 'Root Rot/Wilt', local_name: 'मूळ कुज/मर रोग', symptoms: 'Sudden wilting, brown roots', favorable_conditions: 'Waterlogging, high temp', organic_control: 'Trichoderma viride @ 2.5kg/acre soil application', chemical_control: 'Carbendazim drench @ 1gm/L', preventive_measures: 'Good drainage, crop rotation, seed treatment' },
+    { disease: 'Grey Mildew', local_name: 'राखाडी बुरशी', symptoms: 'Angular grey spots on leaves', favorable_conditions: 'Cool nights, humid', organic_control: 'Wettable Sulphur 80WP @ 1kg/acre', chemical_control: 'Carbendazim 50WP @ 200gm/acre', preventive_measures: 'Avoid excess N, good spacing' },
+  ],
+  sugarcane: [
+    { disease: 'Red Rot', local_name: 'तांबडा सडणे', symptoms: 'Red internal tissue, vinegar smell', favorable_conditions: 'Waterlogging, susceptible variety', organic_control: 'Hot water treatment of setts (50°C, 2hrs)', chemical_control: 'Carbendazim dip @ 0.1%', preventive_measures: 'Resistant varieties (Co 86032), healthy setts' },
+    { disease: 'Smut', local_name: 'काजळी', symptoms: 'Black whip-like structure from top', favorable_conditions: 'Drought stress, infected setts', organic_control: 'Roguing infected clumps + burning', chemical_control: 'Propiconazole dip for setts', preventive_measures: 'Resistant varieties, healthy seed material' },
+  ],
+};
+
 // ═══════════════════════════════════════════════════════════════════════
 // CROP-SPECIFIC PRODUCT RECOMMENDATIONS - DYNAMIC AI-BASED (NOT HARDCODED DB)
 // These replace the master_products table dependency
