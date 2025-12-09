@@ -2,11 +2,19 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { checkRateLimit } from "../_shared/rateLimiter.ts";
-import { AI_CONFIG, OPENAI_API_URL, validateOpenAIKey } from "../_shared/aiConfig.ts";
+import { 
+  AI_CONFIG, 
+  AIProvider, 
+  getAPIEndpoint, 
+  getAPIKey, 
+  getModel, 
+  buildAIRequest,
+  getProviderFromModel 
+} from "../_shared/aiConfig.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id, x-ai-provider",
 };
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1614,8 +1622,6 @@ serve(async (req) => {
   const startTime = Date.now();
 
   try {
-    const OPENAI_API_KEY = validateOpenAIKey();
-
     const supabase = createClient(Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "");
 
     const {
@@ -1626,9 +1632,23 @@ serve(async (req) => {
       language = "hi",
       isReadyMadePlant = false,
       farmingType = "organic_fertilizer",
+      aiProvider: requestedProvider,
     } = await req.json();
+    
     const tenantId = req.headers.get("x-tenant-id") || "";
     const farmerId = req.headers.get("x-farmer-id") || "";
+    
+    // Determine AI provider - from request body, header, or default
+    const headerProvider = req.headers.get("x-ai-provider") as AIProvider | null;
+    const aiProvider: AIProvider = requestedProvider || headerProvider || AI_CONFIG.DEFAULT_PROVIDER;
+    
+    // Get API key and model for the selected provider
+    const apiKey = getAPIKey(aiProvider);
+    const apiEndpoint = getAPIEndpoint(aiProvider);
+    const model = getModel(aiProvider, "default");
+    const fallbackModel = getModel(aiProvider, "fallback");
+    
+    console.log(`🤖 [AI-Schedule] Provider: ${aiProvider} | Model: ${model} | Endpoint: ${apiEndpoint}`);
 
     // CRITICAL: Get translated crop name immediately
     const translatedCropName = getTranslatedCropName(cropName, language);
@@ -1835,7 +1855,7 @@ RULES:
 - Include brand recommendations
 - Calculate costs per task`;
 
-    console.log(`🤖 [AI] Calling ${AI_CONFIG.MODEL} with optimized ${totalStages}-stage prompt`);
+    console.log(`🤖 [AI] Calling ${aiProvider}/${model} with optimized ${totalStages}-stage prompt`);
 
     // Build simplified tool schema to reduce payload size
     const toolSchema = {
@@ -1887,39 +1907,73 @@ RULES:
       },
     };
 
-    // Retry logic for handling 502/503 errors
+    // Retry logic for handling 502/503/429 errors with provider fallback
     let aiResponse: Response | null = null;
     let lastError = "";
-    const maxRetries = 2;
+    const maxRetries = 3;
+    let currentModel = model;
+    let currentProvider = aiProvider;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`🔄 [AI] Attempt ${attempt}/${maxRetries}`);
+        console.log(`🔄 [AI] Attempt ${attempt}/${maxRetries} with ${currentProvider}/${currentModel}`);
+        
+        const currentEndpoint = getAPIEndpoint(currentProvider);
+        const currentApiKey = getAPIKey(currentProvider);
 
-        aiResponse = await fetch(OPENAI_API_URL, {
+        // Build request payload using helper function
+        const requestPayload = buildAIRequest(
+          currentProvider,
+          currentModel,
+          [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          {
+            maxTokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
+            tools: [toolSchema],
+            toolChoice: { type: "function", function: { name: "create_schedule" } },
+          }
+        );
+
+        aiResponse = await fetch(currentEndpoint, {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            Authorization: `Bearer ${currentApiKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            model: AI_CONFIG.MODEL,
-            max_tokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: userPrompt },
-            ],
-            tools: [toolSchema],
-            tool_choice: { type: "function", function: { name: "create_schedule" } },
-          }),
+          body: JSON.stringify(requestPayload),
         });
 
         if (aiResponse.ok) {
-          console.log(`✅ [AI] Request succeeded on attempt ${attempt}`);
+          console.log(`✅ [AI] Request succeeded on attempt ${attempt} with ${currentProvider}/${currentModel}`);
           break;
         }
 
-        // Handle specific error codes
+        // Handle rate limits (429) and gateway errors (502/503)
+        if (aiResponse.status === 429) {
+          lastError = `Rate limit exceeded (429)`;
+          console.warn(`⚠️ [AI] ${lastError} on attempt ${attempt}`);
+          
+          // Switch to fallback model or provider
+          if (currentModel === model) {
+            currentModel = fallbackModel;
+            console.log(`🔄 [AI] Switching to fallback model: ${currentModel}`);
+          } else if (currentProvider === "google" && attempt < maxRetries) {
+            // Try OpenAI as backup if Google is rate limited
+            try {
+              currentProvider = "openai";
+              currentModel = getModel("openai", "default");
+              console.log(`🔄 [AI] Switching to backup provider: ${currentProvider}/${currentModel}`);
+            } catch (e) {
+              console.warn(`⚠️ [AI] OpenAI not available as backup`);
+            }
+          }
+          
+          await new Promise((resolve) => setTimeout(resolve, 3000 * attempt));
+          continue;
+        }
+        
         if (aiResponse.status === 502 || aiResponse.status === 503) {
           lastError = `Gateway error ${aiResponse.status}`;
           console.warn(`⚠️ [AI] ${lastError} on attempt ${attempt}, will retry...`);
@@ -1930,8 +1984,20 @@ RULES:
         }
 
         const errorText = await aiResponse.text();
-        lastError = `AI API error: ${aiResponse.status}`;
-        console.error(`❌ AI error:`, aiResponse.status, errorText.substring(0, 200));
+        lastError = `AI API error: ${aiResponse.status} - ${errorText.substring(0, 100)}`;
+        console.error(`❌ AI error:`, aiResponse.status, errorText.substring(0, 300));
+        
+        // Try switching provider on error
+        if (currentProvider === "google" && attempt < maxRetries) {
+          try {
+            currentProvider = "openai";
+            currentModel = getModel("openai", "default");
+            console.log(`🔄 [AI] Error occurred, switching to: ${currentProvider}/${currentModel}`);
+            continue;
+          } catch (e) {
+            console.warn(`⚠️ [AI] OpenAI not available as backup`);
+          }
+        }
       } catch (fetchError) {
         lastError = `Network error: ${fetchError}`;
         console.error(`❌ [AI] Fetch error on attempt ${attempt}:`, fetchError);
@@ -2138,7 +2204,7 @@ RULES:
         expected_yield_quintals: scheduleData.expected_yield_quintals,
         expected_profit:
           scheduleData.expected_profit || scheduleData.expected_yield_quintals * 2500 - correctedTotalCost,
-        ai_model: AI_CONFIG.MODEL,
+        ai_model: currentModel,
         is_active: true,
         status: "active",
         generation_language: language,
@@ -2286,7 +2352,9 @@ RULES:
           multiplierTarget: scheduleData.yield_multiplier_target || 3,
           boostingTechniques: scheduleData.yield_boosting_techniques || [],
         },
-        aiModel: AI_CONFIG.MODEL,
+        aiModel: currentModel,
+        aiProvider: currentProvider,
+        totalTasks: processedTasks.length,
         executionTimeMs: executionTime,
         generatedAt: new Date().toISOString(),
       }),
