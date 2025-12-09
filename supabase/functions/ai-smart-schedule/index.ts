@@ -21,6 +21,236 @@ interface FarmingStage {
   stage_order: number;
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// CROP NAME TRANSLATIONS - CRITICAL FOR CORRECT TASK NAMES
+// ═══════════════════════════════════════════════════════════════════════
+const CROP_TRANSLATIONS: Record<string, Record<string, string>> = {
+  en: {
+    wheat: "Wheat", rice: "Rice", cotton: "Cotton", sugarcane: "Sugarcane",
+    soybean: "Soybean", maize: "Maize", groundnut: "Groundnut", tomato: "Tomato",
+    onion: "Onion", potato: "Potato", chilli: "Chilli", brinjal: "Brinjal",
+    okra: "Okra", moong: "Moong", urad: "Urad", tur: "Tur/Pigeon Pea",
+    gram: "Gram/Chickpea", mustard: "Mustard", sunflower: "Sunflower",
+    jowar: "Sorghum", bajra: "Pearl Millet", banana: "Banana", mango: "Mango",
+    grapes: "Grapes", pomegranate: "Pomegranate", orange: "Orange",
+    turmeric: "Turmeric", ginger: "Ginger", coriander: "Coriander",
+  },
+  hi: {
+    wheat: "गेहूं", rice: "धान/चावल", cotton: "कपास", sugarcane: "गन्ना",
+    soybean: "सोयाबीन", maize: "मक्का", groundnut: "मूंगफली", tomato: "टमाटर",
+    onion: "प्याज", potato: "आलू", chilli: "मिर्च", brinjal: "बैंगन",
+    okra: "भिंडी", moong: "मूंग", urad: "उड़द", tur: "अरहर/तुअर",
+    gram: "चना", mustard: "सरसों", sunflower: "सूरजमुखी",
+    jowar: "ज्वार", bajra: "बाजरा", banana: "केला", mango: "आम",
+    grapes: "अंगूर", pomegranate: "अनार", orange: "संतरा",
+    turmeric: "हल्दी", ginger: "अदरक", coriander: "धनिया",
+  },
+  mr: {
+    wheat: "गहू", rice: "भात/तांदूळ", cotton: "कापूस", sugarcane: "ऊस",
+    soybean: "सोयाबीन", maize: "मका", groundnut: "भुईमूग/शेंगदाणे", tomato: "टोमॅटो",
+    onion: "कांदा", potato: "बटाटा", chilli: "मिरची", brinjal: "वांगी",
+    okra: "भेंडी", moong: "मूग", urad: "उडीद", tur: "तूर",
+    gram: "हरभरा", mustard: "मोहरी", sunflower: "सूर्यफूल",
+    jowar: "ज्वारी", bajra: "बाजरी", banana: "केळी", mango: "आंबा",
+    grapes: "द्राक्षे", pomegranate: "डाळिंब", orange: "संत्री/मोसंबी",
+    turmeric: "हळद", ginger: "आले", coriander: "कोथिंबीर",
+  },
+  pa: {
+    wheat: "ਕਣਕ", rice: "ਝੋਨਾ/ਚੌਲ", cotton: "ਕਪਾਹ/ਨਰਮਾ", sugarcane: "ਗੰਨਾ",
+    soybean: "ਸੋਇਆਬੀਨ", maize: "ਮੱਕੀ", groundnut: "ਮੂੰਗਫਲੀ", tomato: "ਟਮਾਟਰ",
+    onion: "ਪਿਆਜ਼", potato: "ਆਲੂ", chilli: "ਮਿਰਚ", brinjal: "ਬੈਂਗਣ",
+    okra: "ਭਿੰਡੀ", moong: "ਮੂੰਗ", urad: "ਉੜਦ", tur: "ਅਰਹਰ",
+    gram: "ਛੋਲੇ", mustard: "ਸਰ੍ਹੋਂ", sunflower: "ਸੂਰਜਮੁਖੀ",
+    jowar: "ਜਵਾਰ", bajra: "ਬਾਜਰਾ", banana: "ਕੇਲਾ", mango: "ਅੰਬ",
+  },
+  ta: {
+    wheat: "கோதுமை", rice: "நெல்/அரிசி", cotton: "பருத்தி", sugarcane: "கரும்பு",
+    soybean: "சோயா", maize: "மக்காச்சோளம்", groundnut: "நிலக்கடலை", tomato: "தக்காளி",
+    onion: "வெங்காயம்", potato: "உருளைக்கிழங்கு", chilli: "மிளகாய்", brinjal: "கத்தரிக்காய்",
+    okra: "வெண்டைக்காய்", moong: "பச்சைப்பயறு", urad: "உளுந்து", tur: "துவரை",
+    gram: "கொண்டக்கடலை", mustard: "கடுகு", sunflower: "சூரியகாந்தி",
+  },
+  te: {
+    wheat: "గోధుమ", rice: "వరి/బియ్యం", cotton: "పత్తి", sugarcane: "చెరకు",
+    soybean: "సోయాబీన్", maize: "మొక్కజొన్న", groundnut: "వేరుశెనగ", tomato: "టమాటా",
+    onion: "ఉల్లిపాయ", potato: "బంగాళాదుంప", chilli: "మిర్చి", brinjal: "వంకాయ",
+    okra: "బెండకాయ", moong: "పెసర", urad: "మినప", tur: "కందిపప్పు",
+    gram: "శెనగలు", mustard: "ఆవాలు", sunflower: "పొద్దుతిరుగుడు",
+  },
+  kn: {
+    wheat: "ಗೋಧಿ", rice: "ಅಕ್ಕಿ/ಭತ್ತ", cotton: "ಹತ್ತಿ", sugarcane: "ಕಬ್ಬು",
+    soybean: "ಸೋಯಾಬೀನ್", maize: "ಮೆಕ್ಕೆಜೋಳ", groundnut: "ಕಡಲೆಕಾಯಿ", tomato: "ಟೊಮ್ಯಾಟೊ",
+    onion: "ಈರುಳ್ಳಿ", potato: "ಆಲೂಗಡ್ಡೆ", chilli: "ಮೆಣಸಿನಕಾಯಿ", brinjal: "ಬದನೆಕಾಯಿ",
+    okra: "ಬೆಂಡೆಕಾಯಿ", moong: "ಹೆಸರು", urad: "ಉದ್ದು", tur: "ತೊಗರಿ",
+  },
+  gu: {
+    wheat: "ઘઉં", rice: "ડાંગર/ચોખા", cotton: "કપાસ", sugarcane: "શેરડી",
+    soybean: "સોયાબીન", maize: "મકાઈ", groundnut: "મગફળી/સિંગ", tomato: "ટામેટા",
+    onion: "ડુંગળી", potato: "બટાટા", chilli: "મરચાં", brinjal: "રીંગણા",
+    okra: "ભીંડા", moong: "મગ", urad: "અડદ", tur: "તુવેર",
+  },
+  bn: {
+    wheat: "গম", rice: "ধান/চাল", cotton: "তুলা", sugarcane: "আখ",
+    soybean: "সয়াবিন", maize: "ভুট্টা", groundnut: "চিনাবাদাম", tomato: "টমেটো",
+    onion: "পেঁয়াজ", potato: "আলু", chilli: "মরিচ", brinjal: "বেগুন",
+    okra: "ঢেঁড়স", moong: "মুগ", urad: "কালো মাষকলাই", tur: "অড়হর",
+  },
+};
+
+// Function to get translated crop name
+function getTranslatedCropName(cropName: string, language: string): string {
+  const cropKey = cropName.toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
+  const langDict = CROP_TRANSLATIONS[language] || CROP_TRANSLATIONS["en"];
+  
+  // Try exact match first
+  if (langDict[cropKey]) return langDict[cropKey];
+  
+  // Try partial match
+  for (const [key, value] of Object.entries(langDict)) {
+    if (cropKey.includes(key) || key.includes(cropKey)) {
+      return value;
+    }
+  }
+  
+  // If no translation found, return original with first letter capitalized
+  return cropName.charAt(0).toUpperCase() + cropName.slice(1);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// FARMING TYPE VALIDATION - STRICT ENFORCEMENT
+// ═══════════════════════════════════════════════════════════════════════
+const FARMING_TYPE_BANNED_WORDS: Record<string, string[]> = {
+  organic_only: [
+    "urea", "dap", "mop", "ssp", "npk", "यूरिया", "डीएपी", "युरिया",
+    "imidacloprid", "chlorpyriphos", "thiamethoxam", "carbendazim", "mancozeb",
+    "chemical", "रासायनिक", "रासायनिक खाद", "chemical fertilizer",
+    "insecticide", "fungicide", "कीटनाशक", "फफूंदनाशक", "किडीनाशक", "बुरशीनाशक",
+  ],
+  fertilizer_pesticide: [], // No banned words for this mode
+  organic_fertilizer: [], // No banned words for this mode
+};
+
+const FARMING_TYPE_REQUIRED_WORDS: Record<string, string[]> = {
+  organic_only: [
+    "organic", "जैविक", "सेंद्रिय", "देशी", "natural", "bio",
+    "neem", "trichoderma", "fym", "vermicompost", "jeevamrut",
+    "गोबर", "शेणखत", "गांडूळ", "नीम", "ट्रायकोडर्मा",
+  ],
+  fertilizer_pesticide: [
+    "urea", "dap", "mop", "fertilizer", "pesticide",
+    "यूरिया", "डीएपी", "खाद", "कीटनाशक", "युरिया", "खत",
+  ],
+  organic_fertilizer: [], // Balanced, no strict requirements
+};
+
+function validateTaskForFarmingType(task: any, farmingType: string, language: string): { valid: boolean; issues: string[] } {
+  const issues: string[] = [];
+  const bannedWords = FARMING_TYPE_BANNED_WORDS[farmingType] || [];
+  
+  const taskText = [
+    task.task_name || "",
+    task.description || "",
+    JSON.stringify(task.product_recommendations || []),
+    (task.instructions || []).join(" "),
+  ].join(" ").toLowerCase();
+
+  // Check for banned words
+  for (const banned of bannedWords) {
+    if (taskText.includes(banned.toLowerCase())) {
+      issues.push(`Contains banned term "${banned}" for ${farmingType} mode`);
+    }
+  }
+
+  return { valid: issues.length === 0, issues };
+}
+
+function fixTaskForFarmingType(task: any, farmingType: string, language: string, translatedCropName: string): any {
+  if (farmingType !== "organic_only") return task;
+
+  const organicReplacements: Record<string, { name: string; type: string }> = {
+    urea: { name: language === "mr" ? "गांडूळ खत" : language === "hi" ? "केंचुआ खाद" : "Vermicompost", type: "organic" },
+    dap: { name: language === "mr" ? "शेणखत" : language === "hi" ? "गोबर की खाद" : "FYM", type: "organic" },
+    mop: { name: language === "mr" ? "राख" : language === "hi" ? "राख" : "Wood Ash", type: "organic" },
+    imidacloprid: { name: language === "mr" ? "कडुनिंबाचे तेल" : language === "hi" ? "नीम का तेल" : "Neem Oil", type: "organic" },
+    chlorpyriphos: { name: language === "mr" ? "ब्युवेरिया" : language === "hi" ? "ब्यूवेरिया" : "Beauveria bassiana", type: "organic" },
+    carbendazim: { name: language === "mr" ? "ट्रायकोडर्मा" : language === "hi" ? "ट्राइकोडर्मा" : "Trichoderma viride", type: "organic" },
+    mancozeb: { name: language === "mr" ? "स्यूडोमोनास" : language === "hi" ? "स्यूडोमोनास" : "Pseudomonas fluorescens", type: "organic" },
+  };
+
+  // Fix product recommendations
+  if (task.product_recommendations) {
+    task.product_recommendations = task.product_recommendations.map((prod: any) => {
+      const prodNameLower = (prod.product_name || "").toLowerCase();
+      for (const [chemical, organic] of Object.entries(organicReplacements)) {
+        if (prodNameLower.includes(chemical)) {
+          return {
+            ...prod,
+            product_name: organic.name,
+            product_type: organic.type,
+            active_ingredient: "100% organic/natural",
+            precautions: language === "mr" ? "सुरक्षित, कोणतीही रासायनिक हानी नाही" : 
+                         language === "hi" ? "सुरक्षित, कोई रासायनिक नुकसान नहीं" : "Safe, no chemical harm",
+          };
+        }
+      }
+      return prod;
+    });
+  }
+
+  return task;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// VALIDATE CROP NAME IN TASK - CRITICAL FIX
+// ═══════════════════════════════════════════════════════════════════════
+function validateAndFixTaskCropName(task: any, translatedCropName: string, originalCropName: string, language: string): any {
+  const taskName = task.task_name || "";
+  
+  // Get all possible crop names to check against
+  const allCropNames = Object.values(CROP_TRANSLATIONS).flatMap(dict => Object.values(dict));
+  
+  // Check if task name contains a WRONG crop name
+  let hasWrongCrop = false;
+  let wrongCropFound = "";
+  
+  for (const cropName of allCropNames) {
+    if (cropName.length > 2 && taskName.includes(cropName)) {
+      // Check if this is NOT the correct crop
+      const correctCropLower = translatedCropName.toLowerCase();
+      const originalLower = originalCropName.toLowerCase();
+      const foundLower = cropName.toLowerCase();
+      
+      if (!correctCropLower.includes(foundLower) && 
+          !foundLower.includes(correctCropLower) &&
+          !originalLower.includes(foundLower) &&
+          !foundLower.includes(originalLower)) {
+        hasWrongCrop = true;
+        wrongCropFound = cropName;
+        break;
+      }
+    }
+  }
+  
+  // Fix the task name if it has wrong crop
+  if (hasWrongCrop) {
+    console.warn(`⚠️ [CropFix] Replacing wrong crop "${wrongCropFound}" with correct crop "${translatedCropName}" in task: ${taskName}`);
+    task.task_name = taskName.replace(wrongCropFound, translatedCropName);
+    
+    // Also fix description if it has wrong crop
+    if (task.description && task.description.includes(wrongCropFound)) {
+      task.description = task.description.split(wrongCropFound).join(translatedCropName);
+    }
+  }
+  
+  // Ensure crop name is present in task name
+  if (!taskName.includes(translatedCropName) && !taskName.includes(originalCropName)) {
+    // Add crop name to task if missing
+    task.task_name = `${translatedCropName} - ${taskName}`;
+  }
+  
+  return task;
+}
+
 // Yield boosting techniques per stage (3x-7x yield potential)
 const YIELD_BOOST_TECHNIQUES: Record<string, {
   techniques: string[];
@@ -215,7 +445,6 @@ const RURAL_TERMS: Record<string, Record<string, string>> = {
 
 // ═══════════════════════════════════════════════════════════════════════
 // REGIONAL DIALECT MAPPING (Maharashtra Districts)
-// For words that vary by region, we show both terms: "Local/General"
 // ═══════════════════════════════════════════════════════════════════════
 const MAHARASHTRA_REGIONS: Record<string, string[]> = {
   vidarbha: ["Nagpur", "Amravati", "Akola", "Yavatmal", "Chandrapur", "Wardha", "Bhandara", "Gondia", "Gadchiroli", "Buldhana", "Washim"],
@@ -228,88 +457,35 @@ const MAHARASHTRA_REGIONS: Record<string, string[]> = {
 
 const REGIONAL_TERMS: Record<string, Record<string, Record<string, string>>> = {
   mr: {
-    vidarbha: {
-      weeding: "निंदणी",
-      irrigation: "पाणी देणे",
-      harvesting: "कापणी",
-      fertilizer: "खत/खाद",
-      sowing: "पेरणी",
-      transplanting: "लागवड",
-    },
-    western_maha: {
-      weeding: "खुरपणी/काट काढणे",
-      irrigation: "पाणी सोडणे",
-      harvesting: "काढणी",
-      fertilizer: "खत",
-      sowing: "पेरणी",
-      transplanting: "रोपणी",
-    },
-    marathwada: {
-      weeding: "खोदणी/निवडणी",
-      irrigation: "ओलित करणे",
-      harvesting: "कापणी",
-      fertilizer: "खत",
-      sowing: "पेरणी",
-      transplanting: "लागवड",
-    },
-    konkan: {
-      weeding: "निंदणी",
-      irrigation: "पाणी घालणे",
-      harvesting: "काढणी",
-      fertilizer: "खत",
-      sowing: "पेरणी",
-      transplanting: "रोपणे",
-    },
-    north_maha: {
-      weeding: "खुरपणी",
-      irrigation: "पाणी देणे",
-      harvesting: "कापणी",
-      fertilizer: "खत",
-      sowing: "पेरणी",
-      transplanting: "लावणी",
-    },
-    khandesh: {
-      weeding: "निंदाई",
-      irrigation: "पाणी देणं",
-      harvesting: "कापणी",
-      fertilizer: "खत",
-      sowing: "पेरणी",
-      transplanting: "लावणी",
-    },
+    vidarbha: { weeding: "निंदणी", irrigation: "पाणी देणे", harvesting: "कापणी", fertilizer: "खत/खाद", sowing: "पेरणी", transplanting: "लागवड" },
+    western_maha: { weeding: "खुरपणी/काट काढणे", irrigation: "पाणी सोडणे", harvesting: "काढणी", fertilizer: "खत", sowing: "पेरणी", transplanting: "रोपणी" },
+    marathwada: { weeding: "खोदणी/निवडणी", irrigation: "ओलित करणे", harvesting: "कापणी", fertilizer: "खत", sowing: "पेरणी", transplanting: "लागवड" },
+    konkan: { weeding: "निंदणी", irrigation: "पाणी घालणे", harvesting: "काढणी", fertilizer: "खत", sowing: "पेरणी", transplanting: "रोपणे" },
+    north_maha: { weeding: "खुरपणी", irrigation: "पाणी देणे", harvesting: "कापणी", fertilizer: "खत", sowing: "पेरणी", transplanting: "लावणी" },
+    khandesh: { weeding: "निंदाई", irrigation: "पाणी देणं", harvesting: "कापणी", fertilizer: "खत", sowing: "पेरणी", transplanting: "लावणी" },
   },
 };
 
 function getRegionFromDistrict(district: string, state: string): string {
   if (state?.toLowerCase() !== "maharashtra") return "default";
-  
   const districtLower = district?.toLowerCase() || "";
-  
   for (const [region, districts] of Object.entries(MAHARASHTRA_REGIONS)) {
-    if (districts.some(d => districtLower.includes(d.toLowerCase()))) {
-      return region;
-    }
+    if (districts.some(d => districtLower.includes(d.toLowerCase()))) return region;
   }
-  return "western_maha"; // Default for Maharashtra
+  return "western_maha";
 }
 
 function getRegionalDialectTerms(language: string, region: string): Record<string, string> {
   const regionalTerms = REGIONAL_TERMS[language]?.[region];
   const baseTerms = RURAL_TERMS[language] || RURAL_TERMS["hi"];
-  
   if (!regionalTerms) return baseTerms;
-  
-  // Merge regional terms with base terms
   return { ...baseTerms, ...regionalTerms };
 }
 
 function buildRegionalLanguageRules(language: string, region: string, district: string): string {
-  if (language !== "mr" || !REGIONAL_TERMS[language]?.[region]) {
-    return "";
-  }
-  
+  if (language !== "mr" || !REGIONAL_TERMS[language]?.[region]) return "";
   const regionalTerms = REGIONAL_TERMS[language][region];
   const baseTerms = RURAL_TERMS[language];
-  
   const termMappings: string[] = [];
   for (const [key, localTerm] of Object.entries(regionalTerms)) {
     const generalTerm = baseTerms[key];
@@ -317,24 +493,14 @@ function buildRegionalLanguageRules(language: string, region: string, district: 
       termMappings.push(`${key}: "${localTerm}/${generalTerm}" (use local term first)`);
     }
   }
-  
   if (termMappings.length === 0) return "";
-  
   return `
-═══════════════════════════════════════════════════════════════
-📍 REGIONAL DIALECT ADAPTATION (${district}, ${region.replace("_", " ").toUpperCase()})
-═══════════════════════════════════════════════════════════════
-For agricultural terms with regional variations, show BOTH terms:
-${termMappings.join("\n")}
-
-Example output: "खुरपणी/निंदणी करा" (shows local term first, then general term)
-This helps farmers from different areas understand the content.
-`;
+📍 REGIONAL DIALECT (${district}, ${region.replace("_", " ").toUpperCase()}):
+${termMappings.join("\n")}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// STATE-WISE LABOR RATES (MGNREGA 2024-25 Daily Wages in ₹) - UPDATED
-// Source: Ministry of Rural Development, Govt of India
+// COST DATA & RATES (2024-25)
 // ═══════════════════════════════════════════════════════════════════════
 const STATE_LABOR_RATES: Record<string, number> = {
   "Maharashtra": 310, "Madhya Pradesh": 243, "Karnataka": 349, "Haryana": 374,
@@ -345,10 +511,6 @@ const STATE_LABOR_RATES: Record<string, number> = {
   "Jammu and Kashmir": 266, "Goa": 350, "default": 290,
 };
 
-// ═══════════════════════════════════════════════════════════════════════
-// ORGANIC INPUTS PRICES (2024-25 Indian Market Rates) - UPDATED
-// Source: IFFCO, Coromandel, Local Agri-input dealers
-// ═══════════════════════════════════════════════════════════════════════
 const ORGANIC_INPUTS: Record<string, { price: number; unit: string; coverage_acre: number; benefit: string }> = {
   fym: { price: 1200, unit: "1 ton", coverage_acre: 1, benefit: "Improves soil structure & fertility" },
   vermicompost: { price: 12, unit: "per kg", coverage_acre: 0.02, benefit: "Rich in nutrients & microbes" },
@@ -359,123 +521,25 @@ const ORGANIC_INPUTS: Record<string, { price: number; unit: string; coverage_acr
   trichoderma: { price: 280, unit: "per kg", coverage_acre: 1, benefit: "Fungal disease control" },
   pseudomonas: { price: 320, unit: "per kg", coverage_acre: 1, benefit: "Root disease control" },
   beauveria: { price: 350, unit: "per kg", coverage_acre: 1, benefit: "Insect pest control" },
-  cow_urine: { price: 30, unit: "per liter", coverage_acre: 0.05, benefit: "Foliar spray & pest deterrent" },
-  mulching: { price: 2500, unit: "per acre", coverage_acre: 1, benefit: "Moisture retention & weed control" },
-  green_manure: { price: 600, unit: "seed per acre", coverage_acre: 1, benefit: "Natural nitrogen fixation" },
 };
 
-// ═══════════════════════════════════════════════════════════════════════
-// GROWTH PROMOTERS (2024-25 Market Rates) - USED IN BOTH ORGANIC & FERTILIZER
-// ═══════════════════════════════════════════════════════════════════════
 const GROWTH_PROMOTERS: Record<string, { price: number; unit: string; coverage_acre: number; use: string }> = {
   seaweed_extract: { price: 550, unit: "500ml", coverage_acre: 1, use: "Root development & stress tolerance" },
   humic_acid: { price: 480, unit: "1L", coverage_acre: 1, use: "Nutrient uptake & soil health" },
   amino_acid: { price: 620, unit: "1L", coverage_acre: 1, use: "Protein synthesis & growth" },
   fulvic_acid: { price: 520, unit: "500ml", coverage_acre: 1, use: "Nutrient transport" },
-  silicic_acid: { price: 450, unit: "500ml", coverage_acre: 1, use: "Stem strength & disease resistance" },
-  gibberellic_acid: { price: 380, unit: "10g", coverage_acre: 2, use: "Cell elongation (use carefully)" },
-  naphthalene_acetic_acid: { price: 280, unit: "100ml", coverage_acre: 1, use: "Root initiation" },
-  cytokinin: { price: 520, unit: "100ml", coverage_acre: 1, use: "Cell division & fruit set" },
-  brassinolide: { price: 680, unit: "100ml", coverage_acre: 2, use: "Stress tolerance & yield" },
 };
 
-// ═══════════════════════════════════════════════════════════════════════
-// FERTILIZER PRICES (2024-25 Subsidized Rates) - ONLY FOR FERTILIZER MODE
-// Source: Department of Fertilizers, Govt of India
-// ═══════════════════════════════════════════════════════════════════════
 const FERTILIZER_PRICES: Record<string, { price_per_kg: number; bag_kg: number; nutrient_content: string }> = {
   urea: { price_per_kg: 6.5, bag_kg: 45, nutrient_content: "46% N" },
   dap: { price_per_kg: 30, bag_kg: 50, nutrient_content: "18% N, 46% P" },
   mop: { price_per_kg: 20, bag_kg: 50, nutrient_content: "60% K" },
   ssp: { price_per_kg: 9, bag_kg: 50, nutrient_content: "16% P" },
   "10-26-26": { price_per_kg: 32, bag_kg: 50, nutrient_content: "10% N, 26% P, 26% K" },
-  "12-32-16": { price_per_kg: 34, bag_kg: 50, nutrient_content: "12% N, 32% P, 16% K" },
   zinc_sulphate: { price_per_kg: 110, bag_kg: 25, nutrient_content: "33% Zn" },
   borax: { price_per_kg: 150, bag_kg: 25, nutrient_content: "11% B" },
-  ferrous_sulphate: { price_per_kg: 60, bag_kg: 25, nutrient_content: "19% Fe" },
-  magnesium_sulphate: { price_per_kg: 48, bag_kg: 25, nutrient_content: "10% Mg" },
 };
 
-// ═══════════════════════════════════════════════════════════════════════
-// PESTICIDE PRICES (PRIORITY 4 - Only if absolutely necessary)
-// ═══════════════════════════════════════════════════════════════════════
-const CHEMICAL_PRICES: Record<string, { 
-  price: number; unit: string; coverage_acre: number; type: string; 
-  active_ingredient: string; phi_days: number; organic_alternative: string 
-}> = {
-  "imidacloprid_17.8sl": { 
-    price: 450, unit: "250ml", coverage_acre: 1, type: "insecticide",
-    active_ingredient: "Imidacloprid 17.8% SL", phi_days: 14,
-    organic_alternative: "Neem oil 3ml/L + garlic extract"
-  },
-  "chlorpyriphos_20ec": { 
-    price: 380, unit: "1L", coverage_acre: 2, type: "insecticide",
-    active_ingredient: "Chlorpyriphos 20% EC", phi_days: 21,
-    organic_alternative: "Beauveria bassiana 5g/L"
-  },
-  "thiamethoxam_25wg": { 
-    price: 650, unit: "100g", coverage_acre: 1, type: "insecticide",
-    active_ingredient: "Thiamethoxam 25% WG", phi_days: 14,
-    organic_alternative: "Neem seed kernel extract 5%"
-  },
-  "carbendazim_50wp": { 
-    price: 180, unit: "100g", coverage_acre: 1, type: "fungicide",
-    active_ingredient: "Carbendazim 50% WP", phi_days: 14,
-    organic_alternative: "Trichoderma viride 5g/L"
-  },
-  "mancozeb_75wp": { 
-    price: 320, unit: "500g", coverage_acre: 1, type: "fungicide",
-    active_ingredient: "Mancozeb 75% WP", phi_days: 21,
-    organic_alternative: "Pseudomonas fluorescens 10g/L"
-  },
-};
-
-// ═══════════════════════════════════════════════════════════════════════
-// ACTIVITY-WISE LABOR REQUIREMENTS (person-days per acre)
-// ═══════════════════════════════════════════════════════════════════════
-const ACTIVITY_LABOR: Record<string, { labor_per_acre: number; description_en: string }> = {
-  land_preparation: { labor_per_acre: 0, description_en: "Tractor/machine work" },
-  fym_application: { labor_per_acre: 1.5, description_en: "FYM spreading & mixing" },
-  seed_treatment: { labor_per_acre: 0.25, description_en: "Seed preparation" },
-  sowing: { labor_per_acre: 0.5, description_en: "Manual sowing" },
-  sowing_machine: { labor_per_acre: 0.15, description_en: "Machine sowing" },
-  transplanting: { labor_per_acre: 4, description_en: "Transplanting labor" },
-  fertilizer: { labor_per_acre: 0.3, description_en: "Fertilizer application" },
-  irrigation: { labor_per_acre: 0.2, description_en: "Water management" },
-  weeding_manual: { labor_per_acre: 3, description_en: "Manual weeding" },
-  weeding_chemical: { labor_per_acre: 0.5, description_en: "Herbicide application" },
-  pest_control: { labor_per_acre: 0.5, description_en: "Spraying labor" },
-  disease_control: { labor_per_acre: 0.5, description_en: "Spraying labor" },
-  growth_promoter: { labor_per_acre: 0.3, description_en: "Spray/drench application" },
-  intercultural: { labor_per_acre: 1, description_en: "Intercultural operations" },
-  harvest_manual: { labor_per_acre: 4, description_en: "Manual harvesting" },
-  harvest_machine: { labor_per_acre: 0.5, description_en: "Machine harvesting" },
-  post_harvest: { labor_per_acre: 2, description_en: "Threshing/cleaning" },
-};
-
-// ═══════════════════════════════════════════════════════════════════════
-// SPRAYING & MACHINERY COSTS (₹ per acre)
-// ═══════════════════════════════════════════════════════════════════════
-const SPRAYING_COSTS: Record<string, number> = {
-  manual_knapsack: 150,
-  power_sprayer: 300,
-  tractor_mounted: 500,
-  drone_spray: 400,
-};
-
-const MACHINERY_COSTS: Record<string, number> = {
-  tractor_plowing: 1500,
-  tractor_rotavator: 1200,
-  seed_drill: 800,
-  combine_harvester: 2500,
-  thresher: 600,
-  transplanter: 1500,
-  cultivator: 800,
-};
-
-// ═══════════════════════════════════════════════════════════════════════
-// VERIFIED SEED RATES (kg/acre) - ICAR & State Agri Dept Data
-// ═══════════════════════════════════════════════════════════════════════
 const SEED_RATES: Record<string, { rate_kg_per_acre: number; spacing_cm: string; price_per_kg: number; treatment: string }> = {
   wheat: { rate_kg_per_acre: 40, spacing_cm: "22.5 row spacing", price_per_kg: 35, treatment: "Thiram @ 2.5g/kg or Trichoderma 4g/kg" },
   rice: { rate_kg_per_acre: 20, spacing_cm: "20x15 cm", price_per_kg: 45, treatment: "Carbendazim @ 2g/kg or Trichoderma 4g/kg" },
@@ -488,32 +552,17 @@ const SEED_RATES: Record<string, { rate_kg_per_acre: number; spacing_cm: string;
   onion: { rate_kg_per_acre: 4, spacing_cm: "15x10 cm", price_per_kg: 1200, treatment: "Thiram @ 2g/kg" },
   potato: { rate_kg_per_acre: 800, spacing_cm: "60x20 cm", price_per_kg: 25, treatment: "Mancozeb dip or boric acid" },
   chilli: { rate_kg_per_acre: 0.2, spacing_cm: "60x45 cm", price_per_kg: 2500, treatment: "Trichoderma @ 4g/kg" },
-  brinjal: { rate_kg_per_acre: 0.15, spacing_cm: "75x60 cm", price_per_kg: 2800, treatment: "Trichoderma @ 4g/kg" },
-  okra: { rate_kg_per_acre: 4, spacing_cm: "45x30 cm", price_per_kg: 400, treatment: "Carbendazim @ 2g/kg" },
-  moong: { rate_kg_per_acre: 8, spacing_cm: "30x10 cm", price_per_kg: 120, treatment: "Thiram @ 2.5g/kg + Rhizobium" },
-  urad: { rate_kg_per_acre: 8, spacing_cm: "30x10 cm", price_per_kg: 130, treatment: "Thiram @ 2.5g/kg + Rhizobium" },
-  tur: { rate_kg_per_acre: 6, spacing_cm: "90x30 cm", price_per_kg: 150, treatment: "Thiram @ 2.5g/kg + Rhizobium" },
-  gram: { rate_kg_per_acre: 30, spacing_cm: "30x10 cm", price_per_kg: 80, treatment: "Thiram+Carbendazim @ 2+1g/kg" },
-  mustard: { rate_kg_per_acre: 2, spacing_cm: "45x15 cm", price_per_kg: 100, treatment: "Thiram @ 2.5g/kg" },
-  sunflower: { rate_kg_per_acre: 3, spacing_cm: "60x30 cm", price_per_kg: 180, treatment: "Imidacloprid @ 5g/kg" },
-  jowar: { rate_kg_per_acre: 4, spacing_cm: "45x15 cm", price_per_kg: 60, treatment: "Thiram @ 3g/kg" },
-  bajra: { rate_kg_per_acre: 2, spacing_cm: "45x15 cm", price_per_kg: 120, treatment: "Thiram @ 2g/kg" },
 };
 
-// NPK targets by crop (kg/ha) - ICAR recommendations
 const NPK_TARGETS: Record<string, { n: number; p: number; k: number }> = {
   wheat: { n: 120, p: 60, k: 40 }, rice: { n: 120, p: 60, k: 40 },
   cotton: { n: 120, p: 60, k: 50 }, maize: { n: 150, p: 75, k: 50 },
   sugarcane: { n: 250, p: 115, k: 115 }, soybean: { n: 30, p: 60, k: 40 },
   groundnut: { n: 25, p: 50, k: 45 }, tomato: { n: 100, p: 60, k: 80 },
   onion: { n: 100, p: 50, k: 50 }, potato: { n: 150, p: 80, k: 100 },
-  chilli: { n: 100, p: 50, k: 50 }, brinjal: { n: 100, p: 50, k: 50 },
-  okra: { n: 80, p: 40, k: 40 }, default: { n: 100, p: 50, k: 40 },
+  default: { n: 100, p: 50, k: 40 },
 };
 
-// ═══════════════════════════════════════════════════════════════════════
-// CROP SUITABILITY DATABASE (Agro-climatic zones)
-// ═══════════════════════════════════════════════════════════════════════
 const CROP_SUITABILITY: Record<string, {
   optimal_temp: { min: number; max: number };
   soil_types: string[];
@@ -521,133 +570,72 @@ const CROP_SUITABILITY: Record<string, {
   water_requirement: string;
   seasons: string[];
   states_suitable: string[];
-  rainfall_mm: { min: number; max: number };
 }> = {
-  wheat: {
-    optimal_temp: { min: 10, max: 25 },
-    soil_types: ["alluvial", "loamy", "clay loam", "black"],
-    ph_range: { min: 6.0, max: 8.5 },
-    water_requirement: "medium",
-    seasons: ["rabi", "winter"],
-    states_suitable: ["Punjab", "Haryana", "Uttar Pradesh", "Madhya Pradesh", "Rajasthan", "Bihar", "Gujarat"],
-    rainfall_mm: { min: 400, max: 1000 },
-  },
-  rice: {
-    optimal_temp: { min: 20, max: 35 },
-    soil_types: ["clay", "alluvial", "loamy", "silty clay"],
-    ph_range: { min: 5.5, max: 7.5 },
-    water_requirement: "high",
-    seasons: ["kharif", "monsoon"],
-    states_suitable: ["West Bengal", "Uttar Pradesh", "Punjab", "Bihar", "Tamil Nadu", "Andhra Pradesh", "Odisha", "Karnataka"],
-    rainfall_mm: { min: 1000, max: 2500 },
-  },
-  cotton: {
-    optimal_temp: { min: 21, max: 35 },
-    soil_types: ["black", "alluvial", "red loamy"],
-    ph_range: { min: 5.5, max: 8.0 },
-    water_requirement: "medium",
-    seasons: ["kharif", "monsoon"],
-    states_suitable: ["Gujarat", "Maharashtra", "Telangana", "Andhra Pradesh", "Punjab", "Haryana", "Rajasthan", "Karnataka"],
-    rainfall_mm: { min: 600, max: 1500 },
-  },
-  soybean: {
-    optimal_temp: { min: 20, max: 30 },
-    soil_types: ["black", "clay loam", "loamy"],
-    ph_range: { min: 6.0, max: 7.5 },
-    water_requirement: "medium",
-    seasons: ["kharif", "monsoon"],
-    states_suitable: ["Madhya Pradesh", "Maharashtra", "Rajasthan", "Karnataka", "Telangana"],
-    rainfall_mm: { min: 500, max: 1200 },
-  },
-  maize: {
-    optimal_temp: { min: 18, max: 32 },
-    soil_types: ["loamy", "alluvial", "sandy loam", "black"],
-    ph_range: { min: 5.5, max: 8.0 },
-    water_requirement: "medium",
-    seasons: ["kharif", "rabi", "zaid"],
-    states_suitable: ["Karnataka", "Madhya Pradesh", "Rajasthan", "Bihar", "Uttar Pradesh", "Maharashtra", "Tamil Nadu"],
-    rainfall_mm: { min: 500, max: 1000 },
-  },
+  wheat: { optimal_temp: { min: 10, max: 25 }, soil_types: ["alluvial", "loamy", "clay loam", "black"], ph_range: { min: 6.0, max: 8.5 }, water_requirement: "medium", seasons: ["rabi", "winter"], states_suitable: ["Punjab", "Haryana", "Uttar Pradesh", "Madhya Pradesh", "Rajasthan"] },
+  rice: { optimal_temp: { min: 20, max: 35 }, soil_types: ["clay", "alluvial", "loamy", "silty clay"], ph_range: { min: 5.5, max: 7.5 }, water_requirement: "high", seasons: ["kharif", "monsoon"], states_suitable: ["West Bengal", "Punjab", "Uttar Pradesh", "Andhra Pradesh", "Tamil Nadu"] },
+  cotton: { optimal_temp: { min: 21, max: 35 }, soil_types: ["black", "alluvial", "loamy"], ph_range: { min: 6.0, max: 8.0 }, water_requirement: "medium", seasons: ["kharif"], states_suitable: ["Gujarat", "Maharashtra", "Andhra Pradesh", "Telangana", "Madhya Pradesh"] },
+  soybean: { optimal_temp: { min: 20, max: 30 }, soil_types: ["black", "loamy", "clay loam"], ph_range: { min: 6.0, max: 7.5 }, water_requirement: "medium", seasons: ["kharif"], states_suitable: ["Madhya Pradesh", "Maharashtra", "Rajasthan", "Karnataka"] },
+  sugarcane: { optimal_temp: { min: 20, max: 35 }, soil_types: ["alluvial", "loamy", "clay loam"], ph_range: { min: 6.5, max: 8.0 }, water_requirement: "very high", seasons: ["all"], states_suitable: ["Uttar Pradesh", "Maharashtra", "Karnataka", "Tamil Nadu", "Gujarat"] },
 };
 
-// ═══════════════════════════════════════════════════════════════════════
-// MINIMUM COSTS BY CATEGORY (Realistic floor values per acre)
-// ═══════════════════════════════════════════════════════════════════════
-const CATEGORY_MIN_COSTS: Record<string, { productMin: number; laborDays: number; description: string }> = {
-  land_preparation: { productMin: 0, laborDays: 0, description: "Tractor work" },
-  organic_input: { productMin: 800, laborDays: 1.5, description: "FYM/compost application" },
-  seed_treatment: { productMin: 50, laborDays: 0.25, description: "Treatment chemicals" },
-  sowing: { productMin: 0, laborDays: 0.5, description: "Manual sowing" },
-  transplanting: { productMin: 500, laborDays: 4, description: "Seedlings/nursery" },
-  growth_promoter: { productMin: 300, laborDays: 0.3, description: "Growth promoter spray" },
-  fertilizer: { productMin: 200, laborDays: 0.3, description: "Fertilizer per application" },
-  irrigation: { productMin: 0, laborDays: 0.2, description: "Water management" },
-  weeding: { productMin: 0, laborDays: 3, description: "Manual weeding" },
-  pest_control: { productMin: 350, laborDays: 0.5, description: "Pesticide + spraying" },
-  disease_control: { productMin: 250, laborDays: 0.5, description: "Fungicide + spraying" },
-  intercultural: { productMin: 0, laborDays: 1, description: "Cultivation work" },
-  harvest: { productMin: 0, laborDays: 4, description: "Manual harvest" },
-  post_harvest: { productMin: 0, laborDays: 2, description: "Threshing/drying" },
-  other: { productMin: 0, laborDays: 0.5, description: "General task" },
+const CATEGORY_MIN_COSTS: Record<string, { laborDays: number; productMin: number }> = {
+  land_preparation: { laborDays: 0, productMin: 1500 },
+  organic_input: { laborDays: 1.5, productMin: 1200 },
+  seed_treatment: { laborDays: 0.25, productMin: 200 },
+  sowing: { laborDays: 0.5, productMin: 0 },
+  transplanting: { laborDays: 4, productMin: 0 },
+  growth_promoter: { laborDays: 0.3, productMin: 500 },
+  fertilizer: { laborDays: 0.3, productMin: 400 },
+  irrigation: { laborDays: 0.2, productMin: 100 },
+  weeding: { laborDays: 3, productMin: 0 },
+  pest_control: { laborDays: 0.5, productMin: 400 },
+  disease_control: { laborDays: 0.5, productMin: 350 },
+  intercultural: { laborDays: 1, productMin: 200 },
+  harvest: { laborDays: 4, productMin: 0 },
+  post_harvest: { laborDays: 2, productMin: 500 },
+  other: { laborDays: 0.5, productMin: 200 },
+  planning: { laborDays: 0.5, productMin: 100 },
 };
 
-// ═══════════════════════════════════════════════════════════════════════
-// HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════
 function getCurrentSeason(month: number): string {
   if (month >= 6 && month <= 10) return "kharif";
-  if (month >= 11 || month <= 2) return "rabi";
-  return "zaid";
+  if (month >= 11 || month <= 3) return "rabi";
+  return "summer";
 }
 
-interface SuitabilityResult {
-  isSuitable: boolean;
-  score: number;
-  warnings: string[];
-  risks: string[];
-  alternatives: { crop: string; reason: string; success_rate: number }[];
-}
-
-function validateCropSuitability(cropName: string, land: any, currentMonth: number, language: string): SuitabilityResult {
-  const cropLower = cropName.toLowerCase();
-  const suitability = CROP_SUITABILITY[cropLower];
-  
+function validateCropSuitability(cropName: string, land: any, sowingMonth: number, language: string): { isSuitable: boolean; score: number; warnings: string[]; recommendations: string[] } {
+  const cropKey = cropName.toLowerCase().replace(/\s+/g, "");
+  const suitability = CROP_SUITABILITY[cropKey];
   const warnings: string[] = [];
-  const risks: string[] = [];
+  const recommendations: string[] = [];
   let score = 100;
-  
+
   if (!suitability) {
-    return { isSuitable: true, score: 70, warnings: ["General recommendations provided"], risks: [], alternatives: [] };
+    return { isSuitable: true, score: 80, warnings: [], recommendations: [] };
   }
-  
-  const state = land.state || "";
-  const soilType = (land.soil_type || "").toLowerCase();
-  const currentSeason = getCurrentSeason(currentMonth);
-  
-  if (!suitability.seasons.includes(currentSeason)) {
-    score -= 30;
-    warnings.push(`Not ideal for ${currentSeason} season`);
-  }
-  
-  if (soilType && !suitability.soil_types.some(s => soilType.includes(s))) {
+
+  const currentSeason = getCurrentSeason(sowingMonth);
+  if (suitability.seasons.length > 0 && !suitability.seasons.includes(currentSeason) && !suitability.seasons.includes("all")) {
+    warnings.push(language === "mr" ? `हंगाम योग्य नाही. शिफारस: ${suitability.seasons.join("/")}` : `Season mismatch. Recommended: ${suitability.seasons.join("/")}`);
     score -= 20;
-    warnings.push(`Soil type ${soilType} may not be optimal`);
   }
-  
-  return { isSuitable: score >= 50, score, warnings, risks, alternatives: [] };
+
+  const soilType = (land.soil_type || "").toLowerCase();
+  if (soilType && !suitability.soil_types.some(s => soilType.includes(s))) {
+    score -= 10;
+  }
+
+  const ph = land.soil_ph || 7.0;
+  if (ph < suitability.ph_range.min || ph > suitability.ph_range.max) {
+    score -= 10;
+  }
+
+  return { isSuitable: score >= 60, score: Math.max(0, score), warnings, recommendations };
 }
 
-function mapCategoryToStage(category: string, farmingStages: FarmingStage[]): FarmingStage | null {
-  for (const stage of farmingStages) {
-    const stageCategories = STAGE_CATEGORY_MAP[stage.stage_key] || [];
-    if (stageCategories.includes(category)) {
-      return stage;
-    }
-  }
-  return farmingStages.find(s => s.stage_key === "vegetative_growth") || null;
-}
-
-// Fallback task templates for when AI misses stages
+// ═══════════════════════════════════════════════════════════════════════
+// FALLBACK TASK TEMPLATES WITH PROPER TRANSLATIONS
+// ═══════════════════════════════════════════════════════════════════════
 const FALLBACK_TASK_TEMPLATES: Record<string, {
   task_name_en: string;
   task_name_hi: string;
@@ -658,45 +646,45 @@ const FALLBACK_TASK_TEMPLATES: Record<string, {
   priority: string;
 }> = {
   planning: {
-    task_name_en: "Crop planning and preparation",
-    task_name_hi: "फसल की योजना और तैयारी",
-    task_name_mr: "पीक नियोजन आणि तयारी",
+    task_name_en: "Crop planning and seed selection",
+    task_name_hi: "फसल योजना और बीज चयन",
+    task_name_mr: "पीक नियोजन आणि बियाणे निवड",
     category: "planning",
     days_offset: -7,
-    description_en: "Plan your crop activities including seed selection, input procurement, and scheduling",
+    description_en: "Select high-yielding certified seeds, prepare land plan, and arrange inputs",
     priority: "high",
   },
   land_preparation: {
-    task_name_en: "Land preparation and plowing",
-    task_name_hi: "खेत की तैयारी और जुताई",
-    task_name_mr: "जमीन तयारी आणि नांगरणी",
+    task_name_en: "Land preparation and soil treatment",
+    task_name_hi: "खेत तैयारी और मिट्टी उपचार",
+    task_name_mr: "जमीन तयारी आणि माती सुधारणा",
     category: "land_preparation",
     days_offset: -5,
-    description_en: "Prepare the land by plowing, leveling, and adding organic manure",
-    priority: "high",
+    description_en: "Deep plowing, leveling, FYM application, and soil treatment for optimal growth",
+    priority: "critical",
   },
   sowing: {
-    task_name_en: "Seed sowing/planting",
-    task_name_hi: "बीज बुवाई/रोपाई",
-    task_name_mr: "बियाणे पेरणी/लागवड",
+    task_name_en: "Sowing and seed treatment",
+    task_name_hi: "बुवाई और बीज उपचार",
+    task_name_mr: "पेरणी आणि बियाणे प्रक्रिया",
     category: "sowing",
     days_offset: 0,
-    description_en: "Sow seeds at proper depth and spacing as per crop requirements",
+    description_en: "Treat seeds with Trichoderma/Rhizobium and sow at optimal spacing",
     priority: "critical",
   },
   germination: {
     task_name_en: "Germination monitoring and gap filling",
     task_name_hi: "अंकुरण निगरानी और गैप भरना",
-    task_name_mr: "उगवण तपासणी आणि गॅप भरणे",
+    task_name_mr: "उगवण तपासणी आणि रिकाम्या जागा भरणे",
     category: "irrigation",
     days_offset: 7,
-    description_en: "Monitor seed germination and fill gaps where seeds failed to germinate",
+    description_en: "Check germination percentage and fill gaps within 7-10 days",
     priority: "high",
   },
   vegetative_growth: {
     task_name_en: "Vegetative growth management",
-    task_name_hi: "वृद्धि प्रबंधन",
-    task_name_mr: "वाढ व्यवस्थापन",
+    task_name_hi: "वनस्पति वृद्धि प्रबंधन",
+    task_name_mr: "वाढीचे व्यवस्थापन",
     category: "growth_promoter",
     days_offset: 30,
     description_en: "Apply growth promoters and manage plant nutrition during vegetative stage",
@@ -751,51 +739,87 @@ const FALLBACK_TASK_TEMPLATES: Record<string, {
 
 function generateFallbackTask(
   stage: FarmingStage,
-  cropName: string,
+  translatedCropName: string,
   landAreaAcres: number,
   farmingType: string,
   language: string
 ): any {
   const template = FALLBACK_TASK_TEMPLATES[stage.stage_key];
   if (!template) {
-    // Generic fallback if template not found
     return {
-      task_name: `${stage.stage_name} - ${cropName}`,
+      task_name: `${stage.stage_name} - ${translatedCropName}`,
       stage_key: stage.stage_key,
       stage_order: stage.stage_order,
       category: "other",
       days_from_sowing: stage.stage_order * 15,
       priority: "medium",
-      description: `Complete ${stage.stage_name} activities for ${cropName} cultivation`,
-      instructions: [`Follow standard ${stage.stage_name.toLowerCase()} practices for ${cropName}`],
-      yield_impact: "10-15% yield improvement with proper execution",
-      skip_penalty: "5-10% yield loss if skipped",
+      description: `${stage.stage_name} ${language === "mr" ? "साठी कार्य" : language === "hi" ? "के लिए कार्य" : "task for"} ${translatedCropName}`,
+      instructions: [`${stage.stage_name.toLowerCase()} ${language === "mr" ? "पूर्ण करा" : language === "hi" ? "पूरा करें" : "complete"}`],
+      yield_impact: "15-20% yield improvement",
+      skip_penalty: "10-15% yield loss",
       estimated_cost: Math.round(landAreaAcres * 200),
+      is_fallback: true,
     };
   }
 
-  // Select task name based on language
+  // Select task name based on language - CRITICAL: Use translated crop name
   let taskName = template.task_name_en;
   if (language === "hi") taskName = template.task_name_hi;
   if (language === "mr") taskName = template.task_name_mr;
 
+  // CRITICAL FIX: Append translated crop name, not English
+  const fullTaskName = `${translatedCropName} - ${taskName}`;
+
+  // Generate language-appropriate description
+  let description = template.description_en;
+  if (language === "mr") {
+    description = `${translatedCropName} पिकासाठी ${template.description_en.toLowerCase()} करणे आवश्यक आहे. हे कार्य योग्यरित्या केल्यास उत्पादन वाढेल.`;
+  } else if (language === "hi") {
+    description = `${translatedCropName} फसल के लिए ${template.description_en.toLowerCase()} करना जरूरी है। यह कार्य सही तरीके से करने से उपज बढ़ेगी।`;
+  }
+
+  // Generate language-appropriate instructions
+  let instructions: string[] = [];
+  if (language === "mr") {
+    instructions = [
+      `${translatedCropName} पिकाची चांगली वाढ होण्यासाठी हे कार्य करा`,
+      `${landAreaAcres} एकर क्षेत्रासाठी योग्य प्रमाणात साधने वापरा`,
+      `${farmingType === "organic_only" ? "सेंद्रिय पद्धतीने" : "योग्य पद्धतीने"} कार्य करा`,
+      `सकाळी लवकर किंवा संध्याकाळी कार्य करा`,
+      `हवामानाची माहिती घ्या आणि त्यानुसार नियोजन करा`,
+    ];
+  } else if (language === "hi") {
+    instructions = [
+      `${translatedCropName} फसल की अच्छी बढ़वार के लिए यह कार्य करें`,
+      `${landAreaAcres} एकड़ क्षेत्र के लिए उचित मात्रा में सामग्री उपयोग करें`,
+      `${farmingType === "organic_only" ? "जैविक तरीके से" : "उचित तरीके से"} कार्य करें`,
+      `सुबह जल्दी या शाम को कार्य करें`,
+      `मौसम की जानकारी लें और उसके अनुसार योजना बनाएं`,
+    ];
+  } else {
+    instructions = [
+      `Complete this task for healthy ${translatedCropName} growth`,
+      `Use appropriate quantities for ${landAreaAcres} acres`,
+      `Follow ${farmingType === "organic_only" ? "organic" : "recommended"} practices`,
+      `Work in early morning or evening hours`,
+      `Check weather conditions before planning`,
+    ];
+  }
+
   return {
-    task_name: `${taskName} - ${cropName}`,
+    task_name: fullTaskName,
     stage_key: stage.stage_key,
     stage_order: stage.stage_order,
     category: template.category,
     days_from_sowing: template.days_offset,
     priority: template.priority,
-    description: template.description_en,
-    instructions: [
-      `Follow recommended ${stage.stage_name.toLowerCase()} practices for ${cropName}`,
-      `Consider land area: ${landAreaAcres} acres`,
-      `Farming type: ${farmingType.replace("_", " ")}`,
-    ],
+    description: description,
+    instructions: instructions,
     yield_impact: YIELD_BOOST_TECHNIQUES[stage.stage_key]?.yieldImpact || "15-20% yield improvement",
     skip_penalty: YIELD_BOOST_TECHNIQUES[stage.stage_key]?.skipPenalty || "10-15% yield loss",
     estimated_cost: Math.round(landAreaAcres * 300),
     is_fallback: true,
+    product_recommendations: [],
   };
 }
 
@@ -818,7 +842,15 @@ function calculateTaskCost(
   }
   
   const totalCost = productCost + laborCost;
-  const breakdown = `सामग्री ₹${productCost} + मजदूरी (${laborDays.toFixed(1)} दिन × ₹${laborRate}) = ₹${totalCost}`;
+  
+  let breakdown = "";
+  if (language === "mr") {
+    breakdown = `साहित्य ₹${productCost} + मजुरी (${laborDays.toFixed(1)} दिवस × ₹${laborRate}) = ₹${totalCost}`;
+  } else if (language === "hi") {
+    breakdown = `सामग्री ₹${productCost} + मजदूरी (${laborDays.toFixed(1)} दिन × ₹${laborRate}) = ₹${totalCost}`;
+  } else {
+    breakdown = `Material ₹${productCost} + Labor (${laborDays.toFixed(1)} days × ₹${laborRate}) = ₹${totalCost}`;
+  }
   
   return { totalCost, laborCost, productCost, laborDays, breakdown };
 }
@@ -827,26 +859,44 @@ function calculateTaskCost(
 // FETCH PRODUCTS FROM master_products TABLE
 // ═══════════════════════════════════════════════════════════════════════
 async function fetchRecommendedProducts(
-  supabase: any, cropName: string, stageKey: string, problemType: string | null
+  supabase: any, cropName: string, stageKey: string, category: string, farmingType: string
 ): Promise<any[]> {
   try {
     let query = supabase
       .from("master_products")
-      .select("id, name, product_type, active_ingredients, dosage_instructions, application_method, price_range, safety_level, organic_certified, suitable_crops")
+      .select("id, name, product_type, active_ingredients, dosage_instructions, application_method, price_range, safety_level, organic_certified, suitable_crops, brand")
       .eq("status", "active")
       .eq("ai_recommendable", true)
       .limit(5);
     
-    if (problemType) {
-      query = query.or(`product_type.ilike.%${problemType}%`);
+    // Filter by organic certification for organic farming mode
+    if (farmingType === "organic_only") {
+      query = query.eq("organic_certified", true);
+    }
+
+    // Filter by category/product type
+    if (category) {
+      const productTypeMap: Record<string, string[]> = {
+        fertilizer: ["fertilizer", "nutrient"],
+        growth_promoter: ["growth_promoter", "biostimulant"],
+        pest_control: ["pesticide", "insecticide", "bio-pesticide"],
+        disease_control: ["fungicide", "bio-fungicide"],
+        organic_input: ["organic", "bio-fertilizer"],
+      };
+      const types = productTypeMap[category];
+      if (types) {
+        query = query.in("product_type", types);
+      }
     }
     
     const { data, error } = await query;
     
     if (error || !data) {
-      console.log("No products found:", error?.message);
+      console.log("📦 [Products] No products found:", error?.message);
       return [];
     }
+    
+    console.log(`📦 [Products] Found ${data.length} products for ${category}/${stageKey}`);
     
     // Sort by priority: organic first, then by effectiveness
     return data.sort((a: any, b: any) => {
@@ -855,7 +905,7 @@ async function fetchRecommendedProducts(
       return 0;
     });
   } catch (e) {
-    console.error("Error fetching products:", e);
+    console.error("📦 [Products] Error:", e);
     return [];
   }
 }
@@ -892,7 +942,10 @@ serve(async (req) => {
     const tenantId = req.headers.get("x-tenant-id") || "";
     const farmerId = req.headers.get("x-farmer-id") || "";
 
-    console.log(`🌾 [AI-Schedule] Starting ${farmingType} schedule: ${cropName} on ${sowingDate}`);
+    // CRITICAL: Get translated crop name immediately
+    const translatedCropName = getTranslatedCropName(cropName, language);
+    console.log(`🌾 [AI-Schedule] Crop: ${cropName} → ${translatedCropName} (${language})`);
+    console.log(`🌾 [AI-Schedule] Starting ${farmingType} schedule for ${translatedCropName} on ${sowingDate}`);
 
     // Rate limiting
     const rateLimitResult = await checkRateLimit(
@@ -917,7 +970,7 @@ serve(async (req) => {
       .order("stage_order", { ascending: true });
 
     if (stagesError || !farmingStages?.length) {
-      console.error("Failed to fetch farming stages:", stagesError);
+      console.error("❌ Failed to fetch farming stages:", stagesError);
       throw new Error("Farming stages not configured");
     }
 
@@ -978,12 +1031,10 @@ serve(async (req) => {
     const mopCost = Math.round(mopKg * FERTILIZER_PRICES.mop.price_per_kg);
     const totalFertilizerCost = ureaCost + dapCost + mopCost;
 
-    const seaweedCost = Math.round(GROWTH_PROMOTERS.seaweed_extract.price * landAreaAcres);
-    const humicCost = Math.round(GROWTH_PROMOTERS.humic_acid.price * landAreaAcres);
     const irrigationRules = buildIrrigationRules(land.irrigation_type || "manual");
 
     // ═══════════════════════════════════════════════════════════════════
-    // STEP 5: BUILD STAGE-BASED AI PROMPT - ALL 10 STAGES MANDATORY
+    // STEP 5: BUILD STAGE-BASED AI PROMPT - ALL STAGES MANDATORY
     // ═══════════════════════════════════════════════════════════════════
     const totalStages = farmingStages.length;
     console.log(`📋 [AI] Building prompt for ALL ${totalStages} farming stages`);
@@ -996,226 +1047,165 @@ serve(async (req) => {
       };
       return `
 ══════════════════════════════════════════════════════════════
-MANDATORY STAGE ${stage.stage_order} of ${totalStages}: ${stage.stage_name} (stage_key: "${stage.stage_key}")
+MANDATORY STAGE ${stage.stage_order}/${totalStages}: ${stage.stage_name} (stage_key: "${stage.stage_key}")
 ══════════════════════════════════════════════════════════════
 ${stage.stage_icon} ${stage.stage_description}
-YIELD BOOST TECHNIQUES: ${yieldTech.techniques.join(", ")}
+YIELD TECHNIQUES: ${yieldTech.techniques.join(", ")}
 YIELD IMPACT: ${yieldTech.yieldImpact}
 SKIP PENALTY: ${yieldTech.skipPenalty}
 
-⚠️ YOU MUST GENERATE 2-4 TASKS FOR THIS STAGE. DO NOT SKIP THIS STAGE.
-Each task must have: task_name, description (100+ words), yield_impact, skip_penalty, instructions (5+ steps)`;
+⚠️ GENERATE 2-4 TASKS FOR THIS STAGE. DO NOT SKIP.`;
     }).join("\n\n");
     
-    // Create list of all stage keys that MUST be covered
     const allStageKeys = farmingStages.map((s: FarmingStage) => s.stage_key);
     console.log(`📋 [AI] Required stages: ${allStageKeys.join(", ")}`);
 
-    // Build farming type specific rules for 3 modes
+    // Build farming type specific rules
     const district = land.district || "";
     const region = getRegionFromDistrict(district, state);
     const regionalDialectTerms = getRegionalDialectTerms(language, region);
     const regionalLanguageRules = buildRegionalLanguageRules(language, region, district);
     
     let farmingTypeRules = "";
+    let farmingTypeLabel = "";
+    
     if (farmingType === "organic_only") {
+      farmingTypeLabel = language === "mr" ? "100% सेंद्रिय शेती" : language === "hi" ? "100% जैविक खेती" : "100% ORGANIC FARMING";
       farmingTypeRules = `
 ═══════════════════════════════════════════════════════════════
-🌿 100% ORGANIC FARMING MODE (पूर्ण जैविक खेती / संपूर्ण सेंद्रिय शेती)
+🌿 ${farmingTypeLabel}
 ═══════════════════════════════════════════════════════════════
-This farmer wants ZERO chemicals. Premium pricing for organic produce.
+✅ ALLOWED: FYM, Vermicompost, Jeevamrut, Panchagavya, Neem oil, Trichoderma, Pseudomonas, Beauveria, Seaweed, Humic acid
+❌ BANNED: Urea, DAP, MOP, NPK, Imidacloprid, Chlorpyriphos, Carbendazim, Mancozeb, ANY chemical
 
-✅ ALLOWED PRODUCTS (100% organic):
-- Organic manures: FYM (${regionalDialectTerms.fym}), Vermicompost, Jeevamrut, Panchagavya
-- Bio-fertilizers: Rhizobium, Azotobacter, PSB, KSB, Azospirillum
-- Bio-pesticides: Trichoderma, Pseudomonas, Beauveria, Metarhizium, Verticillium
-- Botanical pesticides: Neem oil, Neem cake, Garlic extract, Chilli extract
-- Growth promoters: Seaweed extract, Humic acid, Amino acids, Fulvic acid
-- Soil amendments: Green manure, Mulching, Cover crops
-
-❌ STRICTLY NOT ALLOWED - DO NOT RECOMMEND:
-- Chemical fertilizers (Urea, DAP, MOP, NPK complexes, SSP)
-- Chemical pesticides/insecticides (Imidacloprid, Chlorpyriphos, etc.)
-- Chemical fungicides (Carbendazim, Mancozeb, etc.)
-- Synthetic growth regulators
-
-💰 ORGANIC INPUT COSTS (2024-25 Rates):
-- FYM: ₹1200/ton | Vermicompost: ₹12/kg | Neem oil: ₹380/L
-- Trichoderma: ₹280/kg | Pseudomonas: ₹320/kg | Beauveria: ₹350/kg
-- Seaweed: ₹550/500ml | Humic acid: ₹480/L | Amino acid: ₹620/L
-- Jeevamrut: ₹80/batch | Panchagavya: ₹150/batch`;
-    } else if (farmingType === "organic_fertilizer") {
+PRODUCT BRANDS TO RECOMMEND:
+- Organic: Dr. Earth, Coromandel Gromor Organic, Iffco Organic, IARI Bio-fertilizers
+- Bio-pesticides: Multiplex Bio, Anand Agro, T-Stanes Trichoderma`;
+    } else if (farmingType === "fertilizer_pesticide") {
+      farmingTypeLabel = language === "mr" ? "रासायनिक खत + किडनाशक" : language === "hi" ? "रासायनिक खाद + कीटनाशक" : "CHEMICAL FERTILIZER + PESTICIDE";
       farmingTypeRules = `
 ═══════════════════════════════════════════════════════════════
-🌱🧪 ORGANIC + FERTILIZER MODE (जैविक + रासायनिक / सेंद्रिय + रासायनिक)
+🧪 ${farmingTypeLabel}
 ═══════════════════════════════════════════════════════════════
-Best of both worlds - 60% organic base, 40% chemical boost. IPM approach.
+✅ RECOMMEND chemical fertilizers and pesticides for MAXIMUM yield
+- Fertilizers: Urea (₹6.5/kg), DAP (₹30/kg), MOP (₹20/kg), NPK complexes
+- Pesticides: Imidacloprid, Thiamethoxam, Chlorpyriphos for insects
+- Fungicides: Carbendazim, Mancozeb, Copper oxychloride for diseases
 
-✅ ALLOWED PRODUCTS (in priority order):
-1. ORGANIC BASE (60%): 
-   - FYM ${fymTons} tons = ₹${fymCost} | Vermicompost for nursery
-   - Green manure incorporation | Mulching where possible
-   
-2. GROWTH PROMOTERS (mandatory for yield boost):
-   - Seaweed extract ₹${seaweedCost} | Humic acid ₹${humicCost}
-   - Amino acids for stress tolerance | Fulvic acid for nutrient transport
-   
-3. CHEMICAL FERTILIZERS (40% - soil test based):
-   - Urea ${ureaKg}kg = ₹${ureaCost} | DAP ${dapKg}kg = ₹${dapCost} | MOP ${mopKg}kg = ₹${mopCost}
-   - Micronutrients: Zinc Sulphate, Borax as needed
-   
-4. IPM-BASED PEST CONTROL (bio-first approach):
-   - First choice: Trichoderma, Pseudomonas, Beauveria, Neem
-   - If severe: Use chemical with proper PHI compliance
-
-💰 2024-25 RATES:
-- Organic: FYM ₹1200/ton | Vermicompost ₹12/kg
-- Fertilizers: Urea ₹6.5/kg | DAP ₹30/kg | MOP ₹20/kg`;
+PRODUCT BRANDS TO RECOMMEND:
+- Fertilizers: IFFCO, Coromandel, Yara, UPL, Zuari
+- Pesticides: Bayer, Syngenta, UPL, Dhanuka, Rallis India
+- Fungicides: BASF, Corteva, FMC, PI Industries`;
     } else {
+      farmingTypeLabel = language === "mr" ? "सेंद्रिय + रासायनिक (संतुलित)" : language === "hi" ? "जैविक + रासायनिक (संतुलित)" : "ORGANIC + CHEMICAL (BALANCED)";
       farmingTypeRules = `
 ═══════════════════════════════════════════════════════════════
-🧪🐛 FULL CHEMICAL FARMING MODE (पूर्ण रासायनिक / पूर्ण रासायनिक)
+🌱🧪 ${farmingTypeLabel}
 ═══════════════════════════════════════════════════════════════
-Maximum yield focus. Full chemical program with 20% organic base.
+PRIORITY ORDER: Organic FIRST → Growth Promoters → Fertilizers → Pesticides (LAST)
+- Start with: FYM, Vermicompost, Bio-fertilizers
+- Add: Seaweed, Humic acid for growth
+- Supplement: Urea, DAP, MOP based on soil test
+- Use pesticides: ONLY when pest threshold exceeded (IPM approach)
 
-✅ ALLOWED PRODUCTS (in priority order):
-1. ORGANIC BASE (20%): FYM 2 tons/acre for soil health
-   
-2. GROWTH PROMOTERS (for maximum yield):
-   - Seaweed, Humic acid, Amino acids, Gibberellic acid
-   - Brassinolide for stress tolerance
-   
-3. CHEMICAL FERTILIZERS (full program):
-   - Urea ${ureaKg}kg = ₹${ureaCost} | DAP ${dapKg}kg = ₹${dapCost} | MOP ${mopKg}kg = ₹${mopCost}
-   - NPK complexes as per crop stage | All micronutrients
-   
-4. FULL PEST & DISEASE CONTROL:
-   - Insecticides: Imidacloprid, Thiamethoxam, Chlorpyriphos
-   - Fungicides: Carbendazim, Mancozeb, Copper fungicides
-   - ⚠️ ALWAYS include PHI (Pre-Harvest Interval) warnings
-
-❌ NOT ALLOWED:
-- Banned pesticides (Endosulfan, Monocrotophos, etc.)
-
-💰 2024-25 RATES:
-- Fertilizers: Urea ₹6.5/kg | DAP ₹30/kg | MOP ₹20/kg
-- Pesticides: Imidacloprid ₹450/250ml | Chlorpyriphos ₹380/L`;
+PRODUCT BRANDS TO RECOMMEND:
+- Organic: Multiplex Bio, Iffco Bio, IARI cultures
+- Fertilizers: IFFCO, Coromandel, Yara
+- IPM Products: Neem-based + chemical backup`;
     }
 
-    const systemPrompt = `You are a senior agricultural expert from India's Krishi Vigyan Kendra with 40+ years of experience.
+    // ═══════════════════════════════════════════════════════════════════
+    // ENHANCED AI ROLE - WORLD-CLASS AGRICULTURE SCIENTIST
+    // ═══════════════════════════════════════════════════════════════════
+    const systemPrompt = `You are Dr. AgriGenius, a world-renowned Agricultural Scientist with:
+- PhD in Agronomy from IARI (Indian Agricultural Research Institute), New Delhi
+- 40+ years of research experience at ICAR, ICRISAT, and international agricultural institutes
+- Published 200+ research papers on precision agriculture and yield optimization
+- Developed crop management protocols that achieved 5-7x yield for 100,000+ farmers
+- Expert in precision agriculture, Integrated Pest Management (IPM), and sustainable intensification
+- Fluent in ${languageName} rural dialects and local farming terminology
+
+YOUR SACRED MISSION: Create a world-class, AI-powered crop schedule that will GUARANTEE 3x-7x yield increase for this farmer's ${translatedCropName} (${cropName}) crop.
 
 ═══════════════════════════════════════════════════════════════
-🚨 CRITICAL MANDATE: COMPLETE ${totalStages}-STAGE SCHEDULE GENERATION
+🚨 CRITICAL RULES - MUST FOLLOW EXACTLY
 ═══════════════════════════════════════════════════════════════
-You MUST generate tasks for ALL ${totalStages} farming stages listed below. 
-EVERY stage_key MUST appear in your output: [${allStageKeys.join(", ")}]
-NEVER skip, reorder, merge, or omit ANY stage.
-Generate 2-4 practical tasks per stage = MINIMUM ${totalStages * 2} tasks total.
-FAILURE TO COVER ALL STAGES IS UNACCEPTABLE.
+
+1. CROP NAME RULE (MOST IMPORTANT):
+   - The crop is: ${translatedCropName} (${cropName})
+   - EVERY task_name MUST contain "${translatedCropName}"
+   - NEVER use any other crop name like sugarcane, rice, cotton etc.
+   - Example correct task name: "${translatedCropName} - ${language === "mr" ? "पेरणी" : language === "hi" ? "बुवाई" : "Sowing"}"
+
+2. LANGUAGE RULE:
+   - Output EVERYTHING in ${languageName} ONLY
+   - Use PURE rural village dialect, not formal language
+   - Use local terms: "${regionalDialectTerms.fertilizer}", "${regionalDialectTerms.sowing}", "${regionalDialectTerms.weeding}"
+   ${regionalLanguageRules}
+
+3. FARMING TYPE RULE - STRICTLY ENFORCE:
+   Mode: ${farmingTypeLabel}
+   ${farmingTypeRules}
+
+4. STAGE COVERAGE RULE:
+   - Generate 2-4 tasks for EACH of the ${totalStages} stages
+   - Required stages: [${allStageKeys.join(", ")}]
+   - MINIMUM ${totalStages * 2} tasks total
+
+5. TASK QUALITY RULE:
+   - Each task description: 100-200 words with WHY, WHAT, HOW, WHEN
+   - Each task: 5-7 step-by-step instructions
+   - Include yield_impact with percentage and scientific reason
+   - Include skip_penalty with symptoms and percentage loss
+   - Include SPECIFIC product recommendations with brand, dose, method
 
 ${stagesPrompt}
 
-${farmingTypeRules}
-
 ═══════════════════════════════════════════════════════════════
-🗣️ LANGUAGE RULES (CRITICAL!)
+🌱 LAND & CROP DETAILS
 ═══════════════════════════════════════════════════════════════
-1. Think in English, output in ${languageName} PURE RURAL VILLAGE DIALECT
-2. Use local words: "${regionalDialectTerms.fertilizer}", "${regionalDialectTerms.sowing}", "${regionalDialectTerms.weeding}"
-3. Keep sentences SHORT and PRACTICAL like a village elder speaks
-4. Each task description should be 100-200 words with DETAILED PRACTICAL information
-5. Include 5-7 step-by-step instructions per task
-
-${regionalLanguageRules}
-
-═══════════════════════════════════════════════════════════════
-📝 DETAILED TASK REQUIREMENTS (VERY IMPORTANT)
-═══════════════════════════════════════════════════════════════
-Each task MUST include detailed information:
-
-1. DESCRIPTION (100-200 words): 
-   - WHY this task is important
-   - WHAT exactly to do (specific quantities, methods)
-   - HOW to do it correctly (technique details)
-   - WHEN is the best time (morning/evening, weather conditions)
-   - WHAT to observe/check before and after
-
-2. INSTRUCTIONS (5-7 practical steps):
-   - Step-by-step actions a farmer can follow
-   - Include timing (e.g., "Do in early morning 6-8 AM")
-   - Include tools needed
-   - Include safety precautions where relevant
-
-3. YIELD_IMPACT: Explain percentage increase and scientific reason
-4. SKIP_PENALTY: Explain percentage loss and visible symptoms
-5. PRODUCT_RECOMMENDATIONS: Complete product details with dose, method, timing
-
-═══════════════════════════════════════════════════════════════
-🌱 CROP & LAND DETAILS
-═══════════════════════════════════════════════════════════════
-CROP: ${cropName} ${cropVariety ? `(${cropVariety})` : ""}
-LOCATION: ${land.village || ""}, ${land.district || ""}, ${state}
-REGIONAL DIALECT ZONE: ${region}
+CROP: ${translatedCropName} (${cropName}) ${cropVariety ? `- ${cropVariety}` : ""}
+LOCATION: ${land.village || ""}, ${land.taluka || ""}, ${district}, ${state}
 AREA: ${landAreaAcres} acres (${landAreaHa.toFixed(2)} hectares)
 SOIL: ${land.soil_type || "Black"} | pH: ${land.soil_ph || 7.0}
-IRRIGATION: ${land.irrigation_type || "manual"}
-${irrigationRules}
+IRRIGATION: ${land.irrigation_type || "manual"} - ${irrigationRules}
+SOWING DATE: ${sowingDate}
+
+NUTRIENT STATUS:
+- Current N: ${currentN} kg/ha → Need: ${target.n} kg/ha (Deficit: ${nDeficit} kg/ha)
+- Current P: ${currentP} kg/ha → Need: ${target.p} kg/ha (Deficit: ${pDeficit} kg/ha)
+- Current K: ${currentK} kg/ha → Need: ${target.k} kg/ha (Deficit: ${kDeficit} kg/ha)
+
+SEED REQUIREMENT: ${exactSeedQty} kg (Rate: ${seedData.rate_kg_per_acre} kg/acre)
+FYM REQUIREMENT: ${fymTons} tons (5 tons/acre standard)
 
 ═══════════════════════════════════════════════════════════════
-💧 WATER REQUIREMENT CALCULATION
+💰 COST CALCULATION RULES (2024-25 RATES)
 ═══════════════════════════════════════════════════════════════
-Calculate water needs based on:
-- Land area: ${landAreaAcres} acres
-- Irrigation type: ${land.irrigation_type || "manual"}
-- Soil type: ${land.soil_type || "black"} (affects water retention)
-- Include water_required_liters for irrigation tasks
+LABOR RATE (${state}): ₹${laborRate}/day
+SEED COST: ${exactSeedQty} kg × ₹${seedData.price_per_kg} = ₹${seedCost}
+FYM COST: ${fymTons} tons × ₹800 = ₹${fymCost}
+${farmingType !== "organic_only" ? `FERTILIZER: Urea ₹${ureaCost} + DAP ₹${dapCost} + MOP ₹${mopCost} = ₹${totalFertilizerCost}` : ""}
 
-═══════════════════════════════════════════════════════════════
-💰 COST RULES (2024-25 INDIAN MARKET RATES)
-═══════════════════════════════════════════════════════════════
-LABOR RATE (${state}): ₹${laborRate}/day (MGNREGA 2024-25)
-SEED: ${exactSeedQty} kg × ₹${seedData.price_per_kg} = ₹${seedCost}
-MACHINERY: Tractor ₹1800/acre, Harvester ₹2800/acre, Rotavator ₹1400/acre
-SPRAYING: Manual ₹200/acre, Power sprayer ₹400/acre
+For EVERY task: Calculate Product + Labor + Spraying = Total`;
 
-For EVERY task calculate: Product + Labor + Spraying = Total
-Show detailed cost breakdown in cost_breakdown field`;
+    const userPrompt = `Generate COMPLETE ${translatedCropName} (${cropName}) crop schedule in ${languageName} for ${landAreaAcres} acres.
 
-    const userPrompt = `Generate COMPLETE stage-based ${cropName} schedule for ${landAreaAcres} acres starting ${sowingDate}.
+🚨 MANDATORY REQUIREMENTS:
 
-FARMING MODE: ${farmingType.toUpperCase().replace("_", " ")}
+1. ✅ CROP NAME: Use "${translatedCropName}" in EVERY task name - NOT any other crop!
+2. ✅ LANGUAGE: 100% ${languageName} output - NO English words
+3. ✅ FARMING TYPE: ${farmingTypeLabel} - Follow strictly!
+4. ✅ ALL ${totalStages} STAGES: [${allStageKeys.join(", ")}] - 2-4 tasks each
+5. ✅ MINIMUM ${totalStages * 2} TOTAL TASKS
+6. ✅ DETAILED DESCRIPTIONS: 100-200 words per task with WHY, WHAT, HOW, WHEN
+7. ✅ 5-7 INSTRUCTIONS per task with timing and tools
+8. ✅ PRODUCT RECOMMENDATIONS with brand, dose, method, price
+9. ✅ YIELD TARGET: ${farmingType === 'organic_only' ? '2x-3x' : farmingType === 'fertilizer_pesticide' ? '5x-7x' : '3x-5x'} increase
 
-🚨 MANDATORY REQUIREMENTS - READ CAREFULLY:
+BEFORE SUBMITTING: Verify EVERY task contains "${translatedCropName}" and is in ${languageName}!`;
 
-1. ✅ COVER ALL ${totalStages} FARMING STAGES - NO EXCEPTIONS:
-   Required stages: [${allStageKeys.join(", ")}]
-   EVERY single stage MUST have 2-4 tasks. Check your output before finishing.
-
-2. ✅ MINIMUM ${totalStages * 2} TASKS TOTAL (2-4 per stage × ${totalStages} stages)
-
-3. ✅ DETAILED DESCRIPTIONS (100-200 words per task) explaining:
-   - WHY this task is critical for yield
-   - WHAT exactly to do (specific quantities, methods)
-   - HOW to do it correctly (technique details)
-   - WHEN is the best time (morning/evening, weather conditions)
-
-4. ✅ 5-7 STEP-BY-STEP INSTRUCTIONS per task that a farmer can follow
-
-5. ✅ Include yield_impact with percentage and scientific reason
-
-6. ✅ Include skip_penalty with percentage loss and visible symptoms
-
-7. ✅ Include product_recommendations with COMPLETE details (product_type, dose, method, timing, precautions, price)
-
-8. ✅ Calculate stage-wise cost breakdown
-
-9. ✅ Output in ${languageName} rural dialect
-
-YIELD TARGET: ${farmingType === 'organic_only' ? '1.5x-2.5x' : farmingType === 'organic_fertilizer' ? '3x-5x' : '5x-7x'} increase through proper agronomy techniques
-
-BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stages: ${allStageKeys.join(", ")}`;
-
-    console.log(`🤖 [AI] Calling API with enhanced ${totalStages}-stage prompt, max_tokens: ${AI_CONFIG.MAX_TOKENS_SCHEDULE}`);
+    console.log(`🤖 [AI] Calling ${AI_CONFIG.MODEL} with ${totalStages}-stage prompt`);
 
     const aiResponse = await fetch(OPENAI_API_URL, {
       method: "POST",
@@ -1232,11 +1222,11 @@ BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stage
             type: "function",
             function: {
               name: "create_stage_based_schedule",
-              description: `Create ${cropName} schedule covering all 9 farming stages with yield boosting techniques`,
+              description: `Create ${translatedCropName} schedule covering all ${totalStages} farming stages with yield boosting techniques`,
               parameters: {
                 type: "object",
                 properties: {
-                  crop_name: { type: "string" },
+                  crop_name: { type: "string", description: `Must be "${translatedCropName}"` },
                   total_duration_days: { type: "integer" },
                   expected_yield_quintals: { type: "number" },
                   yield_multiplier_target: { type: "number", description: "Target yield multiplier (3-7)" },
@@ -1244,108 +1234,59 @@ BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stage
                   total_labor_cost: { type: "number" },
                   total_material_cost: { type: "number" },
                   expected_profit: { type: "number" },
-                  stages_covered: {
-                    type: "array",
-                    items: { type: "string" },
-                    description: "List of stage_keys covered"
-                  },
-                  cost_by_stage: {
-                    type: "object",
-                    description: "Cost breakdown per stage"
-                  },
-                  cost_by_category: {
-                    type: "object",
-                    description: "Cost by category: seed, organic, fertilizer, labor, etc."
-                  },
-                  yield_boosting_techniques: {
-                    type: "array",
-                    items: { type: "string" },
-                    description: "List of yield boosting techniques applied"
-                  },
+                  stages_covered: { type: "array", items: { type: "string" } },
+                  cost_by_stage: { type: "object" },
+                  cost_by_category: { type: "object" },
+                  yield_boosting_techniques: { type: "array", items: { type: "string" } },
                   tasks: {
                     type: "array",
                     items: {
                       type: "object",
                       properties: {
-                        task_name: { type: "string", description: "Brief task name in rural dialect" },
-                        stage_key: { type: "string", description: "farming_stages.stage_key this task belongs to" },
-                        stage_order: { type: "integer", description: "Stage order (1-9)" },
+                        task_name: { type: "string", description: `Must contain "${translatedCropName}" and be in ${languageName}` },
+                        stage_key: { type: "string", enum: allStageKeys },
+                        stage_order: { type: "integer" },
                         category: { 
                           type: "string", 
                           enum: ["land_preparation", "organic_input", "seed_treatment", "sowing", "transplanting", 
                                  "growth_promoter", "fertilizer", "irrigation", "weeding", "pest_control", 
-                                 "disease_control", "intercultural", "harvest", "post_harvest", "other"],
+                                 "disease_control", "intercultural", "harvest", "post_harvest", "planning", "other"],
                         },
                         days_from_sowing: { type: "integer" },
                         priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
-                        description: { type: "string", description: "Detailed village-style description (100-200 words) explaining WHY, WHAT, HOW, WHEN" },
-                        yield_impact: { type: "string", description: "Detailed yield impact with percentage and scientific reason (e.g., '20-30% yield increase due to improved nutrient uptake')" },
-                        skip_penalty: { type: "string", description: "Detailed skip penalty with percentage loss and visible symptoms (e.g., '15-25% yield loss, yellowing leaves, stunted growth')" },
-                        yield_impact_details: {
-                          type: "object",
-                          properties: {
-                            percentage_increase: { type: "string" },
-                            scientific_reason: { type: "string" },
-                            farmer_benefit: { type: "string" }
-                          },
-                          description: "Structured yield impact details"
-                        },
-                        skip_penalty_details: {
-                          type: "object",
-                          properties: {
-                            percentage_loss: { type: "string" },
-                            symptoms: { type: "array", items: { type: "string" } },
-                            recovery_possible: { type: "boolean" }
-                          },
-                          description: "Structured skip penalty details"
-                        },
-                        yield_boost_technique: { type: "string", description: "Specific yield boosting technique" },
-                        detailed_steps: {
-                          type: "array",
-                          items: {
-                            type: "object",
-                            properties: {
-                              step_number: { type: "integer" },
-                              action: { type: "string" },
-                              timing: { type: "string", description: "e.g., 'Morning 6-8 AM' or 'Evening 4-6 PM'" },
-                              weather_condition: { type: "string" },
-                              tools_needed: { type: "string" }
-                            }
-                          },
-                          description: "5-7 detailed steps with timing and tools"
-                        },
+                        description: { type: "string", description: "100-200 words in rural dialect" },
+                        yield_impact: { type: "string" },
+                        skip_penalty: { type: "string" },
+                        yield_boost_technique: { type: "string" },
                         product_recommendations: {
                           type: "array",
                           items: {
                             type: "object",
                             properties: {
                               product_name: { type: "string" },
-                              product_type: { type: "string", enum: ["organic", "growth_promoter", "fertilizer", "pesticide"] },
+                              brand: { type: "string" },
+                              product_type: { type: "string", enum: ["organic", "growth_promoter", "fertilizer", "pesticide", "fungicide"] },
                               active_ingredient: { type: "string" },
                               dose_per_acre: { type: "string" },
-                              application_method: { type: "string", description: "spray/drench/broadcast/soil application" },
-                              timing: { type: "string", description: "Best time to apply (morning/evening, crop stage)" },
+                              application_method: { type: "string" },
+                              timing: { type: "string" },
                               precautions: { type: "string" },
-                              weather_conditions: { type: "string", description: "Avoid rain, avoid hot sun, etc." },
                               price_estimate: { type: "number" },
-                              phi_days: { type: "integer", description: "Pre-harvest interval for pesticides" }
                             }
                           }
                         },
                         product_cost: { type: "number" },
                         labor_days: { type: "number" },
                         labor_cost: { type: "number" },
-                        spraying_cost: { type: "number" },
-                        machinery_cost: { type: "number" },
                         estimated_cost: { type: "number" },
                         cost_breakdown: { type: "string" },
                         instructions: { type: "array", items: { type: "string" } },
                         precautions: { type: "array", items: { type: "string" } },
                         weather_dependent: { type: "boolean" },
+                        water_required_liters: { type: "number" },
                       },
                       required: ["task_name", "stage_key", "stage_order", "category", "days_from_sowing", "priority", 
-                                "description", "yield_impact", "skip_penalty", "estimated_cost", "cost_breakdown", 
-                                "instructions", "precautions"],
+                                "description", "yield_impact", "skip_penalty", "estimated_cost", "instructions"],
                     },
                   },
                 },
@@ -1372,48 +1313,85 @@ BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stage
     }
 
     const scheduleData = JSON.parse(message.tool_calls[0].function.arguments);
-    console.log(`✅ [AI] Generated ${scheduleData.tasks?.length || 0} tasks covering ${scheduleData.stages_covered?.length || 0} stages`);
+    console.log(`✅ [AI] Generated ${scheduleData.tasks?.length || 0} tasks`);
 
     if (!scheduleData.tasks?.length) {
       throw new Error("AI returned empty schedule");
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // FILTER INVALID TASKS: Remove tasks with null/empty task_name
+    // POST-PROCESSING: VALIDATE & FIX ALL TASKS
     // ═══════════════════════════════════════════════════════════════════
-    const validTasks = scheduleData.tasks.filter((task: any) => {
+    console.log("🔧 [PostProcess] Validating and fixing tasks...");
+    
+    let validTasks = scheduleData.tasks.filter((task: any) => {
       if (!task.task_name || task.task_name.trim() === '') {
-        console.warn(`⚠️ Skipping task with null/empty name in stage: ${task.stage_key}`);
+        console.warn(`⚠️ [Filter] Removing task with empty name in stage: ${task.stage_key}`);
         return false;
       }
       return true;
     });
 
-    console.log(`✅ [Validation] ${validTasks.length}/${scheduleData.tasks.length} tasks have valid names`);
+    // Fix crop names and farming type compliance
+    validTasks = validTasks.map((task: any) => {
+      // Step 1: Fix crop name
+      task = validateAndFixTaskCropName(task, translatedCropName, cropName, language);
+      
+      // Step 2: Validate and fix farming type compliance
+      const validation = validateTaskForFarmingType(task, farmingType, language);
+      if (!validation.valid) {
+        console.warn(`⚠️ [FarmingType] Task "${task.task_name}" has issues:`, validation.issues);
+        task = fixTaskForFarmingType(task, farmingType, language, translatedCropName);
+      }
+      
+      return task;
+    });
 
-    // ═══════════════════════════════════════════════════════════════════
-    // POST-PROCESS: Validate stage coverage and generate fallback tasks
-    // ═══════════════════════════════════════════════════════════════════
+    console.log(`✅ [PostProcess] ${validTasks.length} valid tasks after fixes`);
+
+    // Check stage coverage and generate fallback tasks
     const stagesCovered = new Set(validTasks.map((t: any) => t.stage_key));
     const missingStages = farmingStages.filter((s: FarmingStage) => !stagesCovered.has(s.stage_key));
     
-    // Generate fallback tasks for missing stages
     const fallbackTasks: any[] = [];
     if (missingStages.length > 0) {
-      console.warn(`⚠️ Missing ${missingStages.length} stages: ${missingStages.map((s: FarmingStage) => s.stage_key).join(", ")}`);
-      console.log(`🔧 [Fallback] Generating default tasks for missing stages...`);
+      console.warn(`⚠️ [Fallback] Missing ${missingStages.length} stages: ${missingStages.map((s: FarmingStage) => s.stage_key).join(", ")}`);
       
       for (const stage of missingStages) {
-        const fallbackTask = generateFallbackTask(stage, cropName, landAreaAcres, farmingType, language);
+        // CRITICAL: Pass translatedCropName, not original cropName
+        const fallbackTask = generateFallbackTask(stage, translatedCropName, landAreaAcres, farmingType, language);
         fallbackTasks.push(fallbackTask);
         stagesCovered.add(stage.stage_key);
       }
-      console.log(`✅ [Fallback] Generated ${fallbackTasks.length} fallback tasks`);
+      console.log(`✅ [Fallback] Generated ${fallbackTasks.length} fallback tasks with correct crop name`);
     }
 
-    // Combine valid AI tasks with fallback tasks
     const allTasks = [...validTasks, ...fallbackTasks];
     console.log(`📋 [Total] ${allTasks.length} tasks ready for processing`);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // FETCH REAL PRODUCTS FROM DATABASE FOR EACH TASK
+    // ═══════════════════════════════════════════════════════════════════
+    console.log("📦 [Products] Fetching real product recommendations...");
+    
+    for (const task of allTasks) {
+      if (!task.product_recommendations || task.product_recommendations.length === 0) {
+        const category = task.category || "other";
+        const dbProducts = await fetchRecommendedProducts(supabase, cropName, task.stage_key, category, farmingType);
+        
+        if (dbProducts.length > 0) {
+          task.product_recommendations = dbProducts.slice(0, 2).map((p: any) => ({
+            product_name: p.name,
+            brand: p.brand || "",
+            product_type: p.organic_certified ? "organic" : p.product_type,
+            active_ingredient: p.active_ingredients || "",
+            dose_per_acre: p.dosage_instructions || "",
+            application_method: p.application_method || "spray",
+            price_estimate: parseInt(p.price_range?.split("-")?.[0] || "200"),
+          }));
+        }
+      }
+    }
 
     let totalLaborCost = 0;
     let totalMaterialCost = 0;
@@ -1433,12 +1411,10 @@ BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stage
       const category = task.category || "other";
       const stageKey = task.stage_key || "vegetative_growth";
       
-      // Find matching stage
       const matchingStage = farmingStages.find((s: FarmingStage) => s.stage_key === stageKey);
       const stageName = matchingStage?.stage_name || stageKey;
       const stageOrder = matchingStage?.stage_order || task.stage_order || 5;
 
-      // Calculate costs
       const costResult = calculateTaskCost(
         category, task.task_name, landAreaAcres, laborRate,
         seedCost, totalFertilizerCost, fymCost, language
@@ -1447,11 +1423,9 @@ BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stage
       totalLaborCost += costResult.laborCost;
       totalMaterialCost += costResult.productCost;
 
-      // Track stage costs
       if (!costByStage[stageKey]) costByStage[stageKey] = 0;
       costByStage[stageKey] += costResult.totalCost;
 
-      // Track category costs
       if (category === "fertilizer") costByCategory.fertilizer += costResult.productCost;
       if (category === "growth_promoter") costByCategory.growth_promoter += costResult.productCost;
       if (category === "pest_control" || category === "disease_control") costByCategory.pesticide += costResult.productCost;
@@ -1471,7 +1445,6 @@ BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stage
       };
     });
 
-    // Sort by stage order and days from sowing
     processedTasks.sort((a: any, b: any) => {
       if (a.stage_order !== b.stage_order) return a.stage_order - b.stage_order;
       return a.days_from_sowing - b.days_from_sowing;
@@ -1515,28 +1488,22 @@ BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stage
         recommendation_order: "organic → growth_promoter → fertilizer → pesticide",
         state_region: state,
         labor_rate_used: laborRate,
-        // New stage-based fields
         cost_by_stage: costByStage,
         cost_by_category: costByCategory,
         yield_multiplier_target: scheduleData.yield_multiplier_target || 3,
         yield_boosting_techniques: scheduleData.yield_boosting_techniques || [],
         stages_covered: [...stagesCovered],
         products_recommended_count: processedTasks.reduce((sum: number, t: any) => sum + (t.product_recommendations?.length || 0), 0),
-        // New farming type and water fields
         farming_type: farmingType,
         water_requirement_liters_total: landAreaAcres * 50000 * (land.irrigation_type === 'drip' ? 0.6 : 1),
         water_per_irrigation_liters: landAreaAcres * 5000 * (land.irrigation_type === 'drip' ? 0.6 : 1),
         irrigation_count_total: Math.round(scheduleData.total_duration_days / 7),
-        weather_auto_update_enabled: true,
-        is_training_candidate: true,
-        training_processed: false,
         tasks_total_count: processedTasks.length,
         tasks_completed_count: 0,
-        tasks_on_time_count: 0,
         metadata: {
           seed_data: { quantity: exactSeedQty, rate: seedData.rate_kg_per_acre, cost: seedCost },
           fertilizer_data: { urea_kg: ureaKg, dap_kg: dapKg, mop_kg: mopKg, fym_tons: fymTons },
-          yield_boost_strategy: "9-stage-sequential",
+          translated_crop_name: translatedCropName,
           ai_version: AI_CONFIG.MODEL,
           generation_timestamp: new Date().toISOString(),
         },
@@ -1548,15 +1515,12 @@ BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stage
       throw new Error(`Failed to save schedule: ${scheduleError.message}`);
     }
 
-    // Save tasks with stage information
-    // Parse sowing date safely
     const baseSowingDate = new Date(sowingDate);
     if (isNaN(baseSowingDate.getTime())) {
       throw new Error(`Invalid sowing date: ${sowingDate}`);
     }
 
     const tasksToInsert = processedTasks.map((task: any, idx: number) => {
-      // Safely calculate task date with fallback
       const daysFromSowing = typeof task.days_from_sowing === 'number' && !isNaN(task.days_from_sowing) 
         ? task.days_from_sowing 
         : 0;
@@ -1578,7 +1542,6 @@ BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stage
         weather_dependent: task.weather_dependent || false,
         status: "pending",
         sequence_order: idx + 1,
-        // Stage-based fields
         stage_key: task.stage_key,
         stage_order: task.stage_order,
         stage_name: task.stage_name,
@@ -1592,8 +1555,6 @@ BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stage
           product_cost: task.product_cost,
           labor_days: task.labor_days,
           labor_cost: task.labor_cost,
-          spraying_cost: task.spraying_cost,
-          machinery_cost: task.machinery_cost,
           cost_breakdown: task.cost_breakdown,
         },
         estimated_cost: task.estimated_cost || 0,
@@ -1609,11 +1570,11 @@ BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stage
     if (tasksError) {
       console.error("❌ Tasks insert error:", tasksError);
     } else {
-      console.log(`✅ [DB] Inserted ${insertedTasks?.length || 0} stage-based tasks`);
+      console.log(`✅ [DB] Inserted ${insertedTasks?.length || 0} tasks`);
     }
 
     const executionTime = Date.now() - startTime;
-    console.log(`✅ Stage-based schedule complete in ${executionTime}ms`);
+    console.log(`✅ Schedule complete in ${executionTime}ms`);
 
     return new Response(
       JSON.stringify({
@@ -1623,8 +1584,11 @@ BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stage
         farmerId,
         tenantId,
         cropName,
+        translatedCropName,
         cropVariety: cropVariety || cropName,
         sowingDate,
+        farmingType,
+        language,
         suitability: {
           score: suitabilityCheck.score,
           suitable: suitabilityCheck.isSuitable,
@@ -1653,21 +1617,7 @@ BEFORE SUBMITTING: Double-check that you have tasks for ALL ${totalStages} stage
           expectedQuintals: scheduleData.expected_yield_quintals,
           multiplierTarget: scheduleData.yield_multiplier_target || 3,
           boostingTechniques: scheduleData.yield_boosting_techniques || [],
-          expectedProfit: scheduleData.expected_profit,
         },
-        inputs: {
-          seed: { quantityKg: exactSeedQty, ratePerAcre: seedData.rate_kg_per_acre },
-          fertilizer: { ureaKg, dapKg, mopKg },
-          organic: { fymTons },
-        },
-        context: {
-          landAreaAcres,
-          state,
-          laborRate,
-          language,
-          irrigationType: land.irrigation_type || "manual",
-        },
-        recommendationOrder: "organic → growth_promoter → fertilizer → pesticide",
         aiModel: AI_CONFIG.MODEL,
         executionTimeMs: executionTime,
         generatedAt: new Date().toISOString(),
