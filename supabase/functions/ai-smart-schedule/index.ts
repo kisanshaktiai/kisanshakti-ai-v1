@@ -3288,17 +3288,6 @@ Call the create_schedule function with ${minTaskCount}-${minTaskCount + 10} task
           task.labor_total_days = laborCalc.totalLaborDays;
           task.labor_description = laborCalc.description;
           task.labor_daily_wage = dailyWageRate;
-            'nutrient_management': { workers: 2, days: 1 },
-            'organic_input': { workers: 2, days: 1 },
-            'other': { workers: 1, days: 1 },
-          };
-          const stageKey = task.stage_key || task.category || "other";
-          const laborReq = laborRequirementsPerAcre[stageKey] || laborRequirementsPerAcre[category] || laborRequirementsPerAcre['other'];
-          const totalLaborDays = laborReq.workers * laborReq.days * landAreaAcres;
-          task.labor_cost = Math.round(totalLaborDays * dailyWageRate);
-          task.labor_workers = laborReq.workers;
-          task.labor_days_per_acre = laborReq.days;
-          task.labor_total_days = Math.round(totalLaborDays * 10) / 10;
         }
       } else if (isLaborOnly) {
         // CRITICAL: Clear any products for labor-only tasks (AI might have incorrectly added them)
