@@ -1,20 +1,29 @@
 // OPTIMIZED AI CROP SCHEDULE GENERATOR
-// Token Reduction: 8000+ → 2000 tokens (75% savings)
-// Quality: Same or better through focused prompts
+// Fixed: Added serve(), imports, CORS, timeout, proper error handling
 
-// ═══════════════════════════════════════════════════════════════════════
-// COMPACT CONFIGURATIONS (Reduced from 1500+ to 300 tokens)
-// ═══════════════════════════════════════════════════════════════════════
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { AI_CONFIG, OPENAI_API_URL, validateOpenAIKey } from "../_shared/aiConfig.ts";
 
-const COMPACT_CROP_NAMES: Record<string, string> = {
-  hi: { wheat: "गेहूं", rice: "धान", cotton: "कपास", soybean: "सोयाबीन" },
-  mr: { wheat: "गहू", rice: "भात", cotton: "कापूस", soybean: "सोयाबीन" },
-  en: { wheat: "Wheat", rice: "Rice", cotton: "Cotton", soybean: "Soybean" },
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id, x-session-token",
 };
 
-const STAGE_ESSENTIALS = {
+// ═══════════════════════════════════════════════════════════════════════
+// COMPACT CONFIGURATIONS
+// ═══════════════════════════════════════════════════════════════════════
+
+const COMPACT_CROP_NAMES: Record<string, Record<string, string>> = {
+  hi: { wheat: "गेहूं", rice: "धान", cotton: "कपास", soybean: "सोयाबीन", sugarcane: "गन्ना", maize: "मक्का", groundnut: "मूंगफली", onion: "प्याज", tomato: "टमाटर", potato: "आलू" },
+  mr: { wheat: "गहू", rice: "भात", cotton: "कापूस", soybean: "सोयाबीन", sugarcane: "ऊस", maize: "मका", groundnut: "भुईमूग", onion: "कांदा", tomato: "टोमॅटो", potato: "बटाटा" },
+  en: { wheat: "Wheat", rice: "Rice", cotton: "Cotton", soybean: "Soybean", sugarcane: "Sugarcane", maize: "Maize", groundnut: "Groundnut", onion: "Onion", tomato: "Tomato", potato: "Potato" },
+};
+
+const STAGE_ESSENTIALS: Record<string, { days: number; cat: string; tasks: number }> = {
   planning: { days: -7, cat: "planning", tasks: 2 },
-  land_prep: { days: -5, cat: "land_preparation", tasks: 2 },
+  land_preparation: { days: -5, cat: "land_preparation", tasks: 2 },
   sowing: { days: 0, cat: "sowing", tasks: 3 },
   germination: { days: 7, cat: "irrigation", tasks: 2 },
   vegetative: { days: 30, cat: "fertilizer", tasks: 3 },
@@ -24,15 +33,25 @@ const STAGE_ESSENTIALS = {
   post_harvest: { days: 125, cat: "post_harvest", tasks: 2 },
 };
 
-const FARMING_RULES = {
-  organic_only: "ONLY: FYM, Neem, Trichoderma. NO chemicals",
-  fertilizer_pesticide: "USE: Urea, DAP, Pesticides (IFFCO, Bayer)",
-  organic_fertilizer: "Organic first, then fertilizer if needed",
+const FARMING_RULES: Record<string, string> = {
+  organic_only: "ONLY: FYM, Vermicompost, Neem, Trichoderma. NO chemicals.",
+  fertilizer_pesticide: "USE: Urea, DAP, MOP, Pesticides. Brands: IFFCO, Bayer, Syngenta",
+  organic_fertilizer: "Balanced: Organic first, then fertilizers if needed",
 };
 
 // ═══════════════════════════════════════════════════════════════════════
-// ULTRA-COMPACT PROMPT BUILDER (Reduced from 5000+ to 800 tokens)
+// HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════
+
+function safeParsePrice(priceRange: unknown): number {
+  if (!priceRange) return 0;
+  if (typeof priceRange === "number") return priceRange;
+  if (typeof priceRange === "string") {
+    const match = priceRange.match(/(\d+)/);
+    return match ? parseInt(match[1], 10) : 0;
+  }
+  return 0;
+}
 
 function buildCompactPrompt(params: {
   cropName: string;
@@ -45,40 +64,36 @@ function buildCompactPrompt(params: {
   nDeficit: number;
   pDeficit: number;
   kDeficit: number;
+  stageKeys: string[];
 }): { system: string; user: string } {
-  const { cropName, translatedName, acres, farmingType, language, soilType, state, nDeficit, pDeficit, kDeficit } =
-    params;
+  const { translatedName, acres, farmingType, language, soilType, state, nDeficit, pDeficit, kDeficit, stageKeys } = params;
 
-  // SYSTEM: 400 tokens (down from 3000)
-  const system = `Expert agricultural scientist. Create ${translatedName} schedule.
+  const system = `Expert agricultural scientist. Create ${translatedName} crop schedule.
 
-RULES:
-1. Crop: "${translatedName}" in ALL task names
-2. Lang: ${language} rural dialect
-3. Farm: ${FARMING_RULES[farmingType]}
-4. 9 stages: planning→land_prep→sowing→germination→vegetative→reproductive→maturity→harvest→post_harvest
+CRITICAL RULES:
+1. Crop name "${translatedName}" MUST appear in EVERY task_name
+2. Language: ${language} rural dialect ONLY
+3. Farming: ${FARMING_RULES[farmingType] || FARMING_RULES.organic_fertilizer}
+4. Cover ALL ${stageKeys.length} stages: ${stageKeys.join(", ")}
 
-LAND: ${acres}ac, ${soilType}, ${state}
-NPK deficit: ${nDeficit}/${pDeficit}/${kDeficit} kg/ha`;
+LAND: ${acres} acres, ${soilType} soil, ${state}
+NPK deficit: N=${nDeficit}, P=${pDeficit}, K=${kDeficit} kg/ha`;
 
-  // USER: 200 tokens (down from 2000)
   const user = `Generate ${translatedName} schedule:
-- 18-24 tasks (2-3 per stage)
-- Include: yields, costs, products
-- Format: task_name="${translatedName} - [action]"`;
+- 18-27 tasks (2-3 per stage)
+- task_name format: "${translatedName} - [action in ${language}]"
+- Include: costs, products with brand names, yield impact
+- All stages required: ${stageKeys.join(", ")}`;
 
   return { system, user };
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// MINIMAL JSON SCHEMA (Reduced from 2000+ to 500 tokens)
-// ═══════════════════════════════════════════════════════════════════════
 
 function getMinimalSchema(translatedName: string, stages: string[]) {
   return {
     type: "function",
     function: {
       name: "create_schedule",
+      description: `Create ${translatedName} farming schedule`,
       parameters: {
         type: "object",
         properties: {
@@ -87,11 +102,11 @@ function getMinimalSchema(translatedName: string, stages: string[]) {
             items: {
               type: "object",
               properties: {
-                task_name: { type: "string" },
+                task_name: { type: "string", description: `Must contain "${translatedName}"` },
                 stage: { type: "string", enum: stages },
                 days: { type: "integer" },
                 category: { type: "string" },
-                priority: { type: "string" },
+                priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
                 desc: { type: "string" },
                 yield_impact: { type: "string" },
                 cost: { type: "number" },
@@ -121,18 +136,14 @@ function getMinimalSchema(translatedName: string, stages: string[]) {
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// SMART FALLBACK GENERATOR (Reduced complexity)
-// ═══════════════════════════════════════════════════════════════════════
-
-function generateSmartFallback(missingStage: string, translatedName: string, acres: number, lang: string): any {
+function generateSmartFallback(missingStage: string, translatedName: string, acres: number, lang: string): Record<string, unknown> | null {
   const essentials = STAGE_ESSENTIALS[missingStage];
   if (!essentials) return null;
 
-  const templates = {
-    hi: `${translatedName} ${missingStage} कार्य`,
-    mr: `${translatedName} ${missingStage} काम`,
-    en: `${translatedName} ${missingStage} task`,
+  const templates: Record<string, string> = {
+    hi: `${translatedName} - ${missingStage} कार्य`,
+    mr: `${translatedName} - ${missingStage} काम`,
+    en: `${translatedName} - ${missingStage} task`,
   };
 
   return {
@@ -150,73 +161,103 @@ function generateSmartFallback(missingStage: string, translatedName: string, acr
   };
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// SINGLE-PASS VALIDATOR (No redundant loops)
-// ═══════════════════════════════════════════════════════════════════════
-
-function validateAndFixTask(task: any, translatedName: string, farmingType: string): { valid: boolean; fixed: any } {
-  // Fix 1: Crop name validation
-  if (!task.task_name.includes(translatedName)) {
-    task.task_name = `${translatedName} - ${task.task_name}`;
+function validateAndFixTask(task: Record<string, unknown>, translatedName: string, farmingType: string): Record<string, unknown> {
+  const taskName = String(task.task_name || "");
+  
+  // Fix 1: Ensure crop name is in task_name
+  if (!taskName.includes(translatedName)) {
+    task.task_name = `${translatedName} - ${taskName}`;
   }
 
-  // Fix 2: Farming type compliance (single check)
-  if (farmingType === "organic_only") {
-    const banned = ["urea", "dap", "imidacloprid", "carbendazim"];
-    const taskText = JSON.stringify(task).toLowerCase();
-
-    if (banned.some((b) => taskText.includes(b))) {
-      // Replace chemical products with organic alternatives
-      if (task.products) {
-        task.products = task.products.map((p: any) => {
-          if (p.name.toLowerCase().includes("urea")) {
-            return { name: "Vermicompost", brand: "Organic", dose: "500kg/ac", price: 6000 };
-          }
-          if (p.name.toLowerCase().includes("pesticide")) {
-            return { name: "Neem Oil", brand: "Organic", dose: "2L/ac", price: 760 };
-          }
-          return p;
-        });
+  // Fix 2: Farming type compliance
+  if (farmingType === "organic_only" && task.products) {
+    const products = task.products as Array<Record<string, unknown>>;
+    task.products = products.map((p) => {
+      const name = String(p.name || "").toLowerCase();
+      if (name.includes("urea") || name.includes("dap") || name.includes("mop")) {
+        return { name: "Vermicompost", brand: "Organic", dose: "500kg/acre", price: 6000 };
       }
-    }
+      if (name.includes("pesticide") || name.includes("imidacloprid") || name.includes("carbendazim")) {
+        return { name: "Neem Oil", brand: "Organic India", dose: "2L/acre", price: 760 };
+      }
+      // Fix price handling
+      p.price = safeParsePrice(p.price);
+      return p;
+    });
   }
 
-  return { valid: true, fixed: task };
+  // Fix 3: Ensure cost is a number
+  task.cost = safeParsePrice(task.cost) || Math.round((task.products as Array<Record<string, unknown>> || []).reduce((sum: number, p: Record<string, unknown>) => sum + safeParsePrice(p.price), 0)) || 500;
+
+  return task;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// OPTIMIZED MAIN HANDLER
+// MAIN HANDLER
 // ═══════════════════════════════════════════════════════════════════════
 
-async function generateOptimizedSchedule(req: Request) {
+serve(async (req) => {
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
   const startTime = Date.now();
+  console.log("📅 [AI-Schedule] Request received");
 
   try {
+    // Validate OpenAI key
+    const OPENAI_API_KEY = validateOpenAIKey();
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
     // Parse request
-    const { landId, cropName, sowingDate, language = "hi", farmingType = "organic_fertilizer" } = await req.json();
+    const body = await req.json();
+    const { landId, cropName, sowingDate, language = "hi", farmingType = "organic_fertilizer" } = body;
+    
+    console.log("📥 [AI-Schedule] Input:", { landId, cropName, sowingDate, language, farmingType });
 
-    // Get translated crop name (single lookup)
-    const translatedName = COMPACT_CROP_NAMES[language]?.[cropName.toLowerCase()] || cropName;
+    if (!landId || !cropName || !sowingDate) {
+      throw new Error("Missing required fields: landId, cropName, or sowingDate");
+    }
 
-    // Fetch land data (parallel)
-    const [land, stages] = await Promise.all([
+    // Get translated crop name
+    const langCrops = COMPACT_CROP_NAMES[language] || COMPACT_CROP_NAMES.en;
+    const translatedName = langCrops[cropName.toLowerCase()] || cropName;
+    console.log("🌾 [AI-Schedule] Crop:", { original: cropName, translated: translatedName });
+
+    // Fetch land data and stages in parallel
+    const [landResult, stagesResult] = await Promise.all([
       supabase.from("lands").select("*").eq("id", landId).single(),
-      supabase.from("farming_stages").select("stage_key, stage_order").eq("is_active", true).order("stage_order"),
+      supabase.from("farming_stages").select("stage_key, stage_order, stage_name").eq("is_active", true).order("stage_order"),
     ]);
 
-    if (!land.data || !stages.data) throw new Error("Data fetch failed");
+    if (landResult.error) {
+      console.error("❌ [AI-Schedule] Land fetch error:", landResult.error);
+      throw new Error(`Land not found: ${landResult.error.message}`);
+    }
+    if (stagesResult.error) {
+      console.error("❌ [AI-Schedule] Stages fetch error:", stagesResult.error);
+      throw new Error(`Stages not found: ${stagesResult.error.message}`);
+    }
 
-    const landData = land.data;
-    const stageKeys = stages.data.map((s) => s.stage_key);
+    const landData = landResult.data;
+    const stageKeys = stagesResult.data.map((s) => s.stage_key);
     const acres = landData.area_acres || 1;
 
-    // Calculate NPK deficit (simplified)
-    const target = { wheat: 120, rice: 120, cotton: 120, soybean: 30 }[cropName.toLowerCase()] || 100;
+    console.log("🏞️ [AI-Schedule] Land:", { acres, soil: landData.soil_type, state: landData.state });
+    console.log("📋 [AI-Schedule] Stages:", stageKeys);
+
+    // Calculate NPK deficit
+    const target = { wheat: 120, rice: 120, cotton: 120, soybean: 30, sugarcane: 150 }[cropName.toLowerCase()] || 100;
     const nDeficit = Math.max(0, target - (landData.nitrogen_kg_ha || 50));
     const pDeficit = Math.max(0, target * 0.5 - (landData.phosphorus_kg_ha || 25));
     const kDeficit = Math.max(0, target * 0.4 - (landData.potassium_kg_ha || 25));
 
-    // Build compact prompt
+    // Build prompt
     const prompts = buildCompactPrompt({
       cropName,
       translatedName,
@@ -228,91 +269,188 @@ async function generateOptimizedSchedule(req: Request) {
       nDeficit,
       pDeficit,
       kDeficit,
+      stageKeys,
     });
 
-    console.log(`🚀 Optimized prompt: ${prompts.system.length + prompts.user.length} chars (was 15000+)`);
+    console.log(`🤖 [AI-Schedule] Prompt size: ${prompts.system.length + prompts.user.length} chars`);
 
-    // AI call with minimal schema
-    const aiResponse = await fetch(OPENAI_API_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "gpt-4o-2024-08-06",
-        max_completion_tokens: 4000,
-        messages: [
-          { role: "system", content: prompts.system },
-          { role: "user", content: prompts.user },
-        ],
-        tools: [getMinimalSchema(translatedName, stageKeys)],
-        tool_choice: { type: "function", function: { name: "create_schedule" } },
-      }),
-    });
+    // AI call with timeout and retry
+    let aiResponse: Response | null = null;
+    let lastError = "";
+    const maxRetries = 2;
 
-    if (!aiResponse.ok) throw new Error(`AI error: ${aiResponse.status}`);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🔄 [AI-Schedule] AI call attempt ${attempt}/${maxRetries}`);
 
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), AI_CONFIG.REQUEST_TIMEOUT);
+
+        aiResponse = await fetch(OPENAI_API_URL, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${OPENAI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            model: AI_CONFIG.MODEL,
+            max_tokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
+            messages: [
+              { role: "system", content: prompts.system },
+              { role: "user", content: prompts.user },
+            ],
+            tools: [getMinimalSchema(translatedName, stageKeys)],
+            tool_choice: { type: "function", function: { name: "create_schedule" } },
+          }),
+        });
+
+        clearTimeout(timeoutId);
+
+        if (aiResponse.ok) {
+          console.log(`✅ [AI-Schedule] AI call succeeded on attempt ${attempt}`);
+          break;
+        }
+
+        if (aiResponse.status === 502 || aiResponse.status === 503 || aiResponse.status === 504) {
+          lastError = `Gateway error ${aiResponse.status}`;
+          console.warn(`⚠️ [AI-Schedule] ${lastError}, retrying...`);
+          if (attempt < maxRetries) {
+            await new Promise((r) => setTimeout(r, 2000 * attempt));
+            continue;
+          }
+        }
+
+        const errorText = await aiResponse.text();
+        lastError = `AI API error: ${aiResponse.status}`;
+        console.error(`❌ [AI-Schedule] AI error:`, aiResponse.status, errorText.substring(0, 500));
+      } catch (fetchError) {
+        if (fetchError.name === "AbortError") {
+          lastError = `AI request timed out after ${AI_CONFIG.REQUEST_TIMEOUT}ms`;
+        } else {
+          lastError = `Network error: ${fetchError}`;
+        }
+        console.error(`❌ [AI-Schedule] Fetch error on attempt ${attempt}:`, lastError);
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 2000 * attempt));
+          continue;
+        }
+      }
+    }
+
+    if (!aiResponse || !aiResponse.ok) {
+      throw new Error(lastError || "AI API failed after retries");
+    }
+
+    // Parse AI response
     const aiData = await aiResponse.json();
-    const scheduleData = JSON.parse(aiData.choices[0].message.tool_calls[0].function.arguments);
+    console.log("📊 [AI-Schedule] AI response received");
 
-    // Single-pass validation & fixing
-    const validatedTasks = scheduleData.tasks
-      .filter((t) => t.task_name && t.task_name.trim())
-      .map((t) => validateAndFixTask(t, translatedName, farmingType).fixed);
+    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall?.function?.arguments) {
+      console.error("❌ [AI-Schedule] Invalid AI response structure:", JSON.stringify(aiData).substring(0, 500));
+      throw new Error("AI returned invalid response structure");
+    }
 
-    // Check stage coverage (fast)
-    const covered = new Set(validatedTasks.map((t) => t.stage));
+    const scheduleData = JSON.parse(toolCall.function.arguments);
+    console.log(`✅ [AI-Schedule] Parsed ${scheduleData.tasks?.length || 0} tasks from AI`);
+
+    // Validate and fix tasks
+    const validatedTasks = (scheduleData.tasks || [])
+      .filter((t: Record<string, unknown>) => t.task_name && String(t.task_name).trim())
+      .map((t: Record<string, unknown>) => validateAndFixTask(t, translatedName, farmingType));
+
+    // Check stage coverage
+    const covered = new Set(validatedTasks.map((t: Record<string, unknown>) => t.stage));
     const missing = stageKeys.filter((s) => !covered.has(s));
+    console.log(`📋 [AI-Schedule] Stage coverage: ${covered.size}/${stageKeys.length}, missing: ${missing.join(", ") || "none"}`);
 
-    // Generate fallbacks only for missing stages
+    // Generate fallbacks for missing stages
     const fallbacks = missing
       .map((stage) => generateSmartFallback(stage, translatedName, acres, language))
       .filter(Boolean);
 
     const allTasks = [...validatedTasks, ...fallbacks];
+    console.log(`📦 [AI-Schedule] Total tasks: ${allTasks.length} (${validatedTasks.length} AI + ${fallbacks.length} fallback)`);
 
-    // Save to DB (batch insert)
-    const { data: savedSchedule } = await supabase
+    // Get tenant and farmer from headers
+    const tenantId = req.headers.get("x-tenant-id");
+    const farmerId = req.headers.get("x-farmer-id");
+
+    // Save schedule to DB
+    const totalCost = scheduleData.total_cost || allTasks.reduce((sum: number, t: Record<string, unknown>) => sum + (safeParsePrice(t.cost) || 0), 0);
+    const expectedYield = scheduleData.expected_yield || acres * 25;
+
+    const { data: savedSchedule, error: scheduleError } = await supabase
       .from("crop_schedules")
       .insert({
         land_id: landId,
+        farmer_id: farmerId,
+        tenant_id: tenantId,
         crop_name: cropName,
         sowing_date: sowingDate,
-        total_estimated_cost: scheduleData.total_cost || allTasks.reduce((sum, t) => sum + (t.cost || 0), 0),
-        expected_yield_quintals: scheduleData.expected_yield || acres * 25,
-        ai_model: "gpt-4o-optimized",
+        total_estimated_cost: totalCost,
+        expected_yield_quintals: expectedYield,
+        ai_model: AI_CONFIG.MODEL,
         is_active: true,
         farming_type: farmingType,
         generation_language: language,
         tasks_total_count: allTasks.length,
         metadata: {
           translated_crop_name: translatedName,
-          token_savings: "75%",
           execution_time_ms: Date.now() - startTime,
+          stages_covered: Array.from(covered),
+          fallback_stages: missing,
         },
       })
       .select()
       .single();
 
-    const tasksToInsert = allTasks.map((task, idx) => {
-      const taskDate = new Date(new Date(sowingDate).getTime() + task.days * 86400000);
+    if (scheduleError) {
+      console.error("❌ [AI-Schedule] Schedule save error:", scheduleError);
+      throw new Error(`Failed to save schedule: ${scheduleError.message}`);
+    }
+
+    console.log(`💾 [AI-Schedule] Schedule saved: ${savedSchedule.id}`);
+
+    // Prepare and insert tasks
+    const tasksToInsert = allTasks.map((task: Record<string, unknown>, idx: number) => {
+      const daysFromSowing = Number(task.days) || 0;
+      const taskDate = new Date(new Date(sowingDate).getTime() + daysFromSowing * 86400000);
+      
       return {
         schedule_id: savedSchedule.id,
+        land_id: landId,
+        farmer_id: farmerId,
+        tenant_id: tenantId,
         task_name: task.task_name,
-        task_type: task.category,
+        task_type: task.category || "general",
         task_date: taskDate.toISOString().split("T")[0],
-        days_from_sowing: task.days,
-        priority: task.priority,
-        task_description: task.desc,
-        instructions: task.steps,
+        days_from_sowing: daysFromSowing,
+        priority: task.priority || "medium",
+        task_description: task.desc || "",
+        instructions: task.steps || [],
         stage_key: task.stage,
-        yield_impact: task.yield_impact,
-        product_recommendations: task.products || [],
-        estimated_cost: task.cost,
+        yield_impact: task.yield_impact || "",
+        product_recommendations: (task.products as Array<Record<string, unknown>> || []).map((p) => ({
+          ...p,
+          price: safeParsePrice(p.price),
+        })),
+        estimated_cost: safeParsePrice(task.cost),
         status: "pending",
         sequence_order: idx + 1,
       };
     });
 
-    await supabase.from("schedule_tasks").insert(tasksToInsert);
+    const { error: tasksError } = await supabase.from("schedule_tasks").insert(tasksToInsert);
+
+    if (tasksError) {
+      console.error("❌ [AI-Schedule] Tasks save error:", tasksError);
+      throw new Error(`Failed to save tasks: ${tasksError.message}`);
+    }
+
+    const executionTime = Date.now() - startTime;
+    console.log(`✅ [AI-Schedule] Complete! ${allTasks.length} tasks in ${executionTime}ms`);
 
     return new Response(
       JSON.stringify({
@@ -321,41 +459,20 @@ async function generateOptimizedSchedule(req: Request) {
         cropName,
         translatedName,
         tasks: allTasks.length,
-        tokenSavings: "75%",
-        executionTimeMs: Date.now() - startTime,
+        executionTimeMs: executionTime,
       }),
-      { status: 200, headers: { "Content-Type": "application/json" } },
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
-    console.error("❌ Error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    const executionTime = Date.now() - startTime;
+    console.error(`❌ [AI-Schedule] Error after ${executionTime}ms:`, error);
+    
+    return new Response(
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : "Unknown error",
+        executionTimeMs: executionTime,
+      }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// KEY OPTIMIZATIONS SUMMARY
-// ═══════════════════════════════════════════════════════════════════════
-
-/*
-BEFORE → AFTER:
-1. Prompt tokens: 8000+ → 2000 (75% reduction)
-2. System prompt: 3000 → 400 chars
-3. User prompt: 2000 → 200 chars
-4. JSON schema: 2000 → 500 tokens
-5. Validation loops: 3 → 1 (single pass)
-6. Crop translations: Full dict → On-demand lookup
-7. Fallback generation: Template-based → Smart minimal
-
-QUALITY IMPROVEMENTS:
-✅ Focused prompts = better AI responses
-✅ Faster execution (3-5s vs 8-12s)
-✅ Lower API costs (75% token savings)
-✅ Same or better accuracy
-✅ Cleaner code structure
-
-USAGE:
-Replace your current serve() handler with generateOptimizedSchedule()
-*/
+});
