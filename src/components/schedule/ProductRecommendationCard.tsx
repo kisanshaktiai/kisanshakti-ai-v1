@@ -37,14 +37,63 @@ interface ProductRecommendationCardProps {
   laborCost?: number;
 }
 
-const productTypeConfig = {
+// Product type translations for localization
+const PRODUCT_TYPE_TRANSLATIONS: Record<string, Record<string, string>> = {
+  organic: { en: 'Organic', hi: 'जैविक', mr: 'सेंद्रिय', pa: 'ਜੈਵਿਕ', ta: 'இயற்கை' },
+  growth_promoter: { en: 'Growth Booster', hi: 'ग्रोथ बूस्टर', mr: 'वाढ वर्धक', pa: 'ਵਿਕਾਸ ਵਧਾਉਣ ਵਾਲਾ', ta: 'வளர்ச்சி ஊக்கி' },
+  fertilizer: { en: 'Fertilizer', hi: 'खाद', mr: 'खत', pa: 'ਖਾਦ', ta: 'உரம்' },
+  pesticide: { en: 'Pesticide', hi: 'कीटनाशक', mr: 'कीटकनाशक', pa: 'ਕੀਟਨਾਸ਼ਕ', ta: 'பூச்சிக்கொல்லி' },
+  fungicide: { en: 'Fungicide', hi: 'फफूंदनाशक', mr: 'बुरशीनाशक', pa: 'ਉੱਲੀਨਾਸ਼ਕ', ta: 'பூஞ்சை எதிர்ப்பான்' },
+  bio_fertilizer: { en: 'Bio-Fertilizer', hi: 'जैव खाद', mr: 'जैव खत', pa: 'ਜੈਵਿਕ ਖਾਦ', ta: 'உயிர் உரம்' },
+  seed_treatment: { en: 'Seed Treatment', hi: 'बीज उपचार', mr: 'बीज प्रक्रिया', pa: 'ਬੀਜ ਇਲਾਜ', ta: 'விதை சிகிச்சை' },
+};
+
+// Common product name translations
+const PRODUCT_NAME_TRANSLATIONS: Record<string, Record<string, string>> = {
+  urea: { en: 'Urea', hi: 'यूरिया', mr: 'युरिया', pa: 'ਯੂਰੀਆ', ta: 'யூரியா' },
+  dap: { en: 'DAP', hi: 'डीएपी', mr: 'डीएपी', pa: 'ਡੀਏਪੀ', ta: 'டிஏபி' },
+  mop: { en: 'MOP', hi: 'एमओपी', mr: 'एमओपी', pa: 'ਐਮਓਪੀ', ta: 'எம்ஓபி' },
+  fym: { en: 'Farm Yard Manure', hi: 'गोबर की खाद', mr: 'शेणखत', pa: 'ਗੋਬਰ ਖਾਦ', ta: 'தொழு உரம்' },
+  vermicompost: { en: 'Vermicompost', hi: 'केंचुआ खाद', mr: 'गांडूळ खत', pa: 'ਕੇਂਚੂਆ ਖਾਦ', ta: 'மண்புழு உரம்' },
+  neem_oil: { en: 'Neem Oil', hi: 'नीम का तेल', mr: 'कडुनिंबाचे तेल', pa: 'ਨਿੰਮ ਦਾ ਤੇਲ', ta: 'வேப்ப எண்ணெய்' },
+  trichoderma: { en: 'Trichoderma', hi: 'ट्राइकोडर्मा', mr: 'ट्रायकोडर्मा', pa: 'ਟ੍ਰਾਈਕੋਡਰਮਾ', ta: 'டிரைக்கோடெர்மா' },
+  pseudomonas: { en: 'Pseudomonas', hi: 'स्यूडोमोनास', mr: 'स्यूडोमोनास', pa: 'ਸੂਡੋਮੋਨਾਸ', ta: 'சூடோமோனாஸ்' },
+  jeevamrut: { en: 'Jeevamrut', hi: 'जीवामृत', mr: 'जीवामृत', pa: 'ਜੀਵਾਮ੍ਰਿਤ', ta: 'ஜீவாம்ருதம்' },
+  humic_acid: { en: 'Humic Acid', hi: 'ह्यूमिक एसिड', mr: 'ह्युमिक आम्ल', pa: 'ਹਿਊਮਿਕ ਐਸਿਡ', ta: 'ஹியூமிக் அமிலம்' },
+  seaweed: { en: 'Seaweed Extract', hi: 'समुद्री शैवाल', mr: 'सीव्हीड अर्क', pa: 'ਸਮੁੰਦਰੀ ਸ਼ੈਵਾਲ', ta: 'கடல்பாசி சாறு' },
+};
+
+// Translate product name to local language
+function translateProductName(name: string, lang: string): string {
+  if (!name) return '';
+  
+  const nameLower = name.toLowerCase().replace(/\s+/g, '_');
+  
+  // Check if it's a known product
+  for (const [key, translations] of Object.entries(PRODUCT_NAME_TRANSLATIONS)) {
+    if (nameLower.includes(key) || key.includes(nameLower.split('_')[0])) {
+      return translations[lang] || translations.en || name;
+    }
+  }
+  
+  return name;
+}
+
+const productTypeConfig: Record<string, {
+  icon: typeof Leaf;
+  color: string;
+  bgColor: string;
+  borderColor: string;
+  gradient: string;
+  label: Record<string, string>;
+}> = {
   organic: {
     icon: Leaf,
     color: 'text-green-600',
     bgColor: 'bg-green-500/10',
     borderColor: 'border-green-500/30',
     gradient: 'from-green-500 to-emerald-500',
-    label: { en: 'Organic', hi: 'जैविक', mr: 'सेंद्रिय' },
+    label: PRODUCT_TYPE_TRANSLATIONS.organic,
   },
   growth_promoter: {
     icon: Sparkles,
@@ -52,7 +101,7 @@ const productTypeConfig = {
     bgColor: 'bg-blue-500/10',
     borderColor: 'border-blue-500/30',
     gradient: 'from-blue-500 to-cyan-500',
-    label: { en: 'Growth Booster', hi: 'ग्रोथ बूस्टर', mr: 'वाढ वर्धक' },
+    label: PRODUCT_TYPE_TRANSLATIONS.growth_promoter,
   },
   fertilizer: {
     icon: FlaskConical,
@@ -60,7 +109,7 @@ const productTypeConfig = {
     bgColor: 'bg-amber-500/10',
     borderColor: 'border-amber-500/30',
     gradient: 'from-amber-500 to-yellow-500',
-    label: { en: 'Fertilizer', hi: 'खाद', mr: 'खत' },
+    label: PRODUCT_TYPE_TRANSLATIONS.fertilizer,
   },
   pesticide: {
     icon: Bug,
@@ -68,7 +117,31 @@ const productTypeConfig = {
     bgColor: 'bg-red-500/10',
     borderColor: 'border-red-500/30',
     gradient: 'from-red-500 to-orange-500',
-    label: { en: 'Pesticide', hi: 'कीटनाशक', mr: 'कीटकनाशक' },
+    label: PRODUCT_TYPE_TRANSLATIONS.pesticide,
+  },
+  fungicide: {
+    icon: Shield,
+    color: 'text-purple-600',
+    bgColor: 'bg-purple-500/10',
+    borderColor: 'border-purple-500/30',
+    gradient: 'from-purple-500 to-violet-500',
+    label: PRODUCT_TYPE_TRANSLATIONS.fungicide,
+  },
+  bio_fertilizer: {
+    icon: Leaf,
+    color: 'text-emerald-600',
+    bgColor: 'bg-emerald-500/10',
+    borderColor: 'border-emerald-500/30',
+    gradient: 'from-emerald-500 to-teal-500',
+    label: PRODUCT_TYPE_TRANSLATIONS.bio_fertilizer,
+  },
+  seed_treatment: {
+    icon: Sparkles,
+    color: 'text-indigo-600',
+    bgColor: 'bg-indigo-500/10',
+    borderColor: 'border-indigo-500/30',
+    gradient: 'from-indigo-500 to-blue-500',
+    label: PRODUCT_TYPE_TRANSLATIONS.seed_treatment,
   },
 };
 
@@ -83,6 +156,12 @@ export default function ProductRecommendationCard({ products, landAreaAcres = 1,
   if (!hasProducts && !hasLaborCost) return null;
 
   const getLabel = (labels: Record<string, string>) => labels[lang] || labels.en;
+  
+  // Translate product name if it's in English but user language is different
+  const getLocalizedProductName = (name: string) => {
+    if (lang === 'en') return name;
+    return translateProductName(name, lang);
+  };
 
   // Calculate total product cost
   const totalProductCost = products.reduce((sum, p) => sum + (p.price_estimate || 0), 0);
@@ -126,8 +205,8 @@ export default function ProductRecommendationCard({ products, landAreaAcres = 1,
                       <ProductIcon className="h-4 w-4" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h5 className="font-semibold text-sm leading-tight">{product.product_name}</h5>
-                      <Badge 
+                      <h5 className="font-semibold text-sm leading-tight">{getLocalizedProductName(product.product_name)}</h5>
+                      <Badge
                         variant="outline" 
                         className={cn("mt-1 text-[10px] px-2 py-0", config.bgColor, config.borderColor, config.color)}
                       >
