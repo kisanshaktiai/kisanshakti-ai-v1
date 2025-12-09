@@ -1129,6 +1129,216 @@ const FERTILIZER_PRICES: Record<string, { price_per_kg: number; bag_kg: number; 
 // SEED RATES & PRICES - UPDATED 2024-25 INDIAN MARKET RATES
 // Sources: ICAR, Krishi Vigyan Kendras, State Seed Corporations
 // ═══════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════
+// EXPERT CROP SCIENCE: NPK SPLIT APPLICATION SCHEDULE (3x-7x Yield)
+// Based on ICAR/IARI research - Crop physiology based nutrition
+// ═══════════════════════════════════════════════════════════════════════
+const EXPERT_NPK_SPLIT_SCHEDULE: Record<string, {
+  n_splits: Array<{ stage: string; percent: number; das_range: string; method: string; why: string }>;
+  p_application: { timing: string; method: string; why: string };
+  k_splits: Array<{ stage: string; percent: number; das_range: string; method: string; why: string }>;
+  micronutrients: Array<{ nutrient: string; dose_per_acre: string; timing: string; method: string; deficiency_signs: string }>;
+  growth_boosters: Array<{ name: string; dose_per_acre: string; timing: string; yield_impact: string }>;
+}> = {
+  wheat: {
+    n_splits: [
+      { stage: 'basal', percent: 33, das_range: '0 DAS', method: 'broadcasting', why: 'Root establishment' },
+      { stage: 'crown_root', percent: 33, das_range: '21-25 DAS', method: 'top_dressing', why: 'Tillering boost - 50% yield decided here' },
+      { stage: 'flag_leaf', percent: 34, das_range: '45-50 DAS', method: 'top_dressing', why: 'Grain protein & weight' },
+    ],
+    p_application: { timing: 'Basal (100%)', method: 'drilling', why: 'P immobile in soil, must be near roots' },
+    k_splits: [
+      { stage: 'basal', percent: 50, das_range: '0 DAS', method: 'broadcasting', why: 'Root development' },
+      { stage: 'flowering', percent: 50, das_range: '60-65 DAS', method: 'foliar_spray', why: 'Grain filling & lodging resistance' },
+    ],
+    micronutrients: [
+      { nutrient: 'Zinc Sulphate', dose_per_acre: '10 kg soil + 0.5% foliar', timing: 'Basal + 45 DAS', method: 'soil + foliar', deficiency_signs: 'Khaira disease, stunted' },
+      { nutrient: 'Iron Sulphate', dose_per_acre: '0.5% foliar', timing: '30 & 50 DAS', method: 'foliar_spray', deficiency_signs: 'Interveinal chlorosis' },
+      { nutrient: 'Boron', dose_per_acre: '0.2% Borax', timing: '45-50 DAS', method: 'foliar_spray', deficiency_signs: 'Empty grains, poor pollination' },
+    ],
+    growth_boosters: [
+      { name: 'Seaweed Extract', dose_per_acre: '500ml', timing: '25 & 50 DAS', yield_impact: '+15-20% tillering' },
+      { name: 'Humic Acid', dose_per_acre: '1L', timing: 'With first irrigation', yield_impact: '+10-15% root mass' },
+      { name: '0:52:34 (MKP)', dose_per_acre: '1kg foliar', timing: '70-80 DAS', yield_impact: '+12% grain weight' },
+    ],
+  },
+  rice: {
+    n_splits: [
+      { stage: 'basal', percent: 25, das_range: '0-3 DAT', method: 'broadcasting', why: 'Initial establishment' },
+      { stage: 'active_tillering', percent: 40, das_range: '21-25 DAT', method: 'top_dressing', why: 'Maximum tiller production' },
+      { stage: 'panicle_initiation', percent: 35, das_range: '45-50 DAT', method: 'top_dressing', why: 'Spikelet number & filling' },
+    ],
+    p_application: { timing: 'Basal (100%)', method: 'incorporation', why: 'P fixes quickly in flooded conditions' },
+    k_splits: [
+      { stage: 'basal', percent: 50, das_range: '0-3 DAT', method: 'broadcasting', why: 'Root & tiller development' },
+      { stage: 'panicle', percent: 50, das_range: '45-50 DAT', method: 'top_dressing', why: 'Grain filling, disease resistance' },
+    ],
+    micronutrients: [
+      { nutrient: 'Zinc Sulphate', dose_per_acre: '10 kg', timing: 'Basal', method: 'soil_application', deficiency_signs: 'Khaira - bronze/rusty leaves' },
+      { nutrient: 'Iron Sulphate', dose_per_acre: '1% foliar', timing: '25 & 45 DAT', method: 'foliar_spray', deficiency_signs: 'Yellowing in alkaline soils' },
+    ],
+    growth_boosters: [
+      { name: 'Silica (Potassium Silicate)', dose_per_acre: '2kg', timing: '30 DAT', yield_impact: '+20% lodging resistance' },
+      { name: 'Seaweed Extract', dose_per_acre: '500ml', timing: '20 & 45 DAT', yield_impact: '+15% tiller count' },
+    ],
+  },
+  cotton: {
+    n_splits: [
+      { stage: 'basal', percent: 20, das_range: '0 DAS', method: 'band_placement', why: 'Early vegetative' },
+      { stage: 'squaring', percent: 30, das_range: '35-40 DAS', method: 'side_dressing', why: 'Square formation' },
+      { stage: 'flowering', percent: 30, das_range: '60-70 DAS', method: 'fertigation/foliar', why: 'Boll retention' },
+      { stage: 'boll_development', percent: 20, das_range: '90-100 DAS', method: 'foliar_spray', why: 'Boll weight' },
+    ],
+    p_application: { timing: 'Basal (100%)', method: 'band_placement', why: 'Deep root P access' },
+    k_splits: [
+      { stage: 'basal', percent: 25, das_range: '0 DAS', method: 'broadcasting', why: 'Root development' },
+      { stage: 'squaring', percent: 25, das_range: '35-40 DAS', method: 'side_dressing', why: 'Fiber initiation' },
+      { stage: 'flowering', percent: 25, das_range: '60-70 DAS', method: 'fertigation', why: 'Boll retention' },
+      { stage: 'boll_opening', percent: 25, das_range: '100-110 DAS', method: 'foliar_spray', why: 'Fiber quality' },
+    ],
+    micronutrients: [
+      { nutrient: 'Magnesium Sulphate', dose_per_acre: '5kg soil + 1% foliar', timing: '40 & 70 DAS', method: 'soil + foliar', deficiency_signs: 'Reddening between veins' },
+      { nutrient: 'Boron', dose_per_acre: '0.2% Borax', timing: '50 & 80 DAS', method: 'foliar_spray', deficiency_signs: 'Square/boll drop' },
+      { nutrient: 'Zinc Sulphate', dose_per_acre: '0.5% foliar', timing: '30 & 60 DAS', method: 'foliar_spray', deficiency_signs: 'Bronzing, small leaves' },
+    ],
+    growth_boosters: [
+      { name: 'NAA (Planofix)', dose_per_acre: '40ml', timing: '60 & 90 DAS', yield_impact: '+25% boll retention' },
+      { name: 'Mepiquat Chloride', dose_per_acre: '250ml', timing: '80-90 DAS', yield_impact: 'Controls vegetative growth' },
+    ],
+  },
+  sugarcane: {
+    n_splits: [
+      { stage: 'basal', percent: 10, das_range: '0 DAP', method: 'furrow_application', why: 'Germination' },
+      { stage: 'tillering', percent: 30, das_range: '45-60 DAP', method: 'side_dressing', why: 'Tiller production' },
+      { stage: 'grand_growth', percent: 35, das_range: '90-120 DAP', method: 'earthing_up', why: 'Cane elongation' },
+      { stage: 'maturity', percent: 25, das_range: '150-180 DAP', method: 'fertigation', why: 'Sugar accumulation' },
+    ],
+    p_application: { timing: 'Basal (100%)', method: 'furrow_application', why: 'Root zone placement' },
+    k_splits: [
+      { stage: 'basal', percent: 25, das_range: '0 DAP', method: 'furrow_application', why: 'Root development' },
+      { stage: 'tillering', percent: 25, das_range: '45-60 DAP', method: 'side_dressing', why: 'Tiller strength' },
+      { stage: 'grand_growth', percent: 25, das_range: '90-120 DAP', method: 'earthing_up', why: 'Cane quality' },
+      { stage: 'maturity', percent: 25, das_range: '210-240 DAP', method: 'foliar_spray', why: 'Sugar recovery' },
+    ],
+    micronutrients: [
+      { nutrient: 'Ferrous Sulphate', dose_per_acre: '25kg soil', timing: 'Basal', method: 'soil_application', deficiency_signs: 'Yellowing in ratoon' },
+      { nutrient: 'Zinc Sulphate', dose_per_acre: '10kg', timing: 'Basal', method: 'soil_application', deficiency_signs: 'Stunted internodes' },
+      { nutrient: 'Manganese Sulphate', dose_per_acre: '5kg', timing: '60 DAP', method: 'soil_application', deficiency_signs: 'Grey specks' },
+    ],
+    growth_boosters: [
+      { name: 'Ethrel (Ethephon)', dose_per_acre: '200ml', timing: '30 days before harvest', yield_impact: '+1-2% sugar recovery' },
+      { name: 'Gibberellic Acid', dose_per_acre: '35gm', timing: '90 & 150 DAP', yield_impact: '+15-20% cane weight' },
+    ],
+  },
+  soybean: {
+    n_splits: [
+      { stage: 'starter', percent: 100, das_range: 'Basal only', method: 'band_placement', why: 'Starter dose only - Rhizobium fixes rest' },
+    ],
+    p_application: { timing: 'Basal (100%)', method: 'band_placement', why: 'Nodulation & root development' },
+    k_splits: [
+      { stage: 'basal', percent: 50, das_range: '0 DAS', method: 'broadcasting', why: 'Root establishment' },
+      { stage: 'pod_filling', percent: 50, das_range: '50-60 DAS', method: 'foliar_spray', why: 'Seed weight' },
+    ],
+    micronutrients: [
+      { nutrient: 'Sulphur', dose_per_acre: '20kg Gypsum', timing: 'Basal', method: 'soil_application', deficiency_signs: 'Pale green, stunted' },
+      { nutrient: 'Molybdenum', dose_per_acre: '50gm Ammonium Molybdate', timing: 'Seed treatment', method: 'seed_coating', deficiency_signs: 'Poor nodulation' },
+      { nutrient: 'Boron', dose_per_acre: '0.2% Borax', timing: '35 & 55 DAS', method: 'foliar_spray', deficiency_signs: 'Hollow heart in seeds' },
+    ],
+    growth_boosters: [
+      { name: 'Rhizobium Culture', dose_per_acre: '200gm/10kg seed', timing: 'Seed treatment', yield_impact: '+20-25% yield via N fixation' },
+      { name: 'PSB Culture', dose_per_acre: '200gm/10kg seed', timing: 'Seed treatment', yield_impact: '+15% P availability' },
+    ],
+  },
+  default: {
+    n_splits: [
+      { stage: 'basal', percent: 33, das_range: '0 DAS', method: 'broadcasting', why: 'Initial growth' },
+      { stage: 'vegetative', percent: 33, das_range: '25-30 DAS', method: 'top_dressing', why: 'Vegetative growth' },
+      { stage: 'reproductive', percent: 34, das_range: '50-60 DAS', method: 'top_dressing', why: 'Reproductive growth' },
+    ],
+    p_application: { timing: 'Basal (100%)', method: 'broadcasting', why: 'Root zone availability' },
+    k_splits: [
+      { stage: 'basal', percent: 50, das_range: '0 DAS', method: 'broadcasting', why: 'Root development' },
+      { stage: 'reproductive', percent: 50, das_range: '50-60 DAS', method: 'top_dressing', why: 'Fruit/grain quality' },
+    ],
+    micronutrients: [
+      { nutrient: 'Zinc Sulphate', dose_per_acre: '0.5% foliar', timing: '25 & 50 DAS', method: 'foliar_spray', deficiency_signs: 'Interveinal chlorosis' },
+    ],
+    growth_boosters: [
+      { name: 'Seaweed Extract', dose_per_acre: '500ml', timing: '25 & 50 DAS', yield_impact: '+10-15% growth' },
+    ],
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// EXPERT IPM THRESHOLDS - Economic Threshold Levels (ETL)
+// Based on ICAR-NCIPM guidelines for decision-making
+// ═══════════════════════════════════════════════════════════════════════
+const IPM_THRESHOLDS: Record<string, Array<{
+  pest: string;
+  local_name: string;
+  etl: string;
+  monitoring_method: string;
+  organic_control: string;
+  chemical_control: string;
+  critical_stage: string;
+}>> = {
+  cotton: [
+    { pest: 'American Bollworm', local_name: 'अमेरिकी बोंडअळी', etl: '1 larva/plant or 5% damaged squares', monitoring_method: 'Pheromone trap: 8-10 moths/trap/week', organic_control: 'Trichogramma cards 50000/acre + NPV @ 250LE', chemical_control: 'Emamectin Benzoate 5SG @ 100gm/acre', critical_stage: 'Squaring to boll formation' },
+    { pest: 'Pink Bollworm', local_name: 'गुलाबी बोंडअळी', etl: '8-10 moths/pheromone trap', monitoring_method: 'Pheromone trap weekly check', organic_control: 'Mass trapping + Bt spray', chemical_control: 'Profenofos 50EC @ 600ml/acre', critical_stage: 'Flowering onwards' },
+    { pest: 'Whitefly', local_name: 'पांढरी माशी', etl: '5-10 adults/leaf or 30% honeydew', monitoring_method: 'Yellow sticky traps + visual count', organic_control: 'Neem oil 2% + Verticillium lecanii', chemical_control: 'Diafenthiuron 50WP @ 250gm/acre', critical_stage: 'Throughout' },
+    { pest: 'Aphids', local_name: 'मावा', etl: '10-15% infested plants', monitoring_method: 'Visual observation on tender parts', organic_control: 'Neem soap spray + Ladybird beetle release', chemical_control: 'Imidacloprid 17.8SL @ 60ml/acre', critical_stage: 'Seedling & flowering' },
+  ],
+  rice: [
+    { pest: 'Stem Borer', local_name: 'खोड किडा', etl: '5% dead hearts or 2% white ear', monitoring_method: 'Count dead hearts/white ears in 20 hills', organic_control: 'Trichogramma japonicum 50000/acre + Neem cake', chemical_control: 'Cartap Hydrochloride 4G @ 10kg/acre', critical_stage: 'Tillering & flowering' },
+    { pest: 'BPH (Brown Planthopper)', local_name: 'तपकिरी फुदका', etl: '5-10 hoppers/hill', monitoring_method: 'Tap base of plant, count fallen hoppers', organic_control: 'Alternate wetting-drying + Neem oil', chemical_control: 'Pymetrozine 50WG @ 120gm/acre', critical_stage: 'Tillering to maturity' },
+    { pest: 'Leaf Folder', local_name: 'पान गुंडाळ्या अळी', etl: '2 damaged leaves/hill', monitoring_method: 'Count folded leaves in 20 hills', organic_control: 'Bt spray + Trichogramma', chemical_control: 'Chlorantraniliprole 18.5SC @ 60ml/acre', critical_stage: 'Tillering' },
+  ],
+  wheat: [
+    { pest: 'Aphids', local_name: 'माव्हा', etl: '5-10 aphids/ear', monitoring_method: 'Count on 10 random ears', organic_control: 'Neem oil 2% + Ladybird beetle', chemical_control: 'Thiamethoxam 25WG @ 50gm/acre', critical_stage: 'Ear emergence to milky stage' },
+    { pest: 'Termites', local_name: 'वाळवी', etl: '5% damaged plants', monitoring_method: 'Check wilted/dead patches', organic_control: 'Neem cake 80kg/acre + flood irrigation', chemical_control: 'Chlorpyriphos 20EC @ 2L/acre (drench)', critical_stage: 'Seedling & grain filling' },
+  ],
+  sugarcane: [
+    { pest: 'Early Shoot Borer', local_name: 'सुरुवातीचा खोड किडा', etl: '10% dead hearts', monitoring_method: 'Count dead hearts in 100 clumps', organic_control: 'Trichogramma chilonis 50000/acre', chemical_control: 'Chlorantraniliprole 0.4GR @ 8kg/acre', critical_stage: '1-3 months' },
+    { pest: 'Internode Borer', local_name: 'कांडी पोखरणारी अळी', etl: '5% bored internodes', monitoring_method: 'Light trap: >25 moths/week', organic_control: 'Trichogramma + trash mulching', chemical_control: 'Monocrotophos 36SL @ 500ml/acre', critical_stage: '4-7 months' },
+    { pest: 'Top Borer', local_name: 'शेंडा पोखरणारी अळी', etl: '5% dead hearts/bunchy top', monitoring_method: 'Count dead hearts + bunchy tops', organic_control: 'Detrashing + Trichogramma', chemical_control: 'Carbofuran 3G @ 13kg/acre', critical_stage: 'Grand growth' },
+  ],
+  soybean: [
+    { pest: 'Girdle Beetle', local_name: 'देठ पोखरणारा भुंगा', etl: '2-3 girdled plants/meter row', monitoring_method: 'Count girdled stems in 5 spots', organic_control: 'Collection & destruction + Neem spray', chemical_control: 'Triazophos 40EC @ 400ml/acre', critical_stage: 'Flowering to pod formation' },
+    { pest: 'Tobacco Caterpillar', local_name: 'तंबाखूची पाने खाणारी अळी', etl: '4-5 larvae/meter row or 25% defoliation', monitoring_method: 'Pheromone trap + visual', organic_control: 'NPV @ 250LE + Neem', chemical_control: 'Emamectin Benzoate 5SG @ 100gm/acre', critical_stage: 'Vegetative & pod filling' },
+  ],
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// EXPERT DISEASE MANAGEMENT - Disease-specific recommendations
+// ═══════════════════════════════════════════════════════════════════════
+const DISEASE_MANAGEMENT: Record<string, Array<{
+  disease: string;
+  local_name: string;
+  symptoms: string;
+  favorable_conditions: string;
+  organic_control: string;
+  chemical_control: string;
+  preventive_measures: string;
+}>> = {
+  wheat: [
+    { disease: 'Yellow Rust', local_name: 'पिवळा तांबेरा', symptoms: 'Yellow stripes on leaves', favorable_conditions: 'Cool (10-15°C), humid weather', organic_control: 'Resistant varieties + Trichoderma', chemical_control: 'Propiconazole 25EC @ 200ml/acre at first sign', preventive_measures: 'Early sowing, resistant varieties (HD3086, DBW187)' },
+    { disease: 'Loose Smut', local_name: 'कांगियारी', symptoms: 'Black powdery mass instead of grain', favorable_conditions: 'Seed-borne, moderate temp', organic_control: 'Hot water seed treatment (52°C, 10 min)', chemical_control: 'Carboxin+Thiram @ 2.5gm/kg seed', preventive_measures: 'Certified seed, seed treatment mandatory' },
+  ],
+  rice: [
+    { disease: 'Blast', local_name: 'कडक्या/ब्लास्ट', symptoms: 'Diamond shaped lesions on leaves/neck', favorable_conditions: 'High humidity, 25-28°C, excess N', organic_control: 'Pseudomonas fluorescens seed treatment', chemical_control: 'Tricyclazole 75WP @ 240gm/acre', preventive_measures: 'Balanced N, avoid late planting, resistant varieties' },
+    { disease: 'Bacterial Leaf Blight', local_name: 'जिवाणूजन्य पान करपा', symptoms: 'Water-soaked lesions, milky ooze', favorable_conditions: 'Heavy rain, wounds, high N', organic_control: 'Streptocyclin 6gm + COC 500gm in 200L water', chemical_control: 'Same as organic (antibiotic needed)', preventive_measures: 'Avoid clipping seedlings, balanced N, drainage' },
+  ],
+  cotton: [
+    { disease: 'Root Rot/Wilt', local_name: 'मूळ कुज/मर रोग', symptoms: 'Sudden wilting, brown roots', favorable_conditions: 'Waterlogging, high temp', organic_control: 'Trichoderma viride @ 2.5kg/acre soil application', chemical_control: 'Carbendazim drench @ 1gm/L', preventive_measures: 'Good drainage, crop rotation, seed treatment' },
+    { disease: 'Grey Mildew', local_name: 'राखाडी बुरशी', symptoms: 'Angular grey spots on leaves', favorable_conditions: 'Cool nights, humid', organic_control: 'Wettable Sulphur 80WP @ 1kg/acre', chemical_control: 'Carbendazim 50WP @ 200gm/acre', preventive_measures: 'Avoid excess N, good spacing' },
+  ],
+  sugarcane: [
+    { disease: 'Red Rot', local_name: 'तांबडा सडणे', symptoms: 'Red internal tissue, vinegar smell', favorable_conditions: 'Waterlogging, susceptible variety', organic_control: 'Hot water treatment of setts (50°C, 2hrs)', chemical_control: 'Carbendazim dip @ 0.1%', preventive_measures: 'Resistant varieties (Co 86032), healthy setts' },
+    { disease: 'Smut', local_name: 'काजळी', symptoms: 'Black whip-like structure from top', favorable_conditions: 'Drought stress, infected setts', organic_control: 'Roguing infected clumps + burning', chemical_control: 'Propiconazole dip for setts', preventive_measures: 'Resistant varieties, healthy seed material' },
+  ],
+};
+
 // ═══════════════════════════════════════════════════════════════════════
 // CROP-SPECIFIC PRODUCT RECOMMENDATIONS - DYNAMIC AI-BASED (NOT HARDCODED DB)
 // These replace the master_products table dependency
@@ -1280,6 +1490,31 @@ const CROP_SPECIFIC_PRODUCTS: Record<string, Record<string, Array<{
       { name: 'मॅन्कोझेब', type: 'fungicide', dose: '2 kg/एकड़', price_per_acre: 450, application_method: 'foliar_spray' },
     ],
   },
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// CROP WATER REQUIREMENTS - FOR LAND-SPECIFIC WATER PRESCRIPTION
+// ═══════════════════════════════════════════════════════════════════════
+const CROP_WATER_REQUIREMENTS: Record<string, { 
+  etc_mm_per_day: number; // Crop evapotranspiration
+  total_mm: number; // Total water need for full cycle
+  critical_stages: string[];
+  irrigation_interval_days: number;
+}> = {
+  wheat: { etc_mm_per_day: 4.5, total_mm: 450, critical_stages: ['crown_root', 'flowering', 'grain_filling'], irrigation_interval_days: 20 },
+  rice: { etc_mm_per_day: 6.0, total_mm: 1200, critical_stages: ['transplanting', 'tillering', 'flowering'], irrigation_interval_days: 3 },
+  cotton: { etc_mm_per_day: 5.5, total_mm: 700, critical_stages: ['flowering', 'boll_formation'], irrigation_interval_days: 12 },
+  sugarcane: { etc_mm_per_day: 7.0, total_mm: 2000, critical_stages: ['tillering', 'grand_growth'], irrigation_interval_days: 10 },
+  okra: { etc_mm_per_day: 4.0, total_mm: 400, critical_stages: ['flowering', 'fruiting'], irrigation_interval_days: 5 },
+  tomato: { etc_mm_per_day: 5.0, total_mm: 600, critical_stages: ['flowering', 'fruit_setting'], irrigation_interval_days: 4 },
+  onion: { etc_mm_per_day: 3.5, total_mm: 350, critical_stages: ['bulb_formation'], irrigation_interval_days: 7 },
+  potato: { etc_mm_per_day: 4.5, total_mm: 500, critical_stages: ['tuber_initiation', 'tuber_bulking'], irrigation_interval_days: 7 },
+  maize: { etc_mm_per_day: 5.0, total_mm: 500, critical_stages: ['tasseling', 'silking', 'grain_filling'], irrigation_interval_days: 10 },
+  soybean: { etc_mm_per_day: 4.0, total_mm: 400, critical_stages: ['flowering', 'pod_filling'], irrigation_interval_days: 12 },
+  groundnut: { etc_mm_per_day: 4.0, total_mm: 450, critical_stages: ['flowering', 'pegging', 'pod_development'], irrigation_interval_days: 10 },
+  chilli: { etc_mm_per_day: 4.5, total_mm: 550, critical_stages: ['flowering', 'fruit_development'], irrigation_interval_days: 5 },
+  brinjal: { etc_mm_per_day: 4.5, total_mm: 500, critical_stages: ['flowering', 'fruiting'], irrigation_interval_days: 5 },
+  default: { etc_mm_per_day: 4.5, total_mm: 500, critical_stages: ['vegetative', 'reproductive'], irrigation_interval_days: 7 }
 };
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1708,121 +1943,283 @@ function validateCropSuitability(
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// APPLICATION METHOD HELPER - CORRECT METHOD BASED ON PRODUCT TYPE
 // ═══════════════════════════════════════════════════════════════════════
+// APPLICATION METHOD HELPER - INTELLIGENT DETECTION BASED ON PRODUCT FORM
+// ═══════════════════════════════════════════════════════════════════════
+// CRITICAL FIX: Solid fertilizers (DAP, Urea, MOP, NPK) cannot be sprayed!
+// This function determines correct application method based on product form.
+
+// PRODUCT FORM DATABASE - Defines physical form of products
+const SOLID_GRANULAR_PRODUCTS = [
+  'urea', 'युरिया', 'यूरिया',
+  'dap', 'डीएपी', 'डीएपी',
+  'mop', 'एमओपी', 
+  'npk', 'एनपीके',
+  'ssp', 'एसएसपी',
+  'superphosphate', 'सुपरफॉस्फेट',
+  'ammonium sulphate', 'अमोनियम सल्फेट',
+  'potash', 'पोटाश',
+  'calcium ammonium nitrate', 'can',
+  'zinc sulphate', 'जिंक सल्फेट', 'जस्त सल्फेट',
+  'ferrous sulphate', 'फेरस सल्फेट',
+  'borax', 'बोरेक्स',
+  'gypsum', 'जिप्सम',
+  'lime', 'चुना', 'stone chalk',
+  'carbofuran', 'कार्बोफ्युरान', 'furadan',
+  'phorate', 'फोरेट',
+  'fym', 'farm yard manure', 'शेणखत', 'गोबर खाद', 'गोबर की खाद',
+  'vermicompost', 'गांडूळ खत', 'केंचुआ खाद',
+  'compost', 'कंपोस्ट',
+  'neem cake', 'निंबोळी पेंड', 'neem khali',
+  'bone meal', 'हाड चूर्ण',
+  'rock phosphate', 'रॉक फॉस्फेट',
+];
+
+const LIQUID_SPRAY_PRODUCTS = [
+  'imidacloprid', 'इमिडाक्लोप्रिड',
+  'chlorpyriphos', 'क्लोरपायरीफॉस',
+  'monocrotophos', 'मोनोक्रोटोफॉस',
+  'acephate', 'एसीफेट',
+  'spinosad', 'स्पिनोसैड',
+  'emamectin', 'एमामेक्टिन',
+  'cypermethrin', 'सायपरमेथ्रिन',
+  'lambda cyhalothrin', 'लॅम्बडा',
+  'thiamethoxam', 'थियामेथोक्सम',
+  'acetamiprid', 'एसीटामिप्रिड',
+  'fipronil', 'फिप्रोनिल',
+  'neem oil', 'नीम तेल', 'नीम का तेल',
+  'mancozeb', 'मॅन्कोझेब',
+  'carbendazim', 'कार्बेंडाज़िम',
+  'propiconazole', 'प्रोपिकोनाझोल',
+  'tricyclazole', 'ट्राइसाइक्लाज़ोल',
+  'hexaconazole', 'हेक्साकोनाझोल',
+  'copper oxychloride', 'कॉपर ऑक्सिक्लोराईड', 'coc',
+  'bordeaux mixture', 'बोर्डो मिश्रण',
+  'humic acid', 'ह्यूमिक एसिड', 'ह्युमिक ॲसिड',
+  'fulvic acid', 'फुल्विक एसिड',
+  'seaweed', 'सीव्हीड', 'समुद्री शैवाल',
+  'amino acid', 'अमीनो एसिड',
+  'gibberellic acid', 'ga3', 'जिब्बेरेलिक',
+  'naa', 'naphthalene acetic', 'नेप्थालीन',
+  '2,4-d', '2,4-डी',
+  'glyphosate', 'ग्लायफोसेट',
+  'paraquat', 'पैराक्वाट',
+  'pendimethalin', 'पेंडीमेथालिन',
+  'quizalofop', 'क्विज़ालोफॉप',
+  'beauveria', 'ब्युव्हेरिया',
+  'metarhizium', 'मेटारायझियम',
+  'npv', 'nuclear polyhedrosis',
+  'bt', 'bacillus thuringiensis',
+];
+
+const SEED_TREATMENT_PRODUCTS = [
+  'thiram', 'थायरम',
+  'captan', 'कैप्टन',
+  'vitavax', 'विटावैक्स',
+  'carboxin', 'कार्बोक्सिन',
+  'trichoderma', 'ट्रायकोडर्मा', 'ट्राइकोडर्मा',
+  'rhizobium', 'राइज़ोबियम',
+  'azotobacter', 'एज़ोटोबैक्टर',
+  'azospirillum', 'एज़ोस्पिरिलम',
+  'psb', 'फॉस्फेट सोल्युबिलाइजिंग',
+  'mycorrhiza', 'माइकोराइजा',
+  'pseudomonas', 'स्यूडोमोनास',
+  'beejamrut', 'बीजामृत',
+];
+
+const DRENCH_PRODUCTS = [
+  'jeevamrut', 'जीवामृत',
+  'panchagavya', 'पंचगव्य',
+  'amritpani', 'अमृतपानी',
+  'cow urine', 'गोमूत्र', 'गौमूत्र',
+  'buttermilk', 'ताक', 'छाछ',
+  'trichoderma liquid', 'द्रव ट्रायकोडर्मा',
+  'pseudomonas liquid', 'द्रव स्यूडोमोनास',
+];
+
 function getApplicationMethod(productName: string, productType: string, taskCategory: string): string {
   const nameLower = (productName || "").toLowerCase();
   const typeLower = (productType || "").toLowerCase();
   const categoryLower = (taskCategory || "").toLowerCase();
   
-  // SEED TREATMENT METHODS
+  // ═══════════════════════════════════════════════════════════════════════
+  // PRIORITY 1: CHECK PRODUCT NAME FOR SOLID GRANULAR PRODUCTS
+  // These CANNOT be applied via foliar spray - CRITICAL CHECK FIRST!
+  // ═══════════════════════════════════════════════════════════════════════
+  for (const solidProduct of SOLID_GRANULAR_PRODUCTS) {
+    if (nameLower.includes(solidProduct)) {
+      // Determine exact method based on product sub-type
+      if (solidProduct.includes('carbofuran') || solidProduct.includes('phorate')) {
+        return 'soil_application';  // ग्रॅन्युल्स मातीत टाकणे
+      }
+      if (solidProduct.includes('fym') || solidProduct.includes('शेणखत') || solidProduct.includes('गोबर') || 
+          solidProduct.includes('vermicompost') || solidProduct.includes('गांडूळ') || solidProduct.includes('compost') ||
+          solidProduct.includes('केंचुआ')) {
+        return 'basal_application';  // पायाभूत खत / मातीत मिश्रण
+      }
+      if (solidProduct.includes('lime') || solidProduct.includes('gypsum') || solidProduct.includes('चुना')) {
+        return 'soil_application';  // माती सुधारक
+      }
+      if (solidProduct.includes('urea') || solidProduct.includes('युरिया') || solidProduct.includes('यूरिया')) {
+        // Urea can be basal or top_dressing depending on timing
+        if (categoryLower.includes('sowing') || categoryLower.includes('basal')) {
+          return 'basal_application';  // पेरणीवेळी पायाभूत
+        }
+        return 'top_dressing';  // वाढीच्या वेळी वरून टाकणे
+      }
+      if (solidProduct.includes('dap') || solidProduct.includes('डीएपी')) {
+        return 'basal_application';  // DAP नेहमी पायाभूत
+      }
+      if (solidProduct.includes('mop') || solidProduct.includes('एमओपी') || solidProduct.includes('potash')) {
+        return 'basal_application';  // MOP नेहमी पायाभूत
+      }
+      if (solidProduct.includes('npk') || solidProduct.includes('एनपीके')) {
+        return 'broadcasting';  // NPK विखुरणे / पसरवणे
+      }
+      if (solidProduct.includes('ssp') || solidProduct.includes('superphosphate')) {
+        return 'basal_application';  // SSP पायाभूत
+      }
+      if (solidProduct.includes('zinc') || solidProduct.includes('जिंक') || solidProduct.includes('जस्त') ||
+          solidProduct.includes('ferrous') || solidProduct.includes('borax') || solidProduct.includes('बोरेक्स')) {
+        return 'soil_application';  // सूक्ष्म अन्नद्रव्ये मातीत
+      }
+      if (solidProduct.includes('neem cake') || solidProduct.includes('निंबोळी') || solidProduct.includes('khali')) {
+        return 'basal_application';  // पेंड पायाभूत
+      }
+      // Default for other solid products
+      return 'broadcasting';  // छिड़काव / विखुरणे
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // PRIORITY 2: CHECK FOR SEED TREATMENT PRODUCTS
+  // ═══════════════════════════════════════════════════════════════════════
+  for (const seedProduct of SEED_TREATMENT_PRODUCTS) {
+    if (nameLower.includes(seedProduct)) {
+      if (seedProduct.includes('trichoderma') || seedProduct.includes('rhizobium') || 
+          seedProduct.includes('azotobacter') || seedProduct.includes('psb') || seedProduct.includes('mycorrhiza')) {
+        return 'seed_inoculation';  // जैविक बीज उपचार
+      }
+      return 'seed_coating';  // बीज लेपन
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // PRIORITY 3: CHECK FOR DRENCH PRODUCTS
+  // ═══════════════════════════════════════════════════════════════════════
+  for (const drenchProduct of DRENCH_PRODUCTS) {
+    if (nameLower.includes(drenchProduct)) {
+      return 'drenching';  // आळवणी / जड़ों में डालें
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // PRIORITY 4: CHECK FOR LIQUID SPRAY PRODUCTS  
+  // ═══════════════════════════════════════════════════════════════════════
+  for (const liquidProduct of LIQUID_SPRAY_PRODUCTS) {
+    if (nameLower.includes(liquidProduct)) {
+      // Check for herbicides - need specific spray type
+      if (liquidProduct.includes('pendimethalin') || liquidProduct.includes('atrazine')) {
+        return 'pre_emergence_spray';  // पेरणीपूर्व फवारणी
+      }
+      if (liquidProduct.includes('2,4-d') || liquidProduct.includes('quizalofop') || 
+          liquidProduct.includes('glyphosate') || liquidProduct.includes('paraquat')) {
+        return 'post_emergence_spray';  // तणांवर फवारणी
+      }
+      return 'foliar_spray';  // पानांवर फवारणी
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // FALLBACK: CATEGORY-BASED DETECTION (if product not in known lists)
+  // ═══════════════════════════════════════════════════════════════════════
+  
+  // SEED TREATMENT by category
   if (categoryLower.includes('seed') || typeLower.includes('seed')) {
-    if (nameLower.includes('thiram') || nameLower.includes('carbendazim') || nameLower.includes('captan')) {
-      return 'seed_coating';  // बीज लेप / बियाणे लेपन
-    }
-    if (nameLower.includes('trichoderma') || nameLower.includes('rhizobium') || nameLower.includes('azotobacter') || nameLower.includes('psb')) {
-      return 'seed_inoculation';  // बीज शोधन / जैविक उपचार
-    }
-    if (nameLower.includes('imidacloprid') || nameLower.includes('thiamethoxam')) {
-      return 'seed_treatment';  // बीज उपचार
-    }
     return 'seed_treatment';
   }
   
-  // FERTILIZER/NUTRIENT APPLICATION METHODS
+  // FERTILIZER category - defaults to broadcasting/soil
   if (categoryLower.includes('fertilizer') || typeLower.includes('fertilizer') || categoryLower.includes('nutrient')) {
-    if (nameLower.includes('urea') || nameLower.includes('dap') || nameLower.includes('mop') || nameLower.includes('npk') || nameLower.includes('ssp')) {
-      return 'broadcasting';  // छिड़काव / पसरवणे
+    if (typeLower.includes('micro') || nameLower.includes('micro')) {
+      return 'foliar_spray';  // Micronutrients can be sprayed if in chelated liquid form
     }
-    if (nameLower.includes('zinc') || nameLower.includes('boron') || nameLower.includes('iron') || nameLower.includes('micro')) {
-      return 'foliar_spray';  // पर्णांवर फवारणी
-    }
-    if (nameLower.includes('drip') || nameLower.includes('fertigation')) {
-      return 'fertigation';  // ठिबक द्वारे
-    }
-    return 'soil_application';  // मातीत मिसळणे
+    return 'broadcasting';  // Default for unrecognized fertilizers
   }
   
-  // ORGANIC INPUT METHODS
+  // ORGANIC category
   if (typeLower.includes('organic') || categoryLower.includes('organic')) {
-    if (nameLower.includes('fym') || nameLower.includes('farm yard') || nameLower.includes('shenkhat') || nameLower.includes('शेणखत') || nameLower.includes('गोबर')) {
-      return 'basal_application';  // पायाभूत खत
-    }
-    if (nameLower.includes('vermicompost') || nameLower.includes('gandulkhat') || nameLower.includes('गांडूळ')) {
-      return 'top_dressing';  // मातीत मिश्रण
-    }
-    if (nameLower.includes('jeevamrut') || nameLower.includes('जीवामृत') || nameLower.includes('panchagavya')) {
-      return 'drenching';  // आळवणी / drench
-    }
-    if (nameLower.includes('neem') || nameLower.includes('कडुनिंब') || nameLower.includes('नीम')) {
-      return 'foliar_spray';  // फवारणी
+    if (nameLower.includes('liquid') || nameLower.includes('द्रव')) {
+      return 'drenching';
     }
     return 'soil_application';
   }
   
-  // BIO-FERTILIZER METHODS
-  if (typeLower.includes('bio') || nameLower.includes('trichoderma') || nameLower.includes('pseudomonas') || nameLower.includes('beauveria')) {
-    if (nameLower.includes('trichoderma') || nameLower.includes('pseudomonas')) {
-      return 'soil_drenching';  // मुळ्यांजवळ आळवणी
-    }
-    if (nameLower.includes('beauveria') || nameLower.includes('metarhizium')) {
-      return 'foliar_spray';  // फवारणी
-    }
-    return 'soil_application';
+  // BIO-FERTILIZER category
+  if (typeLower.includes('bio')) {
+    return 'soil_drenching';
   }
   
-  // GROWTH PROMOTER METHODS
+  // GROWTH PROMOTER category
   if (categoryLower.includes('growth') || typeLower.includes('growth')) {
-    if (nameLower.includes('seaweed') || nameLower.includes('humic') || nameLower.includes('amino') || nameLower.includes('fulvic')) {
-      return 'foliar_spray';  // पर्णांवर फवारणी
+    return 'foliar_spray';  // Most growth promoters are liquid sprays
+  }
+  
+  // PEST CONTROL category
+  if (categoryLower.includes('pest') || typeLower.includes('pesticide') || typeLower.includes('insecticide')) {
+    if (nameLower.includes('granule') || nameLower.includes('gr ') || nameLower.includes('g ') || nameLower.includes('cg')) {
+      return 'soil_application';
     }
-    if (nameLower.includes('gibberellic') || nameLower.includes('ga3')) {
-      return 'foliar_spray';
+    if (nameLower.includes('trap') || nameLower.includes('pheromone')) {
+      return 'trap_installation';
+    }
+    if (nameLower.includes('dust') || nameLower.includes('dp')) {
+      return 'dusting';
     }
     return 'foliar_spray';
   }
   
-  // PEST CONTROL METHODS
-  if (categoryLower.includes('pest') || typeLower.includes('pesticide') || typeLower.includes('insecticide')) {
-    if (nameLower.includes('granule') || nameLower.includes('gr ') || nameLower.includes('carbofuran') || nameLower.includes('phorate')) {
-      return 'soil_application';  // मातीत टाकणे
-    }
-    if (nameLower.includes('pheromone') || nameLower.includes('trap')) {
-      return 'trap_installation';  // सापळे लावणे
-    }
-    if (nameLower.includes('dust') || nameLower.includes('dp ')) {
-      return 'dusting';  // धुरळणी
-    }
-    return 'foliar_spray';  // फवारणी
-  }
-  
-  // FUNGICIDE/DISEASE CONTROL METHODS
+  // DISEASE CONTROL category
   if (categoryLower.includes('disease') || typeLower.includes('fungicide')) {
-    if (nameLower.includes('copper') || nameLower.includes('bordeaux')) {
-      return 'foliar_spray';
-    }
-    if (nameLower.includes('seed') || nameLower.includes('बीज')) {
-      return 'seed_treatment';
-    }
-    if (nameLower.includes('drench') || nameLower.includes('root')) {
+    if (nameLower.includes('drench') || nameLower.includes('root') || nameLower.includes('मुळ')) {
       return 'soil_drenching';
     }
     return 'foliar_spray';
   }
   
-  // HERBICIDE/WEED CONTROL METHODS
+  // WEED CONTROL category
   if (categoryLower.includes('weed') || typeLower.includes('herbicide')) {
-    if (nameLower.includes('pre-emergence') || nameLower.includes('pendimethalin') || nameLower.includes('atrazine')) {
-      return 'pre_emergence_spray';  // पेरणीपूर्व फवारणी
-    }
-    if (nameLower.includes('post-emergence') || nameLower.includes('2,4-d') || nameLower.includes('quizalofop')) {
-      return 'post_emergence_spray';  // पेरणीनंतर फवारणी
-    }
-    return 'directed_spray';  // तणांवर थेट फवारणी
+    return 'directed_spray';
   }
   
-  // DEFAULT - Most common is foliar spray for liquid inputs
-  return 'foliar_spray';
+  // IRRIGATION category - should have water amount, not spray
+  if (categoryLower.includes('irrigation') || categoryLower.includes('watering')) {
+    return 'irrigation';  // पाणी देणे
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // FINAL DEFAULT: If nothing matched, use category-aware default
+  // NOT blindly foliar_spray - prevent DAP spray bug!
+  // ═══════════════════════════════════════════════════════════════════════
+  console.warn(`⚠️ [ApplicationMethod] Unknown product: "${productName}", type: "${productType}", category: "${taskCategory}" - using safe default`);
+  
+  // Check if product name suggests solid form
+  if (nameLower.includes('kg') || nameLower.includes('granule') || nameLower.includes('powder') || 
+      nameLower.includes('चूर्ण') || nameLower.includes('पावडर')) {
+    return 'soil_application';
+  }
+  
+  // Check if product name suggests liquid form
+  if (nameLower.includes('ml') || nameLower.includes('liter') || nameLower.includes('liquid') || 
+      nameLower.includes('द्रव') || nameLower.includes('ec') || nameLower.includes('sl') || nameLower.includes('sc')) {
+    return 'foliar_spray';
+  }
+  
+  // Ultimate fallback based on most common category defaults
+  if (categoryLower.includes('fertilizer')) return 'broadcasting';
+  if (categoryLower.includes('organic')) return 'soil_application';
+  
+  return 'soil_application';  // Safe default - can't go wrong with soil application
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -2561,13 +2958,353 @@ KNOWLEDGE BASE:
 - Traditional farmer wisdom (Desi knowledge)
 - Market dynamics and value chain optimization`;
 
+    // ═══════════════════════════════════════════════════════════════════
+    // WATER REQUIREMENT CALCULATIONS FOR THIS LAND
+    // ═══════════════════════════════════════════════════════════════════
+    const waterReq = CROP_WATER_REQUIREMENTS[cropLower] || CROP_WATER_REQUIREMENTS.default;
+    const totalWaterLiters = Math.round(waterReq.total_mm * landAreaHa * 10000); // mm to liters/ha
+    const perIrrigationLiters = Math.round(waterReq.etc_mm_per_day * waterReq.irrigation_interval_days * landAreaHa * 10000);
+    const irrigationType = land.irrigation_type || 'manual';
+    
+    // Adjust water based on irrigation type efficiency
+    let adjustedWaterPerIrrigation = perIrrigationLiters;
+    let irrigationEfficiencyNote = "";
+    if (irrigationType === 'drip') {
+      adjustedWaterPerIrrigation = Math.round(perIrrigationLiters * 0.5);
+      irrigationEfficiencyNote = language === "mr" 
+        ? `✅ ठिबक सिंचन: 40-60% पाणी बचत, प्रत्येक सिंचनासाठी ${Math.round(adjustedWaterPerIrrigation / 1000)} KL लागेल`
+        : language === "hi"
+        ? `✅ ड्रिप सिंचाई: 40-60% पानी बचत, हर सिंचाई में ${Math.round(adjustedWaterPerIrrigation / 1000)} KL लगेगा`
+        : `✅ DRIP: Save 40-60% water, apply ${Math.round(adjustedWaterPerIrrigation / 1000)} KL per irrigation`;
+    } else if (irrigationType === 'sprinkler') {
+      adjustedWaterPerIrrigation = Math.round(perIrrigationLiters * 0.7);
+      irrigationEfficiencyNote = language === "mr"
+        ? `✅ तुषार सिंचन: 30% पाणी बचत, प्रत्येक सिंचनासाठी ${Math.round(adjustedWaterPerIrrigation / 1000)} KL लागेल`
+        : language === "hi"
+        ? `✅ स्प्रिंकलर सिंचाई: 30% पानी बचत, हर सिंचाई में ${Math.round(adjustedWaterPerIrrigation / 1000)} KL लगेगा`
+        : `✅ SPRINKLER: Save 30% water, apply ${Math.round(adjustedWaterPerIrrigation / 1000)} KL per irrigation`;
+    } else {
+      adjustedWaterPerIrrigation = Math.round(perIrrigationLiters * 1.2);
+      irrigationEfficiencyNote = language === "mr"
+        ? `⚠️ मॅन्युअल/पूर सिंचन: पाण्याचा अपव्यय, प्रत्येक सिंचनासाठी ${Math.round(adjustedWaterPerIrrigation / 1000)} KL लागेल`
+        : language === "hi"
+        ? `⚠️ मैन्युअल/बाढ़ सिंचाई: पानी की बर्बादी, हर सिंचाई में ${Math.round(adjustedWaterPerIrrigation / 1000)} KL लगेगा`
+        : `⚠️ FLOOD/MANUAL: Wasteful, apply ${Math.round(adjustedWaterPerIrrigation / 1000)} KL per irrigation`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // PRESCRIPTION FRAMING - SOIL TEST CONDITIONAL LOGIC
+    // ═══════════════════════════════════════════════════════════════════
+    const hasSoilData = soilData && (soilData.ph_level || soilData.nitrogen_kg_per_ha);
+    const soilTestDate = soilData?.test_date || null;
+    const isSoilTestRecent = soilTestDate && 
+      (new Date().getTime() - new Date(soilTestDate).getTime()) < 180 * 24 * 60 * 60 * 1000; // Less than 6 months
+    
+    let prescriptionFraming = "";
+    let soilTestInstruction = "";
+    
+    if (hasSoilData) {
+      prescriptionFraming = language === "mr" ? `
+═══════════════════════════════════════════════════════════════
+🩺 माती आरोग्य अहवाल उपलब्ध - औषध मोड
+═══════════════════════════════════════════════════════════════
+⚠️ महत्त्वाचे: शेतकऱ्याने आधीच माती परीक्षण केले आहे!
+❌ "माती परीक्षण करा" किंवा "Soil Test" टास्क देऊ नका - आधीच झाले!
+✅ खालील माती डेटा तुमचे DIAGNOSIS आहे
+✅ तुमच्या शिफारसी या जमिनीसाठी औषध (उपचार) आहेत
+
+हे रक्त तपासणी अहवालासारखे आहे → तुम्ही नेमके औषध देता, "रक्त तपासणी करा" असे सांगत नाही!
+` : language === "hi" ? `
+═══════════════════════════════════════════════════════════════
+🩺 मिट्टी स्वास्थ्य रिपोर्ट उपलब्ध - दवाई मोड
+═══════════════════════════════════════════════════════════════
+⚠️ महत्वपूर्ण: किसान ने पहले ही मिट्टी परीक्षण किया है!
+❌ "मिट्टी परीक्षण करें" या "Soil Test" टास्क मत दें - पहले ही हो गया!
+✅ नीचे दिया गया मिट्टी डेटा आपका DIAGNOSIS है
+✅ आपकी सिफारिशें इस जमीन के लिए दवाई (इलाज) हैं
+
+यह खून की जांच रिपोर्ट जैसा है → आप सही दवाई देते हैं, "खून की जांच करो" नहीं कहते!
+` : `
+═══════════════════════════════════════════════════════════════
+🩺 SOIL HEALTH REPORT ALREADY AVAILABLE - PRESCRIPTION MODE
+═══════════════════════════════════════════════════════════════
+⚠️ CRITICAL: Farmer has ALREADY conducted soil test!
+❌ DO NOT recommend "माती परीक्षण करा" or "Soil Test" - ALREADY DONE!
+✅ USE the existing soil data below as your DIAGNOSIS
+✅ Your recommendations are MEDICINE (औषध/उपचार) for this specific land
+
+This is like a BLOOD REPORT → You prescribe exact medicine, not "get a blood test"!
+`;
+      soilTestInstruction = language === "mr" 
+        ? `❌ "Soil Test" टास्क टाळा - वैध माती अहवाल अस्तित्वात आहे`
+        : language === "hi"
+        ? `❌ "Soil Test" टास्क छोड़ें - वैध मिट्टी रिपोर्ट मौजूद है`
+        : `❌ SKIP "Soil Test" task - Valid soil report exists`;
+    } else {
+      prescriptionFraming = language === "mr" ? `
+⚠️ या जमिनीसाठी माती परीक्षण डेटा उपलब्ध नाही
+✅ नियोजन टप्प्यात "माती परीक्षण" टास्क समाविष्ट करा
+` : language === "hi" ? `
+⚠️ इस जमीन के लिए मिट्टी परीक्षण डेटा उपलब्ध नहीं है
+✅ योजना चरण में "मिट्टी परीक्षण" टास्क शामिल करें
+` : `
+⚠️ No soil test data available for this land
+✅ Include "Soil Test" task in planning stage
+`;
+      soilTestInstruction = language === "mr"
+        ? `✅ "माती परीक्षण" टास्क समाविष्ट करा - अलीकडील माती डेटा उपलब्ध नाही`
+        : language === "hi"
+        ? `✅ "मिट्टी परीक्षण" टास्क शामिल करें - हाल का मिट्टी डेटा उपलब्ध नहीं`
+        : `✅ Include "Soil Test" task - No recent soil data available`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // NPK PRESCRIPTION - DEFICIT-BASED DOSING (NOT GENERIC)
+    // ═══════════════════════════════════════════════════════════════════
+    let npkPrescription = "";
+    if (hasSoilData) {
+      // Calculate organic alternatives
+      const vermicompostKgForN = nDeficit > 0 ? Math.round((nDeficit * landAreaHa) / 0.015) : 0; // ~1.5% N in vermicompost
+      const bonemealKgForP = pDeficit > 0 ? Math.round((pDeficit * landAreaHa) / 0.23) : 0; // ~23% P in bone meal
+      const woodashKgForK = kDeficit > 0 ? Math.round((kDeficit * landAreaHa) / 0.05) : 0; // ~5% K in wood ash
+      
+      npkPrescription = language === "mr" ? `
+═══════════════════════════════════════════════════════════════
+💊 NPK औषध - नेमके या कमतरता भरून काढा
+═══════════════════════════════════════════════════════════════
+निदान (DIAGNOSIS):
+- सध्याचे N: ${soilN} kg/ha | आवश्यक: ${target.n} kg/ha | कमतरता: ${nDeficit} kg/ha
+- सध्याचे P: ${soilP} kg/ha | आवश्यक: ${target.p} kg/ha | कमतरता: ${pDeficit} kg/ha  
+- सध्याचे K: ${soilK} kg/ha | आवश्यक: ${target.k} kg/ha | कमतरता: ${kDeficit} kg/ha
+
+${landAreaAcres.toFixed(2)} एकर साठी औषध (PRESCRIPTION):
+${nDeficit > 0 ? `- N कमतरता: ${ureaKg} kg युरिया द्या किंवा ${vermicompostKgForN} kg गांडूळखत (सेंद्रिय)` : '- N: पुरेसे ✓ - युरिया/N खत लागत नाही'}
+${pDeficit > 0 ? `- P कमतरता: ${dapKg} kg DAP/SSP द्या किंवा ${bonemealKgForP} kg हाडांची पूड (सेंद्रिय)` : '- P: पुरेसे ✓ - DAP/P खत लागत नाही'}
+${kDeficit > 0 ? `- K कमतरता: ${mopKg} kg MOP द्या किंवा ${woodashKgForK} kg राख (सेंद्रिय)` : '- K: पुरेसे ✓ - MOP/K खत लागत नाही'}
+
+⚠️ महत्त्वाचे: फक्त कमतरता असलेले खत द्या! जास्त खत देऊ नका!
+` : language === "hi" ? `
+═══════════════════════════════════════════════════════════════
+💊 NPK दवाई - केवल इन कमियों को पूरा करें
+═══════════════════════════════════════════════════════════════
+निदान (DIAGNOSIS):
+- वर्तमान N: ${soilN} kg/ha | आवश्यक: ${target.n} kg/ha | कमी: ${nDeficit} kg/ha
+- वर्तमान P: ${soilP} kg/ha | आवश्यक: ${target.p} kg/ha | कमी: ${pDeficit} kg/ha  
+- वर्तमान K: ${soilK} kg/ha | आवश्यक: ${target.k} kg/ha | कमी: ${kDeficit} kg/ha
+
+${landAreaAcres.toFixed(2)} एकड़ के लिए दवाई (PRESCRIPTION):
+${nDeficit > 0 ? `- N कमी: ${ureaKg} kg यूरिया डालें या ${vermicompostKgForN} kg वर्मीकम्पोस्ट (जैविक)` : '- N: पर्याप्त ✓ - यूरिया/N खाद की जरूरत नहीं'}
+${pDeficit > 0 ? `- P कमी: ${dapKg} kg DAP/SSP डालें या ${bonemealKgForP} kg हड्डी का चूरा (जैविक)` : '- P: पर्याप्त ✓ - DAP/P खाद की जरूरत नहीं'}
+${kDeficit > 0 ? `- K कमी: ${mopKg} kg MOP डालें या ${woodashKgForK} kg राख (जैविक)` : '- K: पर्याप्त ✓ - MOP/K खाद की जरूरत नहीं'}
+
+⚠️ महत्वपूर्ण: केवल कमी वाले खाद डालें! अधिक खाद मत डालें!
+` : `
+═══════════════════════════════════════════════════════════════
+💊 NPK PRESCRIPTION - BALANCE THESE EXACT DEFICITS
+═══════════════════════════════════════════════════════════════
+DIAGNOSIS:
+- Current N: ${soilN} kg/ha | Target: ${target.n} kg/ha | DEFICIT: ${nDeficit} kg/ha
+- Current P: ${soilP} kg/ha | Target: ${target.p} kg/ha | DEFICIT: ${pDeficit} kg/ha  
+- Current K: ${soilK} kg/ha | Target: ${target.k} kg/ha | DEFICIT: ${kDeficit} kg/ha
+
+PRESCRIPTION FOR ${landAreaAcres.toFixed(2)} ACRES:
+${nDeficit > 0 ? `- N Deficiency: Apply ${ureaKg} kg Urea OR ${vermicompostKgForN} kg Vermicompost (organic)` : '- N: SUFFICIENT ✓ - No urea/N fertilizer needed'}
+${pDeficit > 0 ? `- P Deficiency: Apply ${dapKg} kg DAP/SSP OR ${bonemealKgForP} kg Bone meal (organic)` : '- P: SUFFICIENT ✓ - No DAP/P fertilizer needed'}
+${kDeficit > 0 ? `- K Deficiency: Apply ${mopKg} kg MOP OR ${woodashKgForK} kg Wood ash (organic)` : '- K: SUFFICIENT ✓ - No MOP/K fertilizer needed'}
+
+⚠️ CRITICAL: Only prescribe what's DEFICIENT! Do not over-fertilize!
+`;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // pH-BASED FERTILIZER COMPATIBILITY RULES
+    // ═══════════════════════════════════════════════════════════════════
+    let phCompatibility = "";
+    if (hasSoilData) {
+      if (soilPh < 6.5) {
+        const limeKg = Math.round(landAreaAcres * 200);
+        phCompatibility = language === "mr" ? `
+═══════════════════════════════════════════════════════════════
+⚗️ pH आधारित खत सुसंगतता (pH = ${soilPh.toFixed(1)} - आम्लयुक्त)
+═══════════════════════════════════════════════════════════════
+❌ टाळा: अमोनियम सल्फेट, सल्फर (जमीन अजून आम्लयुक्त होईल)
+✅ वापरा: युरिया, कॅल्शियम अमोनियम नायट्रेट
+💊 औषध: खत देण्यापूर्वी ${limeKg} kg चुना द्या
+` : language === "hi" ? `
+═══════════════════════════════════════════════════════════════
+⚗️ pH आधारित खाद संगतता (pH = ${soilPh.toFixed(1)} - अम्लीय)
+═══════════════════════════════════════════════════════════════
+❌ बचें: अमोनियम सल्फेट, सल्फर (मिट्टी और अम्लीय होगी)
+✅ उपयोग करें: यूरिया, कैल्शियम अमोनियम नाइट्रेट
+💊 दवाई: खाद देने से पहले ${limeKg} kg चूना डालें
+` : `
+═══════════════════════════════════════════════════════════════
+⚗️ pH-BASED FERTILIZER COMPATIBILITY (pH = ${soilPh.toFixed(1)} - ACIDIC)
+═══════════════════════════════════════════════════════════════
+❌ AVOID: Ammonium sulfate, Elemental sulfur (will further acidify)
+✅ USE: Urea, Calcium Ammonium Nitrate, Lime application first
+💊 PRESCRIPTION: Apply ${limeKg} kg lime before fertilizers
+`;
+      } else if (soilPh > 7.5) {
+        const gypsumKg = Math.round(landAreaAcres * 500);
+        phCompatibility = language === "mr" ? `
+═══════════════════════════════════════════════════════════════
+⚗️ pH आधारित खत सुसंगतता (pH = ${soilPh.toFixed(1)} - क्षारयुक्त)
+═══════════════════════════════════════════════════════════════
+❌ टाळा: युरिया (N वाया जातो), DAP (P लॉक होतो)
+✅ वापरा: अमोनियम सल्फेट, SSP, जिप्सम
+💊 औषध: लागवडीपूर्वी ${gypsumKg} kg जिप्सम द्या
+` : language === "hi" ? `
+═══════════════════════════════════════════════════════════════
+⚗️ pH आधारित खाद संगतता (pH = ${soilPh.toFixed(1)} - क्षारीय)
+═══════════════════════════════════════════════════════════════
+❌ बचें: यूरिया (N बर्बाद होगा), DAP (P लॉक होगा)
+✅ उपयोग करें: अमोनियम सल्फेट, SSP, जिप्सम
+💊 दवाई: रोपण से पहले ${gypsumKg} kg जिप्सम डालें
+` : `
+═══════════════════════════════════════════════════════════════
+⚗️ pH-BASED FERTILIZER COMPATIBILITY (pH = ${soilPh.toFixed(1)} - ALKALINE)
+═══════════════════════════════════════════════════════════════
+❌ AVOID: Urea (high N loss at alkaline pH), DAP (P locks up)
+✅ USE: Ammonium sulfate, SSP, Gypsum for soil correction
+💊 PRESCRIPTION: Apply ${gypsumKg} kg gypsum before planting
+`;
+      } else {
+        phCompatibility = language === "mr" ? `
+═══════════════════════════════════════════════════════════════
+⚗️ pH आधारित खत सुसंगतता (pH = ${soilPh.toFixed(1)} - संतुलित)
+═══════════════════════════════════════════════════════════════
+✅ तटस्थ pH: सर्व खते योग्य
+💊 वरील औषधानुसार मानक खते वापरा
+` : language === "hi" ? `
+═══════════════════════════════════════════════════════════════
+⚗️ pH आधारित खाद संगतता (pH = ${soilPh.toFixed(1)} - संतुलित)
+═══════════════════════════════════════════════════════════════
+✅ तटस्थ pH: सभी खाद उपयुक्त
+💊 ऊपर दी गई दवाई के अनुसार मानक खाद उपयोग करें
+` : `
+═══════════════════════════════════════════════════════════════
+⚗️ pH-BASED FERTILIZER COMPATIBILITY (pH = ${soilPh.toFixed(1)} - NEUTRAL)
+═══════════════════════════════════════════════════════════════
+✅ NEUTRAL pH: All fertilizers compatible
+💊 Use standard fertilizers as prescribed above
+`;
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // WATER PRESCRIPTION SECTION
+    // ═══════════════════════════════════════════════════════════════════
+    const waterPrescription = language === "mr" ? `
+═══════════════════════════════════════════════════════════════
+💧 पाणी औषध - ${landAreaAcres.toFixed(2)} एकर साठी
+═══════════════════════════════════════════════════════════════
+- एकूण हंगाम पाणी गरज: ${Math.round(totalWaterLiters / 1000)} KL (${totalWaterLiters.toLocaleString()} लिटर)
+- प्रत्येक सिंचन: ${Math.round(adjustedWaterPerIrrigation / 1000)} KL दर ${waterReq.irrigation_interval_days} दिवसांनी
+- गंभीर टप्पे: ${waterReq.critical_stages.join(', ')} (दुप्पट पाणी द्या)
+- सिंचन प्रकार: ${irrigationType}
+${irrigationEfficiencyNote}
+
+⚠️ प्रत्येक सिंचन टास्कमध्ये water_required_liters समाविष्ट करा!
+` : language === "hi" ? `
+═══════════════════════════════════════════════════════════════
+💧 पानी दवाई - ${landAreaAcres.toFixed(2)} एकड़ के लिए
+═══════════════════════════════════════════════════════════════
+- कुल सीजन पानी जरूरत: ${Math.round(totalWaterLiters / 1000)} KL (${totalWaterLiters.toLocaleString()} लीटर)
+- प्रत्येक सिंचाई: ${Math.round(adjustedWaterPerIrrigation / 1000)} KL हर ${waterReq.irrigation_interval_days} दिन
+- गंभीर चरण: ${waterReq.critical_stages.join(', ')} (दुगना पानी दें)
+- सिंचाई प्रकार: ${irrigationType}
+${irrigationEfficiencyNote}
+
+⚠️ हर सिंचाई टास्क में water_required_liters शामिल करें!
+` : `
+═══════════════════════════════════════════════════════════════
+💧 WATER PRESCRIPTION FOR ${landAreaAcres.toFixed(2)} ACRES
+═══════════════════════════════════════════════════════════════
+- Total Season Water Need: ${Math.round(totalWaterLiters / 1000)} KL (${totalWaterLiters.toLocaleString()} liters)
+- Per Irrigation: ${Math.round(adjustedWaterPerIrrigation / 1000)} KL every ${waterReq.irrigation_interval_days} days
+- Critical Stages: ${waterReq.critical_stages.join(', ')} (double water)
+- Irrigation Type: ${irrigationType}
+${irrigationEfficiencyNote}
+
+⚠️ Include water_required_liters in each irrigation task!
+`;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // APPLICATION METHOD RULES (FOR CORRECT METHODS IN AI OUTPUT)
+    // ═══════════════════════════════════════════════════════════════════
+    const applicationMethodRules = language === "mr" ? `
+═══════════════════════════════════════════════════════════════
+📋 योग्य वापर पद्धती (सही तरीका)
+═══════════════════════════════════════════════════════════════
+खते:
+- युरिया/DAP/MOP/NPK → "broadcasting" किंवा "band_placement" (फवारणी नाही!)
+- सूक्ष्म अन्नद्रव्ये (जस्त/बोरॉन/लोह) → "foliar_spray" (2-3 फवारण्या)
+- सेंद्रिय (शेणखत/गांडूळखत) → "basal_application" (पेरणीपूर्वी)
+- जीवामृत/पंचगव्य → "drenching" (आळवणी)
+
+किडनाशके:
+- द्रव किडनाशके → "foliar_spray" शिफारस केलेल्या पाण्यासह
+- दाणेदार (कार्बोफ्युरान/फोरेट) → "soil_application" मुळांजवळ
+- प्रणालीगत → "seed_treatment" किंवा "root_dip"
+
+बुरशीनाशके:
+- बीज-जन्य रोग → "seed_treatment"
+- पानावरील रोग → "foliar_spray"
+- माती/मूळ रोग → "soil_drenching"
+
+⚠️ घन खतांसाठी किंवा शेणखतासाठी "foliar_spray" वापरू नका!
+` : language === "hi" ? `
+═══════════════════════════════════════════════════════════════
+📋 सही उपयोग विधि (सही तरीका)
+═══════════════════════════════════════════════════════════════
+खाद:
+- यूरिया/DAP/MOP/NPK → "broadcasting" या "band_placement" (फोलियर स्प्रे नहीं!)
+- सूक्ष्म पोषक (जिंक/बोरान/आयरन) → "foliar_spray" (2-3 छिड़काव)
+- जैविक (FYM/वर्मीकम्पोस्ट) → "basal_application" (बुवाई से पहले)
+- जीवामृत/पंचगव्य → "drenching" (आलवणी)
+
+कीटनाशक:
+- तरल कीटनाशक → "foliar_spray" अनुशंसित पानी मात्रा के साथ
+- दानेदार (कार्बोफ्यूरान/फोरेट) → "soil_application" जड़ क्षेत्र में
+- प्रणालीगत → "seed_treatment" या "root_dip"
+
+फफूंदनाशक:
+- बीज जनित रोग → "seed_treatment"
+- पत्ती रोग → "foliar_spray"
+- मिट्टी/जड़ रोग → "soil_drenching"
+
+⚠️ ठोस खाद या FYM के लिए "foliar_spray" का उपयोग न करें!
+` : `
+═══════════════════════════════════════════════════════════════
+📋 CORRECT APPLICATION METHODS (सही तरीका)
+═══════════════════════════════════════════════════════════════
+FERTILIZERS:
+- Urea/DAP/MOP/NPK → "broadcasting" or "band_placement" (NOT foliar_spray!)
+- Micronutrients (Zinc/Boron/Iron) → "foliar_spray" (2-3 sprays)
+- Organic (FYM/Vermicompost) → "basal_application" (before sowing)
+- Jeevamrut/Panchagavya → "drenching" (आळवणी)
+
+PESTICIDES:
+- Liquid concentrates → "foliar_spray" with recommended water volume
+- Granules (Carbofuran/Phorate) → "soil_application" near root zone
+- Systemic → "seed_treatment" or "root_dip"
+
+FUNGICIDES:
+- Seed-borne diseases → "seed_treatment" 
+- Foliar diseases → "foliar_spray"
+- Soil-borne/Root → "soil_drenching"
+
+⚠️ NEVER use "foliar_spray" for solid fertilizers or FYM!
+`;
+
     // TASK Section - Include soil data and land area specific calculations
     const taskSection = `
 ═══════════════════════════════════════════════════════════════════════════
 🎯 TASK (कार्य)
 ═══════════════════════════════════════════════════════════════════════════
 Generate a COMPLETE, ACCURATE crop schedule for ${translatedCropName} (${cropName}) cultivation.
-
+${prescriptionFraming}
 ⚠️ CRITICAL: ALL QUANTITIES MUST BE CALCULATED FOR THIS EXACT LAND AREA ⚠️
 Land Area: ${landAreaAcres.toFixed(2)} acres (${landAreaGuntha} guntha / ${landAreaHa.toFixed(2)} hectares)
 
@@ -2591,20 +3328,18 @@ CROP DETAILS:
 - Potassium (K): ${soilK} kg/ha ${soilK < 120 ? "(Low)" : soilK > 280 ? "(High)" : "(Medium)"}
 - Organic Carbon: ${soilData?.organic_carbon || "N/A"}%
 - Fertility Class: ${soilData?.fertility_class || "Medium"}
-
-⚠️ SOIL pH BASED FERTILIZER ADVICE:
-${soilPhAdvice}
+${npkPrescription}
+${phCompatibility}
+${waterPrescription}
+${applicationMethodRules}
 
 FARMING MODE: ${farmingTypeLabel}
 ${farmingTypeRules}
 
 ${seedPreparationDetails}
 
-NUTRIENT STATUS (Based on ACTUAL Soil Report):
-- Current N/P/K: ${currentN}/${currentP}/${currentK} kg/ha
-- Required N/P/K: ${target.n}/${target.p}/${target.k} kg/ha
-- Deficit N/P/K: ${nDeficit}/${pDeficit}/${kDeficit} kg/ha
-- For ${landAreaAcres.toFixed(2)} acres: Urea ${ureaKg} kg, DAP ${dapKg} kg, MOP ${mopKg} kg
+${soilTestInstruction}
+
 - Labor Rate: ₹${laborRate}/day`;
 
     // INSTRUCTION Section
@@ -2638,39 +3373,51 @@ ${stagesPrompt}
    - Include SPECIFIC product brands with prices
    - Include yield_impact and skip_penalty for each task
 ${seedRules}
-4. PRODUCT RECOMMENDATIONS (CRITICAL - ONLY WHERE NEEDED):
-   ⚠️ IMPORTANT: NOT ALL TASKS NEED PRODUCTS! Only add products for:
-   - fertilizer, nutrient_management, organic_input → Add fertilizer/organic products
-   - pest_control, disease_control, fungicide → Add pesticides/fungicides
-   - seed_treatment, sowing → Add seeds, treatment chemicals
-   - growth_promoter → Add growth boosters
+
+4. PRESCRIPTION-BASED PRODUCT RECOMMENDATIONS (CRITICAL):
+   ⚠️ USE THE PRESCRIPTION ABOVE, NOT GENERIC DOSES!
    
-   🚫 DO NOT ADD PRODUCTS FOR THESE (labor-only tasks):
-   - irrigation, watering → No products, only labor cost
+   FOR FERTILIZER TASKS (ONLY if deficit exists):
+   ${nDeficit <= 0 ? '- SKIP Urea/N fertilizers (N is SUFFICIENT based on soil report)' : `- Urea: ${ureaKg} kg TOTAL for this land (not per acre!)`}
+   ${pDeficit <= 0 ? '- SKIP DAP/P fertilizers (P is SUFFICIENT based on soil report)' : `- DAP/SSP: ${dapKg} kg TOTAL for this land`}
+   ${kDeficit <= 0 ? '- SKIP MOP/K fertilizers (K is SUFFICIENT based on soil report)' : `- MOP: ${mopKg} kg TOTAL for this land`}
+   
+   FOR IRRIGATION TASKS:
+   - Include water_required_liters: ${adjustedWaterPerIrrigation} liters for each irrigation
+   - Specify irrigation type: ${irrigationType}
+   - Critical stages needing double water: ${waterReq.critical_stages.join(', ')}
+   
+   FOR APPLICATION METHODS (CRITICAL - USE CORRECT METHOD):
+   - Solid fertilizers (Urea/DAP/MOP) → "broadcasting" or "band_placement"
+   - Micronutrients (Zn/B/Fe sprays) → "foliar_spray"
+   - Organic matter (FYM/Vermicompost) → "basal_application"
+   - Liquid bio-inputs (Jeevamrut) → "drenching"
+   - Granular pesticides → "soil_application"
+   - Liquid pesticides → "foliar_spray"
+   ⚠️ NEVER use "foliar_spray" for solid fertilizers!
+   
+   🚫 NO PRODUCTS NEEDED FOR (labor-only tasks):
+   - irrigation, watering → No products, only labor cost + water_required_liters
    - land_preparation, ploughing → No products, only machinery/labor
    - harvesting, post_harvest → No products, only labor cost
    - monitoring, field_visit → No products, only labor
-   - pruning, mulching, intercultural → No products, only labor
-   
-   ✅ For tasks that need products:
-   - ALL product_names, dose_per_acre, application_method MUST be in ${languageName}
-   - Specify: brand, dose FOR THIS LAND (${landAreaAcres.toFixed(2)} acres), price_estimate
-   - ${farmingType === "organic_only" ? "ONLY organic products (Trichoderma, Neem, Bio-fertilizers)" : ""}
-   - ${farmingType === "fertilizer_pesticide" ? "Chemical fertilizers and pesticides with brands" : ""}
-   - price_estimate = (per-unit-price × quantity for ${landAreaAcres.toFixed(2)} acres)
 
-5. COST CALCULATION (FOR ${landAreaAcres.toFixed(2)} ACRES):
+5. SOIL TEST TASK RULE:
+   ${soilTestInstruction}
+
+6. COST CALCULATION (FOR ${landAreaAcres.toFixed(2)} ACRES):
    - Calculate estimated_cost = sum of all product prices + labor cost
    - Labor: (days × ₹${laborRate}/day)
    - Products: actual market prices × quantity for this land
+   - Include "total_for_land" field showing total quantity for ${landAreaAcres.toFixed(2)} acres
 
-6. LANGUAGE RULES (CRITICAL - PRODUCT NAMES IN ${languageName}):
+7. LANGUAGE RULES (CRITICAL - PRODUCT NAMES IN ${languageName}):
    - Write ALL task_name, description, instructions in ${languageName}
    - Product names MUST be in ${languageName}: युरिया, डीएपी, गांडूळ खत, कडुनिंबाचे तेल etc.
    - Use rural/village dialect: ${JSON.stringify(Object.entries(ruralTerms).slice(0, 10).reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {}))}
    ${regionalLanguageRules}
 
-7. WEATHER DEPENDENCY:
+8. WEATHER DEPENDENCY:
    - Mark irrigation, spraying tasks as weather_dependent: true
    - Include ideal_weather conditions for sensitive tasks`;
 
@@ -2712,8 +3459,11 @@ ${dataSection}
 1. You MUST call the create_schedule function with properly structured JSON
 2. Every task_name MUST start with "${translatedCropName} -"
 3. All ${totalStages} stages (${allStageKeys.join(", ")}) MUST have at least 1 task
-4. Include seed_treatment task in sowing stage with EXACT treatment method
-5. NO text responses - ONLY function call with JSON data`;
+4. ${hasSoilData ? 'DO NOT include soil test task - soil data already exists!' : 'Include soil test task in planning stage'}
+5. Use PRESCRIPTION doses from NPK PRESCRIPTION section above - NOT generic doses
+6. Use CORRECT application_method for each product type
+7. Include water_required_liters for irrigation tasks: ${adjustedWaterPerIrrigation} liters
+8. NO text responses - ONLY function call with JSON data`;
 
     // Build mandatory task categories string for long-duration crops
     const mandatoryCategoriesPrompt = cropTaskConfig.mandatoryCategories.length > 0

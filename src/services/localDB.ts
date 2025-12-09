@@ -204,6 +204,7 @@ export interface LandData {
 
 /**
  * Crop Schedules table - matches Supabase crop_schedules table exactly
+ * UPDATED: Full schema parity with Supabase (2025-12-09)
  */
 export interface CropScheduleData {
   // Core fields
@@ -227,7 +228,9 @@ export interface CropScheduleData {
   
   // Weather integration
   last_weather_update: string | null;
+  last_weather_check: string | null;
   weather_data: any;
+  weather_auto_update_enabled: boolean | null;
   
   // AI model information
   ai_model: string | null;
@@ -235,6 +238,109 @@ export interface CropScheduleData {
   // Status
   is_active: boolean | null;
   completed_at: string | null;
+  status: string | null;
+  
+  // Actual outcomes
+  actual_harvest_date: string | null;
+  actual_profit: number | null;
+  actual_total_cost: number | null;
+  actual_yield_quintals: number | null;
+  outcome_recorded_at: string | null;
+  
+  // Expected yields and revenue
+  expected_gross_revenue: number | null;
+  expected_market_price_per_quintal: number | null;
+  expected_net_profit: number | null;
+  expected_profit: number | null;
+  expected_yield_per_acre: number | null;
+  expected_yield_quintals: number | null;
+  
+  // Farm inputs - Fertilizers
+  fertilizer_k_kg: number | null;
+  fertilizer_n_kg: number | null;
+  fertilizer_p_kg: number | null;
+  organic_fertilizer_kg: number | null;
+  organic_manure_kg: number | null;
+  vermicompost_kg: number | null;
+  bio_fertilizer_units: number | null;
+  
+  // Farm inputs - Pesticides/Herbicides
+  bio_pesticide_ml: number | null;
+  fungicide_gm: number | null;
+  herbicide_ml: number | null;
+  insecticide_ml: number | null;
+  pesticide_requirements: any;
+  
+  // Farm inputs - Other
+  seed_quantity_kg: number | null;
+  pgr_hormone_ml: number | null;
+  growth_regulators: any;
+  organic_input_details: any;
+  
+  // Water and irrigation
+  irrigation_count_total: number | null;
+  water_per_irrigation_liters: number | null;
+  water_requirement_liters_total: number | null;
+  total_water_requirement_liters: number | null;
+  
+  // Cost breakdown
+  cost_by_category: any;
+  cost_by_stage: any;
+  total_estimated_cost: number | null;
+  total_labor_cost: number | null;
+  total_material_cost: number | null;
+  labor_rate_used: number | null;
+  
+  // Task tracking
+  tasks_completed_count: number | null;
+  tasks_on_time_count: number | null;
+  tasks_total_count: number | null;
+  total_duration_days: number | null;
+  stages_covered: any;
+  
+  // Location context
+  agro_climatic_zone: string | null;
+  district_name: string | null;
+  state_region: string | null;
+  taluka_name: string | null;
+  regional_dialect_zone: string | null;
+  
+  // Farming details
+  farming_type: string | null;
+  calculated_for_area_acres: number | null;
+  
+  // Suitability and quality
+  suitability_score: number | null;
+  suitability_warnings: any;
+  data_quality_score: number | null;
+  schedule_accuracy_score: number | null;
+  
+  // Yield optimization
+  yield_boosting_techniques: any;
+  yield_multiplier_target: number | null;
+  
+  // Product recommendations
+  products_recommended_count: number | null;
+  recommendation_order: string | null;
+  recommended_products: any;
+  
+  // Training data flags
+  is_training_candidate: boolean | null;
+  training_batch_id: string | null;
+  training_excluded_reason: string | null;
+  training_processed: boolean | null;
+  
+  // Farmer feedback
+  farmer_feedback: string | null;
+  farmer_rating: number | null;
+  
+  // Input data snapshots
+  input_land_coordinates: any;
+  input_soil_data: any;
+  input_weather_data: any;
+  
+  // Additional metadata
+  metadata: any;
   
   // Timestamps
   created_at: string | null;
@@ -247,31 +353,44 @@ export interface CropScheduleData {
 
 /**
  * Schedule Tasks table - matches Supabase schedule_tasks table exactly
+ * UPDATED: Full schema parity with Supabase (2025-12-09)
  */
 export interface ScheduleTaskData {
   // Core fields
   id: string;
   schedule_id: string;
+  tenant_id: string;
+  farmer_id: string | null;
   
   // Task information
   task_name: string;
   task_type: string;
-  task_date: string;  // Note: Supabase uses task_date, not scheduled_date
+  task_date: string;
   task_description: string | null;
+  
+  // Task ordering and stages
+  days_from_sowing: number | null;
+  sequence_order: number | null;
+  stage_key: string | null;
+  stage_name: string | null;
+  stage_order: number | null;
   
   // Additional task details
   duration_hours: number | null;
   priority: string | null;
   weather_dependent: boolean | null;
+  detailed_steps: any;
   
   // Resources and cost
   resources: any;
   estimated_cost: number | null;
   currency: string | null;
+  water_required_liters: number | null;
   
   // Instructions
   instructions: string[] | null;
   precautions: string[] | null;
+  regional_terms: any;
   
   // Weather conditions
   ideal_weather: any;
@@ -293,12 +412,29 @@ export interface ScheduleTaskData {
   original_date_before_climate_adjust: string | null;
   climate_adjustment_reason: string | null;
   
+  // Product recommendations
+  product_recommendations: any;
+  product_type: string | null;
+  
+  // Yield impact
+  yield_boost_technique: string | null;
+  yield_impact: string | null;
+  yield_impact_details: any;
+  
+  // Skip penalty
+  skip_penalty: string | null;
+  skip_penalty_details: any;
+  
   // Language
   language: string | null;
   
   // Timestamps
   created_at: string | null;
   updated_at: string | null;
+  
+  // Sync metadata (local only)
+  lastModified?: number;
+  syncStatus?: 'synced' | 'pending' | 'conflict';
 }
 
 /**
@@ -559,7 +695,10 @@ interface KisanDB extends DBSchema {
     value: ScheduleTaskData;
     indexes: {
       'by-schedule': string;
+      'by-tenant': string;
+      'by-farmer': string;
       'by-date': string;
+      'by-sync-status': string;
     };
   };
   
@@ -642,8 +781,8 @@ interface KisanDB extends DBSchema {
 // ============================================================================
 
 const DB_NAME = 'KisanDB';
-const DB_VERSION = 6; // Incremented for schema improvements
-const SCHEMA_VERSION = 4; // Bumped for better schema validation
+const DB_VERSION = 8; // Bumped for scheduleTasks index updates (2025-12-09)
+const SCHEMA_VERSION = 6; // Bumped for full schedule_tasks sync support
 
 class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;
@@ -737,11 +876,26 @@ class LocalDatabase {
           schedulesStore.createIndex('by-sync-status', 'syncStatus');
         }
 
-        // Create or update scheduleTasks store
+        // Create or update scheduleTasks store with full indexes
         if (!db.objectStoreNames.contains('scheduleTasks')) {
           const tasksStore = db.createObjectStore('scheduleTasks', { keyPath: 'id' });
           tasksStore.createIndex('by-schedule', 'schedule_id');
+          tasksStore.createIndex('by-tenant', 'tenant_id');
+          tasksStore.createIndex('by-farmer', 'farmer_id');
           tasksStore.createIndex('by-date', 'task_date');
+          tasksStore.createIndex('by-sync-status', 'syncStatus');
+        } else if (oldVersion < 8) {
+          // Add new indexes to existing store
+          const tasksStore = transaction.objectStore('scheduleTasks');
+          if (!tasksStore.indexNames.contains('by-tenant')) {
+            tasksStore.createIndex('by-tenant', 'tenant_id');
+          }
+          if (!tasksStore.indexNames.contains('by-farmer')) {
+            tasksStore.createIndex('by-farmer', 'farmer_id');
+          }
+          if (!tasksStore.indexNames.contains('by-sync-status')) {
+            tasksStore.createIndex('by-sync-status', 'syncStatus');
+          }
         }
 
         // Create aiChatSessions store (maps to ai_chat_sessions in Supabase)
@@ -1043,9 +1197,31 @@ class LocalDatabase {
     await this.db!.put('scheduleTasks', task);
   }
 
+  async saveTasks(tasks: ScheduleTaskData[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('scheduleTasks', 'readwrite');
+    for (const task of tasks) {
+      await tx.objectStore('scheduleTasks').put(task);
+    }
+    await tx.done;
+  }
+
   async getTasksBySchedule(scheduleId: string): Promise<ScheduleTaskData[]> {
     if (!this.db) await this.initialize();
     return await this.db!.getAllFromIndex('scheduleTasks', 'by-schedule', scheduleId);
+  }
+
+  async getTasksByFarmer(farmerId: string): Promise<ScheduleTaskData[]> {
+    if (!this.db) await this.initialize();
+    return await this.db!.getAllFromIndex('scheduleTasks', 'by-farmer', farmerId);
+  }
+
+  async getAllTasks(farmerId?: string): Promise<ScheduleTaskData[]> {
+    if (!this.db) await this.initialize();
+    if (farmerId) {
+      return await this.db!.getAllFromIndex('scheduleTasks', 'by-farmer', farmerId);
+    }
+    return await this.db!.getAll('scheduleTasks');
   }
 
   async getTaskById(id: string): Promise<ScheduleTaskData | undefined> {

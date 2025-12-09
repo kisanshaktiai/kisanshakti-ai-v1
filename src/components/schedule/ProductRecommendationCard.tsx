@@ -72,52 +72,93 @@ const PRODUCT_NAME_TRANSLATIONS: Record<string, Record<string, string>> = {
 // APPLICATION METHOD TRANSLATIONS - Show correct method for each input type
 const APPLICATION_METHOD_TRANSLATIONS: Record<string, Record<string, string>> = {
   // Seed treatment methods
-  seed_coating: { en: 'Seed Coating', hi: 'बीज लेप', mr: 'बियाणे लेपन', pa: 'ਬੀਜ ਲੇਪ' },
-  seed_inoculation: { en: 'Seed Inoculation', hi: 'जैविक बीज उपचार', mr: 'जैविक बियाणे उपचार', pa: 'ਜੈਵਿਕ ਬੀਜ ਇਲਾਜ' },
+  seed_coating: { en: 'Seed Coating (Dry)', hi: 'बीज लेप (सूखा)', mr: 'बियाणे लेपन (कोरडे)', pa: 'ਬੀਜ ਲੇਪ' },
+  seed_inoculation: { en: 'Bio-Seed Treatment', hi: 'जैविक बीज उपचार', mr: 'जैविक बियाणे उपचार', pa: 'ਜੈਵਿਕ ਬੀਜ ਇਲਾਜ' },
   seed_treatment: { en: 'Seed Treatment', hi: 'बीज उपचार', mr: 'बियाणे प्रक्रिया', pa: 'ਬੀਜ ਉਪਚਾਰ' },
   
-  // Fertilizer methods
-  broadcasting: { en: 'Broadcasting', hi: 'छिड़काव/बिखेरना', mr: 'पसरवणे/विखुरणे', pa: 'ਖਿਲਾਰਨਾ' },
-  top_dressing: { en: 'Top Dressing', hi: 'ऊपरी खाद', mr: 'वरील खत', pa: 'ਉੱਪਰੀ ਖਾਦ' },
-  basal_application: { en: 'Basal Application', hi: 'पायाभूत खाद', mr: 'पायाभूत खत', pa: 'ਮੁੱਢਲੀ ਖਾਦ' },
-  soil_application: { en: 'Soil Application', hi: 'मिट्टी में मिलाएं', mr: 'मातीत मिसळणे', pa: 'ਮਿੱਟੀ ਵਿੱਚ ਮਿਲਾਓ' },
-  fertigation: { en: 'Fertigation (Drip)', hi: 'ड्रिप द्वारा', mr: 'ठिबक द्वारे', pa: 'ਡ੍ਰਿਪ ਰਾਹੀਂ' },
+  // SOLID FERTILIZER methods - CANNOT be sprayed!
+  broadcasting: { en: 'Broadcasting (Spread on soil)', hi: 'मिट्टी पर छिड़काव/बिखेरना', mr: 'मातीवर पसरवणे/विखुरणे', pa: 'ਮਿੱਟੀ ਤੇ ਖਿਲਾਰਨਾ' },
+  top_dressing: { en: 'Top Dressing (Surface apply)', hi: 'ऊपरी खाद (सतह पर)', mr: 'वरून खत टाकणे', pa: 'ਉੱਪਰੀ ਖਾਦ' },
+  basal_application: { en: 'Basal Application (Mix in soil)', hi: 'पायाभूत खाद (मिट्टी में मिलाएं)', mr: 'पायाभूत खत (मातीत मिसळा)', pa: 'ਮੁੱਢਲੀ ਖਾਦ' },
+  soil_application: { en: 'Soil Application (Work into soil)', hi: 'मिट्टी में मिलाएं', mr: 'मातीत मिसळणे', pa: 'ਮਿੱਟੀ ਵਿੱਚ ਮਿਲਾਓ' },
+  fertigation: { en: 'Fertigation (Through drip)', hi: 'ड्रिप द्वारा', mr: 'ठिबक द्वारे', pa: 'ਡ੍ਰਿਪ ਰਾਹੀਂ' },
   
-  // Spray methods
-  foliar_spray: { en: 'Foliar Spray', hi: 'पत्तों पर छिड़काव', mr: 'पानांवर फवारणी', pa: 'ਪੱਤਿਆਂ ਤੇ ਛਿੜਕਾਅ' },
+  // LIQUID spray methods
+  foliar_spray: { en: 'Foliar Spray (On leaves)', hi: 'पत्तों पर छिड़काव', mr: 'पानांवर फवारणी', pa: 'ਪੱਤਿਆਂ ਤੇ ਛਿੜਕਾਅ' },
   spray: { en: 'Spray', hi: 'छिड़काव', mr: 'फवारणी', pa: 'ਛਿੜਕਾਅ' },
-  directed_spray: { en: 'Directed Spray', hi: 'निर्देशित छिड़काव', mr: 'थेट फवारणी', pa: 'ਨਿਰਦੇਸ਼ਿਤ ਛਿੜਕਾਅ' },
+  directed_spray: { en: 'Directed Spray (On target)', hi: 'निर्देशित छिड़काव', mr: 'थेट फवारणी', pa: 'ਨਿਰਦੇਸ਼ਿਤ ਛਿੜਕਾਅ' },
   pre_emergence_spray: { en: 'Pre-emergence Spray', hi: 'बुवाई पूर्व छिड़काव', mr: 'पेरणीपूर्व फवारणी', pa: 'ਬਿਜਾਈ ਤੋਂ ਪਹਿਲਾਂ ਛਿੜਕਾਅ' },
   post_emergence_spray: { en: 'Post-emergence Spray', hi: 'बुवाई पश्चात छिड़काव', mr: 'पेरणीनंतर फवारणी', pa: 'ਬਿਜਾਈ ਤੋਂ ਬਾਅਦ ਛਿੜਕਾਅ' },
   
   // Drench/irrigation methods
-  drenching: { en: 'Soil Drenching', hi: 'जड़ों में डालें', mr: 'आळवणी', pa: 'ਜੜ੍ਹਾਂ ਵਿੱਚ ਪਾਓ' },
+  drenching: { en: 'Soil Drenching (Pour at roots)', hi: 'जड़ों में डालें', mr: 'आळवणी (मुळ्यांजवळ)', pa: 'ਜੜ੍ਹਾਂ ਵਿੱਚ ਪਾਓ' },
   soil_drenching: { en: 'Root Zone Drench', hi: 'जड़ क्षेत्र में डालें', mr: 'मुळ्यांजवळ आळवणी', pa: 'ਜੜ੍ਹ ਖੇਤਰ ਵਿੱਚ ਪਾਓ' },
+  irrigation: { en: 'With Irrigation Water', hi: 'सिंचाई जल के साथ', mr: 'पाण्यासोबत', pa: 'ਸਿੰਚਾਈ ਪਾਣੀ ਨਾਲ' },
   
   // Other methods
-  dusting: { en: 'Dusting', hi: 'धूल छिड़काव', mr: 'धुरळणी', pa: 'ਧੂੜ ਛਿੜਕਾਅ' },
+  dusting: { en: 'Dusting (Powder form)', hi: 'धूल छिड़काव (पाउडर)', mr: 'धुरळणी (पावडर)', pa: 'ਧੂੜ ਛਿੜਕਾਅ' },
   trap_installation: { en: 'Trap Installation', hi: 'जाल लगाएं', mr: 'सापळे लावणे', pa: 'ਜਾਲ ਲਗਾਓ' },
 };
 
+// PRODUCT FORM VALIDATION - Prevent wrong method display
+const SOLID_PRODUCTS = ['urea', 'dap', 'mop', 'npk', 'ssp', 'potash', 'fym', 'vermicompost', 'compost', 
+  'गांडूळ', 'शेणखत', 'गोबर', 'युरिया', 'यूरिया', 'डीएपी', 'एमओपी', 'केंचुआ', 'खाद', 'lime', 'gypsum'];
+const SPRAY_METHODS = ['foliar_spray', 'spray', 'directed_spray', 'pre_emergence_spray', 'post_emergence_spray'];
+
+// Validate and fix application method based on product name
+function validateApplicationMethod(productName: string, method: string): string {
+  const nameLower = (productName || '').toLowerCase();
+  
+  // If it's a solid product but method says spray - FIX IT!
+  for (const solidProduct of SOLID_PRODUCTS) {
+    if (nameLower.includes(solidProduct)) {
+      if (SPRAY_METHODS.includes(method)) {
+        // Wrong! Solid products cannot be sprayed
+        console.warn(`⚠️ Fixed wrong method for ${productName}: ${method} → broadcasting/soil_application`);
+        
+        // Determine correct method
+        if (nameLower.includes('fym') || nameLower.includes('शेणखत') || nameLower.includes('गोबर') || 
+            nameLower.includes('vermicompost') || nameLower.includes('गांडूळ') || nameLower.includes('केंचुआ')) {
+          return 'basal_application';
+        }
+        if (nameLower.includes('urea') || nameLower.includes('युरिया') || nameLower.includes('यूरिया')) {
+          return 'top_dressing';
+        }
+        if (nameLower.includes('dap') || nameLower.includes('डीएपी') || 
+            nameLower.includes('mop') || nameLower.includes('एमओपी') ||
+            nameLower.includes('ssp') || nameLower.includes('npk')) {
+          return 'basal_application';
+        }
+        return 'broadcasting';
+      }
+    }
+  }
+  
+  return method;
+}
+
 // Translate application method to local language
-function translateApplicationMethod(method: string, lang: string): string {
+function translateApplicationMethod(method: string, lang: string, productName?: string): string {
   if (!method) return '';
   
-  const methodLower = method.toLowerCase().replace(/\s+/g, '_');
+  // First validate the method against product name
+  const validatedMethod = productName ? validateApplicationMethod(productName, method) : method;
+  
+  const methodLower = validatedMethod.toLowerCase().replace(/\s+/g, '_');
   
   // Direct match
   if (APPLICATION_METHOD_TRANSLATIONS[methodLower]) {
-    return APPLICATION_METHOD_TRANSLATIONS[methodLower][lang] || APPLICATION_METHOD_TRANSLATIONS[methodLower].en || method;
+    return APPLICATION_METHOD_TRANSLATIONS[methodLower][lang] || APPLICATION_METHOD_TRANSLATIONS[methodLower].en || validatedMethod;
   }
   
   // Partial match
   for (const [key, translations] of Object.entries(APPLICATION_METHOD_TRANSLATIONS)) {
     if (methodLower.includes(key) || key.includes(methodLower)) {
-      return translations[lang] || translations.en || method;
+      return translations[lang] || translations.en || validatedMethod;
     }
   }
   
-  return method;
+  return validatedMethod;
 }
 
 // Translate product name to local language
@@ -329,7 +370,7 @@ export default function ProductRecommendationCard({
                       <span className="font-medium text-foreground">
                         {lang === 'hi' ? 'तरीका:' : lang === 'mr' ? 'पद्धत:' : 'Method:'}
                       </span>{' '}
-                      {translateApplicationMethod(product.application_method, lang)}
+                      {translateApplicationMethod(product.application_method, lang, product.product_name)}
                     </span>
                   </div>
                 )}
