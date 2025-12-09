@@ -2744,6 +2744,39 @@ export type Database = {
         }
         Relationships: []
       }
+      commodity_master: {
+        Row: {
+          aliases: Json | null
+          category: string | null
+          created_at: string | null
+          global_code: string
+          id: string
+          name: string
+          unit: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          aliases?: Json | null
+          category?: string | null
+          created_at?: string | null
+          global_code: string
+          id?: string
+          name: string
+          unit?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          aliases?: Json | null
+          category?: string | null
+          created_at?: string | null
+          global_code?: string
+          id?: string
+          name?: string
+          unit?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       communities: {
         Row: {
           banner_url: string | null
@@ -9416,7 +9449,29 @@ export type Database = {
           updated_at?: string | null
           variety?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_market_prices_country"
+            columns: ["country_id"]
+            isOneToOne: false
+            referencedRelation: "countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_market_prices_source"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "agri_market_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_market_prices_state"
+            columns: ["state_id"]
+            isOneToOne: false
+            referencedRelation: "states"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       marketplace_categories: {
         Row: {
