@@ -417,18 +417,18 @@ export default function ProductRecommendationCard({
               </div>
             </div>
             
-            {/* FIXED: Display ACTUAL labor breakdown instead of reverse-calculating */}
+            {/* FIXED: Display REALISTIC labor breakdown - Worker × Days model */}
             <div className="text-[10px] text-muted-foreground bg-purple-500/5 p-2 rounded-lg space-y-1">
-              {laborDays > 0 ? (
+              {laborDays > 0 && laborWorkers > 0 ? (
                 <>
-                  <div>
+                  <div className="font-medium text-purple-700 dark:text-purple-400">
                     {lang === 'hi' 
-                      ? `${laborWorkers || 1} मजदूर × ${laborDaysPerAcre || 1} दिन/एकड़ × ${landAreaAcres.toFixed(2)} एकड़ = ${laborDays.toFixed(1)} मजदूर-दिवस` 
+                      ? `${laborWorkers} मजदूर × ${laborDaysPerAcre || 1} दिन = ${laborDays.toFixed(1)} मजदूर-दिवस` 
                       : lang === 'mr'
-                      ? `${laborWorkers || 1} मजूर × ${laborDaysPerAcre || 1} दिवस/एकर × ${landAreaAcres.toFixed(2)} एकर = ${laborDays.toFixed(1)} मजूर-दिवस`
-                      : `${laborWorkers || 1} workers × ${laborDaysPerAcre || 1} days/acre × ${landAreaAcres.toFixed(2)} acres = ${laborDays.toFixed(1)} labor-days`}
+                      ? `${laborWorkers} मजूर × ${laborDaysPerAcre || 1} दिवस = ${laborDays.toFixed(1)} मजूर-दिवस`
+                      : `${laborWorkers} workers × ${laborDaysPerAcre || 1} days = ${laborDays.toFixed(1)} labor-days`}
                   </div>
-                  <div className="font-medium">
+                  <div>
                     {lang === 'hi' 
                       ? `${laborDays.toFixed(1)} मजदूर-दिवस @ ₹${laborDailyWage}/दिन = ₹${laborCost.toLocaleString('en-IN')}` 
                       : lang === 'mr'
@@ -437,7 +437,7 @@ export default function ProductRecommendationCard({
                   </div>
                 </>
               ) : (
-                // Fallback: Only if no actual data available, show simple estimate
+                // Fallback: Only if no actual data available
                 <div>
                   {lang === 'hi' 
                     ? `अनुमानित मजदूरी @ ₹${laborDailyWage}/दिन` 

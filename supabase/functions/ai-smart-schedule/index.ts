@@ -1129,6 +1129,302 @@ const FERTILIZER_PRICES: Record<string, { price_per_kg: number; bag_kg: number; 
 // SEED RATES & PRICES - UPDATED 2024-25 INDIAN MARKET RATES
 // Sources: ICAR, Krishi Vigyan Kendras, State Seed Corporations
 // ═══════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════
+// CROP-SPECIFIC PRODUCT RECOMMENDATIONS - DYNAMIC AI-BASED (NOT HARDCODED DB)
+// These replace the master_products table dependency
+// ═══════════════════════════════════════════════════════════════════════
+const CROP_SPECIFIC_PRODUCTS: Record<string, Record<string, Array<{
+  name: string;
+  type: string;
+  dose: string;
+  price_per_acre: number;
+  active_ingredient?: string;
+  application_method: string;
+  precautions?: string;
+}>>> = {
+  sugarcane: {
+    seed_treatment: [
+      { name: 'कार्बेन्डाझिम', type: 'fungicide', dose: '2gm/kg बेणे', price_per_acre: 180, active_ingredient: 'Carbendazim 50%WP', application_method: 'seed_coating', precautions: 'सावल्यात वाळवा' },
+      { name: 'ट्रायकोडर्मा विरिडी', type: 'bio_fertilizer', dose: '10gm/kg बेणे', price_per_acre: 200, active_ingredient: 'Trichoderma spores 2×10⁹', application_method: 'seed_inoculation' },
+    ],
+    fertilizer: [
+      { name: 'एसएसपी (SSP)', type: 'fertilizer', dose: '125 kg/एकर', price_per_acre: 1125, active_ingredient: '16% P₂O₅', application_method: 'basal_application' },
+      { name: 'एमओपी (MOP)', type: 'fertilizer', dose: '50 kg/एकर', price_per_acre: 1000, active_ingredient: '60% K₂O', application_method: 'basal_application' },
+      { name: 'युरिया', type: 'fertilizer', dose: '60 kg/एकर', price_per_acre: 390, active_ingredient: '46% N', application_method: 'top_dressing' },
+      { name: 'DAP', type: 'fertilizer', dose: '50 kg/एकर', price_per_acre: 1500, active_ingredient: '18%N-46%P', application_method: 'basal_application' },
+    ],
+    pest_control: [
+      { name: 'क्लोरपायरीफॉस', type: 'pesticide', dose: '1 L/एकर', price_per_acre: 550, active_ingredient: 'Chlorpyriphos 20%EC', application_method: 'soil_drenching', precautions: 'मुळांजवळ ओतणे' },
+      { name: 'कार्बोफ्युरान', type: 'pesticide', dose: '8 kg/एकर', price_per_acre: 800, active_ingredient: 'Carbofuran 3%CG', application_method: 'soil_application', precautions: 'रांगोळी पद्धतीने' },
+      { name: 'ब्युव्हेरिया बॅसियाना', type: 'bio_pesticide', dose: '1 kg/एकर', price_per_acre: 400, active_ingredient: 'Beauveria spores', application_method: 'foliar_spray' },
+    ],
+    growth_promoter: [
+      { name: 'ह्युमिक ॲसिड', type: 'growth_promoter', dose: '1 L/एकर', price_per_acre: 450, application_method: 'fertigation' },
+      { name: 'सीव्हीड अर्क', type: 'growth_promoter', dose: '500 ml/एकर', price_per_acre: 550, application_method: 'foliar_spray' },
+    ],
+    organic_input: [
+      { name: 'शेणखत (FYM)', type: 'organic', dose: '10 टन/एकर', price_per_acre: 8000, application_method: 'soil_application' },
+      { name: 'गांडूळ खत', type: 'organic', dose: '500 kg/एकर', price_per_acre: 4000, application_method: 'soil_application' },
+      { name: 'जीवामृत', type: 'organic', dose: '200 L/एकर', price_per_acre: 150, application_method: 'drenching' },
+    ],
+    disease_control: [
+      { name: 'कॉपर ऑक्सिक्लोराईड', type: 'fungicide', dose: '2 kg/एकर', price_per_acre: 500, active_ingredient: 'COC 50%WP', application_method: 'foliar_spray' },
+      { name: 'मॅन्कोझेब', type: 'fungicide', dose: '2 kg/एकर', price_per_acre: 450, active_ingredient: 'Mancozeb 75%WP', application_method: 'foliar_spray' },
+    ],
+  },
+  wheat: {
+    seed_treatment: [
+      { name: 'थायरम', type: 'fungicide', dose: '2.5gm/kg बीज', price_per_acre: 120, active_ingredient: 'Thiram 75%WP', application_method: 'seed_coating' },
+      { name: 'ट्राइकोडर्मा', type: 'bio_fertilizer', dose: '4gm/kg बीज', price_per_acre: 150, application_method: 'seed_inoculation' },
+    ],
+    fertilizer: [
+      { name: 'DAP', type: 'fertilizer', dose: '50 kg/एकड़', price_per_acre: 1500, application_method: 'basal_application' },
+      { name: 'यूरिया', type: 'fertilizer', dose: '80 kg/एकड़', price_per_acre: 520, application_method: 'top_dressing' },
+      { name: 'जिंक सल्फेट', type: 'micronutrient', dose: '10 kg/एकड़', price_per_acre: 850, application_method: 'soil_application' },
+    ],
+    pest_control: [
+      { name: 'इमिडाक्लोप्रिड', type: 'pesticide', dose: '100 ml/एकड़', price_per_acre: 350, application_method: 'foliar_spray' },
+    ],
+    growth_promoter: [
+      { name: 'ह्यूमिक एसिड', type: 'growth_promoter', dose: '1 L/एकड़', price_per_acre: 450, application_method: 'foliar_spray' },
+    ],
+  },
+  soybean: {
+    seed_treatment: [
+      { name: 'थायरम + राइज़ोबियम', type: 'bio_fertilizer', dose: '2.5gm + 10gm/kg', price_per_acre: 200, application_method: 'seed_inoculation' },
+      { name: 'ट्राइकोडर्मा', type: 'bio_fertilizer', dose: '4gm/kg बीज', price_per_acre: 150, application_method: 'seed_inoculation' },
+    ],
+    fertilizer: [
+      { name: 'SSP', type: 'fertilizer', dose: '125 kg/एकड़', price_per_acre: 1125, application_method: 'basal_application' },
+      { name: 'MOP', type: 'fertilizer', dose: '25 kg/एकड़', price_per_acre: 500, application_method: 'basal_application' },
+    ],
+    pest_control: [
+      { name: 'क्विनालफॉस', type: 'pesticide', dose: '500 ml/एकड़', price_per_acre: 400, application_method: 'foliar_spray' },
+      { name: 'नीम तेल', type: 'bio_pesticide', dose: '2 L/एकड़', price_per_acre: 700, application_method: 'foliar_spray' },
+    ],
+    disease_control: [
+      { name: 'कार्बेंडाज़िम', type: 'fungicide', dose: '500gm/एकड़', price_per_acre: 380, application_method: 'foliar_spray' },
+    ],
+    growth_promoter: [
+      { name: 'सीव्हीड अर्क', type: 'growth_promoter', dose: '500 ml/एकड़', price_per_acre: 550, application_method: 'foliar_spray' },
+    ],
+  },
+  cotton: {
+    seed_treatment: [
+      { name: 'इमिडाक्लोप्रिड', type: 'pesticide', dose: '5gm/kg बीज', price_per_acre: 200, application_method: 'seed_coating' },
+    ],
+    fertilizer: [
+      { name: 'DAP', type: 'fertilizer', dose: '50 kg/एकड़', price_per_acre: 1500, application_method: 'basal_application' },
+      { name: 'यूरिया', type: 'fertilizer', dose: '80 kg/एकड़', price_per_acre: 520, application_method: 'top_dressing' },
+      { name: 'MOP', type: 'fertilizer', dose: '40 kg/एकड़', price_per_acre: 800, application_method: 'basal_application' },
+    ],
+    pest_control: [
+      { name: 'स्पिनोसैड', type: 'pesticide', dose: '100 ml/एकड़', price_per_acre: 650, application_method: 'foliar_spray' },
+      { name: 'एसीफेट', type: 'pesticide', dose: '300gm/एकड़', price_per_acre: 450, application_method: 'foliar_spray' },
+    ],
+    growth_promoter: [
+      { name: 'नेप्थालीन एसिटिक एसिड', type: 'growth_promoter', dose: '50 ml/एकड़', price_per_acre: 350, application_method: 'foliar_spray' },
+    ],
+  },
+  rice: {
+    seed_treatment: [
+      { name: 'कार्बेंडाज़िम', type: 'fungicide', dose: '2gm/kg बीज', price_per_acre: 120, application_method: 'seed_coating' },
+      { name: 'एज़ोस्पिरिलम', type: 'bio_fertilizer', dose: '10gm/kg बीज', price_per_acre: 100, application_method: 'seed_inoculation' },
+    ],
+    fertilizer: [
+      { name: 'DAP', type: 'fertilizer', dose: '50 kg/एकड़', price_per_acre: 1500, application_method: 'basal_application' },
+      { name: 'यूरिया', type: 'fertilizer', dose: '100 kg/एकड़', price_per_acre: 650, application_method: 'top_dressing' },
+      { name: 'जिंक सल्फेट', type: 'micronutrient', dose: '10 kg/एकड़', price_per_acre: 850, application_method: 'soil_application' },
+    ],
+    pest_control: [
+      { name: 'क्लोरपायरीफॉस', type: 'pesticide', dose: '1 L/एकड़', price_per_acre: 550, application_method: 'foliar_spray' },
+      { name: 'कार्टैप हाइड्रोक्लोराइड', type: 'pesticide', dose: '500gm/एकड़', price_per_acre: 450, application_method: 'foliar_spray' },
+    ],
+    disease_control: [
+      { name: 'ट्राइसाइक्लाज़ोल', type: 'fungicide', dose: '300gm/एकड़', price_per_acre: 600, application_method: 'foliar_spray' },
+    ],
+  },
+  maize: {
+    seed_treatment: [
+      { name: 'थायरम', type: 'fungicide', dose: '3gm/kg बीज', price_per_acre: 100, application_method: 'seed_coating' },
+    ],
+    fertilizer: [
+      { name: 'DAP', type: 'fertilizer', dose: '60 kg/एकड़', price_per_acre: 1800, application_method: 'basal_application' },
+      { name: 'यूरिया', type: 'fertilizer', dose: '120 kg/एकड़', price_per_acre: 780, application_method: 'top_dressing' },
+      { name: 'MOP', type: 'fertilizer', dose: '40 kg/एकड़', price_per_acre: 800, application_method: 'basal_application' },
+    ],
+    pest_control: [
+      { name: 'स्पिनोसैड', type: 'pesticide', dose: '100 ml/एकड़', price_per_acre: 650, application_method: 'foliar_spray' },
+    ],
+  },
+  // Default products for crops not specifically listed
+  default: {
+    seed_treatment: [
+      { name: 'ट्राइकोडर्मा विरिडी', type: 'bio_fertilizer', dose: '4gm/kg बीज', price_per_acre: 150, application_method: 'seed_inoculation' },
+    ],
+    fertilizer: [
+      { name: 'DAP', type: 'fertilizer', dose: '50 kg/एकड़', price_per_acre: 1500, application_method: 'basal_application' },
+      { name: 'यूरिया', type: 'fertilizer', dose: '60 kg/एकड़', price_per_acre: 390, application_method: 'top_dressing' },
+    ],
+    pest_control: [
+      { name: 'नीम तेल', type: 'bio_pesticide', dose: '2 L/एकड़', price_per_acre: 700, application_method: 'foliar_spray' },
+    ],
+    growth_promoter: [
+      { name: 'ह्यूमिक एसिड', type: 'growth_promoter', dose: '1 L/एकड़', price_per_acre: 450, application_method: 'foliar_spray' },
+    ],
+    organic_input: [
+      { name: 'शेणखत (FYM)', type: 'organic', dose: '5 टन/एकड़', price_per_acre: 4000, application_method: 'soil_application' },
+      { name: 'गांडूळ खत', type: 'organic', dose: '300 kg/एकड़', price_per_acre: 2400, application_method: 'soil_application' },
+    ],
+    disease_control: [
+      { name: 'मॅन्कोझेब', type: 'fungicide', dose: '2 kg/एकड़', price_per_acre: 450, application_method: 'foliar_spray' },
+    ],
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// CROP TASK MULTIPLIERS - MINIMUM TASKS FOR LONG-DURATION CROPS
+// ═══════════════════════════════════════════════════════════════════════
+const CROP_TASK_MULTIPLIERS: Record<string, { minTasks: number; durationDays: number; mandatoryCategories: string[] }> = {
+  sugarcane: { 
+    minTasks: 30, 
+    durationDays: 365,
+    mandatoryCategories: ['irrigation', 'fertilizer', 'weeding', 'pest_control', 'earthing', 'harvest']
+  },
+  banana: { minTasks: 28, durationDays: 300, mandatoryCategories: ['irrigation', 'fertilizer', 'pest_control', 'desuckering'] },
+  turmeric: { minTasks: 25, durationDays: 270, mandatoryCategories: ['irrigation', 'fertilizer', 'weeding', 'earthing'] },
+  ginger: { minTasks: 25, durationDays: 240, mandatoryCategories: ['irrigation', 'fertilizer', 'mulching', 'earthing'] },
+  cotton: { minTasks: 22, durationDays: 180, mandatoryCategories: ['irrigation', 'fertilizer', 'pest_control', 'weeding'] },
+  rice: { minTasks: 18, durationDays: 130, mandatoryCategories: ['irrigation', 'fertilizer', 'weeding', 'pest_control'] },
+  wheat: { minTasks: 15, durationDays: 120, mandatoryCategories: ['irrigation', 'fertilizer', 'weeding'] },
+  soybean: { minTasks: 16, durationDays: 100, mandatoryCategories: ['weeding', 'pest_control', 'fertilizer'] },
+  maize: { minTasks: 16, durationDays: 110, mandatoryCategories: ['irrigation', 'fertilizer', 'weeding'] },
+  groundnut: { minTasks: 15, durationDays: 110, mandatoryCategories: ['weeding', 'pest_control', 'earthing'] },
+  onion: { minTasks: 18, durationDays: 140, mandatoryCategories: ['irrigation', 'fertilizer', 'weeding'] },
+  tomato: { minTasks: 20, durationDays: 100, mandatoryCategories: ['irrigation', 'fertilizer', 'pest_control', 'staking'] },
+  default: { minTasks: 15, durationDays: 100, mandatoryCategories: ['irrigation', 'fertilizer', 'weeding'] },
+};
+
+// ═══════════════════════════════════════════════════════════════════════
+// REALISTIC LABOR REQUIREMENTS - WORKER × DAYS MODEL (NOT FRACTIONAL)
+// Based on actual Indian agricultural practices (ICAR/KVK guidelines)
+// ═══════════════════════════════════════════════════════════════════════
+const LABOR_REQUIREMENTS: Record<string, { baseWorkers: number; baseDays: number; perAcreMultiplier: number; description: string }> = {
+  // Heavy labor tasks
+  land_preparation: { baseWorkers: 2, baseDays: 2, perAcreMultiplier: 0.5, description: 'Ploughing with tractor + leveling' },
+  transplanting: { baseWorkers: 6, baseDays: 1, perAcreMultiplier: 1.0, description: 'Transplanting seedlings' },
+  harvesting: { baseWorkers: 5, baseDays: 2, perAcreMultiplier: 0.8, description: 'Crop cutting and bundling' },
+  harvest: { baseWorkers: 5, baseDays: 2, perAcreMultiplier: 0.8, description: 'Crop harvesting' },
+  weeding: { baseWorkers: 4, baseDays: 1, perAcreMultiplier: 0.75, description: 'Manual weeding' },
+  weed_management: { baseWorkers: 4, baseDays: 1, perAcreMultiplier: 0.75, description: 'Manual weeding' },
+  earthing: { baseWorkers: 3, baseDays: 1, perAcreMultiplier: 0.6, description: 'Earthing up operation' },
+  
+  // Medium labor tasks  
+  sowing: { baseWorkers: 3, baseDays: 1, perAcreMultiplier: 0.5, description: 'Seed sowing' },
+  fertilizer: { baseWorkers: 2, baseDays: 0.5, perAcreMultiplier: 0.5, description: 'Fertilizer application' },
+  fertilizer_application: { baseWorkers: 2, baseDays: 0.5, perAcreMultiplier: 0.5, description: 'Fertilizer mixing & applying' },
+  nutrient_management: { baseWorkers: 2, baseDays: 0.5, perAcreMultiplier: 0.5, description: 'Nutrient application' },
+  post_harvest: { baseWorkers: 3, baseDays: 1, perAcreMultiplier: 0.5, description: 'Threshing, cleaning' },
+  organic_input: { baseWorkers: 2, baseDays: 1, perAcreMultiplier: 0.5, description: 'Organic manure application' },
+  mulching: { baseWorkers: 2, baseDays: 1, perAcreMultiplier: 0.6, description: 'Laying mulch material' },
+  intercultural: { baseWorkers: 2, baseDays: 1, perAcreMultiplier: 0.5, description: 'Intercultural operations' },
+  pruning: { baseWorkers: 2, baseDays: 1, perAcreMultiplier: 0.6, description: 'Pruning and training' },
+  
+  // Light labor tasks
+  pest_control: { baseWorkers: 2, baseDays: 0.5, perAcreMultiplier: 0.3, description: 'Pesticide spraying' },
+  disease_control: { baseWorkers: 2, baseDays: 0.5, perAcreMultiplier: 0.3, description: 'Fungicide spraying' },
+  pest_management: { baseWorkers: 2, baseDays: 0.5, perAcreMultiplier: 0.3, description: 'Pest management' },
+  disease_management: { baseWorkers: 2, baseDays: 0.5, perAcreMultiplier: 0.3, description: 'Disease management' },
+  growth_promoter: { baseWorkers: 1, baseDays: 0.5, perAcreMultiplier: 0.3, description: 'Growth promoter spraying' },
+  growth_management: { baseWorkers: 1, baseDays: 0.5, perAcreMultiplier: 0.3, description: 'Growth promoter application' },
+  seed_treatment: { baseWorkers: 1, baseDays: 0.5, perAcreMultiplier: 0.2, description: 'Seed treatment' },
+  irrigation: { baseWorkers: 1, baseDays: 0.5, perAcreMultiplier: 0.2, description: 'Irrigation management' },
+  watering: { baseWorkers: 1, baseDays: 0.5, perAcreMultiplier: 0.2, description: 'Watering plants' },
+  monitoring: { baseWorkers: 1, baseDays: 0.25, perAcreMultiplier: 0.1, description: 'Field inspection' },
+  field_visit: { baseWorkers: 1, baseDays: 0.25, perAcreMultiplier: 0.1, description: 'Field visit' },
+  planning: { baseWorkers: 1, baseDays: 0.5, perAcreMultiplier: 0.1, description: 'Planning work' },
+  other: { baseWorkers: 1, baseDays: 0.5, perAcreMultiplier: 0.3, description: 'General farm work' },
+};
+
+// Function to calculate realistic labor cost using worker × days model
+function calculateRealisticLaborCost(
+  category: string,
+  landAreaAcres: number,
+  dailyWageRate: number
+): { workers: number; days: number; totalLaborDays: number; laborCost: number; description: string } {
+  const laborReq = LABOR_REQUIREMENTS[category] || LABOR_REQUIREMENTS['other'];
+  
+  // Calculate workers needed for this land area (minimum 1)
+  const workersNeeded = Math.max(1, Math.ceil(laborReq.baseWorkers + (laborReq.perAcreMultiplier * (landAreaAcres - 1))));
+  
+  // Calculate days needed (round to nearest 0.5 for realistic half-day/full-day work)
+  let daysNeeded = laborReq.baseDays;
+  if (landAreaAcres > 2) {
+    daysNeeded = laborReq.baseDays + Math.ceil((landAreaAcres - 2) * laborReq.perAcreMultiplier * 0.5) * 0.5;
+  }
+  daysNeeded = Math.max(0.5, Math.round(daysNeeded * 2) / 2); // Round to nearest 0.5
+  
+  // Total labor-days = workers × days (NOT multiplied by area again!)
+  const totalLaborDays = workersNeeded * daysNeeded;
+  
+  // Labor cost
+  const laborCost = Math.round(totalLaborDays * dailyWageRate);
+  
+  return {
+    workers: workersNeeded,
+    days: daysNeeded,
+    totalLaborDays,
+    laborCost,
+    description: laborReq.description
+  };
+}
+
+// Function to get crop-specific products
+function getCropSpecificProducts(
+  cropName: string,
+  category: string,
+  farmingType: string,
+  landAreaAcres: number
+): Array<{
+  product_name: string;
+  product_type: string;
+  dose_per_acre: string;
+  price_estimate: number;
+  active_ingredient?: string;
+  application_method: string;
+  precautions?: string;
+}> {
+  const cropKey = cropName.toLowerCase().replace(/\s+/g, '');
+  const cropProducts = CROP_SPECIFIC_PRODUCTS[cropKey] || CROP_SPECIFIC_PRODUCTS['default'];
+  const categoryProducts = cropProducts[category] || [];
+  
+  // Filter based on farming type
+  let filteredProducts = categoryProducts;
+  if (farmingType === 'organic_only') {
+    filteredProducts = categoryProducts.filter(p => 
+      ['organic', 'bio_fertilizer', 'bio_pesticide', 'growth_promoter'].includes(p.type)
+    );
+    // If no organic products for this category, use organic alternatives from default
+    if (filteredProducts.length === 0) {
+      const defaultProducts = CROP_SPECIFIC_PRODUCTS['default'][category] || [];
+      filteredProducts = defaultProducts.filter(p => 
+        ['organic', 'bio_fertilizer', 'bio_pesticide', 'growth_promoter'].includes(p.type)
+      );
+    }
+  }
+  
+  // Return products with calculated prices for land area
+  return filteredProducts.slice(0, 3).map(p => ({
+    product_name: p.name,
+    product_type: p.type,
+    dose_per_acre: p.dose,
+    price_estimate: Math.round(p.price_per_acre * landAreaAcres),
+    active_ingredient: p.active_ingredient,
+    application_method: p.application_method,
+    precautions: p.precautions
+  }));
+}
+
 const SEED_RATES: Record<
   string,
   { rate_kg_per_acre: number; spacing_cm: string; price_per_kg: number; treatment: string }
@@ -2104,12 +2400,19 @@ serve(async (req) => {
     // STEP 5: BUILD STAGE-BASED AI PROMPT - ALL STAGES MANDATORY
     // ═══════════════════════════════════════════════════════════════════
     const totalStages = farmingStages.length;
-    console.log(`📋 [AI] Building OPTIMIZED prompt for ${totalStages} stages`);
+    
+    // GET MINIMUM TASK COUNT FOR THIS CROP (addresses Issue #3 - sugarcane needs 30+ tasks)
+    const cropTaskConfig = CROP_TASK_MULTIPLIERS[cropLower] || CROP_TASK_MULTIPLIERS['default'];
+    const minTaskCount = Math.max(totalStages * 2, cropTaskConfig.minTasks);
+    const cropDurationDays = cropTaskConfig.durationDays;
+    
+    console.log(`📋 [AI] Building prompt for ${totalStages} stages, min ${minTaskCount} tasks for ${cropDurationDays}-day crop`);
 
-    // OPTIMIZED: Compact stage prompt to reduce token count
+    // OPTIMIZED: Compact stage prompt with more tasks per stage for long-duration crops
+    const tasksPerStage = Math.ceil(minTaskCount / totalStages);
     const stagesPrompt = farmingStages
       .map((stage: FarmingStage) => {
-        return `${stage.stage_order}. ${stage.stage_name} (${stage.stage_key}): ${stage.stage_description} - 2-3 tasks`;
+        return `${stage.stage_order}. ${stage.stage_name} (${stage.stage_key}): ${stage.stage_description} - ${tasksPerStage}-${tasksPerStage + 2} tasks`;
       })
       .join("\n");
 
@@ -2412,16 +2715,28 @@ ${dataSection}
 4. Include seed_treatment task in sowing stage with EXACT treatment method
 5. NO text responses - ONLY function call with JSON data`;
 
+    // Build mandatory task categories string for long-duration crops
+    const mandatoryCategoriesPrompt = cropTaskConfig.mandatoryCategories.length > 0
+      ? `\nMANDATORY TASK TYPES for ${translatedCropName}: ${cropTaskConfig.mandatoryCategories.join(', ')}`
+      : '';
+
     const userPrompt = `Generate COMPLETE ${translatedCropName} crop schedule NOW.
 
 MANDATORY CHECKLIST:
 ✓ All ${totalStages} stages covered: ${allStageKeys.join(", ")}
+✓ MINIMUM ${minTaskCount} tasks required for this ${cropDurationDays}-day crop
 ✓ Seed preparation with treatment details
 ✓ For products: use flat fields - product_names (comma-separated), product_doses, product_prices
 ✓ Instructions in ${languageName} rural dialect
-✓ Cost estimates per task
+✓ Cost estimates per task${mandatoryCategoriesPrompt}
 
-Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tasks.`;
+CRITICAL FOR ${cropDurationDays}-DAY CROPS:
+- Include ${Math.ceil(cropDurationDays / 15)} irrigation monitoring tasks
+- Include ${Math.ceil(cropDurationDays / 30)} fertilizer applications
+- Include ${Math.ceil(cropDurationDays / 25)} weeding tasks
+- Include ${Math.ceil(cropDurationDays / 45)} pest/disease monitoring tasks
+
+Call the create_schedule function with ${minTaskCount}-${minTaskCount + 10} tasks.`;
 
     console.log(`🤖 [AI] Calling ${aiProvider}/${model} with optimized ${totalStages}-stage prompt`);
 
@@ -2786,55 +3101,39 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
           };
         });
         
-        // ADD LABOR CHARGES - REAL INDIAN AGRICULTURAL LABOR CALCULATION (2024-25)
+        // ADD LABOR CHARGES - USING REALISTIC WORKER × DAYS MODEL (2024-25)
         // Daily wage rates vary by region: ₹300-500/day (MGNREGA standard: ₹349/day)
-        const dailyWageRate = laborRate || 350; // Use passed laborRate or default
+        const dailyWageRate = laborRate || 350;
         
-        // LABOR REQUIREMENT PER ACRE - (workers × days) per acre for each task type
-        // This is based on actual agricultural practices and ICAR guidelines
-        const laborRequirementsPerAcre: Record<string, { workers: number; days: number; machinery?: boolean; description: string }> = {
-          'land_preparation': { workers: 2, days: 4, machinery: true, description: 'Ploughing, leveling with tractor + 2 workers' },
-          'seed_treatment': { workers: 1, days: 0.5, description: 'Seed treatment and preparation' },
-          'sowing': { workers: 3, days: 2, description: 'Seed sowing/dibbling with 3 workers' },
-          'transplanting': { workers: 8, days: 2, description: 'Transplanting seedlings - labor intensive' },
-          'irrigation': { workers: 1, days: 0.5, description: 'Per irrigation cycle management' },
-          'fertilizer_application': { workers: 2, days: 1, description: 'Fertilizer mixing and application' },
-          'weeding': { workers: 4, days: 3, description: 'Manual weeding - very labor intensive' },
-          'weed_management': { workers: 4, days: 3, description: 'Manual weeding - very labor intensive' },
-          'pest_management': { workers: 2, days: 1, description: 'Spraying with knapsack sprayer' },
-          'pest_control': { workers: 2, days: 1, description: 'Pesticide spraying' },
-          'disease_management': { workers: 2, days: 1, description: 'Fungicide/medicine spraying' },
-          'disease_control': { workers: 2, days: 1, description: 'Disease control measures' },
-          'growth_management': { workers: 1, days: 1, description: 'Growth promoter application' },
-          'growth_promoter': { workers: 1, days: 1, description: 'Growth promoter spraying' },
-          'harvesting': { workers: 6, days: 3, description: 'Crop cutting and bundling' },
-          'harvest': { workers: 6, days: 3, description: 'Crop harvesting' },
-          'post_harvest': { workers: 3, days: 2, description: 'Threshing, cleaning, grading' },
-          'intercultural': { workers: 2, days: 1.5, description: 'Gap filling, thinning, earthing' },
-          'nutrient_management': { workers: 2, days: 1, description: 'Nutrient application' },
-          'organic_input': { workers: 2, days: 1, description: 'Organic manure application' },
-          'monitoring': { workers: 1, days: 0.25, description: 'Field inspection walk' },
-          'pruning': { workers: 3, days: 2, description: 'Pruning and training plants' },
-          'mulching': { workers: 2, days: 1.5, description: 'Laying mulch material' },
-          'other': { workers: 1, days: 1, description: 'General farm work' },
-        };
-        
-        const stageKey = task.stage_key || task.category || "other";
+        // Use the new realistic labor calculation function
         const category = (task.category || "other").toLowerCase();
-        
-        // Find matching labor requirement
-        const laborReq = laborRequirementsPerAcre[stageKey] || laborRequirementsPerAcre[category] || laborRequirementsPerAcre['other'];
-        
-        // CALCULATE: (workers × days × land_area × daily_wage)
-        const totalLaborDays = laborReq.workers * laborReq.days * landAreaAcres;
-        const calculatedLaborCost = Math.round(totalLaborDays * dailyWageRate);
+        const laborCalc = calculateRealisticLaborCost(category, landAreaAcres, dailyWageRate);
         
         // Store detailed labor breakdown
-        task.labor_cost = calculatedLaborCost;
-        task.labor_workers = laborReq.workers;
-        task.labor_days_per_acre = laborReq.days;
-        task.labor_total_days = Math.round(totalLaborDays * 10) / 10; // Round to 1 decimal
-        task.labor_description = laborReq.description;
+        task.labor_cost = laborCalc.laborCost;
+        task.labor_workers = laborCalc.workers;
+        task.labor_days_per_acre = laborCalc.days;
+        task.labor_total_days = laborCalc.totalLaborDays;
+        task.labor_description = laborCalc.description;
+        task.labor_daily_wage = dailyWageRate;
+      } else if (!task.product_recommendations || task.product_recommendations.length === 0) {
+        // No AI products provided - try to get crop-specific products
+        const category = (task.category || "other").toLowerCase();
+        const cropProducts = getCropSpecificProducts(cropName, category, farmingType, landAreaAcres);
+        
+        if (cropProducts.length > 0) {
+          task.product_recommendations = cropProducts;
+          console.log(`📦 [Products] Added ${cropProducts.length} crop-specific products for: ${task.task_name}`);
+        }
+        
+        // Add labor cost using realistic model
+        const dailyWageRate = laborRate || 350;
+        const laborCalc = calculateRealisticLaborCost(category, landAreaAcres, dailyWageRate);
+        task.labor_cost = laborCalc.laborCost;
+        task.labor_workers = laborCalc.workers;
+        task.labor_days_per_acre = laborCalc.days;
+        task.labor_total_days = laborCalc.totalLaborDays;
+        task.labor_description = laborCalc.description;
         task.labor_daily_wage = dailyWageRate;
       }
 
@@ -2961,28 +3260,34 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
             };
           });
           
-          // Add REAL labor cost calculation for DB products
+          // Add REAL labor cost calculation using realistic model
           const dailyWageRate = laborRate || 350;
-          const laborRequirementsPerAcre: Record<string, { workers: number; days: number }> = {
-            'land_preparation': { workers: 2, days: 4 },
-            'seed_treatment': { workers: 1, days: 0.5 },
-            'sowing': { workers: 3, days: 2 },
-            'transplanting': { workers: 8, days: 2 },
-            'irrigation': { workers: 1, days: 0.5 },
-            'fertilizer_application': { workers: 2, days: 1 },
-            'fertilizer': { workers: 2, days: 1 },
-            'weeding': { workers: 4, days: 3 },
-            'weed_management': { workers: 4, days: 3 },
-            'pest_management': { workers: 2, days: 1 },
-            'pest_control': { workers: 2, days: 1 },
-            'disease_management': { workers: 2, days: 1 },
-            'disease_control': { workers: 2, days: 1 },
-            'growth_management': { workers: 1, days: 1 },
-            'growth_promoter': { workers: 1, days: 1 },
-            'harvesting': { workers: 6, days: 3 },
-            'harvest': { workers: 6, days: 3 },
-            'post_harvest': { workers: 3, days: 2 },
-            'intercultural': { workers: 2, days: 1.5 },
+          const laborCalc = calculateRealisticLaborCost(category, landAreaAcres, dailyWageRate);
+          task.labor_cost = laborCalc.laborCost;
+          task.labor_workers = laborCalc.workers;
+          task.labor_days_per_acre = laborCalc.days;
+          task.labor_total_days = laborCalc.totalLaborDays;
+          task.labor_description = laborCalc.description;
+          task.labor_daily_wage = dailyWageRate;
+          
+          console.log(`📦 [Products] Added ${task.product_recommendations.length} DB products + labor for: ${task.task_name}`);
+        } else {
+          // No DB products - use crop-specific products
+          const cropProducts = getCropSpecificProducts(cropName, category, farmingType, landAreaAcres);
+          if (cropProducts.length > 0) {
+            task.product_recommendations = cropProducts;
+            console.log(`📦 [Products] Added ${cropProducts.length} crop-specific products for: ${task.task_name}`);
+          }
+          
+          // Add labor cost
+          const dailyWageRate = laborRate || 350;
+          const laborCalc = calculateRealisticLaborCost(category, landAreaAcres, dailyWageRate);
+          task.labor_cost = laborCalc.laborCost;
+          task.labor_workers = laborCalc.workers;
+          task.labor_days_per_acre = laborCalc.days;
+          task.labor_total_days = laborCalc.totalLaborDays;
+          task.labor_description = laborCalc.description;
+          task.labor_daily_wage = dailyWageRate;
             'nutrient_management': { workers: 2, days: 1 },
             'organic_input': { workers: 2, days: 1 },
             'other': { workers: 1, days: 1 },
