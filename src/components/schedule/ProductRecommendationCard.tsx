@@ -35,6 +35,12 @@ interface ProductRecommendationCardProps {
   products: ProductRecommendation[];
   landAreaAcres?: number;
   laborCost?: number;
+  // NEW: Actual labor breakdown from backend
+  laborDays?: number;         // Total labor days calculated
+  laborWorkers?: number;      // Number of workers
+  laborDaysPerAcre?: number;  // Days per acre
+  laborDailyWage?: number;    // Daily wage rate used
+  laborDescription?: string;  // Description of labor work
 }
 
 // Product type translations for localization
@@ -145,7 +151,16 @@ const productTypeConfig: Record<string, {
   },
 };
 
-export default function ProductRecommendationCard({ products, landAreaAcres = 1, laborCost = 0 }: ProductRecommendationCardProps) {
+export default function ProductRecommendationCard({ 
+  products, 
+  landAreaAcres = 1, 
+  laborCost = 0,
+  laborDays = 0,
+  laborWorkers = 0,
+  laborDaysPerAcre = 0,
+  laborDailyWage = 350,
+  laborDescription = ''
+}: ProductRecommendationCardProps) {
   const { currentLanguage } = useLanguageStore();
   const lang = currentLanguage || 'en';
 
@@ -325,7 +340,7 @@ export default function ProductRecommendationCard({ products, landAreaAcres = 1,
         </>
       )}
 
-      {/* Labor Cost Section - Enhanced with breakdown */}
+      {/* Labor Cost Section - Enhanced with ACTUAL breakdown */}
       {laborCost > 0 && (
         <Card className="border-2 border-purple-500/30 bg-purple-500/5">
           <div className="p-3 space-y-2">
@@ -339,7 +354,7 @@ export default function ProductRecommendationCard({ products, landAreaAcres = 1,
                     {lang === 'hi' ? 'मजदूरी खर्च' : lang === 'mr' ? 'मजुरी खर्च' : 'Labor Cost'}
                   </span>
                   <p className="text-[10px] text-muted-foreground">
-                    {lang === 'hi' ? 'MGNREGA दर आधारित' : lang === 'mr' ? 'MGNREGA दर आधारित' : 'Based on MGNREGA rates'}
+                    {laborDescription || (lang === 'hi' ? 'MGNREGA दर आधारित' : lang === 'mr' ? 'MGNREGA दर आधारित' : 'Based on MGNREGA rates')}
                   </p>
                 </div>
               </div>
@@ -351,13 +366,35 @@ export default function ProductRecommendationCard({ products, landAreaAcres = 1,
               </div>
             </div>
             
-            {/* Labor breakdown hint */}
-            <div className="text-[10px] text-muted-foreground bg-purple-500/5 p-2 rounded-lg">
-              {lang === 'hi' 
-                ? `अनुमानित: ${Math.ceil(laborCost / 350)} मजदूर दिवस @ ₹350/दिन` 
-                : lang === 'mr'
-                ? `अंदाजे: ${Math.ceil(laborCost / 350)} मजूर दिवस @ ₹350/दिवस`
-                : `Estimated: ${Math.ceil(laborCost / 350)} labor-days @ ₹350/day`}
+            {/* FIXED: Display ACTUAL labor breakdown instead of reverse-calculating */}
+            <div className="text-[10px] text-muted-foreground bg-purple-500/5 p-2 rounded-lg space-y-1">
+              {laborDays > 0 ? (
+                <>
+                  <div>
+                    {lang === 'hi' 
+                      ? `${laborWorkers || 1} मजदूर × ${laborDaysPerAcre || 1} दिन/एकड़ × ${landAreaAcres.toFixed(2)} एकड़ = ${laborDays.toFixed(1)} मजदूर-दिवस` 
+                      : lang === 'mr'
+                      ? `${laborWorkers || 1} मजूर × ${laborDaysPerAcre || 1} दिवस/एकर × ${landAreaAcres.toFixed(2)} एकर = ${laborDays.toFixed(1)} मजूर-दिवस`
+                      : `${laborWorkers || 1} workers × ${laborDaysPerAcre || 1} days/acre × ${landAreaAcres.toFixed(2)} acres = ${laborDays.toFixed(1)} labor-days`}
+                  </div>
+                  <div className="font-medium">
+                    {lang === 'hi' 
+                      ? `${laborDays.toFixed(1)} मजदूर-दिवस @ ₹${laborDailyWage}/दिन = ₹${laborCost.toLocaleString('en-IN')}` 
+                      : lang === 'mr'
+                      ? `${laborDays.toFixed(1)} मजूर-दिवस @ ₹${laborDailyWage}/दिवस = ₹${laborCost.toLocaleString('en-IN')}`
+                      : `${laborDays.toFixed(1)} labor-days @ ₹${laborDailyWage}/day = ₹${laborCost.toLocaleString('en-IN')}`}
+                  </div>
+                </>
+              ) : (
+                // Fallback: Only if no actual data available, show simple estimate
+                <div>
+                  {lang === 'hi' 
+                    ? `अनुमानित मजदूरी @ ₹${laborDailyWage}/दिन` 
+                    : lang === 'mr'
+                    ? `अंदाजे मजुरी @ ₹${laborDailyWage}/दिवस`
+                    : `Estimated labor @ ₹${laborDailyWage}/day`}
+                </div>
+              )}
             </div>
           </div>
         </Card>
