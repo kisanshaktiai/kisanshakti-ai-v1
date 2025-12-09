@@ -9213,50 +9213,98 @@ export type Database = {
       }
       market_prices: {
         Row: {
+          arrival: number | null
+          commodity_category: string | null
+          commodity_code: string | null
+          commodity_name_normalized: string | null
+          country_id: string | null
           created_at: string
           crop_name: string
           district: string | null
+          fetched_at: string | null
+          global_commodity_code: string | null
           id: string
+          ingested_at: string | null
           market_location: string
+          max_price: number | null
           metadata: Json | null
+          min_price: number | null
+          modal_price: number | null
           price_date: string
           price_per_unit: number
           price_type: string | null
           quality_grade: string | null
+          raw_html: string | null
           source: string | null
+          source_id: string | null
+          spread: number | null
           state: string | null
+          state_id: string | null
+          status: string | null
           unit: string
           variety: string | null
         }
         Insert: {
+          arrival?: number | null
+          commodity_category?: string | null
+          commodity_code?: string | null
+          commodity_name_normalized?: string | null
+          country_id?: string | null
           created_at?: string
           crop_name: string
           district?: string | null
+          fetched_at?: string | null
+          global_commodity_code?: string | null
           id?: string
+          ingested_at?: string | null
           market_location: string
+          max_price?: number | null
           metadata?: Json | null
+          min_price?: number | null
+          modal_price?: number | null
           price_date: string
           price_per_unit: number
           price_type?: string | null
           quality_grade?: string | null
+          raw_html?: string | null
           source?: string | null
+          source_id?: string | null
+          spread?: number | null
           state?: string | null
+          state_id?: string | null
+          status?: string | null
           unit?: string
           variety?: string | null
         }
         Update: {
+          arrival?: number | null
+          commodity_category?: string | null
+          commodity_code?: string | null
+          commodity_name_normalized?: string | null
+          country_id?: string | null
           created_at?: string
           crop_name?: string
           district?: string | null
+          fetched_at?: string | null
+          global_commodity_code?: string | null
           id?: string
+          ingested_at?: string | null
           market_location?: string
+          max_price?: number | null
           metadata?: Json | null
+          min_price?: number | null
+          modal_price?: number | null
           price_date?: string
           price_per_unit?: number
           price_type?: string | null
           quality_grade?: string | null
+          raw_html?: string | null
           source?: string | null
+          source_id?: string | null
+          spread?: number | null
           state?: string | null
+          state_id?: string | null
+          status?: string | null
           unit?: string
           variety?: string | null
         }

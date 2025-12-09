@@ -390,14 +390,20 @@ export default function ModernTaskCard({
               </div>
             )}
 
-            {/* Product Recommendations */}
-            {Array.isArray(task.product_recommendations) && task.product_recommendations.length > 0 && (
+            {/* Product Recommendations with FULL labor breakdown */}
+            {(Array.isArray(task.product_recommendations) && task.product_recommendations.length > 0) || 
+             (resources?.labor_cost > 0) || (task.labor_cost > 0) ? (
               <ProductRecommendationCard 
-                products={task.product_recommendations} 
+                products={task.product_recommendations || []} 
                 landAreaAcres={1}
-                laborCost={task.labor_cost || 0}
+                laborCost={resources?.labor_cost || task.labor_cost || 0}
+                laborDays={resources?.labor_days || task.labor_total_days || 0}
+                laborWorkers={resources?.labor_workers || task.labor_workers || 0}
+                laborDaysPerAcre={resources?.labor_days_per_acre || task.labor_days_per_acre || 0}
+                laborDailyWage={resources?.labor_daily_wage || task.labor_daily_wage || 350}
+                laborDescription={resources?.labor_description || task.labor_description || ''}
               />
-            )}
+            ) : null}
 
             {/* Ideal Weather */}
             {isValidValue(idealWeather) && typeof idealWeather === 'object' && (

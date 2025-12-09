@@ -619,12 +619,17 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                               </div>
                             )}
 
-                            {/* Product Recommendations with Labor Cost - Using ProductRecommendationCard */}
+                            {/* Product Recommendations with FULL labor breakdown */}
                             {(Array.isArray(task.product_recommendations) && task.product_recommendations.length > 0) || (task.resources?.labor_cost > 0) ? (
                               <ProductRecommendationCard 
                                 products={task.product_recommendations || []}
                                 landAreaAcres={1}
                                 laborCost={task.resources?.labor_cost || 0}
+                                laborDays={task.resources?.labor_days || 0}
+                                laborWorkers={task.resources?.labor_workers || 0}
+                                laborDaysPerAcre={task.resources?.labor_days_per_acre || 0}
+                                laborDailyWage={task.resources?.labor_daily_wage || 350}
+                                laborDescription={task.resources?.labor_description || ''}
                               />
                             ) : null}
 
