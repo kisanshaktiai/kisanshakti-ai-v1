@@ -2068,7 +2068,7 @@ ${dataSection}
 MANDATORY CHECKLIST:
 ✓ All ${totalStages} stages covered: ${allStageKeys.join(", ")}
 ✓ Seed preparation with treatment details
-✓ Product recommendations with brands
+✓ For products: use flat fields - product_names (comma-separated), product_doses, product_prices
 ✓ Instructions in ${languageName} rural dialect
 ✓ Cost estimates per task
 
@@ -2076,87 +2076,44 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
 
     console.log(`🤖 [AI] Calling ${aiProvider}/${model} with optimized ${totalStages}-stage prompt`);
 
-    // Build comprehensive tool schema for accurate schedule generation
+    // SIMPLIFIED tool schema for Google Gemini compatibility (reduced complexity)
+    // Google has strict limits on schema states - keep it minimal
     const toolSchema = {
       type: "function",
       function: {
         name: "create_schedule",
-        description: `Create complete ${translatedCropName} crop schedule with all ${totalStages} farming stages`,
+        description: `Create ${translatedCropName} crop schedule with ${totalStages} stages`,
         parameters: {
           type: "object",
           properties: {
-            crop_name: { type: "string", description: "Translated crop name" },
-            total_duration_days: { type: "integer", description: "Total crop duration in days" },
-            expected_yield_quintals: { type: "number", description: "Expected yield in quintals per acre" },
-            expected_profit: { type: "number", description: "Expected profit in INR" },
-            yield_multiplier_target: { type: "number", description: "Target yield multiplier (3-7x)" },
+            crop_name: { type: "string" },
+            total_duration_days: { type: "integer" },
             stages_covered: { 
               type: "array", 
-              items: { type: "string" },
-              description: `Must include all stages: ${allStageKeys.join(", ")}`
+              items: { type: "string" }
             },
             tasks: {
               type: "array",
-              minItems: totalStages * 2,
               items: {
                 type: "object",
                 properties: {
-                  task_name: { type: "string", description: `Must start with "${translatedCropName} -"` },
-                  stage_key: { type: "string", enum: allStageKeys },
-                  stage_order: { type: "integer", minimum: 1, maximum: totalStages },
-                  category: { 
-                    type: "string", 
-                    enum: ["planning", "land_preparation", "organic_input", "seed_treatment", "sowing", "transplanting", "irrigation", "growth_promoter", "fertilizer", "weeding", "pest_control", "disease_control", "intercultural", "harvest", "post_harvest", "other"]
-                  },
-                  days_from_sowing: { type: "integer", description: "Days from sowing date (-7 to 180)" },
-                  priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
-                  description: { type: "string", description: "Detailed task description in user language" },
-                  instructions: { 
-                    type: "array", 
-                    items: { type: "string" },
-                    minItems: 2,
-                    description: "Step-by-step instructions (minimum 2)"
-                  },
-                  precautions: { 
-                    type: "array", 
-                    items: { type: "string" },
-                    description: "Safety precautions"
-                  },
-                  quantity: { type: "string", description: "Quantity required (e.g., '40 kg/acre', '2 liters')" },
-                  product_details: { type: "string", description: "Product application details" },
-                  yield_impact: { type: "string", description: "Impact on yield if done correctly" },
-                  skip_penalty: { type: "string", description: "Yield loss if task is skipped" },
+                  task_name: { type: "string" },
+                  stage_key: { type: "string" },
+                  stage_order: { type: "integer" },
+                  category: { type: "string" },
+                  days_from_sowing: { type: "integer" },
+                  priority: { type: "string" },
+                  description: { type: "string" },
+                  instructions: { type: "array", items: { type: "string" } },
+                  quantity: { type: "string" },
+                  estimated_cost: { type: "number" },
                   weather_dependent: { type: "boolean" },
-                  ideal_weather: {
-                    type: "object",
-                    properties: {
-                      temperature: { type: "string" },
-                      humidity: { type: "string" },
-                      conditions: { type: "string" }
-                    }
-                  },
-                  product_recommendations: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        product_name: { type: "string", description: "Product name with brand" },
-                        brand: { type: "string", description: "Brand name (IFFCO, Bayer, Multiplex, etc.)" },
-                        product_type: { type: "string", enum: ["organic", "bio-fertilizer", "fertilizer", "pesticide", "fungicide", "growth_promoter"] },
-                        dose_per_acre: { type: "string", description: "Dosage per acre" },
-                        application_method: { type: "string", description: "How to apply" },
-                        price_estimate: { type: "number", description: "Price in INR" },
-                        active_ingredient: { type: "string" }
-                      },
-                      required: ["product_name", "dose_per_acre", "price_estimate"]
-                    },
-                    description: "Product recommendations with brands and prices"
-                  },
-                  estimated_cost: { type: "number", description: "Total task cost in INR" },
-                  labor_days: { type: "number", description: "Labor days required" },
-                  icar_guideline: { type: "string", description: "ICAR recommendation if applicable" }
+                  yield_impact: { type: "string" },
+                  product_names: { type: "string" },
+                  product_doses: { type: "string" },
+                  product_prices: { type: "string" }
                 },
-                required: ["task_name", "stage_key", "stage_order", "days_from_sowing", "description", "instructions", "priority"]
+                required: ["task_name", "stage_key", "days_from_sowing", "description", "instructions", "priority"]
               }
             }
           },
@@ -2354,7 +2311,7 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
       return true;
     });
 
-    // Fix crop names and farming type compliance
+    // Fix crop names, farming type compliance, and parse flat product fields
     validTasks = validTasks.map((task: any) => {
       // Step 1: Fix crop name
       task = validateAndFixTaskCropName(task, translatedCropName, cropName, language);
@@ -2364,6 +2321,22 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
       if (!validation.valid) {
         console.warn(`⚠️ [FarmingType] Task "${task.task_name}" has issues:`, validation.issues);
         task = fixTaskForFarmingType(task, farmingType, language, translatedCropName);
+      }
+
+      // Step 3: Convert flat product fields to product_recommendations array
+      if (!task.product_recommendations && task.product_names) {
+        const names = (task.product_names || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+        const doses = (task.product_doses || "").split(",").map((s: string) => s.trim());
+        const prices = (task.product_prices || "").split(",").map((s: string) => parseInt(s.trim()) || 200);
+        
+        task.product_recommendations = names.map((name: string, i: number) => ({
+          product_name: name,
+          brand: "",
+          product_type: farmingType === "organic_only" ? "organic" : "fertilizer",
+          dose_per_acre: doses[i] || "",
+          price_estimate: prices[i] || 200,
+          application_method: "spray"
+        }));
       }
 
       return task;
