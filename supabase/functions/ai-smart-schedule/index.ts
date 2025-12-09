@@ -2561,27 +2561,56 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
           };
         });
         
-        // ADD LABOR CHARGES - Indian agricultural labor rates (2024-25)
-        const laborRatesPerAcre: Record<string, number> = {
-          'land_preparation': 2500,    // Ploughing, leveling - ₹300-400/day × 7-8 days
-          'seed_treatment': 300,       // 1 day work
-          'sowing': 1500,              // 4-5 days
-          'transplanting': 3500,       // Labor intensive - 10-12 days
-          'irrigation': 500,           // Per irrigation cycle
-          'fertilizer_application': 400, // 1-2 days
-          'weeding': 2000,             // Manual weeding - 6-7 days
-          'pest_management': 600,      // Spraying - 2 days
-          'disease_management': 600,
-          'growth_management': 400,
-          'harvesting': 3000,          // 8-10 days labor
-          'post_harvest': 1500,        // Processing, storage
-          'intercultural': 800,        // Gap filling, thinning
-          'nutrient_management': 500,
+        // ADD LABOR CHARGES - REAL INDIAN AGRICULTURAL LABOR CALCULATION (2024-25)
+        // Daily wage rates vary by region: ₹300-500/day (MGNREGA standard: ₹349/day)
+        const dailyWageRate = laborRate || 350; // Use passed laborRate or default
+        
+        // LABOR REQUIREMENT PER ACRE - (workers × days) per acre for each task type
+        // This is based on actual agricultural practices and ICAR guidelines
+        const laborRequirementsPerAcre: Record<string, { workers: number; days: number; machinery?: boolean; description: string }> = {
+          'land_preparation': { workers: 2, days: 4, machinery: true, description: 'Ploughing, leveling with tractor + 2 workers' },
+          'seed_treatment': { workers: 1, days: 0.5, description: 'Seed treatment and preparation' },
+          'sowing': { workers: 3, days: 2, description: 'Seed sowing/dibbling with 3 workers' },
+          'transplanting': { workers: 8, days: 2, description: 'Transplanting seedlings - labor intensive' },
+          'irrigation': { workers: 1, days: 0.5, description: 'Per irrigation cycle management' },
+          'fertilizer_application': { workers: 2, days: 1, description: 'Fertilizer mixing and application' },
+          'weeding': { workers: 4, days: 3, description: 'Manual weeding - very labor intensive' },
+          'weed_management': { workers: 4, days: 3, description: 'Manual weeding - very labor intensive' },
+          'pest_management': { workers: 2, days: 1, description: 'Spraying with knapsack sprayer' },
+          'pest_control': { workers: 2, days: 1, description: 'Pesticide spraying' },
+          'disease_management': { workers: 2, days: 1, description: 'Fungicide/medicine spraying' },
+          'disease_control': { workers: 2, days: 1, description: 'Disease control measures' },
+          'growth_management': { workers: 1, days: 1, description: 'Growth promoter application' },
+          'growth_promoter': { workers: 1, days: 1, description: 'Growth promoter spraying' },
+          'harvesting': { workers: 6, days: 3, description: 'Crop cutting and bundling' },
+          'harvest': { workers: 6, days: 3, description: 'Crop harvesting' },
+          'post_harvest': { workers: 3, days: 2, description: 'Threshing, cleaning, grading' },
+          'intercultural': { workers: 2, days: 1.5, description: 'Gap filling, thinning, earthing' },
+          'nutrient_management': { workers: 2, days: 1, description: 'Nutrient application' },
+          'organic_input': { workers: 2, days: 1, description: 'Organic manure application' },
+          'monitoring': { workers: 1, days: 0.25, description: 'Field inspection walk' },
+          'pruning': { workers: 3, days: 2, description: 'Pruning and training plants' },
+          'mulching': { workers: 2, days: 1.5, description: 'Laying mulch material' },
+          'other': { workers: 1, days: 1, description: 'General farm work' },
         };
         
-        const stageKey = task.stage_key || "other";
-        const laborRatePerAcre = laborRatesPerAcre[stageKey] || 500;
-        task.labor_cost = Math.round(laborRatePerAcre * landAreaAcres);
+        const stageKey = task.stage_key || task.category || "other";
+        const category = (task.category || "other").toLowerCase();
+        
+        // Find matching labor requirement
+        const laborReq = laborRequirementsPerAcre[stageKey] || laborRequirementsPerAcre[category] || laborRequirementsPerAcre['other'];
+        
+        // CALCULATE: (workers × days × land_area × daily_wage)
+        const totalLaborDays = laborReq.workers * laborReq.days * landAreaAcres;
+        const calculatedLaborCost = Math.round(totalLaborDays * dailyWageRate);
+        
+        // Store detailed labor breakdown
+        task.labor_cost = calculatedLaborCost;
+        task.labor_workers = laborReq.workers;
+        task.labor_days_per_acre = laborReq.days;
+        task.labor_total_days = Math.round(totalLaborDays * 10) / 10; // Round to 1 decimal
+        task.labor_description = laborReq.description;
+        task.labor_daily_wage = dailyWageRate;
       }
 
       return task;
@@ -2704,47 +2733,69 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
             };
           });
           
-          // Add labor cost for DB products
-          const laborRatesPerAcre: Record<string, number> = {
-            'land_preparation': 2500,
-            'seed_treatment': 300,
-            'sowing': 1500,
-            'transplanting': 3500,
-            'irrigation': 500,
-            'fertilizer_application': 400,
-            'weeding': 2000,
-            'pest_management': 600,
-            'disease_management': 600,
-            'growth_management': 400,
-            'harvesting': 3000,
-            'post_harvest': 1500,
-            'intercultural': 800,
-            'nutrient_management': 500,
+          // Add REAL labor cost calculation for DB products
+          const dailyWageRate = laborRate || 350;
+          const laborRequirementsPerAcre: Record<string, { workers: number; days: number }> = {
+            'land_preparation': { workers: 2, days: 4 },
+            'seed_treatment': { workers: 1, days: 0.5 },
+            'sowing': { workers: 3, days: 2 },
+            'transplanting': { workers: 8, days: 2 },
+            'irrigation': { workers: 1, days: 0.5 },
+            'fertilizer_application': { workers: 2, days: 1 },
+            'fertilizer': { workers: 2, days: 1 },
+            'weeding': { workers: 4, days: 3 },
+            'weed_management': { workers: 4, days: 3 },
+            'pest_management': { workers: 2, days: 1 },
+            'pest_control': { workers: 2, days: 1 },
+            'disease_management': { workers: 2, days: 1 },
+            'disease_control': { workers: 2, days: 1 },
+            'growth_management': { workers: 1, days: 1 },
+            'growth_promoter': { workers: 1, days: 1 },
+            'harvesting': { workers: 6, days: 3 },
+            'harvest': { workers: 6, days: 3 },
+            'post_harvest': { workers: 3, days: 2 },
+            'intercultural': { workers: 2, days: 1.5 },
+            'nutrient_management': { workers: 2, days: 1 },
+            'organic_input': { workers: 2, days: 1 },
+            'other': { workers: 1, days: 1 },
           };
-          const stageKey = task.stage_key || "other";
-          const laborRatePerAcre = laborRatesPerAcre[stageKey] || 500;
-          task.labor_cost = Math.round(laborRatePerAcre * landAreaAcres);
+          const stageKey = task.stage_key || task.category || "other";
+          const laborReq = laborRequirementsPerAcre[stageKey] || laborRequirementsPerAcre[category] || laborRequirementsPerAcre['other'];
+          const totalLaborDays = laborReq.workers * laborReq.days * landAreaAcres;
+          task.labor_cost = Math.round(totalLaborDays * dailyWageRate);
+          task.labor_workers = laborReq.workers;
+          task.labor_days_per_acre = laborReq.days;
+          task.labor_total_days = Math.round(totalLaborDays * 10) / 10;
         }
       } else if (isLaborOnly) {
         // CRITICAL: Clear any products for labor-only tasks (AI might have incorrectly added them)
         task.product_recommendations = [];
         
-        // Add labor cost only for labor-only categories
-        const laborRatesPerAcre: Record<string, number> = {
-          'land_preparation': 2500,
-          'irrigation': 500,
-          'harvesting': 3000,
-          'post_harvest': 1500,
-          'monitoring': 300,
-          'mulching': 600,
-          'intercultural': 800,
-          'pruning': 1000,
-          'other': 400,
+        // Add REAL labor cost for labor-only categories
+        const dailyWageRate = laborRate || 350;
+        const laborRequirementsPerAcre: Record<string, { workers: number; days: number; description: string }> = {
+          'land_preparation': { workers: 2, days: 4, description: 'Ploughing and leveling' },
+          'irrigation': { workers: 1, days: 0.5, description: 'Irrigation management' },
+          'watering': { workers: 1, days: 0.5, description: 'Watering plants' },
+          'harvesting': { workers: 6, days: 3, description: 'Crop harvesting' },
+          'harvest': { workers: 6, days: 3, description: 'Crop cutting' },
+          'post_harvest': { workers: 3, days: 2, description: 'Post harvest processing' },
+          'monitoring': { workers: 1, days: 0.25, description: 'Field monitoring' },
+          'field_visit': { workers: 1, days: 0.25, description: 'Field inspection' },
+          'mulching': { workers: 2, days: 1.5, description: 'Mulch application' },
+          'intercultural': { workers: 2, days: 1.5, description: 'Intercultural operations' },
+          'pruning': { workers: 3, days: 2, description: 'Pruning and training' },
+          'other': { workers: 1, days: 1, description: 'General farm work' },
         };
-        const stageKey = task.stage_key || "other";
-        const laborRatePerAcre = laborRatesPerAcre[stageKey] || laborRatesPerAcre[category] || 500;
-        task.labor_cost = Math.round(laborRatePerAcre * landAreaAcres);
-        console.log(`📦 [Products] Skipped products for labor-only task: ${task.task_name} (${category})`);
+        const stageKey = task.stage_key || task.category || "other";
+        const laborReq = laborRequirementsPerAcre[stageKey] || laborRequirementsPerAcre[category] || laborRequirementsPerAcre['other'];
+        const totalLaborDays = laborReq.workers * laborReq.days * landAreaAcres;
+        task.labor_cost = Math.round(totalLaborDays * dailyWageRate);
+        task.labor_workers = laborReq.workers;
+        task.labor_days_per_acre = laborReq.days;
+        task.labor_total_days = Math.round(totalLaborDays * 10) / 10;
+        task.labor_description = laborReq.description;
+        console.log(`📦 [Products] Labor-only task: ${task.task_name} (${category}) - ${laborReq.workers} workers × ${laborReq.days} days × ${landAreaAcres.toFixed(2)} acres = ₹${task.labor_cost}`);
       }
     }
 
@@ -2824,6 +2875,11 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
     // ═══════════════════════════════════════════════════════════════════
     // SAVE TO DATABASE
     // ═══════════════════════════════════════════════════════════════════
+    // Calculate actual harvest date from sowing + total_duration_days
+    const sowingDateObj = new Date(sowingDate);
+    const harvestDate = new Date(sowingDateObj.getTime() + (scheduleData.total_duration_days || 120) * 24 * 60 * 60 * 1000);
+    const harvestDateStr = harvestDate.toISOString().split("T")[0];
+    
     const { data: savedSchedule, error: scheduleError } = await supabase
       .from("crop_schedules")
       .insert({
@@ -2833,6 +2889,7 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
         crop_name: cropName,
         crop_variety: cropVariety || cropName,
         sowing_date: sowingDate,
+        expected_harvest_date: harvestDateStr, // CRITICAL: Set actual harvest date
         regional_dialect_zone: region,
         district_name: district,
         taluka_name: land.taluka || null,
@@ -2879,6 +2936,7 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
           translated_crop_name: translatedCropName,
           ai_version: AI_CONFIG.MODEL,
           generation_timestamp: new Date().toISOString(),
+          harvest_date: harvestDateStr, // Also store in metadata
         },
       })
       .select()
@@ -2926,8 +2984,12 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
           quantity: task.quantity,
           product_details: task.product_details,
           product_cost: task.product_cost,
-          labor_days: task.labor_days,
+          labor_days: task.labor_total_days || task.labor_days,
           labor_cost: task.labor_cost,
+          labor_workers: task.labor_workers,
+          labor_days_per_acre: task.labor_days_per_acre,
+          labor_daily_wage: task.labor_daily_wage || 350,
+          labor_description: task.labor_description,
           cost_breakdown: task.cost_breakdown,
           icar_guideline: task.icar_guideline,
           climate_risk: task.climate_risk,
