@@ -74,7 +74,7 @@ serve(async (req) => {
             .select('*')
             .eq('tenant_id', tenantId)
             .eq('farmer_id', farmerId)
-            .order('scheduled_date', { ascending: true });
+            .order('task_date', { ascending: true });
 
           if (scheduleIdParam) {
             query = query.eq('schedule_id', scheduleIdParam);
