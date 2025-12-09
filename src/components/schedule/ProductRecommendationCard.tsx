@@ -19,7 +19,7 @@ import { useLanguageStore } from '@/stores/languageStore';
 
 interface ProductRecommendation {
   product_name: string;
-  product_type: 'organic' | 'growth_promoter' | 'fertilizer' | 'pesticide';
+  product_type?: string;
   active_ingredient?: string;
   dose_per_acre?: string;
   application_method?: string;
@@ -28,6 +28,7 @@ interface ProductRecommendation {
   price_estimate?: number;
   phi_days?: number;
   timing?: string;
+  brand?: string;
 }
 
 interface ProductRecommendationCardProps {
@@ -75,7 +76,11 @@ export default function ProductRecommendationCard({ products, landAreaAcres = 1,
   const { currentLanguage } = useLanguageStore();
   const lang = currentLanguage || 'en';
 
-  if (!products || products.length === 0) return null;
+  // Show card if either products or labor cost exists
+  const hasProducts = products && products.length > 0;
+  const hasLaborCost = laborCost > 0;
+  
+  if (!hasProducts && !hasLaborCost) return null;
 
   const getLabel = (labels: Record<string, string>) => labels[lang] || labels.en;
 
@@ -85,13 +90,15 @@ export default function ProductRecommendationCard({ products, landAreaAcres = 1,
 
   return (
     <div className="space-y-3">
-      <h4 className="text-sm font-semibold flex items-center gap-2">
-        <Sparkles className="h-4 w-4 text-primary" />
-        {lang === 'hi' ? 'सुझाए गए उत्पाद' : lang === 'mr' ? 'शिफारस केलेली उत्पादने' : 'Recommended Products'}
-      </h4>
+      {hasProducts && (
+        <>
+          <h4 className="text-sm font-semibold flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            {lang === 'hi' ? 'सुझाए गए उत्पाद' : lang === 'mr' ? 'शिफारस केलेली उत्पादने' : 'Recommended Products'}
+          </h4>
       
-      <div className="grid gap-3">
-        {products.map((product, index) => {
+          <div className="grid gap-3">
+            {products.map((product, index) => {
           const config = productTypeConfig[product.product_type] || productTypeConfig.organic;
           const ProductIcon = config.icon;
           // price_estimate already includes land area calculation from backend
@@ -235,7 +242,9 @@ export default function ProductRecommendationCard({ products, landAreaAcres = 1,
             </Card>
           );
         })}
-      </div>
+          </div>
+        </>
+      )}
 
       {/* Labor Cost Section */}
       {laborCost > 0 && (

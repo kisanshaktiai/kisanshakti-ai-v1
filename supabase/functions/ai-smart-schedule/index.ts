@@ -2598,15 +2598,22 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
         costByCategory.pesticide += costResult.productCost;
       costByCategory.labor += costResult.laborCost;
 
+      // Calculate REAL estimated_cost from actual product prices + labor
+      const productRecsTotal = (task.product_recommendations || []).reduce(
+        (sum: number, p: any) => sum + (p.price_estimate || 0), 0
+      );
+      const taskLaborCost = task.labor_cost || costResult.laborCost || 0;
+      const realEstimatedCost = productRecsTotal + taskLaborCost;
+      
       return {
         ...task,
         stage_key: stageKey,
         stage_order: stageOrder,
         stage_name: stageName,
-        product_cost: costResult.productCost,
-        labor_cost: costResult.laborCost,
+        product_cost: productRecsTotal,
+        labor_cost: taskLaborCost,
         labor_days: costResult.laborDays,
-        estimated_cost: costResult.totalCost,
+        estimated_cost: realEstimatedCost > 0 ? realEstimatedCost : costResult.totalCost,
         cost_breakdown: costResult.breakdown,
         product_recommendations: task.product_recommendations || [],
       };

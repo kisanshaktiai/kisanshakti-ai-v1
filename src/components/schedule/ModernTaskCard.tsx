@@ -189,12 +189,6 @@ export default function ModernTaskCard({
 
             {/* Quick Info Pills */}
             <div className="flex flex-wrap gap-2">
-              {task.estimated_cost > 0 && (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gradient-to-r from-primary/10 to-accent/10 border border-primary/20">
-                  <IndianRupee className="h-3.5 w-3.5 text-primary" />
-                  <span className="text-xs font-bold text-primary">₹{task.estimated_cost.toLocaleString('en-IN')}</span>
-                </div>
-              )}
               {task.weather_dependent && (
                 <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-sky-500/10 border border-sky-500/20">
                   <CloudRain className="h-3.5 w-3.5 text-sky-500" />
@@ -257,25 +251,6 @@ export default function ModernTaskCard({
 
           {/* Scrollable content */}
           <div className="flex-1 overflow-y-auto p-5 space-y-4">
-            
-            {/* Cost - Hero display */}
-            {task.estimated_cost > 0 && (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="p-4 rounded-2xl bg-gradient-to-r from-primary/10 via-accent/10 to-primary/5 border border-primary/20"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <IndianRupee className="h-5 w-5 text-primary" />
-                    <span className="text-sm text-muted-foreground">{t('schedule.task_card.approx_cost')}</span>
-                  </div>
-                  <span className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-                    ₹{task.estimated_cost.toLocaleString('en-IN')}
-                  </span>
-                </div>
-              </motion.div>
-            )}
 
             {/* Description */}
             {task.task_description && (
