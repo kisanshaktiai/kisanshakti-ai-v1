@@ -419,7 +419,8 @@ export default function ModernTaskCard({
             {Array.isArray(task.product_recommendations) && task.product_recommendations.length > 0 && (
               <ProductRecommendationCard 
                 products={task.product_recommendations} 
-                landAreaAcres={1} 
+                landAreaAcres={1}
+                laborCost={task.labor_cost || 0}
               />
             )}
 

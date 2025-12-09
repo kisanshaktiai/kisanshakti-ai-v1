@@ -2329,31 +2329,85 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
         const doses = (task.product_doses || "").split(",").map((s: string) => s.trim());
         const prices = (task.product_prices || "").split(",").map((s: string) => parseInt(s.trim()));
         
-        // Calculate realistic prices based on product type and land area
-        const categoryPriceRanges: Record<string, { min: number; max: number }> = {
-          organic: { min: 150, max: 400 },
-          fertilizer: { min: 200, max: 600 },
-          pesticide: { min: 300, max: 800 },
-          fungicide: { min: 250, max: 700 },
-          growth_promoter: { min: 180, max: 450 },
-          seed: { min: 100, max: 350 },
-          other: { min: 150, max: 400 }
+        // REALISTIC INDIAN MARKET PRICES (2024-25) - Per Acre basis
+        const indianMarketPrices: Record<string, { perUnit: number; unitsPerAcre: number; unit: string }> = {
+          // Fertilizers
+          'urea': { perUnit: 267, unitsPerAcre: 1.5, unit: '50kg bag' }, // ₹267/bag govt rate
+          'dap': { perUnit: 1350, unitsPerAcre: 1, unit: '50kg bag' },
+          'mop': { perUnit: 1700, unitsPerAcre: 0.5, unit: '50kg bag' },
+          'npk': { perUnit: 1400, unitsPerAcre: 1, unit: '50kg bag' },
+          '10-26-26': { perUnit: 1470, unitsPerAcre: 1, unit: '50kg bag' },
+          '12-32-16': { perUnit: 1470, unitsPerAcre: 1, unit: '50kg bag' },
+          'ssp': { perUnit: 400, unitsPerAcre: 2, unit: '50kg bag' },
+          'zinc_sulphate': { perUnit: 85, unitsPerAcre: 10, unit: 'kg' },
+          'boron': { perUnit: 350, unitsPerAcre: 2, unit: 'kg' },
+          // Organic
+          'vermicompost': { perUnit: 8, unitsPerAcre: 500, unit: 'kg' }, // ₹8/kg
+          'neem_cake': { perUnit: 25, unitsPerAcre: 100, unit: 'kg' },
+          'bio_fertilizer': { perUnit: 150, unitsPerAcre: 4, unit: 'liter' },
+          'humic_acid': { perUnit: 450, unitsPerAcre: 2, unit: 'liter' },
+          'seaweed_extract': { perUnit: 550, unitsPerAcre: 1, unit: 'liter' },
+          'trichoderma': { perUnit: 200, unitsPerAcre: 2, unit: 'kg' },
+          'panchagavya': { perUnit: 150, unitsPerAcre: 5, unit: 'liter' },
+          // Pesticides
+          'chlorpyrifos': { perUnit: 550, unitsPerAcre: 1, unit: 'liter' },
+          'imidacloprid': { perUnit: 750, unitsPerAcre: 0.5, unit: '250ml' },
+          'thiamethoxam': { perUnit: 850, unitsPerAcre: 0.4, unit: '250gm' },
+          'cypermethrin': { perUnit: 380, unitsPerAcre: 1, unit: 'liter' },
+          'neem_oil': { perUnit: 350, unitsPerAcre: 2, unit: 'liter' },
+          'beauveria': { perUnit: 280, unitsPerAcre: 2, unit: 'kg' },
+          // Fungicides
+          'mancozeb': { perUnit: 450, unitsPerAcre: 2, unit: 'kg' },
+          'carbendazim': { perUnit: 380, unitsPerAcre: 1, unit: '500gm' },
+          'copper_oxychloride': { perUnit: 420, unitsPerAcre: 2, unit: 'kg' },
+          'propiconazole': { perUnit: 850, unitsPerAcre: 0.5, unit: '250ml' },
+          'pseudomonas': { perUnit: 200, unitsPerAcre: 2, unit: 'liter' },
+          // Seeds (per kg rates)
+          'hybrid_seed': { perUnit: 3500, unitsPerAcre: 2, unit: 'kg' },
+          'certified_seed': { perUnit: 450, unitsPerAcre: 40, unit: 'kg' },
+          'vegetable_seed': { perUnit: 1200, unitsPerAcre: 0.5, unit: 'kg' },
+          // Growth promoters
+          'humic_granules': { perUnit: 120, unitsPerAcre: 10, unit: 'kg' },
+          'amino_acid': { perUnit: 650, unitsPerAcre: 1, unit: 'liter' },
+          'gibberellic_acid': { perUnit: 180, unitsPerAcre: 1, unit: 'gm' },
+        };
+        
+        // Category-wise realistic price ranges (per acre)
+        const categoryPriceRanges: Record<string, { min: number; max: number; avgPerAcre: number }> = {
+          organic: { min: 400, max: 2500, avgPerAcre: 1200 },
+          fertilizer: { min: 400, max: 2000, avgPerAcre: 800 },
+          pesticide: { min: 350, max: 1500, avgPerAcre: 650 },
+          fungicide: { min: 400, max: 1200, avgPerAcre: 700 },
+          growth_promoter: { min: 300, max: 1000, avgPerAcre: 550 },
+          seed: { min: 800, max: 18000, avgPerAcre: 3500 },
+          herbicide: { min: 400, max: 1200, avgPerAcre: 600 },
+          micronutrient: { min: 300, max: 900, avgPerAcre: 500 },
+          other: { min: 300, max: 1000, avgPerAcre: 500 }
         };
         
         const taskCategory = task.category || "other";
         const priceRange = categoryPriceRanges[taskCategory] || categoryPriceRanges.other;
         
         task.product_recommendations = names.map((name: string, i: number) => {
-          // Use AI-provided price if valid, otherwise calculate based on category
-          let priceEstimate = prices[i];
-          if (!priceEstimate || priceEstimate <= 0 || isNaN(priceEstimate)) {
-            // Calculate price variation based on index (different products have different prices)
-            const priceVariation = (i % 3) * 50; // Adds variety: 0, 50, 100
-            priceEstimate = priceRange.min + priceVariation + Math.floor(Math.random() * (priceRange.max - priceRange.min - 100));
+          // Try to match with known Indian market prices
+          const nameLower = name.toLowerCase();
+          let pricePerAcre = 0;
+          
+          for (const [key, priceInfo] of Object.entries(indianMarketPrices)) {
+            if (nameLower.includes(key.replace('_', ' ')) || nameLower.includes(key)) {
+              pricePerAcre = Math.round(priceInfo.perUnit * priceInfo.unitsPerAcre);
+              break;
+            }
           }
           
-          // Multiply by land area for total cost
-          const totalPriceForLand = Math.round(priceEstimate * landAreaAcres);
+          // If no match, use category average with variation
+          if (pricePerAcre <= 0) {
+            const variation = (i % 3) * 150; // Adds variety
+            pricePerAcre = priceRange.avgPerAcre + variation;
+          }
+          
+          // Calculate total for land area
+          const totalPriceForLand = Math.round(pricePerAcre * landAreaAcres);
           
           return {
             product_name: name,
@@ -2364,6 +2418,28 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
             application_method: "spray"
           };
         });
+        
+        // ADD LABOR CHARGES - Indian agricultural labor rates (2024-25)
+        const laborRatesPerAcre: Record<string, number> = {
+          'land_preparation': 2500,    // Ploughing, leveling - ₹300-400/day × 7-8 days
+          'seed_treatment': 300,       // 1 day work
+          'sowing': 1500,              // 4-5 days
+          'transplanting': 3500,       // Labor intensive - 10-12 days
+          'irrigation': 500,           // Per irrigation cycle
+          'fertilizer_application': 400, // 1-2 days
+          'weeding': 2000,             // Manual weeding - 6-7 days
+          'pest_management': 600,      // Spraying - 2 days
+          'disease_management': 600,
+          'growth_management': 400,
+          'harvesting': 3000,          // 8-10 days labor
+          'post_harvest': 1500,        // Processing, storage
+          'intercultural': 800,        // Gap filling, thinning
+          'nutrient_management': 500,
+        };
+        
+        const stageKey = task.stage_key || "other";
+        const laborRatePerAcre = laborRatesPerAcre[stageKey] || 500;
+        task.labor_cost = Math.round(laborRatePerAcre * landAreaAcres);
       }
 
       return task;
@@ -2423,18 +2499,20 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
               }
             }
             
-            // If no valid price, calculate based on product type
+            // REALISTIC INDIAN MARKET PRICES (2024-25) - Per Acre
             if (!priceEstimate || priceEstimate <= 0) {
-              const typePrices: Record<string, number> = {
-                fertilizer: 350 + idx * 80,
-                pesticide: 450 + idx * 100,
-                fungicide: 400 + idx * 90,
-                organic: 280 + idx * 60,
-                bio_fertilizer: 320 + idx * 70,
-                growth_promoter: 380 + idx * 75,
-                seed: 250 + idx * 50
+              const typePricesPerAcre: Record<string, number> = {
+                fertilizer: 800 + idx * 200,      // NPK, DAP etc
+                pesticide: 650 + idx * 150,       // Insecticides
+                fungicide: 700 + idx * 180,       // Fungicides
+                organic: 1200 + idx * 300,        // Organic products
+                bio_fertilizer: 600 + idx * 150,  // Bio products
+                growth_promoter: 550 + idx * 120, // Growth hormones
+                seed: 3500 + idx * 500,           // Seeds (most expensive)
+                herbicide: 600 + idx * 100,       // Weedicides
+                micronutrient: 500 + idx * 100,   // Zinc, Boron etc
               };
-              priceEstimate = typePrices[p.product_type || "fertilizer"] || (300 + idx * 75);
+              priceEstimate = typePricesPerAcre[p.product_type || "fertilizer"] || (600 + idx * 150);
             }
             
             // Calculate total cost for the land area
@@ -2450,6 +2528,27 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
               price_estimate: totalPriceForLand,
             };
           });
+          
+          // Add labor cost for DB products
+          const laborRatesPerAcre: Record<string, number> = {
+            'land_preparation': 2500,
+            'seed_treatment': 300,
+            'sowing': 1500,
+            'transplanting': 3500,
+            'irrigation': 500,
+            'fertilizer_application': 400,
+            'weeding': 2000,
+            'pest_management': 600,
+            'disease_management': 600,
+            'growth_management': 400,
+            'harvesting': 3000,
+            'post_harvest': 1500,
+            'intercultural': 800,
+            'nutrient_management': 500,
+          };
+          const stageKey = task.stage_key || "other";
+          const laborRatePerAcre = laborRatesPerAcre[stageKey] || 500;
+          task.labor_cost = Math.round(laborRatePerAcre * landAreaAcres);
         }
       }
     }

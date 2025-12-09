@@ -11,7 +11,8 @@ import {
   CloudRain,
   Shield,
   IndianRupee,
-  AlertTriangle
+  AlertTriangle,
+  Users
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useLanguageStore } from '@/stores/languageStore';
@@ -32,6 +33,7 @@ interface ProductRecommendation {
 interface ProductRecommendationCardProps {
   products: ProductRecommendation[];
   landAreaAcres?: number;
+  laborCost?: number;
 }
 
 const productTypeConfig = {
@@ -69,13 +71,17 @@ const productTypeConfig = {
   },
 };
 
-export default function ProductRecommendationCard({ products, landAreaAcres = 1 }: ProductRecommendationCardProps) {
+export default function ProductRecommendationCard({ products, landAreaAcres = 1, laborCost = 0 }: ProductRecommendationCardProps) {
   const { currentLanguage } = useLanguageStore();
   const lang = currentLanguage || 'en';
 
   if (!products || products.length === 0) return null;
 
   const getLabel = (labels: Record<string, string>) => labels[lang] || labels.en;
+
+  // Calculate total product cost
+  const totalProductCost = products.reduce((sum, p) => sum + (p.price_estimate || 0), 0);
+  const totalCost = totalProductCost + laborCost;
 
   return (
     <div className="space-y-3">
@@ -230,6 +236,66 @@ export default function ProductRecommendationCard({ products, landAreaAcres = 1 
           );
         })}
       </div>
+
+      {/* Labor Cost Section */}
+      {laborCost > 0 && (
+        <Card className="border-2 border-purple-500/30 bg-purple-500/5">
+          <div className="p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 text-white shadow-md">
+                <Users className="h-4 w-4" />
+              </div>
+              <div>
+                <span className="text-sm font-medium">
+                  {lang === 'hi' ? 'मजदूरी खर्च' : lang === 'mr' ? 'मजुरी खर्च' : 'Labor Cost'}
+                </span>
+                <p className="text-[10px] text-muted-foreground">
+                  {lang === 'hi' ? 'भारतीय दर अनुसार' : lang === 'mr' ? 'भारतीय दर अनुसार' : 'As per Indian rates'}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="flex items-center gap-1 text-purple-600 font-bold">
+                <IndianRupee className="h-3.5 w-3.5" />
+                <span>₹{laborCost.toLocaleString('en-IN')}</span>
+              </div>
+              <span className="text-[10px] text-muted-foreground">
+                {lang === 'hi' ? 'अंदाजे' : lang === 'mr' ? 'अंदाजे' : 'approx'}
+              </span>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Total Cost Summary */}
+      {totalCost > 0 && (
+        <Card className="border-2 border-primary/40 bg-primary/5">
+          <div className="p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-primary to-primary/70 text-white shadow-md">
+                <IndianRupee className="h-4 w-4" />
+              </div>
+              <div>
+                <span className="text-sm font-bold">
+                  {lang === 'hi' ? 'कुल अनुमानित खर्च' : lang === 'mr' ? 'एकूण अंदाजे खर्च' : 'Total Estimated Cost'}
+                </span>
+                <p className="text-[10px] text-muted-foreground">
+                  {lang === 'hi' 
+                    ? `उत्पाद: ₹${totalProductCost.toLocaleString('en-IN')} + मजदूरी: ₹${laborCost.toLocaleString('en-IN')}` 
+                    : lang === 'mr'
+                    ? `उत्पादन: ₹${totalProductCost.toLocaleString('en-IN')} + मजुरी: ₹${laborCost.toLocaleString('en-IN')}`
+                    : `Products: ₹${totalProductCost.toLocaleString('en-IN')} + Labor: ₹${laborCost.toLocaleString('en-IN')}`}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="flex items-center gap-1 text-primary font-bold text-lg">
+                <span>₹{totalCost.toLocaleString('en-IN')}</span>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
