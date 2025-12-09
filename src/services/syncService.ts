@@ -816,6 +816,84 @@ class SyncService {
       } else {
         console.log('ℹ️ [Sync] No schedules to save from server');
       }
+
+      // Download schedule_tasks for all schedules
+      console.log('📥 [Sync] Fetching schedule tasks...');
+      let tasks: any[] = [];
+      
+      try {
+        tasks = await schedulesApi.fetchTasks();
+        console.log(`✅ [Sync] Fetched ${tasks?.length || 0} tasks from server`);
+      } catch (error) {
+        console.warn('⚠️ [Sync] Failed to fetch tasks (may not be implemented yet):', error);
+      }
+
+      // Clear existing tasks before saving
+      if (tasks && tasks.length > 0) {
+        console.log('🗑️ [Sync] Clearing existing tasks before server data download...');
+        const db = (localDB as any).db;
+        if (db) {
+          const tx = db.transaction('scheduleTasks', 'readwrite');
+          const store = tx.objectStore('scheduleTasks');
+          await store.clear();
+          await tx.done;
+        }
+
+        console.log('💾 [Sync] Saving tasks to localDB...');
+        await localDB.bulkSave({
+          tasks: tasks.map(t => ({
+            id: t.id,
+            schedule_id: t.schedule_id,
+            tenant_id: tenantId,
+            farmer_id: t.farmer_id || null,
+            task_name: t.task_name,
+            task_type: t.task_type,
+            task_date: t.task_date,
+            task_description: t.task_description || null,
+            days_from_sowing: t.days_from_sowing || null,
+            sequence_order: t.sequence_order || null,
+            stage_key: t.stage_key || null,
+            stage_name: t.stage_name || null,
+            stage_order: t.stage_order || null,
+            duration_hours: t.duration_hours || null,
+            priority: t.priority || null,
+            weather_dependent: t.weather_dependent || null,
+            detailed_steps: t.detailed_steps || null,
+            resources: t.resources || null,
+            estimated_cost: t.estimated_cost || null,
+            currency: t.currency || null,
+            water_required_liters: t.water_required_liters || null,
+            instructions: t.instructions || null,
+            precautions: t.precautions || null,
+            regional_terms: t.regional_terms || null,
+            ideal_weather: t.ideal_weather || null,
+            weather_risk_level: t.weather_risk_level || null,
+            status: t.status || null,
+            completed_at: t.completed_at || null,
+            completed_by: t.completed_by || null,
+            completion_notes: t.completion_notes || null,
+            original_date: t.original_date || null,
+            reschedule_reason: t.reschedule_reason || null,
+            auto_rescheduled: t.auto_rescheduled || null,
+            climate_adjusted: t.climate_adjusted || null,
+            original_date_before_climate_adjust: t.original_date_before_climate_adjust || null,
+            climate_adjustment_reason: t.climate_adjustment_reason || null,
+            product_recommendations: t.product_recommendations || null,
+            product_type: t.product_type || null,
+            yield_boost_technique: t.yield_boost_technique || null,
+            yield_impact: t.yield_impact || null,
+            yield_impact_details: t.yield_impact_details || null,
+            skip_penalty: t.skip_penalty || null,
+            skip_penalty_details: t.skip_penalty_details || null,
+            language: t.language || null,
+            created_at: t.created_at || null,
+            updated_at: t.updated_at || null,
+            lastModified: new Date(t.updated_at || t.created_at || Date.now()).getTime(),
+            syncStatus: 'synced' as const,
+          })),
+        });
+        console.log(`✅ [Sync] Saved ${tasks.length} tasks to localDB`);
+      }
       
       // VERIFY data was actually saved correctly
       const verifyLands = await localDB.getLands(undefined, userId);
