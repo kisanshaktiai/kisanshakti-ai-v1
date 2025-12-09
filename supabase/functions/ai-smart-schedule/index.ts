@@ -2327,16 +2327,43 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
       if (!task.product_recommendations && task.product_names) {
         const names = (task.product_names || "").split(",").map((s: string) => s.trim()).filter(Boolean);
         const doses = (task.product_doses || "").split(",").map((s: string) => s.trim());
-        const prices = (task.product_prices || "").split(",").map((s: string) => parseInt(s.trim()) || 200);
+        const prices = (task.product_prices || "").split(",").map((s: string) => parseInt(s.trim()));
         
-        task.product_recommendations = names.map((name: string, i: number) => ({
-          product_name: name,
-          brand: "",
-          product_type: farmingType === "organic_only" ? "organic" : "fertilizer",
-          dose_per_acre: doses[i] || "",
-          price_estimate: prices[i] || 200,
-          application_method: "spray"
-        }));
+        // Calculate realistic prices based on product type and land area
+        const categoryPriceRanges: Record<string, { min: number; max: number }> = {
+          organic: { min: 150, max: 400 },
+          fertilizer: { min: 200, max: 600 },
+          pesticide: { min: 300, max: 800 },
+          fungicide: { min: 250, max: 700 },
+          growth_promoter: { min: 180, max: 450 },
+          seed: { min: 100, max: 350 },
+          other: { min: 150, max: 400 }
+        };
+        
+        const taskCategory = task.category || "other";
+        const priceRange = categoryPriceRanges[taskCategory] || categoryPriceRanges.other;
+        
+        task.product_recommendations = names.map((name: string, i: number) => {
+          // Use AI-provided price if valid, otherwise calculate based on category
+          let priceEstimate = prices[i];
+          if (!priceEstimate || priceEstimate <= 0 || isNaN(priceEstimate)) {
+            // Calculate price variation based on index (different products have different prices)
+            const priceVariation = (i % 3) * 50; // Adds variety: 0, 50, 100
+            priceEstimate = priceRange.min + priceVariation + Math.floor(Math.random() * (priceRange.max - priceRange.min - 100));
+          }
+          
+          // Multiply by land area for total cost
+          const totalPriceForLand = Math.round(priceEstimate * landAreaAcres);
+          
+          return {
+            product_name: name,
+            brand: "",
+            product_type: farmingType === "organic_only" ? "organic" : taskCategory,
+            dose_per_acre: doses[i] || "",
+            price_estimate: totalPriceForLand,
+            application_method: "spray"
+          };
+        });
       }
 
       return task;
@@ -2377,18 +2404,41 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
         const dbProducts = await fetchRecommendedProducts(supabase, cropName, task.stage_key, category, farmingType);
 
         if (dbProducts.length > 0) {
-          task.product_recommendations = dbProducts.slice(0, 2).map((p: any) => {
+          task.product_recommendations = dbProducts.slice(0, 2).map((p: any, idx: number) => {
             // Handle price_range safely - can be string, object, number, or null
-            let priceEstimate = 200;
+            let priceEstimate = 0;
             if (p.price_range) {
               if (typeof p.price_range === 'string') {
-                priceEstimate = parseInt(p.price_range.split("-")?.[0] || "200") || 200;
+                // Parse price range like "200-500" and take average
+                const parts = p.price_range.split("-").map((s: string) => parseInt(s.trim()));
+                if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                  priceEstimate = Math.round((parts[0] + parts[1]) / 2);
+                } else {
+                  priceEstimate = parseInt(p.price_range) || 0;
+                }
               } else if (typeof p.price_range === 'number') {
                 priceEstimate = p.price_range;
               } else if (typeof p.price_range === 'object') {
-                priceEstimate = p.price_range.min || p.price_range.price || p.price_range.value || 200;
+                priceEstimate = p.price_range.avg || p.price_range.min || p.price_range.price || p.price_range.value || 0;
               }
             }
+            
+            // If no valid price, calculate based on product type
+            if (!priceEstimate || priceEstimate <= 0) {
+              const typePrices: Record<string, number> = {
+                fertilizer: 350 + idx * 80,
+                pesticide: 450 + idx * 100,
+                fungicide: 400 + idx * 90,
+                organic: 280 + idx * 60,
+                bio_fertilizer: 320 + idx * 70,
+                growth_promoter: 380 + idx * 75,
+                seed: 250 + idx * 50
+              };
+              priceEstimate = typePrices[p.product_type || "fertilizer"] || (300 + idx * 75);
+            }
+            
+            // Calculate total cost for the land area
+            const totalPriceForLand = Math.round(priceEstimate * landAreaAcres);
             
             return {
               product_name: p.name,
@@ -2397,7 +2447,7 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
               active_ingredient: p.active_ingredients || "",
               dose_per_acre: p.dosage_instructions || "",
               application_method: p.application_method || "spray",
-              price_estimate: priceEstimate,
+              price_estimate: totalPriceForLand,
             };
           });
         }

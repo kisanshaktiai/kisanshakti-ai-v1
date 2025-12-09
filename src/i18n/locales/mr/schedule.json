@@ -142,7 +142,10 @@
       "product_details": "औषध/खत माहिती",
       "icar_guideline": "कृषी विभाग शिफारस",
       "climate_risk": "हवामान धोका",
-      "approx_cost": "अंदाजे खर्च"
+      "approx_cost": "अंदाजे खर्च",
+      "recommended_products": "शिफारस केलेली उत्पादने",
+      "mark_done_label": "पूर्ण झाल्यावर चिन्हांकित करा",
+      "mark_done": "पूर्ण चिन्हांकित करा"
     },
     "schedule_card": {
       "variety": "विविधता",

@@ -142,7 +142,10 @@
       "product_details": "दवाई/खाद की जानकारी",
       "icar_guideline": "कृषी विभाग की सलाह",
       "climate_risk": "मौसम का खतरा",
-      "approx_cost": "अंदाजे खर्च"
+      "approx_cost": "अंदाजे खर्च",
+      "recommended_products": "सुझाए गए उत्पाद",
+      "mark_done_label": "पूर्ण होने पर चिह्नित करें",
+      "mark_done": "पूर्ण चिह्नित करें"
     },
     "schedule_card": {
       "variety": "किस्म",

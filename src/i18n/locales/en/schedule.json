@@ -197,7 +197,10 @@
       "product_details": "Product Details",
       "icar_guideline": "ICAR Recommendation",
       "climate_risk": "Climate Risk",
-      "approx_cost": "Approx. Cost"
+      "approx_cost": "Approx. Cost",
+      "recommended_products": "Recommended Products",
+      "mark_done_label": "Mark as done when completed",
+      "mark_done": "Mark Done"
     },
     "schedule_card": {
       "variety": "Variety",
