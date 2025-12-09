@@ -1849,11 +1849,16 @@ N/P/K deficit: ${nDeficit}/${pDeficit}/${kDeficit} kg/ha
 Labor: ₹${laborRate}/day`;
 
     const userPrompt = `Generate ${translatedCropName} schedule with ${totalStages * 2}-${totalStages * 3} tasks.
+
+CRITICAL: You MUST call the create_schedule function with proper JSON structure.
+
 RULES:
 - task_name: "${translatedCropName} - [action]" in ${languageName}
 - All ${totalStages} stages required: ${allStageKeys.join(", ")}
 - Include brand recommendations
-- Calculate costs per task`;
+- Calculate costs per task
+
+RESPOND ONLY by calling the create_schedule function. Do NOT respond with text.`;
 
     console.log(`🤖 [AI] Calling ${aiProvider}/${model} with optimized ${totalStages}-stage prompt`);
 
@@ -2014,17 +2019,73 @@ RULES:
 
     const aiData = await aiResponse.json();
     const message = aiData.choices?.[0]?.message;
+    
+    console.log(`📥 [AI] Response received, parsing...`);
 
-    if (!message?.tool_calls?.[0]) {
-      console.error("❌ [AI] No tool calls in response:", JSON.stringify(aiData).substring(0, 500));
-      throw new Error("AI did not return structured schedule");
+    // Parse schedule data - handle both tool calls and text responses
+    let scheduleData: any = null;
+    
+    // Method 1: Check for tool_calls (OpenAI style)
+    if (message?.tool_calls?.[0]?.function?.arguments) {
+      try {
+        scheduleData = JSON.parse(message.tool_calls[0].function.arguments);
+        console.log(`✅ [AI] Parsed from tool_calls`);
+      } catch (e) {
+        console.warn(`⚠️ [AI] Failed to parse tool_calls arguments:`, e);
+      }
     }
-
-    const scheduleData = JSON.parse(message.tool_calls[0].function.arguments);
+    
+    // Method 2: Check for function_call (older OpenAI format)
+    if (!scheduleData && message?.function_call?.arguments) {
+      try {
+        scheduleData = JSON.parse(message.function_call.arguments);
+        console.log(`✅ [AI] Parsed from function_call`);
+      } catch (e) {
+        console.warn(`⚠️ [AI] Failed to parse function_call arguments:`, e);
+      }
+    }
+    
+    // Method 3: Try to extract JSON from text content (Gemini sometimes does this)
+    if (!scheduleData && message?.content) {
+      const content = message.content;
+      console.log(`📝 [AI] Attempting to extract JSON from text response...`);
+      
+      // Try to find JSON in the content
+      const jsonMatches = content.match(/\{[\s\S]*"tasks"[\s\S]*\}/);
+      if (jsonMatches) {
+        try {
+          scheduleData = JSON.parse(jsonMatches[0]);
+          console.log(`✅ [AI] Extracted JSON from text content`);
+        } catch (e) {
+          console.warn(`⚠️ [AI] Failed to parse JSON from text:`, e);
+        }
+      }
+      
+      // Try markdown code block
+      if (!scheduleData) {
+        const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+        if (codeBlockMatch) {
+          try {
+            scheduleData = JSON.parse(codeBlockMatch[1]);
+            console.log(`✅ [AI] Extracted JSON from code block`);
+          } catch (e) {
+            console.warn(`⚠️ [AI] Failed to parse code block JSON:`, e);
+          }
+        }
+      }
+    }
+    
+    // If still no schedule data, log and throw
+    if (!scheduleData) {
+      console.error("❌ [AI] No structured data found. Response:", JSON.stringify(aiData).substring(0, 800));
+      throw new Error("AI did not return structured schedule. Please try again.");
+    }
+    
     console.log(`✅ [AI] Generated ${scheduleData.tasks?.length || 0} tasks`);
 
     if (!scheduleData.tasks?.length) {
-      throw new Error("AI returned empty schedule");
+      console.error("❌ [AI] Schedule has no tasks:", JSON.stringify(scheduleData).substring(0, 500));
+      throw new Error("AI returned empty schedule - no tasks generated");
     }
 
     // ═══════════════════════════════════════════════════════════════════

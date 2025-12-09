@@ -142,8 +142,22 @@ export function buildAIRequest(
   // Tools/function calling
   if (options.tools) {
     payload.tools = options.tools;
+    
+    // Tool choice handling differs by provider
     if (options.toolChoice) {
-      payload.tool_choice = options.toolChoice;
+      if (provider === "google") {
+        // Lovable AI Gateway / Google uses "auto" or "required" as string
+        // For forced tool calling, use "required" or "any"
+        if (typeof options.toolChoice === 'object' && options.toolChoice.type === 'function') {
+          // Convert OpenAI-style forced tool choice to Google-compatible
+          payload.tool_choice = "required";
+        } else {
+          payload.tool_choice = options.toolChoice;
+        }
+      } else {
+        // OpenAI format
+        payload.tool_choice = options.toolChoice;
+      }
     }
   }
 
