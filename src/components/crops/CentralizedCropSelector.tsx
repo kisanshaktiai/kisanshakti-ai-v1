@@ -33,7 +33,7 @@ interface Crop {
 
 interface CentralizedCropSelectorProps {
   selectedCropId?: string;
-  onSelect: (cropId: string, cropName: string) => void;
+  onSelect: (cropId: string, cropName: string, localizedName: string, englishName: string) => void;
   className?: string;
   showSearch?: boolean;
   showHeader?: boolean;
@@ -160,7 +160,8 @@ export function CentralizedCropSelector({
 
   const handleCropSelect = (crop: Crop) => {
     setSelectedCrop(crop);
-    onSelect(crop.id, crop.label);
+    const localizedName = displayCropName(crop);
+    onSelect(crop.id, crop.label, localizedName, crop.label);
   };
 
   const handleBack = () => {

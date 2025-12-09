@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Droplets, Leaf, Bug, Scissors, Package, AlertCircle, CheckCircle2, Clock, Zap, ChevronDown, Volume2, VolumeX, Calendar, DollarSign, CloudRain, Thermometer, Loader2 } from 'lucide-react';
+import { Droplets, Leaf, Bug, Scissors, Package, AlertCircle, CheckCircle2, Clock, Zap, ChevronDown, Volume2, VolumeX, Calendar, IndianRupee, CloudRain, Thermometer, Loader2, Shield, BookOpen, AlertTriangle } from 'lucide-react';
 import { format, isToday, isTomorrow, isPast, differenceInDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TaskCompletionSection } from './TaskCompletionSection';
 import { VideoHelpButton } from './VideoHelpButton';
+import ProductRecommendationCard from './ProductRecommendationCard';
 import { cn } from '@/lib/utils';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { supabase } from '@/utils/supabase';
@@ -28,6 +29,15 @@ interface Task {
   instructions?: string[];
   precautions?: string[];
   resources?: Record<string, any>;
+  product_recommendations?: Array<{
+    product_name: string;
+    brand?: string;
+    dose_per_acre?: string;
+    price_estimate?: number;
+    product_type?: string;
+    active_ingredient?: string;
+    application_method?: string;
+  }>;
   ideal_weather?: {
     temperature?: string;
     humidity?: string;
@@ -462,7 +472,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
 
                                   {isOverdue && !isCompleted && (
                                     <Badge variant="destructive" className="text-[10px] h-5">
-                                      Overdue
+                                      {t('schedule.task_card.overdue')}
                                     </Badge>
                                   )}
                                 </div>
@@ -555,20 +565,73 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                               </div>
                             )}
 
-                            {/* Resources */}
-                            {task.resources && Object.keys(task.resources).length > 0 && (
-                              <div>
-                                <h5 className="text-sm font-medium mb-2">Required Resources</h5>
-                                <div className="grid grid-cols-2 gap-2">
-                                  {Object.entries(task.resources).map(([key, value]) => (
-                                    <div key={key} className="flex justify-between text-sm">
-                                      <span className="text-muted-foreground capitalize">{key.replace('_', ' ')}:</span>
-                                      <span className="font-medium">{String(value)}</span>
-                                    </div>
-                                  ))}
-                                </div>
+                            {/* Resources - Smart Display */}
+                            {task.resources && (
+                              <div className="space-y-3">
+                                {/* Quantity */}
+                                {task.resources.quantity && task.resources.quantity !== 'null' && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
+                                      <Package className="h-4 w-4 text-blue-500" />
+                                      {t('schedule.task_card.quantity')}
+                                    </h5>
+                                    <p className="text-sm text-muted-foreground p-2 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                                      {task.resources.quantity}
+                                    </p>
+                                  </div>
+                                )}
+                                {/* Product Details */}
+                                {task.resources.product_details && task.resources.product_details !== 'null' && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
+                                      <Leaf className="h-4 w-4 text-emerald-500" />
+                                      {t('schedule.task_card.product_details')}
+                                    </h5>
+                                    <p className="text-sm text-muted-foreground p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                                      {task.resources.product_details}
+                                    </p>
+                                  </div>
+                                )}
+                                {/* ICAR Guideline */}
+                                {task.resources.icar_guideline && task.resources.icar_guideline !== 'null' && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2 flex items-center gap-2 text-blue-600">
+                                      <BookOpen className="h-4 w-4" />
+                                      {t('schedule.task_card.icar_guideline')}
+                                    </h5>
+                                    <p className="text-sm text-muted-foreground p-2 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                                      {task.resources.icar_guideline}
+                                    </p>
+                                  </div>
+                                )}
+                                {/* Climate Risk */}
+                                {task.resources.climate_risk && task.resources.climate_risk !== 'null' && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2 flex items-center gap-2 text-orange-600">
+                                      <AlertTriangle className="h-4 w-4" />
+                                      {t('schedule.task_card.climate_risk')}
+                                    </h5>
+                                    <p className="text-sm text-orange-700 dark:text-orange-300 p-2 rounded-lg bg-orange-500/5 border border-orange-500/20">
+                                      {task.resources.climate_risk}
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             )}
+
+                            {/* Product Recommendations with FULL labor breakdown */}
+                            {(Array.isArray(task.product_recommendations) && task.product_recommendations.length > 0) || (task.resources?.labor_cost > 0) ? (
+                              <ProductRecommendationCard 
+                                products={task.product_recommendations || []}
+                                landAreaAcres={1}
+                                laborCost={task.resources?.labor_cost || 0}
+                                laborDays={task.resources?.labor_days || 0}
+                                laborWorkers={task.resources?.labor_workers || 0}
+                                laborDaysPerAcre={task.resources?.labor_days_per_acre || 0}
+                                laborDailyWage={task.resources?.labor_daily_wage || 350}
+                                laborDescription={task.resources?.labor_description || ''}
+                              />
+                            ) : null}
 
                             {/* Quick Info Pills */}
                             <div className="flex flex-wrap gap-2">
@@ -579,10 +642,10 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                                 </div>
                               )}
                               {task.estimated_cost && (
-                                <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-background/80 border border-border/50">
-                                  <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-                                  <span className="text-xs text-muted-foreground">
-                                    {task.currency === 'INR' ? '₹' : '$'}{task.estimated_cost}
+                                <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20">
+                                  <IndianRupee className="h-3.5 w-3.5 text-primary" />
+                                  <span className="text-xs font-medium text-primary">
+                                    ₹{task.estimated_cost.toLocaleString('en-IN')}
                                   </span>
                                 </div>
                               )}
@@ -592,8 +655,8 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                             {task.ideal_weather && (
                               <div>
                                 <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
-                                  <Thermometer className="h-4 w-4 text-info" />
-                                  Ideal Weather
+                                  <Thermometer className="h-4 w-4 text-sky-500" />
+                                  {t('schedule.task_card.ideal_weather')}
                                 </h5>
                                 <div className="grid grid-cols-2 gap-2 text-sm">
                                   {task.ideal_weather.temperature && (

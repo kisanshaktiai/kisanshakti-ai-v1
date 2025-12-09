@@ -38,6 +38,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { VideoHelpCard } from '@/components/home/VideoHelpCard';
 import { useVideoTutorials } from '@/hooks/useVideoTutorials';
+import WeatherScheduleAlerts from '@/components/schedule/WeatherScheduleAlerts';
 
 interface FeatureCard {
   title: string;
@@ -591,6 +592,9 @@ export default function Home() {
           damping: 25
         }}
       >
+        {/* Weather Schedule Alerts - Shows task adjustments due to weather */}
+        <WeatherScheduleAlerts className="mb-4" maxAlerts={3} />
+
         {/* Main Features Grid */}
         <motion.div 
           className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4"

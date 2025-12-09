@@ -14,6 +14,7 @@ import { landsApi } from '@/services/landsApi';
 import LandSelector from '@/components/schedule/LandSelector';
 import CropDateInput from '@/components/schedule/CropDateInput';
 import CropScheduleView from '@/components/schedule/CropScheduleView';
+import ScheduleLoadingOverlay from '@/components/schedule/ScheduleLoadingOverlay';
 import { format } from 'date-fns';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useLocation } from '@/hooks/useLocation';
@@ -57,9 +58,12 @@ export default function Schedule() {
     cropVariety: string;
     sowingDate: Date;
     isReadyMadePlant?: boolean;
+    farmingType?: string;
   } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [generatingCropName, setGeneratingCropName] = useState('');
+  const [generatingFarmingType, setGeneratingFarmingType] = useState('');
   const { scheduleTaskReminder } = useNotifications();
 
   // Get device location and weather data for AI schedule generation
@@ -113,13 +117,18 @@ export default function Schedule() {
     }
   };
 
-  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant?: boolean) => {
+  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '') => {
     if (!selectedLand) return;
 
-    setScheduleData({ cropName, cropVariety, sowingDate, isReadyMadePlant });
+    console.log('🚀 [Schedule] Starting schedule generation:', { cropName, localizedCropName, farmingType, isReadyMadePlant, nurseryDays });
+    
+    // Set generating state FIRST before anything else
+    setGenerating(true);
+    setGeneratingCropName(localizedCropName || cropName);
+    setGeneratingFarmingType(farmingType);
+    setScheduleData({ cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType });
     
     try {
-      setGenerating(true);
 
       // First, deactivate any existing active schedules for this land
       const { error: deactivateError } = await supabase
@@ -159,7 +168,15 @@ export default function Schedule() {
 
       console.log('Fetched real weather data for AI:', weatherData);
 
-      // Call the updated ai-smart-schedule edge function with user's preferred language
+      // Call the updated ai-smart-schedule edge function with user's current app language
+      // Priority: currentLanguage (from language store/UI) > user.preferredLanguage > 'hi' (default)
+      const scheduleLanguage = currentLanguage || user?.preferredLanguage || 'hi';
+      console.log('🌐 [Schedule] Generating schedule in language:', scheduleLanguage, {
+        currentLanguage,
+        userPreferredLanguage: user?.preferredLanguage,
+        userLanguage: user?.language
+      });
+      
       const response = await supabase.functions.invoke('ai-smart-schedule', {
         body: {
           landId: selectedLand.id,
@@ -167,18 +184,35 @@ export default function Schedule() {
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
           isReadyMadePlant: isReadyMadePlant || false,
+          nurseryDays: nurseryDays || 0,
+          localizedCropName: localizedCropName || cropName,
+          farmingType: farmingType,
           weather: weatherData,
           regenerate: true,
-          tenantId: tenant?.id || user?.tenantId || '',
-          farmerId: user?.id || '',
-          language: user?.preferredLanguage || currentLanguage || 'en',
+          language: scheduleLanguage,
           country: 'India',
+        },
+        headers: {
+          'x-tenant-id': tenant?.id || user?.tenantId || '',
+          'x-farmer-id': user?.id || '',
         },
       });
 
-      if (response.error) throw response.error;
+      console.log('🔍 [Schedule] Edge function response:', { error: response.error, data: response.data });
+
+      // Handle edge function errors
+      if (response.error) {
+        console.error('❌ [Schedule] Edge function error:', response.error);
+        throw new Error(response.error.message || 'Edge function returned an error');
+      }
 
       const { data } = response;
+      
+      // Check if data contains an error response from the edge function
+      if (data?.error) {
+        console.error('❌ [Schedule] API error:', data.error, data.details);
+        throw new Error(data.error + (data.details ? `: ${data.details}` : ''));
+      }
       
       // Enhanced error handling with retry logic
       if (!data || !data.success) {
@@ -191,7 +225,7 @@ export default function Schedule() {
           });
           // Retry after 2 seconds
           setTimeout(() => {
-            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant);
+            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType);
           }, 2000);
           return;
         }
@@ -235,7 +269,7 @@ export default function Schedule() {
             variant="outline"
             onClick={() => {
               setRetryCount(0);
-              handleCropDateSubmit(cropName, cropVariety, sowingDate, scheduleData?.isReadyMadePlant);
+              handleCropDateSubmit(cropName, cropVariety, sowingDate, scheduleData?.isReadyMadePlant || false, scheduleData?.farmingType || 'organic_fertilizer');
             }}
           >
             Try Again
@@ -465,6 +499,13 @@ export default function Schedule() {
           </div>
         </div>
       </div>
+
+      {/* Global Loading Overlay - shows during API call */}
+      <ScheduleLoadingOverlay
+        isLoading={generating}
+        cropName={generatingCropName || scheduleData?.cropName || ''}
+        farmingType={generatingFarmingType || scheduleData?.farmingType || 'organic_fertilizer'}
+      />
     </div>
   );
 }

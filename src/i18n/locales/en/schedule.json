@@ -182,6 +182,7 @@
       "days_until": "{{days}} days",
       "high_priority": "High Priority",
       "weather": "Weather",
+      "weather_dependent": "Weather Dependent",
       "completed": "Completed",
       "description": "Description",
       "instructions": "Instructions",
@@ -191,7 +192,15 @@
       "temperature": "Temperature",
       "humidity": "Humidity",
       "conditions": "Conditions",
-      "read_aloud": "Read Aloud"
+      "read_aloud": "Read Aloud",
+      "quantity": "Quantity",
+      "product_details": "Product Details",
+      "icar_guideline": "ICAR Recommendation",
+      "climate_risk": "Climate Risk",
+      "approx_cost": "Approx. Cost",
+      "recommended_products": "Recommended Products",
+      "mark_done_label": "Mark as done when completed",
+      "mark_done": "Mark Done"
     },
     "schedule_card": {
       "variety": "Variety",
@@ -208,7 +217,9 @@
       "task": "task",
       "tasks": "tasks",
       "ai_adjusted": "AI Adjusted",
-      "done": "Done"
+      "done": "Done",
+      "today": "Today",
+      "tomorrow": "Tomorrow"
     },
     "dialog": {
       "task_details": "Task Details",

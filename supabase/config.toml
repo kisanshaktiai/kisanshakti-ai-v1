@@ -27,6 +27,9 @@ verify_jwt = false
 [functions.lands-api]
 verify_jwt = false
 
+[functions.schedules-api]
+verify_jwt = false
+
 [functions.ai-smart-schedule]
 verify_jwt = true
 
@@ -43,4 +46,10 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.text-to-speech]
+verify_jwt = false
+
+[functions.mcp-handler]
+verify_jwt = false
+
+[functions.ai-weather-schedule-sync]
 verify_jwt = false

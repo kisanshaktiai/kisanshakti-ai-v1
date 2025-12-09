@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Clock, Volume2, Sparkles, RefreshCw, MapPin, ArrowLeft, Plus } from 'lucide-react';
+import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Clock, Volume2, Sparkles, RefreshCw, MapPin, ArrowLeft, Plus, FlaskConical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,6 +14,7 @@ import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useTranslation } from 'react-i18next';
 import { format, addDays, isToday, isTomorrow, isPast, differenceInDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
+import { cn } from '@/lib/utils';
 import TaskTimeline from './TaskTimeline';
 import ModernTaskCard from './ModernTaskCard';
 import TaskActionDialog from './TaskActionDialog';
@@ -32,6 +33,7 @@ interface CropSchedule {
   is_active: boolean;
   generated_at: string;
   last_weather_update?: string;
+  farming_type?: string;
 }
 
 interface ScheduleTask {
@@ -422,6 +424,15 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const upcomingCount = pendingTasks.filter(t => !isPast(new Date(t.task_date))).length;
   const todayTasks = tasks.filter(t => isToday(new Date(t.task_date)) && t.status === 'pending');
 
+  // Find real harvest date from tasks (harvest/harvesting task)
+  const harvestTask = tasks.find(t => 
+    t.task_type?.toLowerCase().includes('harvest') || 
+    t.task_name?.toLowerCase().includes('harvest') ||
+    t.task_name?.toLowerCase().includes('कटाई') ||
+    t.task_name?.toLowerCase().includes('काढणी')
+  );
+  const realHarvestDate = harvestTask?.task_date || schedule.expected_harvest_date;
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-accent/5 to-primary/5">
       {/* Modern Mobile-First Header - 2025 Design */}
@@ -442,7 +453,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               <div>
                 <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-primary animate-pulse" />
-                  {schedule.crop_name}
+                  {(schedule as any).metadata?.translated_crop_name || schedule.crop_name}
                 </h2>
                 <p className="text-xs text-muted-foreground font-medium">
                   <MapPin className="h-3 w-3 inline mr-1" />
@@ -450,9 +461,31 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                 </p>
               </div>
             </div>
-            <Badge className="bg-primary/10 text-primary border-primary/20">
-              {t('schedule.schedule_view.ai_schedule')}
-            </Badge>
+            <div className="flex flex-col items-end gap-1">
+              <Badge className="bg-primary/10 text-primary border-primary/20">
+                {t('schedule.schedule_view.ai_schedule')}
+              </Badge>
+              {schedule.farming_type && (
+                <Badge 
+                  className={cn(
+                    "text-xs border",
+                    schedule.farming_type === 'organic_only' && "bg-green-500/10 text-green-700 border-green-500/30",
+                    schedule.farming_type === 'organic_fertilizer' && "bg-blue-500/10 text-blue-700 border-blue-500/30",
+                    schedule.farming_type === 'fertilizer_pesticide' && "bg-orange-500/10 text-orange-700 border-orange-500/30"
+                  )}
+                >
+                  {schedule.farming_type === 'organic_only' && (
+                    <><Leaf className="h-3 w-3 mr-1" />{i18n.language === 'hi' ? 'जैविक' : i18n.language === 'mr' ? 'सेंद्रिय' : 'Organic'}</>
+                  )}
+                  {schedule.farming_type === 'organic_fertilizer' && (
+                    <><Leaf className="h-3 w-3 mr-1" /><FlaskConical className="h-3 w-3 mr-1" />{i18n.language === 'hi' ? 'जैविक+रासा.' : i18n.language === 'mr' ? 'सेंद्रिय+रासा.' : 'Organic+Chem'}</>
+                  )}
+                  {schedule.farming_type === 'fertilizer_pesticide' && (
+                    <><FlaskConical className="h-3 w-3 mr-1" /><Bug className="h-3 w-3 mr-1" />{i18n.language === 'hi' ? 'रासायनिक' : i18n.language === 'mr' ? 'रासायनिक' : 'Chemical'}</>
+                  )}
+                </Badge>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -464,13 +497,13 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
             <div className="p-3 space-y-1">
               <div className="flex items-center justify-between">
                 <Calendar className="h-4 w-4 text-green-600 dark:text-green-400" />
-                <span className="text-[10px] font-medium text-green-700 dark:text-green-300 uppercase tracking-wider">Sowing</span>
+                <span className="text-[10px] font-medium text-green-700 dark:text-green-300 uppercase tracking-wider">{t('schedule.sowing')}</span>
               </div>
               <p className="text-base font-bold text-green-900 dark:text-green-100">
                 {format(new Date(schedule.sowing_date), 'dd MMM')}
               </p>
               <p className="text-[10px] text-green-700 dark:text-green-300">
-                {differenceInDays(new Date(), new Date(schedule.sowing_date))} days ago
+                {differenceInDays(new Date(), new Date(schedule.sowing_date))} {t('schedule.days_ago')}
               </p>
             </div>
           </Card>
@@ -479,13 +512,17 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
             <div className="p-3 space-y-1">
               <div className="flex items-center justify-between">
                 <Package className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300 uppercase tracking-wider">Harvest</span>
+                <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300 uppercase tracking-wider">{t('schedule.harvest')}</span>
               </div>
               <p className="text-base font-bold text-amber-900 dark:text-amber-100">
-                {schedule.expected_harvest_date ? format(new Date(schedule.expected_harvest_date), 'dd MMM') : 'TBD'}
+                {realHarvestDate 
+                  ? format(new Date(realHarvestDate), 'dd MMM yyyy')
+                  : t('schedule.schedule_card.tbd')}
               </p>
               <p className="text-[10px] text-amber-700 dark:text-amber-300">
-                {schedule.expected_harvest_date && differenceInDays(new Date(schedule.expected_harvest_date), new Date())} days left
+                {realHarvestDate 
+                  ? `${Math.max(0, differenceInDays(new Date(realHarvestDate), new Date()))} ${t('schedule.days_remaining')}`
+                  : ''}
               </p>
             </div>
           </Card>
@@ -504,10 +541,10 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
                   <Clock className="h-4 w-4 text-primary" />
-                  {i18n.t('schedule.todaysTasks')}
+                  {t('schedule.todays_tasks')}
                 </h3>
                 <Badge variant="destructive" className="text-[10px]">
-                  {todayTasks.length} {i18n.t('schedule.pending')}
+                  {todayTasks.length} {t('schedule.pending')}
                 </Badge>
               </div>
               <div className="space-y-2">

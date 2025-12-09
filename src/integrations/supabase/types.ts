@@ -599,6 +599,111 @@ export type Database = {
         }
         Relationships: []
       }
+      agri_market_sources: {
+        Row: {
+          active: boolean | null
+          base_url: string | null
+          board_name: string | null
+          commodity_dropdown_selector: string | null
+          commodity_html_path: string | null
+          commodity_source: string | null
+          commodity_text_expr: string | null
+          commodity_value_attr: string | null
+          country_id: string | null
+          created_at: string | null
+          data_endpoint: string | null
+          data_request_method: string | null
+          data_request_params: Json | null
+          date_format: string | null
+          date_regex: string | null
+          date_row_selector: string | null
+          fetch_method: string | null
+          id: string
+          last_checked_at: string | null
+          main_page: string | null
+          mapping: Json | null
+          notes: string | null
+          organization: string | null
+          page_requires_session: boolean | null
+          price_clean_regex: string | null
+          row_selector: string | null
+          sample_html: string | null
+          skip_empty_rows: boolean | null
+          state_code: string | null
+          state_id: string | null
+          timezone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          base_url?: string | null
+          board_name?: string | null
+          commodity_dropdown_selector?: string | null
+          commodity_html_path?: string | null
+          commodity_source?: string | null
+          commodity_text_expr?: string | null
+          commodity_value_attr?: string | null
+          country_id?: string | null
+          created_at?: string | null
+          data_endpoint?: string | null
+          data_request_method?: string | null
+          data_request_params?: Json | null
+          date_format?: string | null
+          date_regex?: string | null
+          date_row_selector?: string | null
+          fetch_method?: string | null
+          id?: string
+          last_checked_at?: string | null
+          main_page?: string | null
+          mapping?: Json | null
+          notes?: string | null
+          organization?: string | null
+          page_requires_session?: boolean | null
+          price_clean_regex?: string | null
+          row_selector?: string | null
+          sample_html?: string | null
+          skip_empty_rows?: boolean | null
+          state_code?: string | null
+          state_id?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          base_url?: string | null
+          board_name?: string | null
+          commodity_dropdown_selector?: string | null
+          commodity_html_path?: string | null
+          commodity_source?: string | null
+          commodity_text_expr?: string | null
+          commodity_value_attr?: string | null
+          country_id?: string | null
+          created_at?: string | null
+          data_endpoint?: string | null
+          data_request_method?: string | null
+          data_request_params?: Json | null
+          date_format?: string | null
+          date_regex?: string | null
+          date_row_selector?: string | null
+          fetch_method?: string | null
+          id?: string
+          last_checked_at?: string | null
+          main_page?: string | null
+          mapping?: Json | null
+          notes?: string | null
+          organization?: string | null
+          page_requires_session?: boolean | null
+          price_clean_regex?: string | null
+          row_selector?: string | null
+          sample_html?: string | null
+          skip_empty_rows?: boolean | null
+          state_code?: string | null
+          state_id?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       agri_marketing_insights: {
         Row: {
           affected_farmers_count: number | null
@@ -2639,6 +2744,39 @@ export type Database = {
         }
         Relationships: []
       }
+      commodity_master: {
+        Row: {
+          aliases: Json | null
+          category: string | null
+          created_at: string | null
+          global_code: string
+          id: string
+          name: string
+          unit: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          aliases?: Json | null
+          category?: string | null
+          created_at?: string | null
+          global_code: string
+          id?: string
+          name: string
+          unit?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          aliases?: Json | null
+          category?: string | null
+          created_at?: string | null
+          global_code?: string
+          id?: string
+          name?: string
+          unit?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       communities: {
         Row: {
           banner_url: string | null
@@ -3898,22 +4036,35 @@ export type Database = {
       }
       crop_schedules: {
         Row: {
+          actual_harvest_date: string | null
+          actual_profit: number | null
+          actual_total_cost: number | null
+          actual_yield_quintals: number | null
+          agro_climatic_zone: string | null
           ai_model: string | null
           bio_fertilizer_units: number | null
           bio_pesticide_ml: number | null
           calculated_for_area_acres: number | null
           completed_at: string | null
+          cost_by_category: Json | null
+          cost_by_stage: Json | null
           country: string | null
           created_at: string | null
           crop_name: string
           crop_variety: string | null
+          data_quality_score: number | null
+          district_name: string | null
           expected_gross_revenue: number | null
           expected_harvest_date: string | null
           expected_market_price_per_quintal: number | null
           expected_net_profit: number | null
+          expected_profit: number | null
           expected_yield_per_acre: number | null
           expected_yield_quintals: number | null
+          farmer_feedback: string | null
           farmer_id: string
+          farmer_rating: number | null
+          farming_type: string | null
           fertilizer_k_kg: number | null
           fertilizer_n_kg: number | null
           fertilizer_p_kg: number | null
@@ -3924,43 +4075,89 @@ export type Database = {
           growth_regulators: Json | null
           herbicide_ml: number | null
           id: string
+          input_land_coordinates: Json | null
+          input_soil_data: Json | null
+          input_weather_data: Json | null
           insecticide_ml: number | null
+          irrigation_count_total: number | null
           is_active: boolean | null
+          is_training_candidate: boolean | null
+          labor_rate_used: number | null
           land_id: string
+          last_weather_check: string | null
           last_weather_update: string | null
+          metadata: Json | null
           organic_fertilizer_kg: number | null
           organic_input_details: Json | null
           organic_manure_kg: number | null
+          outcome_recorded_at: string | null
           pesticide_requirements: Json | null
           pgr_hormone_ml: number | null
+          products_recommended_count: number | null
+          recommendation_order: string | null
           recommended_products: Json | null
+          regional_dialect_zone: string | null
+          schedule_accuracy_score: number | null
           schedule_version: number | null
           seed_quantity_kg: number | null
           sowing_date: string
+          stages_covered: Json | null
+          state_region: string | null
+          status: string | null
+          suitability_score: number | null
+          suitability_warnings: Json | null
+          taluka_name: string | null
+          tasks_completed_count: number | null
+          tasks_on_time_count: number | null
+          tasks_total_count: number | null
           tenant_id: string
+          total_duration_days: number | null
           total_estimated_cost: number | null
+          total_labor_cost: number | null
+          total_material_cost: number | null
           total_water_requirement_liters: number | null
+          training_batch_id: string | null
+          training_excluded_reason: string | null
+          training_processed: boolean | null
           updated_at: string | null
           vermicompost_kg: number | null
+          water_per_irrigation_liters: number | null
+          water_requirement_liters_total: number | null
+          weather_auto_update_enabled: boolean | null
           weather_data: Json | null
+          yield_boosting_techniques: Json | null
+          yield_multiplier_target: number | null
         }
         Insert: {
+          actual_harvest_date?: string | null
+          actual_profit?: number | null
+          actual_total_cost?: number | null
+          actual_yield_quintals?: number | null
+          agro_climatic_zone?: string | null
           ai_model?: string | null
           bio_fertilizer_units?: number | null
           bio_pesticide_ml?: number | null
           calculated_for_area_acres?: number | null
           completed_at?: string | null
+          cost_by_category?: Json | null
+          cost_by_stage?: Json | null
           country?: string | null
           created_at?: string | null
           crop_name: string
           crop_variety?: string | null
+          data_quality_score?: number | null
+          district_name?: string | null
           expected_gross_revenue?: number | null
           expected_harvest_date?: string | null
           expected_market_price_per_quintal?: number | null
           expected_net_profit?: number | null
+          expected_profit?: number | null
           expected_yield_per_acre?: number | null
           expected_yield_quintals?: number | null
+          farmer_feedback?: string | null
           farmer_id: string
+          farmer_rating?: number | null
+          farming_type?: string | null
           fertilizer_k_kg?: number | null
           fertilizer_n_kg?: number | null
           fertilizer_p_kg?: number | null
@@ -3971,43 +4168,89 @@ export type Database = {
           growth_regulators?: Json | null
           herbicide_ml?: number | null
           id?: string
+          input_land_coordinates?: Json | null
+          input_soil_data?: Json | null
+          input_weather_data?: Json | null
           insecticide_ml?: number | null
+          irrigation_count_total?: number | null
           is_active?: boolean | null
+          is_training_candidate?: boolean | null
+          labor_rate_used?: number | null
           land_id: string
+          last_weather_check?: string | null
           last_weather_update?: string | null
+          metadata?: Json | null
           organic_fertilizer_kg?: number | null
           organic_input_details?: Json | null
           organic_manure_kg?: number | null
+          outcome_recorded_at?: string | null
           pesticide_requirements?: Json | null
           pgr_hormone_ml?: number | null
+          products_recommended_count?: number | null
+          recommendation_order?: string | null
           recommended_products?: Json | null
+          regional_dialect_zone?: string | null
+          schedule_accuracy_score?: number | null
           schedule_version?: number | null
           seed_quantity_kg?: number | null
           sowing_date: string
+          stages_covered?: Json | null
+          state_region?: string | null
+          status?: string | null
+          suitability_score?: number | null
+          suitability_warnings?: Json | null
+          taluka_name?: string | null
+          tasks_completed_count?: number | null
+          tasks_on_time_count?: number | null
+          tasks_total_count?: number | null
           tenant_id: string
+          total_duration_days?: number | null
           total_estimated_cost?: number | null
+          total_labor_cost?: number | null
+          total_material_cost?: number | null
           total_water_requirement_liters?: number | null
+          training_batch_id?: string | null
+          training_excluded_reason?: string | null
+          training_processed?: boolean | null
           updated_at?: string | null
           vermicompost_kg?: number | null
+          water_per_irrigation_liters?: number | null
+          water_requirement_liters_total?: number | null
+          weather_auto_update_enabled?: boolean | null
           weather_data?: Json | null
+          yield_boosting_techniques?: Json | null
+          yield_multiplier_target?: number | null
         }
         Update: {
+          actual_harvest_date?: string | null
+          actual_profit?: number | null
+          actual_total_cost?: number | null
+          actual_yield_quintals?: number | null
+          agro_climatic_zone?: string | null
           ai_model?: string | null
           bio_fertilizer_units?: number | null
           bio_pesticide_ml?: number | null
           calculated_for_area_acres?: number | null
           completed_at?: string | null
+          cost_by_category?: Json | null
+          cost_by_stage?: Json | null
           country?: string | null
           created_at?: string | null
           crop_name?: string
           crop_variety?: string | null
+          data_quality_score?: number | null
+          district_name?: string | null
           expected_gross_revenue?: number | null
           expected_harvest_date?: string | null
           expected_market_price_per_quintal?: number | null
           expected_net_profit?: number | null
+          expected_profit?: number | null
           expected_yield_per_acre?: number | null
           expected_yield_quintals?: number | null
+          farmer_feedback?: string | null
           farmer_id?: string
+          farmer_rating?: number | null
+          farming_type?: string | null
           fertilizer_k_kg?: number | null
           fertilizer_n_kg?: number | null
           fertilizer_p_kg?: number | null
@@ -4018,25 +4261,58 @@ export type Database = {
           growth_regulators?: Json | null
           herbicide_ml?: number | null
           id?: string
+          input_land_coordinates?: Json | null
+          input_soil_data?: Json | null
+          input_weather_data?: Json | null
           insecticide_ml?: number | null
+          irrigation_count_total?: number | null
           is_active?: boolean | null
+          is_training_candidate?: boolean | null
+          labor_rate_used?: number | null
           land_id?: string
+          last_weather_check?: string | null
           last_weather_update?: string | null
+          metadata?: Json | null
           organic_fertilizer_kg?: number | null
           organic_input_details?: Json | null
           organic_manure_kg?: number | null
+          outcome_recorded_at?: string | null
           pesticide_requirements?: Json | null
           pgr_hormone_ml?: number | null
+          products_recommended_count?: number | null
+          recommendation_order?: string | null
           recommended_products?: Json | null
+          regional_dialect_zone?: string | null
+          schedule_accuracy_score?: number | null
           schedule_version?: number | null
           seed_quantity_kg?: number | null
           sowing_date?: string
+          stages_covered?: Json | null
+          state_region?: string | null
+          status?: string | null
+          suitability_score?: number | null
+          suitability_warnings?: Json | null
+          taluka_name?: string | null
+          tasks_completed_count?: number | null
+          tasks_on_time_count?: number | null
+          tasks_total_count?: number | null
           tenant_id?: string
+          total_duration_days?: number | null
           total_estimated_cost?: number | null
+          total_labor_cost?: number | null
+          total_material_cost?: number | null
           total_water_requirement_liters?: number | null
+          training_batch_id?: string | null
+          training_excluded_reason?: string | null
+          training_processed?: boolean | null
           updated_at?: string | null
           vermicompost_kg?: number | null
+          water_per_irrigation_liters?: number | null
+          water_requirement_liters_total?: number | null
+          weather_auto_update_enabled?: boolean | null
           weather_data?: Json | null
+          yield_boosting_techniques?: Json | null
+          yield_multiplier_target?: number | null
         }
         Relationships: [
           {
@@ -9075,54 +9351,127 @@ export type Database = {
       }
       market_prices: {
         Row: {
+          arrival: number | null
+          commodity_category: string | null
+          commodity_code: string | null
+          commodity_name_normalized: string | null
+          country_id: string | null
           created_at: string
           crop_name: string
           district: string | null
+          fetched_at: string | null
+          global_commodity_code: string | null
           id: string
+          ingested_at: string | null
           market_location: string
+          max_price: number | null
           metadata: Json | null
+          min_price: number | null
+          modal_price: number | null
           price_date: string
           price_per_unit: number
           price_type: string | null
           quality_grade: string | null
+          raw_html: string | null
           source: string | null
+          source_id: string | null
+          spread: number | null
           state: string | null
+          state_id: string | null
+          status: string | null
           unit: string
+          updated_at: string | null
           variety: string | null
         }
         Insert: {
+          arrival?: number | null
+          commodity_category?: string | null
+          commodity_code?: string | null
+          commodity_name_normalized?: string | null
+          country_id?: string | null
           created_at?: string
           crop_name: string
           district?: string | null
+          fetched_at?: string | null
+          global_commodity_code?: string | null
           id?: string
+          ingested_at?: string | null
           market_location: string
+          max_price?: number | null
           metadata?: Json | null
+          min_price?: number | null
+          modal_price?: number | null
           price_date: string
           price_per_unit: number
           price_type?: string | null
           quality_grade?: string | null
+          raw_html?: string | null
           source?: string | null
+          source_id?: string | null
+          spread?: number | null
           state?: string | null
+          state_id?: string | null
+          status?: string | null
           unit?: string
+          updated_at?: string | null
           variety?: string | null
         }
         Update: {
+          arrival?: number | null
+          commodity_category?: string | null
+          commodity_code?: string | null
+          commodity_name_normalized?: string | null
+          country_id?: string | null
           created_at?: string
           crop_name?: string
           district?: string | null
+          fetched_at?: string | null
+          global_commodity_code?: string | null
           id?: string
+          ingested_at?: string | null
           market_location?: string
+          max_price?: number | null
           metadata?: Json | null
+          min_price?: number | null
+          modal_price?: number | null
           price_date?: string
           price_per_unit?: number
           price_type?: string | null
           quality_grade?: string | null
+          raw_html?: string | null
           source?: string | null
+          source_id?: string | null
+          spread?: number | null
           state?: string | null
+          state_id?: string | null
+          status?: string | null
           unit?: string
+          updated_at?: string | null
           variety?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_market_prices_country"
+            columns: ["country_id"]
+            isOneToOne: false
+            referencedRelation: "countries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_market_prices_source"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "agri_market_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_market_prices_state"
+            columns: ["state_id"]
+            isOneToOne: false
+            referencedRelation: "states"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       marketplace_categories: {
         Row: {
@@ -15050,8 +15399,11 @@ export type Database = {
           completion_notes: string | null
           created_at: string | null
           currency: string | null
+          days_from_sowing: number | null
+          detailed_steps: Json | null
           duration_hours: number | null
           estimated_cost: number | null
+          farmer_id: string | null
           id: string
           ideal_weather: Json | null
           instructions: string[] | null
@@ -15060,17 +15412,31 @@ export type Database = {
           original_date_before_climate_adjust: string | null
           precautions: string[] | null
           priority: string | null
+          product_recommendations: Json | null
+          product_type: string | null
+          regional_terms: Json | null
           reschedule_reason: string | null
           resources: Json | null
           schedule_id: string
+          sequence_order: number | null
+          skip_penalty: string | null
+          skip_penalty_details: Json | null
+          stage_key: string | null
+          stage_name: string | null
+          stage_order: number | null
           status: string | null
           task_date: string
           task_description: string | null
           task_name: string
           task_type: string
+          tenant_id: string
           updated_at: string | null
+          water_required_liters: number | null
           weather_dependent: boolean | null
           weather_risk_level: string | null
+          yield_boost_technique: string | null
+          yield_impact: string | null
+          yield_impact_details: Json | null
         }
         Insert: {
           auto_rescheduled?: boolean | null
@@ -15081,8 +15447,11 @@ export type Database = {
           completion_notes?: string | null
           created_at?: string | null
           currency?: string | null
+          days_from_sowing?: number | null
+          detailed_steps?: Json | null
           duration_hours?: number | null
           estimated_cost?: number | null
+          farmer_id?: string | null
           id?: string
           ideal_weather?: Json | null
           instructions?: string[] | null
@@ -15091,17 +15460,31 @@ export type Database = {
           original_date_before_climate_adjust?: string | null
           precautions?: string[] | null
           priority?: string | null
+          product_recommendations?: Json | null
+          product_type?: string | null
+          regional_terms?: Json | null
           reschedule_reason?: string | null
           resources?: Json | null
           schedule_id: string
+          sequence_order?: number | null
+          skip_penalty?: string | null
+          skip_penalty_details?: Json | null
+          stage_key?: string | null
+          stage_name?: string | null
+          stage_order?: number | null
           status?: string | null
           task_date: string
           task_description?: string | null
           task_name: string
           task_type: string
+          tenant_id?: string
           updated_at?: string | null
+          water_required_liters?: number | null
           weather_dependent?: boolean | null
           weather_risk_level?: string | null
+          yield_boost_technique?: string | null
+          yield_impact?: string | null
+          yield_impact_details?: Json | null
         }
         Update: {
           auto_rescheduled?: boolean | null
@@ -15112,8 +15495,11 @@ export type Database = {
           completion_notes?: string | null
           created_at?: string | null
           currency?: string | null
+          days_from_sowing?: number | null
+          detailed_steps?: Json | null
           duration_hours?: number | null
           estimated_cost?: number | null
+          farmer_id?: string | null
           id?: string
           ideal_weather?: Json | null
           instructions?: string[] | null
@@ -15122,17 +15508,31 @@ export type Database = {
           original_date_before_climate_adjust?: string | null
           precautions?: string[] | null
           priority?: string | null
+          product_recommendations?: Json | null
+          product_type?: string | null
+          regional_terms?: Json | null
           reschedule_reason?: string | null
           resources?: Json | null
           schedule_id?: string
+          sequence_order?: number | null
+          skip_penalty?: string | null
+          skip_penalty_details?: Json | null
+          stage_key?: string | null
+          stage_name?: string | null
+          stage_order?: number | null
           status?: string | null
           task_date?: string
           task_description?: string | null
           task_name?: string
           task_type?: string
+          tenant_id?: string
           updated_at?: string | null
+          water_required_liters?: number | null
           weather_dependent?: boolean | null
           weather_risk_level?: string | null
+          yield_boost_technique?: string | null
+          yield_impact?: string | null
+          yield_impact_details?: Json | null
         }
         Relationships: [
           {
@@ -21237,35 +21637,35 @@ export type Database = {
       addgeometrycolumn:
         | {
             Args: {
-              column_name: string
-              new_dim: number
-              new_srid: number
-              new_type: string
-              schema_name: string
-              table_name: string
-              use_typmod?: boolean
-            }
-            Returns: string
-          }
-        | {
-            Args: {
-              column_name: string
-              new_dim: number
-              new_srid: number
-              new_type: string
-              table_name: string
-              use_typmod?: boolean
-            }
-            Returns: string
-          }
-        | {
-            Args: {
               catalog_name: string
               column_name: string
               new_dim: number
               new_srid_in: number
               new_type: string
               schema_name: string
+              table_name: string
+              use_typmod?: boolean
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              column_name: string
+              new_dim: number
+              new_srid: number
+              new_type: string
+              schema_name: string
+              table_name: string
+              use_typmod?: boolean
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              column_name: string
+              new_dim: number
+              new_srid: number
+              new_type: string
               table_name: string
               use_typmod?: boolean
             }
@@ -21394,8 +21794,8 @@ export type Database = {
         Returns: Json
       }
       check_slug_availability:
-        | { Args: { p_slug: string; p_tenant_id?: string }; Returns: Json }
         | { Args: { p_slug: string }; Returns: Json }
+        | { Args: { p_slug: string; p_tenant_id?: string }; Returns: Json }
       classify_ndvi_value: { Args: { ndvi_value: number }; Returns: string }
       cleanup_bootstrap_state: { Args: never; Returns: undefined }
       cleanup_expired_registrations: { Args: never; Returns: number }
@@ -21515,6 +21915,15 @@ export type Database = {
       dropgeometrycolumn:
         | {
             Args: {
+              catalog_name: string
+              column_name: string
+              schema_name: string
+              table_name: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
               column_name: string
               schema_name: string
               table_name: string
@@ -21522,26 +21931,17 @@ export type Database = {
             Returns: string
           }
         | { Args: { column_name: string; table_name: string }; Returns: string }
+      dropgeometrytable:
         | {
             Args: {
               catalog_name: string
-              column_name: string
               schema_name: string
               table_name: string
             }
             Returns: string
           }
-      dropgeometrytable:
         | { Args: { schema_name: string; table_name: string }; Returns: string }
         | { Args: { table_name: string }; Returns: string }
-        | {
-            Args: {
-              catalog_name: string
-              schema_name: string
-              table_name: string
-            }
-            Returns: string
-          }
       enablelongtransactions: { Args: never; Returns: string }
       ensure_onboarding_workflow: {
         Args: { p_tenant_id: string }
@@ -21717,12 +22117,6 @@ export type Database = {
       }
       get_all_tiles:
         | {
-            Args: { country_code: string }
-            Returns: {
-              tile_id: string
-            }[]
-          }
-        | {
             Args: never
             Returns: {
               acquisition_date: string
@@ -21769,6 +22163,12 @@ export type Database = {
               isOneToOne: false
               isSetofReturn: true
             }
+          }
+        | {
+            Args: { country_code: string }
+            Returns: {
+              tile_id: string
+            }[]
           }
       get_available_tenants_for_onboarding: {
         Args: never
@@ -22127,8 +22527,8 @@ export type Database = {
         Returns: undefined
       }
       populate_geometry_columns:
-        | { Args: { use_typmod?: boolean }; Returns: string }
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }
+        | { Args: { use_typmod?: boolean }; Returns: string }
       postgis_constraint_dims: {
         Args: { geomcolumn: string; geomschema: string; geomtable: string }
         Returns: number
@@ -22261,6 +22661,14 @@ export type Database = {
       st_asewkt: { Args: { "": string }; Returns: string }
       st_asgeojson:
         | {
+            Args: { geog: unknown; maxdecimaldigits?: number; options?: number }
+            Returns: string
+          }
+        | {
+            Args: { geom: unknown; maxdecimaldigits?: number; options?: number }
+            Returns: string
+          }
+        | {
             Args: {
               geom_column?: string
               maxdecimaldigits?: number
@@ -22269,16 +22677,34 @@ export type Database = {
             }
             Returns: string
           }
+        | { Args: { "": string }; Returns: string }
+      st_asgml:
+        | {
+            Args: {
+              geog: unknown
+              id?: string
+              maxdecimaldigits?: number
+              nprefix?: string
+              options?: number
+            }
+            Returns: string
+          }
         | {
             Args: { geom: unknown; maxdecimaldigits?: number; options?: number }
             Returns: string
           }
+        | { Args: { "": string }; Returns: string }
         | {
-            Args: { geog: unknown; maxdecimaldigits?: number; options?: number }
+            Args: {
+              geog: unknown
+              id?: string
+              maxdecimaldigits?: number
+              nprefix?: string
+              options?: number
+              version: number
+            }
             Returns: string
           }
-        | { Args: { "": string }; Returns: string }
-      st_asgml:
         | {
             Args: {
               geom: unknown
@@ -22290,39 +22716,13 @@ export type Database = {
             }
             Returns: string
           }
-        | {
-            Args: { geom: unknown; maxdecimaldigits?: number; options?: number }
-            Returns: string
-          }
-        | {
-            Args: {
-              geog: unknown
-              id?: string
-              maxdecimaldigits?: number
-              nprefix?: string
-              options?: number
-              version: number
-            }
-            Returns: string
-          }
-        | {
-            Args: {
-              geog: unknown
-              id?: string
-              maxdecimaldigits?: number
-              nprefix?: string
-              options?: number
-            }
-            Returns: string
-          }
-        | { Args: { "": string }; Returns: string }
       st_askml:
         | {
-            Args: { geom: unknown; maxdecimaldigits?: number; nprefix?: string }
+            Args: { geog: unknown; maxdecimaldigits?: number; nprefix?: string }
             Returns: string
           }
         | {
-            Args: { geog: unknown; maxdecimaldigits?: number; nprefix?: string }
+            Args: { geom: unknown; maxdecimaldigits?: number; nprefix?: string }
             Returns: string
           }
         | { Args: { "": string }; Returns: string }
@@ -22343,11 +22743,11 @@ export type Database = {
       }
       st_assvg:
         | {
-            Args: { geom: unknown; maxdecimaldigits?: number; rel?: number }
+            Args: { geog: unknown; maxdecimaldigits?: number; rel?: number }
             Returns: string
           }
         | {
-            Args: { geog: unknown; maxdecimaldigits?: number; rel?: number }
+            Args: { geom: unknown; maxdecimaldigits?: number; rel?: number }
             Returns: string
           }
         | { Args: { "": string }; Returns: string }
@@ -22355,8 +22755,7 @@ export type Database = {
       st_astwkb:
         | {
             Args: {
-              geom: unknown[]
-              ids: number[]
+              geom: unknown
               prec?: number
               prec_m?: number
               prec_z?: number
@@ -22367,7 +22766,8 @@ export type Database = {
           }
         | {
             Args: {
-              geom: unknown
+              geom: unknown[]
+              ids: number[]
               prec?: number
               prec_m?: number
               prec_z?: number
@@ -22381,8 +22781,8 @@ export type Database = {
         Returns: string
       }
       st_azimuth:
-        | { Args: { geom1: unknown; geom2: unknown }; Returns: number }
         | { Args: { geog1: unknown; geog2: unknown }; Returns: number }
+        | { Args: { geom1: unknown; geom2: unknown }; Returns: number }
       st_boundingdiagonal: {
         Args: { fits?: boolean; geom: unknown }
         Returns: unknown
@@ -22447,11 +22847,11 @@ export type Database = {
         Returns: boolean
       }
       st_distance:
-        | { Args: { geom1: unknown; geom2: unknown }; Returns: number }
         | {
             Args: { geog1: unknown; geog2: unknown; use_spheroid?: boolean }
             Returns: number
           }
+        | { Args: { geom1: unknown; geom2: unknown }; Returns: number }
       st_distancesphere:
         | { Args: { geom1: unknown; geom2: unknown }; Returns: number }
         | {
@@ -22473,6 +22873,11 @@ export type Database = {
       }
       st_equals: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
       st_expand:
+        | { Args: { box: unknown; dx: number; dy: number }; Returns: unknown }
+        | {
+            Args: { box: unknown; dx: number; dy: number; dz?: number }
+            Returns: unknown
+          }
         | {
             Args: {
               dm?: number
@@ -22483,11 +22888,6 @@ export type Database = {
             }
             Returns: unknown
           }
-        | {
-            Args: { box: unknown; dx: number; dy: number; dz?: number }
-            Returns: unknown
-          }
-        | { Args: { box: unknown; dx: number; dy: number }; Returns: unknown }
       st_force3d: { Args: { geom: unknown; zvalue?: number }; Returns: unknown }
       st_force3dm: {
         Args: { geom: unknown; mvalue?: number }
@@ -22510,8 +22910,8 @@ export type Database = {
       st_geogfromtext: { Args: { "": string }; Returns: unknown }
       st_geographyfromtext: { Args: { "": string }; Returns: unknown }
       st_geohash:
-        | { Args: { geom: unknown; maxchars?: number }; Returns: string }
         | { Args: { geog: unknown; maxchars?: number }; Returns: string }
+        | { Args: { geom: unknown; maxchars?: number }; Returns: string }
       st_geomcollfromtext: { Args: { "": string }; Returns: unknown }
       st_geometricmedian: {
         Args: {
@@ -22555,8 +22955,8 @@ export type Database = {
         Returns: unknown
       }
       st_intersects:
-        | { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
         | { Args: { geog1: unknown; geog2: unknown }; Returns: boolean }
+        | { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
       st_isvaliddetail: {
         Args: { flags?: number; geom: unknown }
         Returns: Database["public"]["CompositeTypes"]["valid_detail"]
@@ -22709,8 +23109,8 @@ export type Database = {
         Returns: unknown
       }
       st_setsrid:
-        | { Args: { geom: unknown; srid: number }; Returns: unknown }
         | { Args: { geog: unknown; srid: number }; Returns: unknown }
+        | { Args: { geom: unknown; srid: number }; Returns: unknown }
       st_sharedpaths: {
         Args: { geom1: unknown; geom2: unknown }
         Returns: unknown
@@ -22733,8 +23133,8 @@ export type Database = {
         Returns: Record<string, unknown>[]
       }
       st_srid:
-        | { Args: { geom: unknown }; Returns: number }
         | { Args: { geog: unknown }; Returns: number }
+        | { Args: { geom: unknown }; Returns: number }
       st_subdivide: {
         Args: { geom: unknown; gridsize?: number; maxvertices?: number }
         Returns: unknown[]
@@ -22763,15 +23163,15 @@ export type Database = {
       }
       st_touches: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
       st_transform:
-        | { Args: { geom: unknown; to_proj: string }; Returns: unknown }
-        | {
-            Args: { from_proj: string; geom: unknown; to_srid: number }
-            Returns: unknown
-          }
         | {
             Args: { from_proj: string; geom: unknown; to_proj: string }
             Returns: unknown
           }
+        | {
+            Args: { from_proj: string; geom: unknown; to_srid: number }
+            Returns: unknown
+          }
+        | { Args: { geom: unknown; to_proj: string }; Returns: unknown }
       st_triangulatepolygon: { Args: { g1: unknown }; Returns: unknown }
       st_union:
         | { Args: { geom1: unknown; geom2: unknown }; Returns: unknown }
@@ -22795,11 +23195,11 @@ export type Database = {
         Returns: unknown
       }
       start_onboarding_workflow:
-        | { Args: { p_tenant_id: string; p_version?: number }; Returns: string }
         | {
             Args: { p_force_new?: boolean; p_tenant_id: string }
             Returns: Json
           }
+        | { Args: { p_tenant_id: string; p_version?: number }; Returns: string }
       suspend_tenant: {
         Args: { p_reason?: string; p_tenant_id: string }
         Returns: Json
