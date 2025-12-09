@@ -2113,8 +2113,21 @@ ${stagesPrompt}
    - Include SPECIFIC product brands with prices
    - Include yield_impact and skip_penalty for each task
 ${seedRules}
-4. PRODUCT RECOMMENDATIONS (CRITICAL - ALL IN ${languageName}):
-   - Include 2-3 products per task where applicable
+4. PRODUCT RECOMMENDATIONS (CRITICAL - ONLY WHERE NEEDED):
+   ⚠️ IMPORTANT: NOT ALL TASKS NEED PRODUCTS! Only add products for:
+   - fertilizer, nutrient_management, organic_input → Add fertilizer/organic products
+   - pest_control, disease_control, fungicide → Add pesticides/fungicides
+   - seed_treatment, sowing → Add seeds, treatment chemicals
+   - growth_promoter → Add growth boosters
+   
+   🚫 DO NOT ADD PRODUCTS FOR THESE (labor-only tasks):
+   - irrigation, watering → No products, only labor cost
+   - land_preparation, ploughing → No products, only machinery/labor
+   - harvesting, post_harvest → No products, only labor cost
+   - monitoring, field_visit → No products, only labor
+   - pruning, mulching, intercultural → No products, only labor
+   
+   ✅ For tasks that need products:
    - ALL product_names, dose_per_acre, application_method MUST be in ${languageName}
    - Specify: brand, dose FOR THIS LAND (${landAreaAcres.toFixed(2)} acres), price_estimate
    - ${farmingType === "organic_only" ? "ONLY organic products (Trichoderma, Neem, Bio-fertilizers)" : ""}
@@ -2438,7 +2451,22 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
       }
 
       // Step 3: Convert flat product fields to product_recommendations array
-      if (!task.product_recommendations && task.product_names) {
+      // CRITICAL: Only for categories that need products, not labor-only tasks
+      const LABOR_ONLY_CATEGORIES_CHECK = ['irrigation', 'watering', 'land_preparation', 'ploughing', 
+        'leveling', 'harvesting', 'harvest', 'post_harvest', 'monitoring', 'field_visit', 
+        'inspection', 'observation', 'pruning', 'training', 'staking', 'mulching', 
+        'intercultural', 'gap_filling', 'other', 'general'];
+      
+      const taskCategory = (task.category || "other").toLowerCase();
+      const isLaborOnlyCategory = LABOR_ONLY_CATEGORIES_CHECK.some(cat => 
+        taskCategory.includes(cat) || cat.includes(taskCategory)
+      );
+      
+      // Skip adding products for labor-only categories
+      if (isLaborOnlyCategory) {
+        task.product_recommendations = [];
+        console.log(`📦 [Products] Skipped AI products for labor-only: ${task.task_name} (${taskCategory})`);
+      } else if (!task.product_recommendations && task.product_names) {
         const names = (task.product_names || "").split(",").map((s: string) => s.trim()).filter(Boolean);
         const doses = (task.product_doses || "").split(",").map((s: string) => s.trim());
         const prices = (task.product_prices || "").split(",").map((s: string) => parseInt(s.trim()));
@@ -2588,9 +2616,42 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
     // ═══════════════════════════════════════════════════════════════════
     console.log("📦 [Products] Fetching real product recommendations...");
 
+    // CRITICAL: Only these categories need product recommendations
+    // Tasks like irrigation, monitoring, harvesting (labor-only) should NOT have products
+    const PRODUCT_REQUIRED_CATEGORIES = [
+      'fertilizer', 'fertilizer_application', 'nutrient_management',
+      'pest_control', 'pest_management', 'disease_control', 'disease_management',
+      'organic_input', 'organic_application',
+      'growth_promoter', 'growth_management',
+      'seed_treatment', 'sowing',
+      'fungicide', 'herbicide', 'weed_management',
+      'micronutrient'
+    ];
+    
+    // Categories that are LABOR-ONLY (no products needed)
+    const LABOR_ONLY_CATEGORIES = [
+      'irrigation', 'watering',
+      'land_preparation', 'ploughing', 'leveling',
+      'harvesting', 'harvest', 'post_harvest',
+      'monitoring', 'field_visit', 'inspection', 'observation',
+      'pruning', 'training', 'staking',
+      'mulching', 'intercultural', 'gap_filling',
+      'other', 'general'
+    ];
+
     for (const task of allTasks) {
-      if (!task.product_recommendations || task.product_recommendations.length === 0) {
-        const category = task.category || "other";
+      const category = (task.category || "other").toLowerCase();
+      
+      // Check if this task category needs products
+      const needsProducts = PRODUCT_REQUIRED_CATEGORIES.some(cat => 
+        category.includes(cat) || cat.includes(category)
+      );
+      const isLaborOnly = LABOR_ONLY_CATEGORIES.some(cat => 
+        category.includes(cat) || cat.includes(category)
+      );
+      
+      // ONLY fetch/add products for categories that actually need them
+      if (needsProducts && !isLaborOnly && (!task.product_recommendations || task.product_recommendations.length === 0)) {
         const dbProducts = await fetchRecommendedProducts(supabase, cropName, task.stage_key, category, farmingType);
 
         if (dbProducts.length > 0) {
@@ -2664,6 +2725,26 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
           const laborRatePerAcre = laborRatesPerAcre[stageKey] || 500;
           task.labor_cost = Math.round(laborRatePerAcre * landAreaAcres);
         }
+      } else if (isLaborOnly) {
+        // CRITICAL: Clear any products for labor-only tasks (AI might have incorrectly added them)
+        task.product_recommendations = [];
+        
+        // Add labor cost only for labor-only categories
+        const laborRatesPerAcre: Record<string, number> = {
+          'land_preparation': 2500,
+          'irrigation': 500,
+          'harvesting': 3000,
+          'post_harvest': 1500,
+          'monitoring': 300,
+          'mulching': 600,
+          'intercultural': 800,
+          'pruning': 1000,
+          'other': 400,
+        };
+        const stageKey = task.stage_key || "other";
+        const laborRatePerAcre = laborRatesPerAcre[stageKey] || laborRatesPerAcre[category] || 500;
+        task.labor_cost = Math.round(laborRatePerAcre * landAreaAcres);
+        console.log(`📦 [Products] Skipped products for labor-only task: ${task.task_name} (${category})`);
       }
     }
 
