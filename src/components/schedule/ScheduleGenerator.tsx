@@ -72,6 +72,10 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
   const [suitabilityWarning, setSuitabilityWarning] = useState<SuitabilityWarning | null>(null);
   const [showWarning, setShowWarning] = useState(false);
   
+  // AI Provider selection (development mode)
+  const [aiProvider, setAiProvider] = useState<'google' | 'openai'>('google');
+  const isDev = import.meta.env.DEV;
+  
   // Use ref to track pending farming type for immediate generation
   const pendingFarmingTypeRef = useRef<FarmingMode | null>(null);
 
@@ -115,11 +119,13 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
           language: currentLanguage,
           country: 'India',
           forceGenerate, // Pass force flag
+          aiProvider, // Pass AI provider selection
         },
         headers: {
           'x-tenant-id': user?.tenantId || '',
           'x-farmer-id': user?.id || '',
           'x-session-token': session?.token || '',
+          'x-ai-provider': aiProvider,
         },
       });
 
@@ -443,6 +449,36 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
             <li>✓ 3-Tier Nutrient Management</li>
           </ul>
         </div>
+
+        {/* AI Provider Selection (Dev Mode Only) */}
+        {isDev && (
+          <div className="p-4 bg-gradient-to-r from-amber-500/10 to-orange-500/10 rounded-lg border border-amber-500/30">
+            <p className="text-sm font-medium text-amber-700 dark:text-amber-300 mb-2">
+              🔧 Dev Mode: AI Provider Selection
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant={aiProvider === 'google' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setAiProvider('google')}
+                className={aiProvider === 'google' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+              >
+                🌐 Google Gemini
+              </Button>
+              <Button
+                variant={aiProvider === 'openai' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setAiProvider('openai')}
+                className={aiProvider === 'openai' ? 'bg-green-600 hover:bg-green-700' : ''}
+              >
+                🤖 OpenAI GPT
+              </Button>
+            </div>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+              Current: {aiProvider === 'google' ? 'Gemini 2.5 Flash (Lovable AI Gateway)' : 'GPT-4o-mini (OpenAI)'}
+            </p>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="flex gap-3">
