@@ -1741,8 +1741,94 @@ serve(async (req) => {
     const ruralTerms = RURAL_TERMS[language] || RURAL_TERMS["hi"];
     const state = land.state || land.district?.split(",").pop()?.trim() || "Maharashtra";
     const laborRate = STATE_LABOR_RATES[state] || STATE_LABOR_RATES["default"];
-    const landAreaAcres = land.area_acres || land.area_in_acres || 1;
+    
+    // ═══════════════════════════════════════════════════════════════════
+    // CRITICAL: ACCURATE LAND AREA CALCULATION
+    // ═══════════════════════════════════════════════════════════════════
+    // Convert all area units to acres for consistent calculations
+    // 1 acre = 40 guntha, 1 hectare = 2.471 acres
+    let landAreaAcres = 0;
+    if (land.area_acres && land.area_acres > 0) {
+      landAreaAcres = land.area_acres;
+    } else if (land.area_in_acres && land.area_in_acres > 0) {
+      landAreaAcres = land.area_in_acres;
+    } else if (land.area_guntas && land.area_guntas > 0) {
+      landAreaAcres = land.area_guntas / 40; // 40 guntha = 1 acre
+    } else if (land.area_hectares && land.area_hectares > 0) {
+      landAreaAcres = land.area_hectares * 2.471;
+    } else {
+      landAreaAcres = 1; // Default to 1 acre if no area specified
+    }
+    
     const landAreaHa = landAreaAcres * 0.4047;
+    const landAreaGuntha = Math.round(landAreaAcres * 40);
+    
+    console.log(`📐 [Land] Area: ${landAreaAcres.toFixed(2)} acres (${landAreaGuntha} guntha, ${landAreaHa.toFixed(2)} ha)`);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // STEP 2.5: FETCH SOIL HEALTH DATA FOR ACCURATE DOSE ADJUSTMENTS
+    // ═══════════════════════════════════════════════════════════════════
+    let soilData: any = null;
+    let soilPh = 7.0; // Default neutral pH
+    let soilN = 50, soilP = 25, soilK = 25; // Default NPK values in kg/ha
+    let soilPhAdvice = "";
+    
+    try {
+      const { data: latestSoilData, error: soilError } = await supabase
+        .from("soil_health")
+        .select("ph_level, nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, organic_carbon, soil_type, fertility_class")
+        .eq("land_id", landId)
+        .order("test_date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (!soilError && latestSoilData) {
+        soilData = latestSoilData;
+        soilPh = latestSoilData.ph_level || 7.0;
+        soilN = latestSoilData.nitrogen_kg_per_ha || 50;
+        soilP = latestSoilData.phosphorus_kg_per_ha || 25;
+        soilK = latestSoilData.potassium_kg_per_ha || 25;
+        
+        console.log(`🧪 [Soil] Found soil data: pH=${soilPh}, N=${soilN}, P=${soilP}, K=${soilK} kg/ha`);
+        
+        // Generate pH-based fertilizer advice
+        if (soilPh < 6.0) {
+          soilPhAdvice = language === "mr" 
+            ? "अत्यंत आम्लयुक्त माती: चुना वापरा (200-400 kg/acre), अमोनियम सल्फेट वापरा, युरिया टाळा"
+            : language === "hi"
+            ? "अत्यंत अम्लीय मिट्टी: चूना डालें (200-400 kg/acre), अमोनियम सल्फेट उपयोग करें, यूरिया बचें"
+            : "Highly acidic soil: Apply lime (200-400 kg/acre), use ammonium sulfate, avoid urea";
+        } else if (soilPh < 6.5) {
+          soilPhAdvice = language === "mr"
+            ? "सौम्य आम्लयुक्त माती: थोडा चुना वापरा, सेंद्रिय खत वाढवा"
+            : language === "hi"
+            ? "हल्की अम्लीय मिट्टी: थोड़ा चूना डालें, जैविक खाद बढ़ाएं"
+            : "Mildly acidic soil: Apply some lime, increase organic matter";
+        } else if (soilPh <= 7.5) {
+          soilPhAdvice = language === "mr"
+            ? "संतुलित pH: सर्व खते योग्य, शिफारसीप्रमाणे वापरा"
+            : language === "hi"
+            ? "संतुलित pH: सभी खाद उपयुक्त, सिफारिश के अनुसार उपयोग करें"
+            : "Neutral pH: All fertilizers suitable, use as recommended";
+        } else if (soilPh <= 8.5) {
+          soilPhAdvice = language === "mr"
+            ? "क्षारयुक्त माती: जिप्सम वापरा (500 kg/acre), SSP वापरा, DAP टाळा, सेंद्रिय खत वाढवा"
+            : language === "hi"
+            ? "क्षारीय मिट्टी: जिप्सम डालें (500 kg/acre), SSP उपयोग करें, DAP बचें, जैविक खाद बढ़ाएं"
+            : "Alkaline soil: Apply gypsum (500 kg/acre), use SSP, avoid DAP, increase organic matter";
+        } else {
+          soilPhAdvice = language === "mr"
+            ? "अत्यंत क्षारयुक्त माती: भारी जिप्सम (800+ kg/acre), आम्लयुक्त खते वापरा, सेंद्रिय शेती करा"
+            : language === "hi"
+            ? "अत्यंत क्षारीय मिट्टी: भारी जिप्सम (800+ kg/acre), अम्लीय खाद उपयोग करें, जैविक खेती करें"
+            : "Highly alkaline soil: Heavy gypsum (800+ kg/acre), use acidic fertilizers, practice organic farming";
+        }
+      } else {
+        console.log(`⚠️ [Soil] No soil data found for land ${landId}, using defaults`);
+      }
+    } catch (e) {
+      console.error(`❌ [Soil] Error fetching soil data:`, e);
+    }
 
     // ═══════════════════════════════════════════════════════════════════
     // STEP 3: VALIDATE CROP SUITABILITY
@@ -1753,7 +1839,7 @@ serve(async (req) => {
     console.log(`🔍 [Suitability] Score: ${suitabilityCheck.score}`);
 
     // ═══════════════════════════════════════════════════════════════════
-    // STEP 4: CALCULATE COSTS
+    // STEP 4: CALCULATE COSTS BASED ON ACTUAL SOIL DATA
     // ═══════════════════════════════════════════════════════════════════
     const cropLower = cropName.toLowerCase().replace(/\s+/g, "");
     const seedData = SEED_RATES[cropLower] || {
@@ -1762,20 +1848,24 @@ serve(async (req) => {
       price_per_kg: 50,
       treatment: "Trichoderma 4g/kg",
     };
+    // Calculate exact seed quantity for THIS land area
     const exactSeedQty = Math.round(seedData.rate_kg_per_acre * landAreaAcres * 10) / 10;
     const seedCost = Math.round(exactSeedQty * seedData.price_per_kg);
 
     const target = NPK_TARGETS[cropLower] || NPK_TARGETS["default"];
-    const currentN = land.nitrogen_kg_ha || 50;
-    const currentP = land.phosphorus_kg_ha || 25;
-    const currentK = land.potassium_kg_ha || 25;
+    // Use ACTUAL soil data values, not land table values
+    const currentN = soilN;
+    const currentP = soilP;
+    const currentK = soilK;
     const nDeficit = Math.max(0, target.n - currentN);
     const pDeficit = Math.max(0, target.p - currentP);
     const kDeficit = Math.max(0, target.k - currentK);
 
+    // Calculate FYM for THIS land area
     const fymTons = Math.round(5 * landAreaAcres * 10) / 10;
     const fymCost = Math.round(fymTons * 800);
 
+    // Calculate fertilizer quantities for THIS land area
     const ureaKg = Math.round((nDeficit * landAreaHa) / 0.46);
     const dapKg = Math.round((pDeficit * landAreaHa) / 0.46);
     const mopKg = Math.round((kDeficit * landAreaHa) / 0.6);
@@ -1783,6 +1873,8 @@ serve(async (req) => {
     const dapCost = Math.round(dapKg * FERTILIZER_PRICES.dap.price_per_kg);
     const mopCost = Math.round(mopKg * FERTILIZER_PRICES.mop.price_per_kg);
     const totalFertilizerCost = ureaCost + dapCost + mopCost;
+    
+    console.log(`💰 [Cost] Seed: ₹${seedCost}, Fertilizer: ₹${totalFertilizerCost}, FYM: ₹${fymCost}`);
 
     const irrigationRules = buildIrrigationRules(land.irrigation_type || "manual");
 
@@ -1944,30 +2036,50 @@ KNOWLEDGE BASE:
 - Traditional farmer wisdom (Desi knowledge)
 - Market dynamics and value chain optimization`;
 
-    // TASK Section
+    // TASK Section - Include soil data and land area specific calculations
     const taskSection = `
 ═══════════════════════════════════════════════════════════════════════════
 🎯 TASK (कार्य)
 ═══════════════════════════════════════════════════════════════════════════
 Generate a COMPLETE, ACCURATE crop schedule for ${translatedCropName} (${cropName}) cultivation.
 
+⚠️ CRITICAL: ALL QUANTITIES MUST BE CALCULATED FOR THIS EXACT LAND AREA ⚠️
+Land Area: ${landAreaAcres.toFixed(2)} acres (${landAreaGuntha} guntha / ${landAreaHa.toFixed(2)} hectares)
+
+EXAMPLE CALCULATIONS FOR ${landAreaAcres.toFixed(2)} ACRES:
+- If standard dose is 50 kg/acre, calculate: 50 × ${landAreaAcres.toFixed(2)} = ${Math.round(50 * landAreaAcres)} kg total
+- If standard dose is 500 ml/acre, calculate: 500 × ${landAreaAcres.toFixed(2)} = ${Math.round(500 * landAreaAcres)} ml total
+- Do NOT give per-acre values. Give TOTAL quantity for this land.
+
 CROP DETAILS:
 - Crop: ${translatedCropName} ${cropVariety ? `(Variety: ${cropVariety})` : ""}
-- Land Area: ${landAreaAcres} acres (${landAreaHa.toFixed(2)} hectares)
+- Land Area: ${landAreaAcres.toFixed(2)} acres (${landAreaGuntha} guntha)
 - Sowing Date: ${sowingDate}
 - Location: ${land.village || district}, ${district}, ${state}
-- Soil Type: ${land.soil_type || "Black/Alluvial"}
+- Soil Type: ${soilData?.soil_type || land.soil_type || "Black/Alluvial"}
 - Irrigation: ${land.irrigation_type || "manual"} (${irrigationRules})
+
+🧪 SOIL HEALTH REPORT (माती आरोग्य अहवाल):
+- pH Level: ${soilPh.toFixed(1)} ${soilPh < 6.5 ? "(Acidic - आम्लयुक्त)" : soilPh > 7.5 ? "(Alkaline - क्षारयुक्त)" : "(Neutral - संतुलित)"}
+- Nitrogen (N): ${soilN} kg/ha ${soilN < 280 ? "(Low)" : soilN > 560 ? "(High)" : "(Medium)"}
+- Phosphorus (P): ${soilP} kg/ha ${soilP < 10 ? "(Low)" : soilP > 25 ? "(High)" : "(Medium)"}
+- Potassium (K): ${soilK} kg/ha ${soilK < 120 ? "(Low)" : soilK > 280 ? "(High)" : "(Medium)"}
+- Organic Carbon: ${soilData?.organic_carbon || "N/A"}%
+- Fertility Class: ${soilData?.fertility_class || "Medium"}
+
+⚠️ SOIL pH BASED FERTILIZER ADVICE:
+${soilPhAdvice}
 
 FARMING MODE: ${farmingTypeLabel}
 ${farmingTypeRules}
 
 ${seedPreparationDetails}
 
-NUTRIENT STATUS:
-- Current N/P/K: ${land.nitrogen_kg_ha || 50}/${land.phosphorus_kg_ha || 25}/${land.potassium_kg_ha || 25} kg/ha
+NUTRIENT STATUS (Based on ACTUAL Soil Report):
+- Current N/P/K: ${currentN}/${currentP}/${currentK} kg/ha
 - Required N/P/K: ${target.n}/${target.p}/${target.k} kg/ha
 - Deficit N/P/K: ${nDeficit}/${pDeficit}/${kDeficit} kg/ha
+- For ${landAreaAcres.toFixed(2)} acres: Urea ${ureaKg} kg, DAP ${dapKg} kg, MOP ${mopKg} kg
 - Labor Rate: ₹${laborRate}/day`;
 
     // INSTRUCTION Section
@@ -2001,22 +2113,24 @@ ${stagesPrompt}
    - Include SPECIFIC product brands with prices
    - Include yield_impact and skip_penalty for each task
 ${seedRules}
-4. PRODUCT RECOMMENDATIONS:
+4. PRODUCT RECOMMENDATIONS (CRITICAL - ALL IN ${languageName}):
    - Include 2-3 products per task where applicable
-   - Specify: brand, dose_per_acre, price_estimate
+   - ALL product_names, dose_per_acre, application_method MUST be in ${languageName}
+   - Specify: brand, dose FOR THIS LAND (${landAreaAcres.toFixed(2)} acres), price_estimate
    - ${farmingType === "organic_only" ? "ONLY organic products (Trichoderma, Neem, Bio-fertilizers)" : ""}
    - ${farmingType === "fertilizer_pesticide" ? "Chemical fertilizers and pesticides with brands" : ""}
+   - price_estimate = (per-unit-price × quantity for ${landAreaAcres.toFixed(2)} acres)
 
-5. COST CALCULATION:
-   - Calculate estimated_cost per task
-   - Include labor days and material costs
-   - Use ₹${laborRate}/day for labor
+5. COST CALCULATION (FOR ${landAreaAcres.toFixed(2)} ACRES):
+   - Calculate estimated_cost = sum of all product prices + labor cost
+   - Labor: (days × ₹${laborRate}/day)
+   - Products: actual market prices × quantity for this land
 
-6. LANGUAGE RULES (CRITICAL - NO ENGLISH ALLOWED):
-   - Write ALL task_name, description, instructions ONLY in ${languageName}
-   - Use rural/village dialect terms: ${JSON.stringify(Object.entries(ruralTerms).slice(0, 10).reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {}))}
+6. LANGUAGE RULES (CRITICAL - PRODUCT NAMES IN ${languageName}):
+   - Write ALL task_name, description, instructions in ${languageName}
+   - Product names MUST be in ${languageName}: युरिया, डीएपी, गांडूळ खत, कडुनिंबाचे तेल etc.
+   - Use rural/village dialect: ${JSON.stringify(Object.entries(ruralTerms).slice(0, 10).reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {}))}
    ${regionalLanguageRules}
-   - DO NOT use English words except for brand names
 
 7. WEATHER DEPENDENCY:
    - Mark irrigation, spraying tasks as weather_dependent: true
@@ -2025,7 +2139,7 @@ ${seedRules}
     // DATA Section
     const dataSection = `
 ═══════════════════════════════════════════════════════════════════════════
-📊 DATA (डेटा)
+📊 DATA (FOR ${landAreaAcres.toFixed(2)} ACRES / ${landAreaGuntha} GUNTHA)
 ═══════════════════════════════════════════════════════════════════════════
 
 YIELD BOOSTING TECHNIQUES PER STAGE:
@@ -2033,20 +2147,20 @@ ${Object.entries(YIELD_BOOST_TECHNIQUES).map(([stage, data]) =>
   `${stage}: ${data.techniques.slice(0, 2).join(", ")} | Impact: ${data.yieldImpact.substring(0, 50)}...`
 ).join("\n")}
 
-FYM/ORGANIC INPUTS (for ${landAreaAcres} acres):
+FYM/ORGANIC INPUTS (TOTAL for ${landAreaAcres.toFixed(2)} acres):
 - FYM: ${fymTons} tons @ ₹800/ton = ₹${fymCost}
-- Vermicompost: ${Math.round(landAreaAcres * 200)} kg @ ₹12/kg
-- Jeevamrut: ${Math.round(landAreaAcres)} batches @ ₹80/batch
+- Vermicompost: ${Math.round(landAreaAcres * 200)} kg @ ₹12/kg = ₹${Math.round(landAreaAcres * 200 * 12)}
+- Jeevamrut: ${Math.round(landAreaAcres)} batches @ ₹80/batch = ₹${Math.round(landAreaAcres * 80)}
 
-FERTILIZER REQUIREMENTS (if applicable):
+FERTILIZER REQUIREMENTS (TOTAL for ${landAreaAcres.toFixed(2)} acres):
 - Urea: ${ureaKg} kg @ ₹${FERTILIZER_PRICES.urea.price_per_kg}/kg = ₹${ureaCost}
 - DAP: ${dapKg} kg @ ₹${FERTILIZER_PRICES.dap.price_per_kg}/kg = ₹${dapCost}
 - MOP: ${mopKg} kg @ ₹${FERTILIZER_PRICES.mop.price_per_kg}/kg = ₹${mopCost}
 
-GROWTH PROMOTERS:
-- Seaweed Extract: ₹550/500ml (root development)
-- Humic Acid: ₹480/L (nutrient uptake)
-- Amino Acid: ₹620/L (protein synthesis)`;
+GROWTH PROMOTERS (prices for ${landAreaAcres.toFixed(2)} acres):
+- Seaweed Extract: ${Math.round(landAreaAcres * 500)}ml @ ₹1.1/ml = ₹${Math.round(landAreaAcres * 550)}
+- Humic Acid: ${Math.round(landAreaAcres)}L @ ₹480/L = ₹${Math.round(landAreaAcres * 480)}
+- Amino Acid: ${Math.round(landAreaAcres)}L @ ₹620/L = ₹${Math.round(landAreaAcres * 620)}`;
 
     // Combine all sections into system prompt
     const systemPrompt = `${contextSection}
