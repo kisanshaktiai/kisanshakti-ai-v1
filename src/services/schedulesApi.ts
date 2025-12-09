@@ -142,6 +142,31 @@ class SchedulesApiService {
       throw error;
     }
   }
+
+  async fetchTasks(scheduleId?: string): Promise<any[]> {
+    try {
+      const headers = await this.getHeaders();
+      const url = scheduleId 
+        ? `${SCHEDULES_API_URL}/tasks?schedule_id=${scheduleId}` 
+        : `${SCHEDULES_API_URL}/tasks`;
+      
+      const response = await this.fetchWithRetry(url, {
+        method: 'GET',
+        headers,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to fetch tasks');
+      }
+
+      const result = await response.json();
+      return result.data || [];
+    } catch (error) {
+      console.error('❌ [SchedulesAPI] Error fetching tasks:', error);
+      throw error;
+    }
+  }
 }
 
 export const schedulesApi = new SchedulesApiService();

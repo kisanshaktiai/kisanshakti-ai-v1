@@ -695,7 +695,10 @@ interface KisanDB extends DBSchema {
     value: ScheduleTaskData;
     indexes: {
       'by-schedule': string;
+      'by-tenant': string;
+      'by-farmer': string;
       'by-date': string;
+      'by-sync-status': string;
     };
   };
   
@@ -778,8 +781,8 @@ interface KisanDB extends DBSchema {
 // ============================================================================
 
 const DB_NAME = 'KisanDB';
-const DB_VERSION = 7; // Bumped for full schema parity (2025-12-09)
-const SCHEMA_VERSION = 5; // Bumped for CropScheduleData + ScheduleTaskData schema updates
+const DB_VERSION = 8; // Bumped for scheduleTasks index updates (2025-12-09)
+const SCHEMA_VERSION = 6; // Bumped for full schedule_tasks sync support
 
 class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;
@@ -873,11 +876,26 @@ class LocalDatabase {
           schedulesStore.createIndex('by-sync-status', 'syncStatus');
         }
 
-        // Create or update scheduleTasks store
+        // Create or update scheduleTasks store with full indexes
         if (!db.objectStoreNames.contains('scheduleTasks')) {
           const tasksStore = db.createObjectStore('scheduleTasks', { keyPath: 'id' });
           tasksStore.createIndex('by-schedule', 'schedule_id');
+          tasksStore.createIndex('by-tenant', 'tenant_id');
+          tasksStore.createIndex('by-farmer', 'farmer_id');
           tasksStore.createIndex('by-date', 'task_date');
+          tasksStore.createIndex('by-sync-status', 'syncStatus');
+        } else if (oldVersion < 8) {
+          // Add new indexes to existing store
+          const tasksStore = transaction.objectStore('scheduleTasks');
+          if (!tasksStore.indexNames.contains('by-tenant')) {
+            tasksStore.createIndex('by-tenant', 'tenant_id');
+          }
+          if (!tasksStore.indexNames.contains('by-farmer')) {
+            tasksStore.createIndex('by-farmer', 'farmer_id');
+          }
+          if (!tasksStore.indexNames.contains('by-sync-status')) {
+            tasksStore.createIndex('by-sync-status', 'syncStatus');
+          }
         }
 
         // Create aiChatSessions store (maps to ai_chat_sessions in Supabase)
@@ -1179,9 +1197,31 @@ class LocalDatabase {
     await this.db!.put('scheduleTasks', task);
   }
 
+  async saveTasks(tasks: ScheduleTaskData[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('scheduleTasks', 'readwrite');
+    for (const task of tasks) {
+      await tx.objectStore('scheduleTasks').put(task);
+    }
+    await tx.done;
+  }
+
   async getTasksBySchedule(scheduleId: string): Promise<ScheduleTaskData[]> {
     if (!this.db) await this.initialize();
     return await this.db!.getAllFromIndex('scheduleTasks', 'by-schedule', scheduleId);
+  }
+
+  async getTasksByFarmer(farmerId: string): Promise<ScheduleTaskData[]> {
+    if (!this.db) await this.initialize();
+    return await this.db!.getAllFromIndex('scheduleTasks', 'by-farmer', farmerId);
+  }
+
+  async getAllTasks(farmerId?: string): Promise<ScheduleTaskData[]> {
+    if (!this.db) await this.initialize();
+    if (farmerId) {
+      return await this.db!.getAllFromIndex('scheduleTasks', 'by-farmer', farmerId);
+    }
+    return await this.db!.getAll('scheduleTasks');
   }
 
   async getTaskById(id: string): Promise<ScheduleTaskData | undefined> {

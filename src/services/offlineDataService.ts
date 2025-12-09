@@ -284,6 +284,35 @@ class OfflineDataService {
   }
 
   /**
+   * Fetch schedule tasks with offline fallback
+   */
+  async fetchTasks(scheduleId?: string): Promise<any[]> {
+    if (networkStatusService.getStatus()) {
+      try {
+        const { schedulesApi } = await import('./schedulesApi');
+        const data = await schedulesApi.fetchTasks(scheduleId);
+        
+        // Save to local DB
+        if (data && data.length > 0) {
+          await localDB.saveTasks(data);
+        }
+        
+        return data;
+      } catch (error) {
+        console.warn('Failed to fetch tasks from API, falling back to local DB:', error);
+        return scheduleId 
+          ? await localDB.getTasksBySchedule(scheduleId)
+          : await localDB.getAllTasks();
+      }
+    } else {
+      console.log('📴 Offline mode: Loading tasks from local DB');
+      return scheduleId 
+        ? await localDB.getTasksBySchedule(scheduleId)
+        : await localDB.getAllTasks();
+    }
+  }
+
+  /**
    * Fetch chat messages with offline fallback
    * Currently stores messages in local DB only (no server table yet)
    */
