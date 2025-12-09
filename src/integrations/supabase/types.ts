@@ -7657,6 +7657,33 @@ export type Database = {
           },
         ]
       }
+      ingest_runs: {
+        Row: {
+          created_at: string | null
+          detail: Json | null
+          fetched_count: number | null
+          id: string
+          run_time: string
+          upserted_count: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          detail?: Json | null
+          fetched_count?: number | null
+          id?: string
+          run_time: string
+          upserted_count?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          detail?: Json | null
+          fetched_count?: number | null
+          id?: string
+          run_time?: string
+          upserted_count?: number | null
+        }
+        Relationships: []
+      }
       integration_sync_logs: {
         Row: {
           completed_at: string | null
