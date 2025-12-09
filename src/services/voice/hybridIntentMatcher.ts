@@ -1,10 +1,12 @@
 /**
- * Hybrid Intent Matcher
+ * Hybrid Intent Matcher - 2030 Ready
  * Offline-first local pattern matching + cloud AI fallback
+ * Advanced phonetic matching for Indian dialects
  * Achieves <100ms response for 90% of commands
  */
 
 import { supabase } from '@/integrations/supabase/client';
+import { phoneticSimilarity, bestPhoneticMatch, normalizeForPhonetic } from './phoneticMatcher';
 
 export interface MatchedIntent {
   intentId: string;
@@ -27,65 +29,71 @@ export interface IntentPattern {
   priority: 'high' | 'medium' | 'low';
 }
 
-// Fast local intent patterns for all supported languages
+// Fast local intent patterns - comprehensive coverage
 const LOCAL_INTENTS: Record<string, IntentPattern[]> = {
   en: [
-    { id: 'home', patterns: ['home', 'go home', 'main', 'main page'], action: 'navigate', route: '/app', offline: true, priority: 'high' },
-    { id: 'lands', patterns: ['land', 'lands', 'my lands', 'farms', 'fields', 'show lands'], action: 'navigate', route: '/lands', offline: true, priority: 'high' },
-    { id: 'weather', patterns: ['weather', 'forecast', 'rain', 'temperature'], action: 'navigate', route: '/weather', offline: true, priority: 'high' },
-    { id: 'schedule', patterns: ['schedule', 'tasks', 'calendar', 'today tasks', 'my tasks'], action: 'navigate', route: '/schedule', offline: true, priority: 'high' },
-    { id: 'chat', patterns: ['chat', 'assistant', 'help', 'ai', 'ask'], action: 'navigate', route: '/chat', offline: true, priority: 'high' },
-    { id: 'market', patterns: ['market', 'shop', 'buy', 'sell', 'prices'], action: 'navigate', route: '/market', offline: true, priority: 'high' },
-    { id: 'profile', patterns: ['profile', 'account', 'settings', 'my profile'], action: 'navigate', route: '/profile', offline: true, priority: 'high' },
-    { id: 'community', patterns: ['community', 'social', 'farmers', 'connect'], action: 'navigate', route: '/social', offline: true, priority: 'medium' },
-    { id: 'analytics', patterns: ['analytics', 'stats', 'statistics', 'reports'], action: 'navigate', route: '/analytics', offline: true, priority: 'medium' },
-    { id: 'add_land', patterns: ['add land', 'new land', 'create land', 'register land'], action: 'navigate', route: '/add-land', offline: true, priority: 'high' },
-    { id: 'scan', patterns: ['scan', 'scan crop', 'disease', 'identify'], action: 'navigate', route: '/chat', offline: true, priority: 'high' },
+    { id: 'home', patterns: ['home', 'go home', 'main', 'main page', 'dashboard', 'start'], action: 'navigate', route: '/app', offline: true, priority: 'high' },
+    { id: 'lands', patterns: ['land', 'lands', 'my lands', 'farms', 'fields', 'show lands', 'my fields'], action: 'navigate', route: '/app/lands', offline: true, priority: 'high' },
+    { id: 'add_land', patterns: ['add land', 'new land', 'create land', 'register land', 'add farm'], action: 'navigate', route: '/app/lands/add', offline: true, priority: 'high' },
+    { id: 'weather', patterns: ['weather', 'forecast', 'rain', 'temperature', 'mausam'], action: 'navigate', route: '/app/weather', offline: true, priority: 'high' },
+    { id: 'schedule', patterns: ['schedule', 'tasks', 'calendar', 'today tasks', 'my tasks', 'work'], action: 'navigate', route: '/app/schedule', offline: true, priority: 'high' },
+    { id: 'chat', patterns: ['chat', 'assistant', 'help', 'ai', 'ask', 'talk'], action: 'navigate', route: '/app/chat', offline: true, priority: 'high' },
+    { id: 'market', patterns: ['market', 'shop', 'buy', 'sell', 'prices', 'mandi', 'bazaar'], action: 'navigate', route: '/app/market', offline: true, priority: 'high' },
+    { id: 'profile', patterns: ['profile', 'account', 'settings', 'my profile', 'my account'], action: 'navigate', route: '/app/profile', offline: true, priority: 'high' },
+    { id: 'profile_edit', patterns: ['edit profile', 'update profile', 'change profile'], action: 'navigate', route: '/app/profile/edit', offline: true, priority: 'high' },
+    { id: 'community', patterns: ['community', 'social', 'farmers', 'connect'], action: 'navigate', route: '/app/social', offline: true, priority: 'medium' },
+    { id: 'analytics', patterns: ['analytics', 'stats', 'statistics', 'reports', 'data'], action: 'navigate', route: '/app/analytics', offline: true, priority: 'medium' },
+    { id: 'advisory', patterns: ['advisory', 'advice', 'recommendations', 'tips'], action: 'navigate', route: '/app/advisory', offline: true, priority: 'medium' },
+    { id: 'schemes', patterns: ['schemes', 'yojana', 'subsidy', 'government', 'benefits'], action: 'navigate', route: '/app/schemes', offline: true, priority: 'medium' },
+    { id: 'videos', patterns: ['videos', 'watch', 'tutorials', 'reels', 'learn'], action: 'navigate', route: '/app/videos', offline: true, priority: 'medium' },
+    { id: 'ndvi', patterns: ['ndvi', 'satellite', 'crop health', 'monitoring'], action: 'navigate', route: '/app/ndvi', offline: true, priority: 'medium' },
     { id: 'back', patterns: ['back', 'go back', 'previous', 'return'], action: 'back', offline: true, priority: 'high' },
+    { id: 'forward', patterns: ['forward', 'next page', 'go forward'], action: 'forward', offline: true, priority: 'high' },
+    { id: 'save', patterns: ['save', 'submit', 'confirm', 'done', 'ok'], action: 'form_action', params: { action: 'save' }, offline: true, priority: 'high' },
+    { id: 'cancel', patterns: ['cancel', 'discard', 'close', 'exit', 'never mind'], action: 'form_action', params: { action: 'cancel' }, offline: true, priority: 'high' },
+    { id: 'next', patterns: ['next', 'continue', 'forward', 'next field'], action: 'form_action', params: { action: 'next_field' }, offline: true, priority: 'medium' },
+    { id: 'scroll_down', patterns: ['scroll down', 'down', 'more', 'page down'], action: 'ui_action', params: { action: 'scroll_down' }, offline: true, priority: 'medium' },
+    { id: 'scroll_up', patterns: ['scroll up', 'up', 'top', 'page up'], action: 'ui_action', params: { action: 'scroll_up' }, offline: true, priority: 'medium' },
+    { id: 'refresh', patterns: ['refresh', 'reload', 'update'], action: 'ui_action', params: { action: 'refresh' }, offline: true, priority: 'medium' },
+    { id: 'yes', patterns: ['yes', 'ok', 'sure', 'confirm', 'yeah', 'yep'], action: 'confirm', params: { confirmation: true }, offline: true, priority: 'high' },
+    { id: 'no', patterns: ['no', 'nope', 'cancel', 'stop', 'dont'], action: 'confirm', params: { confirmation: false }, offline: true, priority: 'high' },
+    { id: 'help', patterns: ['help', 'commands', 'what can you do'], action: 'help', params: { type: 'examples' }, offline: true, priority: 'medium' },
+    { id: 'stop', patterns: ['stop', 'silence', 'quiet', 'shut up'], action: 'help', params: { type: 'stop_speaking' }, offline: true, priority: 'high' },
   ],
   hi: [
-    { id: 'home', patterns: ['होम', 'घर', 'मुख्य', 'मुख्य पेज'], action: 'navigate', route: '/app', offline: true, priority: 'high' },
-    { id: 'lands', patterns: ['जमीन', 'खेत', 'भूमि', 'मेरी जमीन', 'खेत दिखाओ'], action: 'navigate', route: '/lands', offline: true, priority: 'high' },
-    { id: 'weather', patterns: ['मौसम', 'बारिश', 'तापमान', 'मौसम कैसा'], action: 'navigate', route: '/weather', offline: true, priority: 'high' },
-    { id: 'schedule', patterns: ['कार्यक्रम', 'काम', 'शेड्यूल', 'आज के काम', 'मेरे काम'], action: 'navigate', route: '/schedule', offline: true, priority: 'high' },
-    { id: 'chat', patterns: ['चैट', 'सहायक', 'मदद', 'सवाल', 'पूछो'], action: 'navigate', route: '/chat', offline: true, priority: 'high' },
-    { id: 'market', patterns: ['बाजार', 'खरीदो', 'बेचो', 'भाव', 'मार्केट'], action: 'navigate', route: '/market', offline: true, priority: 'high' },
-    { id: 'profile', patterns: ['प्रोफाइल', 'खाता', 'सेटिंग', 'मेरा प्रोफाइल'], action: 'navigate', route: '/profile', offline: true, priority: 'high' },
-    { id: 'community', patterns: ['समुदाय', 'किसान', 'सोशल', 'जुड़ो'], action: 'navigate', route: '/social', offline: true, priority: 'medium' },
-    { id: 'analytics', patterns: ['विश्लेषण', 'आंकड़े', 'रिपोर्ट'], action: 'navigate', route: '/analytics', offline: true, priority: 'medium' },
-    { id: 'add_land', patterns: ['जमीन जोड़ो', 'नई जमीन', 'खेत जोड़ो', 'नया खेत'], action: 'navigate', route: '/add-land', offline: true, priority: 'high' },
-    { id: 'scan', patterns: ['स्कैन', 'जांच', 'बीमारी', 'पहचानो'], action: 'navigate', route: '/chat', offline: true, priority: 'high' },
-    { id: 'back', patterns: ['वापस', 'पीछे', 'पिछला'], action: 'back', offline: true, priority: 'high' },
+    { id: 'home', patterns: ['होम', 'घर', 'मुख्य', 'ghar', 'home', 'ghar jao', 'home kholo'], action: 'navigate', route: '/app', offline: true, priority: 'high' },
+    { id: 'lands', patterns: ['जमीन', 'खेत', 'भूमि', 'मेरी जमीन', 'zameen', 'khet', 'jameen dikhao', 'khet dikha'], action: 'navigate', route: '/app/lands', offline: true, priority: 'high' },
+    { id: 'add_land', patterns: ['जमीन जोड़ो', 'नई जमीन', 'खेत जोड़ो', 'नया खेत', 'zameen jodo', 'nayi zameen', 'khet jodo'], action: 'navigate', route: '/app/lands/add', offline: true, priority: 'high' },
+    { id: 'weather', patterns: ['मौसम', 'बारिश', 'तापमान', 'mausam', 'baarish', 'mosam', 'weather'], action: 'navigate', route: '/app/weather', offline: true, priority: 'high' },
+    { id: 'schedule', patterns: ['कार्यक्रम', 'काम', 'शेड्यूल', 'आज के काम', 'kaam', 'schedule', 'aaj ke kaam'], action: 'navigate', route: '/app/schedule', offline: true, priority: 'high' },
+    { id: 'chat', patterns: ['चैट', 'सहायक', 'मदद', 'सवाल', 'chat', 'madad', 'sawal', 'ai'], action: 'navigate', route: '/app/chat', offline: true, priority: 'high' },
+    { id: 'market', patterns: ['बाजार', 'मंडी', 'भाव', 'bazaar', 'mandi', 'bhaav', 'market'], action: 'navigate', route: '/app/market', offline: true, priority: 'high' },
+    { id: 'profile', patterns: ['प्रोफाइल', 'खाता', 'सेटिंग', 'profile', 'khata', 'setting'], action: 'navigate', route: '/app/profile', offline: true, priority: 'high' },
+    { id: 'schemes', patterns: ['योजना', 'स्कीम', 'सब्सिडी', 'yojana', 'scheme', 'subsidy', 'sarkar'], action: 'navigate', route: '/app/schemes', offline: true, priority: 'medium' },
+    { id: 'videos', patterns: ['वीडियो', 'देखो', 'सीखो', 'video', 'dekho', 'seekho'], action: 'navigate', route: '/app/videos', offline: true, priority: 'medium' },
+    { id: 'back', patterns: ['वापस', 'पीछे', 'पिछला', 'wapas', 'peeche', 'back'], action: 'back', offline: true, priority: 'high' },
+    { id: 'save', patterns: ['सेव', 'बचाओ', 'जमा', 'ठीक', 'save', 'bachao', 'jama', 'ok', 'done'], action: 'form_action', params: { action: 'save' }, offline: true, priority: 'high' },
+    { id: 'cancel', patterns: ['रद्द', 'छोड़ो', 'बंद', 'cancel', 'chhodo', 'band karo'], action: 'form_action', params: { action: 'cancel' }, offline: true, priority: 'high' },
+    { id: 'next', patterns: ['अगला', 'आगे', 'नेक्स्ट', 'agla', 'aage', 'next'], action: 'form_action', params: { action: 'next_field' }, offline: true, priority: 'medium' },
+    { id: 'scroll_down', patterns: ['नीचे', 'और दिखाओ', 'neeche', 'aur dikhao', 'down'], action: 'ui_action', params: { action: 'scroll_down' }, offline: true, priority: 'medium' },
+    { id: 'scroll_up', patterns: ['ऊपर', 'टॉप', 'upar', 'top', 'up'], action: 'ui_action', params: { action: 'scroll_up' }, offline: true, priority: 'medium' },
+    { id: 'yes', patterns: ['हाँ', 'ठीक', 'जी', 'ओके', 'haan', 'theek', 'ji', 'ok', 'yes'], action: 'confirm', params: { confirmation: true }, offline: true, priority: 'high' },
+    { id: 'no', patterns: ['नहीं', 'ना', 'मत', 'नही', 'nahi', 'na', 'mat', 'no'], action: 'confirm', params: { confirmation: false }, offline: true, priority: 'high' },
+    { id: 'help', patterns: ['मदद', 'क्या बोलूं', 'कमांड', 'madad', 'help', 'kya bolu'], action: 'help', params: { type: 'examples' }, offline: true, priority: 'medium' },
+    { id: 'stop', patterns: ['रुको', 'चुप', 'बस', 'ruko', 'chup', 'bas', 'stop'], action: 'help', params: { type: 'stop_speaking' }, offline: true, priority: 'high' },
   ],
   mr: [
     { id: 'home', patterns: ['होम', 'घर', 'मुख्य', 'मुख्य पृष्ठ'], action: 'navigate', route: '/app', offline: true, priority: 'high' },
-    { id: 'lands', patterns: ['जमीन', 'शेत', 'माझी जमीन', 'शेत दाखवा'], action: 'navigate', route: '/lands', offline: true, priority: 'high' },
-    { id: 'weather', patterns: ['हवामान', 'पाऊस', 'तापमान'], action: 'navigate', route: '/weather', offline: true, priority: 'high' },
-    { id: 'schedule', patterns: ['वेळापत्रक', 'काम', 'आजची कामे', 'माझी कामे'], action: 'navigate', route: '/schedule', offline: true, priority: 'high' },
-    { id: 'chat', patterns: ['चॅट', 'सहाय्यक', 'मदत', 'प्रश्न', 'विचारा'], action: 'navigate', route: '/chat', offline: true, priority: 'high' },
-    { id: 'market', patterns: ['बाजार', 'खरेदी', 'विक्री', 'भाव', 'मार्केट'], action: 'navigate', route: '/market', offline: true, priority: 'high' },
-    { id: 'profile', patterns: ['प्रोफाइल', 'खाते', 'सेटिंग', 'माझे प्रोफाइल'], action: 'navigate', route: '/profile', offline: true, priority: 'high' },
+    { id: 'lands', patterns: ['जमीन', 'शेत', 'माझी जमीन', 'शेत दाखवा'], action: 'navigate', route: '/app/lands', offline: true, priority: 'high' },
+    { id: 'weather', patterns: ['हवामान', 'पाऊस', 'तापमान'], action: 'navigate', route: '/app/weather', offline: true, priority: 'high' },
+    { id: 'schedule', patterns: ['वेळापत्रक', 'काम', 'आजची कामे', 'माझी कामे'], action: 'navigate', route: '/app/schedule', offline: true, priority: 'high' },
+    { id: 'chat', patterns: ['चॅट', 'सहाय्यक', 'मदत', 'प्रश्न', 'विचारा'], action: 'navigate', route: '/app/chat', offline: true, priority: 'high' },
+    { id: 'market', patterns: ['बाजार', 'खरेदी', 'विक्री', 'भाव', 'मार्केट'], action: 'navigate', route: '/app/market', offline: true, priority: 'high' },
+    { id: 'profile', patterns: ['प्रोफाइल', 'खाते', 'सेटिंग', 'माझे प्रोफाइल'], action: 'navigate', route: '/app/profile', offline: true, priority: 'high' },
     { id: 'back', patterns: ['मागे', 'परत', 'मागील'], action: 'back', offline: true, priority: 'high' },
-  ],
-  pa: [
-    { id: 'home', patterns: ['ਹੋਮ', 'ਘਰ', 'ਮੁੱਖ', 'ਮੁੱਖ ਪੰਨਾ'], action: 'navigate', route: '/app', offline: true, priority: 'high' },
-    { id: 'lands', patterns: ['ਜ਼ਮੀਨ', 'ਖੇਤ', 'ਮੇਰੀ ਜ਼ਮੀਨ', 'ਖੇਤ ਦਿਖਾਓ'], action: 'navigate', route: '/lands', offline: true, priority: 'high' },
-    { id: 'weather', patterns: ['ਮੌਸਮ', 'ਬਾਰਿਸ਼', 'ਤਾਪਮਾਨ'], action: 'navigate', route: '/weather', offline: true, priority: 'high' },
-    { id: 'schedule', patterns: ['ਸ਼ੈਡਿਊਲ', 'ਕੰਮ', 'ਅੱਜ ਦੇ ਕੰਮ', 'ਮੇਰੇ ਕੰਮ'], action: 'navigate', route: '/schedule', offline: true, priority: 'high' },
-    { id: 'chat', patterns: ['ਚੈਟ', 'ਸਹਾਇਕ', 'ਮਦਦ', 'ਸਵਾਲ'], action: 'navigate', route: '/chat', offline: true, priority: 'high' },
-    { id: 'market', patterns: ['ਬਾਜ਼ਾਰ', 'ਖਰੀਦੋ', 'ਵੇਚੋ', 'ਭਾਅ'], action: 'navigate', route: '/market', offline: true, priority: 'high' },
-    { id: 'profile', patterns: ['ਪ੍ਰੋਫਾਈਲ', 'ਖਾਤਾ', 'ਸੈਟਿੰਗ'], action: 'navigate', route: '/profile', offline: true, priority: 'high' },
-    { id: 'back', patterns: ['ਪਿੱਛੇ', 'ਵਾਪਸ'], action: 'back', offline: true, priority: 'high' },
-  ],
-  ta: [
-    { id: 'home', patterns: ['ஹோம்', 'வீடு', 'முதன்மை', 'முதல் பக்கம்'], action: 'navigate', route: '/app', offline: true, priority: 'high' },
-    { id: 'lands', patterns: ['நிலம்', 'வயல்', 'என் நிலம்', 'நிலம் காட்டு'], action: 'navigate', route: '/lands', offline: true, priority: 'high' },
-    { id: 'weather', patterns: ['வானிலை', 'மழை', 'வெப்பநிலை'], action: 'navigate', route: '/weather', offline: true, priority: 'high' },
-    { id: 'schedule', patterns: ['அட்டவணை', 'பணிகள்', 'இன்றைய பணிகள்', 'என் பணிகள்'], action: 'navigate', route: '/schedule', offline: true, priority: 'high' },
-    { id: 'chat', patterns: ['சாட்', 'உதவியாளர்', 'உதவி', 'கேள்வி'], action: 'navigate', route: '/chat', offline: true, priority: 'high' },
-    { id: 'market', patterns: ['சந்தை', 'வாங்கு', 'விற்கவும்', 'விலை'], action: 'navigate', route: '/market', offline: true, priority: 'high' },
-    { id: 'profile', patterns: ['சுயவிவரம்', 'கணக்கு', 'அமைப்புகள்'], action: 'navigate', route: '/profile', offline: true, priority: 'high' },
-    { id: 'back', patterns: ['பின்னால்', 'திரும்பு'], action: 'back', offline: true, priority: 'high' },
+    { id: 'save', patterns: ['जतन करा', 'सेव्ह करा', 'ठीक'], action: 'form_action', params: { action: 'save' }, offline: true, priority: 'high' },
+    { id: 'yes', patterns: ['हो', 'होय', 'ठीक'], action: 'confirm', params: { confirmation: true }, offline: true, priority: 'high' },
+    { id: 'no', patterns: ['नाही', 'नको'], action: 'confirm', params: { confirmation: false }, offline: true, priority: 'high' },
   ],
 };
 
