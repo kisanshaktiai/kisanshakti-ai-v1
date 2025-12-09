@@ -69,6 +69,57 @@ const PRODUCT_NAME_TRANSLATIONS: Record<string, Record<string, string>> = {
   seaweed: { en: 'Seaweed Extract', hi: 'समुद्री शैवाल', mr: 'सीव्हीड अर्क', pa: 'ਸਮੁੰਦਰੀ ਸ਼ੈਵਾਲ', ta: 'கடல்பாசி சாறு' },
 };
 
+// APPLICATION METHOD TRANSLATIONS - Show correct method for each input type
+const APPLICATION_METHOD_TRANSLATIONS: Record<string, Record<string, string>> = {
+  // Seed treatment methods
+  seed_coating: { en: 'Seed Coating', hi: 'बीज लेप', mr: 'बियाणे लेपन', pa: 'ਬੀਜ ਲੇਪ' },
+  seed_inoculation: { en: 'Seed Inoculation', hi: 'जैविक बीज उपचार', mr: 'जैविक बियाणे उपचार', pa: 'ਜੈਵਿਕ ਬੀਜ ਇਲਾਜ' },
+  seed_treatment: { en: 'Seed Treatment', hi: 'बीज उपचार', mr: 'बियाणे प्रक्रिया', pa: 'ਬੀਜ ਉਪਚਾਰ' },
+  
+  // Fertilizer methods
+  broadcasting: { en: 'Broadcasting', hi: 'छिड़काव/बिखेरना', mr: 'पसरवणे/विखुरणे', pa: 'ਖਿਲਾਰਨਾ' },
+  top_dressing: { en: 'Top Dressing', hi: 'ऊपरी खाद', mr: 'वरील खत', pa: 'ਉੱਪਰੀ ਖਾਦ' },
+  basal_application: { en: 'Basal Application', hi: 'पायाभूत खाद', mr: 'पायाभूत खत', pa: 'ਮੁੱਢਲੀ ਖਾਦ' },
+  soil_application: { en: 'Soil Application', hi: 'मिट्टी में मिलाएं', mr: 'मातीत मिसळणे', pa: 'ਮਿੱਟੀ ਵਿੱਚ ਮਿਲਾਓ' },
+  fertigation: { en: 'Fertigation (Drip)', hi: 'ड्रिप द्वारा', mr: 'ठिबक द्वारे', pa: 'ਡ੍ਰਿਪ ਰਾਹੀਂ' },
+  
+  // Spray methods
+  foliar_spray: { en: 'Foliar Spray', hi: 'पत्तों पर छिड़काव', mr: 'पानांवर फवारणी', pa: 'ਪੱਤਿਆਂ ਤੇ ਛਿੜਕਾਅ' },
+  spray: { en: 'Spray', hi: 'छिड़काव', mr: 'फवारणी', pa: 'ਛਿੜਕਾਅ' },
+  directed_spray: { en: 'Directed Spray', hi: 'निर्देशित छिड़काव', mr: 'थेट फवारणी', pa: 'ਨਿਰਦੇਸ਼ਿਤ ਛਿੜਕਾਅ' },
+  pre_emergence_spray: { en: 'Pre-emergence Spray', hi: 'बुवाई पूर्व छिड़काव', mr: 'पेरणीपूर्व फवारणी', pa: 'ਬਿਜਾਈ ਤੋਂ ਪਹਿਲਾਂ ਛਿੜਕਾਅ' },
+  post_emergence_spray: { en: 'Post-emergence Spray', hi: 'बुवाई पश्चात छिड़काव', mr: 'पेरणीनंतर फवारणी', pa: 'ਬਿਜਾਈ ਤੋਂ ਬਾਅਦ ਛਿੜਕਾਅ' },
+  
+  // Drench/irrigation methods
+  drenching: { en: 'Soil Drenching', hi: 'जड़ों में डालें', mr: 'आळवणी', pa: 'ਜੜ੍ਹਾਂ ਵਿੱਚ ਪਾਓ' },
+  soil_drenching: { en: 'Root Zone Drench', hi: 'जड़ क्षेत्र में डालें', mr: 'मुळ्यांजवळ आळवणी', pa: 'ਜੜ੍ਹ ਖੇਤਰ ਵਿੱਚ ਪਾਓ' },
+  
+  // Other methods
+  dusting: { en: 'Dusting', hi: 'धूल छिड़काव', mr: 'धुरळणी', pa: 'ਧੂੜ ਛਿੜਕਾਅ' },
+  trap_installation: { en: 'Trap Installation', hi: 'जाल लगाएं', mr: 'सापळे लावणे', pa: 'ਜਾਲ ਲਗਾਓ' },
+};
+
+// Translate application method to local language
+function translateApplicationMethod(method: string, lang: string): string {
+  if (!method) return '';
+  
+  const methodLower = method.toLowerCase().replace(/\s+/g, '_');
+  
+  // Direct match
+  if (APPLICATION_METHOD_TRANSLATIONS[methodLower]) {
+    return APPLICATION_METHOD_TRANSLATIONS[methodLower][lang] || APPLICATION_METHOD_TRANSLATIONS[methodLower].en || method;
+  }
+  
+  // Partial match
+  for (const [key, translations] of Object.entries(APPLICATION_METHOD_TRANSLATIONS)) {
+    if (methodLower.includes(key) || key.includes(methodLower)) {
+      return translations[lang] || translations.en || method;
+    }
+  }
+  
+  return method;
+}
+
 // Translate product name to local language
 function translateProductName(name: string, lang: string): string {
   if (!name) return '';
@@ -270,7 +321,7 @@ export default function ProductRecommendationCard({
                   </div>
                 )}
 
-                {/* Application Method */}
+                {/* Application Method - TRANSLATED */}
                 {product.application_method && (
                   <div className="flex items-start gap-2 text-xs">
                     <Sparkles className="h-3.5 w-3.5 text-purple-500 shrink-0 mt-0.5" />
@@ -278,7 +329,7 @@ export default function ProductRecommendationCard({
                       <span className="font-medium text-foreground">
                         {lang === 'hi' ? 'तरीका:' : lang === 'mr' ? 'पद्धत:' : 'Method:'}
                       </span>{' '}
-                      {product.application_method}
+                      {translateApplicationMethod(product.application_method, lang)}
                     </span>
                   </div>
                 )}

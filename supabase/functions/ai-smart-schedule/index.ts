@@ -1125,51 +1125,155 @@ const FERTILIZER_PRICES: Record<string, { price_per_kg: number; bag_kg: number; 
   borax: { price_per_kg: 150, bag_kg: 25, nutrient_content: "11% B" },
 };
 
+// ═══════════════════════════════════════════════════════════════════════
+// SEED RATES & PRICES - UPDATED 2024-25 INDIAN MARKET RATES
+// Sources: ICAR, Krishi Vigyan Kendras, State Seed Corporations
+// ═══════════════════════════════════════════════════════════════════════
 const SEED_RATES: Record<
   string,
   { rate_kg_per_acre: number; spacing_cm: string; price_per_kg: number; treatment: string }
 > = {
+  // CEREALS - 2024-25 Updated Prices
   wheat: {
     rate_kg_per_acre: 40,
     spacing_cm: "22.5 row spacing",
-    price_per_kg: 35,
+    price_per_kg: 55,  // Updated: Certified seed ₹45-65/kg
     treatment: "Thiram @ 2.5g/kg or Trichoderma 4g/kg",
   },
   rice: {
     rate_kg_per_acre: 20,
     spacing_cm: "20x15 cm",
-    price_per_kg: 45,
+    price_per_kg: 75,  // Updated: Certified seed ₹60-90/kg
     treatment: "Carbendazim @ 2g/kg or Trichoderma 4g/kg",
   },
-  cotton: {
-    rate_kg_per_acre: 1.5,
-    spacing_cm: "90x60 cm",
-    price_per_kg: 850,
-    treatment: "Imidacloprid @ 5g/kg or neem oil soak",
+  maize: { 
+    rate_kg_per_acre: 8, 
+    spacing_cm: "60x20 cm", 
+    price_per_kg: 450,  // Updated: Hybrid seed ₹350-550/kg
+    treatment: "Thiram @ 3g/kg" 
   },
+  jowar: { 
+    rate_kg_per_acre: 4, 
+    spacing_cm: "45x15 cm", 
+    price_per_kg: 180,  // Updated: Hybrid ₹150-220/kg
+    treatment: "Thiram @ 2.5g/kg" 
+  },
+  bajra: { 
+    rate_kg_per_acre: 2, 
+    spacing_cm: "45x15 cm", 
+    price_per_kg: 350,  // Updated: Hybrid ₹280-420/kg
+    treatment: "Thiram @ 2.5g/kg" 
+  },
+  
+  // PULSES - 2024-25 Updated Prices
   soybean: {
     rate_kg_per_acre: 30,
     spacing_cm: "45x5 cm",
-    price_per_kg: 90,
+    price_per_kg: 120,  // Updated: Certified ₹100-150/kg
     treatment: "Thiram+Rhizobium or Trichoderma+Rhizobium",
   },
-  maize: { rate_kg_per_acre: 8, spacing_cm: "60x20 cm", price_per_kg: 350, treatment: "Thiram @ 3g/kg" },
+  moong: { 
+    rate_kg_per_acre: 8, 
+    spacing_cm: "30x10 cm", 
+    price_per_kg: 180,  // Updated: ₹150-220/kg
+    treatment: "Rhizobium + Trichoderma @ 4g/kg" 
+  },
+  urad: { 
+    rate_kg_per_acre: 8, 
+    spacing_cm: "30x10 cm", 
+    price_per_kg: 200,  // Updated: ₹170-240/kg
+    treatment: "Rhizobium + Trichoderma @ 4g/kg" 
+  },
+  tur: { 
+    rate_kg_per_acre: 6, 
+    spacing_cm: "90x30 cm", 
+    price_per_kg: 280,  // Updated: ₹220-350/kg
+    treatment: "Rhizobium + Trichoderma @ 4g/kg" 
+  },
+  gram: { 
+    rate_kg_per_acre: 30, 
+    spacing_cm: "30x10 cm", 
+    price_per_kg: 85,   // Updated: ₹70-100/kg
+    treatment: "Rhizobium + Trichoderma @ 4g/kg" 
+  },
+  groundnut: {
+    rate_kg_per_acre: 50,
+    spacing_cm: "30x10 cm",
+    price_per_kg: 120,  // Updated: ₹90-150/kg
+    treatment: "Thiram @ 3g/kg + Rhizobium",
+  },
+  
+  // CASH CROPS - 2024-25 Updated Prices  
+  cotton: {
+    rate_kg_per_acre: 1.5,
+    spacing_cm: "90x60 cm",
+    price_per_kg: 1200,  // Updated: BG-II ₹800-1600/packet (450gm)
+    treatment: "Imidacloprid @ 5g/kg or neem oil soak",
+  },
   sugarcane: {
     rate_kg_per_acre: 0,
     spacing_cm: "90x30 cm",
     price_per_kg: 0,
     treatment: "Carbendazim dip or lime water soak",
   },
-  groundnut: {
-    rate_kg_per_acre: 50,
-    spacing_cm: "30x10 cm",
-    price_per_kg: 80,
-    treatment: "Thiram @ 3g/kg + Rhizobium",
+  
+  // VEGETABLES - 2024-25 Updated Prices (per kg)
+  tomato: { 
+    rate_kg_per_acre: 0.15, 
+    spacing_cm: "60x45 cm", 
+    price_per_kg: 45000,  // Updated: Hybrid ₹35000-55000/kg (10gm = ₹350-550)
+    treatment: "Trichoderma @ 4g/kg" 
   },
-  tomato: { rate_kg_per_acre: 0.15, spacing_cm: "60x45 cm", price_per_kg: 3500, treatment: "Trichoderma @ 4g/kg" },
-  onion: { rate_kg_per_acre: 4, spacing_cm: "15x10 cm", price_per_kg: 1200, treatment: "Thiram @ 2g/kg" },
-  potato: { rate_kg_per_acre: 800, spacing_cm: "60x20 cm", price_per_kg: 25, treatment: "Mancozeb dip or boric acid" },
-  chilli: { rate_kg_per_acre: 0.2, spacing_cm: "60x45 cm", price_per_kg: 2500, treatment: "Trichoderma @ 4g/kg" },
+  onion: { 
+    rate_kg_per_acre: 4, 
+    spacing_cm: "15x10 cm", 
+    price_per_kg: 1800,   // Updated: ₹1500-2200/kg
+    treatment: "Thiram @ 2g/kg" 
+  },
+  potato: { 
+    rate_kg_per_acre: 800, 
+    spacing_cm: "60x20 cm", 
+    price_per_kg: 45,     // Updated: Seed potato ₹35-55/kg
+    treatment: "Mancozeb dip or boric acid" 
+  },
+  chilli: { 
+    rate_kg_per_acre: 0.2, 
+    spacing_cm: "60x45 cm", 
+    price_per_kg: 35000,  // Updated: Hybrid ₹25000-45000/kg (10gm = ₹250-450)
+    treatment: "Trichoderma @ 4g/kg" 
+  },
+  brinjal: { 
+    rate_kg_per_acre: 0.2, 
+    spacing_cm: "75x60 cm", 
+    price_per_kg: 32000,  // Updated: Hybrid ₹25000-40000/kg
+    treatment: "Trichoderma @ 4g/kg" 
+  },
+  cabbage: { 
+    rate_kg_per_acre: 0.15, 
+    spacing_cm: "60x45 cm", 
+    price_per_kg: 28000,  // Updated: Hybrid ₹22000-35000/kg
+    treatment: "Thiram @ 2g/kg" 
+  },
+  okra: { 
+    rate_kg_per_acre: 4, 
+    spacing_cm: "45x30 cm", 
+    price_per_kg: 650,    // Updated: Hybrid ₹500-800/kg
+    treatment: "Carbendazim @ 2g/kg" 
+  },
+  
+  // OILSEEDS - 2024-25 Updated Prices
+  mustard: { 
+    rate_kg_per_acre: 2, 
+    spacing_cm: "45x15 cm", 
+    price_per_kg: 180,    // Updated: ₹140-220/kg
+    treatment: "Thiram @ 2.5g/kg" 
+  },
+  sunflower: { 
+    rate_kg_per_acre: 3, 
+    spacing_cm: "60x30 cm", 
+    price_per_kg: 380,    // Updated: Hybrid ₹300-460/kg
+    treatment: "Imidacloprid @ 5g/kg" 
+  },
 };
 
 const NPK_TARGETS: Record<string, { n: number; p: number; k: number }> = {
@@ -1305,6 +1409,124 @@ function validateCropSuitability(
   }
 
   return { isSuitable: score >= 60, score: Math.max(0, score), warnings, recommendations };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// APPLICATION METHOD HELPER - CORRECT METHOD BASED ON PRODUCT TYPE
+// ═══════════════════════════════════════════════════════════════════════
+function getApplicationMethod(productName: string, productType: string, taskCategory: string): string {
+  const nameLower = (productName || "").toLowerCase();
+  const typeLower = (productType || "").toLowerCase();
+  const categoryLower = (taskCategory || "").toLowerCase();
+  
+  // SEED TREATMENT METHODS
+  if (categoryLower.includes('seed') || typeLower.includes('seed')) {
+    if (nameLower.includes('thiram') || nameLower.includes('carbendazim') || nameLower.includes('captan')) {
+      return 'seed_coating';  // बीज लेप / बियाणे लेपन
+    }
+    if (nameLower.includes('trichoderma') || nameLower.includes('rhizobium') || nameLower.includes('azotobacter') || nameLower.includes('psb')) {
+      return 'seed_inoculation';  // बीज शोधन / जैविक उपचार
+    }
+    if (nameLower.includes('imidacloprid') || nameLower.includes('thiamethoxam')) {
+      return 'seed_treatment';  // बीज उपचार
+    }
+    return 'seed_treatment';
+  }
+  
+  // FERTILIZER/NUTRIENT APPLICATION METHODS
+  if (categoryLower.includes('fertilizer') || typeLower.includes('fertilizer') || categoryLower.includes('nutrient')) {
+    if (nameLower.includes('urea') || nameLower.includes('dap') || nameLower.includes('mop') || nameLower.includes('npk') || nameLower.includes('ssp')) {
+      return 'broadcasting';  // छिड़काव / पसरवणे
+    }
+    if (nameLower.includes('zinc') || nameLower.includes('boron') || nameLower.includes('iron') || nameLower.includes('micro')) {
+      return 'foliar_spray';  // पर्णांवर फवारणी
+    }
+    if (nameLower.includes('drip') || nameLower.includes('fertigation')) {
+      return 'fertigation';  // ठिबक द्वारे
+    }
+    return 'soil_application';  // मातीत मिसळणे
+  }
+  
+  // ORGANIC INPUT METHODS
+  if (typeLower.includes('organic') || categoryLower.includes('organic')) {
+    if (nameLower.includes('fym') || nameLower.includes('farm yard') || nameLower.includes('shenkhat') || nameLower.includes('शेणखत') || nameLower.includes('गोबर')) {
+      return 'basal_application';  // पायाभूत खत
+    }
+    if (nameLower.includes('vermicompost') || nameLower.includes('gandulkhat') || nameLower.includes('गांडूळ')) {
+      return 'top_dressing';  // मातीत मिश्रण
+    }
+    if (nameLower.includes('jeevamrut') || nameLower.includes('जीवामृत') || nameLower.includes('panchagavya')) {
+      return 'drenching';  // आळवणी / drench
+    }
+    if (nameLower.includes('neem') || nameLower.includes('कडुनिंब') || nameLower.includes('नीम')) {
+      return 'foliar_spray';  // फवारणी
+    }
+    return 'soil_application';
+  }
+  
+  // BIO-FERTILIZER METHODS
+  if (typeLower.includes('bio') || nameLower.includes('trichoderma') || nameLower.includes('pseudomonas') || nameLower.includes('beauveria')) {
+    if (nameLower.includes('trichoderma') || nameLower.includes('pseudomonas')) {
+      return 'soil_drenching';  // मुळ्यांजवळ आळवणी
+    }
+    if (nameLower.includes('beauveria') || nameLower.includes('metarhizium')) {
+      return 'foliar_spray';  // फवारणी
+    }
+    return 'soil_application';
+  }
+  
+  // GROWTH PROMOTER METHODS
+  if (categoryLower.includes('growth') || typeLower.includes('growth')) {
+    if (nameLower.includes('seaweed') || nameLower.includes('humic') || nameLower.includes('amino') || nameLower.includes('fulvic')) {
+      return 'foliar_spray';  // पर्णांवर फवारणी
+    }
+    if (nameLower.includes('gibberellic') || nameLower.includes('ga3')) {
+      return 'foliar_spray';
+    }
+    return 'foliar_spray';
+  }
+  
+  // PEST CONTROL METHODS
+  if (categoryLower.includes('pest') || typeLower.includes('pesticide') || typeLower.includes('insecticide')) {
+    if (nameLower.includes('granule') || nameLower.includes('gr ') || nameLower.includes('carbofuran') || nameLower.includes('phorate')) {
+      return 'soil_application';  // मातीत टाकणे
+    }
+    if (nameLower.includes('pheromone') || nameLower.includes('trap')) {
+      return 'trap_installation';  // सापळे लावणे
+    }
+    if (nameLower.includes('dust') || nameLower.includes('dp ')) {
+      return 'dusting';  // धुरळणी
+    }
+    return 'foliar_spray';  // फवारणी
+  }
+  
+  // FUNGICIDE/DISEASE CONTROL METHODS
+  if (categoryLower.includes('disease') || typeLower.includes('fungicide')) {
+    if (nameLower.includes('copper') || nameLower.includes('bordeaux')) {
+      return 'foliar_spray';
+    }
+    if (nameLower.includes('seed') || nameLower.includes('बीज')) {
+      return 'seed_treatment';
+    }
+    if (nameLower.includes('drench') || nameLower.includes('root')) {
+      return 'soil_drenching';
+    }
+    return 'foliar_spray';
+  }
+  
+  // HERBICIDE/WEED CONTROL METHODS
+  if (categoryLower.includes('weed') || typeLower.includes('herbicide')) {
+    if (nameLower.includes('pre-emergence') || nameLower.includes('pendimethalin') || nameLower.includes('atrazine')) {
+      return 'pre_emergence_spray';  // पेरणीपूर्व फवारणी
+    }
+    if (nameLower.includes('post-emergence') || nameLower.includes('2,4-d') || nameLower.includes('quizalofop')) {
+      return 'post_emergence_spray';  // पेरणीनंतर फवारणी
+    }
+    return 'directed_spray';  // तणांवर थेट फवारणी
+  }
+  
+  // DEFAULT - Most common is foliar spray for liquid inputs
+  return 'foliar_spray';
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -2551,13 +2773,16 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
           // Calculate total for land area
           const totalPriceForLand = Math.round(pricePerAcre * landAreaAcres);
           
+          // CORRECT APPLICATION METHOD BASED ON PRODUCT TYPE/CATEGORY
+          const applicationMethod = getApplicationMethod(name, taskCategory, taskCategory);
+          
           return {
             product_name: name,
             brand: "",
             product_type: farmingType === "organic_only" ? "organic" : taskCategory,
             dose_per_acre: doses[i] || "",
             price_estimate: totalPriceForLand,
-            application_method: "spray"
+            application_method: applicationMethod
           };
         });
         
@@ -2722,13 +2947,16 @@ Call the create_schedule function with ${totalStages * 2}-${totalStages * 3} tas
             // Calculate total cost for the land area
             const totalPriceForLand = Math.round(priceEstimate * landAreaAcres);
             
+            // CORRECT APPLICATION METHOD - Use DB value or determine from type
+            const applicationMethod = p.application_method || getApplicationMethod(p.name, p.product_type, category);
+            
             return {
               product_name: p.name,
               brand: p.brand || "",
               product_type: p.organic_certified ? "organic" : p.product_type,
               active_ingredient: p.active_ingredients || "",
               dose_per_acre: p.dosage_instructions || "",
-              application_method: p.application_method || "spray",
+              application_method: applicationMethod,
               price_estimate: totalPriceForLand,
             };
           });
