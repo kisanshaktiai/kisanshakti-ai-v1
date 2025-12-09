@@ -1037,25 +1037,12 @@ serve(async (req) => {
     // STEP 5: BUILD STAGE-BASED AI PROMPT - ALL STAGES MANDATORY
     // ═══════════════════════════════════════════════════════════════════
     const totalStages = farmingStages.length;
-    console.log(`📋 [AI] Building prompt for ALL ${totalStages} farming stages`);
+    console.log(`📋 [AI] Building OPTIMIZED prompt for ${totalStages} stages`);
     
+    // OPTIMIZED: Compact stage prompt to reduce token count
     const stagesPrompt = farmingStages.map((stage: FarmingStage) => {
-      const yieldTech = YIELD_BOOST_TECHNIQUES[stage.stage_key] || { 
-        techniques: ["Follow standard practices"], 
-        yieldImpact: "Optimal yield through proper management", 
-        skipPenalty: "Potential yield loss if skipped" 
-      };
-      return `
-══════════════════════════════════════════════════════════════
-MANDATORY STAGE ${stage.stage_order}/${totalStages}: ${stage.stage_name} (stage_key: "${stage.stage_key}")
-══════════════════════════════════════════════════════════════
-${stage.stage_icon} ${stage.stage_description}
-YIELD TECHNIQUES: ${yieldTech.techniques.join(", ")}
-YIELD IMPACT: ${yieldTech.yieldImpact}
-SKIP PENALTY: ${yieldTech.skipPenalty}
-
-⚠️ GENERATE 2-4 TASKS FOR THIS STAGE. DO NOT SKIP.`;
-    }).join("\n\n");
+      return `${stage.stage_order}. ${stage.stage_name} (${stage.stage_key}): ${stage.stage_description} - 2-3 tasks`;
+    }).join("\n");
     
     const allStageKeys = farmingStages.map((s: FarmingStage) => s.stage_key);
     console.log(`📋 [AI] Required stages: ${allStageKeys.join(", ")}`);
@@ -1115,200 +1102,151 @@ PRODUCT BRANDS TO RECOMMEND:
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // ENHANCED AI ROLE - WORLD-CLASS AGRICULTURE SCIENTIST
+    // OPTIMIZED AI PROMPT - Reduced token count for stability
     // ═══════════════════════════════════════════════════════════════════
-    const systemPrompt = `You are Dr. AgriGenius, a world-renowned Agricultural Scientist with:
-- PhD in Agronomy from IARI (Indian Agricultural Research Institute), New Delhi
-- 40+ years of research experience at ICAR, ICRISAT, and international agricultural institutes
-- Published 200+ research papers on precision agriculture and yield optimization
-- Developed crop management protocols that achieved 5-7x yield for 100,000+ farmers
-- Expert in precision agriculture, Integrated Pest Management (IPM), and sustainable intensification
-- Fluent in ${languageName} rural dialects and local farming terminology
+    const systemPrompt = `You are Dr. AgriGenius, Agricultural Scientist from IARI with 40+ years experience.
+Create ${translatedCropName} (${cropName}) crop schedule for ${landAreaAcres} acres.
 
-YOUR SACRED MISSION: Create a world-class, AI-powered crop schedule that will GUARANTEE 3x-7x yield increase for this farmer's ${translatedCropName} (${cropName}) crop.
+CRITICAL RULES:
+1. CROP: "${translatedCropName}" must be in EVERY task_name
+2. LANGUAGE: ${languageName} ONLY - rural dialect
+3. FARMING: ${farmingTypeLabel}
+${farmingType === "organic_only" ? "   Use ONLY: FYM, Vermicompost, Neem, Trichoderma. NO chemicals." : 
+  farmingType === "fertilizer_pesticide" ? "   Use: Urea, DAP, MOP, pesticides. Brands: IFFCO, Bayer, Syngenta" : 
+  "   Balanced: Organic first, then fertilizers if needed"}
 
-═══════════════════════════════════════════════════════════════
-🚨 CRITICAL RULES - MUST FOLLOW EXACTLY
-═══════════════════════════════════════════════════════════════
-
-1. CROP NAME RULE (MOST IMPORTANT):
-   - The crop is: ${translatedCropName} (${cropName})
-   - EVERY task_name MUST contain "${translatedCropName}"
-   - NEVER use any other crop name like sugarcane, rice, cotton etc.
-   - Example correct task name: "${translatedCropName} - ${language === "mr" ? "पेरणी" : language === "hi" ? "बुवाई" : "Sowing"}"
-
-2. LANGUAGE RULE:
-   - Output EVERYTHING in ${languageName} ONLY
-   - Use PURE rural village dialect, not formal language
-   - Use local terms: "${regionalDialectTerms.fertilizer}", "${regionalDialectTerms.sowing}", "${regionalDialectTerms.weeding}"
-   ${regionalLanguageRules}
-
-3. FARMING TYPE RULE - STRICTLY ENFORCE:
-   Mode: ${farmingTypeLabel}
-   ${farmingTypeRules}
-
-4. STAGE COVERAGE RULE:
-   - Generate 2-4 tasks for EACH of the ${totalStages} stages
-   - Required stages: [${allStageKeys.join(", ")}]
-   - MINIMUM ${totalStages * 2} tasks total
-
-5. TASK QUALITY RULE:
-   - Each task description: 100-200 words with WHY, WHAT, HOW, WHEN
-   - Each task: 5-7 step-by-step instructions
-   - Include yield_impact with percentage and scientific reason
-   - Include skip_penalty with symptoms and percentage loss
-   - Include SPECIFIC product recommendations with brand, dose, method
-
+STAGES (2-3 tasks each):
 ${stagesPrompt}
 
-═══════════════════════════════════════════════════════════════
-🌱 LAND & CROP DETAILS
-═══════════════════════════════════════════════════════════════
-CROP: ${translatedCropName} (${cropName}) ${cropVariety ? `- ${cropVariety}` : ""}
-LOCATION: ${land.village || ""}, ${land.taluka || ""}, ${district}, ${state}
-AREA: ${landAreaAcres} acres (${landAreaHa.toFixed(2)} hectares)
-SOIL: ${land.soil_type || "Black"} | pH: ${land.soil_ph || 7.0}
-IRRIGATION: ${land.irrigation_type || "manual"} - ${irrigationRules}
-SOWING DATE: ${sowingDate}
+LAND: ${land.village || district}, ${state} | ${land.soil_type || "Black"} soil | ${land.irrigation_type || "manual"} irrigation
+SOWING: ${sowingDate}
+N/P/K deficit: ${nDeficit}/${pDeficit}/${kDeficit} kg/ha
+Labor: ₹${laborRate}/day`;
 
-NUTRIENT STATUS:
-- Current N: ${currentN} kg/ha → Need: ${target.n} kg/ha (Deficit: ${nDeficit} kg/ha)
-- Current P: ${currentP} kg/ha → Need: ${target.p} kg/ha (Deficit: ${pDeficit} kg/ha)
-- Current K: ${currentK} kg/ha → Need: ${target.k} kg/ha (Deficit: ${kDeficit} kg/ha)
+    const userPrompt = `Generate ${translatedCropName} schedule with ${totalStages * 2}-${totalStages * 3} tasks.
+RULES:
+- task_name: "${translatedCropName} - [action]" in ${languageName}
+- All ${totalStages} stages required: ${allStageKeys.join(", ")}
+- Include brand recommendations
+- Calculate costs per task`;
 
-SEED REQUIREMENT: ${exactSeedQty} kg (Rate: ${seedData.rate_kg_per_acre} kg/acre)
-FYM REQUIREMENT: ${fymTons} tons (5 tons/acre standard)
+    console.log(`🤖 [AI] Calling ${AI_CONFIG.MODEL} with optimized ${totalStages}-stage prompt`);
 
-═══════════════════════════════════════════════════════════════
-💰 COST CALCULATION RULES (2024-25 RATES)
-═══════════════════════════════════════════════════════════════
-LABOR RATE (${state}): ₹${laborRate}/day
-SEED COST: ${exactSeedQty} kg × ₹${seedData.price_per_kg} = ₹${seedCost}
-FYM COST: ${fymTons} tons × ₹800 = ₹${fymCost}
-${farmingType !== "organic_only" ? `FERTILIZER: Urea ₹${ureaCost} + DAP ₹${dapCost} + MOP ₹${mopCost} = ₹${totalFertilizerCost}` : ""}
-
-For EVERY task: Calculate Product + Labor + Spraying = Total`;
-
-    const userPrompt = `Generate COMPLETE ${translatedCropName} (${cropName}) crop schedule in ${languageName} for ${landAreaAcres} acres.
-
-🚨 MANDATORY REQUIREMENTS:
-
-1. ✅ CROP NAME: Use "${translatedCropName}" in EVERY task name - NOT any other crop!
-2. ✅ LANGUAGE: 100% ${languageName} output - NO English words
-3. ✅ FARMING TYPE: ${farmingTypeLabel} - Follow strictly!
-4. ✅ ALL ${totalStages} STAGES: [${allStageKeys.join(", ")}] - 2-4 tasks each
-5. ✅ MINIMUM ${totalStages * 2} TOTAL TASKS
-6. ✅ DETAILED DESCRIPTIONS: 100-200 words per task with WHY, WHAT, HOW, WHEN
-7. ✅ 5-7 INSTRUCTIONS per task with timing and tools
-8. ✅ PRODUCT RECOMMENDATIONS with brand, dose, method, price
-9. ✅ YIELD TARGET: ${farmingType === 'organic_only' ? '2x-3x' : farmingType === 'fertilizer_pesticide' ? '5x-7x' : '3x-5x'} increase
-
-BEFORE SUBMITTING: Verify EVERY task contains "${translatedCropName}" and is in ${languageName}!`;
-
-    console.log(`🤖 [AI] Calling ${AI_CONFIG.MODEL} with ${totalStages}-stage prompt`);
-
-    const aiResponse = await fetch(OPENAI_API_URL, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: AI_CONFIG.MODEL,
-        max_completion_tokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "create_stage_based_schedule",
-              description: `Create ${translatedCropName} schedule covering all ${totalStages} farming stages with yield boosting techniques`,
-              parameters: {
+    // Build simplified tool schema to reduce payload size
+    const toolSchema = {
+      type: "function",
+      function: {
+        name: "create_schedule",
+        description: `Create ${translatedCropName} schedule`,
+        parameters: {
+          type: "object",
+          properties: {
+            crop_name: { type: "string" },
+            total_duration_days: { type: "integer" },
+            stages_covered: { type: "array", items: { type: "string" } },
+            tasks: {
+              type: "array",
+              items: {
                 type: "object",
                 properties: {
-                  crop_name: { type: "string", description: `Must be "${translatedCropName}"` },
-                  total_duration_days: { type: "integer" },
-                  expected_yield_quintals: { type: "number" },
-                  yield_multiplier_target: { type: "number", description: "Target yield multiplier (3-7)" },
-                  total_estimated_cost: { type: "number" },
-                  total_labor_cost: { type: "number" },
-                  total_material_cost: { type: "number" },
-                  expected_profit: { type: "number" },
-                  stages_covered: { type: "array", items: { type: "string" } },
-                  cost_by_stage: { type: "object" },
-                  cost_by_category: { type: "object" },
-                  yield_boosting_techniques: { type: "array", items: { type: "string" } },
-                  tasks: {
+                  task_name: { type: "string" },
+                  stage_key: { type: "string", enum: allStageKeys },
+                  stage_order: { type: "integer" },
+                  category: { type: "string" },
+                  days_from_sowing: { type: "integer" },
+                  priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
+                  description: { type: "string" },
+                  yield_impact: { type: "string" },
+                  skip_penalty: { type: "string" },
+                  product_recommendations: {
                     type: "array",
                     items: {
                       type: "object",
                       properties: {
-                        task_name: { type: "string", description: `Must contain "${translatedCropName}" and be in ${languageName}` },
-                        stage_key: { type: "string", enum: allStageKeys },
-                        stage_order: { type: "integer" },
-                        category: { 
-                          type: "string", 
-                          enum: ["land_preparation", "organic_input", "seed_treatment", "sowing", "transplanting", 
-                                 "growth_promoter", "fertilizer", "irrigation", "weeding", "pest_control", 
-                                 "disease_control", "intercultural", "harvest", "post_harvest", "planning", "other"],
-                        },
-                        days_from_sowing: { type: "integer" },
-                        priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
-                        description: { type: "string", description: "100-200 words in rural dialect" },
-                        yield_impact: { type: "string" },
-                        skip_penalty: { type: "string" },
-                        yield_boost_technique: { type: "string" },
-                        product_recommendations: {
-                          type: "array",
-                          items: {
-                            type: "object",
-                            properties: {
-                              product_name: { type: "string" },
-                              brand: { type: "string" },
-                              product_type: { type: "string", enum: ["organic", "growth_promoter", "fertilizer", "pesticide", "fungicide"] },
-                              active_ingredient: { type: "string" },
-                              dose_per_acre: { type: "string" },
-                              application_method: { type: "string" },
-                              timing: { type: "string" },
-                              precautions: { type: "string" },
-                              price_estimate: { type: "number" },
-                            }
-                          }
-                        },
-                        product_cost: { type: "number" },
-                        labor_days: { type: "number" },
-                        labor_cost: { type: "number" },
-                        estimated_cost: { type: "number" },
-                        cost_breakdown: { type: "string" },
-                        instructions: { type: "array", items: { type: "string" } },
-                        precautions: { type: "array", items: { type: "string" } },
-                        weather_dependent: { type: "boolean" },
-                        water_required_liters: { type: "number" },
-                      },
-                      required: ["task_name", "stage_key", "stage_order", "category", "days_from_sowing", "priority", 
-                                "description", "yield_impact", "skip_penalty", "estimated_cost", "instructions"],
-                    },
+                        product_name: { type: "string" },
+                        brand: { type: "string" },
+                        dose_per_acre: { type: "string" },
+                        price_estimate: { type: "number" },
+                      }
+                    }
                   },
+                  estimated_cost: { type: "number" },
+                  instructions: { type: "array", items: { type: "string" } },
                 },
-                required: ["crop_name", "total_duration_days", "tasks", "stages_covered", "yield_multiplier_target"],
+                required: ["task_name", "stage_key", "days_from_sowing", "description", "instructions"],
               },
             },
           },
-        ],
-        tool_choice: { type: "function", function: { name: "create_stage_based_schedule" } },
-      }),
-    });
+          required: ["crop_name", "tasks", "stages_covered"],
+        },
+      },
+    };
 
-    if (!aiResponse.ok) {
-      const errorText = await aiResponse.text();
-      console.error("❌ AI error:", aiResponse.status, errorText);
-      throw new Error(`AI API error: ${aiResponse.status}`);
+    // Retry logic for handling 502/503 errors
+    let aiResponse: Response | null = null;
+    let lastError = "";
+    const maxRetries = 2;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🔄 [AI] Attempt ${attempt}/${maxRetries}`);
+        
+        aiResponse = await fetch(OPENAI_API_URL, {
+          method: "POST",
+          headers: { 
+            Authorization: `Bearer ${OPENAI_API_KEY}`, 
+            "Content-Type": "application/json" 
+          },
+          body: JSON.stringify({
+            model: AI_CONFIG.MODEL,
+            max_tokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            tools: [toolSchema],
+            tool_choice: { type: "function", function: { name: "create_schedule" } },
+          }),
+        });
+
+        if (aiResponse.ok) {
+          console.log(`✅ [AI] Request succeeded on attempt ${attempt}`);
+          break;
+        }
+        
+        // Handle specific error codes
+        if (aiResponse.status === 502 || aiResponse.status === 503) {
+          lastError = `Gateway error ${aiResponse.status}`;
+          console.warn(`⚠️ [AI] ${lastError} on attempt ${attempt}, will retry...`);
+          if (attempt < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 2000 * attempt)); // Exponential backoff
+            continue;
+          }
+        }
+        
+        const errorText = await aiResponse.text();
+        lastError = `AI API error: ${aiResponse.status}`;
+        console.error(`❌ AI error:`, aiResponse.status, errorText.substring(0, 200));
+        
+      } catch (fetchError) {
+        lastError = `Network error: ${fetchError}`;
+        console.error(`❌ [AI] Fetch error on attempt ${attempt}:`, fetchError);
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+          continue;
+        }
+      }
+    }
+
+    if (!aiResponse || !aiResponse.ok) {
+      throw new Error(lastError || "AI API failed after retries");
     }
 
     const aiData = await aiResponse.json();
-    const message = aiData.choices[0].message;
+    const message = aiData.choices?.[0]?.message;
 
-    if (!message.tool_calls?.[0]) {
+    if (!message?.tool_calls?.[0]) {
+      console.error("❌ [AI] No tool calls in response:", JSON.stringify(aiData).substring(0, 500));
       throw new Error("AI did not return structured schedule");
     }
 
