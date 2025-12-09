@@ -2024,15 +2024,29 @@ RULES:
         const dbProducts = await fetchRecommendedProducts(supabase, cropName, task.stage_key, category, farmingType);
 
         if (dbProducts.length > 0) {
-          task.product_recommendations = dbProducts.slice(0, 2).map((p: any) => ({
-            product_name: p.name,
-            brand: p.brand || "",
-            product_type: p.organic_certified ? "organic" : p.product_type,
-            active_ingredient: p.active_ingredients || "",
-            dose_per_acre: p.dosage_instructions || "",
-            application_method: p.application_method || "spray",
-            price_estimate: parseInt(p.price_range?.split("-")?.[0] || "200"),
-          }));
+          task.product_recommendations = dbProducts.slice(0, 2).map((p: any) => {
+            // Handle price_range safely - can be string, object, number, or null
+            let priceEstimate = 200;
+            if (p.price_range) {
+              if (typeof p.price_range === 'string') {
+                priceEstimate = parseInt(p.price_range.split("-")?.[0] || "200") || 200;
+              } else if (typeof p.price_range === 'number') {
+                priceEstimate = p.price_range;
+              } else if (typeof p.price_range === 'object') {
+                priceEstimate = p.price_range.min || p.price_range.price || p.price_range.value || 200;
+              }
+            }
+            
+            return {
+              product_name: p.name,
+              brand: p.brand || "",
+              product_type: p.organic_certified ? "organic" : p.product_type,
+              active_ingredient: p.active_ingredients || "",
+              dose_per_acre: p.dosage_instructions || "",
+              application_method: p.application_method || "spray",
+              price_estimate: priceEstimate,
+            };
+          });
         }
       }
     }
