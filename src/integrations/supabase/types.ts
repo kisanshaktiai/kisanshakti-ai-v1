@@ -599,6 +599,111 @@ export type Database = {
         }
         Relationships: []
       }
+      agri_market_sources: {
+        Row: {
+          active: boolean | null
+          base_url: string | null
+          board_name: string | null
+          commodity_dropdown_selector: string | null
+          commodity_html_path: string | null
+          commodity_source: string | null
+          commodity_text_expr: string | null
+          commodity_value_attr: string | null
+          country_id: string | null
+          created_at: string | null
+          data_endpoint: string | null
+          data_request_method: string | null
+          data_request_params: Json | null
+          date_format: string | null
+          date_regex: string | null
+          date_row_selector: string | null
+          fetch_method: string | null
+          id: string
+          last_checked_at: string | null
+          main_page: string | null
+          mapping: Json | null
+          notes: string | null
+          organization: string | null
+          page_requires_session: boolean | null
+          price_clean_regex: string | null
+          row_selector: string | null
+          sample_html: string | null
+          skip_empty_rows: boolean | null
+          state_code: string | null
+          state_id: string | null
+          timezone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          base_url?: string | null
+          board_name?: string | null
+          commodity_dropdown_selector?: string | null
+          commodity_html_path?: string | null
+          commodity_source?: string | null
+          commodity_text_expr?: string | null
+          commodity_value_attr?: string | null
+          country_id?: string | null
+          created_at?: string | null
+          data_endpoint?: string | null
+          data_request_method?: string | null
+          data_request_params?: Json | null
+          date_format?: string | null
+          date_regex?: string | null
+          date_row_selector?: string | null
+          fetch_method?: string | null
+          id?: string
+          last_checked_at?: string | null
+          main_page?: string | null
+          mapping?: Json | null
+          notes?: string | null
+          organization?: string | null
+          page_requires_session?: boolean | null
+          price_clean_regex?: string | null
+          row_selector?: string | null
+          sample_html?: string | null
+          skip_empty_rows?: boolean | null
+          state_code?: string | null
+          state_id?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          base_url?: string | null
+          board_name?: string | null
+          commodity_dropdown_selector?: string | null
+          commodity_html_path?: string | null
+          commodity_source?: string | null
+          commodity_text_expr?: string | null
+          commodity_value_attr?: string | null
+          country_id?: string | null
+          created_at?: string | null
+          data_endpoint?: string | null
+          data_request_method?: string | null
+          data_request_params?: Json | null
+          date_format?: string | null
+          date_regex?: string | null
+          date_row_selector?: string | null
+          fetch_method?: string | null
+          id?: string
+          last_checked_at?: string | null
+          main_page?: string | null
+          mapping?: Json | null
+          notes?: string | null
+          organization?: string | null
+          page_requires_session?: boolean | null
+          price_clean_regex?: string | null
+          row_selector?: string | null
+          sample_html?: string | null
+          skip_empty_rows?: boolean | null
+          state_code?: string | null
+          state_id?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       agri_marketing_insights: {
         Row: {
           affected_farmers_count: number | null
@@ -9242,6 +9347,7 @@ export type Database = {
           state_id: string | null
           status: string | null
           unit: string
+          updated_at: string | null
           variety: string | null
         }
         Insert: {
@@ -9274,6 +9380,7 @@ export type Database = {
           state_id?: string | null
           status?: string | null
           unit?: string
+          updated_at?: string | null
           variety?: string | null
         }
         Update: {
@@ -9306,6 +9413,7 @@ export type Database = {
           state_id?: string | null
           status?: string | null
           unit?: string
+          updated_at?: string | null
           variety?: string | null
         }
         Relationships: []
