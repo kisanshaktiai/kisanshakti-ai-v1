@@ -42,10 +42,12 @@ interface Message {
   timestamp: Date;
   isPlaying?: boolean;
   landContext?: any;
-  // ✅ NEW: Image support for persistent display
+  // ✅ Image support for persistent display
   imageUrl?: string;
   imageUrls?: string[];
   messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response';
+  // ✅ CRITICAL: Full analysis result for detailed cards
+  analysisResult?: VisionAnalysisResult;
   structured?: {
     greeting?: string;
     landContext?: string;
@@ -392,9 +394,11 @@ export function EnhancedAIChatInterface() {
             content: msg.content,
             timestamp: new Date(msg.created_at),
             // ✅ CRITICAL: Map image fields for persistent display
-            imageUrl: msg.image_urls?.[0] || undefined,
+            imageUrl: msg.image_urls?.[0] || (msg.metadata as any)?.image_analyzed || undefined,
             imageUrls: msg.image_urls || undefined,
             messageType: msg.message_type as Message['messageType'] || 'text',
+            // ✅ CRITICAL: Map analysis result for full card display
+            analysisResult: (msg.metadata as any)?.analysis_result || undefined,
             feedback: msg.feedback_rating 
               ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
               : null
@@ -675,7 +679,7 @@ export function EnhancedAIChatInterface() {
           });
         }
         
-        // ✅ Create AI response message
+        // ✅ Create AI response message with full analysis result
         const aiMessageId = crypto.randomUUID();
         const aiContent = scanResult.result.diagnosis?.summary || 'Analysis complete';
         const aiMessage: Message = {
@@ -684,10 +688,9 @@ export function EnhancedAIChatInterface() {
           content: aiContent,
           timestamp: new Date(),
           messageType: 'image_analysis_response',
-          structuredResponse: {
-            cards: [],
-            language
-          }
+          // ✅ CRITICAL: Include image and analysis for full card display
+          imageUrl: imageStorageUrl,
+          analysisResult: scanResult.result
         };
         
         setMessages(prev => ({
@@ -841,7 +844,7 @@ export function EnhancedAIChatInterface() {
           result: scanResult.result
         });
         
-        // ✅ Create AI response message
+        // ✅ Create AI response message with full analysis result
         const aiMessageId = crypto.randomUUID();
         const aiContent = scanResult.result.diagnosis?.summary || 'Analysis complete';
         const aiMessage: Message = {
@@ -850,10 +853,9 @@ export function EnhancedAIChatInterface() {
           content: aiContent,
           timestamp: new Date(),
           messageType: isPhoto ? 'image_analysis_response' : 'video_analysis_response',
-          structuredResponse: {
-            cards: [],
-            language
-          }
+          // ✅ CRITICAL: Include image and analysis for full card display
+          imageUrl: imageStorageUrl,
+          analysisResult: scanResult.result
         };
         
         setMessages(prev => ({
