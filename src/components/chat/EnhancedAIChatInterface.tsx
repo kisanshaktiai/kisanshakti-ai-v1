@@ -10,7 +10,7 @@ import {
   Send, Mic, MicOff, Loader2, Bot, 
   RefreshCw, Wifi, WifiOff, MessageSquare, Mountain, 
   Paperclip, Camera, Image, ArrowLeft,
-  Search, X, Clock, MessageCircle, Video
+  Search, X, Clock, MessageCircle
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -20,6 +20,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { landsApi } from '@/services/landsApi';
+import { localDB } from '@/services/localDB';
 import { LandContextCard } from './LandContextCard';
 import { GeneralChatWelcomeCard } from './GeneralChatWelcomeCard';
 import { ResponseSectionCard } from './ResponseSectionCard';
@@ -32,6 +33,7 @@ import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { useLanguageStore } from '@/stores/languageStore';
 import { useVoiceInitialization } from '@/hooks/useVoiceInitialization';
 import { VoiceDownloadCard } from '@/components/onboarding/VoiceDownloadCard';
+import { uploadChatImage, uploadCompressedVideo } from '@/utils/chatImageStorage';
 
 interface Message {
   id: string;
@@ -40,18 +42,23 @@ interface Message {
   timestamp: Date;
   isPlaying?: boolean;
   landContext?: any;
+  // Image/video support for persistent display
+  imageUrl?: string;
+  imageUrls?: string[];
+  videoUrl?: string;
+  messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response';
+  // Full analysis result for detailed recommendation cards
+  analysisResult?: VisionAnalysisResult;
   structured?: {
     greeting?: string;
     landContext?: string;
     sections?: Array<{type: string, title: string, content: string, color: string}>;
     closingMessage?: string;
-    // Legacy format support
     irrigation?: string;
     fertilizer?: string;
     pest?: string;
     weather?: string;
   };
-  // ✅ NEW: Color-coded cards
   structuredResponse?: {
     cards: Array<{
       id: string;
@@ -67,7 +74,6 @@ interface Message {
   };
   feedback?: 'like' | 'dislike' | null;
   isCopied?: boolean;
-  // ✅ NEW: Analytics including token usage
   analytics?: {
     responseTime?: number;
     tokensUsed?: {
@@ -115,6 +121,7 @@ export function EnhancedAIChatInterface() {
   const [dynamicQuickReplies, setDynamicQuickReplies] = useState<Record<string, string[]>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true); // NEW: Loading state for chat history
   // Camera and Vision Analysis states
   const [showCamera, setShowCamera] = useState(false);
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
@@ -137,8 +144,12 @@ export function EnhancedAIChatInterface() {
   const [touchStart, setTouchStart] = useState(0);
   const [touchEnd, setTouchEnd] = useState(0);
   
+  // Map language code to BCP-47 format for speech recognition
+  const speechLang = language === 'hi' ? 'hi-IN' : language === 'mr' ? 'mr-IN' : language === 'en' ? 'en-IN' : 'hi-IN';
+  
   const { isListening, startListening: originalStartListening, stopListening } = useSpeechRecognition({
-    onTranscript: (text) => setTranscript(text)
+    onTranscript: (text) => setTranscript(text),
+    language: speechLang
   });
   
   // Pass language code directly - nativeTTSService handles all conversions and fallbacks
@@ -265,9 +276,45 @@ export function EnhancedAIChatInterface() {
   }, []);
 
   // ✅ CRITICAL FIX: Define loadLandSession FIRST (before fetchLands that depends on it)
+  // Now with LocalDB caching for offline-first experience
+  // ✅ PRODUCTION-READY: Load session with proper error handling and offline support
   const loadLandSession = useCallback(async (landId: string | null) => {
+    const sessionKey = landId || 'general';
+    
     try {
-      // Build query for existing active session
+      // 1. FIRST: Try to load from LocalDB (instant, offline-first)
+      let cachedMessages: Message[] = [];
+      try {
+        const localMessages = await localDB.getChatMessages(landId);
+        if (localMessages && localMessages.length > 0) {
+          cachedMessages = localMessages
+            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+            .map(msg => {
+              const metadata = msg.metadata as Record<string, any> | null;
+              return {
+                id: msg.id,
+                role: msg.role as 'user' | 'assistant',
+                content: msg.content,
+                timestamp: new Date(msg.created_at),
+                // Map image/video fields from LocalDB
+                imageUrl: msg.image_urls?.[0] || metadata?.image_analyzed || undefined,
+                imageUrls: msg.image_urls || undefined,
+                videoUrl: metadata?.video_url || undefined,
+                messageType: msg.message_type as Message['messageType'] || 'text',
+                // Map analysis result for full card display
+                analysisResult: metadata?.analysis_result || undefined,
+                feedback: msg.feedback_rating 
+                  ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
+                  : null
+              };
+            });
+          console.log(`⚡ [LocalDB] Loaded ${cachedMessages.length} cached messages for ${sessionKey}`);
+        }
+      } catch (localErr) {
+        console.warn('LocalDB read failed, continuing with Supabase:', localErr);
+      }
+      
+      // 2. THEN: Sync from Supabase in background (if online)
       let sessionQuery = supabase
         .from('ai_chat_sessions')
         .select('id')
@@ -277,52 +324,132 @@ export function EnhancedAIChatInterface() {
         .order('updated_at', { ascending: false })
         .limit(1);
       
-      // Handle null landId properly - use is null filter instead of eq
       if (landId === null) {
         sessionQuery = sessionQuery.is('land_id', null);
       } else {
         sessionQuery = sessionQuery.eq('land_id', landId);
       }
       
-      const { data: existingSession } = await sessionQuery.single();
+      const { data: existingSession, error: sessionError } = await sessionQuery.maybeSingle();
+
+      if (sessionError) {
+        console.warn(`Session query error for ${sessionKey}:`, sessionError);
+        if (cachedMessages.length > 0) {
+          return { sessionId: null, messages: cachedMessages };
+        }
+        return { sessionId: null, messages: [] };
+      }
 
       if (existingSession) {
-        console.log(`✅ Loaded session for ${landId || 'general'}:`, existingSession.id);
+        console.log(`✅ Loaded session from Supabase for ${sessionKey}:`, existingSession.id);
         
         // Load messages for this session
-        const { data: previousMessages } = await supabase
+        const { data: previousMessages, error: messagesError } = await supabase
           .from('ai_chat_messages')
           .select('*')
           .eq('session_id', existingSession.id)
           .eq('farmer_id', user?.id)
-          .order('created_at', { ascending: true });
+          .order('created_at', { ascending: true })
+          .limit(100); // Limit for performance
 
-        console.log(`📜 Loaded ${previousMessages?.length || 0} messages for ${landId || 'general'}`);
+        if (messagesError) {
+          console.warn(`Messages query error for ${sessionKey}:`, messagesError);
+          if (cachedMessages.length > 0) {
+            return { sessionId: existingSession.id, messages: cachedMessages };
+          }
+        }
+
+        console.log(`📜 Loaded ${previousMessages?.length || 0} messages from Supabase for ${sessionKey}`);
+
+        // 3. Cache to LocalDB for offline access (non-blocking)
+        if (previousMessages && previousMessages.length > 0) {
+          (async () => {
+            try {
+              for (const msg of previousMessages) {
+                await localDB.saveChatMessage({
+                  id: msg.id,
+                  session_id: msg.session_id,
+                  tenant_id: msg.tenant_id,
+                  farmer_id: msg.farmer_id,
+                  role: msg.role,
+                  content: msg.content,
+                  land_context: msg.land_context,
+                  crop_context: msg.crop_context,
+                  weather_context: msg.weather_context,
+                  location_context: msg.location_context,
+                  agro_climatic_zone: msg.agro_climatic_zone,
+                  soil_zone: msg.soil_zone,
+                  rainfall_zone: msg.rainfall_zone,
+                  crop_season: msg.crop_season,
+                  ai_model: msg.ai_model,
+                  response_time_ms: msg.response_time_ms,
+                  tokens_used: msg.tokens_used,
+                  feedback_rating: msg.feedback_rating,
+                  feedback_text: msg.feedback_text,
+                  attachments: msg.attachments,
+                  image_urls: msg.image_urls,
+                  status: msg.status,
+                  language: msg.language,
+                  message_type: msg.message_type,
+                  error_details: msg.error_details,
+                  is_edited: msg.is_edited,
+                  edited_at: msg.edited_at,
+                  parent_message_id: msg.parent_message_id,
+                  user_agent: msg.user_agent,
+                  ip_address: msg.ip_address,
+                  partition_key: msg.partition_key,
+                  word_count: msg.word_count,
+                  metadata: msg.metadata,
+                  created_at: msg.created_at,
+                  updated_at: msg.updated_at
+                });
+              }
+              console.log(`💾 [LocalDB] Cached ${previousMessages.length} messages`);
+            } catch (cacheErr) {
+              console.warn('Failed to cache messages to LocalDB:', cacheErr);
+            }
+          })();
+        }
 
         return {
           sessionId: existingSession.id,
-          messages: (previousMessages || []).map(msg => ({
-            id: msg.id,
-            role: msg.role as 'user' | 'assistant',
-            content: msg.content,
-            timestamp: new Date(msg.created_at),
-            feedback: msg.feedback_rating 
-              ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
-              : null
-          }))
+          messages: (previousMessages || []).map(msg => {
+            const metadata = msg.metadata as Record<string, any> | null;
+            return {
+              id: msg.id,
+              role: msg.role as 'user' | 'assistant',
+              content: msg.content,
+              timestamp: new Date(msg.created_at),
+              imageUrl: msg.image_urls?.[0] || metadata?.image_analyzed || undefined,
+              imageUrls: msg.image_urls || undefined,
+              videoUrl: metadata?.video_url || undefined,
+              messageType: msg.message_type as Message['messageType'] || 'text',
+              analysisResult: metadata?.analysis_result || undefined,
+              feedback: msg.feedback_rating 
+                ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
+                : null
+            };
+          })
         };
       }
 
-      console.log(`ℹ️ No existing session for ${landId || 'general'}`);
+      // If no Supabase session but we have cached messages, return them
+      if (cachedMessages.length > 0) {
+        console.log(`📦 Using ${cachedMessages.length} cached messages (no Supabase session)`);
+        return { sessionId: null, messages: cachedMessages };
+      }
+
+      console.log(`ℹ️ No existing session for ${sessionKey}`);
       return { sessionId: null, messages: [] };
     } catch (error) {
-      console.error(`Error loading session for ${landId || 'general'}:`, error);
+      console.error(`Error loading session for ${sessionKey}:`, error);
       return { sessionId: null, messages: [] };
     }
   }, [user?.id, tenant?.id]);
 
   // ✅ CRITICAL FIX: fetchLands wrapped in useCallback with proper dependencies
   const fetchLands = useCallback(async () => {
+    setIsLoadingHistory(true);
     try {
       const fetchedLands = await landsApi.fetchLands();
       setLands(fetchedLands);
@@ -366,6 +493,8 @@ export function EnhancedAIChatInterface() {
       });
     } catch (error) {
       console.error('Error fetching lands:', error);
+    } finally {
+      setIsLoadingHistory(false);
     }
   }, [loadLandSession]); // fetchLands depends on loadLandSession
 
@@ -460,8 +589,11 @@ export function EnhancedAIChatInterface() {
     }
   };
 
-  // Process attached images through AI vision analysis
+  // ✅ Process attached images through AI Crop Scan
+  // ✅ FIXED: Now uploads to Supabase Storage and saves URLs for persistence
   const processAttachedImages = async (files: File[]) => {
+    if (!user?.id || !tenant?.id) return;
+    
     setIsAnalyzingImage(true);
     
     try {
@@ -479,8 +611,72 @@ export function EnhancedAIChatInterface() {
       
       const landId = activeTab !== 'general' ? activeTab : undefined;
       const land = landId ? lands.find(l => l.id === landId) : null;
+      const sessionId = getCurrentSessionId();
+      const userMessageId = crypto.randomUUID();
       
-      // Call AI crop scan
+      // ✅ CRITICAL: Upload image to Supabase Storage for persistence
+      const { url: imageStorageUrl, compressedBase64 } = await uploadChatImage(
+        base64Images[0],
+        sessionId,
+        userMessageId,
+        user.id
+      );
+      
+      // ✅ Create user message with image URL for persistent display
+      const userMessage: Message = {
+        id: userMessageId,
+        role: 'user',
+        content: `[📷 Image uploaded for analysis]`,
+        timestamp: new Date(),
+        imageUrl: imageStorageUrl,
+        imageUrls: [imageStorageUrl],
+        messageType: 'image_analysis'
+      };
+      
+      setMessages(prev => ({
+        ...prev,
+        [activeTab]: [...(prev[activeTab] || []), userMessage]
+      }));
+      
+      // ✅ Ensure session exists in database
+      if (!loadedSessionIds.has(sessionId)) {
+        await supabase.from('ai_chat_sessions').insert({
+          id: sessionId,
+          tenant_id: tenant.id,
+          farmer_id: user.id,
+          session_type: activeTab === 'general' ? 'general' : 'land_specific',
+          session_title: activeTab === 'general' ? 'General Agriculture Chat' : land?.name,
+          land_id: land?.id || null,
+          metadata: { language, platform: 'mobile', app_version: '1.0.0' }
+        });
+        setLoadedSessionIds(prev => new Set([...prev, sessionId]));
+      }
+      
+      const landContext = land ? {
+        land_id: land.id,
+        land_name: land.name,
+        soil_type: land.soil_type,
+        current_crop: land.current_crop
+      } : null;
+      
+      // ✅ CRITICAL: Save user message with image URL to database
+      await supabase.from('ai_chat_messages').insert({
+        id: userMessageId,
+        tenant_id: tenant.id,
+        farmer_id: user.id,
+        session_id: sessionId,
+        role: 'user',
+        content: `[📷 Image uploaded for analysis]`,
+        message_type: 'image_analysis',
+        image_urls: [imageStorageUrl],
+        land_context: landContext,
+        language,
+        status: 'sent',
+        is_training_candidate: true,
+        word_count: 4
+      });
+      
+      // Call AI crop scan (use original base64 for better quality analysis)
       const { data: scanResult, error } = await supabase.functions.invoke('ai-crop-scan', {
         body: {
           images: base64Images,
@@ -497,35 +693,63 @@ export function EnhancedAIChatInterface() {
       
       if (scanResult?.success && scanResult?.result) {
         setPendingVisionAnalysis({
-          imageUrl: base64Images[0],
+          imageUrl: imageStorageUrl,
           result: scanResult.result
         });
         
-        // Show crop mismatch warning
         if (land?.current_crop && scanResult.result.cropDetected?.matchesLandCrop === false) {
           toast({
             title: '⚠️ Crop Mismatch Detected',
-            description: `Detected: ${scanResult.result.cropDetected.name}. Expected: ${land.current_crop}. Using General AI for analysis.`,
+            description: `Detected: ${scanResult.result.cropDetected.name}. Expected: ${land.current_crop}.`,
             variant: 'default'
           });
         }
         
-        // Add analysis as AI message
+        // ✅ Create AI response message with full analysis result
+        const aiMessageId = crypto.randomUUID();
+        const aiContent = scanResult.result.diagnosis?.summary || 'Analysis complete';
         const aiMessage: Message = {
-          id: crypto.randomUUID(),
+          id: aiMessageId,
           role: 'assistant',
-          content: scanResult.result.diagnosis?.summary || 'Analysis complete',
+          content: aiContent,
           timestamp: new Date(),
-          structuredResponse: {
-            cards: [],
-            language
-          }
+          messageType: 'image_analysis_response',
+          // ✅ CRITICAL: Include image and analysis for full card display
+          imageUrl: imageStorageUrl,
+          analysisResult: scanResult.result
         };
         
         setMessages(prev => ({
           ...prev,
           [activeTab]: [...(prev[activeTab] || []), aiMessage]
         }));
+        
+        // ✅ CRITICAL: Clear pendingVisionAnalysis to avoid duplicate display
+        setPendingVisionAnalysis(null);
+        
+        // ✅ CRITICAL: Save AI response to database for training
+        await supabase.from('ai_chat_messages').insert({
+          id: aiMessageId,
+          tenant_id: tenant.id,
+          farmer_id: user.id,
+          session_id: sessionId,
+          role: 'assistant',
+          content: aiContent,
+          message_type: 'image_analysis_response',
+          ai_model: 'gemini-2.5-flash',
+          land_context: landContext,
+          metadata: {
+            analysis_result: scanResult.result,
+            crop_detected: scanResult.result.cropDetected,
+            diagnosis: scanResult.result.diagnosis,
+            image_analyzed: imageStorageUrl
+          },
+          language,
+          status: 'delivered',
+          is_training_candidate: true,
+          word_count: aiContent.split(' ').length
+        });
+        
       } else {
         throw new Error(scanResult?.error || 'Analysis failed');
       }
@@ -543,20 +767,99 @@ export function EnhancedAIChatInterface() {
   };
 
   // World-class camera capture handler
+  // ✅ FIXED: Now uploads to Supabase Storage and saves URLs for persistence
   const handleWorldClassCapture = async (data: { type: 'photo' | 'video'; data: string; duration?: number }) => {
+    if (!user?.id || !tenant?.id) return;
+    
     setShowCamera(false);
     setIsAnalyzingImage(true);
-    setPendingVisionAnalysis({ imageUrl: data.type === 'photo' ? data.data : undefined, videoUrl: data.type === 'video' ? data.data : undefined });
     
     try {
       const landId = activeTab !== 'general' ? activeTab : undefined;
       const land = landId ? lands.find(l => l.id === landId) : null;
+      const sessionId = getCurrentSessionId();
+      const userMessageId = crypto.randomUUID();
+      const mediaType = data.type === 'photo' ? '📷' : '🎥';
+      const isPhoto = data.type === 'photo';
       
-      // Call AI crop scan
+      // ✅ CRITICAL: Upload image/video to Supabase Storage with compression
+      let imageStorageUrl: string;
+      let videoStorageUrl: string | undefined;
+      
+      if (isPhoto) {
+        const { url } = await uploadChatImage(data.data, sessionId, userMessageId, user.id);
+        imageStorageUrl = url;
+      } else {
+        // ✅ PRODUCTION-READY: Compress and upload video + thumbnail
+        const { videoUrl, thumbnailUrl } = await uploadCompressedVideo(data.data, sessionId, userMessageId, user.id);
+        videoStorageUrl = videoUrl;
+        imageStorageUrl = thumbnailUrl; // Use thumbnail as preview image
+      }
+      
+      setPendingVisionAnalysis({ 
+        imageUrl: imageStorageUrl, 
+        videoUrl: videoStorageUrl
+      });
+      
+      // ✅ Create user message with image URL for persistent display
+      const userMessage: Message = {
+        id: userMessageId,
+        role: 'user',
+        content: `[${mediaType} ${isPhoto ? 'Photo' : 'Video'} captured for analysis]`,
+        timestamp: new Date(),
+        imageUrl: imageStorageUrl,
+        imageUrls: [imageStorageUrl],
+        messageType: isPhoto ? 'image_analysis' : 'video_analysis'
+      };
+      
+      setMessages(prev => ({
+        ...prev,
+        [activeTab]: [...(prev[activeTab] || []), userMessage]
+      }));
+      
+      // ✅ Ensure session exists in database
+      if (!loadedSessionIds.has(sessionId)) {
+        await supabase.from('ai_chat_sessions').insert({
+          id: sessionId,
+          tenant_id: tenant.id,
+          farmer_id: user.id,
+          session_type: activeTab === 'general' ? 'general' : 'land_specific',
+          session_title: activeTab === 'general' ? 'General Agriculture Chat' : land?.name,
+          land_id: land?.id || null,
+          metadata: { language, platform: 'mobile', app_version: '1.0.0' }
+        });
+        setLoadedSessionIds(prev => new Set([...prev, sessionId]));
+      }
+      
+      const landContext = land ? {
+        land_id: land.id,
+        land_name: land.name,
+        soil_type: land.soil_type,
+        current_crop: land.current_crop
+      } : null;
+      
+      // ✅ CRITICAL: Save user message with image URL to database
+      await supabase.from('ai_chat_messages').insert({
+        id: userMessageId,
+        tenant_id: tenant.id,
+        farmer_id: user.id,
+        session_id: sessionId,
+        role: 'user',
+        content: `[${mediaType} ${isPhoto ? 'Photo' : 'Video'} captured for analysis]`,
+        message_type: isPhoto ? 'image_analysis' : 'video_analysis',
+        image_urls: [imageStorageUrl],
+        land_context: landContext,
+        language,
+        status: 'sent',
+        is_training_candidate: true,
+        word_count: 5
+      });
+      
+      // Call AI crop scan (use original base64 for better quality analysis)
       const { data: scanResult, error } = await supabase.functions.invoke('ai-crop-scan', {
         body: {
-          images: data.type === 'photo' ? [data.data] : [],
-          videoFrames: data.type === 'video' ? [data.data] : [],
+          images: isPhoto ? [data.data] : [],
+          videoFrames: !isPhoto ? [data.data] : [],
           language,
           farmerId: user?.id,
           tenantId: tenant?.id,
@@ -569,28 +872,55 @@ export function EnhancedAIChatInterface() {
       if (error) throw error;
       
       if (scanResult?.success && scanResult?.result) {
-        setPendingVisionAnalysis({
-          imageUrl: data.type === 'photo' ? data.data : undefined,
-          videoUrl: data.type === 'video' ? data.data : undefined,
-          result: scanResult.result
-        });
-        
-        // Add analysis as AI message
+        // ✅ Create AI response message with full analysis result
+        const aiMessageId = crypto.randomUUID();
+        const aiContent = scanResult.result.diagnosis?.summary || 'Analysis complete';
         const aiMessage: Message = {
-          id: crypto.randomUUID(),
+          id: aiMessageId,
           role: 'assistant',
-          content: scanResult.result.diagnosis?.summary || 'Analysis complete',
+          content: aiContent,
           timestamp: new Date(),
-          structuredResponse: {
-            cards: [],
-            language
-          }
+          messageType: isPhoto ? 'image_analysis_response' : 'video_analysis_response',
+          // ✅ CRITICAL: Include image/thumbnail and analysis for full card display
+          imageUrl: imageStorageUrl,
+          analysisResult: scanResult.result
         };
         
         setMessages(prev => ({
           ...prev,
           [activeTab]: [...(prev[activeTab] || []), aiMessage]
         }));
+        
+        // ✅ CRITICAL: Clear pendingVisionAnalysis to avoid duplicate display
+        setPendingVisionAnalysis(null);
+        
+        // ✅ CRITICAL: Save AI response to database for training
+        await supabase.from('ai_chat_messages').insert({
+          id: aiMessageId,
+          tenant_id: tenant.id,
+          farmer_id: user.id,
+          session_id: sessionId,
+          role: 'assistant',
+          content: aiContent,
+          message_type: isPhoto ? 'image_analysis_response' : 'video_analysis_response',
+          image_urls: [imageStorageUrl], // ✅ Store thumbnail/image URL
+          ai_model: 'gemini-2.5-flash',
+          land_context: landContext,
+          metadata: {
+            analysis_result: scanResult.result,
+            crop_detected: scanResult.result.cropDetected,
+            diagnosis: scanResult.result.diagnosis,
+            media_type: data.type,
+            duration: data.duration,
+            image_analyzed: imageStorageUrl,
+            video_url: videoStorageUrl // ✅ Store video URL separately
+          },
+          language,
+          status: 'delivered',
+          is_training_candidate: true,
+          word_count: aiContent.split(' ').length
+        });
+        
       } else {
         throw new Error(scanResult?.error || 'Analysis failed');
       }
@@ -1347,8 +1677,25 @@ export function EnhancedAIChatInterface() {
         className="h-full px-3 py-4 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
       >
         <AnimatePresence mode="popLayout">
+          {/* Loading State for Chat History */}
+          {isLoadingHistory && messages[activeTab]?.length === 0 && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col items-center justify-center py-12 gap-3"
+            >
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <span className="text-sm text-muted-foreground">
+                {language === 'hi' ? 'चैट इतिहास लोड हो रहा है...' : 
+                 language === 'mr' ? 'चॅट इतिहास लोड होत आहे...' : 
+                 'Loading chat history...'}
+              </span>
+            </motion.div>
+          )}
+          
           {/* Show Welcome Card for general chat when no messages */}
-          {activeTab === 'general' && messages[activeTab]?.length === 0 && (
+          {activeTab === 'general' && messages[activeTab]?.length === 0 && !isLoadingHistory && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1361,7 +1708,7 @@ export function EnhancedAIChatInterface() {
           )}
           
           {/* Show Land Context as first message for land-specific chats */}
-          {activeTab !== 'general' && messages[activeTab]?.length === 0 && (
+          {activeTab !== 'general' && messages[activeTab]?.length === 0 && !isLoadingHistory && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1405,8 +1752,8 @@ export function EnhancedAIChatInterface() {
           ))}
         </AnimatePresence>
         
-        {/* Vision Analysis Card - Shows when analyzing image/video */}
-        {(isAnalyzingImage || pendingVisionAnalysis) && (
+        {/* Vision Analysis Card - ONLY show when actively analyzing (not after result is added to chat) */}
+        {isAnalyzingImage && !pendingVisionAnalysis?.result && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1415,8 +1762,7 @@ export function EnhancedAIChatInterface() {
             <VisionAnalysisCard
               imageUrl={pendingVisionAnalysis?.imageUrl}
               videoUrl={pendingVisionAnalysis?.videoUrl}
-              isAnalyzing={isAnalyzingImage}
-              analysisResult={pendingVisionAnalysis?.result}
+              isAnalyzing={true}
               error={pendingVisionAnalysis?.error}
               language={language}
               onRetry={() => {
@@ -1482,19 +1828,40 @@ export function EnhancedAIChatInterface() {
           </div>
         )}
         
-        {/* Attached files preview */}
+        {/* Attached files preview with image thumbnails */}
         {attachedFiles.length > 0 && (
-          <div className="flex gap-2 mb-2 overflow-x-auto">
+          <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
             {attachedFiles.map((file, index) => (
-              <div key={index} className="flex items-center gap-1 px-2 py-1 bg-secondary/20 rounded-full text-xs">
-                <Image className="w-3 h-3" />
-                {file.name}
-                <button 
-                  onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))}
-                  className="ml-1"
-                >
-                  ×
-                </button>
+              <div key={index} className="relative group shrink-0">
+                {file.type.startsWith('image/') ? (
+                  <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-primary/20">
+                    <img 
+                      src={URL.createObjectURL(file)} 
+                      alt={file.name}
+                      className="w-full h-full object-cover"
+                    />
+                    <button 
+                      onClick={() => {
+                        URL.revokeObjectURL(URL.createObjectURL(file));
+                        setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+                      }}
+                      className="absolute top-0 right-0 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md hover:bg-destructive/90 transition-colors"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 px-3 py-2 bg-secondary/20 rounded-lg text-xs border">
+                    <Paperclip className="w-3 h-3" />
+                    <span className="max-w-20 truncate">{file.name}</span>
+                    <button 
+                      onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))}
+                      className="ml-1 hover:text-destructive"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -1530,15 +1897,6 @@ export function EnhancedAIChatInterface() {
                 <Camera className="h-4 w-4 text-muted-foreground" />
               </Button>
               
-              {/* Video Button - Opens WorldClassCamera in video mode */}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => setShowCamera(true)}
-              >
-                <Video className="h-4 w-4 text-muted-foreground" />
-              </Button>
             </div>
             
             <Input

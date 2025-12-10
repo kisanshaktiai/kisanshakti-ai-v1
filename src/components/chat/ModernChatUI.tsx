@@ -1,12 +1,14 @@
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Bot, User, Copy, ThumbsUp, ThumbsDown, Share2, Check, Zap } from 'lucide-react';
+import { Bot, User, Copy, ThumbsUp, ThumbsDown, Share2, Check, Zap, CheckCircle, Play } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { ColorCodedCard } from './ColorCodedCard';
 import { EnhancedSpeakerButton } from './EnhancedSpeakerButton';
+import { RecommendationCards, type VisionAnalysisResult } from './RecommendationCards';
 
 interface Message {
   id: string;
@@ -16,6 +18,13 @@ interface Message {
   isPlaying?: boolean;
   feedback?: 'like' | 'dislike' | null;
   isCopied?: boolean;
+  // Image/video support
+  imageUrl?: string;
+  imageUrls?: string[];
+  videoUrl?: string;
+  messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response';
+  // Full analysis result for detailed cards
+  analysisResult?: VisionAnalysisResult;
   structuredResponse?: {
     cards: Array<{
       id: string;
@@ -48,7 +57,7 @@ interface ModernChatUIProps {
   onPlay: (messageId: string, content: string) => void;
 }
 
-// User bubble color variations based on message index
+// User bubble color variations
 const USER_BUBBLE_GRADIENTS = [
   'from-primary via-primary-hover to-primary-glow',
   'from-[hsl(var(--chat-user-1))] via-[hsl(var(--chat-user-1-mid))] to-[hsl(var(--chat-user-1-end))]',
@@ -59,7 +68,13 @@ const USER_BUBBLE_GRADIENTS = [
 export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: ModernChatUIProps) {
   const { i18n } = useTranslation();
   const isUser = message.role === 'user';
-  const currentLanguage = i18n.language || 'hi'; // Use i18n language, default to Hindi
+  const currentLanguage = i18n.language || 'hi';
+  
+  // ✅ CRITICAL: Hide user messages for image/video analysis
+  // The analysis result is shown ONLY in the AI response card (single source of truth)
+  if (isUser && (message.messageType === 'image_analysis' || message.messageType === 'video_analysis')) {
+    return null;
+  }
   
   // Get consistent gradient based on message id hash
   const userGradient = useMemo(() => {
@@ -81,11 +96,11 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
     
     // Step 2: Force newlines before numbered points
     formatted = formatted
-      .replace(/([^\n\d])(\d+\.)\s+/g, '$1\n$2 ')  // Add newline before "1. 2. 3."
-      .replace(/([^\n])([१२३४५६७८९०]+\.)\s+/g, '$1\n$2 ')  // Hindi numbers
-      .replace(/([^\n])([•·\-])\s+(?=[A-Za-z\u0900-\u097F])/g, '$1\n$2 ')  // Bullet points
-      .replace(/([^\n])(🟢|🟡|🔴|🟣|🔵|⚠️|✅|ℹ️|🌱|💧|🌾|📅|🎯|💰|📊|🏦|💵)/g, '$1\n\n$2')  // Emoji markers
-      .replace(/([।:])(\s*)(?=[A-Za-z\u0900-\u097F])/g, '$1\n');  // After colons/devanagari end
+      .replace(/([^\n\d])(\d+\.)\s+/g, '$1\n$2 ')
+      .replace(/([^\n])([१२३४५६७८९०]+\.)\s+/g, '$1\n$2 ')
+      .replace(/([^\n])([•·\-])\s+(?=[A-Za-z\u0900-\u097F])/g, '$1\n$2 ')
+      .replace(/([^\n])(🟢|🟡|🔴|🟣|🔵|⚠️|✅|ℹ️|🌱|💧|🌾|📅|🎯|💰|📊|🏦|💵)/g, '$1\n\n$2')
+      .replace(/([।:])(\s*)(?=[A-Za-z\u0900-\u097F])/g, '$1\n');
     
     // Step 3: Clean up multiple newlines
     formatted = formatted
@@ -102,7 +117,6 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
         return <div key={idx} className="h-2" />;
       }
       
-      // Detect line type for styling
       const isNumberedPoint = /^(\d+\.|[१२३४५६७८९०]+\.)/.test(trimmedLine);
       const isBulletPoint = /^[•·\-\*]/.test(trimmedLine);
       const isEmojiSection = /^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u.test(trimmedLine);
@@ -126,6 +140,17 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
       );
     });
   };
+
+  // Check if this is an analysis response with full details
+  const hasAnalysisResult = !isUser && message.analysisResult;
+  const hasStructuredCards = !isUser && message.structuredResponse?.cards?.length > 0;
+  
+  // ✅ Check if content is a placeholder that should be hidden
+  const isPlaceholderContent = message.content.includes('[📷') || 
+    message.content.includes('[🎥') || 
+    message.content === 'Analysis complete' ||
+    message.content.includes('uploaded for analysis') ||
+    message.content.includes('captured for analysis');
   
   return (
     <motion.div
@@ -163,7 +188,6 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
         isUser ? "max-w-[80%] md:max-w-[70%]" : "max-w-full md:max-w-[95%]",
         isUser && "flex flex-col items-end"
       )}>
-        {/* Bubble Content */}
         <motion.div
           whileHover={{ scale: 1.01 }}
           transition={{ type: "spring", stiffness: 400, damping: 25 }}
@@ -182,11 +206,58 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
             </div>
           )}
           
-          {/* Color-Coded Cards (if available) */}
-          {!isUser && message.structuredResponse?.cards && message.structuredResponse.cards.length > 0 ? (
+          {/* ✅ CRITICAL: Full Vision Analysis Cards (single source of truth) */}
+          {hasAnalysisResult ? (
+            <>
+              {/* Image with Analyzed badge */}
+              {message.imageUrl && (
+                <div className="relative">
+                  <img 
+                    src={message.imageUrl} 
+                    alt="Analyzed" 
+                    className="w-full aspect-video object-cover"
+                    loading="lazy"
+                  />
+                  <div className="absolute top-2 right-2">
+                    <Badge className="bg-green-500 text-white shadow-lg">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      {currentLanguage === 'hi' ? 'विश्लेषित' : currentLanguage === 'mr' ? 'विश्लेषित' : 'Analyzed'}
+                    </Badge>
+                  </div>
+                  {/* Video indicator */}
+                  {(message.messageType === 'video_analysis_response' || message.videoUrl) && (
+                    <div className="absolute bottom-2 left-2">
+                      <Badge variant="secondary" className="bg-black/60 text-white">
+                        <Play className="h-3 w-3 mr-1" />
+                        Video
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {/* Full Recommendation Cards */}
+              <div className="p-3">
+                <RecommendationCards 
+                  analysis={message.analysisResult!} 
+                  language={currentLanguage} 
+                />
+              </div>
+              
+              {/* Timestamp */}
+              <div className="flex items-center justify-between text-xs mt-2 opacity-60 text-muted-foreground px-3 pb-2.5">
+                <span>
+                  {new Date(message.timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </span>
+              </div>
+            </>
+          ) : hasStructuredCards ? (
             <>
               <div className="space-y-2">
-                {message.structuredResponse.cards.map((card, index) => (
+                {message.structuredResponse!.cards.map((card, index) => (
                   <ColorCodedCard key={card.id} card={card} index={index} />
                 ))}
               </div>
@@ -208,22 +279,70 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
             </>
           ) : (
             <>
-              {/* Message Text with Enhanced Formatting */}
-              <div 
-                className={cn(
-                  "relative z-10 px-4 py-3",
-                  isUser ? "text-primary-foreground" : "text-foreground"
-                )}
-                data-message-id={message.id}
-              >
-                {isUser ? (
-                  <span className="text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words">
-                    {message.content}
-                  </span>
-                ) : (
-                  formatAIResponse(message.content)
-                )}
-              </div>
+              {/* Display attached images - but NOT for analysis placeholders */}
+              {message.imageUrl && !isPlaceholderContent && (
+                <div className={cn(
+                  isUser ? "p-1 pb-2" : "px-3 pt-3"
+                )}>
+                  <div className={cn(
+                    "relative rounded-xl overflow-hidden shadow-sm",
+                    isUser ? "border-2 border-white/20" : "border border-border/30"
+                  )}>
+                    <img 
+                      src={message.imageUrl} 
+                      alt="Uploaded"
+                      className={cn(
+                        "w-full object-cover",
+                        isUser ? "max-h-48" : "max-h-64"
+                      )}
+                      loading="lazy"
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {/* Multiple images support */}
+              {message.imageUrls && message.imageUrls.length > 1 && !message.imageUrl && (
+                <div className={cn(
+                  "grid grid-cols-2 gap-2",
+                  isUser ? "p-1 pb-2" : "px-3 pt-3"
+                )}>
+                  {message.imageUrls.map((url, idx) => (
+                    <div key={idx} className={cn(
+                      "relative rounded-lg overflow-hidden",
+                      isUser ? "border-2 border-white/20" : "border border-border/30"
+                    )}>
+                      <img 
+                        src={url} 
+                        alt={`Upload ${idx + 1}`}
+                        className="w-full h-32 object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+              
+              {/* Message Text - hide placeholder content */}
+              {!isPlaceholderContent && (
+                <div 
+                  className={cn(
+                    "relative z-10 px-4 py-3",
+                    isUser ? "text-primary-foreground" : "text-foreground",
+                    message.imageUrl && "pt-2"
+                  )}
+                  data-message-id={message.id}
+                >
+                  {isUser ? (
+                    <span className="text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words">
+                      {message.content}
+                    </span>
+                  ) : (
+                    formatAIResponse(message.content)
+                  )}
+                </div>
+              )}
+              
               {/* Timestamp & Token Usage */}
               <div className={cn(
                 "flex items-center justify-between text-xs mt-1 opacity-60",
