@@ -135,6 +135,7 @@ export function EnhancedAIChatInterface() {
     error?: string;
   } | null>(null);
   const [sessionStartTime, setSessionStartTime] = useState<Record<string, Date>>({});
+  const [isLoadingSuggestion, setIsLoadingSuggestion] = useState(false); // ✅ NEW: Loading state for suggestion selection
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1519,6 +1520,138 @@ export function EnhancedAIChatInterface() {
     }
   };
 
+  // ✅ NEW: Handle suggestion type selection and generate targeted solution
+  const handleSuggestionSelect = async (messageId: string, suggestionType: 'organic' | 'fertilizer' | 'pesticide' | 'hybrid') => {
+    if (!user?.id || !tenant?.id) return;
+    
+    setIsLoadingSuggestion(true);
+    
+    try {
+      // Find the original message with analysis
+      const originalMessage = messages[activeTab]?.find(m => m.id === messageId);
+      if (!originalMessage?.analysisResult) {
+        console.error('No analysis result found for message:', messageId);
+        return;
+      }
+      
+      // Get land data for area calculations
+      const landId = activeTab !== 'general' ? activeTab : undefined;
+      const land = landId ? lands.find(l => l.id === landId) : null;
+      const sessionId = sessionIds[activeTab] || crypto.randomUUID();
+      
+      // Calculate area for dosage recommendations
+      const landArea = land?.area_guntha || land?.area_acres ? {
+        guntha: land.area_guntha || (land.area_acres * 40),
+        acres: land.area_acres || (land.area_guntha / 40),
+        sqft: land.area_sqft || (land.area_guntha * 1089)
+      } : null;
+      
+      console.log('🎯 Generating targeted solution:', {
+        messageId,
+        suggestionType,
+        landArea,
+        crop: originalMessage.analysisResult.cropDetected?.name
+      });
+      
+      // ✅ Mark original message as no longer awaiting selection
+      setMessages(prev => ({
+        ...prev,
+        [activeTab]: prev[activeTab].map(m => 
+          m.id === messageId 
+            ? { ...m, awaitingSuggestionSelection: false }
+            : m
+        )
+      }));
+      
+      // Call AI to generate targeted solution with land area context
+      const { data: solutionResult, error } = await supabase.functions.invoke('ai-crop-scan', {
+        body: {
+          mode: 'targeted_solution',
+          suggestionType,
+          language,
+          farmerId: user?.id,
+          tenantId: tenant?.id,
+          landId,
+          landArea,
+          landCrop: land?.current_crop || originalMessage.analysisResult.cropDetected?.name,
+          diagnosis: originalMessage.analysisResult.diagnosis,
+          cropDetected: originalMessage.analysisResult.cropDetected,
+          healthStatus: originalMessage.analysisResult.healthStatus
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (solutionResult?.success && solutionResult?.result) {
+        // Create targeted solution message
+        const solutionMessageId = crypto.randomUUID();
+        const solutionMessage: Message = {
+          id: solutionMessageId,
+          role: 'assistant',
+          content: solutionResult.result.summary || `${suggestionType} solution generated`,
+          timestamp: new Date(),
+          messageType: 'targeted_solution',
+          suggestionType,
+          analysisResult: {
+            ...originalMessage.analysisResult,
+            recommendations: solutionResult.result.recommendations
+          }
+        };
+        
+        setMessages(prev => ({
+          ...prev,
+          [activeTab]: [...(prev[activeTab] || []), solutionMessage]
+        }));
+        
+        // Save to database
+        const { error: insertError } = await supabase.from('ai_chat_messages').insert([{
+          tenant_id: tenant.id,
+          farmer_id: user.id,
+          session_id: sessionId,
+          role: 'assistant',
+          content: solutionMessage.content,
+          message_type: 'targeted_solution',
+          ai_model: 'gemini-2.5-flash',
+          metadata: {
+            suggestion_type: suggestionType,
+            land_area: landArea,
+            analysis_result: JSON.parse(JSON.stringify(solutionMessage.analysisResult)),
+            parent_message_id: messageId
+          } as any,
+          language,
+          status: 'sent',
+          is_training_candidate: true
+        }]);
+        
+        if (insertError) {
+          console.warn('Failed to save targeted solution:', insertError);
+        }
+        
+        console.log('✅ Targeted solution saved:', solutionMessageId);
+        
+        toast({
+          title: language === 'hi' ? 'समाधान तैयार' : language === 'mr' ? 'समाधान तयार' : 'Solution Ready',
+          description: language === 'hi' 
+            ? `${suggestionType === 'organic' ? 'जैविक' : suggestionType === 'fertilizer' ? 'खाद' : suggestionType === 'pesticide' ? 'कीटनाशक' : 'संपूर्ण'} समाधान उपलब्ध है`
+            : language === 'mr'
+            ? `${suggestionType === 'organic' ? 'सेंद्रिय' : suggestionType === 'fertilizer' ? 'खत' : suggestionType === 'pesticide' ? 'कीटकनाशक' : 'संपूर्ण'} समाधान उपलब्ध आहे`
+            : `${suggestionType} solution is ready`,
+        });
+      } else {
+        throw new Error(solutionResult?.error || 'Failed to generate solution');
+      }
+    } catch (err) {
+      console.error('Error generating targeted solution:', err);
+      toast({
+        title: t('error.title'),
+        description: err instanceof Error ? err.message : 'Failed to generate solution',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoadingSuggestion(false);
+    }
+  };
+
   const handleQuickAction = (action: string) => {
     const prompts: Record<string, string> = {
       irrigation: t('chat.irrigationPrompt'),
@@ -1822,6 +1955,8 @@ export function EnhancedAIChatInterface() {
                   onLike={handleLike}
                   onShare={handleShare}
                   onPlay={handlePlayMessage}
+                  onSuggestionSelect={handleSuggestionSelect}
+                  isLoadingSuggestion={isLoadingSuggestion}
                 />
               ))}
             </div>
