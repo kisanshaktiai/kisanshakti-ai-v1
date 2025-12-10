@@ -321,28 +321,59 @@ export async function compressAudioForStorage(
 
 /**
  * Upload compressed image to Supabase Storage
- * Production-ready with retry logic and fallbacks
+ * Production-ready with auth check, retry logic and proper error handling
  */
 export async function uploadChatImage(
   base64Image: string,
   sessionId: string,
   messageId: string,
   userId: string,
-  retryCount: number = 2
-): Promise<{ url: string; compressedBase64: string }> {
+  retryCount: number = 3
+): Promise<{ url: string; compressedBase64: string; success: boolean }> {
   try {
     // Validate inputs
     if (!base64Image || !sessionId || !messageId || !userId) {
-      console.error('uploadChatImage: Missing required parameters');
-      return { url: base64Image, compressedBase64: base64Image };
+      console.error('❌ uploadChatImage: Missing required parameters', { 
+        hasBase64: !!base64Image, 
+        sessionId, 
+        messageId, 
+        userId 
+      });
+      return { url: base64Image, compressedBase64: base64Image, success: false };
+    }
+
+    // ✅ CRITICAL: Verify user is authenticated before upload
+    const { data: { session }, error: authError } = await supabase.auth.getSession();
+    if (authError || !session?.user) {
+      console.error('❌ uploadChatImage: User not authenticated', authError);
+      // Still return compressed base64 for display, but mark as failed
+      const { base64: compressedBase64 } = await compressImageForStorage(base64Image);
+      return { url: compressedBase64, compressedBase64, success: false };
+    }
+
+    // Verify userId matches authenticated user (RLS requirement)
+    if (session.user.id !== userId) {
+      console.error('❌ uploadChatImage: userId mismatch with auth', {
+        providedUserId: userId,
+        authUserId: session.user.id
+      });
+      // Use the authenticated user ID for the path
+      userId = session.user.id;
     }
 
     // Compress image first
     const { blob, base64: compressedBase64 } = await compressImageForStorage(base64Image);
     
-    // Generate unique file path
+    // Generate unique file path - userId MUST be first for RLS
     const timestamp = Date.now();
     const filePath = `${userId}/${sessionId}/${messageId}_${timestamp}.jpg`;
+    
+    console.log('📤 Uploading image to storage:', {
+      bucket: STORAGE_BUCKET,
+      path: filePath,
+      sizeKB: Math.round(blob.size / 1024),
+      authUserId: session.user.id
+    });
     
     // Upload with retry logic
     let lastError: Error | null = null;
@@ -352,13 +383,25 @@ export async function uploadChatImage(
           .from(STORAGE_BUCKET)
           .upload(filePath, blob, {
             contentType: 'image/jpeg',
-            cacheControl: '3600',
+            cacheControl: '31536000', // 1 year cache
             upsert: true
           });
 
         if (error) {
           lastError = new Error(error.message);
-          console.warn(`Upload attempt ${attempt + 1} failed:`, error.message);
+          console.warn(`❌ Upload attempt ${attempt + 1}/${retryCount + 1} failed:`, {
+            error: error.message,
+            statusCode: (error as any).statusCode,
+            path: filePath
+          });
+          
+          // Check for specific error types
+          if (error.message.includes('row-level security') || 
+              error.message.includes('policy') ||
+              error.message.includes('403')) {
+            console.error('🔐 RLS Policy blocking upload - check storage policies for bucket:', STORAGE_BUCKET);
+          }
+          
           if (attempt < retryCount) {
             await new Promise(r => setTimeout(r, 1000 * (attempt + 1))); // Exponential backoff
             continue;
@@ -368,85 +411,141 @@ export async function uploadChatImage(
             .from(STORAGE_BUCKET)
             .getPublicUrl(data.path);
 
-          console.log(`✅ Image uploaded: ${urlData.publicUrl} (${Math.round(blob.size / 1024)}KB)`);
-          return { url: urlData.publicUrl, compressedBase64 };
+          console.log(`✅ Image uploaded successfully:`, {
+            url: urlData.publicUrl,
+            sizeKB: Math.round(blob.size / 1024),
+            path: data.path
+          });
+          return { url: urlData.publicUrl, compressedBase64, success: true };
         }
       } catch (attemptErr) {
         lastError = attemptErr as Error;
-        console.warn(`Upload attempt ${attempt + 1} exception:`, attemptErr);
+        console.warn(`❌ Upload attempt ${attempt + 1}/${retryCount + 1} exception:`, attemptErr);
       }
     }
     
-    console.error('All upload attempts failed:', lastError);
-    // Return compressed base64 as fallback
-    return { url: compressedBase64, compressedBase64 };
+    console.error('❌ All upload attempts failed after', retryCount + 1, 'attempts:', lastError?.message);
+    // Return compressed base64 as fallback for display
+    return { url: compressedBase64, compressedBase64, success: false };
   } catch (err) {
-    console.error('Image upload failed:', err);
-    return { url: base64Image, compressedBase64: base64Image };
+    console.error('❌ Image upload failed with exception:', err);
+    // Try to at least return compressed image
+    try {
+      const { base64: compressedBase64 } = await compressImageForStorage(base64Image);
+      return { url: compressedBase64, compressedBase64, success: false };
+    } catch {
+      return { url: base64Image, compressedBase64: base64Image, success: false };
+    }
   }
 }
 
 /**
- * Upload compressed video with thumbnail - Production-ready
+ * Upload compressed video with thumbnail - Production-ready with auth check
  */
 export async function uploadCompressedVideo(
   videoBase64: string,
   sessionId: string,
   messageId: string,
   userId: string
-): Promise<{ videoUrl: string; thumbnailUrl: string }> {
+): Promise<{ videoUrl: string; thumbnailUrl: string; success: boolean }> {
   try {
     if (!videoBase64 || !sessionId || !messageId || !userId) {
-      console.error('uploadCompressedVideo: Missing required parameters');
-      return { videoUrl: videoBase64, thumbnailUrl: videoBase64 };
+      console.error('❌ uploadCompressedVideo: Missing required parameters');
+      return { videoUrl: videoBase64, thumbnailUrl: videoBase64, success: false };
     }
+
+    // ✅ CRITICAL: Verify user is authenticated
+    const { data: { session }, error: authError } = await supabase.auth.getSession();
+    if (authError || !session?.user) {
+      console.error('❌ uploadCompressedVideo: User not authenticated');
+      const { thumbnailBlob, thumbnailBase64 } = await extractVideoThumbnailSafe(videoBase64);
+      return { videoUrl: videoBase64, thumbnailUrl: thumbnailBase64, success: false };
+    }
+
+    // Use authenticated user ID for RLS
+    const authUserId = session.user.id;
 
     const { videoBlob, thumbnailBlob, thumbnailBase64 } = await compressVideoForStorage(videoBase64);
     
     const timestamp = Date.now();
     
+    console.log('📤 Uploading video to storage:', {
+      bucket: STORAGE_BUCKET,
+      authUserId,
+      videoSizeMB: Math.round(videoBlob.size / 1024 / 1024 * 100) / 100
+    });
+    
     // Upload video
-    const videoPath = `${userId}/${sessionId}/${messageId}_${timestamp}.webm`;
+    const videoPath = `${authUserId}/${sessionId}/${messageId}_${timestamp}.webm`;
     const { data: videoData, error: videoError } = await supabase.storage
       .from(STORAGE_BUCKET)
       .upload(videoPath, videoBlob, {
         contentType: 'video/webm',
-        cacheControl: '3600',
+        cacheControl: '31536000',
         upsert: true
       });
     
     // Upload thumbnail
-    const thumbPath = `${userId}/${sessionId}/${messageId}_${timestamp}_thumb.jpg`;
+    const thumbPath = `${authUserId}/${sessionId}/${messageId}_${timestamp}_thumb.jpg`;
     const { data: thumbData, error: thumbError } = await supabase.storage
       .from(STORAGE_BUCKET)
       .upload(thumbPath, thumbnailBlob, {
         contentType: 'image/jpeg',
-        cacheControl: '3600',
+        cacheControl: '31536000',
         upsert: true
       });
     
     if (videoError || thumbError) {
-      console.error('Video upload error:', videoError || thumbError);
-      // Try to at least return thumbnail
+      console.error('❌ Video upload error:', { videoError, thumbError });
+      // Try to at least return thumbnail URL
       if (!thumbError && thumbData) {
         const { data: thumbUrlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(thumbData.path);
-        return { videoUrl: videoBase64, thumbnailUrl: thumbUrlData.publicUrl };
+        return { videoUrl: videoBase64, thumbnailUrl: thumbUrlData.publicUrl, success: false };
       }
-      return { videoUrl: videoBase64, thumbnailUrl: thumbnailBase64 };
+      return { videoUrl: videoBase64, thumbnailUrl: thumbnailBase64, success: false };
     }
     
     const { data: videoUrlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(videoData!.path);
     const { data: thumbUrlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(thumbData!.path);
     
-    console.log(`✅ Video uploaded: ${videoUrlData.publicUrl} (${Math.round(videoBlob.size / 1024 / 1024 * 100) / 100}MB)`);
+    console.log(`✅ Video uploaded successfully:`, {
+      videoUrl: videoUrlData.publicUrl,
+      thumbnailUrl: thumbUrlData.publicUrl,
+      sizeMB: Math.round(videoBlob.size / 1024 / 1024 * 100) / 100
+    });
     
     return {
       videoUrl: videoUrlData.publicUrl,
-      thumbnailUrl: thumbUrlData.publicUrl
+      thumbnailUrl: thumbUrlData.publicUrl,
+      success: true
     };
   } catch (err) {
-    console.error('Video upload failed:', err);
-    return { videoUrl: videoBase64, thumbnailUrl: videoBase64 };
+    console.error('❌ Video upload failed:', err);
+    return { videoUrl: videoBase64, thumbnailUrl: videoBase64, success: false };
+  }
+}
+
+// Safe thumbnail extraction helper
+async function extractVideoThumbnailSafe(videoBase64: string): Promise<{ thumbnailBlob: Blob; thumbnailBase64: string }> {
+  try {
+    return await extractVideoThumbnail(videoBase64);
+  } catch {
+    // Return placeholder
+    const canvas = document.createElement('canvas');
+    canvas.width = 320;
+    canvas.height = 240;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, 320, 240);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '48px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('🎥', 160, 130);
+    }
+    const thumbnailBase64 = canvas.toDataURL('image/jpeg', 0.5);
+    const thumbnailBlob = await (await fetch(thumbnailBase64)).blob();
+    return { thumbnailBlob, thumbnailBase64 };
   }
 }
 

@@ -615,12 +615,22 @@ export function EnhancedAIChatInterface() {
       const userMessageId = crypto.randomUUID();
       
       // ✅ CRITICAL: Upload image to Supabase Storage for persistence
-      const { url: imageStorageUrl, compressedBase64 } = await uploadChatImage(
+      const { url: imageStorageUrl, compressedBase64, success: uploadSuccess } = await uploadChatImage(
         base64Images[0],
         sessionId,
         userMessageId,
         user.id
       );
+      
+      // Warn if upload failed (will use base64 fallback)
+      if (!uploadSuccess) {
+        console.warn('⚠️ Image upload to storage failed, using base64 fallback');
+        toast({
+          title: 'Image saved locally',
+          description: 'Image will be visible but not stored permanently',
+          variant: 'default'
+        });
+      }
       
       // ✅ Create user message with image URL for persistent display
       const userMessage: Message = {
@@ -792,15 +802,28 @@ export function EnhancedAIChatInterface() {
       // ✅ CRITICAL: Upload image/video to Supabase Storage with compression
       let imageStorageUrl: string;
       let videoStorageUrl: string | undefined;
+      let uploadSuccess = true;
       
       if (isPhoto) {
-        const { url } = await uploadChatImage(data.data, sessionId, userMessageId, user.id);
-        imageStorageUrl = url;
+        const result = await uploadChatImage(data.data, sessionId, userMessageId, user.id);
+        imageStorageUrl = result.url;
+        uploadSuccess = result.success;
       } else {
         // ✅ PRODUCTION-READY: Compress and upload video + thumbnail
-        const { videoUrl, thumbnailUrl } = await uploadCompressedVideo(data.data, sessionId, userMessageId, user.id);
-        videoStorageUrl = videoUrl;
-        imageStorageUrl = thumbnailUrl; // Use thumbnail as preview image
+        const result = await uploadCompressedVideo(data.data, sessionId, userMessageId, user.id);
+        videoStorageUrl = result.videoUrl;
+        imageStorageUrl = result.thumbnailUrl; // Use thumbnail as preview image
+        uploadSuccess = result.success;
+      }
+      
+      // Warn if upload failed
+      if (!uploadSuccess) {
+        console.warn('⚠️ Media upload to storage failed, using base64 fallback');
+        toast({
+          title: isPhoto ? 'Photo saved locally' : 'Video saved locally',
+          description: 'Media will be visible but not stored permanently',
+          variant: 'default'
+        });
       }
       
       setPendingVisionAnalysis({ 
