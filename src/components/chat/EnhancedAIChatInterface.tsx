@@ -761,9 +761,9 @@ export function EnhancedAIChatInterface() {
           content: aiContent,
           timestamp: new Date(),
           messageType: 'image_analysis_response',
-          // ✅ CRITICAL: Include image and analysis for full card display
           imageUrl: imageStorageUrl,
-          analysisResult: scanResult.result
+          analysisResult: scanResult.result,
+          awaitingSuggestionSelection: true // ✅ NEW: Show diagnosis + selector first
         };
         
         setMessages(prev => ({
@@ -948,9 +948,9 @@ export function EnhancedAIChatInterface() {
           content: aiContent,
           timestamp: new Date(),
           messageType: isPhoto ? 'image_analysis_response' : 'video_analysis_response',
-          // ✅ CRITICAL: Include image/thumbnail and analysis for full card display
           imageUrl: imageStorageUrl,
-          analysisResult: scanResult.result
+          analysisResult: scanResult.result,
+          awaitingSuggestionSelection: true // ✅ NEW: Show diagnosis + selector first
         };
         
         setMessages(prev => ({
