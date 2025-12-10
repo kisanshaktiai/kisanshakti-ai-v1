@@ -728,7 +728,7 @@ export function EnhancedAIChatInterface() {
         setPendingVisionAnalysis(null);
         
         // ✅ CRITICAL: Save AI response to database for training
-        await supabase.from('ai_chat_messages').insert({
+        const { error: insertError } = await supabase.from('ai_chat_messages').insert({
           id: aiMessageId,
           tenant_id: tenant.id,
           farmer_id: user.id,
@@ -738,6 +738,7 @@ export function EnhancedAIChatInterface() {
           message_type: 'image_analysis_response',
           ai_model: 'gemini-2.5-flash',
           land_context: landContext,
+          image_urls: [imageStorageUrl], // ✅ Store image URL in image_urls for loading
           metadata: {
             analysis_result: scanResult.result,
             crop_detected: scanResult.result.cropDetected,
@@ -749,6 +750,12 @@ export function EnhancedAIChatInterface() {
           is_training_candidate: true,
           word_count: aiContent.split(' ').length
         });
+        
+        if (insertError) {
+          console.error('Failed to save AI response message:', insertError);
+        } else {
+          console.log('✅ AI analysis response saved to database');
+        }
         
       } else {
         throw new Error(scanResult?.error || 'Analysis failed');
@@ -895,7 +902,7 @@ export function EnhancedAIChatInterface() {
         setPendingVisionAnalysis(null);
         
         // ✅ CRITICAL: Save AI response to database for training
-        await supabase.from('ai_chat_messages').insert({
+        const { error: insertError } = await supabase.from('ai_chat_messages').insert({
           id: aiMessageId,
           tenant_id: tenant.id,
           farmer_id: user.id,
@@ -920,6 +927,12 @@ export function EnhancedAIChatInterface() {
           is_training_candidate: true,
           word_count: aiContent.split(' ').length
         });
+        
+        if (insertError) {
+          console.error('Failed to save AI response message:', insertError);
+        } else {
+          console.log('✅ AI camera analysis response saved to database');
+        }
         
       } else {
         throw new Error(scanResult?.error || 'Analysis failed');
