@@ -129,7 +129,7 @@ export function EnhancedAIChatInterface() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
+  
   const lastScrollTop = useRef(0);
   const isUserScrollingRef = useRef(false);
   const isAutoScrollingRef = useRef(false);
@@ -460,10 +460,85 @@ export function EnhancedAIChatInterface() {
     }
   };
 
-  const handleCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const hasPermission = await requestCameraPermission();
-    if (hasPermission) {
-      handleFileSelect(e);
+  // Process attached images through AI vision analysis
+  const processAttachedImages = async (files: File[]) => {
+    setIsAnalyzingImage(true);
+    
+    try {
+      // Convert files to base64
+      const base64Images = await Promise.all(
+        files.map(file => new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        }))
+      );
+      
+      setPendingVisionAnalysis({ imageUrl: base64Images[0] });
+      
+      const landId = activeTab !== 'general' ? activeTab : undefined;
+      const land = landId ? lands.find(l => l.id === landId) : null;
+      
+      // Call AI crop scan
+      const { data: scanResult, error } = await supabase.functions.invoke('ai-crop-scan', {
+        body: {
+          images: base64Images,
+          language,
+          farmerId: user?.id,
+          tenantId: tenant?.id,
+          landId,
+          landCrop: land?.current_crop,
+          mode: 'full'
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (scanResult?.success && scanResult?.result) {
+        setPendingVisionAnalysis({
+          imageUrl: base64Images[0],
+          result: scanResult.result
+        });
+        
+        // Show crop mismatch warning
+        if (land?.current_crop && scanResult.result.cropDetected?.matchesLandCrop === false) {
+          toast({
+            title: '⚠️ Crop Mismatch Detected',
+            description: `Detected: ${scanResult.result.cropDetected.name}. Expected: ${land.current_crop}. Using General AI for analysis.`,
+            variant: 'default'
+          });
+        }
+        
+        // Add analysis as AI message
+        const aiMessage: Message = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: scanResult.result.diagnosis?.summary || 'Analysis complete',
+          timestamp: new Date(),
+          structuredResponse: {
+            cards: [],
+            language
+          }
+        };
+        
+        setMessages(prev => ({
+          ...prev,
+          [activeTab]: [...(prev[activeTab] || []), aiMessage]
+        }));
+      } else {
+        throw new Error(scanResult?.error || 'Analysis failed');
+      }
+    } catch (err) {
+      console.error('Vision analysis error:', err);
+      setPendingVisionAnalysis(prev => prev ? { ...prev, error: err instanceof Error ? err.message : 'Analysis failed' } : null);
+      toast({
+        title: t('error.title'),
+        description: err instanceof Error ? err.message : 'Failed to analyze image',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsAnalyzingImage(false);
     }
   };
 
@@ -536,13 +611,22 @@ export function EnhancedAIChatInterface() {
     const messageText = text || inputValue.trim();
     const finalMessage = quickAction ? `${quickAction}: ${messageText}` : messageText;
     
+    // Check for image attachments - process them through vision analysis
+    const imageFiles = attachedFiles.filter(f => f.type.startsWith('image/'));
+    if (imageFiles.length > 0 && !finalMessage) {
+      // Process attached images through AI crop scan
+      await processAttachedImages(imageFiles);
+      setAttachedFiles([]);
+      return;
+    }
+    
     if (!finalMessage && !quickAction && attachedFiles.length === 0) return;
     
     const userMessageId = crypto.randomUUID();
     const userMessage: Message = {
       id: userMessageId,
       role: 'user',
-      content: finalMessage,
+      content: finalMessage || (imageFiles.length > 0 ? `[Analyzing ${imageFiles.length} image(s)]` : ''),
       timestamp: new Date()
     };
     
@@ -1321,7 +1405,29 @@ export function EnhancedAIChatInterface() {
           ))}
         </AnimatePresence>
         
-        {isLoading && (
+        {/* Vision Analysis Card - Shows when analyzing image/video */}
+        {(isAnalyzingImage || pendingVisionAnalysis) && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4"
+          >
+            <VisionAnalysisCard
+              imageUrl={pendingVisionAnalysis?.imageUrl}
+              videoUrl={pendingVisionAnalysis?.videoUrl}
+              isAnalyzing={isAnalyzingImage}
+              analysisResult={pendingVisionAnalysis?.result}
+              error={pendingVisionAnalysis?.error}
+              language={language}
+              onRetry={() => {
+                setPendingVisionAnalysis(null);
+                setShowCamera(true);
+              }}
+            />
+          </motion.div>
+        )}
+        
+        {isLoading && !isAnalyzingImage && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1414,21 +1520,24 @@ export function EnhancedAIChatInterface() {
                 <Paperclip className="h-4 w-4 text-muted-foreground" />
               </Button>
               
-              <input
-                ref={cameraInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={handleCameraCapture}
-              />
+              {/* Camera Button - Opens WorldClassCamera */}
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6"
-                onClick={() => cameraInputRef.current?.click()}
+                onClick={() => setShowCamera(true)}
               >
                 <Camera className="h-4 w-4 text-muted-foreground" />
+              </Button>
+              
+              {/* Video Button - Opens WorldClassCamera in video mode */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => setShowCamera(true)}
+              >
+                <Video className="h-4 w-4 text-muted-foreground" />
               </Button>
             </div>
             
@@ -1475,6 +1584,16 @@ export function EnhancedAIChatInterface() {
           </div>
         </div>
       </div>
+      
+      {/* WorldClassCamera Modal */}
+      {showCamera && (
+        <WorldClassCamera
+          onCapture={handleWorldClassCapture}
+          onClose={() => setShowCamera(false)}
+          maxVideoDuration={10}
+          language={language}
+        />
+      )}
     </div>
   );
 }
