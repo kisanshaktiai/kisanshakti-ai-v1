@@ -33,7 +33,7 @@ import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { useLanguageStore } from '@/stores/languageStore';
 import { useVoiceInitialization } from '@/hooks/useVoiceInitialization';
 import { VoiceDownloadCard } from '@/components/onboarding/VoiceDownloadCard';
-import { uploadChatImage, uploadVideoThumbnail } from '@/utils/chatImageStorage';
+import { uploadChatImage, uploadCompressedVideo } from '@/utils/chatImageStorage';
 
 interface Message {
   id: string;
@@ -698,6 +698,9 @@ export function EnhancedAIChatInterface() {
           [activeTab]: [...(prev[activeTab] || []), aiMessage]
         }));
         
+        // ✅ CRITICAL: Clear pendingVisionAnalysis to avoid duplicate display
+        setPendingVisionAnalysis(null);
+        
         // ✅ CRITICAL: Save AI response to database for training
         await supabase.from('ai_chat_messages').insert({
           id: aiMessageId,
@@ -753,18 +756,23 @@ export function EnhancedAIChatInterface() {
       const mediaType = data.type === 'photo' ? '📷' : '🎥';
       const isPhoto = data.type === 'photo';
       
-      // ✅ CRITICAL: Upload image/video thumbnail to Supabase Storage
+      // ✅ CRITICAL: Upload image/video to Supabase Storage with compression
       let imageStorageUrl: string;
+      let videoStorageUrl: string | undefined;
+      
       if (isPhoto) {
         const { url } = await uploadChatImage(data.data, sessionId, userMessageId, user.id);
         imageStorageUrl = url;
       } else {
-        imageStorageUrl = await uploadVideoThumbnail(data.data, sessionId, userMessageId, user.id);
+        // ✅ PRODUCTION-READY: Compress and upload video + thumbnail
+        const { videoUrl, thumbnailUrl } = await uploadCompressedVideo(data.data, sessionId, userMessageId, user.id);
+        videoStorageUrl = videoUrl;
+        imageStorageUrl = thumbnailUrl; // Use thumbnail as preview image
       }
       
       setPendingVisionAnalysis({ 
-        imageUrl: isPhoto ? imageStorageUrl : undefined, 
-        videoUrl: !isPhoto ? data.data : undefined 
+        imageUrl: imageStorageUrl, 
+        videoUrl: videoStorageUrl
       });
       
       // ✅ Create user message with image URL for persistent display
@@ -838,12 +846,6 @@ export function EnhancedAIChatInterface() {
       if (error) throw error;
       
       if (scanResult?.success && scanResult?.result) {
-        setPendingVisionAnalysis({
-          imageUrl: isPhoto ? imageStorageUrl : undefined,
-          videoUrl: !isPhoto ? data.data : undefined,
-          result: scanResult.result
-        });
-        
         // ✅ Create AI response message with full analysis result
         const aiMessageId = crypto.randomUUID();
         const aiContent = scanResult.result.diagnosis?.summary || 'Analysis complete';
@@ -853,7 +855,7 @@ export function EnhancedAIChatInterface() {
           content: aiContent,
           timestamp: new Date(),
           messageType: isPhoto ? 'image_analysis_response' : 'video_analysis_response',
-          // ✅ CRITICAL: Include image and analysis for full card display
+          // ✅ CRITICAL: Include image/thumbnail and analysis for full card display
           imageUrl: imageStorageUrl,
           analysisResult: scanResult.result
         };
@@ -862,6 +864,9 @@ export function EnhancedAIChatInterface() {
           ...prev,
           [activeTab]: [...(prev[activeTab] || []), aiMessage]
         }));
+        
+        // ✅ CRITICAL: Clear pendingVisionAnalysis to avoid duplicate display
+        setPendingVisionAnalysis(null);
         
         // ✅ CRITICAL: Save AI response to database for training
         await supabase.from('ai_chat_messages').insert({
@@ -872,6 +877,7 @@ export function EnhancedAIChatInterface() {
           role: 'assistant',
           content: aiContent,
           message_type: isPhoto ? 'image_analysis_response' : 'video_analysis_response',
+          image_urls: [imageStorageUrl], // ✅ Store thumbnail/image URL
           ai_model: 'gemini-2.5-flash',
           land_context: landContext,
           metadata: {
@@ -880,7 +886,8 @@ export function EnhancedAIChatInterface() {
             diagnosis: scanResult.result.diagnosis,
             media_type: data.type,
             duration: data.duration,
-            image_analyzed: imageStorageUrl
+            image_analyzed: imageStorageUrl,
+            video_url: videoStorageUrl // ✅ Store video URL separately
           },
           language,
           status: 'delivered',

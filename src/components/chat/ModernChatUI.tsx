@@ -69,6 +69,12 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
   const isUser = message.role === 'user';
   const currentLanguage = i18n.language || 'hi'; // Use i18n language, default to Hindi
   
+  // ✅ CRITICAL: Skip rendering user messages for image/video analysis
+  // The image will be shown ONLY in the AI response analysis card (single source of truth)
+  if (isUser && (message.messageType === 'image_analysis' || message.messageType === 'video_analysis')) {
+    return null;
+  }
+  
   // Get consistent gradient based on message id hash
   const userGradient = useMemo(() => {
     if (!isUser) return '';
@@ -253,8 +259,8 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
             </>
           ) : (
             <>
-              {/* ✅ Display attached images for user messages */}
-              {message.imageUrl && (
+          {/* ✅ Display attached images for user messages - SKIP for image_analysis (shown in AI response card) */}
+              {message.imageUrl && !(isUser && (message.messageType === 'image_analysis' || message.messageType === 'video_analysis')) && (
                 <div className={cn(
                   isUser ? "p-1 pb-2" : "px-3 pt-3"
                 )}>
@@ -271,13 +277,6 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
                       )}
                       loading="lazy"
                     />
-                    {isUser && message.messageType && (
-                      <div className="absolute top-2 right-2">
-                        <Badge className="bg-primary text-white text-xs">
-                          {message.messageType === 'video_analysis' ? '🎥 Video' : '📷 Analyzing...'}
-                        </Badge>
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
