@@ -291,18 +291,33 @@ export function EnhancedAIChatInterface() {
             .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
             .map(msg => {
               const metadata = msg.metadata as Record<string, any> | null;
+              const imageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
+              
+              // ✅ CRITICAL: Extract analysis_result for AI response cards  
+              const analysisResult = metadata?.analysis_result || undefined;
+              
+              // Debug log for analysis messages
+              if (msg.message_type?.includes('image') || msg.message_type?.includes('video')) {
+                console.log(`📷 [LocalDB] Analysis message cached:`, {
+                  id: msg.id,
+                  role: msg.role,
+                  message_type: msg.message_type,
+                  has_analysis_result: !!analysisResult,
+                  analysis_crop: analysisResult?.cropDetected?.name,
+                  resolved_url: imageUrl?.substring(0, 100)
+                });
+              }
+              
               return {
                 id: msg.id,
                 role: msg.role as 'user' | 'assistant',
                 content: msg.content,
                 timestamp: new Date(msg.created_at),
-                // Map image/video fields from LocalDB
-                imageUrl: msg.image_urls?.[0] || metadata?.image_analyzed || undefined,
+                imageUrl,
                 imageUrls: msg.image_urls || undefined,
                 videoUrl: metadata?.video_url || undefined,
                 messageType: msg.message_type as Message['messageType'] || 'text',
-                // Map analysis result for full card display
-                analysisResult: metadata?.analysis_result || undefined,
+                analysisResult,
                 feedback: msg.feedback_rating 
                   ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
                   : null
@@ -411,25 +426,47 @@ export function EnhancedAIChatInterface() {
           })();
         }
 
+        // ✅ DEBUG: Log loaded messages with image info
+        const mappedMessages = (previousMessages || []).map(msg => {
+          const metadata = msg.metadata as Record<string, any> | null;
+          const imageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
+          
+          // ✅ CRITICAL: Extract analysis_result for AI response cards
+          const analysisResult = metadata?.analysis_result || undefined;
+          
+          // Log ALL image analysis messages for debugging
+          if (msg.message_type?.includes('image') || msg.message_type?.includes('video')) {
+            console.log(`📷 [loadLandSession] Analysis message loaded:`, {
+              id: msg.id,
+              role: msg.role,
+              message_type: msg.message_type,
+              image_urls: msg.image_urls,
+              has_analysis_result: !!analysisResult,
+              analysis_crop: analysisResult?.cropDetected?.name,
+              resolved_url: imageUrl?.substring(0, 100)
+            });
+          }
+          
+          return {
+            id: msg.id,
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+            timestamp: new Date(msg.created_at),
+            imageUrl,
+            imageUrls: msg.image_urls || undefined,
+            videoUrl: metadata?.video_url || undefined,
+            messageType: msg.message_type as Message['messageType'] || 'text',
+            analysisResult,
+            feedback: msg.feedback_rating 
+              ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
+              : null
+          };
+        });
+        
+        console.log(`✅ [loadLandSession] Loaded ${mappedMessages.length} messages for ${sessionKey}`);
         return {
           sessionId: existingSession.id,
-          messages: (previousMessages || []).map(msg => {
-            const metadata = msg.metadata as Record<string, any> | null;
-            return {
-              id: msg.id,
-              role: msg.role as 'user' | 'assistant',
-              content: msg.content,
-              timestamp: new Date(msg.created_at),
-              imageUrl: msg.image_urls?.[0] || metadata?.image_analyzed || undefined,
-              imageUrls: msg.image_urls || undefined,
-              videoUrl: metadata?.video_url || undefined,
-              messageType: msg.message_type as Message['messageType'] || 'text',
-              analysisResult: metadata?.analysis_result || undefined,
-              feedback: msg.feedback_rating 
-                ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
-                : null
-            };
-          })
+          messages: mappedMessages
         };
       }
 
@@ -615,12 +652,22 @@ export function EnhancedAIChatInterface() {
       const userMessageId = crypto.randomUUID();
       
       // ✅ CRITICAL: Upload image to Supabase Storage for persistence
-      const { url: imageStorageUrl, compressedBase64 } = await uploadChatImage(
+      const { url: imageStorageUrl, compressedBase64, success: uploadSuccess } = await uploadChatImage(
         base64Images[0],
         sessionId,
         userMessageId,
         user.id
       );
+      
+      // Warn if upload failed (will use base64 fallback)
+      if (!uploadSuccess) {
+        console.warn('⚠️ Image upload to storage failed, using base64 fallback');
+        toast({
+          title: 'Image saved locally',
+          description: 'Image will be visible but not stored permanently',
+          variant: 'default'
+        });
+      }
       
       // ✅ Create user message with image URL for persistent display
       const userMessage: Message = {
@@ -728,7 +775,7 @@ export function EnhancedAIChatInterface() {
         setPendingVisionAnalysis(null);
         
         // ✅ CRITICAL: Save AI response to database for training
-        await supabase.from('ai_chat_messages').insert({
+        const { error: insertError } = await supabase.from('ai_chat_messages').insert({
           id: aiMessageId,
           tenant_id: tenant.id,
           farmer_id: user.id,
@@ -738,6 +785,7 @@ export function EnhancedAIChatInterface() {
           message_type: 'image_analysis_response',
           ai_model: 'gemini-2.5-flash',
           land_context: landContext,
+          image_urls: [imageStorageUrl], // ✅ Store image URL in image_urls for loading
           metadata: {
             analysis_result: scanResult.result,
             crop_detected: scanResult.result.cropDetected,
@@ -745,10 +793,16 @@ export function EnhancedAIChatInterface() {
             image_analyzed: imageStorageUrl
           },
           language,
-          status: 'delivered',
+          status: 'sent',
           is_training_candidate: true,
           word_count: aiContent.split(' ').length
         });
+        
+        if (insertError) {
+          console.error('Failed to save AI response message:', insertError);
+        } else {
+          console.log('✅ AI analysis response saved to database');
+        }
         
       } else {
         throw new Error(scanResult?.error || 'Analysis failed');
@@ -785,15 +839,28 @@ export function EnhancedAIChatInterface() {
       // ✅ CRITICAL: Upload image/video to Supabase Storage with compression
       let imageStorageUrl: string;
       let videoStorageUrl: string | undefined;
+      let uploadSuccess = true;
       
       if (isPhoto) {
-        const { url } = await uploadChatImage(data.data, sessionId, userMessageId, user.id);
-        imageStorageUrl = url;
+        const result = await uploadChatImage(data.data, sessionId, userMessageId, user.id);
+        imageStorageUrl = result.url;
+        uploadSuccess = result.success;
       } else {
         // ✅ PRODUCTION-READY: Compress and upload video + thumbnail
-        const { videoUrl, thumbnailUrl } = await uploadCompressedVideo(data.data, sessionId, userMessageId, user.id);
-        videoStorageUrl = videoUrl;
-        imageStorageUrl = thumbnailUrl; // Use thumbnail as preview image
+        const result = await uploadCompressedVideo(data.data, sessionId, userMessageId, user.id);
+        videoStorageUrl = result.videoUrl;
+        imageStorageUrl = result.thumbnailUrl; // Use thumbnail as preview image
+        uploadSuccess = result.success;
+      }
+      
+      // Warn if upload failed
+      if (!uploadSuccess) {
+        console.warn('⚠️ Media upload to storage failed, using base64 fallback');
+        toast({
+          title: isPhoto ? 'Photo saved locally' : 'Video saved locally',
+          description: 'Media will be visible but not stored permanently',
+          variant: 'default'
+        });
       }
       
       setPendingVisionAnalysis({ 
@@ -895,7 +962,7 @@ export function EnhancedAIChatInterface() {
         setPendingVisionAnalysis(null);
         
         // ✅ CRITICAL: Save AI response to database for training
-        await supabase.from('ai_chat_messages').insert({
+        const { error: insertError } = await supabase.from('ai_chat_messages').insert({
           id: aiMessageId,
           tenant_id: tenant.id,
           farmer_id: user.id,
@@ -916,10 +983,16 @@ export function EnhancedAIChatInterface() {
             video_url: videoStorageUrl // ✅ Store video URL separately
           },
           language,
-          status: 'delivered',
+          status: 'sent',
           is_training_candidate: true,
           word_count: aiContent.split(' ').length
         });
+        
+        if (insertError) {
+          console.error('Failed to save AI response message:', insertError);
+        } else {
+          console.log('✅ AI camera analysis response saved to database');
+        }
         
       } else {
         throw new Error(scanResult?.error || 'Analysis failed');

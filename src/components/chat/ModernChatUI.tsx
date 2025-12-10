@@ -65,16 +65,34 @@ const USER_BUBBLE_GRADIENTS = [
   'from-[hsl(var(--chat-user-3))] via-[hsl(var(--chat-user-3-mid))] to-[hsl(var(--chat-user-3-end))]',
 ];
 
+// ✅ Helper to check if URL is a valid storage URL (not base64)
+const isValidStorageUrl = (url: string | undefined): boolean => {
+  if (!url) return false;
+  return url.startsWith('https://') || url.startsWith('http://');
+};
+
+// ✅ Check if URL is base64 data
+const isBase64Image = (url: string | undefined): boolean => {
+  if (!url) return false;
+  return url.startsWith('data:image/') || url.startsWith('data:video/');
+};
+
+// ✅ Get display-ready image URL (handles base64 and storage URLs)
+const getImageSrc = (url: string | undefined): string | undefined => {
+  if (!url) return undefined;
+  // Both base64 and https URLs can be used directly as img src
+  return url;
+};
+
+// ✅ Check if image URL is usable (either storage or base64)
+const isUsableImageUrl = (url: string | undefined): boolean => {
+  return isValidStorageUrl(url) || isBase64Image(url);
+};
+
 export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: ModernChatUIProps) {
   const { i18n } = useTranslation();
   const isUser = message.role === 'user';
   const currentLanguage = i18n.language || 'hi';
-  
-  // ✅ CRITICAL: Hide user messages for image/video analysis
-  // The analysis result is shown ONLY in the AI response card (single source of truth)
-  if (isUser && (message.messageType === 'image_analysis' || message.messageType === 'video_analysis')) {
-    return null;
-  }
   
   // Get consistent gradient based on message id hash
   const userGradient = useMemo(() => {
@@ -82,6 +100,21 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
     const hash = message.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     return USER_BUBBLE_GRADIENTS[hash % USER_BUBBLE_GRADIENTS.length];
   }, [message.id, isUser]);
+  
+  // ✅ FIXED: Get first valid image URL - check all possible sources
+  const displayImageUrl = useMemo(() => {
+    const url = getImageSrc(message.imageUrl) || 
+           (message.imageUrls?.length ? getImageSrc(message.imageUrls[0]) : undefined);
+    console.log(`[ModernChatUI] Message ${message.id} imageUrl:`, { 
+      imageUrl: message.imageUrl, 
+      imageUrls: message.imageUrls, 
+      displayUrl: url?.substring(0, 100) 
+    });
+    return url;
+  }, [message.imageUrl, message.imageUrls, message.id]);
+  
+  // ✅ FIXED: For user image/video messages, show ONLY the image (no text/cards)
+  const isUserImageMessage = isUser && (message.messageType === 'image_analysis' || message.messageType === 'video_analysis');
   
   // ✅ Enhanced text formatter - handles numbered lists, bullets, and line breaks
   const formatAIResponse = (text: string) => {
@@ -144,6 +177,18 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
   // Check if this is an analysis response with full details
   const hasAnalysisResult = !isUser && message.analysisResult;
   const hasStructuredCards = !isUser && message.structuredResponse?.cards?.length > 0;
+  
+  // ✅ DEBUG: Log AI response rendering decision
+  if (!isUser && (message.messageType?.includes('image') || message.messageType?.includes('video'))) {
+    console.log(`🎯 [ModernChatUI] AI Response rendering:`, {
+      id: message.id,
+      messageType: message.messageType,
+      hasAnalysisResult: !!message.analysisResult,
+      cropDetected: message.analysisResult?.cropDetected?.name,
+      hasStructuredCards,
+      imageUrl: message.imageUrl?.substring(0, 80)
+    });
+  }
   
   // ✅ Check if content is a placeholder that should be hidden
   const isPlaceholderContent = message.content.includes('[📷') || 
@@ -210,13 +255,17 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
           {hasAnalysisResult ? (
             <>
               {/* Image with Analyzed badge */}
-              {message.imageUrl && (
+              {displayImageUrl && (
                 <div className="relative">
                   <img 
-                    src={message.imageUrl} 
+                    src={displayImageUrl} 
                     alt="Analyzed" 
                     className="w-full aspect-video object-cover"
                     loading="lazy"
+                    onError={(e) => {
+                      // Hide broken images
+                      (e.target as HTMLImageElement).style.display = 'none';
+                    }}
                   />
                   <div className="absolute top-2 right-2">
                     <Badge className="bg-green-500 text-white shadow-lg">
@@ -277,10 +326,44 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
                 )}
               </div>
             </>
+          ) : isUserImageMessage ? (
+            // ✅ FIXED: User image/video messages - show ONLY the image (no text)
+            <>
+              {displayImageUrl && (
+                <div className="p-1">
+                  <div className="relative rounded-xl overflow-hidden shadow-sm border-2 border-white/20">
+                    <img 
+                      src={displayImageUrl} 
+                      alt="Uploaded"
+                      className="w-full max-h-48 object-cover"
+                      loading="lazy"
+                      onError={(e) => {
+                        console.error('[ModernChatUI] Image load error:', displayImageUrl?.substring(0, 100));
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                    <div className="absolute bottom-2 right-2">
+                      <Badge variant="secondary" className="bg-black/60 text-white text-xs">
+                        {message.messageType === 'video_analysis' ? '🎥 Video' : '📷 Photo'}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* Timestamp */}
+              <div className="flex items-center justify-end text-xs opacity-60 text-primary-foreground/80 px-2 pb-2">
+                <span>
+                  {new Date(message.timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </span>
+              </div>
+            </>
           ) : (
             <>
-              {/* Display attached images - but NOT for analysis placeholders */}
-              {message.imageUrl && !isPlaceholderContent && (
+              {/* Display attached images */}
+              {displayImageUrl && (
                 <div className={cn(
                   isUser ? "p-1 pb-2" : "px-3 pt-3"
                 )}>
@@ -289,34 +372,41 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
                     isUser ? "border-2 border-white/20" : "border border-border/30"
                   )}>
                     <img 
-                      src={message.imageUrl} 
+                      src={displayImageUrl} 
                       alt="Uploaded"
                       className={cn(
                         "w-full object-cover",
                         isUser ? "max-h-48" : "max-h-64"
                       )}
                       loading="lazy"
+                      onError={(e) => {
+                        console.error('[ModernChatUI] Image load error:', displayImageUrl?.substring(0, 100));
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
                     />
                   </div>
                 </div>
               )}
               
               {/* Multiple images support */}
-              {message.imageUrls && message.imageUrls.length > 1 && !message.imageUrl && (
+              {message.imageUrls && message.imageUrls.length > 1 && (
                 <div className={cn(
                   "grid grid-cols-2 gap-2",
                   isUser ? "p-1 pb-2" : "px-3 pt-3"
                 )}>
-                  {message.imageUrls.map((url, idx) => (
+                  {message.imageUrls.slice(1).map((url, idx) => (
                     <div key={idx} className={cn(
                       "relative rounded-lg overflow-hidden",
                       isUser ? "border-2 border-white/20" : "border border-border/30"
                     )}>
                       <img 
-                        src={url} 
-                        alt={`Upload ${idx + 1}`}
+                        src={getImageSrc(url)} 
+                        alt={`Upload ${idx + 2}`}
                         className="w-full h-32 object-cover"
                         loading="lazy"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
                       />
                     </div>
                   ))}

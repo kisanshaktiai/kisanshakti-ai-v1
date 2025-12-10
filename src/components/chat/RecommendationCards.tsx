@@ -275,6 +275,20 @@ function RecommendationCard({ category, language }: { category: RecommendationCa
 export function RecommendationCards({ analysis, language = 'en' }: RecommendationCardsProps) {
   const labels = getLabels(language);
   
+  // ✅ Safety check: Ensure analysis has required fields
+  if (!analysis?.cropDetected || !analysis?.healthStatus || !analysis?.diagnosis) {
+    console.warn('[RecommendationCards] Incomplete analysis data:', {
+      hasCropDetected: !!analysis?.cropDetected,
+      hasHealthStatus: !!analysis?.healthStatus,
+      hasDiagnosis: !!analysis?.diagnosis
+    });
+    return (
+      <div className="p-4 text-center text-muted-foreground">
+        <p>Analysis data is incomplete. Please try again.</p>
+      </div>
+    );
+  }
+  
   // Health status colors
   const healthColors = {
     healthy: 'bg-green-500',
