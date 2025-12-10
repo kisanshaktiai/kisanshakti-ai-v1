@@ -9,6 +9,9 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+// Re-export type for convenience
+export type { VisionAnalysisResult } from './RecommendationCards';
 import { RecommendationCards, VisionAnalysisResult } from './RecommendationCards';
 
 interface VisionAnalysisCardProps {
