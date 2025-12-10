@@ -785,7 +785,7 @@ export function EnhancedAIChatInterface() {
             image_analyzed: imageStorageUrl
           },
           language,
-          status: 'delivered',
+          status: 'sent',
           is_training_candidate: true,
           word_count: aiContent.split(' ').length
         });
@@ -975,7 +975,7 @@ export function EnhancedAIChatInterface() {
             video_url: videoStorageUrl // ✅ Store video URL separately
           },
           language,
-          status: 'delivered',
+          status: 'sent',
           is_training_candidate: true,
           word_count: aiContent.split(' ').length
         });
