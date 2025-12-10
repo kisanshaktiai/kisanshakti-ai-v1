@@ -46,9 +46,12 @@ interface Message {
   imageUrl?: string;
   imageUrls?: string[];
   videoUrl?: string;
-  messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response';
+  messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response' | 'suggestion_selector' | 'targeted_solution';
   // Full analysis result for detailed recommendation cards
   analysisResult?: VisionAnalysisResult;
+  // ✅ NEW: Suggestion selection flow
+  awaitingSuggestionSelection?: boolean;
+  suggestionType?: 'organic' | 'fertilizer' | 'pesticide' | 'hybrid';
   structured?: {
     greeting?: string;
     landContext?: string;
