@@ -16,6 +16,10 @@ interface Message {
   isPlaying?: boolean;
   feedback?: 'like' | 'dislike' | null;
   isCopied?: boolean;
+  // ✅ NEW: Image support for persistent display
+  imageUrl?: string;
+  imageUrls?: string[];
+  messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response';
   structuredResponse?: {
     cards: Array<{
       id: string;
@@ -208,17 +212,70 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
             </>
           ) : (
             <>
+              {/* ✅ Display attached images for BOTH user and AI messages */}
+              {message.imageUrl && (
+                <div className={cn(
+                  isUser ? "p-1 pb-2" : "px-3 pt-3"
+                )}>
+                  <div className={cn(
+                    "relative rounded-xl overflow-hidden shadow-sm",
+                    isUser ? "border-2 border-white/20" : "border border-border/30"
+                  )}>
+                    <img 
+                      src={message.imageUrl} 
+                      alt="Uploaded for analysis"
+                      className={cn(
+                        "w-full object-cover",
+                        isUser ? "max-h-48" : "max-h-64"
+                      )}
+                      loading="lazy"
+                    />
+                    {message.messageType && !isUser && (
+                      <div className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full backdrop-blur-sm">
+                        {message.messageType === 'video_analysis' ? '🎥 Video' : '📷 Image'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Multiple images support */}
+              {message.imageUrls && message.imageUrls.length > 1 && !message.imageUrl && (
+                <div className={cn(
+                  "grid grid-cols-2 gap-2",
+                  isUser ? "p-1 pb-2" : "px-3 pt-3"
+                )}>
+                  {message.imageUrls.map((url, idx) => (
+                    <div key={idx} className={cn(
+                      "relative rounded-lg overflow-hidden",
+                      isUser ? "border-2 border-white/20" : "border border-border/30"
+                    )}>
+                      <img 
+                        src={url} 
+                        alt={`Upload ${idx + 1}`}
+                        className="w-full h-32 object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+              
               {/* Message Text with Enhanced Formatting */}
               <div 
                 className={cn(
                   "relative z-10 px-4 py-3",
-                  isUser ? "text-primary-foreground" : "text-foreground"
+                  isUser ? "text-primary-foreground" : "text-foreground",
+                  message.imageUrl && "pt-2" // Reduce top padding if image above
                 )}
                 data-message-id={message.id}
               >
                 {isUser ? (
                   <span className="text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words">
-                    {message.content}
+                    {/* Hide placeholder text if we have an image/video */}
+                    {message.imageUrl && (message.content.includes('[📷') || message.content.includes('[🎥')) 
+                      ? null 
+                      : message.content}
                   </span>
                 ) : (
                   formatAIResponse(message.content)
