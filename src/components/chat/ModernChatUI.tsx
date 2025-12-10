@@ -178,6 +178,18 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
   const hasAnalysisResult = !isUser && message.analysisResult;
   const hasStructuredCards = !isUser && message.structuredResponse?.cards?.length > 0;
   
+  // ✅ DEBUG: Log AI response rendering decision
+  if (!isUser && (message.messageType?.includes('image') || message.messageType?.includes('video'))) {
+    console.log(`🎯 [ModernChatUI] AI Response rendering:`, {
+      id: message.id,
+      messageType: message.messageType,
+      hasAnalysisResult: !!message.analysisResult,
+      cropDetected: message.analysisResult?.cropDetected?.name,
+      hasStructuredCards,
+      imageUrl: message.imageUrl?.substring(0, 80)
+    });
+  }
+  
   // ✅ Check if content is a placeholder that should be hidden
   const isPlaceholderContent = message.content.includes('[📷') || 
     message.content.includes('[🎥') || 

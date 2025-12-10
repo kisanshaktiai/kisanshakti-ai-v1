@@ -293,13 +293,17 @@ export function EnhancedAIChatInterface() {
               const metadata = msg.metadata as Record<string, any> | null;
               const imageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
               
-              // Debug log for image messages
-              if (msg.image_urls?.length || metadata?.image_analyzed) {
-                console.log(`📷 [LocalDB] Image message cached:`, {
+              // ✅ CRITICAL: Extract analysis_result for AI response cards  
+              const analysisResult = metadata?.analysis_result || undefined;
+              
+              // Debug log for analysis messages
+              if (msg.message_type?.includes('image') || msg.message_type?.includes('video')) {
+                console.log(`📷 [LocalDB] Analysis message cached:`, {
                   id: msg.id,
                   role: msg.role,
                   message_type: msg.message_type,
-                  image_urls: msg.image_urls,
+                  has_analysis_result: !!analysisResult,
+                  analysis_crop: analysisResult?.cropDetected?.name,
                   resolved_url: imageUrl?.substring(0, 100)
                 });
               }
@@ -313,7 +317,7 @@ export function EnhancedAIChatInterface() {
                 imageUrls: msg.image_urls || undefined,
                 videoUrl: metadata?.video_url || undefined,
                 messageType: msg.message_type as Message['messageType'] || 'text',
-                analysisResult: metadata?.analysis_result || undefined,
+                analysisResult,
                 feedback: msg.feedback_rating 
                   ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
                   : null
@@ -427,14 +431,18 @@ export function EnhancedAIChatInterface() {
           const metadata = msg.metadata as Record<string, any> | null;
           const imageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
           
-          // Log image messages for debugging
-          if (msg.image_urls?.length || metadata?.image_analyzed) {
-            console.log(`📷 [loadLandSession] Image message loaded:`, {
+          // ✅ CRITICAL: Extract analysis_result for AI response cards
+          const analysisResult = metadata?.analysis_result || undefined;
+          
+          // Log ALL image analysis messages for debugging
+          if (msg.message_type?.includes('image') || msg.message_type?.includes('video')) {
+            console.log(`📷 [loadLandSession] Analysis message loaded:`, {
               id: msg.id,
               role: msg.role,
               message_type: msg.message_type,
               image_urls: msg.image_urls,
-              metadata_image: metadata?.image_analyzed,
+              has_analysis_result: !!analysisResult,
+              analysis_crop: analysisResult?.cropDetected?.name,
               resolved_url: imageUrl?.substring(0, 100)
             });
           }
@@ -448,7 +456,7 @@ export function EnhancedAIChatInterface() {
             imageUrls: msg.image_urls || undefined,
             videoUrl: metadata?.video_url || undefined,
             messageType: msg.message_type as Message['messageType'] || 'text',
-            analysisResult: metadata?.analysis_result || undefined,
+            analysisResult,
             feedback: msg.feedback_rating 
               ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
               : null
