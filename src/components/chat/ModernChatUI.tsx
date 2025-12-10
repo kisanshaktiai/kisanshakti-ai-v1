@@ -94,12 +94,6 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
   const isUser = message.role === 'user';
   const currentLanguage = i18n.language || 'hi';
   
-  // ✅ CRITICAL: Hide user messages for image/video analysis
-  // The analysis result is shown ONLY in the AI response card (single source of truth)
-  if (isUser && (message.messageType === 'image_analysis' || message.messageType === 'video_analysis')) {
-    return null;
-  }
-  
   // Get consistent gradient based on message id hash
   const userGradient = useMemo(() => {
     if (!isUser) return '';
@@ -107,11 +101,20 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
     return USER_BUBBLE_GRADIENTS[hash % USER_BUBBLE_GRADIENTS.length];
   }, [message.id, isUser]);
   
-  // ✅ Get first valid image URL
+  // ✅ FIXED: Get first valid image URL - check all possible sources
   const displayImageUrl = useMemo(() => {
-    return getImageSrc(message.imageUrl) || 
+    const url = getImageSrc(message.imageUrl) || 
            (message.imageUrls?.length ? getImageSrc(message.imageUrls[0]) : undefined);
-  }, [message.imageUrl, message.imageUrls]);
+    console.log(`[ModernChatUI] Message ${message.id} imageUrl:`, { 
+      imageUrl: message.imageUrl, 
+      imageUrls: message.imageUrls, 
+      displayUrl: url?.substring(0, 100) 
+    });
+    return url;
+  }, [message.imageUrl, message.imageUrls, message.id]);
+  
+  // ✅ FIXED: For user image/video messages, show ONLY the image (no text/cards)
+  const isUserImageMessage = isUser && (message.messageType === 'image_analysis' || message.messageType === 'video_analysis');
   
   // ✅ Enhanced text formatter - handles numbered lists, bullets, and line breaks
   const formatAIResponse = (text: string) => {
@@ -311,10 +314,44 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
                 )}
               </div>
             </>
+          ) : isUserImageMessage ? (
+            // ✅ FIXED: User image/video messages - show ONLY the image (no text)
+            <>
+              {displayImageUrl && (
+                <div className="p-1">
+                  <div className="relative rounded-xl overflow-hidden shadow-sm border-2 border-white/20">
+                    <img 
+                      src={displayImageUrl} 
+                      alt="Uploaded"
+                      className="w-full max-h-48 object-cover"
+                      loading="lazy"
+                      onError={(e) => {
+                        console.error('[ModernChatUI] Image load error:', displayImageUrl?.substring(0, 100));
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                    <div className="absolute bottom-2 right-2">
+                      <Badge variant="secondary" className="bg-black/60 text-white text-xs">
+                        {message.messageType === 'video_analysis' ? '🎥 Video' : '📷 Photo'}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {/* Timestamp */}
+              <div className="flex items-center justify-end text-xs opacity-60 text-primary-foreground/80 px-2 pb-2">
+                <span>
+                  {new Date(message.timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </span>
+              </div>
+            </>
           ) : (
             <>
-              {/* Display attached images - but NOT for analysis placeholders */}
-              {displayImageUrl && !isPlaceholderContent && (
+              {/* Display attached images */}
+              {displayImageUrl && (
                 <div className={cn(
                   isUser ? "p-1 pb-2" : "px-3 pt-3"
                 )}>
@@ -331,6 +368,7 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
                       )}
                       loading="lazy"
                       onError={(e) => {
+                        console.error('[ModernChatUI] Image load error:', displayImageUrl?.substring(0, 100));
                         (e.target as HTMLImageElement).style.display = 'none';
                       }}
                     />
