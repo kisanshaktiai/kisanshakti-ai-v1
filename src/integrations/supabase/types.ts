@@ -22280,6 +22280,7 @@ export type Database = {
         Args: { p_tenant_id: string }
         Returns: string
       }
+      get_request_farmer_id: { Args: never; Returns: string }
       get_session_farmer_id: { Args: never; Returns: string }
       get_session_tenant_id: { Args: never; Returns: string }
       get_spray_suitability: {
