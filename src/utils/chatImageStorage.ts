@@ -463,7 +463,7 @@ export async function uploadChatImage(
 }
 
 /**
- * Upload compressed video with thumbnail - Production-ready with auth check
+ * Upload compressed video with thumbnail - Production-ready with CUSTOM AUTH support
  */
 export async function uploadCompressedVideo(
   videoBase64: string,
@@ -477,16 +477,19 @@ export async function uploadCompressedVideo(
       return { videoUrl: videoBase64, thumbnailUrl: videoBase64, success: false };
     }
 
-    // ✅ CRITICAL: Verify user is authenticated
-    const { data: { session }, error: authError } = await supabase.auth.getSession();
-    if (authError || !session?.user) {
-      console.error('❌ uploadCompressedVideo: User not authenticated');
+    // ✅ CRITICAL: Get auth from custom auth store (NOT Supabase Auth)
+    const authState = useAuthStore.getState();
+    const farmerId = authState.user?.id;
+    const tenantId = authState.user?.tenantId;
+    
+    if (!farmerId || !tenantId) {
+      console.error('❌ uploadCompressedVideo: User not authenticated in custom auth store');
       const { thumbnailBlob, thumbnailBase64 } = await extractVideoThumbnailSafe(videoBase64);
       return { videoUrl: videoBase64, thumbnailUrl: thumbnailBase64, success: false };
     }
 
-    // Use authenticated user ID for RLS
-    const authUserId = session.user.id;
+    // Use the farmerId from auth store for the path
+    const authUserId = farmerId;
 
     const { videoBlob, thumbnailBlob, thumbnailBase64 } = await compressVideoForStorage(videoBase64);
     
@@ -494,13 +497,17 @@ export async function uploadCompressedVideo(
     
     console.log('📤 Uploading video to storage:', {
       bucket: STORAGE_BUCKET,
-      authUserId,
+      farmerId: authUserId,
+      tenantId,
       videoSizeMB: Math.round(videoBlob.size / 1024 / 1024 * 100) / 100
     });
     
+    // ✅ Use authenticated client with custom headers
+    const client = getAuthenticatedClient();
+    
     // Upload video
     const videoPath = `${authUserId}/${sessionId}/${messageId}_${timestamp}.webm`;
-    const { data: videoData, error: videoError } = await supabase.storage
+    const { data: videoData, error: videoError } = await client.storage
       .from(STORAGE_BUCKET)
       .upload(videoPath, videoBlob, {
         contentType: 'video/webm',
@@ -510,7 +517,7 @@ export async function uploadCompressedVideo(
     
     // Upload thumbnail
     const thumbPath = `${authUserId}/${sessionId}/${messageId}_${timestamp}_thumb.jpg`;
-    const { data: thumbData, error: thumbError } = await supabase.storage
+    const { data: thumbData, error: thumbError } = await client.storage
       .from(STORAGE_BUCKET)
       .upload(thumbPath, thumbnailBlob, {
         contentType: 'image/jpeg',
@@ -520,7 +527,7 @@ export async function uploadCompressedVideo(
     
     if (videoError || thumbError) {
       console.error('❌ Video upload error:', { videoError, thumbError });
-      // Try to at least return thumbnail URL
+      // Try to at least return thumbnail URL if it uploaded
       if (!thumbError && thumbData) {
         const { data: thumbUrlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(thumbData.path);
         return { videoUrl: videoBase64, thumbnailUrl: thumbUrlData.publicUrl, success: false };
@@ -528,6 +535,7 @@ export async function uploadCompressedVideo(
       return { videoUrl: videoBase64, thumbnailUrl: thumbnailBase64, success: false };
     }
     
+    // Use plain supabase for public URLs (no auth needed)
     const { data: videoUrlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(videoData!.path);
     const { data: thumbUrlData } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(thumbData!.path);
     
