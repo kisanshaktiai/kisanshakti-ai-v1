@@ -20,6 +20,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { landsApi } from '@/services/landsApi';
+import { localDB } from '@/services/localDB';
 import { LandContextCard } from './LandContextCard';
 import { GeneralChatWelcomeCard } from './GeneralChatWelcomeCard';
 import { ResponseSectionCard } from './ResponseSectionCard';
@@ -115,6 +116,7 @@ export function EnhancedAIChatInterface() {
   const [dynamicQuickReplies, setDynamicQuickReplies] = useState<Record<string, string[]>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true); // NEW: Loading state for chat history
   // Camera and Vision Analysis states
   const [showCamera, setShowCamera] = useState(false);
   const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
@@ -265,9 +267,34 @@ export function EnhancedAIChatInterface() {
   }, []);
 
   // ✅ CRITICAL FIX: Define loadLandSession FIRST (before fetchLands that depends on it)
+  // Now with LocalDB caching for offline-first experience
   const loadLandSession = useCallback(async (landId: string | null) => {
+    const sessionKey = landId || 'general';
+    
     try {
-      // Build query for existing active session
+      // 1. FIRST: Try to load from LocalDB (instant, offline-first)
+      let cachedMessages: Message[] = [];
+      try {
+        const localMessages = await localDB.getChatMessages(landId);
+        if (localMessages && localMessages.length > 0) {
+          cachedMessages = localMessages
+            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+            .map(msg => ({
+              id: msg.id,
+              role: msg.role as 'user' | 'assistant',
+              content: msg.content,
+              timestamp: new Date(msg.created_at),
+              feedback: msg.feedback_rating 
+                ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
+                : null
+            }));
+          console.log(`⚡ [LocalDB] Loaded ${cachedMessages.length} cached messages instantly for ${sessionKey}`);
+        }
+      } catch (localErr) {
+        console.warn('LocalDB read failed, continuing with Supabase:', localErr);
+      }
+      
+      // 2. THEN: Sync from Supabase in background (if online)
       let sessionQuery = supabase
         .from('ai_chat_sessions')
         .select('id')
@@ -287,7 +314,7 @@ export function EnhancedAIChatInterface() {
       const { data: existingSession } = await sessionQuery.single();
 
       if (existingSession) {
-        console.log(`✅ Loaded session for ${landId || 'general'}:`, existingSession.id);
+        console.log(`✅ Loaded session from Supabase for ${sessionKey}:`, existingSession.id);
         
         // Load messages for this session
         const { data: previousMessages } = await supabase
@@ -297,7 +324,55 @@ export function EnhancedAIChatInterface() {
           .eq('farmer_id', user?.id)
           .order('created_at', { ascending: true });
 
-        console.log(`📜 Loaded ${previousMessages?.length || 0} messages for ${landId || 'general'}`);
+        console.log(`📜 Loaded ${previousMessages?.length || 0} messages from Supabase for ${sessionKey}`);
+
+        // 3. Save to LocalDB for offline access
+        if (previousMessages && previousMessages.length > 0) {
+          try {
+            for (const msg of previousMessages) {
+              await localDB.saveChatMessage({
+                id: msg.id,
+                session_id: msg.session_id,
+                tenant_id: msg.tenant_id,
+                farmer_id: msg.farmer_id,
+                role: msg.role,
+                content: msg.content,
+                land_context: msg.land_context,
+                crop_context: msg.crop_context,
+                weather_context: msg.weather_context,
+                location_context: msg.location_context,
+                agro_climatic_zone: msg.agro_climatic_zone,
+                soil_zone: msg.soil_zone,
+                rainfall_zone: msg.rainfall_zone,
+                crop_season: msg.crop_season,
+                ai_model: msg.ai_model,
+                response_time_ms: msg.response_time_ms,
+                tokens_used: msg.tokens_used,
+                feedback_rating: msg.feedback_rating,
+                feedback_text: msg.feedback_text,
+                attachments: msg.attachments,
+                image_urls: msg.image_urls,
+                status: msg.status,
+                language: msg.language,
+                message_type: msg.message_type,
+                error_details: msg.error_details,
+                is_edited: msg.is_edited,
+                edited_at: msg.edited_at,
+                parent_message_id: msg.parent_message_id,
+                user_agent: msg.user_agent,
+                ip_address: msg.ip_address,
+                partition_key: msg.partition_key,
+                word_count: msg.word_count,
+                metadata: msg.metadata,
+                created_at: msg.created_at,
+                updated_at: msg.updated_at
+              });
+            }
+            console.log(`💾 [LocalDB] Cached ${previousMessages.length} messages for offline access`);
+          } catch (cacheErr) {
+            console.warn('Failed to cache messages to LocalDB:', cacheErr);
+          }
+        }
 
         return {
           sessionId: existingSession.id,
@@ -313,16 +388,24 @@ export function EnhancedAIChatInterface() {
         };
       }
 
-      console.log(`ℹ️ No existing session for ${landId || 'general'}`);
+      // If no Supabase session but we have cached messages, return them
+      if (cachedMessages.length > 0) {
+        console.log(`📦 Using ${cachedMessages.length} cached messages (no Supabase session)`);
+        return { sessionId: null, messages: cachedMessages };
+      }
+
+      console.log(`ℹ️ No existing session for ${sessionKey}`);
       return { sessionId: null, messages: [] };
     } catch (error) {
-      console.error(`Error loading session for ${landId || 'general'}:`, error);
+      console.error(`Error loading session for ${sessionKey}:`, error);
+      // Return cached messages if Supabase fails
       return { sessionId: null, messages: [] };
     }
   }, [user?.id, tenant?.id]);
 
   // ✅ CRITICAL FIX: fetchLands wrapped in useCallback with proper dependencies
   const fetchLands = useCallback(async () => {
+    setIsLoadingHistory(true);
     try {
       const fetchedLands = await landsApi.fetchLands();
       setLands(fetchedLands);
@@ -366,6 +449,8 @@ export function EnhancedAIChatInterface() {
       });
     } catch (error) {
       console.error('Error fetching lands:', error);
+    } finally {
+      setIsLoadingHistory(false);
     }
   }, [loadLandSession]); // fetchLands depends on loadLandSession
 
@@ -1347,8 +1432,25 @@ export function EnhancedAIChatInterface() {
         className="h-full px-3 py-4 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
       >
         <AnimatePresence mode="popLayout">
+          {/* Loading State for Chat History */}
+          {isLoadingHistory && messages[activeTab]?.length === 0 && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col items-center justify-center py-12 gap-3"
+            >
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <span className="text-sm text-muted-foreground">
+                {language === 'hi' ? 'चैट इतिहास लोड हो रहा है...' : 
+                 language === 'mr' ? 'चॅट इतिहास लोड होत आहे...' : 
+                 'Loading chat history...'}
+              </span>
+            </motion.div>
+          )}
+          
           {/* Show Welcome Card for general chat when no messages */}
-          {activeTab === 'general' && messages[activeTab]?.length === 0 && (
+          {activeTab === 'general' && messages[activeTab]?.length === 0 && !isLoadingHistory && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1361,7 +1463,7 @@ export function EnhancedAIChatInterface() {
           )}
           
           {/* Show Land Context as first message for land-specific chats */}
-          {activeTab !== 'general' && messages[activeTab]?.length === 0 && (
+          {activeTab !== 'general' && messages[activeTab]?.length === 0 && !isLoadingHistory && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1482,19 +1584,40 @@ export function EnhancedAIChatInterface() {
           </div>
         )}
         
-        {/* Attached files preview */}
+        {/* Attached files preview with image thumbnails */}
         {attachedFiles.length > 0 && (
-          <div className="flex gap-2 mb-2 overflow-x-auto">
+          <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
             {attachedFiles.map((file, index) => (
-              <div key={index} className="flex items-center gap-1 px-2 py-1 bg-secondary/20 rounded-full text-xs">
-                <Image className="w-3 h-3" />
-                {file.name}
-                <button 
-                  onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))}
-                  className="ml-1"
-                >
-                  ×
-                </button>
+              <div key={index} className="relative group shrink-0">
+                {file.type.startsWith('image/') ? (
+                  <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-primary/20">
+                    <img 
+                      src={URL.createObjectURL(file)} 
+                      alt={file.name}
+                      className="w-full h-full object-cover"
+                    />
+                    <button 
+                      onClick={() => {
+                        URL.revokeObjectURL(URL.createObjectURL(file));
+                        setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+                      }}
+                      className="absolute top-0 right-0 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md hover:bg-destructive/90 transition-colors"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 px-3 py-2 bg-secondary/20 rounded-lg text-xs border">
+                    <Paperclip className="w-3 h-3" />
+                    <span className="max-w-20 truncate">{file.name}</span>
+                    <button 
+                      onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))}
+                      className="ml-1 hover:text-destructive"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

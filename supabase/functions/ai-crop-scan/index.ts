@@ -380,7 +380,7 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
       body: JSON.stringify({
         model,
         messages,
-        max_tokens: 4000,
+        max_tokens: 8000, // Increased for comprehensive Hindi/Marathi responses
         temperature: 0.3,
         response_format: { type: "json_object" }
       }),
@@ -424,6 +424,52 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
 
     console.log('🤖 Raw AI Response length:', aiContent.length);
 
+    // Helper function to repair truncated JSON
+    const repairTruncatedJSON = (content: string): object | null => {
+      try {
+        // Try to find the last complete object by tracking braces
+        let depth = 0;
+        let lastValidIndex = 0;
+        let inString = false;
+        let escapeNext = false;
+        
+        for (let i = 0; i < content.length; i++) {
+          const char = content[i];
+          
+          if (escapeNext) {
+            escapeNext = false;
+            continue;
+          }
+          
+          if (char === '\\') {
+            escapeNext = true;
+            continue;
+          }
+          
+          if (char === '"' && !escapeNext) {
+            inString = !inString;
+            continue;
+          }
+          
+          if (!inString) {
+            if (char === '{' || char === '[') depth++;
+            if (char === '}' || char === ']') {
+              depth--;
+              if (depth === 0) lastValidIndex = i + 1;
+            }
+          }
+        }
+        
+        if (lastValidIndex > 0) {
+          const validJSON = content.substring(0, lastValidIndex);
+          return JSON.parse(validJSON);
+        }
+      } catch (e) {
+        console.error('JSON repair failed:', e);
+      }
+      return null;
+    };
+
     // Parse AI response
     let analysisResult;
     try {
@@ -437,9 +483,86 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
       
       analysisResult = JSON.parse(cleanContent);
     } catch (parseError) {
-      console.error('Failed to parse AI response:', parseError);
-      console.error('Raw content:', aiContent.substring(0, 500));
-      throw new Error('Invalid AI response format');
+      console.error('Failed to parse AI response, attempting repair:', parseError);
+      console.error('Raw content length:', aiContent.length);
+      
+      // Try to repair truncated JSON
+      let cleanContent = aiContent.trim();
+      if (cleanContent.startsWith('```json')) {
+        cleanContent = cleanContent.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+      } else if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```\n?/, '').replace(/\n?```$/, '');
+      }
+      
+      analysisResult = repairTruncatedJSON(cleanContent);
+      
+      if (!analysisResult) {
+        console.error('JSON repair failed, returning fallback response');
+        // Return a fallback response instead of failing completely
+        analysisResult = {
+          cropDetected: {
+            name: "Crop detected",
+            scientificName: "Unknown",
+            confidence: 60,
+            category: "crop",
+            matchesLandCrop: true
+          },
+          healthStatus: {
+            condition: "warning",
+            score: 50,
+            issues: ["Analysis was incomplete - please try again with a clearer image"]
+          },
+          diagnosis: {
+            summary: language === 'hi' 
+              ? "विश्लेषण अधूरा है। कृपया एक स्पष्ट छवि के साथ पुनः प्रयास करें।"
+              : language === 'mr'
+              ? "विश्लेषण अपूर्ण आहे. कृपया स्पष्ट प्रतिमेसह पुन्हा प्रयत्न करा."
+              : "Analysis was incomplete. Please try again with a clearer image.",
+            diseases: [],
+            pests: [],
+            deficiencies: []
+          },
+          recommendations: {
+            organic: {
+              type: "organic",
+              title: labels.organic,
+              products: [{
+                name: "General organic treatment",
+                dosage: "As recommended",
+                applicationMethod: "Foliar spray",
+                timing: "Morning hours"
+              }],
+              instructions: ["Retry analysis for specific recommendations"],
+              benefits: [],
+              precautions: []
+            },
+            fertilizer: {
+              type: "fertilizer",
+              title: labels.fertilizer,
+              products: [],
+              instructions: ["Retry analysis for specific recommendations"],
+              benefits: [],
+              precautions: []
+            },
+            pesticide: {
+              type: "pesticide",
+              title: labels.pesticide,
+              products: [],
+              instructions: ["Retry analysis for specific recommendations"],
+              benefits: [],
+              precautions: []
+            }
+          },
+          metadata: {
+            confidenceScore: 40,
+            needsMoreImages: true,
+            labTestRecommended: false,
+            weatherSensitive: false
+          }
+        };
+      } else {
+        console.log('✅ JSON repair successful');
+      }
     }
 
     // Log scan to database for analytics
