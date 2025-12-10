@@ -9,95 +9,77 @@ const corsHeaders = {
 
 interface ScanRequest {
   images: string[]; // base64 encoded images
+  videoFrames?: string[]; // extracted video frames
   userNotes?: string;
   language?: string;
   farmerId?: string;
   tenantId?: string;
+  landId?: string;
+  landCrop?: string; // Current crop in the land for validation
   mode?: 'quick' | 'full'; // quick = fast detection only, full = complete analysis
 }
 
-interface ScanResponse {
-  success: boolean;
-  result?: {
-    // Core detection
-    detectedItem: {
-      commonName: string;
-      scientificName: string;
-      confidence: number; // 0-100
-      category: 'crop' | 'weed' | 'pest' | 'disease' | 'seed' | 'nutrient_deficiency' | 'unknown';
-    };
-    
-    // Health assessment
-    healthStatus: {
-      condition: 'healthy' | 'warning' | 'critical';
-      riskLevel: 'low' | 'medium' | 'high';
-      primaryIssues: string[];
-      secondaryIssues: string[];
-    };
-    
-    // Diagnosis
-    diagnosis: {
-      summary: string; // 2-4 sentences plain language
-      details: string;
-      affectedParts: string[];
-      likelyDiseases: Array<{
-        name: string;
-        scientificName?: string;
-        confidence: number;
-        symptoms: string[];
-      }>;
-      likelyPests: Array<{
-        name: string;
-        scientificName?: string;
-        confidence: number;
-        damageType: string;
-      }>;
-      nutrientDeficiencies: Array<{
-        nutrient: string;
-        severity: 'mild' | 'moderate' | 'severe';
-        symptoms: string[];
-      }>;
-    };
-    
-    // Recommendations
-    recommendations: {
-      immediate: Array<{
-        action: string;
-        priority: 'critical' | 'high' | 'medium';
-        estimatedCost?: string;
-        timeframe: string;
-      }>;
-      shortTerm: Array<{ // 3-7 days
-        action: string;
-        priority: 'high' | 'medium' | 'low';
-        estimatedCost?: string;
-      }>;
-      longTerm: Array<{
-        action: string;
-        preventive: boolean;
-      }>;
-    };
-    
-    // Additional info
-    metadata: {
-      confidenceScore: number;
-      needsMoreImages: boolean;
-      suggestedNextSteps: string[];
-      labTestRecommended: boolean;
-      weatherSensitive: boolean;
-      evidenceLinks?: string[];
-    };
-    
-    // Visual analysis
-    visualAnalysis?: {
-      dominantColors: string[];
-      textureNotes: string;
-      anomalyRegions?: string;
-    };
+interface ThreeCategoryRecommendation {
+  organic: {
+    title: string;
+    products: Array<{
+      name: string;
+      localName?: string;
+      dosage: string;
+      applicationMethod?: string;
+      timing?: string;
+      cost?: string;
+    }>;
+    instructions?: string[];
+    benefits?: string[];
+    precautions?: string[];
+    estimatedCost?: string;
   };
-  error?: string;
-  rateLimited?: boolean;
-  quotaExceeded?: boolean;
+  fertilizer: {
+    title: string;
+    products: Array<{
+      name: string;
+      localName?: string;
+      dosage: string;
+      applicationMethod?: string;
+      timing?: string;
+      cost?: string;
+    }>;
+    instructions?: string[];
+    benefits?: string[];
+    precautions?: string[];
+    estimatedCost?: string;
+  };
+  pesticide: {
+    title: string;
+    products: Array<{
+      name: string;
+      localName?: string;
+      dosage: string;
+      applicationMethod?: string;
+      timing?: string;
+      cost?: string;
+    }>;
+    instructions?: string[];
+    benefits?: string[];
+    precautions?: string[];
+    estimatedCost?: string;
+  };
+  hormone?: {
+    title: string;
+    products: Array<{
+      name: string;
+      localName?: string;
+      dosage: string;
+      applicationMethod?: string;
+      timing?: string;
+      cost?: string;
+    }>;
+    instructions?: string[];
+    benefits?: string[];
+    precautions?: string[];
+    estimatedCost?: string;
+  };
 }
 
 serve(async (req) => {
@@ -108,9 +90,17 @@ serve(async (req) => {
   const startTime = Date.now();
   
   try {
+    // Use Lovable AI or OpenAI
+    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openAIApiKey) {
-      console.error('OPENAI_API_KEY not configured');
+    
+    const apiKey = lovableApiKey || openAIApiKey;
+    const apiEndpoint = lovableApiKey 
+      ? 'https://ai.gateway.lovable.dev/v1/chat/completions'
+      : 'https://api.openai.com/v1/chat/completions';
+    
+    if (!apiKey) {
+      console.error('No AI API key configured');
       return new Response(
         JSON.stringify({ success: false, error: 'AI service not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -118,92 +108,152 @@ serve(async (req) => {
     }
 
     const requestData: ScanRequest = await req.json();
-    const { images, userNotes, language = 'en', farmerId, tenantId, mode = 'full' } = requestData;
+    const { 
+      images, 
+      videoFrames,
+      userNotes, 
+      language = 'en', 
+      farmerId, 
+      tenantId, 
+      landId,
+      landCrop,
+      mode = 'full' 
+    } = requestData;
 
-    if (!images || images.length === 0) {
+    // Combine images and video frames
+    const allImages = [...(images || []), ...(videoFrames || [])];
+    
+    if (allImages.length === 0) {
       return new Response(
-        JSON.stringify({ success: false, error: 'No images provided' }),
+        JSON.stringify({ success: false, error: 'No images or video frames provided' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     console.log('🔬 AI Crop Scan Request:', {
-      imageCount: images.length,
+      imageCount: images?.length || 0,
+      videoFrameCount: videoFrames?.length || 0,
       hasUserNotes: !!userNotes,
       language,
       farmerId,
       tenantId,
+      landId,
+      landCrop,
+      mode,
       timestamp: new Date().toISOString()
     });
 
-    // Build comprehensive agricultural analysis prompt with language support
+    // Get language-specific labels
+    const getLabels = () => {
+      if (language === 'hi') {
+        return {
+          organic: '🟢 जैविक उपाय (Organic Solution)',
+          fertilizer: '🟡 रासायनिक खाद (Chemical Fertilizer)',
+          pesticide: '🔴 कीटनाशक (Pesticide Solution)',
+          hormone: '💪 हार्मोन ग्रोअर (Hormone Grower)'
+        };
+      } else if (language === 'mr') {
+        return {
+          organic: '🟢 सेंद्रिय उपाय (Organic Solution)',
+          fertilizer: '🟡 रासायनिक खत (Chemical Fertilizer)',
+          pesticide: '🔴 कीटकनाशक (Pesticide Solution)',
+          hormone: '💪 हार्मोन ग्रोअर (Hormone Grower)'
+        };
+      }
+      return {
+        organic: '🟢 Organic Solution',
+        fertilizer: '🟡 Chemical Fertilizer',
+        pesticide: '🔴 Pesticide Solution',
+        hormone: '💪 Hormone Grower'
+      };
+    };
+    
+    const labels = getLabels();
+
+    // Build comprehensive agricultural analysis prompt
     const languageInstruction = language !== 'en' 
-      ? `\n\nIMPORTANT: Provide ALL text responses in ${language === 'hi' ? 'Hindi (हिंदी)' : language === 'mr' ? 'Marathi (मराठी)' : language} language. This includes commonName, summary, details, symptoms, actions, and all other text fields. Keep scientific names in Latin.`
+      ? `\n\nIMPORTANT: Provide ALL text responses in ${language === 'hi' ? 'Hindi (हिंदी)' : language === 'mr' ? 'Marathi (मराठी)' : language} language. This includes all names, descriptions, instructions, and recommendations. Keep scientific names in Latin.`
       : '';
     
-    const systemPrompt = mode === 'quick' 
-      ? `You are an expert agricultural scientist. Quickly identify the plant/crop from the image. Be specific and concise.${languageInstruction}`
-      : `You are an expert agricultural scientist and plant pathologist with deep knowledge of crops, diseases, pests, weeds, and nutrient deficiencies. 
+    const landValidation = landCrop 
+      ? `\n\nLAND VALIDATION: The farmer's land has "${landCrop}" planted. Compare detected crop with this. If they don't match, set "matchesLandCrop": false and suggest using General Chat for accurate advice.`
+      : '';
+
+    const systemPrompt = `You are a world-class agricultural scientist with expertise from:
+- ICAR (Indian Council of Agricultural Research)
+- State Agricultural Universities (PAU, IARI, TNAU)
+- 30+ years of practical field experience across India
+- Deep knowledge of regional farming practices
 
 CRITICAL INSTRUCTIONS:
 - You are analyzing images from rural Indian farmers using basic smartphones
 - Images may be blurry, poorly lit, or taken from awkward angles
 - DO NOT reject images for quality issues - work with what you have
 - Even sub-optimal images contain valuable diagnostic information
-- Focus on visible symptoms and patterns, not image perfection
-- If image quality limits confidence, say so but still provide your best analysis
-- ACCEPT ALL IMAGES: Even if you're uncertain, provide your best educated guess based on visible patterns
+- ACCEPT ALL IMAGES: Even if uncertain, provide your best educated analysis
 
-Key Analysis Areas:
-1. IDENTIFICATION: Identify the plant/crop/weed/pest/disease from visible features
-2. HEALTH ASSESSMENT: Evaluate overall plant health from visible indicators
-3. DISEASE DETECTION: Identify diseases from symptoms (spots, discoloration, wilting)
-4. PEST DETECTION: Spot insect damage, holes, or pest presence
-5. NUTRIENT ANALYSIS: Detect deficiency symptoms (yellowing, stunting, patterns)
-6. ENVIRONMENTAL STRESS: Identify drought, heat, or waterlogging damage
+Your responses must be:
+1. ACCURATE: Based on real agricultural science, not generic advice
+2. PRACTICAL: Actionable by farmers with limited resources
+3. SPECIFIC: Include exact dosages per acre, product names, costs
+4. STRUCTURED: Always provide 3 categories of recommendations
 
-Be specific, actionable, and farmer-friendly. Prioritize immediate actions that prevent crop loss.
-Accept all image qualities and provide the best analysis possible.${languageInstruction}`;
+THREE-CATEGORY RECOMMENDATION SYSTEM:
+For EVERY diagnosis, provide recommendations in 3 categories:
+1. ${labels.organic} - Natural/organic solutions (neem, vermicompost, cow dung, etc.)
+2. ${labels.fertilizer} - Chemical fertilizers with exact NPK ratios
+3. ${labels.pesticide} - Pesticides/fungicides with brand names
 
-    const userPrompt = `Analyze these agricultural images and provide a comprehensive diagnosis.
+For WEAK CROPS, also include:
+4. ${labels.hormone} - Growth hormones/regulators (Gibberellic acid, NAA, etc.)
+
+Include for each product:
+- Name (local + scientific)
+- Exact dosage per acre
+- Application method & timing
+- Estimated cost in INR
+- Safety precautions${languageInstruction}${landValidation}`;
+
+    const userPrompt = `Analyze these agricultural images and provide a comprehensive diagnosis with THREE-CATEGORY recommendations.
 
 ${userNotes ? `FARMER'S NOTES: ${userNotes}\n` : ''}
+${landCrop ? `LAND'S CURRENT CROP: ${landCrop}\n` : ''}
+
 Provide your analysis in this exact JSON structure (no markdown, just pure JSON):
 
 {
-  "detectedItem": {
-    "commonName": "string (crop/plant common name)",
-    "scientificName": "string (Latin scientific name)",
-    "confidence": number (0-100),
-    "category": "crop|weed|pest|disease|seed|nutrient_deficiency|unknown"
+  "cropDetected": {
+    "name": "common name of crop/plant",
+    "scientificName": "Latin name",
+    "confidence": 0-100,
+    "category": "crop|weed|pest|disease|seed|nutrient_deficiency|unknown",
+    "matchesLandCrop": true|false,
+    "landCrop": "${landCrop || 'null'}"
   },
   "healthStatus": {
     "condition": "healthy|warning|critical",
-    "riskLevel": "low|medium|high",
-    "primaryIssues": ["list of main problems"],
-    "secondaryIssues": ["list of minor problems"]
+    "score": 0-100,
+    "issues": ["list of detected problems"]
   },
   "diagnosis": {
-    "summary": "2-4 sentence plain language diagnosis",
-    "details": "detailed explanation",
-    "affectedParts": ["leaves", "stems", "roots", "fruits"],
-    "likelyDiseases": [
+    "summary": "2-4 sentence diagnosis in farmer-friendly language",
+    "diseases": [
       {
-        "name": "disease common name",
+        "name": "disease name",
         "scientificName": "pathogen name",
         "confidence": 0-100,
         "symptoms": ["visible symptoms"]
       }
     ],
-    "likelyPests": [
+    "pests": [
       {
-        "name": "pest common name",
-        "scientificName": "insect scientific name",
+        "name": "pest name",
+        "scientificName": "insect name",
         "confidence": 0-100,
         "damageType": "description"
       }
     ],
-    "nutrientDeficiencies": [
+    "deficiencies": [
       {
         "nutrient": "N|P|K|Mg|Fe|Zn|etc",
         "severity": "mild|moderate|severe",
@@ -212,50 +262,96 @@ Provide your analysis in this exact JSON structure (no markdown, just pure JSON)
     ]
   },
   "recommendations": {
-    "immediate": [
-      {
-        "action": "specific action to take NOW",
-        "priority": "critical|high|medium",
-        "estimatedCost": "approximate cost if applicable",
-        "timeframe": "within X hours/days"
-      }
-    ],
-    "shortTerm": [
-      {
-        "action": "action for next 3-7 days",
-        "priority": "high|medium|low",
-        "estimatedCost": "cost estimate"
-      }
-    ],
-    "longTerm": [
-      {
-        "action": "preventive/future action",
-        "preventive": true|false
-      }
-    ]
+    "organic": {
+      "type": "organic",
+      "title": "${labels.organic}",
+      "products": [
+        {
+          "name": "Product name",
+          "localName": "Local/Hindi name",
+          "dosage": "X kg/liter per acre",
+          "applicationMethod": "How to apply",
+          "timing": "When to apply",
+          "cost": "₹XXX per acre"
+        }
+      ],
+      "instructions": ["Step by step instructions"],
+      "benefits": ["Why this works"],
+      "precautions": ["Safety notes"],
+      "estimatedCost": "₹XXX total"
+    },
+    "fertilizer": {
+      "type": "fertilizer",
+      "title": "${labels.fertilizer}",
+      "products": [
+        {
+          "name": "Product name (e.g., DAP, Urea, NPK 19:19:19)",
+          "localName": "Local name",
+          "dosage": "X kg per acre",
+          "applicationMethod": "Broadcast/Drip/Foliar",
+          "timing": "Growth stage timing",
+          "cost": "₹XXX per acre"
+        }
+      ],
+      "instructions": ["Application steps"],
+      "benefits": ["Expected improvements"],
+      "precautions": ["Avoid over-application warnings"],
+      "estimatedCost": "₹XXX total"
+    },
+    "pesticide": {
+      "type": "pesticide",
+      "title": "${labels.pesticide}",
+      "products": [
+        {
+          "name": "Active ingredient + Brand name",
+          "localName": "Local name",
+          "dosage": "X ml/gram per liter water",
+          "applicationMethod": "Spray method",
+          "timing": "Best time of day/crop stage",
+          "cost": "₹XXX per acre"
+        }
+      ],
+      "instructions": ["Mixing and spraying instructions"],
+      "benefits": ["Expected control percentage"],
+      "precautions": ["Safety gear, withholding period"],
+      "estimatedCost": "₹XXX total"
+    },
+    "hormone": {
+      "type": "hormone",
+      "title": "${labels.hormone}",
+      "products": [
+        {
+          "name": "Hormone name (e.g., Gibberellic Acid GA3)",
+          "localName": "Brand name",
+          "dosage": "X ppm concentration",
+          "applicationMethod": "Foliar spray",
+          "timing": "Growth stage",
+          "cost": "₹XXX per acre"
+        }
+      ],
+      "instructions": ["Preparation and application"],
+      "benefits": ["Growth improvement expected"],
+      "precautions": ["Don't over-apply, temperature sensitivity"],
+      "estimatedCost": "₹XXX total"
+    }
   },
   "metadata": {
-    "confidenceScore": number (0-100),
-    "needsMoreImages": boolean,
-    "suggestedNextSteps": ["what other images/info would help"],
-    "labTestRecommended": boolean,
-    "weatherSensitive": boolean,
-    "evidenceLinks": ["optional educational links"]
-  },
-  "visualAnalysis": {
-    "dominantColors": ["color descriptions"],
-    "textureNotes": "texture observations",
-    "anomalyRegions": "description of abnormal areas"
+    "confidenceScore": 0-100,
+    "needsMoreImages": true|false,
+    "labTestRecommended": true|false,
+    "weatherSensitive": true|false
   }
 }
 
+NOTE: Include "hormone" recommendations ONLY if the crop appears weak, stunted, or needs growth boost. Otherwise, exclude it.
+
 CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations outside JSON.`;
 
-    // Prepare OpenAI Vision API call with multiple images
-    const imageContents = images.slice(0, 3).map(img => ({ // Limit to 3 images
+    // Prepare image contents (limit to 4 images for token efficiency)
+    const imageContents = allImages.slice(0, 4).map(img => ({
       type: "image_url" as const,
       image_url: {
-        url: img,
+        url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`,
         detail: "high" as const
       }
     }));
@@ -271,26 +367,28 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
       }
     ];
 
-    console.log('📡 Calling OpenAI Vision API...');
+    console.log('📡 Calling AI Vision API...');
     
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const model = lovableApiKey ? 'google/gemini-2.5-pro' : 'gpt-4o';
+    
+    const response = await fetch(apiEndpoint, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model,
         messages,
         max_tokens: 4000,
-        temperature: 0.3, // Lower temperature for more consistent analysis
+        temperature: 0.3,
         response_format: { type: "json_object" }
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OpenAI API Error:', response.status, errorText);
+      console.error('AI API Error:', response.status, errorText);
       
       if (response.status === 429) {
         return new Response(
@@ -314,7 +412,7 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
         );
       }
 
-      throw new Error(`OpenAI API error: ${response.status} ${errorText}`);
+      throw new Error(`AI API error: ${response.status} ${errorText}`);
     }
 
     const aiResponse = await response.json();
@@ -324,15 +422,23 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
       throw new Error('No content in AI response');
     }
 
-    console.log('🤖 Raw AI Response:', aiContent.substring(0, 200));
+    console.log('🤖 Raw AI Response length:', aiContent.length);
 
     // Parse AI response
     let analysisResult;
     try {
-      analysisResult = JSON.parse(aiContent);
+      // Clean up response if needed
+      let cleanContent = aiContent.trim();
+      if (cleanContent.startsWith('```json')) {
+        cleanContent = cleanContent.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+      } else if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```\n?/, '').replace(/\n?```$/, '');
+      }
+      
+      analysisResult = JSON.parse(cleanContent);
     } catch (parseError) {
       console.error('Failed to parse AI response:', parseError);
-      console.error('Raw content:', aiContent);
+      console.error('Raw content:', aiContent.substring(0, 500));
       throw new Error('Invalid AI response format');
     }
 
@@ -346,20 +452,26 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
         await supabase.from('crop_scan_logs').insert({
           farmer_id: farmerId,
           tenant_id: tenantId,
-          image_count: images.length,
-          detected_category: analysisResult.detectedItem?.category,
-          detected_item: analysisResult.detectedItem?.commonName,
-          confidence: analysisResult.detectedItem?.confidence,
+          land_id: landId || null,
+          image_count: allImages.length,
+          detected_category: analysisResult.cropDetected?.category,
+          detected_item: analysisResult.cropDetected?.name,
+          confidence: analysisResult.cropDetected?.confidence,
           health_condition: analysisResult.healthStatus?.condition,
-          risk_level: analysisResult.healthStatus?.riskLevel,
+          risk_level: analysisResult.healthStatus?.condition === 'critical' ? 'high' : 
+                     analysisResult.healthStatus?.condition === 'warning' ? 'medium' : 'low',
           has_user_notes: !!userNotes,
+          land_crop_match: analysisResult.cropDetected?.matchesLandCrop,
           language,
           processing_time_ms: Date.now() - startTime,
           created_at: new Date().toISOString()
+        }).then(() => {
+          console.log('📊 Scan logged to database');
+        }).catch((dbError: Error) => {
+          console.error('Failed to log scan:', dbError);
         });
       } catch (dbError) {
-        console.error('Failed to log scan to database:', dbError);
-        // Don't fail the request if logging fails
+        console.error('Database logging error:', dbError);
       }
     }
 
@@ -370,8 +482,9 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
       JSON.stringify({
         success: true,
         result: analysisResult,
-        processingTimeMs: duration
-      } as ScanResponse),
+        processingTimeMs: duration,
+        language
+      }),
       { 
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

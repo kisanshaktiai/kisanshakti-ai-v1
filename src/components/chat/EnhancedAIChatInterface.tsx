@@ -10,7 +10,7 @@ import {
   Send, Mic, MicOff, Loader2, Bot, 
   RefreshCw, Wifi, WifiOff, MessageSquare, Mountain, 
   Paperclip, Camera, Image, ArrowLeft,
-  Search, X, Clock, MessageCircle
+  Search, X, Clock, MessageCircle, Video
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -24,6 +24,8 @@ import { LandContextCard } from './LandContextCard';
 import { GeneralChatWelcomeCard } from './GeneralChatWelcomeCard';
 import { ResponseSectionCard } from './ResponseSectionCard';
 import { ModernChatUI } from './ModernChatUI';
+import { WorldClassCamera } from './WorldClassCamera';
+import { VisionAnalysisCard, type VisionAnalysisResult } from './VisionAnalysisCard';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
@@ -113,6 +115,15 @@ export function EnhancedAIChatInterface() {
   const [dynamicQuickReplies, setDynamicQuickReplies] = useState<Record<string, string[]>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  // Camera and Vision Analysis states
+  const [showCamera, setShowCamera] = useState(false);
+  const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+  const [pendingVisionAnalysis, setPendingVisionAnalysis] = useState<{
+    imageUrl?: string;
+    videoUrl?: string;
+    result?: VisionAnalysisResult;
+    error?: string;
+  } | null>(null);
   const [sessionStartTime, setSessionStartTime] = useState<Record<string, Date>>({});
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -453,6 +464,71 @@ export function EnhancedAIChatInterface() {
     const hasPermission = await requestCameraPermission();
     if (hasPermission) {
       handleFileSelect(e);
+    }
+  };
+
+  // World-class camera capture handler
+  const handleWorldClassCapture = async (data: { type: 'photo' | 'video'; data: string; duration?: number }) => {
+    setShowCamera(false);
+    setIsAnalyzingImage(true);
+    setPendingVisionAnalysis({ imageUrl: data.type === 'photo' ? data.data : undefined, videoUrl: data.type === 'video' ? data.data : undefined });
+    
+    try {
+      const landId = activeTab !== 'general' ? activeTab : undefined;
+      const land = landId ? lands.find(l => l.id === landId) : null;
+      
+      // Call AI crop scan
+      const { data: scanResult, error } = await supabase.functions.invoke('ai-crop-scan', {
+        body: {
+          images: data.type === 'photo' ? [data.data] : [],
+          videoFrames: data.type === 'video' ? [data.data] : [],
+          language,
+          farmerId: user?.id,
+          tenantId: tenant?.id,
+          landId,
+          landCrop: land?.current_crop,
+          mode: 'full'
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (scanResult?.success && scanResult?.result) {
+        setPendingVisionAnalysis({
+          imageUrl: data.type === 'photo' ? data.data : undefined,
+          videoUrl: data.type === 'video' ? data.data : undefined,
+          result: scanResult.result
+        });
+        
+        // Add analysis as AI message
+        const aiMessage: Message = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: scanResult.result.diagnosis?.summary || 'Analysis complete',
+          timestamp: new Date(),
+          structuredResponse: {
+            cards: [],
+            language
+          }
+        };
+        
+        setMessages(prev => ({
+          ...prev,
+          [activeTab]: [...(prev[activeTab] || []), aiMessage]
+        }));
+      } else {
+        throw new Error(scanResult?.error || 'Analysis failed');
+      }
+    } catch (err) {
+      console.error('Vision analysis error:', err);
+      setPendingVisionAnalysis(prev => prev ? { ...prev, error: err instanceof Error ? err.message : 'Analysis failed' } : null);
+      toast({
+        title: t('error.title'),
+        description: err instanceof Error ? err.message : 'Failed to analyze image',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsAnalyzingImage(false);
     }
   };
 
