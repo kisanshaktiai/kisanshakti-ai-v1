@@ -1,10 +1,28 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supabaseWithAuth } from '@/integrations/supabase/client';
+import { useAuthStore } from '@/stores/authStore';
 
 const STORAGE_BUCKET = 'chat-attachments';
 const TARGET_SIZE_KB = 150;
 const MAX_DIMENSION = 1024;
 const VIDEO_TARGET_SIZE_MB = 5;
 const AUDIO_TARGET_BITRATE = 64000;
+
+// Helper to get authenticated client for storage operations
+function getAuthenticatedClient() {
+  // First try to get from authStore
+  const authState = useAuthStore.getState();
+  if (authState.user?.id && authState.user?.tenantId) {
+    console.log('🔐 [Storage] Using auth from store:', { 
+      userId: authState.user.id, 
+      tenantId: authState.user.tenantId 
+    });
+    return supabaseWithAuth(authState.user.id, authState.user.tenantId);
+  }
+  
+  // Fallback to plain supabase (will likely fail RLS but at least we log it)
+  console.warn('⚠️ [Storage] No auth data available, using anonymous client');
+  return supabase;
+}
 
 /**
  * Compress image to target size for efficient storage
@@ -321,7 +339,7 @@ export async function compressAudioForStorage(
 
 /**
  * Upload compressed image to Supabase Storage
- * Production-ready with auth check, retry logic and proper error handling
+ * Production-ready with CUSTOM AUTH support (mobile+PIN, not Supabase Auth)
  */
 export async function uploadChatImage(
   base64Image: string,
@@ -342,44 +360,48 @@ export async function uploadChatImage(
       return { url: base64Image, compressedBase64: base64Image, success: false };
     }
 
-    // ✅ CRITICAL: Verify user is authenticated before upload
-    const { data: { session }, error: authError } = await supabase.auth.getSession();
-    if (authError || !session?.user) {
-      console.error('❌ uploadChatImage: User not authenticated', authError);
+    // ✅ CRITICAL: Get auth from custom auth store (NOT Supabase Auth)
+    const authState = useAuthStore.getState();
+    const farmerId = authState.user?.id;
+    const tenantId = authState.user?.tenantId;
+    
+    if (!farmerId || !tenantId) {
+      console.error('❌ uploadChatImage: User not authenticated in custom auth store', {
+        hasUser: !!authState.user,
+        farmerId,
+        tenantId
+      });
       // Still return compressed base64 for display, but mark as failed
       const { base64: compressedBase64 } = await compressImageForStorage(base64Image);
       return { url: compressedBase64, compressedBase64, success: false };
     }
 
-    // Verify userId matches authenticated user (RLS requirement)
-    if (session.user.id !== userId) {
-      console.error('❌ uploadChatImage: userId mismatch with auth', {
-        providedUserId: userId,
-        authUserId: session.user.id
-      });
-      // Use the authenticated user ID for the path
-      userId = session.user.id;
-    }
+    // Use the farmerId from auth store for the path (ensures consistency)
+    const authUserId = farmerId;
 
     // Compress image first
     const { blob, base64: compressedBase64 } = await compressImageForStorage(base64Image);
     
     // Generate unique file path - userId MUST be first for RLS
     const timestamp = Date.now();
-    const filePath = `${userId}/${sessionId}/${messageId}_${timestamp}.jpg`;
+    const filePath = `${authUserId}/${sessionId}/${messageId}_${timestamp}.jpg`;
     
     console.log('📤 Uploading image to storage:', {
       bucket: STORAGE_BUCKET,
       path: filePath,
       sizeKB: Math.round(blob.size / 1024),
-      authUserId: session.user.id
+      farmerId: authUserId,
+      tenantId
     });
+    
+    // ✅ Use authenticated client with custom headers
+    const client = getAuthenticatedClient();
     
     // Upload with retry logic
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= retryCount; attempt++) {
       try {
-        const { data, error } = await supabase.storage
+        const { data, error } = await client.storage
           .from(STORAGE_BUCKET)
           .upload(filePath, blob, {
             contentType: 'image/jpeg',
@@ -407,6 +429,7 @@ export async function uploadChatImage(
             continue;
           }
         } else if (data) {
+          // Use plain supabase for public URL (no auth needed)
           const { data: urlData } = supabase.storage
             .from(STORAGE_BUCKET)
             .getPublicUrl(data.path);
