@@ -291,17 +291,28 @@ export function EnhancedAIChatInterface() {
             .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
             .map(msg => {
               const metadata = msg.metadata as Record<string, any> | null;
+              const imageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
+              
+              // Debug log for image messages
+              if (msg.image_urls?.length || metadata?.image_analyzed) {
+                console.log(`📷 [LocalDB] Image message cached:`, {
+                  id: msg.id,
+                  role: msg.role,
+                  message_type: msg.message_type,
+                  image_urls: msg.image_urls,
+                  resolved_url: imageUrl?.substring(0, 100)
+                });
+              }
+              
               return {
                 id: msg.id,
                 role: msg.role as 'user' | 'assistant',
                 content: msg.content,
                 timestamp: new Date(msg.created_at),
-                // Map image/video fields from LocalDB
-                imageUrl: msg.image_urls?.[0] || metadata?.image_analyzed || undefined,
+                imageUrl,
                 imageUrls: msg.image_urls || undefined,
                 videoUrl: metadata?.video_url || undefined,
                 messageType: msg.message_type as Message['messageType'] || 'text',
-                // Map analysis result for full card display
                 analysisResult: metadata?.analysis_result || undefined,
                 feedback: msg.feedback_rating 
                   ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
@@ -411,25 +422,43 @@ export function EnhancedAIChatInterface() {
           })();
         }
 
+        // ✅ DEBUG: Log loaded messages with image info
+        const mappedMessages = (previousMessages || []).map(msg => {
+          const metadata = msg.metadata as Record<string, any> | null;
+          const imageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
+          
+          // Log image messages for debugging
+          if (msg.image_urls?.length || metadata?.image_analyzed) {
+            console.log(`📷 [loadLandSession] Image message loaded:`, {
+              id: msg.id,
+              role: msg.role,
+              message_type: msg.message_type,
+              image_urls: msg.image_urls,
+              metadata_image: metadata?.image_analyzed,
+              resolved_url: imageUrl?.substring(0, 100)
+            });
+          }
+          
+          return {
+            id: msg.id,
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+            timestamp: new Date(msg.created_at),
+            imageUrl,
+            imageUrls: msg.image_urls || undefined,
+            videoUrl: metadata?.video_url || undefined,
+            messageType: msg.message_type as Message['messageType'] || 'text',
+            analysisResult: metadata?.analysis_result || undefined,
+            feedback: msg.feedback_rating 
+              ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
+              : null
+          };
+        });
+        
+        console.log(`✅ [loadLandSession] Loaded ${mappedMessages.length} messages for ${sessionKey}`);
         return {
           sessionId: existingSession.id,
-          messages: (previousMessages || []).map(msg => {
-            const metadata = msg.metadata as Record<string, any> | null;
-            return {
-              id: msg.id,
-              role: msg.role as 'user' | 'assistant',
-              content: msg.content,
-              timestamp: new Date(msg.created_at),
-              imageUrl: msg.image_urls?.[0] || metadata?.image_analyzed || undefined,
-              imageUrls: msg.image_urls || undefined,
-              videoUrl: metadata?.video_url || undefined,
-              messageType: msg.message_type as Message['messageType'] || 'text',
-              analysisResult: metadata?.analysis_result || undefined,
-              feedback: msg.feedback_rating 
-                ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
-                : null
-            };
-          })
+          messages: mappedMessages
         };
       }
 
