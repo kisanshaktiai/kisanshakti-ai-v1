@@ -8,7 +8,7 @@ const corsHeaders = {
 };
 
 interface ScanRequest {
-  images: string[]; // base64 encoded images
+  images?: string[]; // base64 encoded images
   videoFrames?: string[]; // extracted video frames
   userNotes?: string;
   language?: string;
@@ -16,7 +16,13 @@ interface ScanRequest {
   tenantId?: string;
   landId?: string;
   landCrop?: string; // Current crop in the land for validation
-  mode?: 'quick' | 'full'; // quick = fast detection only, full = complete analysis
+  mode?: 'quick' | 'full' | 'targeted_solution'; // quick = fast detection only, full = complete analysis, targeted_solution = generate specific solution type
+  // For targeted_solution mode
+  suggestionType?: 'organic' | 'fertilizer' | 'pesticide' | 'hybrid';
+  landArea?: { guntha: number; acres: number; sqft: number };
+  diagnosis?: any;
+  cropDetected?: any;
+  healthStatus?: any;
 }
 
 interface ThreeCategoryRecommendation {
@@ -117,8 +123,97 @@ serve(async (req) => {
       tenantId, 
       landId,
       landCrop,
-      mode = 'full' 
+      mode = 'full',
+      suggestionType,
+      landArea,
+      diagnosis,
+      cropDetected,
+      healthStatus
     } = requestData;
+
+    // Handle targeted_solution mode (no images needed)
+    if (mode === 'targeted_solution' && suggestionType && diagnosis) {
+      console.log('🎯 Targeted Solution Request:', { suggestionType, landArea, cropDetected: cropDetected?.name });
+      
+      const areaText = landArea 
+        ? `Land area: ${landArea.guntha} guntha (${landArea.acres?.toFixed(2)} acres). Calculate exact product quantities for this area.`
+        : '';
+      
+      const typeLabel = suggestionType === 'organic' ? 'organic/natural' 
+        : suggestionType === 'fertilizer' ? 'chemical fertilizer' 
+        : suggestionType === 'pesticide' ? 'pesticide/chemical' 
+        : 'comprehensive (organic + chemical)';
+      
+      const targetedPrompt = `Based on this crop diagnosis, provide ONLY ${typeLabel} solutions.
+
+CROP: ${cropDetected?.name || landCrop || 'Unknown'}
+DIAGNOSIS: ${diagnosis?.summary || JSON.stringify(diagnosis)}
+HEALTH: ${healthStatus?.condition || 'unknown'} (${healthStatus?.score || 0}%)
+${areaText}
+
+Provide response in ${language === 'hi' ? 'Hindi' : language === 'mr' ? 'Marathi' : 'English'}.
+
+Return JSON with this structure:
+{
+  "summary": "Brief summary of recommended solution",
+  "recommendations": {
+    "${suggestionType}": {
+      "type": "${suggestionType}",
+      "title": "Solution title",
+      "products": [
+        {
+          "name": "Product name",
+          "localName": "Local name",
+          "dosage": "Exact dosage${landArea ? ` for ${landArea.guntha} guntha` : ' per acre'}",
+          "totalQuantity": "${landArea ? `Total quantity needed for ${landArea.guntha} guntha` : 'Per acre quantity'}",
+          "applicationMethod": "How to apply",
+          "timing": "When to apply",
+          "cost": "₹XXX${landArea ? ` for ${landArea.guntha} guntha` : ' per acre'}"
+        }
+      ],
+      "instructions": ["Step by step"],
+      "benefits": ["Expected results"],
+      "precautions": ["Safety notes"],
+      "estimatedCost": "₹XXX total"
+    }
+  }
+}`;
+
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          messages: [
+            { role: 'system', content: 'You are an expert agricultural scientist. Provide specific, actionable product recommendations with exact quantities.' },
+            { role: 'user', content: targetedPrompt }
+          ],
+          temperature: 0.3,
+          max_tokens: 2000,
+        }),
+      });
+
+      const aiResponse = await response.json();
+      const content = aiResponse.choices?.[0]?.message?.content || '';
+      
+      try {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        const result = jsonMatch ? JSON.parse(jsonMatch[0]) : { summary: content, recommendations: {} };
+        
+        return new Response(
+          JSON.stringify({ success: true, result }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } catch (parseError) {
+        return new Response(
+          JSON.stringify({ success: true, result: { summary: content, recommendations: {} } }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
 
     // Combine images and video frames
     const allImages = [...(images || []), ...(videoFrames || [])];
