@@ -71,11 +71,22 @@ const isValidStorageUrl = (url: string | undefined): boolean => {
   return url.startsWith('https://') || url.startsWith('http://');
 };
 
+// ✅ Check if URL is base64 data
+const isBase64Image = (url: string | undefined): boolean => {
+  if (!url) return false;
+  return url.startsWith('data:image/') || url.startsWith('data:video/');
+};
+
 // ✅ Get display-ready image URL (handles base64 and storage URLs)
 const getImageSrc = (url: string | undefined): string | undefined => {
   if (!url) return undefined;
   // Both base64 and https URLs can be used directly as img src
   return url;
+};
+
+// ✅ Check if image URL is usable (either storage or base64)
+const isUsableImageUrl = (url: string | undefined): boolean => {
+  return isValidStorageUrl(url) || isBase64Image(url);
 };
 
 export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: ModernChatUIProps) {
