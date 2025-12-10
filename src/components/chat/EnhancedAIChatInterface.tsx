@@ -42,11 +42,12 @@ interface Message {
   timestamp: Date;
   isPlaying?: boolean;
   landContext?: any;
-  // ✅ Image support for persistent display
+  // Image/video support for persistent display
   imageUrl?: string;
   imageUrls?: string[];
+  videoUrl?: string;
   messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response';
-  // ✅ CRITICAL: Full analysis result for detailed cards
+  // Full analysis result for detailed recommendation cards
   analysisResult?: VisionAnalysisResult;
   structured?: {
     greeting?: string;
@@ -276,6 +277,7 @@ export function EnhancedAIChatInterface() {
 
   // ✅ CRITICAL FIX: Define loadLandSession FIRST (before fetchLands that depends on it)
   // Now with LocalDB caching for offline-first experience
+  // ✅ PRODUCTION-READY: Load session with proper error handling and offline support
   const loadLandSession = useCallback(async (landId: string | null) => {
     const sessionKey = landId || 'general';
     
@@ -287,20 +289,26 @@ export function EnhancedAIChatInterface() {
         if (localMessages && localMessages.length > 0) {
           cachedMessages = localMessages
             .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-            .map(msg => ({
-              id: msg.id,
-              role: msg.role as 'user' | 'assistant',
-              content: msg.content,
-              timestamp: new Date(msg.created_at),
-              // ✅ CRITICAL: Map image fields from LocalDB cache
-              imageUrl: msg.image_urls?.[0] || undefined,
-              imageUrls: msg.image_urls || undefined,
-              messageType: msg.message_type as Message['messageType'] || 'text',
-              feedback: msg.feedback_rating 
-                ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
-                : null
-            }));
-          console.log(`⚡ [LocalDB] Loaded ${cachedMessages.length} cached messages instantly for ${sessionKey}`);
+            .map(msg => {
+              const metadata = msg.metadata as Record<string, any> | null;
+              return {
+                id: msg.id,
+                role: msg.role as 'user' | 'assistant',
+                content: msg.content,
+                timestamp: new Date(msg.created_at),
+                // Map image/video fields from LocalDB
+                imageUrl: msg.image_urls?.[0] || metadata?.image_analyzed || undefined,
+                imageUrls: msg.image_urls || undefined,
+                videoUrl: metadata?.video_url || undefined,
+                messageType: msg.message_type as Message['messageType'] || 'text',
+                // Map analysis result for full card display
+                analysisResult: metadata?.analysis_result || undefined,
+                feedback: msg.feedback_rating 
+                  ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
+                  : null
+              };
+            });
+          console.log(`⚡ [LocalDB] Loaded ${cachedMessages.length} cached messages for ${sessionKey}`);
         }
       } catch (localErr) {
         console.warn('LocalDB read failed, continuing with Supabase:', localErr);
@@ -316,93 +324,112 @@ export function EnhancedAIChatInterface() {
         .order('updated_at', { ascending: false })
         .limit(1);
       
-      // Handle null landId properly - use is null filter instead of eq
       if (landId === null) {
         sessionQuery = sessionQuery.is('land_id', null);
       } else {
         sessionQuery = sessionQuery.eq('land_id', landId);
       }
       
-      const { data: existingSession } = await sessionQuery.single();
+      const { data: existingSession, error: sessionError } = await sessionQuery.maybeSingle();
+
+      if (sessionError) {
+        console.warn(`Session query error for ${sessionKey}:`, sessionError);
+        if (cachedMessages.length > 0) {
+          return { sessionId: null, messages: cachedMessages };
+        }
+        return { sessionId: null, messages: [] };
+      }
 
       if (existingSession) {
         console.log(`✅ Loaded session from Supabase for ${sessionKey}:`, existingSession.id);
         
         // Load messages for this session
-        const { data: previousMessages } = await supabase
+        const { data: previousMessages, error: messagesError } = await supabase
           .from('ai_chat_messages')
           .select('*')
           .eq('session_id', existingSession.id)
           .eq('farmer_id', user?.id)
-          .order('created_at', { ascending: true });
+          .order('created_at', { ascending: true })
+          .limit(100); // Limit for performance
+
+        if (messagesError) {
+          console.warn(`Messages query error for ${sessionKey}:`, messagesError);
+          if (cachedMessages.length > 0) {
+            return { sessionId: existingSession.id, messages: cachedMessages };
+          }
+        }
 
         console.log(`📜 Loaded ${previousMessages?.length || 0} messages from Supabase for ${sessionKey}`);
 
-        // 3. Save to LocalDB for offline access
+        // 3. Cache to LocalDB for offline access (non-blocking)
         if (previousMessages && previousMessages.length > 0) {
-          try {
-            for (const msg of previousMessages) {
-              await localDB.saveChatMessage({
-                id: msg.id,
-                session_id: msg.session_id,
-                tenant_id: msg.tenant_id,
-                farmer_id: msg.farmer_id,
-                role: msg.role,
-                content: msg.content,
-                land_context: msg.land_context,
-                crop_context: msg.crop_context,
-                weather_context: msg.weather_context,
-                location_context: msg.location_context,
-                agro_climatic_zone: msg.agro_climatic_zone,
-                soil_zone: msg.soil_zone,
-                rainfall_zone: msg.rainfall_zone,
-                crop_season: msg.crop_season,
-                ai_model: msg.ai_model,
-                response_time_ms: msg.response_time_ms,
-                tokens_used: msg.tokens_used,
-                feedback_rating: msg.feedback_rating,
-                feedback_text: msg.feedback_text,
-                attachments: msg.attachments,
-                image_urls: msg.image_urls,
-                status: msg.status,
-                language: msg.language,
-                message_type: msg.message_type,
-                error_details: msg.error_details,
-                is_edited: msg.is_edited,
-                edited_at: msg.edited_at,
-                parent_message_id: msg.parent_message_id,
-                user_agent: msg.user_agent,
-                ip_address: msg.ip_address,
-                partition_key: msg.partition_key,
-                word_count: msg.word_count,
-                metadata: msg.metadata,
-                created_at: msg.created_at,
-                updated_at: msg.updated_at
-              });
+          (async () => {
+            try {
+              for (const msg of previousMessages) {
+                await localDB.saveChatMessage({
+                  id: msg.id,
+                  session_id: msg.session_id,
+                  tenant_id: msg.tenant_id,
+                  farmer_id: msg.farmer_id,
+                  role: msg.role,
+                  content: msg.content,
+                  land_context: msg.land_context,
+                  crop_context: msg.crop_context,
+                  weather_context: msg.weather_context,
+                  location_context: msg.location_context,
+                  agro_climatic_zone: msg.agro_climatic_zone,
+                  soil_zone: msg.soil_zone,
+                  rainfall_zone: msg.rainfall_zone,
+                  crop_season: msg.crop_season,
+                  ai_model: msg.ai_model,
+                  response_time_ms: msg.response_time_ms,
+                  tokens_used: msg.tokens_used,
+                  feedback_rating: msg.feedback_rating,
+                  feedback_text: msg.feedback_text,
+                  attachments: msg.attachments,
+                  image_urls: msg.image_urls,
+                  status: msg.status,
+                  language: msg.language,
+                  message_type: msg.message_type,
+                  error_details: msg.error_details,
+                  is_edited: msg.is_edited,
+                  edited_at: msg.edited_at,
+                  parent_message_id: msg.parent_message_id,
+                  user_agent: msg.user_agent,
+                  ip_address: msg.ip_address,
+                  partition_key: msg.partition_key,
+                  word_count: msg.word_count,
+                  metadata: msg.metadata,
+                  created_at: msg.created_at,
+                  updated_at: msg.updated_at
+                });
+              }
+              console.log(`💾 [LocalDB] Cached ${previousMessages.length} messages`);
+            } catch (cacheErr) {
+              console.warn('Failed to cache messages to LocalDB:', cacheErr);
             }
-            console.log(`💾 [LocalDB] Cached ${previousMessages.length} messages for offline access`);
-          } catch (cacheErr) {
-            console.warn('Failed to cache messages to LocalDB:', cacheErr);
-          }
+          })();
         }
 
         return {
           sessionId: existingSession.id,
-          messages: (previousMessages || []).map(msg => ({
-            id: msg.id,
-            role: msg.role as 'user' | 'assistant',
-            content: msg.content,
-            timestamp: new Date(msg.created_at),
-            // ✅ CRITICAL: Map image fields for persistent display
-            imageUrl: msg.image_urls?.[0] || (msg.metadata as any)?.image_analyzed || undefined,
-            imageUrls: msg.image_urls || undefined,
-            messageType: msg.message_type as Message['messageType'] || 'text',
-            // ✅ CRITICAL: Map analysis result for full card display
-            analysisResult: (msg.metadata as any)?.analysis_result || undefined,
-            feedback: msg.feedback_rating 
-              ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
-              : null
-          }))
+          messages: (previousMessages || []).map(msg => {
+            const metadata = msg.metadata as Record<string, any> | null;
+            return {
+              id: msg.id,
+              role: msg.role as 'user' | 'assistant',
+              content: msg.content,
+              timestamp: new Date(msg.created_at),
+              imageUrl: msg.image_urls?.[0] || metadata?.image_analyzed || undefined,
+              imageUrls: msg.image_urls || undefined,
+              videoUrl: metadata?.video_url || undefined,
+              messageType: msg.message_type as Message['messageType'] || 'text',
+              analysisResult: metadata?.analysis_result || undefined,
+              feedback: msg.feedback_rating 
+                ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
+                : null
+            };
+          })
         };
       }
 
@@ -416,7 +443,6 @@ export function EnhancedAIChatInterface() {
       return { sessionId: null, messages: [] };
     } catch (error) {
       console.error(`Error loading session for ${sessionKey}:`, error);
-      // Return cached messages if Supabase fails
       return { sessionId: null, messages: [] };
     }
   }, [user?.id, tenant?.id]);
@@ -1726,8 +1752,8 @@ export function EnhancedAIChatInterface() {
           ))}
         </AnimatePresence>
         
-        {/* Vision Analysis Card - Shows when analyzing image/video */}
-        {(isAnalyzingImage || pendingVisionAnalysis) && (
+        {/* Vision Analysis Card - ONLY show when actively analyzing (not after result is added to chat) */}
+        {isAnalyzingImage && !pendingVisionAnalysis?.result && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1736,8 +1762,7 @@ export function EnhancedAIChatInterface() {
             <VisionAnalysisCard
               imageUrl={pendingVisionAnalysis?.imageUrl}
               videoUrl={pendingVisionAnalysis?.videoUrl}
-              isAnalyzing={isAnalyzingImage}
-              analysisResult={pendingVisionAnalysis?.result}
+              isAnalyzing={true}
               error={pendingVisionAnalysis?.error}
               language={language}
               onRetry={() => {
