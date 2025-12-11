@@ -185,32 +185,28 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
   const hasAnalysisResult = !isUser && message.analysisResult;
   const hasStructuredCards = !isUser && message.structuredResponse?.cards?.length > 0;
   
-  // ✅ NEW: Check if this is a targeted solution (user already selected suggestion type)
+  // ✅ Check if this is a targeted solution (user already selected suggestion type)
   const isTargetedSolution = message.messageType === 'targeted_solution' && message.suggestionType;
   
-  // ✅ NEW: Check if awaiting suggestion selection (show diagnosis + selector)
-  const awaitingSuggestion = hasAnalysisResult && message.awaitingSuggestionSelection !== false && !isTargetedSolution;
-  
-  // ✅ DEBUG: Log AI response rendering decision
-  if (!isUser && (message.messageType?.includes('image') || message.messageType?.includes('video') || message.messageType?.includes('suggestion') || message.messageType?.includes('targeted'))) {
-    console.log(`🎯 [ModernChatUI] AI Response rendering:`, {
-      id: message.id,
-      messageType: message.messageType,
-      hasAnalysisResult: !!message.analysisResult,
-      isTargetedSolution,
-      awaitingSuggestion,
-      suggestionType: message.suggestionType,
-      cropDetected: message.analysisResult?.cropDetected?.name,
-      imageUrl: message.imageUrl?.substring(0, 80)
-    });
-  }
+  // ✅ Check if awaiting suggestion selection (show diagnosis + selector)
+  // Also check for crop mismatch - don't show selector if mismatch
+  const isCropMismatch = hasAnalysisResult && message.analysisResult?.cropDetected?.matchesLandCrop === false;
+  const awaitingSuggestion = hasAnalysisResult && 
+    message.awaitingSuggestionSelection === true && 
+    !isTargetedSolution &&
+    !isCropMismatch;
   
   // ✅ Check if content is a placeholder that should be hidden
   const isPlaceholderContent = message.content.includes('[📷') || 
     message.content.includes('[🎥') || 
     message.content === 'Analysis complete' ||
     message.content.includes('uploaded for analysis') ||
-    message.content.includes('captured for analysis');
+    message.content.includes('captured for analysis') ||
+    message.content.includes('फोटो विश्लेषण') ||
+    message.content.includes('वीडियो विश्लेषण') ||
+    message.content.includes('फोटो विश्लेषणासाठी') ||
+    message.content.includes('Photo for analysis') ||
+    message.content.includes('Video for analysis');
   
   return (
     <motion.div
