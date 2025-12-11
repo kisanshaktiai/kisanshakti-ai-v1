@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
-import { Info, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Info, AlertTriangle, CheckCircle, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { VisionAnalysisResult } from './RecommendationCards';
 
@@ -20,7 +20,14 @@ const getLabels = (lang: string) => ({
   healthy: lang === 'hi' ? 'स्वस्थ' : lang === 'mr' ? 'निरोगी' : 'Healthy',
   warning: lang === 'hi' ? 'सतर्कता' : lang === 'mr' ? 'सावधानता' : 'Warning',
   critical: lang === 'hi' ? 'गंभीर' : lang === 'mr' ? 'गंभीर' : 'Critical',
-  analyzed: lang === 'hi' ? 'विश्लेषित' : lang === 'mr' ? 'विश्लेषित' : 'Analyzed'
+  analyzed: lang === 'hi' ? 'विश्लेषित' : lang === 'mr' ? 'विश्लेषित' : 'Analyzed',
+  cropMismatch: lang === 'hi' 
+    ? '⚠️ यह आपके खेत की फसल से मेल नहीं खाता। सही सलाह के लिए सामान्य चैट का उपयोग करें।'
+    : lang === 'mr'
+    ? '⚠️ हे तुमच्या शेतातील पिकाशी जुळत नाही. योग्य सल्ल्यासाठी सामान्य चॅट वापरा.'
+    : '⚠️ This does not match your land\'s crop. Use General Chat for accurate advice.',
+  expected: lang === 'hi' ? 'अपेक्षित' : lang === 'mr' ? 'अपेक्षित' : 'Expected',
+  detected: lang === 'hi' ? 'पहचाना गया' : lang === 'mr' ? 'ओळखले' : 'Detected'
 });
 
 export function DiagnosisOnlyCard({ analysis, imageUrl, language = 'en' }: DiagnosisOnlyCardProps) {
@@ -40,6 +47,9 @@ export function DiagnosisOnlyCard({ analysis, imageUrl, language = 'en' }: Diagn
     warning: 'bg-amber-500',
     critical: 'bg-red-500'
   };
+
+  // ✅ Check for crop mismatch
+  const isCropMismatch = analysis.cropDetected.matchesLandCrop === false;
   
   return (
     <div className="space-y-3">
@@ -64,12 +74,40 @@ export function DiagnosisOnlyCard({ analysis, imageUrl, language = 'en' }: Diagn
         </div>
       )}
       
+      {/* ✅ Crop Mismatch Warning */}
+      {isCropMismatch && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="p-3 bg-destructive/10 border-2 border-destructive/30 rounded-xl"
+        >
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-destructive">
+                {labels.cropMismatch}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                <Badge variant="outline" className="border-destructive/50">
+                  {labels.detected}: {analysis.cropDetected.name}
+                </Badge>
+                {analysis.cropDetected.landCrop && (
+                  <Badge variant="outline" className="border-green-500/50 text-green-700 dark:text-green-300">
+                    {labels.expected}: {analysis.cropDetected.landCrop}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+      
       {/* Crop Detection Header */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <Card className="border-2 border-primary/20">
+        <Card className={cn("border-2", isCropMismatch ? "border-destructive/20" : "border-primary/20")}>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
