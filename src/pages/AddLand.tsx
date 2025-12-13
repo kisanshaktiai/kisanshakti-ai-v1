@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
@@ -8,7 +8,7 @@ import { LandInstructionDialog } from '@/components/land/LandInstructionDialog';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, MapPin, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Loader2, MapPin, RefreshCw, AlertTriangle, Wifi, WifiOff } from 'lucide-react';
 
 interface LatLng {
   lat: number;
@@ -25,6 +25,37 @@ export default function AddLand() {
   const [showForm, setShowForm] = useState(false);
   const [boundary, setBoundary] = useState<LatLng[]>([]);
   const [area, setArea] = useState({ sqft: 0, guntha: 0, acres: 0 });
+  const [loadingProgress, setLoadingProgress] = useState(10);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  // Track online/offline status
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Animate loading progress
+  useEffect(() => {
+    if (isLoading) {
+      const interval = setInterval(() => {
+        setLoadingProgress(prev => {
+          if (prev >= 90) return prev;
+          return prev + Math.random() * 15;
+        });
+      }, 500);
+      return () => clearInterval(interval);
+    } else if (isLoaded) {
+      setLoadingProgress(100);
+    }
+  }, [isLoading, isLoaded]);
 
   const handleInstructionStart = () => {
     setShowInstructions(false);
@@ -51,20 +82,48 @@ export default function AddLand() {
     navigate('/app/lands');
   };
 
-  // Loading state with animated skeleton
+  // Loading state with animated progress and offline indicator
   if (isLoading || !isLoaded) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background z-50">
         <Card className="p-8 space-y-6 text-center max-w-sm mx-4">
           <div className="relative">
-            <div className="h-20 w-20 mx-auto rounded-full bg-primary/10 animate-pulse" />
-            <MapPin className="absolute inset-0 m-auto h-8 w-8 text-primary animate-bounce" />
+            <div className="h-20 w-20 mx-auto rounded-full bg-primary/10 flex items-center justify-center">
+              <MapPin className="h-10 w-10 text-primary animate-pulse" />
+            </div>
+            {/* Online/Offline indicator */}
+            <div className={`absolute -top-1 -right-1 p-1.5 rounded-full ${isOnline ? 'bg-green-500' : 'bg-amber-500'}`}>
+              {isOnline ? (
+                <Wifi className="h-3 w-3 text-white" />
+              ) : (
+                <WifiOff className="h-3 w-3 text-white" />
+              )}
+            </div>
           </div>
           <div className="space-y-2">
-            <p className="font-medium text-foreground">{t('lands.add_land.loading.maps')}</p>
-            <p className="text-sm text-muted-foreground">{t('lands.add_land.loading.location')}</p>
+            <p className="font-medium text-foreground">
+              {t('lands.add_land.loading.maps', 'Loading Map...')}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {!isOnline 
+                ? t('lands.add_land.loading.offline', 'Working offline - using cached data')
+                : t('lands.add_land.loading.location', 'Getting your location...')}
+            </p>
           </div>
-          <Progress value={33} className="h-2" />
+          <Progress value={loadingProgress} className="h-2" />
+          
+          {/* Retry button after 5 seconds */}
+          {isLoading && loadingProgress > 50 && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={retry}
+              className="gap-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              {t('common.retry', 'Retry')}
+            </Button>
+          )}
         </Card>
       </div>
     );

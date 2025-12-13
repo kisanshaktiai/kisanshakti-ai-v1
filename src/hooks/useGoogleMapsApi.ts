@@ -1,192 +1,263 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useLoadScript, Libraries } from '@react-google-maps/api';
+import { onAppResume, isNativeApp } from '@/utils/capacitorInit';
 
 // Define libraries with proper typing
 const libraries: Libraries = ['drawing', 'geometry'];
 
-// Global flag to prevent multiple API key fetches
-let apiKeyFetched = false;
-let globalApiKey: string | null = null;
-let fetchInProgress = false;
-
 // Cache configuration
-const CACHE_KEY = 'google_maps_api_key';
-const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_KEY = 'google_maps_api_key_v2';
+const CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days for offline support
 
+// Singleton to track script loading state across component instances
+let scriptLoadAttempted = false;
+let cachedApiKey: string | null = null;
+let isAppResuming = false;
+
+/**
+ * Get cached API key synchronously on app start
+ * This ensures the key is available immediately when app reopens
+ */
+function getCachedApiKey(): string | null {
+  if (cachedApiKey) return cachedApiKey;
+  
+  try {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      const { key, timestamp } = JSON.parse(cached);
+      const isValid = Date.now() - timestamp < CACHE_DURATION && key && key.length > 10;
+      if (isValid) {
+        cachedApiKey = key;
+        console.log('🗺️ [GoogleMaps] Loaded API key from cache');
+        return key;
+      }
+    }
+  } catch (err) {
+    console.warn('🗺️ [GoogleMaps] Cache read error:', err);
+  }
+  return null;
+}
+
+/**
+ * Save API key to cache
+ */
+function cacheApiKey(key: string): void {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
+      key,
+      timestamp: Date.now()
+    }));
+    cachedApiKey = key;
+    console.log('🗺️ [GoogleMaps] API key cached');
+  } catch (err) {
+    console.warn('🗺️ [GoogleMaps] Cache write error:', err);
+  }
+}
+
+/**
+ * Clear cached API key
+ */
+function clearCache(): void {
+  try {
+    localStorage.removeItem(CACHE_KEY);
+    cachedApiKey = null;
+    scriptLoadAttempted = false;
+  } catch (err) {
+    console.warn('🗺️ [GoogleMaps] Cache clear error:', err);
+  }
+}
+
+/**
+ * Hook to manage Google Maps API loading
+ * 
+ * CRITICAL FIX for white screen issue:
+ * - Load API key from cache SYNCHRONOUSLY on first render
+ * - Never call useLoadScript with empty key
+ * - Proper cleanup and retry logic
+ */
 export function useGoogleMapsApi() {
-  const [apiKey, setApiKey] = useState<string | null>(globalApiKey);
+  // Initialize with cached key immediately (synchronous)
+  const [apiKey, setApiKey] = useState<string | null>(() => getCachedApiKey());
   const [error, setError] = useState<string | null>(null);
-  const [isKeyLoading, setIsKeyLoading] = useState(!apiKeyFetched);
+  const [isKeyLoading, setIsKeyLoading] = useState(!apiKey);
   const [retryCount, setRetryCount] = useState(0);
   const isMounted = useRef(true);
+  const fetchingRef = useRef(false);
 
+  // Cleanup on unmount
   useEffect(() => {
-    // Cleanup function to track component mount status
+    isMounted.current = true;
+    
+    // Register for app resume events (for native apps)
+    const unsubscribe = onAppResume(() => {
+      console.log('🗺️ [GoogleMaps] App resumed, checking state...');
+      isAppResuming = true;
+      
+      // If we have a cached key, the script should already be loaded
+      // Just ensure the state is correct
+      if (cachedApiKey && !apiKey) {
+        setApiKey(cachedApiKey);
+        setIsKeyLoading(false);
+      }
+      
+      setTimeout(() => {
+        isAppResuming = false;
+      }, 1000);
+    });
+    
     return () => {
       isMounted.current = false;
+      unsubscribe();
     };
-  }, []);
+  }, [apiKey]);
 
-  const fetchApiKey = useCallback(async () => {
-    // Skip if already fetching
-    if (fetchInProgress) {
-      console.log('🗺️ [GoogleMaps] Fetch already in progress, skipping...');
+  // Fetch API key from edge function
+  const fetchApiKey = useCallback(async (force: boolean = false) => {
+    // Prevent concurrent fetches
+    if (fetchingRef.current && !force) {
+      console.log('🗺️ [GoogleMaps] Fetch already in progress');
       return;
     }
 
-    // Check cache first
-    try {
-      const cached = localStorage.getItem(CACHE_KEY);
-      if (cached) {
-        const { key, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < CACHE_DURATION && key) {
-          console.log('🗺️ [GoogleMaps] Using cached API key');
-          globalApiKey = key;
-          apiKeyFetched = true;
-          setApiKey(key);
-          setIsKeyLoading(false);
-          return;
-        }
-      }
-    } catch (err) {
-      console.warn('🗺️ [GoogleMaps] Failed to read cache:', err);
-    }
-
-    // Skip if already fetched globally
-    if (apiKeyFetched && globalApiKey) {
-      console.log('🗺️ [GoogleMaps] Using global API key');
-      setApiKey(globalApiKey);
+    // Skip if already have valid key
+    if (apiKey && !force) {
       setIsKeyLoading(false);
       return;
     }
 
-    fetchInProgress = true;
-    
+    fetchingRef.current = true;
+    setIsKeyLoading(true);
+
     try {
       console.log('🗺️ [GoogleMaps] Fetching API key from edge function...');
       
-      const response = await supabase.functions.invoke('google-maps-config');
+      const { data, error: fetchError } = await supabase.functions.invoke('google-maps-config', {
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
 
       if (!isMounted.current) return;
 
-      if (response.error) {
-        throw new Error(response.error.message || 'Failed to fetch API key');
+      if (fetchError) {
+        throw new Error(fetchError.message || 'Failed to fetch API key');
       }
 
-      if (response.data?.apiKey) {
-        console.log('🗺️ [GoogleMaps] API key received successfully');
-        globalApiKey = response.data.apiKey;
-        apiKeyFetched = true;
-        setApiKey(response.data.apiKey);
+      if (data?.apiKey && data.apiKey.length > 10) {
+        console.log('🗺️ [GoogleMaps] API key received');
+        cacheApiKey(data.apiKey);
+        setApiKey(data.apiKey);
         setError(null);
-        
-        // Cache the API key
-        try {
-          localStorage.setItem(CACHE_KEY, JSON.stringify({
-            key: response.data.apiKey,
-            timestamp: Date.now()
-          }));
-        } catch (err) {
-          console.warn('🗺️ [GoogleMaps] Failed to cache API key:', err);
-        }
+        setIsKeyLoading(false);
       } else {
-        throw new Error('API key not found in response');
+        throw new Error('Invalid API key in response');
       }
     } catch (err) {
       if (!isMounted.current) return;
-      console.error('🗺️ [GoogleMaps] Error fetching API key:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load Google Maps');
       
-      // Clear bad cache
-      localStorage.removeItem(CACHE_KEY);
-      globalApiKey = null;
-      apiKeyFetched = false;
+      const errorMsg = err instanceof Error ? err.message : 'Failed to load Google Maps';
+      console.error('🗺️ [GoogleMaps] Fetch error:', errorMsg);
+      setError(errorMsg);
+      setIsKeyLoading(false);
     } finally {
-      fetchInProgress = false;
-      if (isMounted.current) {
-        setIsKeyLoading(false);
-      }
+      fetchingRef.current = false;
+    }
+  }, [apiKey]);
+
+  // Initial fetch if no cached key
+  useEffect(() => {
+    if (!apiKey && !error) {
+      fetchApiKey();
     }
   }, []);
 
-  // Initial fetch
-  useEffect(() => {
-    if (!apiKeyFetched && !apiKey) {
-      fetchApiKey();
-    }
-  }, [fetchApiKey, apiKey]);
-
-  // Retry logic for failed fetches
+  // Retry logic with exponential backoff
   useEffect(() => {
     if (error && retryCount < 3 && !apiKey) {
+      const delay = Math.min(2000 * Math.pow(2, retryCount), 10000);
+      console.log(`🗺️ [GoogleMaps] Retry ${retryCount + 1}/3 in ${delay}ms`);
+      
       const timeout = setTimeout(() => {
-        console.log(`🗺️ [GoogleMaps] Retrying API key fetch (attempt ${retryCount + 1}/3)...`);
-        setError(null);
-        setIsKeyLoading(true);
-        apiKeyFetched = false;
-        globalApiKey = null;
-        fetchApiKey();
-        setRetryCount(prev => prev + 1);
-      }, 2000 * (retryCount + 1)); // Exponential backoff
+        if (isMounted.current) {
+          setError(null);
+          setRetryCount(prev => prev + 1);
+          fetchApiKey(true);
+        }
+      }, delay);
 
       return () => clearTimeout(timeout);
     }
   }, [error, retryCount, apiKey, fetchApiKey]);
 
-  // CRITICAL: Only load the script when we have a valid API key
-  // This prevents the blank screen issue caused by loading with empty key
-  const shouldLoadScript = !!apiKey && !isKeyLoading && !error;
+  // CRITICAL: Only load script when we have a valid API key
+  // This prevents the white screen caused by loading with empty/invalid key
+  const shouldLoadScript = Boolean(apiKey && apiKey.length > 10);
   
   const { isLoaded: scriptLoaded, loadError: scriptError } = useLoadScript({
-    googleMapsApiKey: shouldLoadScript ? apiKey : '',
+    googleMapsApiKey: shouldLoadScript ? apiKey! : '',
     libraries,
     preventGoogleFontsLoading: true,
-    id: 'google-map-script',
+    id: 'google-map-script-v2',
+    // CRITICAL: Don't load if no valid key
+    ...(shouldLoadScript ? {} : { googleMapsApiKey: '' }),
   });
 
-  // Clear cache and retry on script load error
+  // Handle script load errors
   useEffect(() => {
     if (scriptError && retryCount < 3) {
-      console.error('🗺️ [GoogleMaps] Script load error, clearing cache:', scriptError);
-      localStorage.removeItem(CACHE_KEY);
-      globalApiKey = null;
-      apiKeyFetched = false;
+      console.error('🗺️ [GoogleMaps] Script error:', scriptError.message);
+      clearCache();
+      setApiKey(null);
+      setError('Failed to load Google Maps. Please try again.');
     }
   }, [scriptError, retryCount]);
 
-  // Better error handling for loadError
-  const actualLoadError = scriptError ? 
-    (typeof scriptError === 'string' ? scriptError : 
-     scriptError.message || 'Failed to load Google Maps') : null;
-
-  // Only consider loaded if we have a key AND the script loaded successfully
+  // Compute final states
   const isFullyLoaded = shouldLoadScript && scriptLoaded && !scriptError;
+  const isLoading = isKeyLoading || (shouldLoadScript && !scriptLoaded && !scriptError);
+  const loadError = scriptError?.message || error;
 
-  console.log('🗺️ [GoogleMaps] Hook state:', { 
-    hasApiKey: !!apiKey, 
-    shouldLoadScript,
-    scriptLoaded,
-    isFullyLoaded,
-    loadError: actualLoadError, 
-    keyError: error, 
-    isKeyLoading,
-    retryCount
-  });
+  // Debug logging
+  useEffect(() => {
+    console.log('🗺️ [GoogleMaps] State:', { 
+      hasApiKey: !!apiKey, 
+      shouldLoadScript,
+      scriptLoaded,
+      isFullyLoaded,
+      isLoading,
+      error: loadError,
+      retryCount
+    });
+  }, [apiKey, shouldLoadScript, scriptLoaded, isFullyLoaded, isLoading, loadError, retryCount]);
 
   return {
     isLoaded: isFullyLoaded,
-    loadError: actualLoadError || error,
-    isLoading: isKeyLoading || (shouldLoadScript && !scriptLoaded && !scriptError),
+    loadError,
+    isLoading,
     apiKey,
-    retry: () => {
-      setRetryCount(0);
+    retry: useCallback(() => {
+      console.log('🗺️ [GoogleMaps] Manual retry triggered');
+      clearCache();
+      setApiKey(null);
       setError(null);
+      setRetryCount(0);
       setIsKeyLoading(true);
-      apiKeyFetched = false;
-      globalApiKey = null;
-      localStorage.removeItem(CACHE_KEY);
-      fetchApiKey();
-    }
+      fetchingRef.current = false;
+      
+      // Small delay to ensure state updates
+      setTimeout(() => {
+        fetchApiKey(true);
+      }, 100);
+    }, [fetchApiKey])
   };
+}
+
+/**
+ * Reset the Google Maps API state
+ * Call this when the app becomes active after being in background
+ */
+export function resetGoogleMapsState(): void {
+  scriptLoadAttempted = false;
+  console.log('🗺️ [GoogleMaps] State reset for app resume');
 }
