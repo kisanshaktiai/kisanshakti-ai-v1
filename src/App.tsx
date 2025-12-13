@@ -72,6 +72,7 @@ import { localDB } from "@/services/localDB";
 import { tenantIsolationService } from "@/services/tenantIsolationService";
 import { useGlobalRealtimeSync } from "@/hooks/useGlobalRealtimeSync";
 import { TenantProvider, useTenant } from "@/contexts/TenantContext";
+import { GoogleMapsProvider } from "@/contexts/GoogleMapsContext";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -355,17 +356,19 @@ export default function App() {
     <I18nextProvider i18n={i18n}>
       <ErrorBoundary>
         <TenantProvider>
-          <QueryClientProvider client={queryClient}>
-            <TooltipProvider>
-              <AppInitializer>
-                <RouterProvider router={router} />
-              </AppInitializer>
-              <Toaster />
-              <Sonner />
-              {/* PHASE 2 FIX: Removed duplicate PWA components */}
-              {/* PWAInstallBanner is rendered in AppInitializer */}
-            </TooltipProvider>
-          </QueryClientProvider>
+          <GoogleMapsProvider>
+            <QueryClientProvider client={queryClient}>
+              <TooltipProvider>
+                <AppInitializer>
+                  <RouterProvider router={router} />
+                </AppInitializer>
+                <Toaster />
+                <Sonner />
+                {/* PHASE 2 FIX: Removed duplicate PWA components */}
+                {/* PWAInstallBanner is rendered in AppInitializer */}
+              </TooltipProvider>
+            </QueryClientProvider>
+          </GoogleMapsProvider>
         </TenantProvider>
       </ErrorBoundary>
     </I18nextProvider>
