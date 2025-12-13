@@ -3,6 +3,17 @@ import { App } from '@capacitor/app';
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { SplashScreen } from '@capacitor/splash-screen';
 
+// App resume callbacks for components that need to reinitialize
+const appResumeCallbacks: Set<() => void> = new Set();
+
+/**
+ * Register a callback to be called when app resumes from background
+ */
+export function onAppResume(callback: () => void): () => void {
+  appResumeCallbacks.add(callback);
+  return () => appResumeCallbacks.delete(callback);
+}
+
 /**
  * Initialize Capacitor plugins for native app
  */
@@ -45,9 +56,21 @@ export async function initializeCapacitor(): Promise<void> {
       }
     });
 
-    // Handle app state changes
+    // Handle app state changes - CRITICAL for Google Maps reinitialization
     App.addListener('appStateChange', ({ isActive }) => {
       console.log('[Capacitor] App state changed, isActive:', isActive);
+      
+      if (isActive) {
+        // App resumed from background - notify all registered callbacks
+        console.log('[Capacitor] App resumed, triggering reinit callbacks:', appResumeCallbacks.size);
+        appResumeCallbacks.forEach(callback => {
+          try {
+            callback();
+          } catch (err) {
+            console.error('[Capacitor] Resume callback error:', err);
+          }
+        });
+      }
     });
 
     console.log('[Capacitor] Native initialization complete');
