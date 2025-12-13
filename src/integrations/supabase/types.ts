@@ -622,15 +622,20 @@ export type Database = {
           last_checked_at: string | null
           main_page: string | null
           mapping: Json | null
+          max_retries: number | null
+          metadata: Json | null
           notes: string | null
           organization: string | null
           page_requires_session: boolean | null
           price_clean_regex: string | null
+          rate_limit_delay: number | null
           row_selector: string | null
           sample_html: string | null
+          scraper_class: string | null
           skip_empty_rows: boolean | null
           state_code: string | null
           state_id: string | null
+          timeout_seconds: number | null
           timezone: string | null
           updated_at: string | null
         }
@@ -656,15 +661,20 @@ export type Database = {
           last_checked_at?: string | null
           main_page?: string | null
           mapping?: Json | null
+          max_retries?: number | null
+          metadata?: Json | null
           notes?: string | null
           organization?: string | null
           page_requires_session?: boolean | null
           price_clean_regex?: string | null
+          rate_limit_delay?: number | null
           row_selector?: string | null
           sample_html?: string | null
+          scraper_class?: string | null
           skip_empty_rows?: boolean | null
           state_code?: string | null
           state_id?: string | null
+          timeout_seconds?: number | null
           timezone?: string | null
           updated_at?: string | null
         }
@@ -690,15 +700,20 @@ export type Database = {
           last_checked_at?: string | null
           main_page?: string | null
           mapping?: Json | null
+          max_retries?: number | null
+          metadata?: Json | null
           notes?: string | null
           organization?: string | null
           page_requires_session?: boolean | null
           price_clean_regex?: string | null
+          rate_limit_delay?: number | null
           row_selector?: string | null
           sample_html?: string | null
+          scraper_class?: string | null
           skip_empty_rows?: boolean | null
           state_code?: string | null
           state_id?: string | null
+          timeout_seconds?: number | null
           timezone?: string | null
           updated_at?: string | null
         }
@@ -15616,6 +15631,113 @@ export type Database = {
         }
         Relationships: []
       }
+      scraper_execution_log: {
+        Row: {
+          commodities_fetched: number | null
+          completed_at: string | null
+          created_at: string | null
+          duration_seconds: number | null
+          error_message: string | null
+          errors_count: number | null
+          id: string
+          metadata: Json | null
+          organization: string
+          records_scraped: number | null
+          records_upserted: number | null
+          source_id: string | null
+          started_at: string
+          state_code: string
+          status: string | null
+        }
+        Insert: {
+          commodities_fetched?: number | null
+          completed_at?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          error_message?: string | null
+          errors_count?: number | null
+          id?: string
+          metadata?: Json | null
+          organization: string
+          records_scraped?: number | null
+          records_upserted?: number | null
+          source_id?: string | null
+          started_at: string
+          state_code: string
+          status?: string | null
+        }
+        Update: {
+          commodities_fetched?: number | null
+          completed_at?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          error_message?: string | null
+          errors_count?: number | null
+          id?: string
+          metadata?: Json | null
+          organization?: string
+          records_scraped?: number | null
+          records_upserted?: number | null
+          source_id?: string | null
+          started_at?: string
+          state_code?: string
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scraper_execution_log_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "agri_market_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scraper_plugins: {
+        Row: {
+          author: string | null
+          config_schema: Json | null
+          created_at: string | null
+          description: string | null
+          display_name: string
+          id: string
+          is_active: boolean | null
+          python_module: string
+          scraper_class: string
+          supported_states: string[] | null
+          updated_at: string | null
+          version: string | null
+        }
+        Insert: {
+          author?: string | null
+          config_schema?: Json | null
+          created_at?: string | null
+          description?: string | null
+          display_name: string
+          id?: string
+          is_active?: boolean | null
+          python_module: string
+          scraper_class: string
+          supported_states?: string[] | null
+          updated_at?: string | null
+          version?: string | null
+        }
+        Update: {
+          author?: string | null
+          config_schema?: Json | null
+          created_at?: string | null
+          description?: string | null
+          display_name?: string
+          id?: string
+          is_active?: boolean | null
+          python_module?: string
+          scraper_class?: string
+          supported_states?: string[] | null
+          updated_at?: string | null
+          version?: string | null
+        }
+        Relationships: []
+      }
       search_history: {
         Row: {
           created_at: string | null
@@ -21451,6 +21573,56 @@ export type Database = {
         }
         Relationships: []
       }
+      v_active_scrapers: {
+        Row: {
+          active: boolean | null
+          last_checked_at: string | null
+          last_ingestion: string | null
+          latest_data_date: string | null
+          organization: string | null
+          scraper_class: string | null
+          state_code: string | null
+          total_records: number | null
+        }
+        Relationships: []
+      }
+      v_recent_scraper_runs: {
+        Row: {
+          completed_at: string | null
+          duration_seconds: number | null
+          errors_count: number | null
+          organization: string | null
+          records_upserted: number | null
+          scraper_class: string | null
+          started_at: string | null
+          state_code: string | null
+          status: string | null
+        }
+        Relationships: []
+      }
+      v_scraper_performance: {
+        Row: {
+          avg_duration: number | null
+          execution_date: string | null
+          failed_runs: number | null
+          last_run: string | null
+          organization: string | null
+          source_id: string | null
+          state_code: string | null
+          successful_runs: number | null
+          total_records: number | null
+          total_runs: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scraper_execution_log_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "agri_market_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       weather_with_location: {
         Row: {
           area_acres: number | null
@@ -22271,6 +22443,15 @@ export type Database = {
       get_mobile_white_label_config: {
         Args: { p_tenant_id: string }
         Returns: Json
+      }
+      get_next_scraper_to_run: {
+        Args: never
+        Returns: {
+          last_checked_minutes_ago: number
+          organization: string
+          source_id: string
+          state_code: string
+        }[]
       }
       get_onboarding_template: {
         Args: { subscription_plan: string; tenant_type: string }

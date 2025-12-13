@@ -1268,13 +1268,21 @@ class LocalDatabase {
 
   async getChatMessages(landId?: string | null): Promise<AIChatMessageData[]> {
     if (!this.db) await this.initialize();
-    // Get all messages and filter if needed
+    
+    // First, get sessions for this land (or general if landId is null)
+    const allSessions = await this.db!.getAll('aiChatSessions');
+    const relevantSessions = allSessions.filter(s => {
+      if (landId === null || landId === undefined) {
+        return s.land_id === null || s.land_id === undefined;
+      }
+      return s.land_id === landId;
+    });
+    
+    const sessionIds = new Set(relevantSessions.map(s => s.id));
+    
+    // Get all messages and filter by session
     const allMessages = await this.db!.getAll('aiChatMessages');
-    if (landId) {
-      // Filter by land_context if available
-      return allMessages.filter(m => m.land_context?.id === landId);
-    }
-    return allMessages;
+    return allMessages.filter(m => sessionIds.has(m.session_id));
   }
 
   async getChatMessagesBySession(sessionId: string): Promise<AIChatMessageData[]> {

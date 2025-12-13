@@ -360,7 +360,26 @@ export function EnhancedAIChatInterface() {
       }
 
       if (existingSession) {
-        console.log(`✅ Loaded session from Supabase for ${sessionKey}:`, existingSession.id);
+        console.log(`✅ Loaded session from Supabase for ${sessionKey}:`, existingSession.id, `land_id: ${landId}`);
+        
+        // ✅ Cache session to LocalDB for offline filtering
+        try {
+          await localDB.saveChatSession({
+            id: existingSession.id,
+            tenant_id: tenant?.id || '',
+            farmer_id: user?.id || '',
+            land_id: landId || null,
+            session_type: landId ? 'land_specific' : 'general',
+            session_title: landId ? `Land Chat ${landId}` : 'General Agriculture Chat',
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            metadata: {}
+          });
+          console.log(`💾 [LocalDB] Cached session ${existingSession.id} with land_id: ${landId}`);
+        } catch (cacheSessionErr) {
+          console.warn('Failed to cache session:', cacheSessionErr);
+        }
         
         // Load messages for this session
         const { data: previousMessages, error: messagesError } = await supabase
@@ -605,17 +624,71 @@ export function EnhancedAIChatInterface() {
 
   // ✅ MOVED: fetchLands and loadLandSession are now defined BEFORE conditional return as useCallback hooks
 
-  const getCurrentSessionId = () => {
-    // Check if we already have a session ID loaded from database or created in this session
-    if (sessionIds[activeTab]) {
-      console.log(`♻️ Reusing existing session for ${activeTab}:`, sessionIds[activeTab]);
-      return sessionIds[activeTab];
+  // ✅ CRITICAL FIX: Get or create session ID for the CURRENT TAB (land-specific isolation)
+  const getCurrentSessionId = async (): Promise<string> => {
+    const tabKey = activeTab; // 'general' or land_id
+    const landId = tabKey !== 'general' ? tabKey : null;
+    const land = landId ? lands.find(l => l.id === landId) : null;
+    
+    // 1. Check if we already have a session ID for THIS SPECIFIC TAB
+    if (sessionIds[tabKey]) {
+      console.log(`♻️ Reusing existing session for ${tabKey}:`, sessionIds[tabKey]);
+      return sessionIds[tabKey];
     }
     
-    // Create new session ID only if none exists
+    // 2. Query database for an existing session for this specific land
+    try {
+      let sessionQuery = supabase
+        .from('ai_chat_sessions')
+        .select('id')
+        .eq('farmer_id', user?.id)
+        .eq('tenant_id', tenant?.id)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      
+      // ✅ CRITICAL: Query for exact land_id match (null for general)
+      if (landId === null) {
+        sessionQuery = sessionQuery.is('land_id', null);
+      } else {
+        sessionQuery = sessionQuery.eq('land_id', landId);
+      }
+      
+      const { data: existingSession } = await sessionQuery.maybeSingle();
+      
+      if (existingSession) {
+        console.log(`📦 Found existing DB session for ${tabKey}:`, existingSession.id);
+        setSessionIds(prev => ({ ...prev, [tabKey]: existingSession.id }));
+        setLoadedSessionIds(prev => new Set([...prev, existingSession.id]));
+        return existingSession.id;
+      }
+    } catch (err) {
+      console.warn('Session query failed:', err);
+    }
+    
+    // 3. Create new session for this specific tab/land
     const newSessionId = crypto.randomUUID();
-    console.log(`🆕 Creating new session for ${activeTab}:`, newSessionId);
-    setSessionIds(prev => ({ ...prev, [activeTab]: newSessionId }));
+    console.log(`🆕 Creating new session for ${tabKey}:`, newSessionId);
+    
+    // ✅ CRITICAL: Create session in DB immediately with correct land_id
+    try {
+      await supabase.from('ai_chat_sessions').insert({
+        id: newSessionId,
+        tenant_id: tenant?.id,
+        farmer_id: user?.id,
+        session_type: landId ? 'land_specific' : 'general',
+        session_title: landId ? (land?.name || 'Land Chat') : 'General Agriculture Chat',
+        land_id: landId, // ✅ CRITICAL: Set correct land_id
+        is_active: true,
+        metadata: { language, platform: 'mobile', app_version: '1.0.0' }
+      });
+      console.log(`✅ Created new DB session for ${tabKey}:`, newSessionId);
+    } catch (err) {
+      console.warn('Session creation failed:', err);
+    }
+    
+    setSessionIds(prev => ({ ...prev, [tabKey]: newSessionId }));
+    setLoadedSessionIds(prev => new Set([...prev, newSessionId]));
     return newSessionId;
   };
 
@@ -652,7 +725,8 @@ export function EnhancedAIChatInterface() {
       
       const landId = activeTab !== 'general' ? activeTab : undefined;
       const land = landId ? lands.find(l => l.id === landId) : null;
-      const sessionId = getCurrentSessionId();
+      // ✅ CRITICAL: Await async session ID getter
+      const sessionId = await getCurrentSessionId();
       const userMessageId = crypto.randomUUID();
       
       // ✅ CRITICAL: Upload image to Supabase Storage for persistence
@@ -683,19 +757,7 @@ export function EnhancedAIChatInterface() {
         [activeTab]: [...(prev[activeTab] || []), userMessage]
       }));
       
-      // ✅ Ensure session exists in database
-      if (!loadedSessionIds.has(sessionId)) {
-        await supabase.from('ai_chat_sessions').insert({
-          id: sessionId,
-          tenant_id: tenant.id,
-          farmer_id: user.id,
-          session_type: activeTab === 'general' ? 'general' : 'land_specific',
-          session_title: activeTab === 'general' ? 'General Agriculture Chat' : land?.name,
-          land_id: land?.id || null,
-          metadata: { language, platform: 'mobile', app_version: '1.0.0' }
-        });
-        setLoadedSessionIds(prev => new Set([...prev, sessionId]));
-      }
+      // ✅ Session already created by getCurrentSessionId() - no need to duplicate
       
       const landContext = land ? {
         land_id: land.id,
@@ -828,7 +890,8 @@ export function EnhancedAIChatInterface() {
     try {
       const landId = activeTab !== 'general' ? activeTab : undefined;
       const land = landId ? lands.find(l => l.id === landId) : null;
-      const sessionId = getCurrentSessionId();
+      // ✅ CRITICAL: Await async session ID getter
+      const sessionId = await getCurrentSessionId();
       const userMessageId = crypto.randomUUID();
       const mediaType = data.type === 'photo' ? '📷' : '🎥';
       const isPhoto = data.type === 'photo';
@@ -874,19 +937,7 @@ export function EnhancedAIChatInterface() {
         [activeTab]: [...(prev[activeTab] || []), userMessage]
       }));
       
-      // ✅ Ensure session exists in database
-      if (!loadedSessionIds.has(sessionId)) {
-        await supabase.from('ai_chat_sessions').insert({
-          id: sessionId,
-          tenant_id: tenant.id,
-          farmer_id: user.id,
-          session_type: activeTab === 'general' ? 'general' : 'land_specific',
-          session_title: activeTab === 'general' ? 'General Agriculture Chat' : land?.name,
-          land_id: land?.id || null,
-          metadata: { language, platform: 'mobile', app_version: '1.0.0' }
-        });
-        setLoadedSessionIds(prev => new Set([...prev, sessionId]));
-      }
+      // ✅ Session already created by getCurrentSessionId() - no need to duplicate
       
       const landContext = land ? {
         land_id: land.id,
@@ -1054,39 +1105,16 @@ export function EnhancedAIChatInterface() {
     setLoadingMessage(randomMessage);
     
     try {
-      const sessionId = getCurrentSessionId();
+      // ✅ CRITICAL: Await async session ID getter - handles session creation
+      const sessionId = await getCurrentSessionId();
       const landId = activeTab !== 'general' ? activeTab : undefined;
       const land = landId ? lands.find(l => l.id === landId) : null;
       
       const tenantId = tenant.id;
       const farmerId = user.id;
       
-      // Create session in database only if it's a new session (not loaded from DB)
-      if (!loadedSessionIds.has(sessionId)) {
-        console.log('💾 Creating new session in database:', sessionId);
-        const { error: sessionError } = await supabase.from('ai_chat_sessions').insert({
-          id: sessionId,
-          tenant_id: tenantId,
-          farmer_id: farmerId,
-          session_type: activeTab === 'general' ? 'general' : 'land_specific',
-          session_title: activeTab === 'general' ? 'General Agriculture Chat' : land?.name,
-          land_id: land?.id || null,
-          metadata: {
-            language,
-            platform: 'mobile',
-            app_version: '1.0.0'
-          }
-        });
-        
-        if (sessionError) {
-          console.error('Session creation error:', sessionError);
-        } else {
-          // Mark this session as loaded (exists in DB now)
-          setLoadedSessionIds(prev => new Set([...prev, sessionId]));
-        }
-      } else {
-        console.log('♻️ Reusing existing database session:', sessionId);
-      }
+      // ✅ Session already created by getCurrentSessionId() - no need to duplicate
+      console.log('♻️ Using session for message:', sessionId);
       
       // ✅ Let edge function handle ALL message saves (prevents duplicates)
       
