@@ -55,59 +55,64 @@ export function GoogleMapBoundaryDrawer({
   const initialZoomSet = useRef(false);
 
   // Map options - enable rotation and tilt with street labels
-  const mapOptions: google.maps.MapOptions = {
-    mapTypeId: 'hybrid', // Shows satellite with labels
-    disableDefaultUI: false,
-    zoom: 18, // Start with a closer zoom for better visibility
-    // Critical: Prevent ALL zoom on click/tap for smooth boundary marking
-    disableDoubleClickZoom: true,
-    scrollwheel: true, // Allow scroll wheel zoom on desktop
-    // Disable clickable POIs to prevent interference with point marking
-    clickableIcons: false,
-    zoomControl: true, // Keep zoom buttons visible for farmers
-    zoomControlOptions: {
-      position: typeof google !== 'undefined' ? google.maps.ControlPosition.RIGHT_CENTER : 7,
-    },
-    // 'greedy' allows single finger pan on mobile (farmer-friendly)
-    // Also prevents accidental zoom while marking points
-    gestureHandling: 'greedy',
-    tilt: 0, // Start with no tilt for easier drawing
-    rotateControl: true,
-    mapTypeControl: true,
-    mapTypeControlOptions: {
-      mapTypeIds: ['hybrid', 'satellite', 'roadmap', 'terrain'],
-      position: typeof google !== 'undefined' ? google.maps.ControlPosition.TOP_LEFT : 1,
-      style: typeof google !== 'undefined' ? google.maps.MapTypeControlStyle.HORIZONTAL_BAR : 0,
-    },
-    streetViewControl: false, // Disable street view to reduce clutter for farmers
-    fullscreenControl: true,
-    fullscreenControlOptions: {
-      position: typeof google !== 'undefined' ? google.maps.ControlPosition.RIGHT_TOP : 3,
-    },
-    scaleControl: true,
-    styles: [
-      {
-        featureType: 'all',
-        elementType: 'labels',
-        stylers: [{ visibility: 'on' }]
-      },
-      {
-        featureType: 'road',
-        elementType: 'labels',
-        stylers: [{ visibility: 'on' }]
-      },
-      {
-        featureType: 'poi',
-        elementType: 'labels',
-        stylers: [{ visibility: 'on' }]
-      },
-      {
-        featureType: 'administrative',
-        elementType: 'labels',
-        stylers: [{ visibility: 'on' }]
-      }
-    ],
-  };
+  // CRITICAL: Only access google.maps when it's definitely loaded
+  const getMapOptions = useCallback((): google.maps.MapOptions => {
+    const isGoogleLoaded = typeof google !== 'undefined' && google.maps;
+    
+    return {
+      mapTypeId: 'hybrid', // Shows satellite with labels
+      disableDefaultUI: false,
+      zoom: 18, // Start with a closer zoom for better visibility
+      // Critical: Prevent ALL zoom on click/tap for smooth boundary marking
+      disableDoubleClickZoom: true,
+      scrollwheel: true, // Allow scroll wheel zoom on desktop
+      // Disable clickable POIs to prevent interference with point marking
+      clickableIcons: false,
+      zoomControl: true, // Keep zoom buttons visible for farmers
+      zoomControlOptions: isGoogleLoaded ? {
+        position: google.maps.ControlPosition.RIGHT_CENTER,
+      } : undefined,
+      // 'greedy' allows single finger pan on mobile (farmer-friendly)
+      // Also prevents accidental zoom while marking points
+      gestureHandling: 'greedy',
+      tilt: 0, // Start with no tilt for easier drawing
+      rotateControl: true,
+      mapTypeControl: true,
+      mapTypeControlOptions: isGoogleLoaded ? {
+        mapTypeIds: ['hybrid', 'satellite', 'roadmap', 'terrain'],
+        position: google.maps.ControlPosition.TOP_LEFT,
+        style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+      } : undefined,
+      streetViewControl: false, // Disable street view to reduce clutter for farmers
+      fullscreenControl: true,
+      fullscreenControlOptions: isGoogleLoaded ? {
+        position: google.maps.ControlPosition.RIGHT_TOP,
+      } : undefined,
+      scaleControl: true,
+      styles: [
+        {
+          featureType: 'all',
+          elementType: 'labels',
+          stylers: [{ visibility: 'on' }]
+        },
+        {
+          featureType: 'road',
+          elementType: 'labels',
+          stylers: [{ visibility: 'on' }]
+        },
+        {
+          featureType: 'poi',
+          elementType: 'labels',
+          stylers: [{ visibility: 'on' }]
+        },
+        {
+          featureType: 'administrative',
+          elementType: 'labels',
+          stylers: [{ visibility: 'on' }]
+        }
+      ],
+    };
+  }, []);
 
   // Get user's current location on mount using LocationService
   // BUT: If initialCenter is provided (editing mode), use that instead
@@ -582,7 +587,7 @@ export function GoogleMapBoundaryDrawer({
         mapContainerStyle={mapContainerStyle}
         center={center}
         options={{
-          ...mapOptions,
+          ...getMapOptions(),
           zoom: 18, // Initial zoom only - won't reset on re-renders
         }}
         onClick={handleMapClick}

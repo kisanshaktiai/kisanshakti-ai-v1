@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { ColorCodedCard } from './ColorCodedCard';
 import { EnhancedSpeakerButton } from './EnhancedSpeakerButton';
 import { RecommendationCards, type VisionAnalysisResult } from './RecommendationCards';
+import { DiagnosisOnlyCard } from './DiagnosisOnlyCard';
+import { SuggestionTypeSelector, type SuggestionType } from './SuggestionTypeSelector';
 
 interface Message {
   id: string;
@@ -22,9 +24,12 @@ interface Message {
   imageUrl?: string;
   imageUrls?: string[];
   videoUrl?: string;
-  messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response';
+  messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response' | 'suggestion_selector' | 'targeted_solution';
   // Full analysis result for detailed cards
   analysisResult?: VisionAnalysisResult;
+  // For targeted solutions
+  suggestionType?: SuggestionType;
+  awaitingSuggestionSelection?: boolean;
   structuredResponse?: {
     cards: Array<{
       id: string;
@@ -55,6 +60,8 @@ interface ModernChatUIProps {
   onLike: (messageId: string, isLike: boolean) => void;
   onShare: (content: string) => void;
   onPlay: (messageId: string, content: string) => void;
+  onSuggestionSelect?: (messageId: string, type: SuggestionType) => void;
+  isLoadingSuggestion?: boolean;
 }
 
 // User bubble color variations
@@ -89,7 +96,7 @@ const isUsableImageUrl = (url: string | undefined): boolean => {
   return isValidStorageUrl(url) || isBase64Image(url);
 };
 
-export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: ModernChatUIProps) {
+export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSuggestionSelect, isLoadingSuggestion }: ModernChatUIProps) {
   const { i18n } = useTranslation();
   const isUser = message.role === 'user';
   const currentLanguage = i18n.language || 'hi';
@@ -178,24 +185,28 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
   const hasAnalysisResult = !isUser && message.analysisResult;
   const hasStructuredCards = !isUser && message.structuredResponse?.cards?.length > 0;
   
-  // ✅ DEBUG: Log AI response rendering decision
-  if (!isUser && (message.messageType?.includes('image') || message.messageType?.includes('video'))) {
-    console.log(`🎯 [ModernChatUI] AI Response rendering:`, {
-      id: message.id,
-      messageType: message.messageType,
-      hasAnalysisResult: !!message.analysisResult,
-      cropDetected: message.analysisResult?.cropDetected?.name,
-      hasStructuredCards,
-      imageUrl: message.imageUrl?.substring(0, 80)
-    });
-  }
+  // ✅ Check if this is a targeted solution (user already selected suggestion type)
+  const isTargetedSolution = message.messageType === 'targeted_solution' && message.suggestionType;
+  
+  // ✅ Check if awaiting suggestion selection (show diagnosis + selector)
+  // Also check for crop mismatch - don't show selector if mismatch
+  const isCropMismatch = hasAnalysisResult && message.analysisResult?.cropDetected?.matchesLandCrop === false;
+  const awaitingSuggestion = hasAnalysisResult && 
+    message.awaitingSuggestionSelection === true && 
+    !isTargetedSolution &&
+    !isCropMismatch;
   
   // ✅ Check if content is a placeholder that should be hidden
   const isPlaceholderContent = message.content.includes('[📷') || 
     message.content.includes('[🎥') || 
     message.content === 'Analysis complete' ||
     message.content.includes('uploaded for analysis') ||
-    message.content.includes('captured for analysis');
+    message.content.includes('captured for analysis') ||
+    message.content.includes('फोटो विश्लेषण') ||
+    message.content.includes('वीडियो विश्लेषण') ||
+    message.content.includes('फोटो विश्लेषणासाठी') ||
+    message.content.includes('Photo for analysis') ||
+    message.content.includes('Video for analysis');
   
   return (
     <motion.div
@@ -251,44 +262,65 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay }: Moder
             </div>
           )}
           
-          {/* ✅ CRITICAL: Full Vision Analysis Cards (single source of truth) */}
-          {hasAnalysisResult ? (
+          {/* ✅ NEW FLOW: Diagnosis Only + Suggestion Selector (awaiting user choice) */}
+          {awaitingSuggestion ? (
             <>
-              {/* Image with Analyzed badge */}
-              {displayImageUrl && (
-                <div className="relative">
-                  <img 
-                    src={displayImageUrl} 
-                    alt="Analyzed" 
-                    className="w-full aspect-video object-cover"
-                    loading="lazy"
-                    onError={(e) => {
-                      // Hide broken images
-                      (e.target as HTMLImageElement).style.display = 'none';
-                    }}
-                  />
-                  <div className="absolute top-2 right-2">
-                    <Badge className="bg-green-500 text-white shadow-lg">
-                      <CheckCircle className="h-3 w-3 mr-1" />
-                      {currentLanguage === 'hi' ? 'विश्लेषित' : currentLanguage === 'mr' ? 'विश्लेषित' : 'Analyzed'}
-                    </Badge>
-                  </div>
-                  {/* Video indicator */}
-                  {(message.messageType === 'video_analysis_response' || message.videoUrl) && (
-                    <div className="absolute bottom-2 left-2">
-                      <Badge variant="secondary" className="bg-black/60 text-white">
-                        <Play className="h-3 w-3 mr-1" />
-                        Video
-                      </Badge>
-                    </div>
-                  )}
-                </div>
-              )}
+              {/* Diagnosis Only Card (no recommendations) */}
+              <div className="p-3">
+                <DiagnosisOnlyCard 
+                  analysis={message.analysisResult!} 
+                  imageUrl={displayImageUrl}
+                  language={currentLanguage} 
+                />
+              </div>
               
-              {/* Full Recommendation Cards */}
+              {/* Suggestion Type Selector */}
+              <div className="p-3 pt-0">
+                <SuggestionTypeSelector
+                  onSelect={(type) => onSuggestionSelect?.(message.id, type)}
+                  isLoading={isLoadingSuggestion}
+                  language={currentLanguage}
+                />
+              </div>
+              
+              {/* Timestamp */}
+              <div className="flex items-center justify-between text-xs mt-2 opacity-60 text-muted-foreground px-3 pb-2.5">
+                <span>
+                  {new Date(message.timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </span>
+              </div>
+            </>
+          ) : isTargetedSolution && hasAnalysisResult ? (
+            <>
+              {/* Full Recommendation Cards for targeted solution */}
               <div className="p-3">
                 <RecommendationCards 
                   analysis={message.analysisResult!} 
+                  language={currentLanguage}
+                  suggestionType={message.suggestionType}
+                />
+              </div>
+              
+              {/* Timestamp */}
+              <div className="flex items-center justify-between text-xs mt-2 opacity-60 text-muted-foreground px-3 pb-2.5">
+                <span>
+                  {new Date(message.timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </span>
+              </div>
+            </>
+          ) : hasAnalysisResult ? (
+            <>
+              {/* Fallback: Full Recommendation Cards (for old messages without awaitingSuggestionSelection flag) */}
+              <div className="p-3">
+                <DiagnosisOnlyCard 
+                  analysis={message.analysisResult!} 
+                  imageUrl={displayImageUrl}
                   language={currentLanguage} 
                 />
               </div>

@@ -1,0 +1,214 @@
+import React from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { motion } from 'framer-motion';
+import { Info, AlertTriangle, CheckCircle, AlertCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import type { VisionAnalysisResult } from './RecommendationCards';
+
+interface DiagnosisOnlyCardProps {
+  analysis: VisionAnalysisResult;
+  imageUrl?: string;
+  language?: string;
+}
+
+const getLabels = (lang: string) => ({
+  cropDetected: lang === 'hi' ? 'पहचानी गई फसल' : lang === 'mr' ? 'ओळखलेले पीक' : 'Crop Detected',
+  healthStatus: lang === 'hi' ? 'स्वास्थ्य स्थिति' : lang === 'mr' ? 'आरोग्य स्थिती' : 'Health Status',
+  diagnosis: lang === 'hi' ? 'निदान' : lang === 'mr' ? 'निदान' : 'Diagnosis',
+  confidence: lang === 'hi' ? 'विश्वास स्तर' : lang === 'mr' ? 'विश्वास पातळी' : 'Confidence',
+  healthy: lang === 'hi' ? 'स्वस्थ' : lang === 'mr' ? 'निरोगी' : 'Healthy',
+  warning: lang === 'hi' ? 'सतर्कता' : lang === 'mr' ? 'सावधानता' : 'Warning',
+  critical: lang === 'hi' ? 'गंभीर' : lang === 'mr' ? 'गंभीर' : 'Critical',
+  analyzed: lang === 'hi' ? 'विश्लेषित' : lang === 'mr' ? 'विश्लेषित' : 'Analyzed',
+  cropMismatch: lang === 'hi' 
+    ? '⚠️ यह आपके खेत की फसल से मेल नहीं खाता। सही सलाह के लिए सामान्य चैट का उपयोग करें।'
+    : lang === 'mr'
+    ? '⚠️ हे तुमच्या शेतातील पिकाशी जुळत नाही. योग्य सल्ल्यासाठी सामान्य चॅट वापरा.'
+    : '⚠️ This does not match your land\'s crop. Use General Chat for accurate advice.',
+  expected: lang === 'hi' ? 'अपेक्षित' : lang === 'mr' ? 'अपेक्षित' : 'Expected',
+  detected: lang === 'hi' ? 'पहचाना गया' : lang === 'mr' ? 'ओळखले' : 'Detected'
+});
+
+export function DiagnosisOnlyCard({ analysis, imageUrl, language = 'en' }: DiagnosisOnlyCardProps) {
+  const labels = getLabels(language);
+  
+  // Safety check
+  if (!analysis?.cropDetected || !analysis?.healthStatus || !analysis?.diagnosis) {
+    return (
+      <div className="p-4 text-center text-muted-foreground">
+        <p>Analysis data is incomplete. Please try again.</p>
+      </div>
+    );
+  }
+  
+  const healthColors = {
+    healthy: 'bg-green-500',
+    warning: 'bg-amber-500',
+    critical: 'bg-red-500'
+  };
+
+  // ✅ Check for crop mismatch
+  const isCropMismatch = analysis.cropDetected.matchesLandCrop === false;
+  
+  return (
+    <div className="space-y-3">
+      {/* Image with Analyzed badge */}
+      {imageUrl && (
+        <div className="relative rounded-xl overflow-hidden">
+          <img 
+            src={imageUrl} 
+            alt="Analyzed crop" 
+            className="w-full aspect-video object-cover"
+            loading="lazy"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+          <div className="absolute top-2 right-2">
+            <Badge className="bg-green-500 text-white shadow-lg">
+              <CheckCircle className="h-3 w-3 mr-1" />
+              {labels.analyzed}
+            </Badge>
+          </div>
+        </div>
+      )}
+      
+      {/* ✅ Crop Mismatch Warning */}
+      {isCropMismatch && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="p-3 bg-destructive/10 border-2 border-destructive/30 rounded-xl"
+        >
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-destructive">
+                {labels.cropMismatch}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                <Badge variant="outline" className="border-destructive/50">
+                  {labels.detected}: {analysis.cropDetected.name}
+                </Badge>
+                {analysis.cropDetected.landCrop && (
+                  <Badge variant="outline" className="border-green-500/50 text-green-700 dark:text-green-300">
+                    {labels.expected}: {analysis.cropDetected.landCrop}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+      
+      {/* Crop Detection Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        <Card className={cn("border-2", isCropMismatch ? "border-destructive/20" : "border-primary/20")}>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <div className="text-sm text-muted-foreground">{labels.cropDetected}</div>
+                <div className="text-xl font-bold">
+                  {analysis.cropDetected.name}
+                  {analysis.cropDetected.scientificName && (
+                    <span className="text-sm font-normal text-muted-foreground ml-2">
+                      ({analysis.cropDetected.scientificName})
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-muted-foreground">{labels.confidence}</div>
+                <div className="text-lg font-bold text-primary">
+                  {analysis.cropDetected.confidence}%
+                </div>
+              </div>
+            </div>
+            
+            {/* Health Status */}
+            <div className="flex items-center gap-3 mt-3">
+              <div className="text-sm text-muted-foreground">{labels.healthStatus}:</div>
+              <Badge className={cn(healthColors[analysis.healthStatus.condition], "text-white")}>
+                {labels[analysis.healthStatus.condition]}
+              </Badge>
+              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                <div 
+                  className={cn(healthColors[analysis.healthStatus.condition], "h-full transition-all")}
+                  style={{ width: `${analysis.healthStatus.score}%` }}
+                />
+              </div>
+              <span className="text-sm font-medium">{analysis.healthStatus.score}%</span>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+      
+      {/* Diagnosis Summary */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+      >
+        <Card className="bg-muted/50">
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Info className="h-5 w-5 text-primary" />
+              <span className="font-medium">{labels.diagnosis}</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {analysis.diagnosis.summary}
+            </p>
+            
+            {/* Issues List */}
+            {analysis.healthStatus.issues.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {analysis.healthStatus.issues.map((issue, idx) => (
+                  <Badge key={idx} variant="outline" className="text-xs">
+                    {issue}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            
+            {/* Disease/Pest Details */}
+            {analysis.diagnosis.diseases && analysis.diagnosis.diseases.length > 0 && (
+              <div className="mt-3 p-2 bg-red-500/10 rounded-lg">
+                <div className="flex items-center gap-1 text-sm font-medium text-red-700 dark:text-red-300 mb-1">
+                  <AlertTriangle className="h-4 w-4" />
+                  {language === 'hi' ? 'पहचाने गए रोग' : language === 'mr' ? 'ओळखलेले रोग' : 'Detected Diseases'}
+                </div>
+                <ul className="text-sm space-y-1">
+                  {analysis.diagnosis.diseases.map((disease, idx) => (
+                    <li key={idx} className="text-muted-foreground">
+                      • {disease.name} ({disease.confidence}%)
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            
+            {analysis.diagnosis.pests && analysis.diagnosis.pests.length > 0 && (
+              <div className="mt-3 p-2 bg-orange-500/10 rounded-lg">
+                <div className="flex items-center gap-1 text-sm font-medium text-orange-700 dark:text-orange-300 mb-1">
+                  <AlertTriangle className="h-4 w-4" />
+                  {language === 'hi' ? 'पहचाने गए कीट' : language === 'mr' ? 'ओळखलेले कीटक' : 'Detected Pests'}
+                </div>
+                <ul className="text-sm space-y-1">
+                  {analysis.diagnosis.pests.map((pest, idx) => (
+                    <li key={idx} className="text-muted-foreground">
+                      • {pest.name} - {pest.damageType}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </motion.div>
+    </div>
+  );
+}

@@ -46,9 +46,12 @@ interface Message {
   imageUrl?: string;
   imageUrls?: string[];
   videoUrl?: string;
-  messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response';
+  messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response' | 'suggestion_selector' | 'targeted_solution';
   // Full analysis result for detailed recommendation cards
   analysisResult?: VisionAnalysisResult;
+  // ✅ NEW: Suggestion selection flow
+  awaitingSuggestionSelection?: boolean;
+  suggestionType?: 'organic' | 'fertilizer' | 'pesticide' | 'hybrid';
   structured?: {
     greeting?: string;
     landContext?: string;
@@ -132,6 +135,7 @@ export function EnhancedAIChatInterface() {
     error?: string;
   } | null>(null);
   const [sessionStartTime, setSessionStartTime] = useState<Record<string, Date>>({});
+  const [isLoadingSuggestion, setIsLoadingSuggestion] = useState(false); // ✅ NEW: Loading state for suggestion selection
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -627,7 +631,7 @@ export function EnhancedAIChatInterface() {
   };
 
   // ✅ Process attached images through AI Crop Scan
-  // ✅ FIXED: Now uploads to Supabase Storage and saves URLs for persistence
+  // ✅ FIXED: Single source of truth - only show analyze card, no duplicate user message image
   const processAttachedImages = async (files: File[]) => {
     if (!user?.id || !tenant?.id) return;
     
@@ -659,24 +663,18 @@ export function EnhancedAIChatInterface() {
         user.id
       );
       
-      // Warn if upload failed (will use base64 fallback)
       if (!uploadSuccess) {
         console.warn('⚠️ Image upload to storage failed, using base64 fallback');
-        toast({
-          title: 'Image saved locally',
-          description: 'Image will be visible but not stored permanently',
-          variant: 'default'
-        });
       }
       
-      // ✅ Create user message with image URL for persistent display
+      // ✅ SINGLE SOURCE: Don't create separate user message with image
+      // Only create a minimal placeholder - the analyze card shows the image
       const userMessage: Message = {
         id: userMessageId,
         role: 'user',
-        content: `[📷 Image uploaded for analysis]`,
+        content: `📷 ${language === 'hi' ? 'फोटो विश्लेषण के लिए' : language === 'mr' ? 'फोटो विश्लेषणासाठी' : 'Photo for analysis'}`,
         timestamp: new Date(),
-        imageUrl: imageStorageUrl,
-        imageUrls: [imageStorageUrl],
+        // ✅ REMOVED: Don't show image in user message - only in analyze card
         messageType: 'image_analysis'
       };
       
@@ -706,14 +704,14 @@ export function EnhancedAIChatInterface() {
         current_crop: land.current_crop
       } : null;
       
-      // ✅ CRITICAL: Save user message with image URL to database
+      // Save user message to database (minimal, no image display)
       await supabase.from('ai_chat_messages').insert({
         id: userMessageId,
         tenant_id: tenant.id,
         farmer_id: user.id,
         session_id: sessionId,
         role: 'user',
-        content: `[📷 Image uploaded for analysis]`,
+        content: userMessage.content,
         message_type: 'image_analysis',
         image_urls: [imageStorageUrl],
         land_context: landContext,
@@ -723,7 +721,7 @@ export function EnhancedAIChatInterface() {
         word_count: 4
       });
       
-      // Call AI crop scan (use original base64 for better quality analysis)
+      // Call AI crop scan
       const { data: scanResult, error } = await supabase.functions.invoke('ai-crop-scan', {
         body: {
           images: base64Images,
@@ -739,20 +737,23 @@ export function EnhancedAIChatInterface() {
       if (error) throw error;
       
       if (scanResult?.success && scanResult?.result) {
-        setPendingVisionAnalysis({
-          imageUrl: imageStorageUrl,
-          result: scanResult.result
-        });
+        // ✅ CHECK CROP MISMATCH - Don't show recommendations if mismatch
+        const isCropMismatch = land?.current_crop && scanResult.result.cropDetected?.matchesLandCrop === false;
         
-        if (land?.current_crop && scanResult.result.cropDetected?.matchesLandCrop === false) {
+        if (isCropMismatch) {
           toast({
-            title: '⚠️ Crop Mismatch Detected',
-            description: `Detected: ${scanResult.result.cropDetected.name}. Expected: ${land.current_crop}.`,
-            variant: 'default'
+            title: '⚠️ ' + (language === 'hi' ? 'फसल मेल नहीं खाती' : language === 'mr' ? 'पीक जुळत नाही' : 'Crop Mismatch'),
+            description: language === 'hi' 
+              ? `पहचानी गई: ${scanResult.result.cropDetected.name}। अपेक्षित: ${land.current_crop}। सामान्य चैट का उपयोग करें।`
+              : language === 'mr'
+              ? `ओळखलेले: ${scanResult.result.cropDetected.name}। अपेक्षित: ${land.current_crop}। सामान्य चॅट वापरा.`
+              : `Detected: ${scanResult.result.cropDetected.name}. Expected: ${land.current_crop}. Please use General Chat.`,
+            variant: 'destructive'
           });
         }
         
-        // ✅ Create AI response message with full analysis result
+        // ✅ Create AI response - show diagnosis only, with suggestion selector
+        // If crop mismatch, don't show recommendation selector
         const aiMessageId = crypto.randomUUID();
         const aiContent = scanResult.result.diagnosis?.summary || 'Analysis complete';
         const aiMessage: Message = {
@@ -761,9 +762,9 @@ export function EnhancedAIChatInterface() {
           content: aiContent,
           timestamp: new Date(),
           messageType: 'image_analysis_response',
-          // ✅ CRITICAL: Include image and analysis for full card display
-          imageUrl: imageStorageUrl,
-          analysisResult: scanResult.result
+          imageUrl: imageStorageUrl, // ✅ SINGLE SOURCE: Image only in analyze card
+          analysisResult: scanResult.result,
+          awaitingSuggestionSelection: !isCropMismatch // ✅ Only show selector if crop matches
         };
         
         setMessages(prev => ({
@@ -771,11 +772,10 @@ export function EnhancedAIChatInterface() {
           [activeTab]: [...(prev[activeTab] || []), aiMessage]
         }));
         
-        // ✅ CRITICAL: Clear pendingVisionAnalysis to avoid duplicate display
         setPendingVisionAnalysis(null);
         
-        // ✅ CRITICAL: Save AI response to database for training
-        const { error: insertError } = await supabase.from('ai_chat_messages').insert({
+        // Save AI response to database
+        await supabase.from('ai_chat_messages').insert({
           id: aiMessageId,
           tenant_id: tenant.id,
           farmer_id: user.id,
@@ -785,12 +785,13 @@ export function EnhancedAIChatInterface() {
           message_type: 'image_analysis_response',
           ai_model: 'gemini-2.5-flash',
           land_context: landContext,
-          image_urls: [imageStorageUrl], // ✅ Store image URL in image_urls for loading
+          image_urls: [imageStorageUrl],
           metadata: {
             analysis_result: scanResult.result,
             crop_detected: scanResult.result.cropDetected,
             diagnosis: scanResult.result.diagnosis,
-            image_analyzed: imageStorageUrl
+            image_analyzed: imageStorageUrl,
+            crop_mismatch: isCropMismatch
           },
           language,
           status: 'sent',
@@ -798,11 +799,7 @@ export function EnhancedAIChatInterface() {
           word_count: aiContent.split(' ').length
         });
         
-        if (insertError) {
-          console.error('Failed to save AI response message:', insertError);
-        } else {
-          console.log('✅ AI analysis response saved to database');
-        }
+        console.log('✅ AI analysis saved', { isCropMismatch });
         
       } else {
         throw new Error(scanResult?.error || 'Analysis failed');
@@ -821,7 +818,7 @@ export function EnhancedAIChatInterface() {
   };
 
   // World-class camera capture handler
-  // ✅ FIXED: Now uploads to Supabase Storage and saves URLs for persistence
+  // ✅ FIXED: Single source of truth - only show analyze card, no duplicate display
   const handleWorldClassCapture = async (data: { type: 'photo' | 'video'; data: string; duration?: number }) => {
     if (!user?.id || !tenant?.id) return;
     
@@ -836,7 +833,7 @@ export function EnhancedAIChatInterface() {
       const mediaType = data.type === 'photo' ? '📷' : '🎥';
       const isPhoto = data.type === 'photo';
       
-      // ✅ CRITICAL: Upload image/video to Supabase Storage with compression
+      // Upload to storage
       let imageStorageUrl: string;
       let videoStorageUrl: string | undefined;
       let uploadSuccess = true;
@@ -846,21 +843,14 @@ export function EnhancedAIChatInterface() {
         imageStorageUrl = result.url;
         uploadSuccess = result.success;
       } else {
-        // ✅ PRODUCTION-READY: Compress and upload video + thumbnail
         const result = await uploadCompressedVideo(data.data, sessionId, userMessageId, user.id);
         videoStorageUrl = result.videoUrl;
-        imageStorageUrl = result.thumbnailUrl; // Use thumbnail as preview image
+        imageStorageUrl = result.thumbnailUrl;
         uploadSuccess = result.success;
       }
       
-      // Warn if upload failed
       if (!uploadSuccess) {
-        console.warn('⚠️ Media upload to storage failed, using base64 fallback');
-        toast({
-          title: isPhoto ? 'Photo saved locally' : 'Video saved locally',
-          description: 'Media will be visible but not stored permanently',
-          variant: 'default'
-        });
+        console.warn('⚠️ Media upload failed, using fallback');
       }
       
       setPendingVisionAnalysis({ 
@@ -868,14 +858,14 @@ export function EnhancedAIChatInterface() {
         videoUrl: videoStorageUrl
       });
       
-      // ✅ Create user message with image URL for persistent display
+      // ✅ SINGLE SOURCE: Minimal user message - NO image display here
+      // Image shows ONLY in the analyze card below
       const userMessage: Message = {
         id: userMessageId,
         role: 'user',
-        content: `[${mediaType} ${isPhoto ? 'Photo' : 'Video'} captured for analysis]`,
+        content: `${mediaType} ${language === 'hi' ? (isPhoto ? 'फोटो' : 'वीडियो') + ' विश्लेषण के लिए' : language === 'mr' ? (isPhoto ? 'फोटो' : 'व्हिडिओ') + ' विश्लेषणासाठी' : (isPhoto ? 'Photo' : 'Video') + ' for analysis'}`,
         timestamp: new Date(),
-        imageUrl: imageStorageUrl,
-        imageUrls: [imageStorageUrl],
+        // ✅ NO imageUrl here - only in analyze card
         messageType: isPhoto ? 'image_analysis' : 'video_analysis'
       };
       
@@ -939,7 +929,22 @@ export function EnhancedAIChatInterface() {
       if (error) throw error;
       
       if (scanResult?.success && scanResult?.result) {
-        // ✅ Create AI response message with full analysis result
+        // ✅ CHECK CROP MISMATCH - Don't show recommendations if mismatch
+        const isCropMismatch = land?.current_crop && scanResult.result.cropDetected?.matchesLandCrop === false;
+        
+        if (isCropMismatch) {
+          toast({
+            title: '⚠️ ' + (language === 'hi' ? 'फसल मेल नहीं खाती' : language === 'mr' ? 'पीक जुळत नाही' : 'Crop Mismatch'),
+            description: language === 'hi' 
+              ? `पहचानी गई: ${scanResult.result.cropDetected.name}। अपेक्षित: ${land.current_crop}। सामान्य चैट का उपयोग करें।`
+              : language === 'mr'
+              ? `ओळखलेले: ${scanResult.result.cropDetected.name}। अपेक्षित: ${land.current_crop}। सामान्य चॅट वापरा.`
+              : `Detected: ${scanResult.result.cropDetected.name}. Expected: ${land.current_crop}. Use General Chat.`,
+            variant: 'destructive'
+          });
+        }
+        
+        // ✅ Create AI response - show diagnosis only, with suggestion selector
         const aiMessageId = crypto.randomUUID();
         const aiContent = scanResult.result.diagnosis?.summary || 'Analysis complete';
         const aiMessage: Message = {
@@ -948,9 +953,9 @@ export function EnhancedAIChatInterface() {
           content: aiContent,
           timestamp: new Date(),
           messageType: isPhoto ? 'image_analysis_response' : 'video_analysis_response',
-          // ✅ CRITICAL: Include image/thumbnail and analysis for full card display
-          imageUrl: imageStorageUrl,
-          analysisResult: scanResult.result
+          imageUrl: imageStorageUrl, // ✅ SINGLE SOURCE: Image only in analyze card
+          analysisResult: scanResult.result,
+          awaitingSuggestionSelection: !isCropMismatch // ✅ Only show selector if crop matches
         };
         
         setMessages(prev => ({
@@ -958,11 +963,10 @@ export function EnhancedAIChatInterface() {
           [activeTab]: [...(prev[activeTab] || []), aiMessage]
         }));
         
-        // ✅ CRITICAL: Clear pendingVisionAnalysis to avoid duplicate display
         setPendingVisionAnalysis(null);
         
-        // ✅ CRITICAL: Save AI response to database for training
-        const { error: insertError } = await supabase.from('ai_chat_messages').insert({
+        // Save AI response to database
+        await supabase.from('ai_chat_messages').insert({
           id: aiMessageId,
           tenant_id: tenant.id,
           farmer_id: user.id,
@@ -970,7 +974,7 @@ export function EnhancedAIChatInterface() {
           role: 'assistant',
           content: aiContent,
           message_type: isPhoto ? 'image_analysis_response' : 'video_analysis_response',
-          image_urls: [imageStorageUrl], // ✅ Store thumbnail/image URL
+          image_urls: [imageStorageUrl],
           ai_model: 'gemini-2.5-flash',
           land_context: landContext,
           metadata: {
@@ -980,7 +984,8 @@ export function EnhancedAIChatInterface() {
             media_type: data.type,
             duration: data.duration,
             image_analyzed: imageStorageUrl,
-            video_url: videoStorageUrl // ✅ Store video URL separately
+            video_url: videoStorageUrl,
+            crop_mismatch: isCropMismatch
           },
           language,
           status: 'sent',
@@ -988,11 +993,7 @@ export function EnhancedAIChatInterface() {
           word_count: aiContent.split(' ').length
         });
         
-        if (insertError) {
-          console.error('Failed to save AI response message:', insertError);
-        } else {
-          console.log('✅ AI camera analysis response saved to database');
-        }
+        console.log('✅ AI camera analysis saved', { isCropMismatch });
         
       } else {
         throw new Error(scanResult?.error || 'Analysis failed');
@@ -1516,6 +1517,138 @@ export function EnhancedAIChatInterface() {
     }
   };
 
+  // ✅ NEW: Handle suggestion type selection and generate targeted solution
+  const handleSuggestionSelect = async (messageId: string, suggestionType: 'organic' | 'fertilizer' | 'pesticide' | 'hybrid') => {
+    if (!user?.id || !tenant?.id) return;
+    
+    setIsLoadingSuggestion(true);
+    
+    try {
+      // Find the original message with analysis
+      const originalMessage = messages[activeTab]?.find(m => m.id === messageId);
+      if (!originalMessage?.analysisResult) {
+        console.error('No analysis result found for message:', messageId);
+        return;
+      }
+      
+      // Get land data for area calculations
+      const landId = activeTab !== 'general' ? activeTab : undefined;
+      const land = landId ? lands.find(l => l.id === landId) : null;
+      const sessionId = sessionIds[activeTab] || crypto.randomUUID();
+      
+      // Calculate area for dosage recommendations
+      const landArea = land?.area_guntha || land?.area_acres ? {
+        guntha: land.area_guntha || (land.area_acres * 40),
+        acres: land.area_acres || (land.area_guntha / 40),
+        sqft: land.area_sqft || (land.area_guntha * 1089)
+      } : null;
+      
+      console.log('🎯 Generating targeted solution:', {
+        messageId,
+        suggestionType,
+        landArea,
+        crop: originalMessage.analysisResult.cropDetected?.name
+      });
+      
+      // ✅ Mark original message as no longer awaiting selection
+      setMessages(prev => ({
+        ...prev,
+        [activeTab]: prev[activeTab].map(m => 
+          m.id === messageId 
+            ? { ...m, awaitingSuggestionSelection: false }
+            : m
+        )
+      }));
+      
+      // Call AI to generate targeted solution with land area context
+      const { data: solutionResult, error } = await supabase.functions.invoke('ai-crop-scan', {
+        body: {
+          mode: 'targeted_solution',
+          suggestionType,
+          language,
+          farmerId: user?.id,
+          tenantId: tenant?.id,
+          landId,
+          landArea,
+          landCrop: land?.current_crop || originalMessage.analysisResult.cropDetected?.name,
+          diagnosis: originalMessage.analysisResult.diagnosis,
+          cropDetected: originalMessage.analysisResult.cropDetected,
+          healthStatus: originalMessage.analysisResult.healthStatus
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (solutionResult?.success && solutionResult?.result) {
+        // Create targeted solution message
+        const solutionMessageId = crypto.randomUUID();
+        const solutionMessage: Message = {
+          id: solutionMessageId,
+          role: 'assistant',
+          content: solutionResult.result.summary || `${suggestionType} solution generated`,
+          timestamp: new Date(),
+          messageType: 'targeted_solution',
+          suggestionType,
+          analysisResult: {
+            ...originalMessage.analysisResult,
+            recommendations: solutionResult.result.recommendations
+          }
+        };
+        
+        setMessages(prev => ({
+          ...prev,
+          [activeTab]: [...(prev[activeTab] || []), solutionMessage]
+        }));
+        
+        // Save to database
+        const { error: insertError } = await supabase.from('ai_chat_messages').insert([{
+          tenant_id: tenant.id,
+          farmer_id: user.id,
+          session_id: sessionId,
+          role: 'assistant',
+          content: solutionMessage.content,
+          message_type: 'targeted_solution',
+          ai_model: 'gemini-2.5-flash',
+          metadata: {
+            suggestion_type: suggestionType,
+            land_area: landArea,
+            analysis_result: JSON.parse(JSON.stringify(solutionMessage.analysisResult)),
+            parent_message_id: messageId
+          } as any,
+          language,
+          status: 'sent',
+          is_training_candidate: true
+        }]);
+        
+        if (insertError) {
+          console.warn('Failed to save targeted solution:', insertError);
+        }
+        
+        console.log('✅ Targeted solution saved:', solutionMessageId);
+        
+        toast({
+          title: language === 'hi' ? 'समाधान तैयार' : language === 'mr' ? 'समाधान तयार' : 'Solution Ready',
+          description: language === 'hi' 
+            ? `${suggestionType === 'organic' ? 'जैविक' : suggestionType === 'fertilizer' ? 'खाद' : suggestionType === 'pesticide' ? 'कीटनाशक' : 'संपूर्ण'} समाधान उपलब्ध है`
+            : language === 'mr'
+            ? `${suggestionType === 'organic' ? 'सेंद्रिय' : suggestionType === 'fertilizer' ? 'खत' : suggestionType === 'pesticide' ? 'कीटकनाशक' : 'संपूर्ण'} समाधान उपलब्ध आहे`
+            : `${suggestionType} solution is ready`,
+        });
+      } else {
+        throw new Error(solutionResult?.error || 'Failed to generate solution');
+      }
+    } catch (err) {
+      console.error('Error generating targeted solution:', err);
+      toast({
+        title: t('error.title'),
+        description: err instanceof Error ? err.message : 'Failed to generate solution',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoadingSuggestion(false);
+    }
+  };
+
   const handleQuickAction = (action: string) => {
     const prompts: Record<string, string> = {
       irrigation: t('chat.irrigationPrompt'),
@@ -1819,6 +1952,8 @@ export function EnhancedAIChatInterface() {
                   onLike={handleLike}
                   onShare={handleShare}
                   onPlay={handlePlayMessage}
+                  onSuggestionSelect={handleSuggestionSelect}
+                  isLoadingSuggestion={isLoadingSuggestion}
                 />
               ))}
             </div>

@@ -54,9 +54,12 @@ export interface VisionAnalysisResult {
   language: string;
 }
 
+import type { SuggestionType } from './SuggestionTypeSelector';
+
 interface RecommendationCardsProps {
   analysis: VisionAnalysisResult;
   language?: string;
+  suggestionType?: SuggestionType; // Only show this type if specified
 }
 
 // Category styles
@@ -272,7 +275,7 @@ function RecommendationCard({ category, language }: { category: RecommendationCa
   );
 }
 
-export function RecommendationCards({ analysis, language = 'en' }: RecommendationCardsProps) {
+export function RecommendationCards({ analysis, language = 'en', suggestionType }: RecommendationCardsProps) {
   const labels = getLabels(language);
   
   // ✅ Safety check: Ensure analysis has required fields
@@ -295,109 +298,46 @@ export function RecommendationCards({ analysis, language = 'en' }: Recommendatio
     warning: 'bg-amber-500',
     critical: 'bg-red-500'
   };
+
+  // ✅ Filter recommendations based on suggestionType
+  const shouldShowCategory = (category: 'organic' | 'fertilizer' | 'pesticide' | 'hormone') => {
+    if (!suggestionType) return true; // Show all if no filter
+    if (suggestionType === 'hybrid') return true; // Hybrid shows all
+    return category === suggestionType;
+  };
+
+  // Get localized title based on suggestion type
+  const getSolutionTitle = () => {
+    if (!suggestionType) return null;
+    const titles = {
+      organic: language === 'hi' ? '🟢 जैविक समाधान' : language === 'mr' ? '🟢 सेंद्रिय समाधान' : '🟢 Organic Solution',
+      fertilizer: language === 'hi' ? '🟡 खाद समाधान' : language === 'mr' ? '🟡 खत समाधान' : '🟡 Fertilizer Solution',
+      pesticide: language === 'hi' ? '🔴 कीटनाशक समाधान' : language === 'mr' ? '🔴 कीटकनाशक समाधान' : '🔴 Pesticide Solution',
+      hybrid: language === 'hi' ? '🌈 संपूर्ण समाधान' : language === 'mr' ? '🌈 संपूर्ण समाधान' : '🌈 Complete Solution'
+    };
+    return titles[suggestionType];
+  };
   
   return (
     <div className="space-y-4">
-      {/* Crop Detection Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <Card className="border-2 border-primary/20">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <div className="text-sm text-muted-foreground">{labels.cropDetected}</div>
-                <div className="text-xl font-bold">
-                  {analysis.cropDetected.name}
-                  {analysis.cropDetected.scientificName && (
-                    <span className="text-sm font-normal text-muted-foreground ml-2">
-                      ({analysis.cropDetected.scientificName})
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-sm text-muted-foreground">{labels.confidence}</div>
-                <div className="text-lg font-bold text-primary">
-                  {analysis.cropDetected.confidence}%
-                </div>
-              </div>
-            </div>
-            
-            {/* Crop Mismatch Warning */}
-            {analysis.cropDetected.matchesLandCrop === false && (
-              <div className="p-3 bg-orange-500/20 border border-orange-500/50 rounded-lg">
-                <div className="flex items-start gap-2">
-                  <AlertTriangle className="h-5 w-5 text-orange-500 shrink-0" />
-                  <div>
-                    <div className="font-medium text-orange-700 dark:text-orange-300">
-                      {labels.mismatchWarning}
-                    </div>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      {language === 'hi' 
-                        ? `आपके खेत में: ${analysis.cropDetected.landCrop} | पहचानी गई: ${analysis.cropDetected.name}`
-                        : language === 'mr'
-                        ? `तुमच्या शेतात: ${analysis.cropDetected.landCrop} | ओळखले: ${analysis.cropDetected.name}`
-                        : `Your land: ${analysis.cropDetected.landCrop} | Detected: ${analysis.cropDetected.name}`}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {/* Health Status */}
-            <div className="flex items-center gap-3 mt-3">
-              <div className="text-sm text-muted-foreground">{labels.healthStatus}:</div>
-              <Badge className={cn(healthColors[analysis.healthStatus.condition], "text-white")}>
-                {labels[analysis.healthStatus.condition]}
-              </Badge>
-              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                <div 
-                  className={cn(healthColors[analysis.healthStatus.condition], "h-full transition-all")}
-                  style={{ width: `${analysis.healthStatus.score}%` }}
-                />
-              </div>
-              <span className="text-sm font-medium">{analysis.healthStatus.score}%</span>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+      {/* Solution Type Header (only for targeted solutions) */}
+      {suggestionType && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+        >
+          <div className="text-center py-2 px-4 bg-primary/10 rounded-lg border border-primary/20">
+            <span className="font-semibold text-primary text-lg">
+              {getSolutionTitle()}
+            </span>
+          </div>
+        </motion.div>
+      )}
       
-      {/* Diagnosis Summary */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
-        <Card className="bg-muted/50">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Info className="h-5 w-5 text-primary" />
-              <span className="font-medium">{labels.diagnosis}</span>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {analysis.diagnosis.summary}
-            </p>
-            
-            {/* Issues List */}
-            {analysis.healthStatus.issues.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {analysis.healthStatus.issues.map((issue, idx) => (
-                  <Badge key={idx} variant="outline" className="text-xs">
-                    {issue}
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </motion.div>
-      
-      {/* Recommendation Cards - 3 Categories */}
+      {/* Recommendation Cards - Filtered by suggestionType */}
       <div className="space-y-4">
         {/* Organic */}
-        {analysis.recommendations.organic && (
+        {shouldShowCategory('organic') && analysis.recommendations?.organic && (
           <RecommendationCard 
             category={analysis.recommendations.organic} 
             language={language} 
@@ -405,7 +345,7 @@ export function RecommendationCards({ analysis, language = 'en' }: Recommendatio
         )}
         
         {/* Fertilizer */}
-        {analysis.recommendations.fertilizer && (
+        {shouldShowCategory('fertilizer') && analysis.recommendations?.fertilizer && (
           <RecommendationCard 
             category={analysis.recommendations.fertilizer} 
             language={language} 
@@ -413,15 +353,15 @@ export function RecommendationCards({ analysis, language = 'en' }: Recommendatio
         )}
         
         {/* Pesticide */}
-        {analysis.recommendations.pesticide && (
+        {shouldShowCategory('pesticide') && analysis.recommendations?.pesticide && (
           <RecommendationCard 
             category={analysis.recommendations.pesticide} 
             language={language} 
           />
         )}
         
-        {/* Hormone Grower (for weak crops) */}
-        {analysis.recommendations.hormone && (
+        {/* Hormone Grower (for hybrid/complete solution) */}
+        {suggestionType === 'hybrid' && analysis.recommendations?.hormone && (
           <RecommendationCard 
             category={analysis.recommendations.hormone} 
             language={language} 
