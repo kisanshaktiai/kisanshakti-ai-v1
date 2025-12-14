@@ -71,7 +71,7 @@ function clearApiKeyCache(): void {
  */
 async function fetchWithTimeout<T>(
   fn: () => Promise<T>,
-  timeoutMs: number = 10000
+  timeoutMs: number = 8000
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const timeoutId = setTimeout(() => {
@@ -88,6 +88,32 @@ async function fetchWithTimeout<T>(
         reject(err);
       });
   });
+}
+
+/**
+ * Fetch API key using direct fetch (fallback)
+ */
+async function fetchApiKeyDirect(): Promise<string> {
+  const response = await fetch('https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/google-maps-config', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbwYom1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4',
+      'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFma2xra3p4ZW1zYmVuaXl1Z2l6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI0MjcxNjUsImV4cCI6MjA2ODAwMzE2NX0.dUnGp7wbwYom1FPbn_4EGf3PWjgmr8mXwL2w2SdYOh4',
+    },
+    body: JSON.stringify({}),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (!data.apiKey) {
+    throw new Error('No API key in response');
+  }
+  
+  return data.apiKey;
 }
 
 /**
@@ -145,23 +171,45 @@ export function GoogleMapsProvider({ children }: { children: React.ReactNode }) 
     try {
       console.log('🗺️ [GoogleMapsContext] Fetching API key from server...');
       
-      const { data, error: fetchError } = await fetchWithTimeout(
-        () => supabase.functions.invoke('google-maps-config', {
-          headers: { 'Cache-Control': 'no-cache' }
-        }),
-        10000
-      );
+      let apiKeyResult: string | null = null;
+      
+      // Try using Supabase client first
+      try {
+        const { data, error: fetchError } = await fetchWithTimeout(
+          () => supabase.functions.invoke('google-maps-config', {
+            method: 'POST',
+            headers: { 'Cache-Control': 'no-cache' },
+            body: {}
+          }),
+          6000
+        );
+
+        if (fetchError) {
+          console.warn('🗺️ [GoogleMapsContext] Supabase client failed:', fetchError.message);
+          throw fetchError;
+        }
+
+        if (data?.apiKey && data.apiKey.length > 10) {
+          apiKeyResult = data.apiKey;
+        }
+      } catch (supabaseErr) {
+        console.warn('🗺️ [GoogleMapsContext] Trying direct fetch fallback...');
+        
+        // Fallback to direct fetch
+        try {
+          apiKeyResult = await fetchWithTimeout(() => fetchApiKeyDirect(), 6000);
+        } catch (directErr) {
+          console.error('🗺️ [GoogleMapsContext] Direct fetch also failed:', directErr);
+          throw directErr;
+        }
+      }
 
       if (!isMounted.current) return;
 
-      if (fetchError) {
-        throw new Error(fetchError.message || 'Failed to fetch API key');
-      }
-
-      if (data?.apiKey && data.apiKey.length > 10) {
+      if (apiKeyResult) {
         console.log('🗺️ [GoogleMapsContext] API key fetched successfully');
-        cacheApiKey(data.apiKey);
-        setApiKey(data.apiKey);
+        cacheApiKey(apiKeyResult);
+        setApiKey(apiKeyResult);
         setError(null);
       } else {
         throw new Error('Invalid API key received from server');

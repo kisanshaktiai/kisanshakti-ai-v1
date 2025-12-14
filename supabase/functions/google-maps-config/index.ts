@@ -2,7 +2,9 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Max-Age': '86400',
 }
 
 serve(async (req) => {
@@ -11,10 +13,13 @@ serve(async (req) => {
   
   console.log(`📍 [GoogleMapsConfig] [${requestId}] Request received: ${req.method}`);
 
-  // Handle CORS preflight
+  // Handle CORS preflight - must return 204 with proper headers
   if (req.method === 'OPTIONS') {
     console.log(`📍 [GoogleMapsConfig] [${requestId}] CORS preflight - OK`);
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { 
+      status: 204,
+      headers: corsHeaders 
+    });
   }
 
   try {
