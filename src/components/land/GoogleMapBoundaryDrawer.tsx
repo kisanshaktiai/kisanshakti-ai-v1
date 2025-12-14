@@ -8,7 +8,7 @@ import LocationService from '@/services/LocationService';
 import { Card } from '@/components/ui/card';
 import { Loader2, AlertCircle, WifiOff, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
+import { useGoogleMapsScript } from '@/components/maps/GoogleMapsScriptProvider';
 import { Button } from '@/components/ui/button';
 
 interface LatLng {
@@ -36,7 +36,7 @@ export function GoogleMapBoundaryDrawer({
 }: GoogleMapBoundaryDrawerProps) {
   const { toast } = useToast();
   const { t } = useTranslation();
-  const { isLoaded, loadError, isLoading, retry, apiKey } = useGoogleMapsApi();
+  const { isLoaded, loadError, isLoading, retry } = useGoogleMapsScript();
   
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [center, setCenter] = useState<LatLng>(
@@ -518,7 +518,7 @@ export function GoogleMapBoundaryDrawer({
         <Card className="p-6 space-y-4 text-center max-w-sm">
           <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
           <p className="text-muted-foreground font-medium">
-            {!apiKey ? 'Connecting to map service...' : 'Loading Map...'}
+            Loading Map...
           </p>
           <p className="text-xs text-muted-foreground">Please wait while we prepare the map</p>
           {!isOnline && (

@@ -1,32 +1,19 @@
-import { useMemo } from 'react';
-import { useJsApiLoader, Libraries } from '@react-google-maps/api';
 import { useGoogleMaps, getGoogleMapsApiKey } from '@/contexts/GoogleMapsContext';
-
-// Google Maps libraries to load
-const GOOGLE_MAPS_LIBRARIES: Libraries = ['places', 'geometry', 'drawing'];
-
-// Stable script ID to prevent duplicate loading
-const SCRIPT_ID = 'google-maps-script-main';
-
-// Placeholder key to prevent useJsApiLoader from erroring with empty string
-const PLACEHOLDER_KEY = 'AWAITING_VALID_KEY';
+import { useGoogleMapsScript } from '@/components/maps/GoogleMapsScriptProvider';
 
 /**
- * Check if Google Maps is fully functional
- */
-function isGoogleMapsReady(): boolean {
-  return !!(
-    typeof window !== 'undefined' && 
-    window.google?.maps?.Map &&
-    window.google?.maps?.Marker &&
-    window.google?.maps?.Polygon &&
-    window.google?.maps?.SymbolPath
-  );
-}
-
-/**
- * Primary hook for Google Maps API - consumes from GoogleMapsContext
- * This ensures single source of truth for API key and prevents duplicate fetching
+ * Primary hook for Google Maps API
+ * 
+ * USAGE:
+ * - For components that need the full Google Maps API (interactive maps),
+ *   wrap them with <GoogleMapsScriptProvider> and use this hook.
+ * 
+ * - For components that only need the API key (static maps, thumbnails),
+ *   use useGoogleMaps() directly from the context.
+ * 
+ * This hook combines:
+ * - API key state from GoogleMapsContext
+ * - Script loading state from GoogleMapsScriptProvider
  */
 export function useGoogleMapsApi() {
   // Get API key from context (single source of truth)
@@ -38,37 +25,26 @@ export function useGoogleMapsApi() {
     isReady: isKeyReady 
   } = useGoogleMaps();
 
-  // Only load Google Maps script when we have a valid API key
-  const shouldLoadScript = isKeyReady && apiKey && apiKey.length > 10;
-
-  // Use the official loader from @react-google-maps/api
-  // CRITICAL: Never pass empty string - use placeholder when no key
-  const { isLoaded: scriptLoaded, loadError: scriptError } = useJsApiLoader({
-    id: SCRIPT_ID,
-    googleMapsApiKey: shouldLoadScript ? apiKey : PLACEHOLDER_KEY,
-    libraries: GOOGLE_MAPS_LIBRARIES,
-    // Prevent actual loading when using placeholder
-    preventGoogleFontsLoading: !shouldLoadScript,
-  });
-
-  // Only consider truly loaded if we have valid key AND script loaded AND google is ready
-  const isLoaded = useMemo(() => {
-    if (!shouldLoadScript) return false;
-    if (!scriptLoaded) return false;
-    return isGoogleMapsReady();
-  }, [shouldLoadScript, scriptLoaded]);
+  // Get script loading state from provider
+  // This will return defaults if not inside GoogleMapsScriptProvider
+  let scriptState = { isLoaded: false, loadError: null as string | null, isLoading: false };
+  
+  try {
+    scriptState = useGoogleMapsScript();
+  } catch {
+    // Not inside GoogleMapsScriptProvider - that's okay for thumbnail components
+  }
 
   // Combined loading state
-  const isLoading = isKeyLoading || (!isLoaded && shouldLoadScript && !scriptError);
+  const isLoading = isKeyLoading || scriptState.isLoading;
+  
+  // Combined loaded state - both API key ready AND script loaded
+  const isLoaded = isKeyReady && scriptState.isLoaded;
+  
+  // Combined error - prefer key error over script error
+  const loadError = keyError || scriptState.loadError;
 
-  // Combined error - prefer key error over script error (key error is more actionable)
-  const loadError = useMemo(() => {
-    if (keyError) return keyError;
-    if (scriptError && shouldLoadScript) return scriptError.message;
-    return null;
-  }, [keyError, scriptError, shouldLoadScript]);
-
-  // Retry function that retries the entire flow
+  // Retry function
   const retry = () => {
     console.log('🗺️ [useGoogleMapsApi] Retry triggered');
     retryKey();
@@ -94,7 +70,6 @@ export { getGoogleMapsApiKey };
  * Call this early in the app lifecycle for faster map loading
  */
 export function preloadGoogleMapsApiKey(): void {
-  // The context handles preloading automatically when mounted
   console.log('🗺️ [useGoogleMapsApi] Preload triggered (handled by context)');
 }
 
