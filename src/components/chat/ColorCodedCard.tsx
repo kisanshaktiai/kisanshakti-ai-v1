@@ -75,31 +75,31 @@ export function ColorCodedCard({
 
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 20 }} 
+      initial={{ opacity: 0, y: 10 }} 
       animate={{ opacity: 1, y: 0 }} 
-      transition={{ delay: index * 0.1 }}
+      transition={{ delay: index * 0.05 }}
     >
-      <Card 
+      <div 
         className={cn(
-          "w-full px-4 py-3 relative overflow-hidden",
-          "border-l-4 shadow-sm",
-          "transition-all duration-200 hover:shadow-md"
+          "w-full px-3 py-2 relative",
+          "border-l-3 rounded-md",
+          "bg-card/50"
         )} 
         style={{
           borderLeftColor: card.color,
-          background: `linear-gradient(135deg, ${card.gradient[0]}06 0%, ${card.gradient[2]}06 100%)`
+          borderLeftWidth: '3px'
         }}
       >
         {card.title && (
-          <div className="font-semibold text-sm mb-2 text-foreground flex items-center gap-2">
-            <span>{card.icon}</span>
+          <div className="font-medium text-sm mb-1 text-foreground flex items-center gap-1.5">
+            <span className="text-xs">{card.icon}</span>
             <span>{card.title}</span>
           </div>
         )}
-        <div className="w-full text-sm text-foreground/90">
+        <div className="w-full text-sm text-foreground/90 leading-snug">
           {formatContent(card.content)}
         </div>
-      </Card>
+      </div>
     </motion.div>
   );
 }

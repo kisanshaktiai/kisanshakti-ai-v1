@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
@@ -7,7 +7,6 @@ import {
   MapPin, 
   Mountain, 
   Droplets, 
-  Calendar, 
   Trash2,
   Edit3,
   Wheat,
@@ -15,9 +14,6 @@ import {
   Globe,
   ChevronRight,
   Clock,
-  Share2,
-  Copy,
-  Eye,
   Satellite,
   Activity,
   Percent
@@ -36,10 +32,8 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
-import { supabase } from '@/integrations/supabase/client';
-import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { LandThumbnail } from './LandThumbnail';
 
 interface ModernLandCardProps {
   land: {
@@ -73,88 +67,8 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
   const { t } = useTranslation();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [imageLoading, setImageLoading] = useState(true);
-  const { apiKey } = useGoogleMapsApi();
   
-  // Generate static map URL with boundary polygon
-  const getStaticMapUrl = () => {
-    if (!apiKey) {
-      return '/placeholder.svg';
-    }
-    
-    try {
-      // Mobile optimized - smaller image size for faster loading
-      const isMobile = window.innerWidth < 640;
-      const imageSize = isMobile ? '400x200' : '600x300';
-      
-      if (!land.boundary_polygon_old || !land.boundary_polygon_old.coordinates) {
-        if (land.center_point_old?.coordinates) {
-          const center = `${land.center_point_old.coordinates[1]},${land.center_point_old.coordinates[0]}`;
-          return `https://maps.googleapis.com/maps/api/staticmap?` +
-            `center=${center}` +
-            `&zoom=16` +
-            `&size=${imageSize}` +
-            `&maptype=satellite` +
-            `&style=feature:all|element:labels|visibility:off` +
-            `&style=feature:poi|visibility:off` +
-            `&style=feature:road|visibility:off` +
-            `&markers=color:green|size:medium|${center}` +
-            `&key=${apiKey}`;
-        }
-        return '/placeholder.svg';
-      }
-      
-      const coordinates = land.boundary_polygon_old.coordinates[0];
-      if (!coordinates || coordinates.length === 0) return '/placeholder.svg';
-      
-      // Calculate bounds of the polygon
-      let minLat = coordinates[0][1];
-      let maxLat = coordinates[0][1];
-      let minLng = coordinates[0][0];
-      let maxLng = coordinates[0][0];
-      
-      coordinates.forEach((coord: number[]) => {
-        minLat = Math.min(minLat, coord[1]);
-        maxLat = Math.max(maxLat, coord[1]);
-        minLng = Math.min(minLng, coord[0]);
-        maxLng = Math.max(maxLng, coord[0]);
-      });
-      
-      const latDiff = maxLat - minLat;
-      const lngDiff = maxLng - minLng;
-      const paddingFactor = 0.25;
-      const minBoundSize = 0.0005;
-      const effectiveLatDiff = Math.max(latDiff, minBoundSize);
-      const effectiveLngDiff = Math.max(lngDiff, minBoundSize);
-      
-      const paddedMinLat = minLat - (effectiveLatDiff * paddingFactor);
-      const paddedMaxLat = maxLat + (effectiveLatDiff * paddingFactor);
-      const paddedMinLng = minLng - (effectiveLngDiff * paddingFactor);
-      const paddedMaxLng = maxLng + (effectiveLngDiff * paddingFactor);
-      
-      const visibleBounds = `${paddedMinLat},${paddedMinLng}|${paddedMaxLat},${paddedMaxLng}`;
-      
-      const path = coordinates
-        .map((coord: number[]) => `${coord[1]},${coord[0]}`)
-        .join('|');
-      
-      return `https://maps.googleapis.com/maps/api/staticmap?` +
-        `visible=${visibleBounds}` +
-        `&size=${imageSize}` +
-        `&maptype=satellite` +
-        `&style=feature:all|element:labels|visibility:off` +
-        `&style=feature:poi|visibility:off` +
-        `&style=feature:road|visibility:off` +
-        `&path=color:0xffffff|weight:3|${path}` +
-        `&path=color:0x00ff00|weight:2|fillcolor:0x00ff0033|${path}` +
-        `&key=${apiKey}`;
-    } catch (error) {
-      console.error('Error generating map URL:', error);
-      return '/placeholder.svg';
-    }
-  };
-
-  const mapUrl = getStaticMapUrl();
+  // Removed inline map URL generation - now using LandThumbnail component
   
   const handleEdit = () => {
     navigate(`/app/lands/${land.id}/edit`);
@@ -222,19 +136,13 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
         <Card className="overflow-hidden cursor-pointer group relative bg-card hover:shadow-2xl transition-all duration-300 border-border/50 h-full flex flex-col">
           {/* Map Image Section */}
           <div className="relative h-40 sm:h-48 overflow-hidden bg-muted">
-            <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-background/20 to-transparent z-10" />
+            <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-background/20 to-transparent z-10 pointer-events-none" />
             
-            {imageLoading && (
-              <Skeleton className="absolute inset-0" />
-            )}
-            
-            <img 
-              src={mapUrl} 
-              alt={`${land.name} boundary`}
-              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-              loading="lazy"
-              onLoad={() => setImageLoading(false)}
-              onError={() => setImageLoading(false)}
+            <LandThumbnail
+              boundary={land.boundary_polygon_old}
+              centerPoint={land.center_point_old}
+              landName={land.name}
+              className="w-full h-full group-hover:scale-110 transition-transform duration-500"
             />
             
             {/* Direct Action Icons */}

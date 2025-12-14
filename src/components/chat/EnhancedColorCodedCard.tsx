@@ -122,53 +122,39 @@ export function EnhancedColorCodedCard({ card, index }: EnhancedColorCodedCardPr
 
   return (
     <motion.div 
-      initial={{ opacity: 0, y: 15, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ 
-        delay: index * 0.08,
-        duration: 0.35,
-        ease: [0.25, 0.1, 0.25, 1]
-      }}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.05, duration: 0.25 }}
     >
-      <Card 
+      <div 
         className={cn(
-          'w-full relative overflow-hidden',
-          'border-l-4 rounded-xl',
+          'w-full relative',
+          'border-l-3 rounded-md',
           theme.border,
-          'bg-gradient-to-br', theme.gradient,
-          'backdrop-blur-sm',
-          'shadow-sm hover:shadow-lg',
-          theme.glow,
-          'transition-all duration-300'
+          'bg-card/50'
         )}
+        style={{ borderLeftWidth: '3px' }}
       >
-        {/* Subtle gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-br from-background/60 to-background/40" />
-        
         {/* Content */}
-        <div className="relative z-10 p-4">
+        <div className="px-3 py-2">
           {/* Header with icon and title */}
           {card.title && (
-            <div className="flex items-center gap-3 mb-3">
-              <div className={cn(
-                'p-2 rounded-lg',
-                theme.iconBg,
-                'ring-1 ring-inset ring-white/10'
-              )}>
-                <IconComponent className={cn('h-4 w-4', theme.iconColor)} />
+            <div className="flex items-center gap-2 mb-1">
+              <div className={cn('p-1 rounded', theme.iconBg)}>
+                <IconComponent className={cn('h-3.5 w-3.5', theme.iconColor)} />
               </div>
-              <h4 className="font-semibold text-sm text-foreground leading-tight flex-1">
+              <h4 className="font-medium text-sm text-foreground leading-tight flex-1">
                 {card.title}
               </h4>
             </div>
           )}
           
           {/* Content */}
-          <div className="text-sm text-foreground/85 leading-relaxed">
+          <div className="text-sm text-foreground/90 leading-snug">
             {formatContent(card.content)}
           </div>
         </div>
-      </Card>
+      </div>
     </motion.div>
   );
 }

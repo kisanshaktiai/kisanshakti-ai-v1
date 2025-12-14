@@ -257,17 +257,25 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
       return;
     }
 
+    // Check network connectivity
+    if (!navigator.onLine) {
+      toast({
+        title: "No Internet Connection",
+        description: "Please connect to the internet to save your land. Your data is saved locally.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSaving(true);
     
     try {
       // Build proper GeoJSON polygon from boundary points
-      // GeoJSON format: coordinates array with lng first, lat second
-      // Close the polygon by repeating the first point at the end
       const boundaryGeoJSON = boundary.length >= 3 ? {
         type: 'Polygon',
         coordinates: [[
           ...boundary.map(p => [p.lng, p.lat]),
-          [boundary[0].lng, boundary[0].lat] // Close the polygon
+          [boundary[0].lng, boundary[0].lat]
         ]]
       } : null;
       
@@ -280,15 +288,14 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
         ]
       } : null;
 
-      console.log('📍 [ModernLandWizard] Saving land with:', {
+      console.log('📍 [ModernLandWizard] Saving land:', {
         name: formData.name,
         area_acres: area.acres,
-        hasBoundary: !!boundaryGeoJSON,
         boundaryPoints: boundary.length
       });
 
-      // Use the landsApi service which handles proper headers and authentication
-      await landsApi.createLand({
+      // Use landsApi with timeout handling
+      const savePromise = landsApi.createLand({
         name: formData.name,
         survey_number: formData.survey_number || undefined,
         ownership_type: formData.ownership_type,
@@ -308,13 +315,20 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
         last_harvest_date: formData.last_harvest_date || undefined,
         boundary_polygon_old: boundaryGeoJSON,
         center_point_old: centerGeoJSON,
-        boundary_method: 'google_maps',
+        boundary_method: 'gps_points',
         gps_accuracy_meters: 10,
         gps_recorded_at: new Date().toISOString()
       });
 
+      // Add timeout to prevent indefinite waiting
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timed out. Please try again.')), 30000)
+      );
+
+      await Promise.race([savePromise, timeoutPromise]);
+
       toast({
-        title: "✅ Success",
+        title: "Success",
         description: "Your land has been saved successfully!",
       });
 
@@ -324,9 +338,20 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
       onComplete();
     } catch (error: any) {
       console.error('❌ [ModernLandWizard] Save error:', error);
+      
+      let errorMessage = "Failed to save land. Please try again.";
+      
+      if (error.message?.includes('timeout')) {
+        errorMessage = "Request timed out. Please check your connection and try again.";
+      } else if (error.message?.includes('logged in')) {
+        errorMessage = "Please log in again to save your land.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Error Saving Land",
-        description: error.message || "Failed to save land. Please check your connection and try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {

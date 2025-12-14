@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Loader2, ArrowLeft, MapPin, Edit, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Loader2, Edit } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuthStore } from '@/stores/authStore';
-import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
+import { GoogleMapsScriptProvider } from '@/components/maps/GoogleMapsScriptProvider';
 import { GoogleMapBoundaryDrawer } from '@/components/land/GoogleMapBoundaryDrawer';
 import { EditLandWizard } from '@/components/land/EditLandWizard';
 import { Button } from '@/components/ui/button';
@@ -22,7 +22,6 @@ export default function EditLand() {
   const { id } = useParams();
   const { toast } = useToast();
   const { user } = useAuthStore();
-  const { isLoaded, loadError, isLoading, retry } = useGoogleMapsApi();
   
   const [showMap, setShowMap] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -135,8 +134,8 @@ export default function EditLand() {
     navigate('/app/lands');
   };
 
-  // Loading state
-  if (isLoading || !isLoaded || loadingLand) {
+  // Loading land data state
+  if (loadingLand) {
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-background z-50">
         <Card className="p-6 space-y-4 text-center">
@@ -147,40 +146,10 @@ export default function EditLand() {
     );
   }
 
-  // Error state with retry button
-  if (loadError) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center bg-background p-4 z-50">
-        <Card className="p-6 max-w-md w-full space-y-4 text-center">
-          <div className="mx-auto w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
-            <AlertTriangle className="h-8 w-8 text-destructive" />
-          </div>
-          <h2 className="text-xl font-semibold text-destructive">Failed to Load Maps</h2>
-          <p className="text-muted-foreground">
-            {loadError === 'User not authenticated' 
-              ? 'Please sign in to edit land parcels.'
-              : 'Could not load Google Maps. Please check your internet connection and try again.'}
-          </p>
-          <p className="text-sm text-muted-foreground/70">{loadError}</p>
-          <div className="flex gap-3 justify-center pt-2">
-            <Button variant="outline" onClick={() => navigate('/app/lands')}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Lands
-            </Button>
-            <Button onClick={retry} className="gap-2">
-              <RefreshCw className="h-4 w-4" />
-              Try Again
-            </Button>
-          </div>
-        </Card>
-      </div>
-    );
-  }
-
-  // Show map with preloaded boundary for editing
+  // Show map with preloaded boundary for editing - wrapped with GoogleMapsScriptProvider
   if (showMap && !showForm) {
     return (
-      <>
+      <GoogleMapsScriptProvider>
         <div className="fixed inset-0 z-[60] bg-background">
           {/* Title bar */}
           <div className="absolute top-0 left-0 right-0 bg-background/95 backdrop-blur-sm border-b z-10 p-4">
@@ -202,7 +171,7 @@ export default function EditLand() {
             />
           </div>
         </div>
-      </>
+      </GoogleMapsScriptProvider>
     );
   }
 
