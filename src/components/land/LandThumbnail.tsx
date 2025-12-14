@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MapPin } from 'lucide-react';
-import { getGoogleMapsApiKey } from '@/hooks/useGoogleMapsApi';
+import { MapPin, RefreshCw } from 'lucide-react';
+import { useGoogleMaps } from '@/contexts/GoogleMapsContext';
 
 interface LandThumbnailProps {
   boundary?: {
@@ -71,6 +71,10 @@ export function LandThumbnail({ boundary, centerPoint, landName, className = '' 
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [retryCount, setRetryCount] = useState(0);
+  
+  // Use the context hook to get API key reactively
+  const { apiKey, isLoading: isApiKeyLoading } = useGoogleMaps();
 
   // Listen for online/offline
   useEffect(() => {
@@ -86,10 +90,17 @@ export function LandThumbnail({ boundary, centerPoint, landName, className = '' 
     };
   }, []);
 
-  // Generate static map URL or fallback
+  // Reset image states when retry count changes
+  useEffect(() => {
+    if (retryCount > 0) {
+      setImageLoaded(false);
+      setImageError(false);
+    }
+  }, [retryCount]);
+
+  // Generate static map URL or fallback - now reactive to apiKey changes
   const { mapUrl, fallbackSvg } = useMemo(() => {
-    const apiKey = getGoogleMapsApiKey();
-    const cacheKey = `${landName}-${JSON.stringify(boundary?.coordinates?.[0]?.slice(0, 3))}`;
+    const cacheKey = `${landName}-${JSON.stringify(boundary?.coordinates?.[0]?.slice(0, 3))}-${retryCount}`;
     
     // Check cache first
     if (urlCache.has(cacheKey) && apiKey) {
@@ -102,7 +113,7 @@ export function LandThumbnail({ boundary, centerPoint, landName, className = '' 
       fallbackSvg = generateBoundarySvg(boundary.coordinates[0]);
     }
 
-    // No API key - use SVG fallback
+    // No API key yet - use SVG fallback
     if (!apiKey) {
       return { mapUrl: '', fallbackSvg };
     }
@@ -172,11 +183,33 @@ export function LandThumbnail({ boundary, centerPoint, landName, className = '' 
     }
 
     return { mapUrl: '', fallbackSvg };
-  }, [boundary, centerPoint, landName]);
+  }, [boundary, centerPoint, landName, apiKey, retryCount]);
 
-  // Use fallback if offline or no map URL
+  // Handle image error with retry
+  const handleImageError = () => {
+    const maxRetries = 2;
+    if (retryCount < maxRetries && isOnline && apiKey) {
+      // Retry after a delay
+      setTimeout(() => setRetryCount(prev => prev + 1), 1000);
+    } else {
+      setImageError(true);
+      setImageLoaded(true);
+    }
+  };
+
+  // Use fallback if offline, no map URL, or image error
   const shouldUseFallback = !isOnline || !mapUrl || imageError;
   const displayUrl = shouldUseFallback ? fallbackSvg : mapUrl;
+
+  // Show loading while API key is being fetched
+  if (isApiKeyLoading && !fallbackSvg) {
+    return (
+      <div className={`bg-muted flex items-center justify-center ${className}`}>
+        <Skeleton className="w-full h-full absolute inset-0" />
+        <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   // Handle no boundary and no center point
   if (!displayUrl) {
@@ -204,10 +237,7 @@ export function LandThumbnail({ boundary, centerPoint, landName, className = '' 
         }`}
         loading="lazy"
         onLoad={() => setImageLoaded(true)}
-        onError={() => {
-          setImageError(true);
-          setImageLoaded(true);
-        }}
+        onError={handleImageError}
       />
 
       {/* Offline indicator */}
