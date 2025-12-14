@@ -1,12 +1,10 @@
-import React, { createContext, useContext, useMemo, useCallback } from 'react';
+import React, { createContext, useContext, useMemo, useCallback, useState, useEffect } from 'react';
 import { useJsApiLoader, Libraries } from '@react-google-maps/api';
 import { useGoogleMaps } from '@/contexts/GoogleMapsContext';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
 import { Loader2, MapPin, RefreshCw, AlertTriangle, WifiOff, Wifi } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
-import { useState, useEffect } from 'react';
 
 // Google Maps libraries to load
 const GOOGLE_MAPS_LIBRARIES: Libraries = ['places', 'geometry', 'drawing'];
@@ -29,9 +27,9 @@ const GoogleMapsScriptContext = createContext<GoogleMapsScriptContextType>({
 });
 
 /**
- * Check if Google Maps is fully functional
+ * Check if Google Maps is already loaded and fully functional
  */
-function isGoogleMapsReady(): boolean {
+function isGoogleMapsAlreadyLoaded(): boolean {
   return !!(
     typeof window !== 'undefined' && 
     window.google?.maps?.Map &&
@@ -54,16 +52,54 @@ function GoogleMapsScriptLoader({
   children: React.ReactNode;
   onRetry: () => void;
 }) {
-  const { isLoaded: scriptLoaded, loadError: scriptError } = useJsApiLoader({
+  // Check if already loaded BEFORE calling useJsApiLoader
+  const [alreadyLoaded] = useState(() => isGoogleMapsAlreadyLoaded());
+  
+  // Only use useJsApiLoader if not already loaded
+  const { isLoaded: hookLoaded, loadError: scriptError } = useJsApiLoader({
     id: SCRIPT_ID,
     googleMapsApiKey: apiKey,
     libraries: GOOGLE_MAPS_LIBRARIES,
+    // Skip if already loaded
+    preventGoogleFontsLoading: true,
   });
 
-  // Check if Google Maps is truly ready
-  const isLoaded = scriptLoaded && isGoogleMapsReady();
+  // Combine both states - script is loaded if hook says so OR if it was already loaded
+  const scriptLoaded = hookLoaded || alreadyLoaded;
+  
+  // Double-check by verifying Google is actually ready
+  const [verifiedReady, setVerifiedReady] = useState(isGoogleMapsAlreadyLoaded());
+  
+  useEffect(() => {
+    if (scriptLoaded && !verifiedReady) {
+      // Give a small delay for Google to fully initialize
+      const checkReady = () => {
+        if (isGoogleMapsAlreadyLoaded()) {
+          console.log('🗺️ [GoogleMapsScriptLoader] Google Maps verified ready');
+          setVerifiedReady(true);
+        } else {
+          setTimeout(checkReady, 100);
+        }
+      };
+      checkReady();
+    }
+  }, [scriptLoaded, verifiedReady]);
+
+  const isLoaded = verifiedReady;
   const isLoading = !scriptLoaded && !scriptError;
   const loadError = scriptError ? scriptError.message : null;
+
+  // Log state for debugging
+  useEffect(() => {
+    console.log('🗺️ [GoogleMapsScriptLoader] State:', { 
+      hookLoaded, 
+      alreadyLoaded, 
+      scriptLoaded, 
+      verifiedReady,
+      isLoaded,
+      loadError 
+    });
+  }, [hookLoaded, alreadyLoaded, scriptLoaded, verifiedReady, isLoaded, loadError]);
 
   const contextValue = useMemo(() => ({
     isLoaded,
