@@ -61,11 +61,23 @@ export function GoogleMapBoundaryDrawer({
 
   // Check if Google Maps is fully ready - defensive check
   const isGoogleReady = useMemo(() => {
-    if (!isLoaded) return false;
-    if (typeof google === 'undefined') return false;
-    if (!google.maps) return false;
-    if (!google.maps.Map) return false;
-    if (!google.maps.SymbolPath) return false;
+    if (!isLoaded) {
+      console.log('🗺️ [GoogleMapBoundaryDrawer] Not ready - isLoaded is false');
+      return false;
+    }
+    if (typeof google === 'undefined') {
+      console.log('🗺️ [GoogleMapBoundaryDrawer] Not ready - google undefined');
+      return false;
+    }
+    if (!google.maps) {
+      console.log('🗺️ [GoogleMapBoundaryDrawer] Not ready - google.maps undefined');
+      return false;
+    }
+    if (!google.maps.Map) {
+      console.log('🗺️ [GoogleMapBoundaryDrawer] Not ready - google.maps.Map undefined');
+      return false;
+    }
+    console.log('🗺️ [GoogleMapBoundaryDrawer] Google Maps is READY!');
     return true;
   }, [isLoaded]);
 
@@ -512,7 +524,8 @@ export function GoogleMapBoundaryDrawer({
   }, [map, toast]);
 
   // Show loading state while Google Maps is loading
-  if (isLoading && !isGoogleReady) {
+  if (isLoading) {
+    console.log('🗺️ [GoogleMapBoundaryDrawer] Showing loading state - script loading');
     return (
       <div className="relative w-full h-full flex items-center justify-center bg-background">
         <Card className="p-6 space-y-4 text-center max-w-sm">
@@ -533,7 +546,8 @@ export function GoogleMapBoundaryDrawer({
   }
 
   // Show error state
-  if (loadError && !isGoogleReady) {
+  if (loadError) {
+    console.log('🗺️ [GoogleMapBoundaryDrawer] Showing error state:', loadError);
     return (
       <div className="relative w-full h-full flex items-center justify-center bg-background p-4">
         <Card className="p-6 space-y-4 text-center max-w-md">
@@ -559,12 +573,17 @@ export function GoogleMapBoundaryDrawer({
   }
 
   // Still initializing after script loaded
-  if (!isGoogleReady || mapLoading) {
+  if (!isGoogleReady) {
+    console.log('🗺️ [GoogleMapBoundaryDrawer] Showing initializing state - waiting for Google');
     return (
       <div className="relative w-full h-full flex items-center justify-center bg-background">
         <Card className="p-6 space-y-4 text-center max-w-sm">
           <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
           <p className="text-muted-foreground font-medium">Initializing map...</p>
+          <Button variant="outline" size="sm" onClick={retry} className="mt-2">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Retry
+          </Button>
         </Card>
       </div>
     );
