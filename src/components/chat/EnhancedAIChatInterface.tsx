@@ -285,6 +285,12 @@ export function EnhancedAIChatInterface() {
   const loadLandSession = useCallback(async (landId: string | null) => {
     const sessionKey = landId || 'general';
     
+    // ✅ CRITICAL: Early return if user or tenant not loaded yet
+    if (!user?.id || !tenant?.id) {
+      console.warn(`[Session] Skipping load - user or tenant not ready`);
+      return { sessionId: null, messages: [] };
+    }
+    
     try {
       // 1. FIRST: Try to load from LocalDB (instant, offline-first)
       let cachedMessages: Message[] = [];
@@ -337,8 +343,8 @@ export function EnhancedAIChatInterface() {
       let sessionQuery = supabase
         .from('ai_chat_sessions')
         .select('id')
-        .eq('farmer_id', user?.id)
-        .eq('tenant_id', tenant?.id)
+        .eq('farmer_id', user.id)
+        .eq('tenant_id', tenant.id)
         .eq('is_active', true)
         .order('updated_at', { ascending: false })
         .limit(1);
@@ -630,6 +636,12 @@ export function EnhancedAIChatInterface() {
     const landId = tabKey !== 'general' ? tabKey : null;
     const land = landId ? lands.find(l => l.id === landId) : null;
     
+    // ✅ CRITICAL: Ensure user and tenant are defined
+    if (!user?.id || !tenant?.id) {
+      console.error('[Session] Cannot create session - user or tenant undefined');
+      throw new Error('User or tenant not loaded');
+    }
+    
     // 1. Check if we already have a session ID for THIS SPECIFIC TAB
     if (sessionIds[tabKey]) {
       console.log(`♻️ Reusing existing session for ${tabKey}:`, sessionIds[tabKey]);
@@ -641,8 +653,8 @@ export function EnhancedAIChatInterface() {
       let sessionQuery = supabase
         .from('ai_chat_sessions')
         .select('id')
-        .eq('farmer_id', user?.id)
-        .eq('tenant_id', tenant?.id)
+        .eq('farmer_id', user.id)
+        .eq('tenant_id', tenant.id)
         .eq('is_active', true)
         .order('updated_at', { ascending: false })
         .limit(1);
@@ -674,8 +686,8 @@ export function EnhancedAIChatInterface() {
     try {
       await supabase.from('ai_chat_sessions').insert({
         id: newSessionId,
-        tenant_id: tenant?.id,
-        farmer_id: user?.id,
+        tenant_id: tenant.id,
+        farmer_id: user.id,
         session_type: landId ? 'land_specific' : 'general',
         session_title: landId ? (land?.name || 'Land Chat') : 'General Agriculture Chat',
         land_id: landId, // ✅ CRITICAL: Set correct land_id
