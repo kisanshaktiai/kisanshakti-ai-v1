@@ -315,7 +315,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
         last_harvest_date: formData.last_harvest_date || undefined,
         boundary_polygon_old: boundaryGeoJSON,
         center_point_old: centerGeoJSON,
-        boundary_method: 'google_maps',
+        boundary_method: 'gps_points',
         gps_accuracy_meters: 10,
         gps_recorded_at: new Date().toISOString()
       });
