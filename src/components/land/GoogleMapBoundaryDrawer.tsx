@@ -6,9 +6,10 @@ import { AreaDisplay } from './AreaDisplay';
 import { useToast } from '@/components/ui/use-toast';
 import LocationService from '@/services/LocationService';
 import { Card } from '@/components/ui/card';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, WifiOff, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
+import { Button } from '@/components/ui/button';
 
 interface LatLng {
   lat: number;
@@ -35,7 +36,7 @@ export function GoogleMapBoundaryDrawer({
 }: GoogleMapBoundaryDrawerProps) {
   const { toast } = useToast();
   const { t } = useTranslation();
-  const { isLoaded, loadError, isLoading, retry } = useGoogleMapsApi();
+  const { isLoaded, loadError, isLoading, retry, apiKey } = useGoogleMapsApi();
   
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [center, setCenter] = useState<LatLng>(
@@ -56,11 +57,37 @@ export function GoogleMapBoundaryDrawer({
   const [userHasInteracted, setUserHasInteracted] = useState(false);
   const initialZoomSet = useRef(false);
   const [mapLoading, setMapLoading] = useState(true);
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
 
-  // Check if Google Maps is fully ready
+  // Check if Google Maps is fully ready - defensive check
   const isGoogleReady = useMemo(() => {
-    return isLoaded && typeof google !== 'undefined' && !!google.maps?.Map;
+    if (!isLoaded) return false;
+    if (typeof google === 'undefined') return false;
+    if (!google.maps) return false;
+    if (!google.maps.Map) return false;
+    if (!google.maps.SymbolPath) return false;
+    return true;
   }, [isLoaded]);
+
+  // Network status listener
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      console.log('🗺️ [GoogleMapBoundaryDrawer] Back online');
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      console.log('🗺️ [GoogleMapBoundaryDrawer] Gone offline');
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // Map options - memoized to prevent unnecessary re-renders
   const mapOptions = useMemo((): google.maps.MapOptions | undefined => {
@@ -485,40 +512,59 @@ export function GoogleMapBoundaryDrawer({
   }, [map, toast]);
 
   // Show loading state while Google Maps is loading
-  if (isLoading || !isGoogleReady) {
+  if (isLoading && !isGoogleReady) {
     return (
       <div className="relative w-full h-full flex items-center justify-center bg-background">
         <Card className="p-6 space-y-4 text-center max-w-sm">
           <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
-          <p className="text-muted-foreground font-medium">Loading Map...</p>
+          <p className="text-muted-foreground font-medium">
+            {!apiKey ? 'Connecting to map service...' : 'Loading Map...'}
+          </p>
           <p className="text-xs text-muted-foreground">Please wait while we prepare the map</p>
+          {!isOnline && (
+            <div className="flex items-center justify-center gap-2 mt-2 text-amber-600">
+              <WifiOff className="h-4 w-4" />
+              <span className="text-sm">You're offline</span>
+            </div>
+          )}
         </Card>
       </div>
     );
   }
 
   // Show error state
-  if (loadError) {
+  if (loadError && !isGoogleReady) {
     return (
       <div className="relative w-full h-full flex items-center justify-center bg-background p-4">
         <Card className="p-6 space-y-4 text-center max-w-md">
           <AlertCircle className="h-10 w-10 mx-auto text-destructive" />
           <h2 className="text-lg font-semibold text-destructive">Map Loading Failed</h2>
-          <p className="text-sm text-muted-foreground">{loadError}</p>
+          <p className="text-sm text-muted-foreground">
+            {!isOnline 
+              ? 'No internet connection. Please connect to the internet and try again.'
+              : loadError}
+          </p>
           <div className="flex gap-3 justify-center pt-2">
-            <button 
-              onClick={onCancel}
-              className="px-4 py-2 text-sm border rounded-md hover:bg-accent"
-            >
+            <Button onClick={onCancel} variant="outline">
               Go Back
-            </button>
-            <button 
-              onClick={retry}
-              className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-            >
+            </Button>
+            <Button onClick={retry} variant="default">
+              <RefreshCw className="h-4 w-4 mr-2" />
               Try Again
-            </button>
+            </Button>
           </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // Still initializing after script loaded
+  if (!isGoogleReady || mapLoading) {
+    return (
+      <div className="relative w-full h-full flex items-center justify-center bg-background">
+        <Card className="p-6 space-y-4 text-center max-w-sm">
+          <Loader2 className="h-10 w-10 animate-spin mx-auto text-primary" />
+          <p className="text-muted-foreground font-medium">Initializing map...</p>
         </Card>
       </div>
     );

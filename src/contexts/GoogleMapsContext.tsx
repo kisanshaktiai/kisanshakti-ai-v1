@@ -2,8 +2,8 @@ import React, { createContext, useContext, useEffect, useState, useRef, useCallb
 import { supabase } from '@/integrations/supabase/client';
 import { onAppResume } from '@/utils/capacitorInit';
 
-// Cache configuration - must match useGoogleMapsApi.ts
-const API_KEY_CACHE_KEY = 'google_maps_api_key_v4';
+// Cache configuration
+const API_KEY_CACHE_KEY = 'google_maps_api_key_v5';
 const API_KEY_CACHE_DURATION = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 interface GoogleMapsContextType {
@@ -11,6 +11,7 @@ interface GoogleMapsContextType {
   isLoading: boolean;
   error: string | null;
   retry: () => void;
+  isReady: boolean;
 }
 
 const GoogleMapsContext = createContext<GoogleMapsContextType>({
@@ -18,24 +19,19 @@ const GoogleMapsContext = createContext<GoogleMapsContextType>({
   isLoading: true,
   error: null,
   retry: () => {},
+  isReady: false,
 });
-
-// Global state for API key (shared with useGoogleMapsApi)
-let globalApiKey: string | null = null;
 
 /**
  * Get cached API key synchronously
  */
 function getCachedApiKey(): string | null {
-  if (globalApiKey) return globalApiKey;
-  
   try {
     const cached = localStorage.getItem(API_KEY_CACHE_KEY);
     if (cached) {
       const { key, timestamp } = JSON.parse(cached);
       const isValid = Date.now() - timestamp < API_KEY_CACHE_DURATION && key && key.length > 10;
       if (isValid) {
-        globalApiKey = key;
         return key;
       }
     }
@@ -54,7 +50,6 @@ function cacheApiKey(key: string): void {
       key,
       timestamp: Date.now()
     }));
-    globalApiKey = key;
   } catch (err) {
     console.warn('🗺️ [GoogleMapsContext] Cache write error:', err);
   }
@@ -66,19 +61,48 @@ function cacheApiKey(key: string): void {
 function clearApiKeyCache(): void {
   try {
     localStorage.removeItem(API_KEY_CACHE_KEY);
-    globalApiKey = null;
   } catch (err) {
     console.warn('🗺️ [GoogleMapsContext] Cache clear error:', err);
   }
 }
 
 /**
+ * Fetch with timeout wrapper
+ */
+async function fetchWithTimeout<T>(
+  fn: () => Promise<T>,
+  timeoutMs: number = 10000
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(new Error('Request timeout'));
+    }, timeoutMs);
+
+    fn()
+      .then((result) => {
+        clearTimeout(timeoutId);
+        resolve(result);
+      })
+      .catch((err) => {
+        clearTimeout(timeoutId);
+        reject(err);
+      });
+  });
+}
+
+/**
  * Provider that preloads and manages Google Maps API key
- * This allows the API key to be fetched once at app startup
- * Note: Script loading is handled by useJsApiLoader in useGoogleMapsApi hook
+ * Single source of truth for API key management
  */
 export function GoogleMapsProvider({ children }: { children: React.ReactNode }) {
-  const [apiKey, setApiKey] = useState<string | null>(() => getCachedApiKey());
+  // Initialize with cached key immediately for fast startup
+  const [apiKey, setApiKey] = useState<string | null>(() => {
+    const cached = getCachedApiKey();
+    if (cached) {
+      console.log('🗺️ [GoogleMapsContext] Immediate cache hit');
+    }
+    return cached;
+  });
   const [isLoading, setIsLoading] = useState(!getCachedApiKey());
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
@@ -86,13 +110,31 @@ export function GoogleMapsProvider({ children }: { children: React.ReactNode }) 
   const isMounted = useRef(true);
   const fetchingRef = useRef(false);
 
-  // Fetch API key from edge function
+  // Fetch API key from edge function with fallback
   const fetchApiKey = useCallback(async (force: boolean = false) => {
     if (fetchingRef.current && !force) return;
     
     const cachedKey = getCachedApiKey();
+    
+    // Use cached key immediately if available and not forcing refresh
     if (cachedKey && !force) {
+      console.log('🗺️ [GoogleMapsContext] Using cached API key');
       setApiKey(cachedKey);
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
+
+    // Check network connectivity before attempting fetch
+    if (!navigator.onLine) {
+      console.log('🗺️ [GoogleMapsContext] Offline detected');
+      if (cachedKey) {
+        console.log('🗺️ [GoogleMapsContext] Using cached key while offline');
+        setApiKey(cachedKey);
+        setError(null);
+      } else {
+        setError('No internet connection. Please check your network.');
+      }
       setIsLoading(false);
       return;
     }
@@ -101,11 +143,14 @@ export function GoogleMapsProvider({ children }: { children: React.ReactNode }) 
     setIsLoading(true);
 
     try {
-      console.log('🗺️ [GoogleMapsContext] Fetching API key...');
+      console.log('🗺️ [GoogleMapsContext] Fetching API key from server...');
       
-      const { data, error: fetchError } = await supabase.functions.invoke('google-maps-config', {
-        headers: { 'Cache-Control': 'no-cache' }
-      });
+      const { data, error: fetchError } = await fetchWithTimeout(
+        () => supabase.functions.invoke('google-maps-config', {
+          headers: { 'Cache-Control': 'no-cache' }
+        }),
+        10000
+      );
 
       if (!isMounted.current) return;
 
@@ -119,14 +164,22 @@ export function GoogleMapsProvider({ children }: { children: React.ReactNode }) 
         setApiKey(data.apiKey);
         setError(null);
       } else {
-        throw new Error('Invalid API key received');
+        throw new Error('Invalid API key received from server');
       }
     } catch (err) {
       if (!isMounted.current) return;
       
       const errorMsg = err instanceof Error ? err.message : 'Failed to load Google Maps';
       console.error('🗺️ [GoogleMapsContext] Fetch error:', errorMsg);
-      setError(errorMsg);
+      
+      // CRITICAL: Fallback to cached key on any error
+      if (cachedKey) {
+        console.log('🗺️ [GoogleMapsContext] Network error - falling back to cached key');
+        setApiKey(cachedKey);
+        setError(null); // Clear error since we have a valid fallback
+      } else {
+        setError(errorMsg);
+      }
     } finally {
       fetchingRef.current = false;
       setIsLoading(false);
@@ -136,12 +189,30 @@ export function GoogleMapsProvider({ children }: { children: React.ReactNode }) 
   // Initial fetch
   useEffect(() => {
     isMounted.current = true;
+    
+    // If we have a cached key, we're already good
+    // Still fetch in background to refresh if needed
+    if (apiKey) {
+      // Silently refresh in background after 1 second
+      const refreshTimeout = setTimeout(() => {
+        if (isMounted.current) {
+          fetchApiKey(true).catch(() => {
+            // Ignore errors during background refresh - we already have a key
+          });
+        }
+      }, 1000);
+      
+      return () => {
+        clearTimeout(refreshTimeout);
+        isMounted.current = false;
+      };
+    }
+    
     fetchApiKey();
 
     // Handle app resume
     const unsubscribe = onAppResume(() => {
       console.log('🗺️ [GoogleMapsContext] App resumed');
-      // Verify cached key is still valid
       if (!getCachedApiKey()) {
         fetchApiKey(true);
       }
@@ -151,11 +222,11 @@ export function GoogleMapsProvider({ children }: { children: React.ReactNode }) 
       isMounted.current = false;
       unsubscribe();
     };
-  }, [fetchApiKey]);
+  }, [fetchApiKey, apiKey]);
 
-  // Auto-retry logic
+  // Auto-retry logic (only if no cached key available)
   useEffect(() => {
-    if (error && retryCount < 3 && !apiKey) {
+    if (error && retryCount < 3 && !apiKey && !getCachedApiKey()) {
       const delay = Math.min(2000 * Math.pow(2, retryCount), 10000);
       console.log(`🗺️ [GoogleMapsContext] Retry ${retryCount + 1}/3 in ${delay}ms`);
       
@@ -184,12 +255,16 @@ export function GoogleMapsProvider({ children }: { children: React.ReactNode }) 
     setTimeout(() => fetchApiKey(true), 100);
   }, [fetchApiKey]);
 
+  // Computed ready state
+  const isReady = Boolean(apiKey && apiKey.length > 10);
+
   return (
     <GoogleMapsContext.Provider value={{
       apiKey,
       isLoading,
       error,
       retry,
+      isReady,
     }}>
       {children}
     </GoogleMapsContext.Provider>
@@ -197,7 +272,7 @@ export function GoogleMapsProvider({ children }: { children: React.ReactNode }) 
 }
 
 /**
- * Hook to access Google Maps context
+ * Hook to access Google Maps context - SINGLE SOURCE OF TRUTH
  */
 export function useGoogleMaps() {
   const context = useContext(GoogleMapsContext);
