@@ -41,30 +41,37 @@ class LandsApiService {
   private async getHeaders(): Promise<HeadersInit> {
     // Wait for context to be available (handles race condition during app init)
     let attempts = 0;
-    const maxAttempts = 5;
+    const maxAttempts = 10; // Increased attempts
+    const baseDelay = 200;
     
     while (attempts < maxAttempts) {
-      const { tenantId, farmerId, isValid } = dataIsolation.getIsolationContext();
-      
-      if (isValid && tenantId && farmerId) {
-        const headers = dataIsolation.getIsolationHeaders();
-        console.log('🌐 [LandsAPI] Headers ready:', { 
-          tenantId: headers['x-tenant-id'], 
-          farmerId: headers['x-farmer-id'] 
-        });
-        return {
-          ...headers,
-          'apikey': SUPABASE_CONFIG.ANON_KEY
-        };
+      try {
+        const { tenantId, farmerId, isValid } = dataIsolation.getIsolationContext();
+        
+        if (isValid && tenantId && farmerId) {
+          const headers = dataIsolation.getIsolationHeaders();
+          console.log('🌐 [LandsAPI] Headers ready:', { 
+            tenantId: headers['x-tenant-id']?.substring(0, 8) + '...', 
+            farmerId: headers['x-farmer-id']?.substring(0, 8) + '...'
+          });
+          return {
+            ...headers,
+            'apikey': SUPABASE_CONFIG.ANON_KEY,
+            'Content-Type': 'application/json'
+          };
+        }
+      } catch (contextError) {
+        console.warn(`🌐 [LandsAPI] Context error on attempt ${attempts + 1}:`, contextError);
       }
       
-      console.log(`🌐 [LandsAPI] Waiting for context (attempt ${attempts + 1}/${maxAttempts})...`);
-      await new Promise(resolve => setTimeout(resolve, 300));
+      const delay = baseDelay * Math.min(attempts + 1, 3); // Progressive delay, max 600ms
+      console.log(`🌐 [LandsAPI] Waiting for context (attempt ${attempts + 1}/${maxAttempts}, delay: ${delay}ms)...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
       attempts++;
     }
     
-    console.error('❌ [LandsAPI] Context never became valid after waiting');
-    throw new Error('Please ensure you are logged in before managing lands');
+    console.error('❌ [LandsAPI] Context never became valid after', maxAttempts, 'attempts');
+    throw new Error('Session expired. Please log in again to manage lands.');
   }
 
   private async fetchWithRetry(
@@ -113,23 +120,34 @@ class LandsApiService {
   }
 
   async createLand(landData: Omit<LandData, 'id'>): Promise<LandData> {
+    // Validate required fields before sending
+    if (!landData.name?.trim()) {
+      throw new Error('Land name is required');
+    }
+    if (!landData.area_acres || landData.area_acres <= 0) {
+      throw new Error('Valid area is required');
+    }
+
+    // Check network connectivity first
+    if (!navigator.onLine) {
+      throw new Error('No internet connection. Please connect and try again.');
+    }
+
+    let headers: HeadersInit;
     try {
-      // Validate required fields before sending
-      if (!landData.name?.trim()) {
-        throw new Error('Land name is required');
-      }
-      if (!landData.area_acres || landData.area_acres <= 0) {
-        throw new Error('Valid area is required');
-      }
+      headers = await this.getHeaders();
+    } catch (headerError) {
+      console.error('❌ [LandsAPI] Header error:', headerError);
+      throw headerError;
+    }
+    
+    console.log('🌐 [LandsAPI] Creating land:', {
+      name: landData.name,
+      area_acres: landData.area_acres,
+      hasBoundary: !!landData.boundary_polygon_old
+    });
 
-      const headers = await this.getHeaders();
-      
-      console.log('🌐 [LandsAPI] Creating land:', {
-        name: landData.name,
-        area_acres: landData.area_acres,
-        hasBoundary: !!landData.boundary_polygon_old
-      });
-
+    try {
       const response = await this.fetchWithRetry(LANDS_API_URL, {
         method: 'POST',
         headers,
@@ -137,17 +155,35 @@ class LandsApiService {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        console.error('❌ [LandsAPI] Create failed:', error);
-        throw new Error(error.error || error.details || 'Failed to create land');
+        let errorMessage = 'Failed to create land';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorData.details || errorData.message || errorMessage;
+          console.error('❌ [LandsAPI] Create failed:', errorData);
+        } catch (parseError) {
+          console.error('❌ [LandsAPI] Failed to parse error response');
+        }
+        
+        // Handle specific HTTP status codes
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('Session expired. Please log in again.');
+        } else if (response.status >= 500) {
+          throw new Error('Server error. Please try again later.');
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
       console.log('✅ [LandsAPI] Land created:', result.data?.id);
       return result.data;
-    } catch (error) {
-      console.error('❌ [LandsAPI] Error creating land:', error);
-      throw error;
+    } catch (error: any) {
+      // Re-throw if already a proper error
+      if (error.message) {
+        throw error;
+      }
+      console.error('❌ [LandsAPI] Network error:', error);
+      throw new Error('Network error. Please check your connection and try again.');
     }
   }
 
