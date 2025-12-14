@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MapPin, RefreshCw } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 import { useGoogleMaps } from '@/contexts/GoogleMapsContext';
 
 interface LandThumbnailProps {
@@ -17,7 +17,7 @@ interface LandThumbnailProps {
 // Cache for static map URLs to avoid regenerating
 const urlCache = new Map<string, string>();
 
-// Generate a simple SVG representation of the boundary for offline display
+// Generate a simple SVG representation of the boundary for offline/loading display
 function generateBoundarySvg(coordinates: number[][]): string {
   if (!coordinates || coordinates.length < 3) {
     return '';
@@ -73,7 +73,7 @@ export function LandThumbnail({ boundary, centerPoint, landName, className = '' 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [retryCount, setRetryCount] = useState(0);
   
-  // Use the context hook to get API key reactively
+  // Use context hook to get API key reactively
   const { apiKey, isLoading: isApiKeyLoading } = useGoogleMaps();
 
   // Listen for online/offline
@@ -90,32 +90,24 @@ export function LandThumbnail({ boundary, centerPoint, landName, className = '' 
     };
   }, []);
 
-  // Reset image states when retry count changes
-  useEffect(() => {
-    if (retryCount > 0) {
-      setImageLoaded(false);
-      setImageError(false);
+  // Generate fallback SVG immediately (no API key needed)
+  const fallbackSvg = useMemo(() => {
+    if (boundary?.coordinates?.[0]) {
+      return generateBoundarySvg(boundary.coordinates[0]);
     }
-  }, [retryCount]);
+    return '';
+  }, [boundary]);
 
-  // Generate static map URL or fallback - now reactive to apiKey changes
-  const { mapUrl, fallbackSvg } = useMemo(() => {
+  // Generate static map URL when API key is available
+  const mapUrl = useMemo(() => {
+    // No API key yet - return empty
+    if (!apiKey) return '';
+    
     const cacheKey = `${landName}-${JSON.stringify(boundary?.coordinates?.[0]?.slice(0, 3))}-${retryCount}`;
     
     // Check cache first
-    if (urlCache.has(cacheKey) && apiKey) {
-      return { mapUrl: urlCache.get(cacheKey)!, fallbackSvg: '' };
-    }
-
-    // Generate fallback SVG from boundary
-    let fallbackSvg = '';
-    if (boundary?.coordinates?.[0]) {
-      fallbackSvg = generateBoundarySvg(boundary.coordinates[0]);
-    }
-
-    // No API key yet - use SVG fallback
-    if (!apiKey) {
-      return { mapUrl: '', fallbackSvg };
+    if (urlCache.has(cacheKey)) {
+      return urlCache.get(cacheKey)!;
     }
 
     const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
@@ -132,7 +124,7 @@ export function LandThumbnail({ boundary, centerPoint, landName, className = '' 
         `&markers=color:green|size:medium|${center}` +
         `&key=${apiKey}`;
       urlCache.set(cacheKey, url);
-      return { mapUrl: url, fallbackSvg };
+      return url;
     }
 
     // Has boundary
@@ -179,17 +171,16 @@ export function LandThumbnail({ boundary, centerPoint, landName, className = '' 
         `&key=${apiKey}`;
       
       urlCache.set(cacheKey, url);
-      return { mapUrl: url, fallbackSvg };
+      return url;
     }
 
-    return { mapUrl: '', fallbackSvg };
+    return '';
   }, [boundary, centerPoint, landName, apiKey, retryCount]);
 
   // Handle image error with retry
   const handleImageError = () => {
     const maxRetries = 2;
     if (retryCount < maxRetries && isOnline && apiKey) {
-      // Retry after a delay
       setTimeout(() => setRetryCount(prev => prev + 1), 1000);
     } else {
       setImageError(true);
@@ -197,22 +188,23 @@ export function LandThumbnail({ boundary, centerPoint, landName, className = '' 
     }
   };
 
-  // Use fallback if offline, no map URL, or image error
+  // Reset states when retry count changes
+  useEffect(() => {
+    if (retryCount > 0) {
+      setImageLoaded(false);
+      setImageError(false);
+    }
+  }, [retryCount]);
+
+  // Determine what to display
+  // Priority: 1) Show SVG fallback immediately while loading
+  //           2) Upgrade to static map when API key is ready + online
+  //           3) Fall back to SVG if image fails or offline
   const shouldUseFallback = !isOnline || !mapUrl || imageError;
   const displayUrl = shouldUseFallback ? fallbackSvg : mapUrl;
 
-  // Show loading while API key is being fetched
-  if (isApiKeyLoading && !fallbackSvg) {
-    return (
-      <div className={`bg-muted flex items-center justify-center ${className}`}>
-        <Skeleton className="w-full h-full absolute inset-0" />
-        <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
   // Handle no boundary and no center point
-  if (!displayUrl) {
+  if (!displayUrl && !isApiKeyLoading) {
     return (
       <div className={`bg-muted flex items-center justify-center ${className}`}>
         <div className="text-center text-muted-foreground">
@@ -223,8 +215,34 @@ export function LandThumbnail({ boundary, centerPoint, landName, className = '' 
     );
   }
 
+  // Show fallback SVG while API key is loading (if available)
+  if (isApiKeyLoading && fallbackSvg) {
+    return (
+      <div className={`relative ${className}`}>
+        <img 
+          src={fallbackSvg} 
+          alt={`${landName} boundary`}
+          className="w-full h-full object-cover"
+        />
+        <div className="absolute bottom-1 right-1 bg-background/80 backdrop-blur-sm rounded px-1.5 py-0.5">
+          <span className="text-xs text-muted-foreground">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Show skeleton only if we have no fallback at all
+  if (!displayUrl) {
+    return (
+      <div className={`bg-muted flex items-center justify-center ${className}`}>
+        <Skeleton className="w-full h-full" />
+      </div>
+    );
+  }
+
   return (
     <div className={`relative ${className}`}>
+      {/* Show skeleton while loading static map (not for SVG fallback) */}
       {!imageLoaded && !shouldUseFallback && (
         <Skeleton className="absolute inset-0" />
       )}
