@@ -200,7 +200,7 @@ export function EditLandWizard({
             boundary.reduce((sum, p) => sum + p.lat, 0) / boundary.length
           ]
         },
-        boundary_method: 'google_maps',
+        boundary_method: 'gps_points',
         gps_accuracy_meters: 10,
         gps_recorded_at: new Date().toISOString()
       });
