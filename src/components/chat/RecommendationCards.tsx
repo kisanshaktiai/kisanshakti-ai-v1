@@ -9,7 +9,7 @@ import {
 import { cn } from '@/lib/utils';
 
 export interface RecommendationCategory {
-  type: 'organic' | 'fertilizer' | 'pesticide' | 'hormone' | 'irrigation' | 'warning' | 'success' | 'info';
+  type: 'organic' | 'fertilizer' | 'pesticide' | 'hormone' | 'irrigation' | 'warning' | 'success' | 'info' | 'hybrid';
   title: string;
   products: Array<{
     name: string;
@@ -46,10 +46,11 @@ export interface VisionAnalysisResult {
     deficiencies?: Array<{ nutrient: string; severity: string; symptoms: string[] }>;
   };
   recommendations: {
-    organic: RecommendationCategory;
-    fertilizer: RecommendationCategory;
-    pesticide: RecommendationCategory;
+    organic?: RecommendationCategory;
+    fertilizer?: RecommendationCategory;
+    pesticide?: RecommendationCategory;
     hormone?: RecommendationCategory;
+    hybrid?: RecommendationCategory; // For integrated/complete solutions
   };
   language: string;
 }
@@ -98,6 +99,13 @@ const categoryStyles: Record<string, {
     textColor: 'text-purple-700 dark:text-purple-300',
     badgeColor: 'bg-purple-500 text-white'
   },
+  hybrid: {
+    gradient: 'from-indigo-500/20 to-purple-500/10',
+    icon: <Shield className="h-5 w-5" />,
+    bgColor: 'bg-indigo-50 dark:bg-indigo-950/30',
+    textColor: 'text-indigo-700 dark:text-indigo-300',
+    badgeColor: 'bg-indigo-500 text-white'
+  },
   irrigation: {
     gradient: 'from-blue-500/20 to-cyan-500/10',
     icon: <Droplets className="h-5 w-5" />,
@@ -134,6 +142,7 @@ const getLabels = (lang: string) => ({
   fertilizer: lang === 'hi' ? '🟡 रासायनिक खाद' : lang === 'mr' ? '🟡 रासायनिक खत' : '🟡 Chemical Fertilizer',
   pesticide: lang === 'hi' ? '🔴 कीटनाशक' : lang === 'mr' ? '🔴 कीटकनाशक' : '🔴 Pesticide Solution',
   hormone: lang === 'hi' ? '💪 हार्मोन ग्रोअर' : lang === 'mr' ? '💪 हार्मोन ग्रोअर' : '💪 Hormone Grower',
+  hybrid: lang === 'hi' ? '🌈 संपूर्ण समाधान' : lang === 'mr' ? '🌈 संपूर्ण समाधान' : '🌈 Complete Solution',
   dosage: lang === 'hi' ? 'मात्रा' : lang === 'mr' ? 'मात्रा' : 'Dosage',
   application: lang === 'hi' ? 'उपयोग विधि' : lang === 'mr' ? 'वापर पद्धत' : 'Application',
   timing: lang === 'hi' ? 'समय' : lang === 'mr' ? 'वेळ' : 'Timing',
@@ -336,8 +345,19 @@ export function RecommendationCards({ analysis, language = 'en', suggestionType 
       
       {/* Recommendation Cards - Filtered by suggestionType */}
       <div className="space-y-4">
-        {/* Organic */}
-        {shouldShowCategory('organic') && analysis.recommendations?.organic && (
+        {/* ✅ Hybrid/Complete Solution - render directly if present */}
+        {suggestionType === 'hybrid' && analysis.recommendations?.hybrid && (
+          <RecommendationCard 
+            category={{
+              ...analysis.recommendations.hybrid,
+              type: 'hybrid' as const
+            }} 
+            language={language} 
+          />
+        )}
+        
+        {/* Organic - only if not hybrid or if hybrid has separate organic */}
+        {suggestionType !== 'hybrid' && shouldShowCategory('organic') && analysis.recommendations?.organic && (
           <RecommendationCard 
             category={analysis.recommendations.organic} 
             language={language} 
@@ -345,7 +365,7 @@ export function RecommendationCards({ analysis, language = 'en', suggestionType 
         )}
         
         {/* Fertilizer */}
-        {shouldShowCategory('fertilizer') && analysis.recommendations?.fertilizer && (
+        {suggestionType !== 'hybrid' && shouldShowCategory('fertilizer') && analysis.recommendations?.fertilizer && (
           <RecommendationCard 
             category={analysis.recommendations.fertilizer} 
             language={language} 
@@ -353,14 +373,14 @@ export function RecommendationCards({ analysis, language = 'en', suggestionType 
         )}
         
         {/* Pesticide */}
-        {shouldShowCategory('pesticide') && analysis.recommendations?.pesticide && (
+        {suggestionType !== 'hybrid' && shouldShowCategory('pesticide') && analysis.recommendations?.pesticide && (
           <RecommendationCard 
             category={analysis.recommendations.pesticide} 
             language={language} 
           />
         )}
         
-        {/* Hormone Grower (for hybrid/complete solution) */}
+        {/* Hormone Grower (for hybrid/complete solution - fallback if separate) */}
         {suggestionType === 'hybrid' && analysis.recommendations?.hormone && (
           <RecommendationCard 
             category={analysis.recommendations.hormone} 
