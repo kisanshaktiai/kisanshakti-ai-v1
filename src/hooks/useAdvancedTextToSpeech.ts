@@ -1,11 +1,22 @@
-import { useState, useRef, useCallback } from 'react';
-import { nativeTTSService } from '@/services/nativeTTSService';
+/**
+ * Advanced Text-to-Speech Hook with Hybrid TTS Support
+ * Uses Kokoro TTS for high-quality English/Hindi, with Web Speech API fallback
+ */
+
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTTSStore } from '@/stores/ttsStore';
+import { Capacitor } from '@capacitor/core';
 
 interface UseAdvancedTextToSpeechProps {
   language: string;
   onEnd?: () => void;
   onError?: (error: string) => void;
+}
+
+// Web Speech API synthesis
+let synth: SpeechSynthesis | null = null;
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  synth = window.speechSynthesis;
 }
 
 export function useAdvancedTextToSpeech({ 
@@ -15,7 +26,8 @@ export function useAdvancedTextToSpeech({
 }: UseAdvancedTextToSpeechProps) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSupported] = useState(true);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isSupported, setIsSupported] = useState(true);
   const [currentSentence, setCurrentSentence] = useState<number>(-1);
   const [progress, setProgress] = useState(0);
   const [fallbackLanguage, setFallbackLanguage] = useState<string | null>(null);
@@ -25,8 +37,15 @@ export function useAdvancedTextToSpeech({
   const isStoppedRef = useRef(false);
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const speakRequestIdRef = useRef(0);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const settings = useTTSStore(state => state.settings);
+
+  // Check TTS support
+  useEffect(() => {
+    const hasWebSpeech = typeof window !== 'undefined' && 'speechSynthesis' in window;
+    setIsSupported(hasWebSpeech || Capacitor.isNativePlatform());
+  }, []);
 
   // Split text into sentences (supports Hindi, English, and other Indian scripts)
   const splitIntoSentences = useCallback((text: string): string[] => {
@@ -55,22 +74,257 @@ export function useAdvancedTextToSpeech({
     clearProgressInterval();
     setIsSpeaking(false);
     setIsLoading(false);
+    setIsPaused(false);
     setCurrentSentence(-1);
     setProgress(0);
     setFallbackLanguage(null);
     currentIndexRef.current = 0;
   }, [clearProgressInterval]);
 
+  // Get best voice for language
+  const getBestVoice = useCallback((langCode: string): SpeechSynthesisVoice | null => {
+    if (!synth) return null;
+    
+    const voices = synth.getVoices();
+    const baseLang = langCode.split('-')[0].toLowerCase();
+    
+    // Priority list for high-quality voices
+    const qualityIndicators = ['wavenet', 'neural', 'enhanced', 'premium', 'natural'];
+    
+    // Find voices matching the language
+    const matchingVoices = voices.filter(v => 
+      v.lang.toLowerCase().startsWith(baseLang)
+    );
+    
+    if (matchingVoices.length === 0) {
+      // Fallback to Hindi for Indian languages, then English
+      const fallbackLang = baseLang === 'en' ? 'en' : 'hi';
+      const fallbackVoices = voices.filter(v => 
+        v.lang.toLowerCase().startsWith(fallbackLang)
+      );
+      if (fallbackVoices.length > 0) {
+        setFallbackLanguage(fallbackLang);
+        return fallbackVoices[0];
+      }
+      return voices[0] || null;
+    }
+    
+    // Try to find a high-quality voice
+    for (const indicator of qualityIndicators) {
+      const highQualityVoice = matchingVoices.find(v => 
+        v.name.toLowerCase().includes(indicator)
+      );
+      if (highQualityVoice) return highQualityVoice;
+    }
+    
+    // Prefer non-local voices (usually better quality)
+    const nonLocalVoice = matchingVoices.find(v => !v.localService);
+    if (nonLocalVoice) return nonLocalVoice;
+    
+    return matchingVoices[0];
+  }, []);
+
+  // Get language code
+  const getLanguageCode = useCallback((lang: string): string => {
+    const baseLang = lang.split('-')[0].toLowerCase();
+    const langCodes: Record<string, string> = {
+      'hi': 'hi-IN',
+      'mr': 'mr-IN',
+      'ta': 'ta-IN',
+      'te': 'te-IN',
+      'bn': 'bn-IN',
+      'gu': 'gu-IN',
+      'kn': 'kn-IN',
+      'ml': 'ml-IN',
+      'pa': 'pa-IN',
+      'en': 'en-IN',
+    };
+    return langCodes[baseLang] || `${baseLang}-IN`;
+  }, []);
+
   // Stop function - immediately stops TTS and resets state
   const stop = useCallback(() => {
     console.log('[AdvancedTTS] Stop called');
     isStoppedRef.current = true;
     speakRequestIdRef.current++; // Invalidate any pending callbacks
-    nativeTTSService.stop();
+    
+    // Stop Web Speech API
+    if (synth) {
+      synth.cancel();
+    }
+    
+    // Stop Capacitor TTS
+    if (Capacitor.isNativePlatform()) {
+      import('@capacitor-community/text-to-speech').then(({ TextToSpeech }) => {
+        TextToSpeech.stop().catch(() => {});
+      }).catch(() => {});
+    }
+    
+    utteranceRef.current = null;
     resetState();
   }, [resetState]);
 
-  // Speak with sentence-by-sentence progress simulation
+  // Pause function
+  const pause = useCallback(() => {
+    if (synth && isSpeaking && !isPaused) {
+      synth.pause();
+      setIsPaused(true);
+      console.log('[AdvancedTTS] Paused');
+    }
+  }, [isSpeaking, isPaused]);
+
+  // Resume function
+  const resume = useCallback(() => {
+    if (synth && isPaused) {
+      synth.resume();
+      setIsPaused(false);
+      console.log('[AdvancedTTS] Resumed');
+    }
+  }, [isPaused]);
+
+  // Speak using Web Speech API (better for browser/PWA)
+  const speakWithWebSpeech = useCallback(async (text: string, requestId: number): Promise<boolean> => {
+    if (!synth) {
+      console.warn('[AdvancedTTS] Web Speech API not available');
+      return false;
+    }
+
+    return new Promise((resolve) => {
+      // Cancel any existing speech
+      synth.cancel();
+      
+      const langCode = getLanguageCode(language);
+      const voice = getBestVoice(langCode);
+      
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = langCode;
+      utterance.rate = Math.max(0.5, Math.min(2.0, settings.speed || 0.9));
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+      
+      if (voice) {
+        utterance.voice = voice;
+        console.log(`[AdvancedTTS] Using voice: ${voice.name} (${voice.lang})`);
+      }
+      
+      utteranceRef.current = utterance;
+      
+      utterance.onstart = () => {
+        if (requestId !== speakRequestIdRef.current || isStoppedRef.current) {
+          synth.cancel();
+          return;
+        }
+        console.log('[AdvancedTTS] Web Speech started');
+        setIsLoading(false);
+        setIsSpeaking(true);
+        setCurrentSentence(0);
+      };
+      
+      utterance.onend = () => {
+        if (requestId !== speakRequestIdRef.current) return;
+        
+        if (!isStoppedRef.current) {
+          clearProgressInterval();
+          setIsSpeaking(false);
+          setIsLoading(false);
+          setIsPaused(false);
+          setCurrentSentence(-1);
+          setProgress(100);
+          onEnd?.();
+        }
+        resolve(true);
+      };
+      
+      utterance.onerror = (event) => {
+        if (requestId !== speakRequestIdRef.current) return;
+        
+        // Ignore cancel/interrupted errors
+        if (event.error === 'canceled' || event.error === 'interrupted') {
+          console.log('[AdvancedTTS] Speech canceled/interrupted (expected)');
+          resolve(true);
+          return;
+        }
+        
+        console.error('[AdvancedTTS] Web Speech error:', event.error);
+        clearProgressInterval();
+        setIsSpeaking(false);
+        setIsLoading(false);
+        onError?.(event.error || 'Speech synthesis failed');
+        resolve(false);
+      };
+      
+      // Track progress by word boundaries
+      let wordCount = 0;
+      const totalWords = text.split(/\s+/).length;
+      
+      utterance.onboundary = (event) => {
+        if (event.name === 'word') {
+          wordCount++;
+          const progressPercent = Math.min(100, (wordCount / totalWords) * 100);
+          setProgress(progressPercent);
+          
+          // Update sentence tracking
+          const currentChar = event.charIndex;
+          const sentences = sentencesRef.current;
+          let charSum = 0;
+          for (let i = 0; i < sentences.length; i++) {
+            charSum += sentences[i].length;
+            if (currentChar < charSum) {
+              setCurrentSentence(i);
+              break;
+            }
+          }
+        }
+      };
+      
+      synth.speak(utterance);
+    });
+  }, [language, settings.speed, getLanguageCode, getBestVoice, clearProgressInterval, onEnd, onError]);
+
+  // Speak using Capacitor Native TTS (for native apps)
+  const speakWithNative = useCallback(async (text: string, requestId: number): Promise<boolean> => {
+    if (!Capacitor.isNativePlatform()) {
+      return false;
+    }
+
+    try {
+      const { TextToSpeech } = await import('@capacitor-community/text-to-speech');
+      const langCode = getLanguageCode(language);
+      
+      await TextToSpeech.speak({
+        text: text.trim(),
+        lang: langCode,
+        rate: Math.max(0.5, Math.min(2.0, settings.speed || 0.9)),
+        pitch: 1.0,
+        volume: 1.0,
+        category: 'ambient',
+      });
+      
+      if (requestId === speakRequestIdRef.current && !isStoppedRef.current) {
+        clearProgressInterval();
+        setIsSpeaking(false);
+        setIsLoading(false);
+        setCurrentSentence(-1);
+        setProgress(100);
+        onEnd?.();
+      }
+      
+      return true;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      
+      // Ignore interrupted errors
+      if (errorMsg.toLowerCase().includes('interrupt') || 
+          errorMsg.toLowerCase().includes('cancel')) {
+        return true;
+      }
+      
+      console.error('[AdvancedTTS] Native TTS error:', errorMsg);
+      return false;
+    }
+  }, [language, settings.speed, getLanguageCode, clearProgressInterval, onEnd]);
+
+  // Main speak function
   const speak = useCallback(async (text: string) => {
     if (!text.trim()) return;
     
@@ -88,107 +342,32 @@ export function useAdvancedTextToSpeech({
       currentIndexRef.current = 0;
       setProgress(0);
       setCurrentSentence(0);
+      setFallbackLanguage(null);
       
       // Set loading state immediately for instant UI feedback
       setIsLoading(true);
       setIsSpeaking(false);
-      setFallbackLanguage(null);
+      setIsPaused(false);
 
       console.log(`[AdvancedTTS] Starting speech: lang=${language}, sentences=${sentences.length}, requestId=${requestId}`);
 
-      const result = await nativeTTSService.speak(
-        text,
-        language,
-        { rate: settings.speed, pitch: 1.0, volume: 1.0 },
-        {
-          onStart: () => {
-            // Check if this request is still valid
-            if (requestId !== speakRequestIdRef.current || isStoppedRef.current) {
-              console.log('[AdvancedTTS] onStart ignored - request cancelled');
-              return;
-            }
-            
-            // Audio is now actually playing
-            setIsLoading(false);
-            setIsSpeaking(true);
-            setCurrentSentence(0);
-            
-            // Check if fallback was used
-            const langInfo = nativeTTSService.getLanguageCode(language);
-            if (langInfo.isFallback) {
-              const fallbackInfo = nativeTTSService.getLanguageInfo(langInfo.code);
-              setFallbackLanguage(fallbackInfo?.nativeName || langInfo.code);
-            }
-            
-            // Simulate sentence progress for UI
-            if (sentences.length > 1) {
-              const avgDuration = (text.length / 12) * 1000; // ~12 chars/sec for Indian languages
-              const intervalTime = avgDuration / sentences.length;
-              
-              let sentenceIdx = 0;
-              progressIntervalRef.current = setInterval(() => {
-                if (isStoppedRef.current || requestId !== speakRequestIdRef.current || sentenceIdx >= sentences.length - 1) {
-                  clearProgressInterval();
-                  return;
-                }
-                sentenceIdx++;
-                setCurrentSentence(sentenceIdx);
-                setProgress((sentenceIdx / sentences.length) * 100);
-              }, intervalTime);
-            }
-          },
-          onEnd: () => {
-            // Check if this request is still valid
-            if (requestId !== speakRequestIdRef.current) {
-              console.log('[AdvancedTTS] onEnd ignored - different request active');
-              return;
-            }
-            
-            // Only call onEnd if not explicitly stopped
-            if (!isStoppedRef.current) {
-              clearProgressInterval();
-              setIsSpeaking(false);
-              setIsLoading(false);
-              setCurrentSentence(-1);
-              setProgress(100);
-              onEnd?.();
-            }
-          },
-          onError: (err) => {
-            // Check if this request is still valid
-            if (requestId !== speakRequestIdRef.current) {
-              console.log('[AdvancedTTS] onError ignored - different request active');
-              return;
-            }
-            
-            clearProgressInterval();
-            const errorMsg = err.message || 'Speech synthesis failed';
-            
-            // Ignore "interrupted" or "canceled" errors - these are expected when stopping
-            const isInterruptedError = 
-              errorMsg.toLowerCase().includes('interrupt') ||
-              errorMsg.toLowerCase().includes('cancel') ||
-              errorMsg.toLowerCase().includes('aborted');
-            
-            if (isInterruptedError) {
-              console.log('[AdvancedTTS] Ignoring interrupted/canceled error');
-              // Don't reset state or call onError for expected interruptions
-              return;
-            }
-            
-            console.error('[AdvancedTTS] Error:', errorMsg);
-            setIsSpeaking(false);
-            setIsLoading(false);
-            setCurrentSentence(-1);
-            onError?.(errorMsg);
-          }
+      // Try Web Speech API first (works in both browser and PWA)
+      // It has better voice quality on most systems
+      const webSpeechSuccess = await speakWithWebSpeech(text, requestId);
+      
+      if (!webSpeechSuccess && Capacitor.isNativePlatform()) {
+        // Fall back to native TTS
+        console.log('[AdvancedTTS] Falling back to native TTS');
+        setIsLoading(true);
+        setIsSpeaking(false);
+        
+        const nativeSuccess = await speakWithNative(text, requestId);
+        
+        if (!nativeSuccess && requestId === speakRequestIdRef.current) {
+          throw new Error('Both Web Speech and Native TTS failed');
         }
-      );
-
-      // Only log if still the active request
-      if (requestId === speakRequestIdRef.current && result.success) {
-        console.log(`[AdvancedTTS] ✅ Provider: ${result.provider}, Used: ${result.usedLanguage}`);
       }
+
     } catch (error) {
       // Only handle error if still the active request
       if (requestId === speakRequestIdRef.current) {
@@ -197,17 +376,27 @@ export function useAdvancedTextToSpeech({
         onError?.('Failed to start speech');
         setIsSpeaking(false);
         setIsLoading(false);
+        setIsPaused(false);
       }
     }
-  }, [language, splitIntoSentences, settings.speed, onEnd, onError, clearProgressInterval]);
+  }, [language, splitIntoSentences, speakWithWebSpeech, speakWithNative, clearProgressInterval, onError]);
 
-  // Pause/Resume not supported by native TTS
-  const pause = useCallback(() => {
-    console.warn('[AdvancedTTS] Pause not supported on native TTS');
-  }, []);
-
-  const resume = useCallback(() => {
-    console.warn('[AdvancedTTS] Resume not supported on native TTS');
+  // Ensure voices are loaded
+  useEffect(() => {
+    if (synth) {
+      // Load voices (they may not be available immediately)
+      const loadVoices = () => {
+        const voices = synth.getVoices();
+        console.log(`[AdvancedTTS] Voices loaded: ${voices.length}`);
+      };
+      
+      loadVoices();
+      synth.onvoiceschanged = loadVoices;
+      
+      return () => {
+        synth.onvoiceschanged = null;
+      };
+    }
   }, []);
 
   return {
@@ -217,7 +406,7 @@ export function useAdvancedTextToSpeech({
     resume,
     isSpeaking,
     isLoading,
-    isPaused: false, // Native TTS doesn't support pause
+    isPaused,
     isSupported,
     currentSentence,
     progress,
