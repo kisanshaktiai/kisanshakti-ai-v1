@@ -1,6 +1,19 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap');
 
 @tailwind base;
+
+/* Community Page Theme */
+:root {
+  --community-bg-start: 142 76% 96%;
+  --community-bg-mid: 142 50% 94%;
+  --community-bg-end: 142 30% 92%;
+}
+
+.dark {
+  --community-bg-start: 142 30% 8%;
+  --community-bg-mid: 142 20% 6%;
+  --community-bg-end: 142 15% 4%;
+}
 @tailwind components;
 @tailwind utilities;
 
