@@ -10,8 +10,7 @@ import { CommunityTabs } from '@/components/community/CommunityTabs';
 import { TrendingTopics } from '@/components/community/TrendingTopics';
 import { LanguageSelector } from '@/components/community/LanguageSelector';
 import { BottomNavigation } from '@/components/BottomNavigation';
-
-export type CommunityTab = 'feed' | 'trending' | 'saved' | 'my-posts';
+import { CommunityTab } from '@/types/community';
 
 const CommunityPage: React.FC = () => {
   const { t } = useTranslation('social');
