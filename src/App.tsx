@@ -49,6 +49,7 @@ import Social from "./pages/Social";
 import Analytics from "./pages/Analytics";
 import { CommunityPage } from "./components/social/CommunityPage";
 import { ModernCommunityChatRoom } from "./components/social/ModernCommunityChatRoom";
+import AICommunityPage from "./pages/CommunityPage";
 import CropSelectionTest from "./pages/CropSelectionTest";
 import Schedule from "./pages/Schedule";
 import MobileAuth from "./pages/MobileAuth";
@@ -331,6 +332,7 @@ const router = createBrowserRouter([
       { path: "social", element: <Social /> },
       { path: "social/community/:communityId", element: <CommunityPage /> },
       { path: "social/community/:communityId/chat/:channelId", element: <ModernCommunityChatRoom /> },
+      { path: "community", element: <AICommunityPage /> },
       { path: "analytics", element: <Analytics /> },
       { path: "test/crop-selection", element: <CropSelectionTest /> },
       { path: "schedule", element: <Schedule /> },

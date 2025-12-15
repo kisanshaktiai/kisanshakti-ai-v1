@@ -16,7 +16,7 @@ interface BottomNavigationProps {
 
 const navItems = [
   { path: '/app', icon: Home, labelKey: 'nav.home' },
-  { path: '/app/social', icon: Users, labelKey: 'nav.community' },
+  { path: '/app/community', icon: Users, labelKey: 'nav.community' },
   { path: '/app/analytics', icon: TrendingUp, labelKey: 'nav.analytics' },
   { path: '/app/profile', icon: User, labelKey: 'nav.profile' },
 ];
