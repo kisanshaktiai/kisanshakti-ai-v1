@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { Home, TrendingUp, Bookmark, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { CommunityTab } from '@/pages/CommunityPage';
+import { CommunityTab } from '@/types/community';
 
 interface CommunityTabsProps {
   activeTab: CommunityTab;
