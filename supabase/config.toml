@@ -53,3 +53,12 @@ verify_jwt = false
 
 [functions.ai-weather-schedule-sync]
 verify_jwt = false
+
+[functions.translate-text]
+verify_jwt = false
+
+[functions.transcribe-voice]
+verify_jwt = false
+
+[functions.community-tts]
+verify_jwt = false
