@@ -1,84 +1,84 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { PostCard } from './PostCard';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-
-// Mock data for demonstration
-const MOCK_POSTS = [
-  {
-    id: '1',
-    authorName: 'राजेश पाटील',
-    authorAvatar: '👨‍🌾',
-    authorLocation: 'नासिक, महाराष्ट्र',
-    authorBadge: 'expert',
-    originalLanguage: 'mr',
-    originalContent: 'माझ्या टोमॅटो पिकावर पांढरी माशी आली आहे. कोणी मला सांगू शकेल का की यावर काय उपाय करावा? मी सेंद्रिय शेती करतो.',
-    imageUrl: 'https://images.unsplash.com/photo-1592841200221-a6898f307baa?w=800',
-    reactions: { helpful: 24, tried: 8, thanks: 12 },
-    commentCount: 15,
-    timestamp: '2 तास पूर्वी',
-    tags: ['टोमॅटो', 'कीटक नियंत्रण', 'सेंद्रिय'],
-    hasVoiceNote: true,
-  },
-  {
-    id: '2',
-    authorName: 'Priya Sharma',
-    authorAvatar: '👩‍🌾',
-    authorLocation: 'Jaipur, Rajasthan',
-    authorBadge: 'verified',
-    originalLanguage: 'hi',
-    originalContent: 'इस साल गेहूं की फसल बहुत अच्छी हुई है! नए बीज और ड्रिप इरीगेशन का कमाल है। 40% पानी की बचत और 25% ज्यादा उत्पादन। 🌾',
-    imageUrl: 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=800',
-    reactions: { helpful: 156, tried: 45, thanks: 89 },
-    commentCount: 67,
-    timestamp: '5 घंटे पहले',
-    tags: ['गेहूं', 'सफलता की कहानी', 'ड्रिप इरीगेशन'],
-    hasVoiceNote: false,
-  },
-  {
-    id: '3',
-    authorName: 'கார்த்திக் முருகன்',
-    authorAvatar: '👨‍🌾',
-    authorLocation: 'Coimbatore, Tamil Nadu',
-    authorBadge: null,
-    originalLanguage: 'ta',
-    originalContent: 'நெல் விவசாயத்தில் இயற்கை உரங்கள் பயன்படுத்துவதால் மண்ணின் தரம் மேம்பட்டுள்ளது. 3 ஆண்டுகளாக இந்த முறையை பின்பற்றுகிறேன்.',
-    imageUrl: 'https://images.unsplash.com/photo-1536054337653-dce62da9c9f2?w=800',
-    reactions: { helpful: 78, tried: 23, thanks: 34 },
-    commentCount: 28,
-    timestamp: '1 நாள் முன்பு',
-    tags: ['நெல்', 'இயற்கை விவசாயம்'],
-    hasVoiceNote: true,
-  },
-];
+import { useCommunityPosts, useUserLikedPosts, useUserSavedPosts, SocialPost } from '@/hooks/useCommunityPosts';
+import { formatDistanceToNow } from 'date-fns';
+import { CommunityPost } from '@/types/community';
 
 interface CommunityFeedProps {
   viewLanguage: string;
   filterByUser?: boolean;
 }
 
+// Transform database post to UI-friendly format
+const transformPost = (post: SocialPost): CommunityPost => {
+  const mediaUrls = post.media_urls?.images || [];
+  const imageUrl = mediaUrls[0] || undefined;
+  
+  // Create timestamp from created_at
+  const timestamp = post.created_at 
+    ? formatDistanceToNow(new Date(post.created_at), { addSuffix: true })
+    : 'Just now';
+
+  return {
+    id: post.id,
+    authorId: post.farmer_id,
+    authorName: post.farmer?.farmer_name || 'Anonymous Farmer',
+    authorAvatar: '👨‍🌾', // Default avatar emoji
+    authorLocation: post.farmer?.location || 'Unknown location',
+    authorBadge: post.farmer?.is_verified ? 'verified' : null,
+    originalLanguage: post.language_code || 'en',
+    originalContent: post.content || '',
+    imageUrl,
+    mediaUrls,
+    reactions: {
+      helpful: Math.floor((post.likes_count || 0) * 0.5),
+      tried: Math.floor((post.likes_count || 0) * 0.3),
+      thanks: Math.floor((post.likes_count || 0) * 0.2),
+    },
+    likesCount: post.likes_count || 0,
+    commentCount: post.comments_count || 0,
+    sharesCount: post.shares_count || 0,
+    savesCount: post.saves_count || 0,
+    timestamp,
+    createdAt: post.created_at || new Date().toISOString(),
+    tags: post.hashtags || [],
+    hasVoiceNote: post.metadata?.hasVoiceNote || false,
+    isVerified: post.farmer?.is_verified || false,
+  };
+};
+
 export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   viewLanguage,
   filterByUser = false
 }) => {
   const { t } = useTranslation('social');
-  const [posts, setPosts] = useState(MOCK_POSTS);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  
+  // Fetch real data from database
+  const { 
+    data: posts, 
+    isLoading, 
+    isRefetching,
+    refetch 
+  } = useCommunityPosts({ filterByUser, viewLanguage });
+  
+  const { data: likedPostIds = [] } = useUserLikedPosts();
+  const { data: savedPostIds = [] } = useUserSavedPosts();
 
   const handleRefresh = async () => {
-    setIsRefreshing(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setIsRefreshing(false);
+    await refetch();
   };
+
+  // Transform posts to UI format
+  const transformedPosts = (posts || []).map(transformPost);
 
   return (
     <div className="px-4 space-y-4">
       {/* Pull to Refresh Indicator */}
-      {isRefreshing && (
+      {isRefetching && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -101,16 +101,16 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           variant="outline"
           size="sm"
           onClick={handleRefresh}
-          disabled={isRefreshing}
+          disabled={isRefetching}
           className="rounded-full gap-2 bg-card/50 backdrop-blur-sm"
         >
-          <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-          {t('social.feed.refresh', 'New posts available')}
+          <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
+          {t('social.feed.refresh', 'Refresh posts')}
         </Button>
       </motion.div>
 
       {/* Posts */}
-      {posts.map((post, index) => (
+      {transformedPosts.map((post, index) => (
         <motion.div
           key={post.id}
           initial={{ opacity: 0, y: 30 }}
@@ -120,11 +120,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           <PostCard 
             post={post}
             viewLanguage={viewLanguage}
+            isLiked={likedPostIds.includes(post.id)}
+            isSaved={savedPostIds.includes(post.id)}
           />
         </motion.div>
       ))}
 
-      {/* Loading More */}
+      {/* Loading State */}
       {isLoading && (
         <div className="flex justify-center py-8">
           <div className="flex flex-col items-center gap-3">
@@ -134,14 +136,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               className="w-10 h-10 rounded-full border-3 border-primary/30 border-t-primary"
             />
             <span className="text-sm text-muted-foreground">
-              {t('social.feed.loading', 'Loading more posts...')}
+              {t('social.feed.loading', 'Loading posts...')}
             </span>
           </div>
         </div>
       )}
 
       {/* Empty State */}
-      {posts.length === 0 && !isLoading && (
+      {!isLoading && transformedPosts.length === 0 && (
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -149,10 +151,14 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         >
           <div className="text-6xl mb-4">🌱</div>
           <h3 className="text-lg font-semibold text-foreground mb-2">
-            {t('social.empty.feed', 'No posts yet')}
+            {filterByUser 
+              ? t('social.empty.my_posts', 'You haven\'t posted yet')
+              : t('social.empty.feed', 'No posts yet')}
           </h3>
           <p className="text-muted-foreground text-sm max-w-xs mx-auto">
-            {t('social.empty.feed_hint', 'Be the first to share your farming knowledge!')}
+            {filterByUser
+              ? t('social.empty.my_posts_hint', 'Share your farming knowledge with the community!')
+              : t('social.empty.feed_hint', 'Be the first to share your farming knowledge!')}
           </p>
         </motion.div>
       )}

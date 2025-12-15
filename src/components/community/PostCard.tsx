@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { motion, useMotionValue, useTransform, PanInfo } from 'framer-motion';
 import { 
   Volume2, VolumeX, Globe, MessageCircle, Share2, Bookmark, 
@@ -9,32 +9,14 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useTranslateText } from '@/hooks/useTranslateText';
 import { useCommunityTTS } from '@/hooks/useCommunityTTS';
-
-interface PostReactions {
-  helpful: number;
-  tried: number;
-  thanks: number;
-}
-
-interface Post {
-  id: string;
-  authorName: string;
-  authorAvatar: string;
-  authorLocation: string;
-  authorBadge: string | null;
-  originalLanguage: string;
-  originalContent: string;
-  imageUrl?: string;
-  reactions: PostReactions;
-  commentCount: number;
-  timestamp: string;
-  tags: string[];
-  hasVoiceNote?: boolean;
-}
+import { useLikePost, useSavePost } from '@/hooks/useCommunityPosts';
+import { CommunityPost } from '@/types/community';
 
 interface PostCardProps {
-  post: Post;
+  post: CommunityPost;
   viewLanguage: string;
+  isLiked?: boolean;
+  isSaved?: boolean;
 }
 
 const REACTIONS = [
@@ -43,11 +25,21 @@ const REACTIONS = [
   { key: 'thanks', emoji: '💚', label: 'Thank You' },
 ];
 
-export const PostCard: React.FC<PostCardProps> = ({ post, viewLanguage }) => {
+export const PostCard: React.FC<PostCardProps> = ({ 
+  post, 
+  viewLanguage,
+  isLiked: initialIsLiked = false,
+  isSaved: initialIsSaved = false
+}) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
+  const [isSaved, setIsSaved] = useState(initialIsSaved);
+  const [isLiked, setIsLiked] = useState(initialIsLiked);
   const [userReaction, setUserReaction] = useState<string | null>(null);
+  
+  // Mutations
+  const likePostMutation = useLikePost();
+  const savePostMutation = useSavePost();
   
   // Translation hook
   const { 
@@ -75,7 +67,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, viewLanguage }) => {
   const handleSwipeEnd = (event: any, info: PanInfo) => {
     if (info.offset.x < -50) {
       // Swipe left - Save
-      setIsSaved(!isSaved);
+      handleSave();
     } else if (info.offset.x > 50) {
       // Swipe right - Show original
       setShowOriginal(!showOriginal);
@@ -92,6 +84,19 @@ export const PostCard: React.FC<PostCardProps> = ({ post, viewLanguage }) => {
 
   const handleReaction = (reactionKey: string) => {
     setUserReaction(userReaction === reactionKey ? null : reactionKey);
+    // Could track reactions separately via post_interactions table
+  };
+
+  const handleLike = () => {
+    const newIsLiked = !isLiked;
+    setIsLiked(newIsLiked);
+    likePostMutation.mutate({ postId: post.id, isLiked });
+  };
+
+  const handleSave = () => {
+    const newIsSaved = !isSaved;
+    setIsSaved(newIsSaved);
+    savePostMutation.mutate({ postId: post.id, isSaved });
   };
 
   return (
@@ -232,16 +237,18 @@ export const PostCard: React.FC<PostCardProps> = ({ post, viewLanguage }) => {
           )}
 
           {/* Tags */}
-          <div className="flex flex-wrap gap-2 mt-3">
-            {post.tags.map((tag, index) => (
-              <span
-                key={index}
-                className="px-2.5 py-1 bg-secondary/50 text-secondary-foreground text-xs rounded-full"
-              >
-                #{tag}
-              </span>
-            ))}
-          </div>
+          {post.tags.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {post.tags.map((tag, index) => (
+                <span
+                  key={index}
+                  className="px-2.5 py-1 bg-secondary/50 text-secondary-foreground text-xs rounded-full"
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Image */}
@@ -301,7 +308,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, viewLanguage }) => {
                 >
                   <span>{reaction.emoji}</span>
                   <span className="font-medium">
-                    {post.reactions[reaction.key as keyof PostReactions] + (userReaction === reaction.key ? 1 : 0)}
+                    {post.reactions[reaction.key as keyof typeof post.reactions] + (userReaction === reaction.key ? 1 : 0)}
                   </span>
                 </motion.button>
               ))}
@@ -329,7 +336,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, viewLanguage }) => {
               <Button 
                 variant="ghost" 
                 size="icon"
-                onClick={() => setIsSaved(!isSaved)}
+                onClick={handleSave}
                 className={cn(
                   "rounded-full",
                   isSaved ? "text-primary" : "text-muted-foreground"
