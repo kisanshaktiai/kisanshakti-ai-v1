@@ -343,8 +343,6 @@ jobs:
           echo ""
           echo "🔍 Test these URLs to verify routing:"
           echo "   - https://kisanshaktiai.in/"
-          echo "   - https://kisanshaktiai.in/app/weather"
-          echo "   - https://kisanshaktiai.in/app/schedule"
           echo "   - Try refreshing each page!"
           echo ""
           echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
