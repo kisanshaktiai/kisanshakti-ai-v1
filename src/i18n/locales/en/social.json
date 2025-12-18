@@ -61,6 +61,15 @@
       "like": "Like",
       "comment": "Comment",
       "share": "Share",
+      "save": "Save",
+      "original": "Original",
+      "voice": "Voice",
+      "translating": "Translating...",
+      "show_translated": "Show translated",
+      "show_original": "Show original",
+      "show_less": "Show less",
+      "read_more": "Read more",
+      "share_copied": "Content copied to clipboard!",
       "liked_by": "Liked by {{count}} farmers",
       "comments": "{{count}} comments",
       "success": "Posted successfully! 🎉",
@@ -87,7 +96,10 @@
       "opening_discussion": "Opening {{name}} discussion",
       "discussion_title": "{{name}} Discussion",
       "type_message": "Type your message...",
-      "send": "Send"
+      "send": "Send",
+      "you": "You",
+      "anonymous": "Anonymous Farmer",
+      "no_messages": "No messages yet. Start the conversation!"
     },
     "feed": {
       "refreshing": "Refreshing...",

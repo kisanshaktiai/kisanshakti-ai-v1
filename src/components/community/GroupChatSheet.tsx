@@ -1,22 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import { X, Send, Mic, StopCircle, ArrowLeft, Users, Sparkles } from 'lucide-react';
+import { ArrowLeft, Send, Mic, StopCircle, Users, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'sonner';
-
-interface GroupMessage {
-  id: string;
-  content: string;
-  senderId: string;
-  senderName: string;
-  timestamp: string;
-  isOwn: boolean;
-}
+import { useGroupMessages, useSendGroupMessage, useCreateWelcomeMessage, GroupMessage } from '@/hooks/useGroupChat';
+import { formatDistanceToNow } from 'date-fns';
 
 interface GroupChatSheetProps {
   isOpen: boolean;
@@ -30,34 +23,6 @@ interface GroupChatSheetProps {
   language: string;
 }
 
-// Mock messages for demonstration
-const generateMockMessages = (groupName: string): GroupMessage[] => [
-  {
-    id: '1',
-    content: `Welcome to ${groupName} discussion! Share your experiences and tips.`,
-    senderId: 'system',
-    senderName: 'Community Bot',
-    timestamp: '10:00 AM',
-    isOwn: false,
-  },
-  {
-    id: '2',
-    content: 'What variety are you all growing this season?',
-    senderId: 'user1',
-    senderName: 'Ramesh Kumar',
-    timestamp: '10:05 AM',
-    isOwn: false,
-  },
-  {
-    id: '3',
-    content: 'I am trying the new HD-3086 variety. Very good results so far!',
-    senderId: 'user2',
-    senderName: 'Suresh Singh',
-    timestamp: '10:08 AM',
-    isOwn: false,
-  },
-];
-
 export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
   isOpen,
   onClose,
@@ -66,7 +31,6 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
 }) => {
   const { t } = useTranslation('social');
   const { user } = useAuthStore();
-  const [messages, setMessages] = useState<GroupMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -74,29 +38,32 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
-  useEffect(() => {
-    if (isOpen) {
-      setMessages(generateMockMessages(group.name));
-    }
-  }, [isOpen, group.name]);
+  // Real-time messages
+  const { data: messages = [], isLoading } = useGroupMessages(isOpen ? group.id : null);
+  const sendMessageMutation = useSendGroupMessage();
+  const createWelcomeMutation = useCreateWelcomeMessage();
 
+  // Create welcome message when first opened
+  useEffect(() => {
+    if (isOpen && group.id && messages.length === 0 && !isLoading) {
+      createWelcomeMutation.mutate({ groupId: group.id, groupName: group.name });
+    }
+  }, [isOpen, group.id, group.name, messages.length, isLoading]);
+
+  // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const handleSend = () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() || !group.id) return;
 
-    const newMessage: GroupMessage = {
-      id: Date.now().toString(),
+    sendMessageMutation.mutate({
+      groupId: group.id,
       content: inputValue.trim(),
-      senderId: user?.id || 'me',
-      senderName: 'You',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isOwn: true,
-    };
-
-    setMessages(prev => [...prev, newMessage]);
+      messageType: 'text',
+    });
+    
     setInputValue('');
   };
 
@@ -123,7 +90,7 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
       mediaRecorder.start();
       setIsRecording(true);
     } catch (err) {
-      toast.error('Unable to access microphone');
+      toast.error(t('social.post.recording_error', 'Unable to access microphone'));
     }
   };
 
@@ -151,12 +118,31 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
       if (error) throw error;
       if (data?.text) {
         setInputValue(prev => prev ? `${prev} ${data.text}` : data.text);
+        toast.success(t('social.post.transcribed', 'Voice converted to text!'));
       }
     } catch (err) {
-      toast.error('Failed to convert voice');
+      toast.error(t('social.post.transcription_error', 'Failed to convert voice'));
     } finally {
       setIsTranscribing(false);
     }
+  };
+
+  const formatMessageTime = (timestamp: string) => {
+    try {
+      return formatDistanceToNow(new Date(timestamp), { addSuffix: false });
+    } catch {
+      return '';
+    }
+  };
+
+  const isOwnMessage = (message: GroupMessage) => {
+    return message.farmer_id === user?.id;
+  };
+
+  const getSenderName = (message: GroupMessage) => {
+    if (message.message_type === 'system') return 'System';
+    if (isOwnMessage(message)) return t('social.groups.you', 'You');
+    return message.farmer?.farmer_name || t('social.groups.anonymous', 'Anonymous Farmer');
   };
 
   return (
@@ -200,36 +186,62 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
 
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.map((message, index) => (
-              <motion.div
-                key={message.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-                className={cn(
-                  "flex",
-                  message.isOwn ? "justify-end" : "justify-start"
-                )}
-              >
-                <div className={cn(
-                  "max-w-[80%] rounded-3xl px-4 py-3",
-                  message.isOwn 
-                    ? "bg-primary text-primary-foreground rounded-br-lg" 
-                    : "bg-secondary text-secondary-foreground rounded-bl-lg"
-                )}>
-                  {!message.isOwn && (
-                    <p className="text-xs font-medium opacity-70 mb-1">{message.senderName}</p>
+            {isLoading ? (
+              <div className="flex justify-center py-8">
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                >
+                  <Sparkles className="w-6 h-6 text-primary" />
+                </motion.div>
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="text-center py-12">
+                <div className="text-4xl mb-3">💬</div>
+                <p className="text-muted-foreground text-sm">
+                  {t('social.groups.no_messages', 'No messages yet. Start the conversation!')}
+                </p>
+              </div>
+            ) : (
+              messages.map((message, index) => (
+                <motion.div
+                  key={message.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.02 }}
+                  className={cn(
+                    "flex",
+                    isOwnMessage(message) ? "justify-end" : "justify-start"
                   )}
-                  <p className="text-sm">{message.content}</p>
-                  <p className={cn(
-                    "text-[10px] mt-1",
-                    message.isOwn ? "text-primary-foreground/70" : "text-muted-foreground"
+                >
+                  <div className={cn(
+                    "max-w-[80%] rounded-3xl px-4 py-3",
+                    message.message_type === 'system' 
+                      ? "bg-muted text-muted-foreground text-center mx-auto"
+                      : isOwnMessage(message) 
+                        ? "bg-primary text-primary-foreground rounded-br-lg" 
+                        : "bg-secondary text-secondary-foreground rounded-bl-lg"
                   )}>
-                    {message.timestamp}
-                  </p>
-                </div>
-              </motion.div>
-            ))}
+                    {!isOwnMessage(message) && message.message_type !== 'system' && (
+                      <p className="text-xs font-medium opacity-70 mb-1">
+                        {getSenderName(message)}
+                      </p>
+                    )}
+                    <p className="text-sm">{message.content}</p>
+                    <p className={cn(
+                      "text-[10px] mt-1",
+                      message.message_type === 'system'
+                        ? "text-muted-foreground"
+                        : isOwnMessage(message) 
+                          ? "text-primary-foreground/70" 
+                          : "text-muted-foreground"
+                    )}>
+                      {formatMessageTime(message.created_at)}
+                    </p>
+                  </div>
+                </motion.div>
+              ))
+            )}
             <div ref={messagesEndRef} />
           </div>
 
@@ -275,7 +287,7 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
               <motion.button
                 whileTap={{ scale: 0.9 }}
                 onClick={handleSend}
-                disabled={!inputValue.trim()}
+                disabled={!inputValue.trim() || sendMessageMutation.isPending}
                 className={cn(
                   "w-12 h-12 rounded-2xl flex items-center justify-center transition-all",
                   inputValue.trim() 

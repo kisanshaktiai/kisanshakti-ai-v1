@@ -7559,6 +7559,47 @@ export type Database = {
           },
         ]
       }
+      group_chat_messages: {
+        Row: {
+          content: string
+          created_at: string
+          farmer_id: string
+          group_id: string
+          id: string
+          message_type: string | null
+          metadata: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          farmer_id: string
+          group_id: string
+          id?: string
+          message_type?: string | null
+          metadata?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          farmer_id?: string
+          group_id?: string
+          id?: string
+          message_type?: string | null
+          metadata?: Json | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_chat_messages_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "group_chats"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       group_chats: {
         Row: {
           avatar_url: string | null
@@ -13108,6 +13149,38 @@ export type Database = {
           },
         ]
       }
+      post_reactions: {
+        Row: {
+          created_at: string
+          farmer_id: string
+          id: string
+          post_id: string
+          reaction_type: string
+        }
+        Insert: {
+          created_at?: string
+          farmer_id: string
+          id?: string
+          post_id: string
+          reaction_type: string
+        }
+        Update: {
+          created_at?: string
+          farmer_id?: string
+          id?: string
+          post_id?: string
+          reaction_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "post_reactions_post_id_fkey"
+            columns: ["post_id"]
+            isOneToOne: false
+            referencedRelation: "social_posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       post_saves: {
         Row: {
           farmer_id: string
@@ -16021,6 +16094,7 @@ export type Database = {
           engagement_score: number | null
           farmer_id: string
           hashtags: string[] | null
+          helpful_count: number | null
           id: string
           is_expert_verified: boolean | null
           is_pinned: boolean | null
@@ -16039,7 +16113,9 @@ export type Database = {
           shares_count: number | null
           status: Database["public"]["Enums"]["post_status"] | null
           tenant_id: string
+          thanks_count: number | null
           translations: Json | null
+          tried_count: number | null
           updated_at: string | null
           views_count: number | null
         }
@@ -16051,6 +16127,7 @@ export type Database = {
           engagement_score?: number | null
           farmer_id: string
           hashtags?: string[] | null
+          helpful_count?: number | null
           id?: string
           is_expert_verified?: boolean | null
           is_pinned?: boolean | null
@@ -16069,7 +16146,9 @@ export type Database = {
           shares_count?: number | null
           status?: Database["public"]["Enums"]["post_status"] | null
           tenant_id: string
+          thanks_count?: number | null
           translations?: Json | null
+          tried_count?: number | null
           updated_at?: string | null
           views_count?: number | null
         }
@@ -16081,6 +16160,7 @@ export type Database = {
           engagement_score?: number | null
           farmer_id?: string
           hashtags?: string[] | null
+          helpful_count?: number | null
           id?: string
           is_expert_verified?: boolean | null
           is_pinned?: boolean | null
@@ -16099,7 +16179,9 @@ export type Database = {
           shares_count?: number | null
           status?: Database["public"]["Enums"]["post_status"] | null
           tenant_id?: string
+          thanks_count?: number | null
           translations?: Json | null
+          tried_count?: number | null
           updated_at?: string | null
           views_count?: number | null
         }
