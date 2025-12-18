@@ -87,7 +87,10 @@
       "opening_discussion": "{{name}} चर्चा खोल रहे हैं",
       "discussion_title": "{{name}} चर्चा",
       "type_message": "अपना संदेश टाइप करें...",
-      "send": "भेजें"
+      "send": "भेजें",
+      "you": "आप",
+      "anonymous": "अज्ञात किसान",
+      "no_messages": "अभी तक कोई संदेश नहीं। बातचीत शुरू करें!"
     },
     "feed": {
       "refreshing": "रिफ्रेश हो रहा है...",
