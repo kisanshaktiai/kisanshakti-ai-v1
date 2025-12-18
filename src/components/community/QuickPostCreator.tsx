@@ -117,6 +117,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
         content: content.trim(),
         language_code: language,
         media_urls: selectedImage ? [selectedImage] : undefined,
+        post_type: selectedImage ? 'image' : 'text',
       },
       {
         onSuccess: () => {
