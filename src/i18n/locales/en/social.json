@@ -1,29 +1,34 @@
 {
   "__meta": {
     "page": "social",
-    "version": "1.0",
+    "version": "2.0",
     "updated_by": "AI Localization Engineer",
-    "last_updated": "2025-11-29"
+    "last_updated": "2025-12-18"
   },
   "social": {
     "header": {
-      "title": "Community"
-    },
-    "user": {
-      "level": "Lvl {{level}}",
-      "points": "{{points}} pts"
-    },
-    "search": {
-      "placeholder": "Search communities..."
+      "title": "Farmer Community",
+      "subtitle": "{{count}} farmers online",
+      "search_placeholder": "Search posts, farmers..."
     },
     "tabs": {
       "feed": "Feed",
-      "communities": "Communities",
-      "messages": "Messages",
-      "rankings": "Rankings",
-      "trending": "Trending"
+      "groups": "Groups",
+      "trending": "Trending",
+      "my_posts": "My Posts",
+      "saved": "Saved"
+    },
+    "search": {
+      "placeholder": "Search communities...",
+      "title": "Search",
+      "recent": "Recent Searches",
+      "results": "Search Results",
+      "no_results": "No results found"
     },
     "notifications": {
+      "title": "Notifications",
+      "empty": "No new notifications",
+      "mark_read": "Mark all as read",
       "new_message": {
         "title": "New Message",
         "message": "You have received a new message"
@@ -47,15 +52,58 @@
         "message": "Your post has been shared with the community."
       },
       "create": "Create Post",
-      "whats_on_mind": "What's on your mind?",
+      "whats_on_mind": "Share your farming tip...",
+      "tap_or_speak": "Tap to type or hold mic to speak...",
       "add_photo": "Add Photo",
-      "publish": "Publish",
+      "publish": "Post",
       "cancel": "Cancel",
+      "clear": "Clear",
       "like": "Like",
       "comment": "Comment",
       "share": "Share",
       "liked_by": "Liked by {{count}} farmers",
-      "comments": "{{count}} comments"
+      "comments": "{{count}} comments",
+      "success": "Posted successfully! 🎉",
+      "empty_error": "Please write or speak something",
+      "recording_error": "Unable to access microphone",
+      "transcribed": "Voice converted to text!",
+      "transcription_error": "Failed to convert voice",
+      "hold_mic": "Hold 🎤 button to speak in your language",
+      "release_to_stop": "🎤 Recording... Release to stop",
+      "converting": "✨ Converting voice to text..."
+    },
+    "groups": {
+      "search": "Search groups...",
+      "create": "Create New Group",
+      "crop_groups": "Crop Groups",
+      "community_groups": "Community Groups",
+      "discuss": "Discuss",
+      "join": "Join",
+      "leave": "Leave",
+      "members": "members",
+      "no_crop_groups": "No crop groups found",
+      "no_groups": "No groups yet",
+      "be_first": "Be the first to create a group!",
+      "opening_discussion": "Opening {{name}} discussion",
+      "discussion_title": "{{name}} Discussion",
+      "type_message": "Type your message...",
+      "send": "Send"
+    },
+    "feed": {
+      "refreshing": "Refreshing...",
+      "refresh": "Refresh posts",
+      "loading": "Loading posts...",
+      "new_posts": "New posts available"
+    },
+    "empty": {
+      "feed": "No posts yet",
+      "feed_hint": "Be the first to share your farming knowledge!",
+      "my_posts": "You haven't posted yet",
+      "my_posts_hint": "Share your farming knowledge with the community!",
+      "saved": "Saved posts will appear here",
+      "saved_hint": "Swipe left on any post to save it",
+      "messages": "No conversations yet",
+      "communities": "No communities found"
     },
     "community": {
       "join": "Join",
@@ -90,33 +138,8 @@
       "hashtag": "#{{tag}}",
       "posts_count": "{{count}} posts"
     },
-    "empty": {
-      "feed": "No posts yet. Start sharing with the community!",
-      "messages": "No conversations yet",
-      "communities": "No communities found"
-    },
     "profile": {
       "activity_feed_soon": "Activity feed coming soon"
     }
-  },
-  "__qa": {
-    "voice_examples_en": [
-      "Show community feed",
-      "Create new post",
-      "Check my messages",
-      "View leaderboard"
-    ],
-    "voice_examples_hi": [
-      "समुदाय फीड दिखाओ",
-      "नई पोस्ट बनाएं",
-      "मेरे संदेश देखें",
-      "लीडरबोर्ड देखें"
-    ],
-    "voice_examples_mr": [
-      "समुदाय फीड दाखवा",
-      "नवीन पोस्ट तयार करा",
-      "माझे संदेश पहा",
-      "लीडरबोर्ड पहा"
-    ]
   }
 }
