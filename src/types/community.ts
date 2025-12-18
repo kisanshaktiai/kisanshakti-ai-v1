@@ -1,4 +1,4 @@
-export type CommunityTab = 'feed' | 'trending' | 'saved' | 'my-posts';
+export type CommunityTab = 'feed' | 'groups' | 'trending' | 'saved' | 'my-posts';
 
 // Post interface matching UI requirements - transformed from DB schema
 export interface CommunityPost {

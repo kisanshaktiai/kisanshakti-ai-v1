@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import { Home, TrendingUp, Bookmark, User } from 'lucide-react';
+import { Home, TrendingUp, Bookmark, User, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CommunityTab } from '@/types/community';
 
@@ -12,8 +12,8 @@ interface CommunityTabsProps {
 
 const tabs: { id: CommunityTab; icon: React.ElementType; labelKey: string; defaultLabel: string }[] = [
   { id: 'feed', icon: Home, labelKey: 'social.tabs.feed', defaultLabel: 'Feed' },
+  { id: 'groups', icon: Users, labelKey: 'social.tabs.groups', defaultLabel: 'Groups' },
   { id: 'trending', icon: TrendingUp, labelKey: 'social.tabs.trending', defaultLabel: 'Trending' },
-  { id: 'saved', icon: Bookmark, labelKey: 'social.tabs.saved', defaultLabel: 'Saved' },
   { id: 'my-posts', icon: User, labelKey: 'social.tabs.my_posts', defaultLabel: 'My Posts' },
 ];
 

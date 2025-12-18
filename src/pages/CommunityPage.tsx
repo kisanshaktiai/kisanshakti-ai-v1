@@ -8,6 +8,8 @@ import { CreatePostFAB } from '@/components/community/CreatePostFAB';
 import { CreatePostModal } from '@/components/community/CreatePostModal';
 import { CommunityTabs } from '@/components/community/CommunityTabs';
 import { TrendingTopics } from '@/components/community/TrendingTopics';
+import { CommunityGroups } from '@/components/community/CommunityGroups';
+import { QuickPostCreator } from '@/components/community/QuickPostCreator';
 import { LanguageSelector } from '@/components/community/LanguageSelector';
 import { BottomNavigation } from '@/components/BottomNavigation';
 import { CommunityTab } from '@/types/community';
