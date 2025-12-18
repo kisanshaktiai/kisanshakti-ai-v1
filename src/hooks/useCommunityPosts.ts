@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supabaseWithAuth } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { toast } from 'sonner';
@@ -63,9 +63,10 @@ export function useCommunityPosts(options?: {
         return [];
       }
 
-      console.log('[Community] Fetching posts for tenant:', tenant.id);
+      // Use supabaseWithAuth to set custom headers for RLS
+      const authClient = supabaseWithAuth(user?.id, tenant.id);
       
-      let queryBuilder = supabase
+      let queryBuilder = authClient
         .from('social_posts')
         .select(`
           *,
@@ -146,7 +147,7 @@ export function useCreatePost() {
         throw new Error('User or tenant not available');
       }
 
-      console.log('[Community] Creating post:', {
+      console.log('[Community] Creating post with auth headers:', {
         farmerId: user.id,
         tenantId: tenant.id,
         contentLength: input.content.length,
@@ -156,7 +157,10 @@ export function useCreatePost() {
       const hashtagsFromContent = input.content.match(/#[\w\u0900-\u097F]+/g)?.map(tag => tag.slice(1)) || [];
       const allHashtags = [...new Set([...(input.hashtags || []), ...hashtagsFromContent])];
 
-      const { data, error } = await supabase
+      // Use supabaseWithAuth to set custom headers for RLS
+      const authClient = supabaseWithAuth(user.id, tenant.id);
+
+      const { data, error } = await authClient
         .from('social_posts')
         .insert({
           farmer_id: user.id,
@@ -200,17 +204,21 @@ export function useCreatePost() {
 // Like/Unlike a post
 export function useLikePost() {
   const { user } = useAuthStore();
+  const { tenant } = useTenant();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async ({ postId, isLiked }: { postId: string; isLiked: boolean }) => {
-      if (!user?.id) {
+      if (!user?.id || !tenant?.id) {
         throw new Error('User not authenticated');
       }
 
+      // Use supabaseWithAuth for RLS
+      const authClient = supabaseWithAuth(user.id, tenant.id);
+
       if (isLiked) {
         // Unlike - remove from post_likes
-        const { error } = await supabase
+        const { error } = await authClient
           .from('post_likes')
           .delete()
           .eq('post_id', postId)
@@ -219,21 +227,21 @@ export function useLikePost() {
         if (error) throw error;
 
         // Decrement likes_count manually
-        const { data: post } = await supabase
+        const { data: post } = await authClient
           .from('social_posts')
           .select('likes_count')
           .eq('id', postId)
           .single();
 
         if (post) {
-          await supabase
+          await authClient
             .from('social_posts')
             .update({ likes_count: Math.max(0, (post.likes_count || 1) - 1) })
             .eq('id', postId);
         }
       } else {
         // Like - add to post_likes
-        const { error } = await supabase
+        const { error } = await authClient
           .from('post_likes')
           .insert({
             post_id: postId,
@@ -243,14 +251,14 @@ export function useLikePost() {
         if (error) throw error;
 
         // Increment likes_count manually
-        const { data: post } = await supabase
+        const { data: post } = await authClient
           .from('social_posts')
           .select('likes_count')
           .eq('id', postId)
           .single();
 
         if (post) {
-          await supabase
+          await authClient
             .from('social_posts')
             .update({ likes_count: (post.likes_count || 0) + 1 })
             .eq('id', postId);
@@ -267,17 +275,21 @@ export function useLikePost() {
 // Save/Unsave a post
 export function useSavePost() {
   const { user } = useAuthStore();
+  const { tenant } = useTenant();
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async ({ postId, isSaved }: { postId: string; isSaved: boolean }) => {
-      if (!user?.id) {
+      if (!user?.id || !tenant?.id) {
         throw new Error('User not authenticated');
       }
 
+      // Use supabaseWithAuth for RLS
+      const authClient = supabaseWithAuth(user.id, tenant.id);
+
       if (isSaved) {
         // Unsave - remove from post_saves
-        const { error } = await supabase
+        const { error } = await authClient
           .from('post_saves')
           .delete()
           .eq('post_id', postId)
@@ -286,7 +298,7 @@ export function useSavePost() {
         if (error) throw error;
       } else {
         // Save - add to post_saves
-        const { error } = await supabase
+        const { error } = await authClient
           .from('post_saves')
           .insert({
             post_id: postId,
@@ -307,13 +319,15 @@ export function useSavePost() {
 // Get user's liked post IDs
 export function useUserLikedPosts() {
   const { user } = useAuthStore();
+  const { tenant } = useTenant();
 
   return useQuery({
     queryKey: ['user-post-likes', user?.id],
     queryFn: async () => {
-      if (!user?.id) return [];
+      if (!user?.id || !tenant?.id) return [];
 
-      const { data, error } = await supabase
+      const authClient = supabaseWithAuth(user.id, tenant.id);
+      const { data, error } = await authClient
         .from('post_likes')
         .select('post_id')
         .eq('farmer_id', user.id);
@@ -321,20 +335,22 @@ export function useUserLikedPosts() {
       if (error) throw error;
       return data.map(item => item.post_id);
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!tenant?.id,
   });
 }
 
 // Get user's saved post IDs
 export function useUserSavedPosts() {
   const { user } = useAuthStore();
+  const { tenant } = useTenant();
 
   return useQuery({
     queryKey: ['user-saved-posts', user?.id],
     queryFn: async () => {
-      if (!user?.id) return [];
+      if (!user?.id || !tenant?.id) return [];
 
-      const { data, error } = await supabase
+      const authClient = supabaseWithAuth(user.id, tenant.id);
+      const { data, error } = await authClient
         .from('post_saves')
         .select('post_id')
         .eq('farmer_id', user.id);
@@ -342,7 +358,7 @@ export function useUserSavedPosts() {
       if (error) throw error;
       return data.map(item => item.post_id);
     },
-    enabled: !!user?.id,
+    enabled: !!user?.id && !!tenant?.id,
   });
 }
 
@@ -356,8 +372,10 @@ export function useSavedPostsFull() {
     queryFn: async () => {
       if (!user?.id || !tenant?.id) return [];
 
+      const authClient = supabaseWithAuth(user.id, tenant.id);
+
       // First get saved post IDs
-      const { data: savedPosts, error: savedError } = await supabase
+      const { data: savedPosts, error: savedError } = await authClient
         .from('post_saves')
         .select('post_id')
         .eq('farmer_id', user.id)
@@ -369,7 +387,7 @@ export function useSavedPostsFull() {
       const postIds = savedPosts.map(s => s.post_id);
 
       // Then fetch the actual posts
-      const { data, error } = await supabase
+      const { data, error } = await authClient
         .from('social_posts')
         .select(`
           *,
