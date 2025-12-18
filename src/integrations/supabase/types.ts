@@ -22583,6 +22583,7 @@ export type Database = {
           tile_id: string
         }[]
       }
+      get_user_group_ids: { Args: { _farmer_id: string }; Returns: string[] }
       get_user_storage_usage: {
         Args: { user_id: string }
         Returns: {
@@ -22651,6 +22652,10 @@ export type Database = {
       is_bootstrap_required: { Args: never; Returns: boolean }
       is_current_user_admin: { Args: never; Returns: boolean }
       is_current_user_super_admin: { Args: never; Returns: boolean }
+      is_group_member: {
+        Args: { _farmer_id: string; _group_id: string }
+        Returns: boolean
+      }
       is_invite_valid: { Args: { invite_token: string }; Returns: boolean }
       is_moderator: { Args: never; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
