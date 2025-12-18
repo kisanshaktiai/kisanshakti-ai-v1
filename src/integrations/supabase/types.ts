@@ -1602,6 +1602,7 @@ export type Database = {
       }
       app_versions: {
         Row: {
+          app_key: string
           breaking_changes: Json | null
           bugs_fixed: Json | null
           build_hash: string
@@ -1618,6 +1619,7 @@ export type Database = {
           version: string
         }
         Insert: {
+          app_key: string
           breaking_changes?: Json | null
           bugs_fixed?: Json | null
           build_hash: string
@@ -1634,6 +1636,7 @@ export type Database = {
           version: string
         }
         Update: {
+          app_key?: string
           breaking_changes?: Json | null
           bugs_fixed?: Json | null
           build_hash?: string
@@ -8460,6 +8463,7 @@ export type Database = {
           marketplace_enabled: boolean | null
           mgrs_tile_id: string | null
           name: string
+          ndvi_status: string | null
           ndvi_tested: boolean | null
           ndvi_thumbnail_url: string | null
           nitrogen_kg_per_ha: number | null
@@ -8531,6 +8535,7 @@ export type Database = {
           marketplace_enabled?: boolean | null
           mgrs_tile_id?: string | null
           name: string
+          ndvi_status?: string | null
           ndvi_tested?: boolean | null
           ndvi_thumbnail_url?: string | null
           nitrogen_kg_per_ha?: number | null
@@ -8602,6 +8607,7 @@ export type Database = {
           marketplace_enabled?: boolean | null
           mgrs_tile_id?: string | null
           name?: string
+          ndvi_status?: string | null
           ndvi_tested?: boolean | null
           ndvi_thumbnail_url?: string | null
           nitrogen_kg_per_ha?: number | null
@@ -11340,6 +11346,7 @@ export type Database = {
           anomaly_detection: Json | null
           bbox: Json
           created_at: string | null
+          geom: unknown
           id: string
           ndvi_histogram: Json | null
           processed_at: string | null
@@ -11354,6 +11361,7 @@ export type Database = {
           anomaly_detection?: Json | null
           bbox: Json
           created_at?: string | null
+          geom?: unknown
           id?: string
           ndvi_histogram?: Json | null
           processed_at?: string | null
@@ -11368,6 +11376,7 @@ export type Database = {
           anomaly_detection?: Json | null
           bbox?: Json
           created_at?: string | null
+          geom?: unknown
           id?: string
           ndvi_histogram?: Json | null
           processed_at?: string | null
@@ -22408,6 +22417,21 @@ export type Database = {
       get_jwt_dealer_id: { Args: never; Returns: string }
       get_jwt_farmer_id: { Args: never; Returns: string }
       get_jwt_tenant_id: { Args: never; Returns: string }
+      get_land_ndvi_grids:
+        | {
+            Args: { land_id: string }
+            Returns: {
+              ndvi_histogram: Json
+              overlap_ratio: number
+            }[]
+          }
+        | {
+            Args: { land_id: string; max_days_back?: number }
+            Returns: {
+              ndvi_histogram: Json
+              overlap_ratio: number
+            }[]
+          }
       get_lands_by_tile: {
         Args: { p_tile_id: string }
         Returns: {
@@ -23433,6 +23457,10 @@ export type Database = {
       }
       unlockrows: { Args: { "": string }; Returns: number }
       update_community_trending_score: { Args: never; Returns: undefined }
+      update_tenant_verification: {
+        Args: { p_tenant_id: string; p_verification_data: Json }
+        Returns: boolean
+      }
       update_tiles_for_land: { Args: { p_land_id: string }; Returns: undefined }
       update_user_presence: {
         Args: {
@@ -23451,6 +23479,38 @@ export type Database = {
           table_name: string
         }
         Returns: string
+      }
+      upsert_tenant_branding: {
+        Args: {
+          p_accent_color?: string
+          p_app_name?: string
+          p_background_color?: string
+          p_font_family?: string
+          p_logo_url?: string
+          p_primary_color?: string
+          p_secondary_color?: string
+          p_tenant_id: string
+          p_text_color?: string
+        }
+        Returns: boolean
+      }
+      upsert_tenant_features: {
+        Args: {
+          p_advanced_analytics?: boolean
+          p_basic_analytics?: boolean
+          p_custom_reports?: boolean
+          p_farmer_management?: boolean
+          p_iot_integration?: boolean
+          p_mobile_app?: boolean
+          p_predictive_analytics?: boolean
+          p_satellite_imagery?: boolean
+          p_sms_notifications?: boolean
+          p_tenant_id: string
+          p_voice_calls?: boolean
+          p_weather_forecast?: boolean
+          p_whatsapp_integration?: boolean
+        }
+        Returns: boolean
       }
       user_has_tenant_access: {
         Args: { tenant_uuid: string }
