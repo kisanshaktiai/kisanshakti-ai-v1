@@ -133,6 +133,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         content: content.trim(),
         language_code: selectedLanguage,
         media_urls: selectedImage ? [selectedImage] : undefined,
+        post_type: selectedImage ? 'image' : 'text',
       },
       {
         onSuccess: () => {

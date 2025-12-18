@@ -165,7 +165,7 @@ export function useCreatePost() {
           language_code: input.language_code,
           media_urls: input.media_urls ? { images: input.media_urls } : null,
           hashtags: allHashtags.length > 0 ? allHashtags : null,
-          post_type: input.post_type || 'discussion',
+          post_type: input.post_type || (input.media_urls?.length ? 'image' : 'text'),
           location_data: input.location_data,
           is_published: true,
           status: 'published',
