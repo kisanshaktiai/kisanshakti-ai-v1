@@ -148,11 +148,11 @@ export const PostCard: React.FC<PostCardProps> = ({
               {post.authorBadge && (
                 <div className={cn(
                   "absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center",
-                  post.authorBadge === 'expert' && "bg-amber-500",
-                  post.authorBadge === 'verified' && "bg-blue-500"
+                  post.authorBadge === 'expert' && "bg-warning",
+                  post.authorBadge === 'verified' && "bg-info"
                 )}>
-                  {post.authorBadge === 'expert' && <Award className="w-3 h-3 text-white" />}
-                  {post.authorBadge === 'verified' && <CheckCircle2 className="w-3 h-3 text-white" />}
+                  {post.authorBadge === 'expert' && <Award className="w-3 h-3 text-warning-foreground" />}
+                  {post.authorBadge === 'verified' && <CheckCircle2 className="w-3 h-3 text-info-foreground" />}
                 </div>
               )}
             </div>

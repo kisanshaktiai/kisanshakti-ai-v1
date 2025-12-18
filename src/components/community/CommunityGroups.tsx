@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCommunityGroups, useJoinGroup, CropGroup, CommunityGroup } from '@/hooks/useCommunityGroups';
 import { CreateGroupModal } from './CreateGroupModal';
-import { toast } from 'sonner';
+import { GroupChatSheet } from './GroupChatSheet';
 
 interface CommunityGroupsProps {
   viewLanguage: string;
@@ -49,6 +49,12 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [selectedCropGroup, setSelectedCropGroup] = useState<{
+    id: string;
+    name: string;
+    icon: string;
+    memberCount?: number;
+  } | null>(null);
   
   const { data, isLoading } = useCommunityGroups();
   const joinGroupMutation = useJoinGroup();
@@ -59,9 +65,15 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
   };
 
   const handleDiscussCropGroup = (group: CropGroup) => {
-    // Navigate to feed filtered by crop tag
-    toast.success(t('social.groups.opening_discussion', `Opening ${getGroupName(group, viewLanguage)} discussion`));
-    // For now, just show toast - could navigate to filtered feed or dedicated group chat
+    const groupName = getGroupName(group, viewLanguage);
+    const groupIcon = getGroupIcon(group.group_key, group.group_icon);
+    
+    setSelectedCropGroup({
+      id: group.id,
+      name: groupName,
+      icon: groupIcon,
+      memberCount: 1250, // Mock for now
+    });
   };
 
   const cropGroups = data?.cropGroups || [];
@@ -92,39 +104,45 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
   return (
     <div className="px-4 pb-8">
       {/* Search Bar */}
-      <div className="relative mb-6">
+      <motion.div 
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative mb-6"
+      >
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder={t('social.groups.search', 'Search groups...')}
-          className="pl-12 h-12 rounded-2xl bg-card/80 border-border/50"
+          placeholder={t('social.groups.search')}
+          className="pl-12 h-12 rounded-2xl bg-card/80 border-border/50 backdrop-blur-sm"
         />
-      </div>
+      </motion.div>
 
       {/* Create Group Button - Big and Prominent */}
       <motion.button
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
         whileTap={{ scale: 0.98 }}
         onClick={() => handleModalStateChange(true)}
         className={cn(
-          "w-full p-4 mb-6 rounded-2xl",
-          "bg-gradient-to-r from-primary to-primary/80",
+          "w-full p-4 mb-6 rounded-3xl",
+          "bg-gradient-to-r from-primary via-primary/90 to-primary/80",
           "flex items-center justify-center gap-3",
           "text-primary-foreground font-semibold text-lg",
-          "shadow-lg shadow-primary/20"
+          "shadow-xl shadow-primary/25"
         )}
       >
-        <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+        <div className="w-12 h-12 rounded-2xl bg-primary-foreground/20 flex items-center justify-center backdrop-blur-sm">
           <Plus className="w-6 h-6" />
         </div>
-        <span>{t('social.groups.create', 'Create New Group')}</span>
+        <span>{t('social.groups.create')}</span>
       </motion.button>
 
       {/* Crop-Based Groups Section */}
       <div className="mb-8">
         <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
           <Sprout className="w-5 h-5 text-primary" />
-          {t('social.groups.crop_groups', 'Crop Groups')}
+          {t('social.groups.crop_groups')}
         </h2>
         
         <div className="grid grid-cols-2 gap-3">
@@ -134,15 +152,21 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.05 }}
+              whileTap={{ scale: 0.98 }}
               className={cn(
-                "bg-card/80 backdrop-blur-sm rounded-2xl p-4",
-                "border border-border/50 shadow-sm",
-                "flex flex-col items-center text-center"
+                "bg-card/80 backdrop-blur-xl rounded-3xl p-4",
+                "border border-border/50 shadow-lg shadow-black/5",
+                "flex flex-col items-center text-center",
+                "hover:shadow-xl transition-shadow cursor-pointer"
               )}
+              onClick={() => handleDiscussCropGroup(group)}
             >
-              <div className="text-4xl mb-2">
+              <motion.div 
+                className="text-4xl mb-2"
+                whileHover={{ scale: 1.1, rotate: 5 }}
+              >
                 {getGroupIcon(group.group_key, group.group_icon)}
-              </div>
+              </motion.div>
               <h3 className="font-semibold text-foreground text-sm mb-1">
                 {getGroupName(group, viewLanguage)}
               </h3>
@@ -154,11 +178,14 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => handleDiscussCropGroup(group)}
-                className="rounded-full text-xs w-full"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDiscussCropGroup(group);
+                }}
+                className="rounded-full text-xs w-full bg-primary/5 border-primary/20 hover:bg-primary/10"
               >
                 <MessageCircle className="w-3 h-3 mr-1" />
-                {t('social.groups.discuss', 'Discuss')}
+                {t('social.groups.discuss')}
               </Button>
             </motion.div>
           ))}
@@ -166,7 +193,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
 
         {filteredCropGroups.length === 0 && (
           <p className="text-center text-muted-foreground py-4">
-            {t('social.groups.no_crop_groups', 'No crop groups found')}
+            {t('social.groups.no_crop_groups')}
           </p>
         )}
       </div>
@@ -175,7 +202,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
       <div>
         <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
           <Users className="w-5 h-5 text-primary" />
-          {t('social.groups.community_groups', 'Community Groups')}
+          {t('social.groups.community_groups')}
         </h2>
 
         <div className="space-y-3">
@@ -186,13 +213,13 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.05 }}
               className={cn(
-                "bg-card/80 backdrop-blur-sm rounded-2xl p-4",
-                "border border-border/50 shadow-sm",
+                "bg-card/80 backdrop-blur-xl rounded-3xl p-4",
+                "border border-border/50 shadow-lg shadow-black/5",
                 "flex items-center gap-4"
               )}
             >
               {/* Group Avatar */}
-              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-2xl flex-shrink-0">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-2xl flex-shrink-0">
                 {group.avatar_url || '👥'}
               </div>
 
@@ -209,7 +236,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs text-muted-foreground flex items-center gap-1">
                     <Users className="w-3 h-3" />
-                    {group.member_count} {t('social.groups.members', 'members')}
+                    {group.member_count} {t('social.groups.members')}
                   </span>
                 </div>
               </div>
@@ -233,7 +260,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
                   {joinGroupMutation.isPending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
-                    t('social.groups.join', 'Join')
+                    t('social.groups.join')
                   )}
                 </Button>
               )}
@@ -249,17 +276,17 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
           >
             <div className="text-6xl mb-4">👥</div>
             <h3 className="text-lg font-semibold text-foreground mb-2">
-              {t('social.groups.no_groups', 'No groups yet')}
+              {t('social.groups.no_groups')}
             </h3>
             <p className="text-muted-foreground text-sm mb-4">
-              {t('social.groups.be_first', 'Be the first to create a group!')}
+              {t('social.groups.be_first')}
             </p>
             <Button
               onClick={() => handleModalStateChange(true)}
               className="rounded-full gap-2"
             >
               <Plus className="w-4 h-4" />
-              {t('social.groups.create', 'Create Group')}
+              {t('social.groups.create')}
             </Button>
           </motion.div>
         )}
@@ -269,6 +296,14 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
       <CreateGroupModal
         isOpen={isCreateModalOpen}
         onClose={() => handleModalStateChange(false)}
+      />
+
+      {/* Group Chat Sheet */}
+      <GroupChatSheet
+        isOpen={!!selectedCropGroup}
+        onClose={() => setSelectedCropGroup(null)}
+        group={selectedCropGroup || { id: '', name: '', icon: '' }}
+        language={viewLanguage}
       />
     </div>
   );

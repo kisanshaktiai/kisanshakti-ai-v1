@@ -13,6 +13,10 @@ import { QuickPostCreator } from '@/components/community/QuickPostCreator';
 import { LanguageSelector } from '@/components/community/LanguageSelector';
 import { BottomNavigation } from '@/components/BottomNavigation';
 import { CommunityTab } from '@/types/community';
+import { useSavedPostsFull } from '@/hooks/useCommunityPosts';
+import { PostCard } from '@/components/community/PostCard';
+import { formatDistanceToNow } from 'date-fns';
+import { Bookmark } from 'lucide-react';
 
 const CommunityPage: React.FC = () => {
   const { t } = useTranslation('social');
@@ -22,13 +26,46 @@ const CommunityPage: React.FC = () => {
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [viewLanguage, setViewLanguage] = useState(currentLanguage);
 
+  // Fetch saved posts for saved tab
+  const { data: savedPosts = [], isLoading: savedLoading } = useSavedPostsFull();
+
   // Sync view language with app language
   useEffect(() => {
     setViewLanguage(currentLanguage);
   }, [currentLanguage]);
 
+  // Transform saved posts to UI format
+  const transformedSavedPosts = savedPosts.map((post: any) => ({
+    id: post.id,
+    authorId: post.farmer_id,
+    authorName: post.farmer?.farmer_name || 'Anonymous Farmer',
+    authorAvatar: '👨‍🌾',
+    authorLocation: post.farmer?.location || 'Unknown location',
+    authorBadge: post.farmer?.is_verified ? 'verified' : null,
+    originalLanguage: post.language_code || 'en',
+    originalContent: post.content || '',
+    imageUrl: post.media_urls?.images?.[0],
+    mediaUrls: post.media_urls?.images || [],
+    reactions: {
+      helpful: Math.floor((post.likes_count || 0) * 0.5),
+      tried: Math.floor((post.likes_count || 0) * 0.3),
+      thanks: Math.floor((post.likes_count || 0) * 0.2),
+    },
+    likesCount: post.likes_count || 0,
+    commentCount: post.comments_count || 0,
+    sharesCount: post.shares_count || 0,
+    savesCount: post.saves_count || 0,
+    timestamp: post.created_at 
+      ? formatDistanceToNow(new Date(post.created_at), { addSuffix: true })
+      : 'Just now',
+    createdAt: post.created_at || new Date().toISOString(),
+    tags: post.hashtags || [],
+    hasVoiceNote: post.metadata?.hasVoiceNote || false,
+    isVerified: post.farmer?.is_verified || false,
+  }));
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-community-bg-start via-community-bg-mid to-community-bg-end">
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-secondary/20">
       {/* Glassmorphism Header */}
       <CommunityHeader 
         viewLanguage={viewLanguage}
@@ -36,7 +73,7 @@ const CommunityPage: React.FC = () => {
       />
 
       {/* Language Selector Pill */}
-      <div className="sticky top-16 z-40 px-4 py-2 bg-background/60 backdrop-blur-xl border-b border-border/30">
+      <div className="sticky top-16 z-40 px-4 py-2 bg-background/80 backdrop-blur-2xl border-b border-border/20">
         <LanguageSelector 
           selectedLanguage={viewLanguage}
           onLanguageChange={setViewLanguage}
@@ -103,15 +140,36 @@ const CommunityPage: React.FC = () => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3 }}
-              className="px-4 py-8 text-center"
+              className="px-4 py-4"
             >
-              <div className="text-6xl mb-4">🔖</div>
-              <h3 className="text-lg font-semibold text-foreground mb-2">
-                {t('social.empty.saved', 'Saved posts will appear here')}
-              </h3>
-              <p className="text-muted-foreground text-sm">
-                {t('social.empty.saved_hint', 'Swipe left on any post to save it')}
-              </p>
+              {savedLoading ? (
+                <div className="flex justify-center py-16">
+                  <div className="w-8 h-8 border-3 border-primary/30 border-t-primary rounded-full animate-spin" />
+                </div>
+              ) : transformedSavedPosts.length > 0 ? (
+                <div className="space-y-4">
+                  {transformedSavedPosts.map((post: any) => (
+                    <PostCard 
+                      key={post.id}
+                      post={post}
+                      viewLanguage={viewLanguage}
+                      isSaved={true}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-16">
+                  <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-secondary/50 flex items-center justify-center">
+                    <Bookmark className="w-10 h-10 text-muted-foreground" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground mb-2">
+                    {t('social.empty.saved')}
+                  </h3>
+                  <p className="text-muted-foreground text-sm">
+                    {t('social.empty.saved_hint')}
+                  </p>
+                </div>
+              )}
             </motion.div>
           )}
 
