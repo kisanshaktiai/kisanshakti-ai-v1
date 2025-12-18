@@ -21,6 +21,15 @@ const LANGUAGE_NAMES: Record<string, string> = {
   'as': 'Assamese',
 };
 
+// Custom error class to track HTTP status
+class APIError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -40,7 +49,7 @@ serve(async (req) => {
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY not configured');
+      throw new APIError('LOVABLE_API_KEY not configured', 500);
     }
 
     const sourceLangName = LANGUAGE_NAMES[sourceLanguage] || sourceLanguage;
@@ -70,9 +79,14 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Translation error:', error);
+    
+    // Properly surface 402 and 429 errors
+    const status = error instanceof APIError ? error.status : 500;
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify({ error: message }),
+      { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
@@ -113,14 +127,23 @@ ${text}`;
   if (!response.ok) {
     const errorText = await response.text();
     console.error('AI Gateway error:', response.status, errorText);
-    throw new Error(`Translation API error: ${response.status}`);
+    
+    // Pass through 402 (payment required) and 429 (rate limit) errors
+    if (response.status === 402) {
+      throw new APIError('Not enough credits. Please add funds to your Lovable AI workspace.', 402);
+    }
+    if (response.status === 429) {
+      throw new APIError('Rate limit exceeded. Please try again later.', 429);
+    }
+    
+    throw new APIError(`Translation API error: ${response.status}`, response.status);
   }
 
   const data = await response.json();
   const translatedText = data.choices?.[0]?.message?.content?.trim();
 
   if (!translatedText) {
-    throw new Error('No translation received');
+    throw new APIError('No translation received', 500);
   }
 
   return translatedText;
