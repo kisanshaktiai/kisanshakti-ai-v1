@@ -59,7 +59,24 @@ const CommunityPage: React.FC = () => {
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3 }}
             >
+              {/* Quick Post Creator - Voice First */}
+              <QuickPostCreator 
+                language={viewLanguage}
+                onExpandToFull={() => setIsCreatePostOpen(true)}
+              />
               <CommunityFeed viewLanguage={viewLanguage} />
+            </motion.div>
+          )}
+
+          {activeTab === 'groups' && (
+            <motion.div
+              key="groups"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <CommunityGroups viewLanguage={viewLanguage} />
             </motion.div>
           )}
 
@@ -102,6 +119,10 @@ const CommunityPage: React.FC = () => {
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3 }}
             >
+              <QuickPostCreator 
+                language={viewLanguage}
+                onExpandToFull={() => setIsCreatePostOpen(true)}
+              />
               <CommunityFeed viewLanguage={viewLanguage} filterByUser />
             </motion.div>
           )}
