@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { 
   Plus, Users, Loader2, ChevronRight, 
-  Mic, Search, Sprout, MessageCircle
+  Search, Sprout, MessageCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCommunityGroups, useJoinGroup, CropGroup, CommunityGroup } from '@/hooks/useCommunityGroups';
 import { CreateGroupModal } from './CreateGroupModal';
+import { toast } from 'sonner';
 
 interface CommunityGroupsProps {
   viewLanguage: string;
+  onModalStateChange?: (isOpen: boolean) => void;
 }
 
 // Emoji icons for crop groups
@@ -41,13 +44,25 @@ const getGroupName = (group: CropGroup, language: string): string => {
   return group.group_name;
 };
 
-export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage }) => {
+export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, onModalStateChange }) => {
   const { t } = useTranslation('social');
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   
   const { data, isLoading } = useCommunityGroups();
   const joinGroupMutation = useJoinGroup();
+
+  const handleModalStateChange = (isOpen: boolean) => {
+    setIsCreateModalOpen(isOpen);
+    onModalStateChange?.(isOpen);
+  };
+
+  const handleDiscussCropGroup = (group: CropGroup) => {
+    // Navigate to feed filtered by crop tag
+    toast.success(t('social.groups.opening_discussion', `Opening ${getGroupName(group, viewLanguage)} discussion`));
+    // For now, just show toast - could navigate to filtered feed or dedicated group chat
+  };
 
   const cropGroups = data?.cropGroups || [];
   const userGroups = data?.userGroups || [];
@@ -90,7 +105,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage }
       {/* Create Group Button - Big and Prominent */}
       <motion.button
         whileTap={{ scale: 0.98 }}
-        onClick={() => setIsCreateModalOpen(true)}
+        onClick={() => handleModalStateChange(true)}
         className={cn(
           "w-full p-4 mb-6 rounded-2xl",
           "bg-gradient-to-r from-primary to-primary/80",
@@ -139,6 +154,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage }
               <Button
                 size="sm"
                 variant="outline"
+                onClick={() => handleDiscussCropGroup(group)}
                 className="rounded-full text-xs w-full"
               >
                 <MessageCircle className="w-3 h-3 mr-1" />
@@ -239,7 +255,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage }
               {t('social.groups.be_first', 'Be the first to create a group!')}
             </p>
             <Button
-              onClick={() => setIsCreateModalOpen(true)}
+              onClick={() => handleModalStateChange(true)}
               className="rounded-full gap-2"
             >
               <Plus className="w-4 h-4" />
@@ -252,7 +268,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage }
       {/* Create Group Modal */}
       <CreateGroupModal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={() => handleModalStateChange(false)}
       />
     </div>
   );

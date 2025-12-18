@@ -19,6 +19,7 @@ const CommunityPage: React.FC = () => {
   const { currentLanguage } = useLanguageStore();
   const [activeTab, setActiveTab] = useState<CommunityTab>('feed');
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [viewLanguage, setViewLanguage] = useState(currentLanguage);
 
   // Sync view language with app language
@@ -76,7 +77,10 @@ const CommunityPage: React.FC = () => {
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3 }}
             >
-              <CommunityGroups viewLanguage={viewLanguage} />
+              <CommunityGroups 
+                viewLanguage={viewLanguage}
+                onModalStateChange={setIsGroupModalOpen}
+              />
             </motion.div>
           )}
 
@@ -129,8 +133,10 @@ const CommunityPage: React.FC = () => {
         </AnimatePresence>
       </main>
 
-      {/* Floating Create Post Button */}
-      <CreatePostFAB onClick={() => setIsCreatePostOpen(true)} />
+      {/* Floating Create Post Button - Hide when modals are open */}
+      {!isCreatePostOpen && !isGroupModalOpen && (
+        <CreatePostFAB onClick={() => setIsCreatePostOpen(true)} />
+      )}
 
       {/* Create Post Modal */}
       <CreatePostModal 

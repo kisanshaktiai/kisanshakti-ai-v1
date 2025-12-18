@@ -142,7 +142,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={handleClose}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60]"
           />
 
           <motion.div
@@ -150,7 +150,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] bg-card rounded-t-3xl overflow-hidden"
+            className="fixed inset-x-0 bottom-0 max-h-[75vh] bg-card rounded-t-3xl overflow-hidden z-[60] mb-0"
           >
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-border">
@@ -175,7 +175,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
             </div>
 
             {/* Content */}
-            <div className="p-4 overflow-y-auto max-h-[70vh]">
+            <div className="p-4 overflow-y-auto max-h-[55vh] pb-24">
               {/* Emoji Selector */}
               <div className="mb-6">
                 <label className="text-sm font-medium text-foreground mb-2 block">
