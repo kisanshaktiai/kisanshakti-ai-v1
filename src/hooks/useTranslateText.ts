@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface TranslationCache {
   [key: string]: string;
@@ -7,6 +8,9 @@ interface TranslationCache {
 
 // In-memory cache for translations
 const translationCache: TranslationCache = {};
+
+// Track if we've shown the credits error this session to avoid spam
+let hasShownCreditsError = false;
 
 const getCacheKey = (text: string, sourceLang: string, targetLang: string): string => {
   return `${sourceLang}-${targetLang}-${text.substring(0, 100)}`;
@@ -54,7 +58,50 @@ export const useTranslateText = (
         }
       });
 
-      if (fnError) throw fnError;
+      // Handle specific error statuses from the edge function
+      if (fnError) {
+        const errorMessage = fnError.message || '';
+        
+        // Check for 402 payment required
+        if (errorMessage.includes('402') || errorMessage.includes('credits')) {
+          if (!hasShownCreditsError) {
+            hasShownCreditsError = true;
+            toast.error('Translation unavailable', {
+              description: 'AI credits exhausted. Showing original text.',
+              duration: 5000,
+            });
+          }
+          setTranslatedText(originalText);
+          return;
+        }
+        
+        // Check for 429 rate limit
+        if (errorMessage.includes('429') || errorMessage.includes('rate limit')) {
+          toast.warning('Too many requests', {
+            description: 'Please wait a moment before translating more.',
+            duration: 3000,
+          });
+          setTranslatedText(originalText);
+          return;
+        }
+        
+        throw fnError;
+      }
+
+      if (data?.error) {
+        // Handle error in response body
+        if (data.error.includes('credits') || data.error.includes('402')) {
+          if (!hasShownCreditsError) {
+            hasShownCreditsError = true;
+            toast.error('Translation unavailable', {
+              description: 'AI credits exhausted. Showing original text.',
+              duration: 5000,
+            });
+          }
+          setTranslatedText(originalText);
+          return;
+        }
+      }
 
       if (data?.translatedText) {
         setTranslatedText(data.translatedText);
@@ -114,7 +161,12 @@ export const translateBatch = async (
       }
     });
 
-    if (error) throw error;
+    if (error) {
+      console.error('Batch translation error:', error);
+      // Handle credits error silently, return original texts
+      return texts;
+    }
+    
     return data?.translations || texts;
   } catch (err) {
     console.error('Batch translation error:', err);
