@@ -8,16 +8,15 @@ const corsHeaders = {
 };
 
 interface ScanRequest {
-  images?: string[]; // base64 encoded images
-  videoFrames?: string[]; // extracted video frames
+  images?: string[];
+  videoFrames?: string[];
   userNotes?: string;
   language?: string;
   farmerId?: string;
   tenantId?: string;
   landId?: string;
-  landCrop?: string; // Current crop in the land for validation
-  mode?: 'quick' | 'full' | 'targeted_solution'; // quick = fast detection only, full = complete analysis, targeted_solution = generate specific solution type
-  // For targeted_solution mode
+  landCrop?: string;
+  mode?: 'quick' | 'full' | 'targeted_solution';
   suggestionType?: 'organic' | 'fertilizer' | 'pesticide' | 'hybrid';
   landArea?: { guntha: number; acres: number; sqft: number };
   diagnosis?: any;
@@ -96,22 +95,18 @@ serve(async (req) => {
   const startTime = Date.now();
   
   try {
-    // Use Lovable AI or OpenAI
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    // Use OpenAI API exclusively
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
     
-    const apiKey = lovableApiKey || openAIApiKey;
-    const apiEndpoint = lovableApiKey 
-      ? 'https://ai.gateway.lovable.dev/v1/chat/completions'
-      : 'https://api.openai.com/v1/chat/completions';
-    
-    if (!apiKey) {
-      console.error('No AI API key configured');
+    if (!openAIApiKey) {
+      console.error('OPENAI_API_KEY not configured');
       return new Response(
         JSON.stringify({ success: false, error: 'AI service not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    const apiEndpoint = 'https://api.openai.com/v1/chat/completions';
 
     const requestData: ScanRequest = await req.json();
     const { 
@@ -131,7 +126,7 @@ serve(async (req) => {
       healthStatus
     } = requestData;
 
-    // Handle targeted_solution mode (no images needed)
+    // Handle targeted_solution mode (no images needed) - use gpt-4o-mini for text-only
     if (mode === 'targeted_solution' && suggestionType && diagnosis) {
       console.log('🎯 Targeted Solution Request:', { suggestionType, landArea, cropDetected: cropDetected?.name });
       
@@ -182,19 +177,32 @@ Return JSON with this structure:
       const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          'Authorization': `Bearer ${openAIApiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
+          model: 'gpt-4o-mini', // Use cheaper model for text-only
           messages: [
             { role: 'system', content: 'You are an expert agricultural scientist. Provide specific, actionable product recommendations with exact quantities.' },
             { role: 'user', content: targetedPrompt }
           ],
-          temperature: 0.3,
           max_tokens: 2000,
         }),
       });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('OpenAI API error:', response.status, errorText);
+        
+        if (response.status === 429) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Rate limit exceeded. Please try again.', rateLimited: true }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
 
       const aiResponse = await response.json();
       const content = aiResponse.choices?.[0]?.message?.content || '';
@@ -462,28 +470,26 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
       }
     ];
 
-    console.log('📡 Calling AI Vision API...');
+    console.log('📡 Calling OpenAI Vision API (gpt-4o)...');
     
-    const model = lovableApiKey ? 'google/gemini-2.5-pro' : 'gpt-4o';
-    
+    // Use gpt-4o for vision tasks
     const response = await fetch(apiEndpoint, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${openAIApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model,
+        model: 'gpt-4o', // Vision model
         messages,
-        max_tokens: 8000, // Increased for comprehensive Hindi/Marathi responses
-        temperature: 0.3,
+        max_tokens: 8000,
         response_format: { type: "json_object" }
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('AI API Error:', response.status, errorText);
+      console.error('OpenAI API Error:', response.status, errorText);
       
       if (response.status === 429) {
         return new Response(
@@ -496,18 +502,18 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
         );
       }
       
-      if (response.status === 402) {
+      if (response.status === 402 || response.status === 401) {
         return new Response(
           JSON.stringify({ 
             success: false, 
-            error: 'AI quota exceeded. Please contact support.',
+            error: 'OpenAI API authentication/billing error.',
             quotaExceeded: true 
           }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      throw new Error(`AI API error: ${response.status} ${errorText}`);
+      throw new Error(`OpenAI API error: ${response.status} ${errorText}`);
     }
 
     const aiResponse = await response.json();
@@ -522,7 +528,6 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
     // Helper function to repair truncated JSON
     const repairTruncatedJSON = (content: string): object | null => {
       try {
-        // Try to find the last complete object by tracking braces
         let depth = 0;
         let lastValidIndex = 0;
         let inString = false;
@@ -568,7 +573,6 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
     // Parse AI response
     let analysisResult;
     try {
-      // Clean up response if needed
       let cleanContent = aiContent.trim();
       if (cleanContent.startsWith('```json')) {
         cleanContent = cleanContent.replace(/^```json\n?/, '').replace(/\n?```$/, '');
@@ -581,7 +585,6 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
       console.error('Failed to parse AI response, attempting repair:', parseError);
       console.error('Raw content length:', aiContent.length);
       
-      // Try to repair truncated JSON
       let cleanContent = aiContent.trim();
       if (cleanContent.startsWith('```json')) {
         cleanContent = cleanContent.replace(/^```json\n?/, '').replace(/\n?```$/, '');
@@ -593,7 +596,6 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
       
       if (!analysisResult) {
         console.error('JSON repair failed, returning fallback response');
-        // Return a fallback response instead of failing completely
         analysisResult = {
           cropDetected: {
             name: "Crop detected",

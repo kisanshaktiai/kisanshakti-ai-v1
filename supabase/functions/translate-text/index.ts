@@ -47,9 +47,9 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      throw new APIError('LOVABLE_API_KEY not configured', 500);
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+    if (!OPENAI_API_KEY) {
+      throw new APIError('OPENAI_API_KEY not configured', 500);
     }
 
     const sourceLangName = LANGUAGE_NAMES[sourceLanguage] || sourceLanguage;
@@ -59,7 +59,7 @@ serve(async (req) => {
     if (batch && texts && Array.isArray(texts)) {
       const translations = await Promise.all(
         texts.map(async (t: string) => {
-          return await translateSingle(t, sourceLangName, targetLangName, LOVABLE_API_KEY);
+          return await translateSingle(t, sourceLangName, targetLangName, OPENAI_API_KEY);
         })
       );
 
@@ -70,7 +70,7 @@ serve(async (req) => {
     }
 
     // Single text translation
-    const translatedText = await translateSingle(text, sourceLangName, targetLangName, LOVABLE_API_KEY);
+    const translatedText = await translateSingle(text, sourceLangName, targetLangName, OPENAI_API_KEY);
 
     return new Response(
       JSON.stringify({ translatedText }),
@@ -109,14 +109,14 @@ IMPORTANT RULES:
 Text to translate:
 ${text}`;
 
-  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'google/gemini-2.5-flash',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'user', content: prompt }
       ],
@@ -126,14 +126,14 @@ ${text}`;
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('AI Gateway error:', response.status, errorText);
+    console.error('OpenAI API error:', response.status, errorText);
     
-    // Pass through 402 (payment required) and 429 (rate limit) errors
-    if (response.status === 402) {
-      throw new APIError('Not enough credits. Please add funds to your Lovable AI workspace.', 402);
-    }
+    // Pass through rate limit errors
     if (response.status === 429) {
       throw new APIError('Rate limit exceeded. Please try again later.', 429);
+    }
+    if (response.status === 402 || response.status === 401) {
+      throw new APIError('OpenAI API authentication/billing error.', response.status);
     }
     
     throw new APIError(`Translation API error: ${response.status}`, response.status);

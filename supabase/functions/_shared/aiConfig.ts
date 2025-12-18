@@ -1,7 +1,7 @@
 /**
  * Centralized AI Configuration
  * Single source of truth for all AI model settings across edge functions
- * Supports both OpenAI and Google AI (via Lovable Gateway)
+ * Now using OpenAI as the primary provider
  */
 
 // AI Provider types
@@ -13,6 +13,7 @@ export const AI_MODELS = {
     default: "gpt-4o-mini",
     fallback: "gpt-4o-mini",
     premium: "gpt-4o",
+    vision: "gpt-4o",
   },
   google: {
     default: "google/gemini-2.5-flash",
@@ -28,22 +29,25 @@ export const AI_ENDPOINTS = {
 } as const;
 
 export const AI_CONFIG = {
-  // Default provider (can be overridden per request)
-  DEFAULT_PROVIDER: "google" as AIProvider, // Use Lovable AI Gateway by default
+  // Default provider - now using OpenAI
+  DEFAULT_PROVIDER: "openai" as AIProvider,
   
-  // Primary model - gpt-4o-mini for OpenAI, gemini-2.5-flash for Google
-  MODEL: "google/gemini-2.5-flash",
+  // Primary model - gpt-4o-mini for fast/cheap, gpt-4o for vision
+  MODEL: "gpt-4o-mini",
   OPENAI_MODEL: "gpt-4o-mini",
   GOOGLE_MODEL: "google/gemini-2.5-flash",
   
+  // Vision model for image analysis
+  VISION_MODEL: "gpt-4o",
+  
   // Fallback model for retries
-  FALLBACK_MODEL: "google/gemini-2.5-flash-lite",
+  FALLBACK_MODEL: "gpt-4o-mini",
   OPENAI_FALLBACK: "gpt-4o-mini",
   GOOGLE_FALLBACK: "google/gemini-2.5-flash-lite",
 
   // Token limits - OPTIMIZED to prevent 502 timeouts
   MAX_TOKENS: 4096,
-  MAX_TOKENS_SCHEDULE: 8000, // Reduced to prevent timeout issues
+  MAX_TOKENS_SCHEDULE: 8000,
   MAX_TOKENS_CHAT: 4096,
   MAX_TOKENS_ANALYSIS: 4096,
 
@@ -53,7 +57,7 @@ export const AI_CONFIG = {
   RATE_LIMIT_ANALYSIS: { maxRequests: 20, windowMs: 60000 },
   
   // Request timeout in ms
-  REQUEST_TIMEOUT: 55000, // Increased for complex schedules
+  REQUEST_TIMEOUT: 55000,
 } as const;
 
 // Legacy export for backward compatibility
@@ -68,17 +72,20 @@ export function getAPIEndpoint(provider: AIProvider): string {
 
 /**
  * Get the API key for the specified provider
+ * Now prioritizes OpenAI
  */
 export function getAPIKey(provider: AIProvider): string {
-  if (provider === "google") {
-    const key = Deno.env.get("LOVABLE_API_KEY");
-    if (!key) {
-      console.warn("⚠️ LOVABLE_API_KEY not found, falling back to OpenAI");
-      return validateOpenAIKey();
-    }
-    return key;
+  if (provider === "openai") {
+    return validateOpenAIKey();
   }
-  return validateOpenAIKey();
+  
+  // Google/Lovable AI fallback
+  const key = Deno.env.get("LOVABLE_API_KEY");
+  if (!key) {
+    console.warn("⚠️ LOVABLE_API_KEY not found, falling back to OpenAI");
+    return validateOpenAIKey();
+  }
+  return key;
 }
 
 /**
@@ -95,8 +102,11 @@ export function validateOpenAIKey(): string {
 /**
  * Get the model for the specified provider
  */
-export function getModel(provider: AIProvider, tier: "default" | "fallback" | "premium" = "default"): string {
-  return AI_MODELS[provider][tier];
+export function getModel(provider: AIProvider, tier: "default" | "fallback" | "premium" | "vision" = "default"): string {
+  if (tier === "vision" && provider === "openai") {
+    return AI_MODELS.openai.vision;
+  }
+  return AI_MODELS[provider][tier as "default" | "fallback" | "premium"] || AI_MODELS[provider].default;
 }
 
 /**
@@ -130,12 +140,11 @@ export function buildAIRequest(
 
   // Token limit handling
   if (options.maxTokens) {
-    // Google/Gemini uses max_tokens, OpenAI newer models use max_completion_tokens
     payload.max_tokens = options.maxTokens;
   }
 
-  // Temperature (only for OpenAI legacy models, not GPT-5)
-  if (options.temperature !== undefined && provider === "openai" && !model.includes("gpt-5")) {
+  // Temperature (supported by gpt-4o-mini and gpt-4o)
+  if (options.temperature !== undefined) {
     payload.temperature = options.temperature;
   }
 
@@ -143,13 +152,11 @@ export function buildAIRequest(
   if (options.tools) {
     payload.tools = options.tools;
     
-    // Tool choice handling differs by provider
+    // Tool choice handling
     if (options.toolChoice) {
       if (provider === "google") {
         // Lovable AI Gateway / Google uses "auto" or "required" as string
-        // For forced tool calling, use "required" or "any"
         if (typeof options.toolChoice === 'object' && options.toolChoice.type === 'function') {
-          // Convert OpenAI-style forced tool choice to Google-compatible
           payload.tool_choice = "required";
         } else {
           payload.tool_choice = options.toolChoice;
