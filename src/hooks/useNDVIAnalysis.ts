@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -168,7 +168,9 @@ export function useNDVIAnalysis(landId: string | null): NDVIAnalysisResult {
     queryFn: async () => {
       if (!landId) return { current: null, history: [] };
 
-      const { data: ndviData, error: ndviError } = await supabase
+      const client = supabaseWithAuth(session?.farmerId, tenant?.id);
+      
+      const { data: ndviData, error: ndviError } = await client
         .from('ndvi_data')
         .select('*')
         .eq('land_id', landId)
@@ -207,13 +209,16 @@ export function useNDVIAnalysis(landId: string | null): NDVIAnalysisResult {
 
 export function useNDVIComparison(landIds: string[]) {
   const { tenant } = useTenant();
+  const { session } = useAuthStore();
 
   return useQuery({
     queryKey: ['ndvi-comparison', landIds, tenant?.id],
     queryFn: async () => {
       if (landIds.length === 0) return [];
 
-      const { data, error } = await supabase
+      const client = supabaseWithAuth(session?.farmerId, tenant?.id);
+      
+      const { data, error } = await client
         .from('ndvi_data')
         .select('*')
         .in('land_id', landIds)

@@ -49,7 +49,7 @@ import {
   Target,
   Zap
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { useToast } from '@/hooks/use-toast';
@@ -73,11 +73,12 @@ interface LandWithBoundary {
 const NDVIAnalysis = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const { landId: urlLandId } = useParams<{ landId?: string }>();
   const { session } = useAuthStore();
   const { tenant } = useTenant();
   const { toast } = useToast();
   const { speak, isSpeaking, stop } = useTextToSpeech();
-  const [selectedLandId, setSelectedLandId] = useState<string | null>(null);
+  const [selectedLandId, setSelectedLandId] = useState<string | null>(urlLandId || null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showAlertBanner, setShowAlertBanner] = useState(true);
@@ -138,12 +139,14 @@ const NDVIAnalysis = () => {
     return { lat: 20.5937, lng: 78.9629 };
   };
 
-  // Auto-select first land
+  // Use URL landId if provided, otherwise auto-select first land
   useEffect(() => {
-    if (lands && lands.length > 0 && !selectedLandId) {
+    if (urlLandId) {
+      setSelectedLandId(urlLandId);
+    } else if (lands && lands.length > 0 && !selectedLandId) {
       setSelectedLandId(lands[0].id);
     }
-  }, [lands, selectedLandId]);
+  }, [lands, selectedLandId, urlLandId]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
