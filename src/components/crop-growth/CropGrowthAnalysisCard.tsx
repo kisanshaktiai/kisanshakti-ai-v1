@@ -45,9 +45,21 @@ interface AnalysisData {
     product?: string;
     dosage?: string;
     cost_estimate?: string;
+    confidence_score?: number;
+    based_on?: string[];
+    scientific_reason?: string;
   }>;
   farmer_message: string;
   created_at: string;
+  // New scientific metadata fields
+  analysis_confidence?: number;
+  analysis_based_on?: string[];
+  scientific_methodology?: string;
+  yield_estimate?: {
+    range: string;
+    confidence: number;
+    assumptions: string[];
+  };
 }
 
 interface CropGrowthAnalysisCardProps {
@@ -96,13 +108,37 @@ export function CropGrowthAnalysisCard({ analysis, onActionComplete }: CropGrowt
               <Sprout className="h-5 w-5 text-primary" />
               {t('cropGrowth.currentStatus', 'Current Status')}
             </CardTitle>
-            <Badge variant={getRiskColor(analysis.risk_level) as any}>
-              {analysis.risk_level?.toUpperCase() || 'LOW'} {t('cropGrowth.risk', 'RISK')}
-            </Badge>
+            <div className="flex items-center gap-2">
+              {analysis.analysis_confidence && (
+                <Badge variant="outline" className={cn(
+                  "text-xs",
+                  analysis.analysis_confidence >= 80 ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600" :
+                  analysis.analysis_confidence >= 60 ? "bg-amber-500/10 border-amber-500/30 text-amber-600" :
+                  "bg-red-500/10 border-red-500/30 text-red-600"
+                )}>
+                  {analysis.analysis_confidence}% {t('cropGrowth.confident', 'confident')}
+                </Badge>
+              )}
+              <Badge variant={getRiskColor(analysis.risk_level) as any}>
+                {analysis.risk_level?.toUpperCase() || 'LOW'} {t('cropGrowth.risk', 'RISK')}
+              </Badge>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm">{analysis.crop_current_status}</p>
+          
+          {/* Analysis Based On */}
+          {analysis.analysis_based_on && analysis.analysis_based_on.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              <span className="text-xs text-muted-foreground">{t('cropGrowth.basedOn', 'Based on')}:</span>
+              {analysis.analysis_based_on.map((factor, idx) => (
+                <Badge key={idx} variant="outline" className="text-[10px] px-1.5 py-0 bg-primary/5">
+                  {factor}
+                </Badge>
+              ))}
+            </div>
+          )}
           
           {/* Health Score */}
           <div className="space-y-2">
@@ -137,6 +173,31 @@ export function CropGrowthAnalysisCard({ analysis, onActionComplete }: CropGrowt
               </span>
             </div>
           </div>
+          
+          {/* Yield Estimate with Context */}
+          {analysis.yield_estimate && (
+            <div className="p-3 rounded-lg bg-gradient-to-r from-primary/5 to-accent/5 border border-primary/20">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium">{t('cropGrowth.yieldEstimate', 'Expected Yield')}</span>
+                <Badge variant="outline" className="text-xs">
+                  {analysis.yield_estimate.confidence}% {t('cropGrowth.confidence', 'confidence')}
+                </Badge>
+              </div>
+              <p className="text-lg font-bold text-primary">{analysis.yield_estimate.range}</p>
+              {analysis.yield_estimate.assumptions && analysis.yield_estimate.assumptions.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-[10px] text-muted-foreground font-medium">{t('cropGrowth.assumptions', 'Assumptions')}:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {analysis.yield_estimate.assumptions.map((assumption, idx) => (
+                      <span key={idx} className="text-[10px] px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground">
+                        {assumption}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -249,9 +310,36 @@ export function CropGrowthAnalysisCard({ analysis, onActionComplete }: CropGrowt
                           <Clock className="h-3 w-3" />
                           {action.timing}
                         </span>
+                        {action.confidence_score && (
+                          <Badge variant="outline" className={cn(
+                            "text-[10px]",
+                            action.confidence_score >= 80 ? "bg-emerald-500/10 text-emerald-600" :
+                            action.confidence_score >= 60 ? "bg-amber-500/10 text-amber-600" :
+                            "bg-red-500/10 text-red-600"
+                          )}>
+                            {action.confidence_score}%
+                          </Badge>
+                        )}
                       </div>
                       <p className="font-medium">{action.action}</p>
                       <p className="text-xs text-muted-foreground mt-1">{action.reason}</p>
+                      
+                      {/* Scientific basis for action */}
+                      {action.based_on && action.based_on.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {action.based_on.map((basis, bIdx) => (
+                            <span key={bIdx} className="text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                              {basis}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      
+                      {action.scientific_reason && (
+                        <p className="text-[10px] text-muted-foreground mt-2 italic border-l-2 border-primary/30 pl-2">
+                          💡 {action.scientific_reason}
+                        </p>
+                      )}
                       
                       {(action.product || action.dosage) && (
                         <div className="mt-2 flex flex-wrap gap-2">
