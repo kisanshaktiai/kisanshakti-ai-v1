@@ -41,6 +41,21 @@
     "scheduleUpdates": "Schedule Updates",
     "taskPhoto": "Task Photo",
     "uploadTaskPhoto": "Upload photo for this task",
+    "photoType": "Photo Type",
+    "location": "Location",
+    "gettingLocation": "Getting location...",
+    "atLand": "At land",
+    "nearby": "Nearby",
+    "farFromLand": "Far from land",
+    "notesOptional": "Notes (Optional)",
+    "describeCropCondition": "Describe crop condition...",
+    "readyForAI": "Ready for AI Analysis",
+    "photoFromField": "Take photo from field - location auto-captured",
+    "aiAnalysisEnabled": "AI Analysis Enabled",
+    "uploadSuccess": "Photo uploaded and analyzed",
+    "uploadFailed": "Upload failed",
+    "pleaseAddLocation": "Please add location",
+    "photoTakenAway": "Photo taken away from land. Continue anyway?",
     "uploadTypes": {
       "crop": "Crop Photo",
       "soil": "Soil Photo",
@@ -57,8 +72,6 @@
       "nearby": "Nearby",
       "far": "Far from land",
       "unknown": "Location unknown"
-    },
-    "photoTakenAway": "Photo taken away from land. Continue anyway?",
-    "uploadSuccess": "Photo uploaded and analyzed"
+    }
   }
 }
