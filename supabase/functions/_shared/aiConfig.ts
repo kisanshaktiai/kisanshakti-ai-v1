@@ -204,6 +204,7 @@ export function validateAIConfig(): { valid: boolean; error?: string; provider?:
 
 /**
  * Build AI request payload - handles differences between OpenAI, Google, and Gemini
+ * CRITICAL: Gemini 2.5 Flash requires specific formatting for function calls
  */
 export function buildAIRequest(
   provider: AIProvider,
@@ -214,6 +215,7 @@ export function buildAIRequest(
     tools?: any[];
     toolChoice?: any;
     temperature?: number;
+    useJsonMode?: boolean;
   } = {}
 ): any {
   const payload: any = {
@@ -226,16 +228,26 @@ export function buildAIRequest(
     payload.max_tokens = options.maxTokens;
   }
 
-  // Temperature (supported by most models, Gemini defaults to 1.0)
+  // Temperature - Gemini works better with controlled temperature
   if (options.temperature !== undefined) {
     payload.temperature = options.temperature;
-  } else if (provider === "gemini") {
-    // Set lower temperature for Gemini to get more consistent, detailed output
-    payload.temperature = 0.7;
+  } else {
+    // Lower temperature for structured outputs
+    payload.temperature = provider === "gemini" ? 0.4 : 0.7;
   }
 
-  // Tools/function calling
-  if (options.tools) {
+  // For Gemini, prefer JSON mode over tool calling for complex schedules
+  // Gemini's function calling has limitations with complex nested schemas
+  if (provider === "gemini" && options.useJsonMode !== false) {
+    // Skip tools for Gemini - use JSON mode instead
+    // The system prompt should instruct to return JSON
+    payload.response_format = { type: "json_object" };
+    console.log("🔧 [AIConfig] Using JSON mode for Gemini (better for complex structures)");
+    return payload;
+  }
+
+  // Tools/function calling for OpenAI and Google
+  if (options.tools && provider !== "gemini") {
     payload.tools = options.tools;
     
     // Tool choice handling
@@ -244,13 +256,6 @@ export function buildAIRequest(
         // Lovable AI Gateway / Google uses "auto" or "required" as string
         if (typeof options.toolChoice === 'object' && options.toolChoice.type === 'function') {
           payload.tool_choice = "required";
-        } else {
-          payload.tool_choice = options.toolChoice;
-        }
-      } else if (provider === "gemini") {
-        // Gemini OpenAI-compatible API format
-        if (typeof options.toolChoice === 'object' && options.toolChoice.type === 'function') {
-          payload.tool_choice = { type: "function", function: { name: options.toolChoice.function.name } };
         } else {
           payload.tool_choice = options.toolChoice;
         }
