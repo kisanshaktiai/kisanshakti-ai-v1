@@ -62,6 +62,3 @@ verify_jwt = false
 
 [functions.community-tts]
 verify_jwt = false
-
-[functions.ai-crop-growth-tracking]
-verify_jwt = true

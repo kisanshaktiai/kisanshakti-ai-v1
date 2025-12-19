@@ -16,12 +16,18 @@ interface ScanRequest {
   tenantId?: string;
   landId?: string;
   landCrop?: string;
-  mode?: 'quick' | 'full' | 'targeted_solution';
+  mode?: 'quick' | 'full' | 'targeted_solution' | 'growth_tracking';
   suggestionType?: 'organic' | 'fertilizer' | 'pesticide' | 'hybrid';
   landArea?: { guntha: number; acres: number; sqft: number };
   diagnosis?: any;
   cropDetected?: any;
   healthStatus?: any;
+  // Growth tracking specific fields
+  uploadId?: string;
+  sowingDate?: string;
+  expectedStage?: string;
+  ndviData?: any[];
+  soilData?: any;
 }
 
 interface ThreeCategoryRecommendation {
@@ -123,8 +129,202 @@ serve(async (req) => {
       landArea,
       diagnosis,
       cropDetected,
-      healthStatus
+      healthStatus,
+      uploadId,
+      sowingDate,
+      expectedStage,
+      ndviData,
+      soilData
     } = requestData;
+
+    // Handle growth_tracking mode
+    if (mode === 'growth_tracking') {
+      console.log('🌱 Growth Tracking Mode:', { landId, uploadId, expectedStage });
+      
+      const allImages = [...(images || []), ...(videoFrames || [])];
+      if (allImages.length === 0) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'No images provided for growth tracking' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const languageInstruction = language === 'hi' 
+        ? 'Respond in Hindi (हिंदी). Use simple farmer-friendly language. Address farmer as "किसान मित्र".'
+        : language === 'mr'
+        ? 'Respond in Marathi (मराठी). Use simple farmer-friendly language. Address farmer as "शेतकरी मित्र".'
+        : 'Respond in simple Indian English. Address farmer as "Farmer Mitra".';
+
+      const growthTrackingPrompt = `You are a Senior Agriculture Scientist with 50+ years of experience across Indian agro-climatic zones.
+
+ROLE: Monitor crop growth, detect early stress signals, provide proactive guidance to prevent losses.
+
+CRITICAL RULES:
+1. Treat each photo as time-series growth evidence
+2. Compare with expected growth stage: ${expectedStage || 'unknown'}
+3. Correlate visual data with NDVI: ${ndviData?.[0]?.ndvi_value || 'N/A'}, Soil: ${soilData ? 'available' : 'N/A'}
+4. If signals conflict, flag as "needs_observation"
+5. Predict what will happen in next 3-7-14 days
+6. Give ACTIONABLE advice with specific quantities
+
+CONTEXT:
+- Crop: ${landCrop || 'Unknown'}
+- Sowing Date: ${sowingDate || 'Unknown'}
+- Land Area: ${landArea?.guntha || 'Unknown'} guntha
+- Latest NDVI: ${ndviData?.[0]?.ndvi_value || 'N/A'}
+- Soil NPK: ${soilData?.nitrogen_level || 'N/A'}/${soilData?.phosphorus_level || 'N/A'}/${soilData?.potassium_level || 'N/A'}
+
+${languageInstruction}
+
+Return JSON:
+{
+  "crop_current_status": "1-2 sentence status",
+  "growth_stage_analysis": {
+    "detected_stage": "detected stage name",
+    "expected_stage": "${expectedStage || 'unknown'}",
+    "deviation": "ahead|on_track|slightly_delayed|delayed|severely_delayed",
+    "stage_confidence": 0-100
+  },
+  "visual_observation_summary": "3-5 sentence visual analysis",
+  "detected_issues": [{"type": "pest|disease|nutrient_deficiency|water_stress|none", "name": "Issue name", "severity": "mild|moderate|severe", "confidence": 0-100, "symptoms": ["symptoms"]}],
+  "canopy_health_score": 0-100,
+  "uniformity_score": 0-100,
+  "ndvi_weather_correlation": "How NDVI/weather correlate with visuals",
+  "signal_confidence": "high|medium|low|needs_observation",
+  "predictions": {
+    "next_3_day": "3-day prediction",
+    "next_7_day": "7-day prediction with risks",
+    "next_14_day": "14-day prediction and yield impact"
+  },
+  "risk_level": "low|medium|high|critical",
+  "risk_factors": [{"factor": "name", "probability": 0-100, "impact": "low|medium|high", "timeframe": "when"}],
+  "yield_impact_estimate": "Impact if issues not addressed",
+  "recommended_actions": [{"action": "specific action", "timing": "when", "reason": "why", "priority": "critical|high|medium|low", "product": "product name", "dosage": "per acre", "cost_estimate": "INR"}],
+  "schedule_updates": [{"task_type": "irrigation|fertilizer|pesticide", "change_type": "advance|delay|add", "new_timing": "new time", "reason": "why"}],
+  "alert_type": "observation|action_required|critical_risk|none",
+  "farmer_message": "Complete friendly message with specific actionable advice (3-5 sentences)"
+}`;
+
+      const imageContents = allImages.slice(0, 4).map(img => ({
+        type: "image_url" as const,
+        image_url: {
+          url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`,
+          detail: "high" as const
+        }
+      }));
+
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openAIApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          messages: [
+            { role: 'system', content: growthTrackingPrompt },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: `Analyze this crop photo for growth tracking. ${userNotes ? `Farmer notes: ${userNotes}` : ''}` },
+                ...imageContents
+              ]
+            }
+          ],
+          max_tokens: 4000,
+          response_format: { type: 'json_object' }
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('OpenAI API Error:', response.status, errorText);
+        if (response.status === 429) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Rate limit exceeded', rateLimited: true }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
+
+      const aiResponse = await response.json();
+      const content = aiResponse.choices?.[0]?.message?.content || '';
+      
+      let analysisResult;
+      try {
+        analysisResult = JSON.parse(content);
+      } catch {
+        analysisResult = { crop_current_status: content, farmer_message: content };
+      }
+
+      // Store analysis if we have Supabase access
+      if (farmerId && tenantId && uploadId) {
+        try {
+          const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+          const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+          const supabase = createClient(supabaseUrl, supabaseKey);
+
+          await supabase.from('crop_growth_analysis').insert({
+            upload_id: uploadId,
+            land_id: landId,
+            farmer_id: farmerId,
+            tenant_id: tenantId,
+            crop_current_status: analysisResult.crop_current_status,
+            detected_growth_stage: analysisResult.growth_stage_analysis?.detected_stage,
+            expected_growth_stage: analysisResult.growth_stage_analysis?.expected_stage,
+            growth_stage_deviation: analysisResult.growth_stage_analysis?.deviation,
+            visual_observation_summary: analysisResult.visual_observation_summary,
+            detected_issues: analysisResult.detected_issues,
+            canopy_health_score: (analysisResult.canopy_health_score || 0) / 100,
+            uniformity_score: (analysisResult.uniformity_score || 0) / 100,
+            ndvi_weather_correlation: analysisResult.ndvi_weather_correlation,
+            signal_confidence: analysisResult.signal_confidence,
+            next_3_day_prediction: analysisResult.predictions?.next_3_day,
+            next_7_day_prediction: analysisResult.predictions?.next_7_day,
+            next_14_day_prediction: analysisResult.predictions?.next_14_day,
+            risk_level: analysisResult.risk_level,
+            risk_factors: analysisResult.risk_factors,
+            yield_impact_estimate: analysisResult.yield_impact_estimate,
+            recommended_actions: analysisResult.recommended_actions,
+            schedule_updates: analysisResult.schedule_updates,
+            farmer_message: analysisResult.farmer_message,
+            farmer_message_language: language,
+            ai_model_used: 'gpt-4o',
+            processing_time_ms: Date.now() - startTime,
+            confidence_score: (analysisResult.growth_stage_analysis?.stage_confidence || 70) / 100
+          });
+
+          // Create alert if needed
+          if (analysisResult.alert_type && analysisResult.alert_type !== 'none') {
+            await supabase.from('crop_growth_alerts').insert({
+              land_id: landId,
+              farmer_id: farmerId,
+              tenant_id: tenantId,
+              alert_type: analysisResult.alert_type,
+              alert_category: analysisResult.detected_issues?.[0]?.type || 'general',
+              title: analysisResult.detected_issues?.[0]?.name || 'Crop Health Alert',
+              message: analysisResult.farmer_message,
+              severity: analysisResult.risk_level === 'critical' || analysisResult.risk_level === 'high' ? 'danger' : analysisResult.risk_level === 'medium' ? 'warning' : 'info',
+              recommended_action: analysisResult.recommended_actions?.[0]?.action,
+              expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+            });
+          }
+
+          // Mark upload as processed
+          if (uploadId) {
+            await supabase.from('crop_growth_uploads').update({ is_processed: true }).eq('id', uploadId);
+          }
+        } catch (dbError) {
+          console.error('Database error:', dbError);
+        }
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, analysis: analysisResult, processingTimeMs: Date.now() - startTime }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Handle targeted_solution mode (no images needed) - use gpt-4o-mini for text-only
     if (mode === 'targeted_solution' && suggestionType && diagnosis) {

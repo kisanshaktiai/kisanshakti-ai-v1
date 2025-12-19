@@ -227,7 +227,7 @@ export function useCropGrowthTracking(landId?: string, farmerId?: string, tenant
     }
   }, [landId, farmerId, tenantId, refetchUploads]);
 
-  // Analyze uploaded media
+  // Analyze uploaded media using existing ai-crop-scan function
   const analyzeUpload = useCallback(async (upload: CropGrowthUpload): Promise<any> => {
     if (!landId || !farmerId || !tenantId) {
       toast.error('Missing required context');
@@ -237,13 +237,61 @@ export function useCropGrowthTracking(landId?: string, farmerId?: string, tenant
     setIsAnalyzing(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('ai-crop-growth-tracking', {
+      // Fetch land details for context
+      const { data: landData } = await supabase
+        .from('lands')
+        .select('*')
+        .eq('id', landId)
+        .single();
+
+      // Fetch NDVI data
+      const { data: ndviData } = await supabase
+        .from('ndvi_data')
+        .select('ndvi_value, ndwi_value, recorded_at')
+        .eq('land_id', landId)
+        .order('recorded_at', { ascending: false })
+        .limit(3);
+
+      // Fetch soil data - use direct query
+      const { data: soilData } = await supabase
+        .from('soil_health_reports' as any)
+        .select('*')
+        .eq('land_id', landId)
+        .order('tested_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      // Calculate expected growth stage
+      const calculateExpectedStage = (sowingDate: string | null, cropName: string | null): string => {
+        if (!sowingDate) return 'unknown';
+        const days = Math.floor((Date.now() - new Date(sowingDate).getTime()) / (1000 * 60 * 60 * 24));
+        if (days < 15) return 'germination';
+        if (days < 30) return 'seedling';
+        if (days < 60) return 'vegetative';
+        if (days < 90) return 'flowering';
+        return 'maturity';
+      };
+
+      const sowingDate = (landData as any)?.sowing_date;
+      const cropName = (landData as any)?.crop_name;
+      const areaGuntha = (landData as any)?.area_guntha;
+      const expectedStage = calculateExpectedStage(sowingDate, cropName);
+
+      // Use existing ai-crop-scan function with growth_tracking mode
+      const { data, error } = await supabase.functions.invoke('ai-crop-scan', {
         body: {
+          images: [upload.file_url],
+          mode: 'growth_tracking',
           uploadId: upload.id,
-          imageUrl: upload.file_url,
           landId: landId,
           farmerId: farmerId,
           tenantId: tenantId,
+          landCrop: cropName,
+          sowingDate: sowingDate,
+          expectedStage: expectedStage,
+          ndviData: ndviData,
+          soilData: soilData,
+          landArea: areaGuntha ? { guntha: areaGuntha, acres: areaGuntha * 0.025, sqft: areaGuntha * 1089 } : undefined,
           language: i18n.language
         }
       });

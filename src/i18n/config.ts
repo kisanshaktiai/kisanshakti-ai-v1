@@ -79,6 +79,9 @@ import mrSoil from './locales/mr/soil.json';
 import enProfileEdit from './locales/en/profile_edit.json';
 import hiProfileEdit from './locales/hi/profile_edit.json';
 import mrProfileEdit from './locales/mr/profile_edit.json';
+import enCropGrowth from './locales/en/cropGrowth.json';
+import hiCropGrowth from './locales/hi/cropGrowth.json';
+import mrCropGrowth from './locales/mr/cropGrowth.json';
 
 // Helper function to dynamically merge base and page-level translations
 // This makes adding new languages in the future seamless - just add JSON files!
@@ -139,6 +142,7 @@ i18n
           notification: enNotification,
           soil: enSoil,
           profile_edit: enProfileEdit,
+          cropGrowth: enCropGrowth,
         })
       },
       hi: { 
@@ -167,6 +171,7 @@ i18n
           notification: hiNotification,
           soil: hiSoil,
           profile_edit: hiProfileEdit,
+          cropGrowth: hiCropGrowth,
         })
       },
       pa: { translation: pa },
@@ -196,6 +201,7 @@ i18n
           notification: mrNotification,
           soil: mrSoil,
           profile_edit: mrProfileEdit,
+          cropGrowth: mrCropGrowth,
         })
       },
       ta: { translation: ta },
