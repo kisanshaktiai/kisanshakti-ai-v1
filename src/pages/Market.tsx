@@ -8,9 +8,10 @@ import { ProductDetails } from '@/components/marketplace/ProductDetails';
 import { ShoppingCart } from '@/components/marketplace/ShoppingCart';
 import { SellerDashboard } from '@/components/marketplace/SellerDashboard';
 import { OrderManagement } from '@/components/marketplace/OrderManagement';
+import { MarketPriceIntelligence } from '@/components/market-intelligence';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Package, ShoppingBag, Store, TrendingUp } from 'lucide-react';
+import { Package, ShoppingBag, Store, TrendingUp, BarChart3 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { MarketSkeleton } from '@/components/skeletons';
@@ -196,24 +197,32 @@ export default function Market() {
 
       <div className="container mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-6">
-            <TabsTrigger value="browse" className="flex items-center gap-2">
+          <TabsList className="grid w-full grid-cols-5 mb-6">
+            <TabsTrigger value="prices" className="flex items-center gap-1 text-xs sm:text-sm">
+              <BarChart3 className="w-4 h-4" />
+              <span className="hidden sm:inline">{t('market.tabs.prices', 'Prices')}</span>
+            </TabsTrigger>
+            <TabsTrigger value="browse" className="flex items-center gap-1 text-xs sm:text-sm">
               <ShoppingBag className="w-4 h-4" />
-              {t('market.tabs.browse')}
+              <span className="hidden sm:inline">{t('market.tabs.browse')}</span>
             </TabsTrigger>
-            <TabsTrigger value="orders" className="flex items-center gap-2">
+            <TabsTrigger value="orders" className="flex items-center gap-1 text-xs sm:text-sm">
               <Package className="w-4 h-4" />
-              {t('market.tabs.my_orders')}
+              <span className="hidden sm:inline">{t('market.tabs.my_orders')}</span>
             </TabsTrigger>
-            <TabsTrigger value="sell" className="flex items-center gap-2">
+            <TabsTrigger value="sell" className="flex items-center gap-1 text-xs sm:text-sm">
               <Store className="w-4 h-4" />
-              {t('market.tabs.sell')}
+              <span className="hidden sm:inline">{t('market.tabs.sell')}</span>
             </TabsTrigger>
-            <TabsTrigger value="analytics" className="flex items-center gap-2">
+            <TabsTrigger value="analytics" className="flex items-center gap-1 text-xs sm:text-sm">
               <TrendingUp className="w-4 h-4" />
-              {t('market.tabs.analytics')}
+              <span className="hidden sm:inline">{t('market.tabs.analytics')}</span>
             </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="prices" className="space-y-6">
+            <MarketPriceIntelligence />
+          </TabsContent>
 
           <TabsContent value="browse" className="space-y-6">
             <CategoryFilter
