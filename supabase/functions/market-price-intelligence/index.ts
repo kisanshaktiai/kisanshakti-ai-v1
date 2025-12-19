@@ -456,23 +456,109 @@ Respond ONLY with valid JSON, no markdown.`;
       }
 
       case 'getCrops': {
-        // FIXED: Removed state filter
-        const { data, error } = await supabase
+        // Filter by group if provided
+        const { group } = params;
+        let query = supabase
           .from('market_prices')
           .select('crop_name, commodity_category')
           .not('crop_name', 'is', null);
 
+        if (group && group !== 'all') {
+          query = query.eq('commodity_category', group);
+        }
+
+        const { data, error } = await query;
         if (error) throw error;
 
         const uniqueCrops = [...new Set((data || []).map((d: any) => d.crop_name))].filter(Boolean).sort();
         const categories = [...new Set((data || []).map((d: any) => d.commodity_category))].filter(Boolean);
 
-        console.log(`[market-price-intelligence] Found ${uniqueCrops.length} unique crops`);
+        console.log(`[market-price-intelligence] Found ${uniqueCrops.length} unique crops for group: ${group || 'all'}`);
 
         return new Response(JSON.stringify({ 
           success: true, 
           crops: uniqueCrops,
           categories 
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      case 'getCropGroups': {
+        // Get unique crop groups with counts
+        const { data, error } = await supabase
+          .from('market_prices')
+          .select('commodity_category');
+
+        if (error) throw error;
+
+        // Count crops per group
+        const groupCounts: Record<string, number> = {};
+        (data || []).forEach((d: any) => {
+          const group = d.commodity_category || 'इतर';
+          groupCounts[group] = (groupCounts[group] || 0) + 1;
+        });
+
+        // Define group metadata with icons and English names
+        const groupMeta: Record<string, { icon: string; en: string; hi: string }> = {
+          'धान्ये': { icon: '🌾', en: 'Grains', hi: 'अनाज' },
+          'डाळी': { icon: '🫘', en: 'Pulses', hi: 'दालें' },
+          'भाज्या': { icon: '🥬', en: 'Vegetables', hi: 'सब्जियां' },
+          'फळे': { icon: '🍎', en: 'Fruits', hi: 'फल' },
+          'मसाले': { icon: '🧄', en: 'Spices', hi: 'मसाले' },
+          'तेलबिया': { icon: '🌻', en: 'Oilseeds', hi: 'तिलहन' },
+          'गूळ व साखर': { icon: '🍯', en: 'Jaggery & Sugar', hi: 'गुड़ और चीनी' },
+          'कापूस': { icon: '🧶', en: 'Cotton', hi: 'कपास' },
+          'इतर': { icon: '📦', en: 'Others', hi: 'अन्य' },
+        };
+
+        const groups = Object.entries(groupCounts)
+          .map(([name, count]) => ({
+            name,
+            count,
+            ...(groupMeta[name] || { icon: '📦', en: name, hi: name })
+          }))
+          .sort((a, b) => b.count - a.count);
+
+        console.log(`[market-price-intelligence] Found ${groups.length} crop groups`);
+
+        return new Response(JSON.stringify({ 
+          success: true, 
+          groups 
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      case 'getTopMarkets': {
+        // Get top markets by record count for button display
+        const { limit = 6 } = params;
+        
+        const { data, error } = await supabase
+          .from('market_prices')
+          .select('market_location');
+
+        if (error) throw error;
+
+        // Count records per market
+        const marketCounts: Record<string, number> = {};
+        (data || []).forEach((d: any) => {
+          const market = d.market_location;
+          if (market) {
+            marketCounts[market] = (marketCounts[market] || 0) + 1;
+          }
+        });
+
+        const topMarkets = Object.entries(marketCounts)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, limit)
+          .map(([name, count]) => ({ name, count }));
+
+        console.log(`[market-price-intelligence] Found ${topMarkets.length} top markets`);
+
+        return new Response(JSON.stringify({ 
+          success: true, 
+          markets: topMarkets 
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
