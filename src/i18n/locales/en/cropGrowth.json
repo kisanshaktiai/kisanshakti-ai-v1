@@ -38,6 +38,27 @@
     "overview": "Overview",
     "history": "History",
     "predictions": "Predictions",
-    "scheduleUpdates": "Schedule Updates"
+    "scheduleUpdates": "Schedule Updates",
+    "taskPhoto": "Task Photo",
+    "uploadTaskPhoto": "Upload photo for this task",
+    "uploadTypes": {
+      "crop": "Crop Photo",
+      "soil": "Soil Photo",
+      "land_preparation": "Land Preparation",
+      "irrigation": "Irrigation",
+      "pest": "Pest/Disease",
+      "fertilizer": "Fertilizer Application",
+      "harvest": "Harvest",
+      "general": "General"
+    },
+    "locationRequired": "Location required",
+    "locationValidation": {
+      "atLand": "At land",
+      "nearby": "Nearby",
+      "far": "Far from land",
+      "unknown": "Location unknown"
+    },
+    "photoTakenAway": "Photo taken away from land. Continue anyway?",
+    "uploadSuccess": "Photo uploaded and analyzed"
   }
 }

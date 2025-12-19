@@ -4206,55 +4206,70 @@ export type Database = {
         Row: {
           capture_location: Json | null
           created_at: string
+          distance_from_land_meters: number | null
           farmer_id: string
           file_type: string
           file_url: string
           id: string
           is_processed: boolean | null
           land_id: string
+          location_validated: boolean | null
           ndvi_at_capture: number | null
           notes: string | null
           processing_error: string | null
+          schedule_id: string | null
+          task_id: string | null
           tenant_id: string
           thumbnail_url: string | null
           updated_at: string
           upload_timestamp: string
+          upload_type: string | null
           weather_at_capture: Json | null
         }
         Insert: {
           capture_location?: Json | null
           created_at?: string
+          distance_from_land_meters?: number | null
           farmer_id: string
           file_type: string
           file_url: string
           id?: string
           is_processed?: boolean | null
           land_id: string
+          location_validated?: boolean | null
           ndvi_at_capture?: number | null
           notes?: string | null
           processing_error?: string | null
+          schedule_id?: string | null
+          task_id?: string | null
           tenant_id: string
           thumbnail_url?: string | null
           updated_at?: string
           upload_timestamp?: string
+          upload_type?: string | null
           weather_at_capture?: Json | null
         }
         Update: {
           capture_location?: Json | null
           created_at?: string
+          distance_from_land_meters?: number | null
           farmer_id?: string
           file_type?: string
           file_url?: string
           id?: string
           is_processed?: boolean | null
           land_id?: string
+          location_validated?: boolean | null
           ndvi_at_capture?: number | null
           notes?: string | null
           processing_error?: string | null
+          schedule_id?: string | null
+          task_id?: string | null
           tenant_id?: string
           thumbnail_url?: string | null
           updated_at?: string
           upload_timestamp?: string
+          upload_type?: string | null
           weather_at_capture?: Json | null
         }
         Relationships: [
@@ -4291,6 +4306,27 @@ export type Database = {
             columns: ["land_id"]
             isOneToOne: false
             referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_growth_uploads_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "crop_schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_growth_uploads_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "farmer_upcoming_needs"
+            referencedColumns: ["task_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_uploads_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_tasks"
             referencedColumns: ["id"]
           },
           {
@@ -24095,6 +24131,19 @@ export type Database = {
           invite_id: string
           is_valid: boolean
           role: string
+        }[]
+      }
+      validate_photo_location: {
+        Args: {
+          p_land_id: string
+          p_lat: number
+          p_lon: number
+          p_tolerance_meters?: number
+        }
+        Returns: {
+          distance_meters: number
+          is_valid: boolean
+          validation_level: string
         }[]
       }
       validate_registration_token_secure: {
