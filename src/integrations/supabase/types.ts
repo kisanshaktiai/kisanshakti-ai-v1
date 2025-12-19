@@ -11437,6 +11437,7 @@ export type Database = {
           satellite_source: string | null
           savi_value: number | null
           scene_id: string | null
+          soil_moisture: number | null
           spatial_resolution: number | null
           tenant_id: string
           tile_id: string | null
@@ -11473,6 +11474,7 @@ export type Database = {
           satellite_source?: string | null
           savi_value?: number | null
           scene_id?: string | null
+          soil_moisture?: number | null
           spatial_resolution?: number | null
           tenant_id: string
           tile_id?: string | null
@@ -11509,6 +11511,7 @@ export type Database = {
           satellite_source?: string | null
           savi_value?: number | null
           scene_id?: string | null
+          soil_moisture?: number | null
           spatial_resolution?: number | null
           tenant_id?: string
           tile_id?: string | null
