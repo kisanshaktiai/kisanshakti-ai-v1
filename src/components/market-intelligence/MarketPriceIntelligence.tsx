@@ -71,7 +71,7 @@ export function MarketPriceIntelligence() {
       
       await Promise.all([
         fetchCropGroups(),
-        fetchTopMarkets(6),
+        fetchTopMarkets(20), // Fetch more markets to show all
         fetchCrops(),
       ]);
       
@@ -186,10 +186,10 @@ export function MarketPriceIntelligence() {
         <div className="relative z-10 flex items-center justify-between">
           <div>
             <h1 className="text-lg md:text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              बाजारभाव माहिती
+              {t('market.intelligence.title')}
             </h1>
             <p className="text-xs text-muted-foreground">
-              Market Price Intelligence
+              {t('market.intelligence.subtitle')}
             </p>
           </div>
           
@@ -223,7 +223,7 @@ export function MarketPriceIntelligence() {
                 {selectedMarket !== 'all' && <span className="ml-1">• {selectedMarket}</span>}
               </span>
             ) : (
-              <span className="text-muted-foreground">फिल्टर निवडा • Select Filters</span>
+              <span className="text-muted-foreground">{t('market.intelligence.selectFilters')}</span>
             )}
           </span>
           {showFilters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -278,7 +278,7 @@ export function MarketPriceIntelligence() {
                       )}
                     >
                       <CalendarIcon className="mr-2 h-4 w-4" />
-                      {selectedDate ? format(selectedDate, 'dd/MM') : 'तारीख'}
+                      {selectedDate ? format(selectedDate, 'dd/MM') : t('market.intelligence.date')}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
@@ -294,7 +294,7 @@ export function MarketPriceIntelligence() {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
-                    placeholder="शोधा..."
+                    placeholder={t('market.intelligence.search')}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="h-10 pl-9 rounded-xl bg-card/50 border-border/50 text-sm"
@@ -316,7 +316,7 @@ export function MarketPriceIntelligence() {
           disabled={isLoading}
         >
           {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-          रिफ्रेश
+          {t('market.intelligence.refresh')}
         </Button>
         
         <Button 
@@ -326,7 +326,7 @@ export function MarketPriceIntelligence() {
           disabled={isLoading || !selectedCrop}
         >
           <Brain className="w-4 h-4 mr-2" />
-          AI सल्ला
+          {t('market.intelligence.aiAdvice')}
         </Button>
       </div>
 
@@ -341,28 +341,28 @@ export function MarketPriceIntelligence() {
             className="rounded-lg text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <TrendingUp className="w-3.5 h-3.5 mr-1" />
-            भाव
+            {t('market.intelligence.prices')}
           </TabsTrigger>
           <TabsTrigger 
             value="nearby"
             className="rounded-lg text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <MapPin className="w-3.5 h-3.5 mr-1" />
-            जवळ
+            {t('market.intelligence.nearby')}
           </TabsTrigger>
           <TabsTrigger 
             value="comparison"
             className="rounded-lg text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <BarChart3 className="w-3.5 h-3.5 mr-1" />
-            तुलना
+            {t('market.intelligence.comparison')}
           </TabsTrigger>
           <TabsTrigger 
             value="ai"
             className="rounded-lg text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
             <Brain className="w-3.5 h-3.5 mr-1" />
-            AI
+            {t('market.intelligence.ai')}
           </TabsTrigger>
         </TabsList>
 
@@ -446,6 +446,8 @@ export function MarketPriceIntelligence() {
 }
 
 function EmptyPricesState() {
+  const { t } = useTranslation();
+  
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -458,10 +460,7 @@ function EmptyPricesState() {
     >
       <Wheat className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
       <p className="text-muted-foreground text-sm font-medium">
-        निवडलेल्या फिल्टरसाठी किंमत डेटा उपलब्ध नाही
-      </p>
-      <p className="text-xs text-muted-foreground/70 mt-1">
-        No price data for selected filters
+        {t('market.intelligence.noPrices')}
       </p>
     </motion.div>
   );

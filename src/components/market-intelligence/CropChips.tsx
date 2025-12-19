@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Wheat } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +18,7 @@ export function CropChips({
   isLoading = false,
   maxDisplay = 12
 }: CropChipsProps) {
+  const { t } = useTranslation();
   const displayCrops = crops.slice(0, maxDisplay);
   const remainingCount = crops.length - maxDisplay;
 
@@ -24,7 +26,7 @@ export function CropChips({
     return (
       <div className="text-center py-4 text-muted-foreground text-sm">
         <Wheat className="w-8 h-8 mx-auto mb-2 opacity-50" />
-        पीक प्रकार निवडा • Select a crop type above
+        {t('market.intelligence.selectCropType')}
       </div>
     );
   }
@@ -33,9 +35,9 @@ export function CropChips({
     <div className="w-full">
       <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
         <Wheat className="w-4 h-4 text-primary" />
-        पीक निवडा • Select Crop
+        {t('market.intelligence.selectCrop')}
         <span className="text-xs bg-muted px-2 py-0.5 rounded-full">
-          {crops.length} पिके
+          {crops.length} {t('market.intelligence.crops')}
         </span>
       </h3>
       
@@ -67,7 +69,7 @@ export function CropChips({
             animate={{ opacity: 1 }}
             className="px-3 py-2 rounded-xl text-sm text-muted-foreground bg-muted/50 border border-dashed border-border flex items-center"
           >
-            +{remainingCount} आणखी
+            +{remainingCount} {t('market.intelligence.more')}
           </motion.div>
         )}
       </div>
@@ -78,9 +80,9 @@ export function CropChips({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           onClick={() => onSelectCrop('')}
-          className="mt-2 text-xs text-muted-foreground hover:text-foreground underline"
+          className="mt-2 text-xs text-primary hover:text-primary/80 underline"
         >
-          निवड रद्द करा • Clear selection
+          {t('market.intelligence.clearSelection')}
         </motion.button>
       )}
     </div>
