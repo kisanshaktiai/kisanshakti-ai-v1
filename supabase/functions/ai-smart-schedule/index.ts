@@ -2569,27 +2569,30 @@ serve(async (req) => {
     const tenantId = req.headers.get("x-tenant-id") || "";
     const farmerId = req.headers.get("x-farmer-id") || "";
     
-    // Determine AI provider - prioritize Gemini if key is available, then request preference
+    // Determine AI provider - PRODUCTION: prioritize Gemini 2.5 Flash if key is available
     const headerProvider = req.headers.get("x-ai-provider") as AIProvider | null;
     
-    // Use Gemini as default if GEMINI_API_KEY exists (for better rural language support)
+    // Check for GEMINI_API_KEY in Supabase secrets (best for rural agriculture language)
     const geminiKey = Deno.env.get("GEMINI_API_KEY");
     let aiProvider: AIProvider;
     
-    if (geminiKey) {
-      aiProvider = "gemini"; // Prefer Gemini for schedule generation - better multilingual support
-      console.log(`🔑 [AI-Schedule] Using Gemini with GEMINI_API_KEY for enhanced rural language`);
+    if (geminiKey && geminiKey.trim() !== "") {
+      aiProvider = "gemini";
+      console.log(`✅ [AI-Schedule] Using Gemini 2.5 Flash with GEMINI_API_KEY from Supabase secrets`);
+      console.log(`🌾 [AI-Schedule] Enhanced rural agriculture language support enabled`);
     } else {
       aiProvider = requestedProvider || headerProvider || AI_CONFIG.DEFAULT_PROVIDER;
+      console.log(`⚠️ [AI-Schedule] GEMINI_API_KEY not found, using ${aiProvider} provider`);
     }
     
-    // Get API key and model for the selected provider
+    // Get API key and model for the selected provider - all from secrets
     const apiKey = getAPIKey(aiProvider);
     const apiEndpoint = getAPIEndpoint(aiProvider);
     const model = getModel(aiProvider, "default");
     const fallbackModel = getModel(aiProvider, "fallback");
     
-    console.log(`🤖 [AI-Schedule] Provider: ${aiProvider} | Model: ${model} | Endpoint: ${apiEndpoint}`);
+    console.log(`🤖 [AI-Schedule] Provider: ${aiProvider} | Model: ${model}`);
+    console.log(`📡 [AI-Schedule] Endpoint: ${apiEndpoint}`);
     console.log(`🌾 [AI-Schedule] isReadyMadePlant: ${isReadyMadePlant}, nurseryDays: ${nurseryDays}`);
 
     // ═══════════════════════════════════════════════════════════════════
