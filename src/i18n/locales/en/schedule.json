@@ -232,12 +232,14 @@
       "notes_label": "Notes",
       "notes_optional": "(Optional)",
       "notes_placeholder": "Add any notes about this task...",
-      "done": "Done",
+      "done": "Confirm",
       "skipped": "Skipped",
       "weather": "Weather",
       "high": "High",
       "medium": "Medium",
-      "low": "Low"
+      "low": "Low",
+      "hours": "hours",
+      "persons": "persons"
     },
     "climate": {
       "ai_active": "AI Active",
