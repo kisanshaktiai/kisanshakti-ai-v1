@@ -3500,29 +3500,56 @@ ${dataSection}
 ═══════════════════════════════════════════════════════════════════════════
 ⚠️ CRITICAL OUTPUT RULES
 ═══════════════════════════════════════════════════════════════════════════
-1. You MUST call the create_schedule function with properly structured JSON
+1. Return a valid JSON object with the exact structure shown below
 2. Every task_name MUST start with "${translatedCropName} -"
 3. All ${totalStages} stages (${allStageKeys.join(", ")}) MUST have at least 1 task
 4. ${hasSoilData ? 'DO NOT include soil test task - soil data already exists!' : 'Include soil test task in planning stage'}
 5. Use PRESCRIPTION doses from NPK PRESCRIPTION section above - NOT generic doses
 6. Use CORRECT application_method for each product type
 7. Include water_required_liters for irrigation tasks: ${adjustedWaterPerIrrigation} liters
-8. NO text responses - ONLY function call with JSON data`;
+
+EXACT JSON OUTPUT FORMAT (follow this exactly):
+{
+  "crop_name": "${translatedCropName}",
+  "total_duration_days": ${cropDurationDays},
+  "expected_yield_quintals": <number>,
+  "yield_multiplier_target": 3,
+  "stages_covered": ["planning", "land_preparation", "sowing", "germination", "vegetative_growth", "reproductive", "maturity", "harvest", "post_harvest", "fallow_restoration"],
+  "tasks": [
+    {
+      "task_name": "${translatedCropName} - <task description>",
+      "stage_key": "<one of: planning|land_preparation|sowing|germination|vegetative_growth|reproductive|maturity|harvest|post_harvest|fallow_restoration>",
+      "stage_order": <1-10>,
+      "category": "<fertilizer|pest_control|irrigation|sowing|harvest|monitoring|land_preparation|growth_promoter|other>",
+      "days_from_sowing": <integer, can be negative for planning>",
+      "priority": "<critical|high|medium|low>",
+      "description": "<detailed description in ${languageName}>",
+      "instructions": ["<step 1>", "<step 2>", "..."],
+      "quantity": "<e.g., 50 kg, 2 liters>",
+      "estimated_cost": <number in INR>,
+      "weather_dependent": <true|false>,
+      "yield_impact": "<e.g., 20% yield boost>",
+      "product_names": "<comma-separated product names>",
+      "product_doses": "<comma-separated doses>",
+      "product_prices": "<comma-separated prices in INR>"
+    }
+  ]
+}`;
 
     // Build mandatory task categories string for long-duration crops
     const mandatoryCategoriesPrompt = cropTaskConfig.mandatoryCategories.length > 0
       ? `\nMANDATORY TASK TYPES for ${translatedCropName}: ${cropTaskConfig.mandatoryCategories.join(', ')}`
       : '';
 
-    const userPrompt = `Generate COMPLETE ${translatedCropName} crop schedule NOW.
+    const userPrompt = `Generate COMPLETE ${translatedCropName} crop schedule as JSON.
 
 MANDATORY CHECKLIST:
 ✓ All ${totalStages} stages covered: ${allStageKeys.join(", ")}
 ✓ MINIMUM ${minTaskCount} tasks required for this ${cropDurationDays}-day crop
 ✓ Seed preparation with treatment details
 ✓ For products: use flat fields - product_names (comma-separated), product_doses, product_prices
-✓ Instructions in ${languageName} rural dialect
-✓ Cost estimates per task${mandatoryCategoriesPrompt}
+✓ Instructions in ${languageName} rural dialect (ग्रामीण भाषा)
+✓ Cost estimates per task in INR${mandatoryCategoriesPrompt}
 
 CRITICAL FOR ${cropDurationDays}-DAY CROPS:
 - Include ${Math.ceil(cropDurationDays / 15)} irrigation monitoring tasks
@@ -3530,12 +3557,11 @@ CRITICAL FOR ${cropDurationDays}-DAY CROPS:
 - Include ${Math.ceil(cropDurationDays / 25)} weeding tasks
 - Include ${Math.ceil(cropDurationDays / 45)} pest/disease monitoring tasks
 
-Call the create_schedule function with ${minTaskCount}-${minTaskCount + 10} tasks.`;
+OUTPUT: Return ONLY valid JSON object (no markdown, no explanation). Start with { and end with }`;
 
     console.log(`🤖 [AI] Calling ${aiProvider}/${model} with optimized ${totalStages}-stage prompt`);
 
-    // SIMPLIFIED tool schema for Google Gemini compatibility (reduced complexity)
-    // Google has strict limits on schema states - keep it minimal
+    // Tool schema for OpenAI/Google (not used for Gemini)
     const toolSchema = {
       type: "function",
       function: {
@@ -3594,7 +3620,7 @@ Call the create_schedule function with ${minTaskCount}-${minTaskCount + 10} task
         const currentEndpoint = getAPIEndpoint(currentProvider);
         const currentApiKey = getAPIKey(currentProvider);
 
-        // Build request payload using helper function
+        // Build request payload - Gemini uses JSON mode, others use function calling
         const requestPayload = buildAIRequest(
           currentProvider,
           currentModel,
@@ -3602,12 +3628,20 @@ Call the create_schedule function with ${minTaskCount}-${minTaskCount + 10} task
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
           ],
-          {
-            maxTokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
-            tools: [toolSchema],
-            toolChoice: { type: "function", function: { name: "create_schedule" } },
-          }
+          currentProvider === "gemini" 
+            ? {
+                maxTokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
+                useJsonMode: true,  // Use JSON mode for Gemini
+              }
+            : {
+                maxTokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
+                tools: [toolSchema],
+                toolChoice: { type: "function", function: { name: "create_schedule" } },
+                useJsonMode: false,
+              }
         );
+        
+        console.log(`📤 [AI] Request mode: ${currentProvider === "gemini" ? "JSON mode" : "Function calling"}`);
 
         aiResponse = await fetch(currentEndpoint, {
           method: "POST",
