@@ -52,6 +52,19 @@ export interface HistoricalComparison {
   year?: { data: MarketPrice[]; stats: HistoricalStats | null };
 }
 
+export interface CropGroup {
+  name: string;
+  count: number;
+  icon: string;
+  en: string;
+  hi: string;
+}
+
+export interface TopMarket {
+  name: string;
+  count: number;
+}
+
 export function useMarketPriceIntelligence(farmerId?: string) {
   const [prices, setPrices] = useState<MarketPrice[]>([]);
   const [groupedPrices, setGroupedPrices] = useState<Record<string, MarketPrice[]>>({});
@@ -61,8 +74,10 @@ export function useMarketPriceIntelligence(farmerId?: string) {
   const [farmerLocation, setFarmerLocation] = useState<FarmerLocation | null>(null);
   const [states, setStates] = useState<string[]>([]);
   const [markets, setMarkets] = useState<string[]>([]);
+  const [topMarkets, setTopMarkets] = useState<TopMarket[]>([]);
   const [crops, setCrops] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
+  const [cropGroups, setCropGroups] = useState<CropGroup[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -113,10 +128,31 @@ export function useMarketPriceIntelligence(farmerId?: string) {
     }
   }, [callEdgeFunction]);
 
-  const fetchCrops = useCallback(async () => {
+  const fetchTopMarkets = useCallback(async (limit: number = 6) => {
     try {
-      // FIXED: No state parameter needed since all data is from Maharashtra
-      const data = await callEdgeFunction('getCrops', {});
+      const data = await callEdgeFunction('getTopMarkets', { limit });
+      setTopMarkets(data.markets || []);
+      return data.markets;
+    } catch (err) {
+      console.error('Error fetching top markets:', err);
+      return [];
+    }
+  }, [callEdgeFunction]);
+
+  const fetchCropGroups = useCallback(async () => {
+    try {
+      const data = await callEdgeFunction('getCropGroups');
+      setCropGroups(data.groups || []);
+      return data.groups;
+    } catch (err) {
+      console.error('Error fetching crop groups:', err);
+      return [];
+    }
+  }, [callEdgeFunction]);
+
+  const fetchCrops = useCallback(async (group?: string) => {
+    try {
+      const data = await callEdgeFunction('getCrops', { group });
       setCrops(data.crops || []);
       setCategories(data.categories || []);
       return data.crops;
@@ -131,13 +167,13 @@ export function useMarketPriceIntelligence(farmerId?: string) {
     date?: string;
     district?: string;
     market?: string;
+    group?: string;
     limit?: number;
   } = {}) => {
     setIsLoading(true);
     setError(null);
     
     try {
-      // FIXED: Removed state parameter - filter by market location instead
       const data = await callEdgeFunction('fetchPrices', params);
       setPrices(data.data || []);
       setGroupedPrices(data.groupedByDate || {});
@@ -182,7 +218,6 @@ export function useMarketPriceIntelligence(farmerId?: string) {
     setError(null);
     
     try {
-      // FIXED: Removed state parameter
       const data = await callEdgeFunction('getHistoricalComparison', params);
       setHistoricalData(data.comparisons || {});
       return data.comparisons;
@@ -205,7 +240,6 @@ export function useMarketPriceIntelligence(farmerId?: string) {
     setError(null);
     
     try {
-      // FIXED: Removed state parameter
       const data = await callEdgeFunction('getAIAnalysis', params);
       setAiAnalysis(data.analysis || null);
       return data.analysis;
@@ -227,8 +261,10 @@ export function useMarketPriceIntelligence(farmerId?: string) {
     farmerLocation,
     states,
     markets,
+    topMarkets,
     crops,
     categories,
+    cropGroups,
     
     // State
     isLoading,
@@ -238,6 +274,8 @@ export function useMarketPriceIntelligence(farmerId?: string) {
     fetchFarmerLocation,
     fetchStates,
     fetchMarkets,
+    fetchTopMarkets,
+    fetchCropGroups,
     fetchCrops,
     fetchPrices,
     fetchNearbyMarkets,
