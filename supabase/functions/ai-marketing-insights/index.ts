@@ -192,7 +192,7 @@ Generate marketing insights as JSON:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-5-mini-2025-08-07',
+        model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
@@ -238,7 +238,7 @@ Generate marketing insights as JSON:
     await supabase.from('ai_decision_log').insert({
       tenant_id: tenantId,
       decision_type: 'marketing_prediction',
-      model_version: 'openai/gpt-5-mini-2025-08-07',
+      model_version: 'openai/gpt-4o-mini',
       input_data: {
         schedules_count: schedules.length,
         upcoming_tasks: upcomingTasks.length,
