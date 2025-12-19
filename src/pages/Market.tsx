@@ -113,7 +113,9 @@ export default function Market() {
     if (!user) return;
     
     try {
-      const { data, error } = await supabase
+      // Use any to bypass deep type instantiation issue with large Supabase schema
+      const client: any = supabase;
+      const { data, error } = await client
         .from('wishlist_items')
         .select('product_id')
         .eq('farmer_id', user.id);
