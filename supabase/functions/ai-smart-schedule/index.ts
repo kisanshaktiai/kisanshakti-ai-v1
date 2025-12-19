@@ -2813,9 +2813,9 @@ serve(async (req) => {
     
     // GET MINIMUM TASK COUNT FOR THIS CROP (addresses Issue #3 - sugarcane needs 30+ tasks)
     const cropTaskConfig = CROP_TASK_MULTIPLIERS[cropLower] || CROP_TASK_MULTIPLIERS['default'];
-    // CAP task count to prevent JSON truncation (max 35 tasks to stay within token limits)
+    // CAP task count to prevent JSON truncation (max 25 tasks to stay within token limits)
     const rawMinTasks = Math.max(totalStages * 2, cropTaskConfig.minTasks);
-    const minTaskCount = Math.min(rawMinTasks, 35);
+    const minTaskCount = Math.min(rawMinTasks, 25);
     const cropDurationDays = cropTaskConfig.durationDays;
     console.log(`📋 [AI] Building prompt for ${totalStages} stages, min ${minTaskCount} tasks for ${cropDurationDays}-day crop`);
 
@@ -2993,15 +2993,13 @@ YOUR EXPERTISE INCLUDES:
 - Traditional farming wisdom combined with modern science (देशी ज्ञान + आधुनिक विज्ञान)
 - Regional farming practices across all Indian states
 
-CRITICAL WRITING RULES:
-1. Write LONG, DETAILED descriptions (50-100 words minimum per task)
-2. Include step-by-step instructions farmers can follow (numbered steps)
-3. Explain the REASON behind each action (ऐसा इसलिए करना है क्योंकि...)
-4. Include EXACT timings (सुबह 6 बजे, शाम 5 बजे, etc.)
-5. Mention INCOME IMPACT for each task (इससे 20% ज्यादा पैदावार होगी)
-6. Include PRECAUTIONS in simple language
-7. Reference WEATHER conditions where relevant
-8. Use LOCAL UNITS (गुंठा, क्विंटल, बोरी, etc.) alongside standard units`;
+CRITICAL WRITING RULES (COMPACT OUTPUT - PREVENT TRUNCATION):
+1. Write CONCISE descriptions (15-25 words MAX per task)
+2. Instructions: 2-3 short bullet points (10-15 words each)
+3. Skip verbose explanations - farmers know basics
+4. Include timing: morning/evening only
+5. Mention yield impact briefly: +20% yield
+6. Use LOCAL UNITS (गुंठा, क्विंटल) alongside standard`;
 
     // ═══════════════════════════════════════════════════════════════════
     // WATER REQUIREMENT CALCULATIONS FOR THIS LAND
@@ -3617,8 +3615,8 @@ OUTPUT: Return ONLY valid JSON object (no markdown, no explanation). Start with 
           ],
           currentProvider === "gemini" 
             ? {
-                // Increase token limit to prevent truncation; prompt enforces compact JSON
-                maxTokens: 12000,
+                // Use Gemini's maximum token limit (8192 output) to prevent truncation
+                maxTokens: 8192,
                 useJsonMode: true, // Use JSON mode for Gemini
               }
             : {
@@ -3782,19 +3780,61 @@ OUTPUT: Return ONLY valid JSON object (no markdown, no explanation). Start with 
       }
     }
 
-    // If still no schedule data, log and throw
+    // If still no schedule data, check for truncation and handle gracefully
     if (!scheduleData) {
       const finishReason = aiData.choices?.[0]?.finish_reason as string | undefined;
-      console.error("❌ [AI] No structured data found.", {
-        finishReason,
-        snippet: JSON.stringify(aiData).substring(0, 800),
-      });
+      
+      // CRITICAL: Handle truncation by building minimal fallback schedule
+      if (finishReason === "length") {
+        console.warn("⚠️ [AI] Response truncated (finish_reason=length). Building minimal schedule...");
+        
+        // Extract partial data if available from truncated response
+        const partialContent = aiData.choices?.[0]?.message?.content || "";
+        let partialTasks: any[] = [];
+        
+        // Try to extract any valid tasks from partial response
+        try {
+          const tasksMatch = partialContent.match(/"tasks"\s*:\s*\[([\s\S]*)/);
+          if (tasksMatch) {
+            // Try to find complete task objects
+            const taskPattern = /\{[^{}]*"task_name"[^{}]*"stage_key"[^{}]*\}/g;
+            const matches = partialContent.match(taskPattern);
+            if (matches) {
+              partialTasks = matches.slice(0, 10).map((m: string) => {
+                try { return JSON.parse(m); } catch { return null; }
+              }).filter(Boolean);
+            }
+          }
+        } catch (e) {
+          console.warn("⚠️ [AI] Could not extract partial tasks:", e);
+        }
 
-      throw new Error(
-        finishReason === "length"
-          ? "AI response was truncated (too long). Please try again."
-          : "AI did not return structured schedule. Please try again."
-      );
+        // Build minimal schedule with extracted or default tasks
+        if (partialTasks.length >= 3) {
+          console.log(`✅ [AI] Recovered ${partialTasks.length} tasks from truncated response`);
+          scheduleData = {
+            crop_name: translatedCropName,
+            total_duration_days: cropDurationDays,
+            expected_yield_quintals: 20,
+            yield_multiplier_target: 3,
+            stages_covered: allStageKeys,
+            tasks: partialTasks
+          };
+        } else {
+          // Cannot recover - throw with helpful message
+          console.error("❌ [AI] No structured data found.", {
+            finishReason,
+            snippet: JSON.stringify(aiData).substring(0, 800),
+          });
+          throw new Error("AI response was truncated. Please try generating with a simpler crop or reduce land complexity.");
+        }
+      } else {
+        console.error("❌ [AI] No structured data found.", {
+          finishReason,
+          snippet: JSON.stringify(aiData).substring(0, 800),
+        });
+        throw new Error("AI did not return structured schedule. Please try again.");
+      }
     }
     
     console.log(`✅ [AI] Generated ${scheduleData.tasks?.length || 0} tasks`);

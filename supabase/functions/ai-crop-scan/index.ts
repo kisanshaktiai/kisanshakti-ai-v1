@@ -101,16 +101,136 @@ serve(async (req) => {
   const startTime = Date.now();
   
   try {
-    // Use OpenAI API exclusively
+    // Try OpenAI first, fall back to Gemini
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
     
-    if (!openAIApiKey) {
-      console.error('OPENAI_API_KEY not configured');
+    // Determine available providers
+    const hasOpenAI = !!openAIApiKey;
+    const hasGemini = !!geminiApiKey;
+    
+    if (!hasOpenAI && !hasGemini) {
+      console.error('No AI API key configured (OPENAI_API_KEY or GEMINI_API_KEY)');
       return new Response(
         JSON.stringify({ success: false, error: 'AI service not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Helper function to call AI with fallback
+    const callAIWithFallback = async (
+      systemPrompt: string,
+      userContent: any[],
+      maxTokens: number = 4000
+    ): Promise<any> => {
+      // Try OpenAI first if available
+      if (hasOpenAI) {
+        try {
+          console.log('🤖 [AI] Trying OpenAI gpt-4o...');
+          const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${openAIApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o',
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userContent }
+              ],
+              max_tokens: maxTokens,
+              response_format: { type: 'json_object' }
+            }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            console.log('✅ [AI] OpenAI succeeded');
+            return { success: true, data, provider: 'openai' };
+          }
+
+          if (response.status === 429) {
+            console.warn('⚠️ [AI] OpenAI rate limited, trying Gemini fallback...');
+          } else {
+            const errorText = await response.text();
+            console.warn(`⚠️ [AI] OpenAI error ${response.status}: ${errorText.substring(0, 200)}`);
+          }
+        } catch (e) {
+          console.warn('⚠️ [AI] OpenAI failed:', e);
+        }
+      }
+
+      // Fallback to Gemini
+      if (hasGemini) {
+        try {
+          console.log('🤖 [AI] Trying Gemini gemini-2.0-flash...');
+          
+          // Convert image_url format to Gemini format
+          const geminiContent = userContent.map((item: any) => {
+            if (item.type === 'image_url') {
+              const url = item.image_url.url;
+              if (url.startsWith('data:')) {
+                const [meta, base64] = url.split(',');
+                const mimeType = meta.match(/data:([^;]+)/)?.[1] || 'image/jpeg';
+                return {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: base64
+                  }
+                };
+              }
+            }
+            return { text: item.text || JSON.stringify(item) };
+          });
+
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [
+                  { role: 'user', parts: [{ text: systemPrompt }, ...geminiContent] }
+                ],
+                generationConfig: {
+                  maxOutputTokens: maxTokens,
+                  responseMimeType: 'application/json'
+                }
+              }),
+            }
+          );
+
+          if (response.ok) {
+            const geminiData = await response.json();
+            const content = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            console.log('✅ [AI] Gemini succeeded');
+            
+            // Parse Gemini response
+            let parsed;
+            try {
+              parsed = JSON.parse(content);
+            } catch {
+              const jsonMatch = content.match(/\{[\s\S]*\}/);
+              parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { raw: content };
+            }
+            
+            return { 
+              success: true, 
+              data: { choices: [{ message: { content: JSON.stringify(parsed) } }] },
+              provider: 'gemini' 
+            };
+          }
+
+          const errorText = await response.text();
+          console.error('❌ [AI] Gemini error:', response.status, errorText.substring(0, 200));
+        } catch (e) {
+          console.error('❌ [AI] Gemini failed:', e);
+        }
+      }
+
+      return { success: false, error: 'All AI providers failed' };
+    };
 
     const apiEndpoint = 'https://api.openai.com/v1/chat/completions';
 
@@ -213,43 +333,23 @@ Return JSON:
         }
       }));
 
-      const response = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openAIApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            { role: 'system', content: growthTrackingPrompt },
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: `Analyze this crop photo for growth tracking. ${userNotes ? `Farmer notes: ${userNotes}` : ''}` },
-                ...imageContents
-              ]
-            }
-          ],
-          max_tokens: 4000,
-          response_format: { type: 'json_object' }
-        }),
-      });
+      // Use fallback-enabled AI call
+      const userContent = [
+        { type: 'text', text: `Analyze this crop photo for growth tracking. ${userNotes ? `Farmer notes: ${userNotes}` : ''}` },
+        ...imageContents
+      ];
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('OpenAI API Error:', response.status, errorText);
-        if (response.status === 429) {
-          return new Response(
-            JSON.stringify({ success: false, error: 'Rate limit exceeded', rateLimited: true }),
-            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-        throw new Error(`OpenAI API error: ${response.status}`);
+      const aiResult = await callAIWithFallback(growthTrackingPrompt, userContent, 4000);
+      
+      if (!aiResult.success) {
+        console.error('❌ All AI providers failed for growth tracking');
+        return new Response(
+          JSON.stringify({ success: false, error: 'AI analysis temporarily unavailable. Please try again.' }),
+          { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
       }
 
-      const aiResponse = await response.json();
-      const content = aiResponse.choices?.[0]?.message?.content || '';
+      const content = aiResult.data.choices?.[0]?.message?.content || '';
       
       let analysisResult;
       try {
@@ -290,7 +390,7 @@ Return JSON:
             schedule_updates: analysisResult.schedule_updates,
             farmer_message: analysisResult.farmer_message,
             farmer_message_language: language,
-            ai_model_used: 'gpt-4o',
+            ai_model_used: aiResult.provider === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o',
             processing_time_ms: Date.now() - startTime,
             confidence_score: (analysisResult.growth_stage_analysis?.stage_confidence || 70) / 100
           });
@@ -321,7 +421,12 @@ Return JSON:
       }
 
       return new Response(
-        JSON.stringify({ success: true, analysis: analysisResult, processingTimeMs: Date.now() - startTime }),
+        JSON.stringify({ 
+          success: true, 
+          analysis: analysisResult, 
+          processingTimeMs: Date.now() - startTime,
+          provider: aiResult.provider 
+        }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
