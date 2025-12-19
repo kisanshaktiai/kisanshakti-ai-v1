@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Droplets, Leaf, Bug, Scissors, Package, AlertCircle, CheckCircle2, Clock, Zap, ChevronDown, Volume2, VolumeX, Calendar, IndianRupee, CloudRain, Thermometer, Loader2, Shield, BookOpen, AlertTriangle } from 'lucide-react';
+import { Droplets, Leaf, Bug, Scissors, Package, AlertCircle, CheckCircle2, Clock, Zap, ChevronDown, Volume2, VolumeX, Calendar, IndianRupee, CloudRain, Thermometer, Loader2, Shield, BookOpen, AlertTriangle, Camera } from 'lucide-react';
 import { format, isToday, isTomorrow, isPast, differenceInDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TaskCompletionSection } from './TaskCompletionSection';
@@ -54,9 +54,10 @@ interface TaskTimelineProps {
   onTaskClick?: (task: Task) => void;
   onTaskComplete?: () => void;
   onTaskUpdate?: (taskId: string, updates: Partial<Task>) => void;
+  onTakePhoto?: (task: Task) => void;
 }
 
-const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskComplete, onTaskUpdate }) => {
+const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskComplete, onTaskUpdate, onTakePhoto }) => {
   const { t } = useTranslation();
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
@@ -486,6 +487,24 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                           <div className="px-4 pb-4 space-y-4" onClick={(e) => e.stopPropagation()}>
                             {/* Action Buttons */}
                             <div className="flex justify-end gap-2 relative z-20">
+                              {/* Camera Button for Photo Upload */}
+                              {onTakePhoto && (
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    onTakePhoto(task);
+                                  }}
+                                  className="gap-2 pointer-events-auto border-primary/30 text-primary hover:bg-primary/10"
+                                >
+                                  <Camera className="h-4 w-4" />
+                                  <span>{t('cropGrowth.takePhoto') || 'Photo'}</span>
+                                </Button>
+                              )}
+
                               {/* Video Help Button */}
                               <VideoHelpButton
                                 category={task.task_type}
