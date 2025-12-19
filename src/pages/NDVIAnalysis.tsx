@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -9,16 +10,19 @@ import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { supabase } from '@/integrations/supabase/client';
 import { landsApi } from '@/services/landsApi';
 import { NDVIMapView } from '@/components/land/NDVIMapView';
 import { NDVITrendChart } from '@/components/land/NDVITrendChart';
+import { NDVIHealthScore } from '@/components/land/NDVIHealthScore';
+import { NDVIEarlyWarning } from '@/components/land/NDVIEarlyWarning';
+import { NDVIPredictionCard } from '@/components/land/NDVIPredictionCard';
+import { NDVIAlertBanner } from '@/components/land/NDVIAlertBanner';
+import { useNDVIAnalysis } from '@/hooks/useNDVIAnalysis';
 import { 
   ArrowLeft, 
   Map, 
   TrendingUp,
   TrendingDown, 
-  Info, 
   Activity,
   Droplets,
   Leaf,
@@ -38,11 +42,12 @@ import {
   MessageSquare,
   Lightbulb,
   CheckCircle2,
-  AlertTriangle,
-  XCircle,
   Clock,
   MapPin,
-  Minus
+  Minus,
+  BarChart3,
+  Target,
+  Zap
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
@@ -50,19 +55,6 @@ import { useTenant } from '@/contexts/TenantContext';
 import { useToast } from '@/hooks/use-toast';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { cn } from '@/lib/utils';
-
-interface NDVIData {
-  id: string;
-  land_id: string;
-  date: string;
-  ndvi_value: number;
-  evi_value?: number;
-  ndwi_value?: number;
-  savi_value?: number;
-  cloud_coverage?: number;
-  satellite_source?: string;
-  created_at: string;
-}
 
 interface LandWithBoundary {
   id: string;
@@ -78,14 +70,6 @@ interface LandWithBoundary {
   center_lon?: number;
 }
 
-interface CropAdvice {
-  status: 'excellent' | 'good' | 'moderate' | 'poor';
-  mainMessage: string;
-  actionItems: string[];
-  urgency: 'low' | 'medium' | 'high';
-  nextSteps: string[];
-}
-
 const NDVIAnalysis = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
@@ -95,7 +79,8 @@ const NDVIAnalysis = () => {
   const { speak, isSpeaking, stop } = useTextToSpeech();
   const [selectedLandId, setSelectedLandId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [showAlertBanner, setShowAlertBanner] = useState(true);
 
   // Fetch lands for the farmer
   const { data: lands, isLoading: landsLoading, refetch: refetchLands } = useQuery({
@@ -112,32 +97,17 @@ const NDVIAnalysis = () => {
     enabled: !!session?.farmerId && !!tenant?.id,
   });
 
-  // Fetch NDVI data with real-time updates
-  const { data: ndviData, isLoading: ndviLoading, refetch: refetchNDVI } = useQuery({
-    queryKey: ['ndvi', selectedLandId],
-    queryFn: async () => {
-      if (!selectedLandId) return null;
-      
-      const { data, error } = await supabase
-        .from('ndvi_data')
-        .select('*')
-        .eq('land_id', selectedLandId)
-        .order('date', { ascending: false })
-        .limit(30);
-      
-      if (error) {
-        console.error('Error fetching NDVI data:', error);
-        throw error;
-      }
-      
-      return data || [];
-    },
-    enabled: !!selectedLandId,
-    refetchInterval: 60000, // Refresh every minute
-  });
+  // Use new NDVI analysis hook
+  const { 
+    current: ndviCurrent, 
+    history: ndviHistory, 
+    prediction, 
+    isLoading: ndviLoading, 
+    refetch: refetchNDVI 
+  } = useNDVIAnalysis(selectedLandId);
 
   // Get selected land details
-  const selectedLand = lands?.find(l => l.id === selectedLandId);
+  const selectedLand = lands?.find((l: any) => l.id === selectedLandId);
 
   // Parse boundary coordinates
   const getBoundaryCoordinates = () => {
@@ -165,132 +135,8 @@ const NDVIAnalysis = () => {
         lng: selectedLand.center_point_old.coordinates[0]
       };
     }
-    // Default to India center if no coordinates
     return { lat: 20.5937, lng: 78.9629 };
   };
-
-  // Generate farmer-friendly advice
-  const generateAdvice = (data: NDVIData[]): CropAdvice => {
-    if (!data || data.length === 0) {
-      return {
-        status: 'moderate',
-        mainMessage: i18n.language === 'hi' ? 
-          'सैटेलाइट डेटा प्राप्त हो रहा है...' : 
-          'Fetching satellite data...',
-        actionItems: [],
-        urgency: 'low',
-        nextSteps: []
-      };
-    }
-
-    const latest = data[0];
-    const ndvi = latest.ndvi_value || 0;
-    const ndwi = latest.ndwi_value || 0;
-
-    if (ndvi > 0.7) {
-      return {
-        status: 'excellent',
-        mainMessage: i18n.language === 'hi' ? 
-          '🌱 बहुत बढ़िया! आपकी फसल एकदम स्वस्थ है' : 
-          '🌱 Excellent! Your crop is very healthy',
-        actionItems: i18n.language === 'hi' ? [
-          'पानी की वर्तमान मात्रा बनाए रखें',
-          'कीटों की नियमित जांच करते रहें',
-          '5 दिन बाद फिर चेक करें'
-        ] : [
-          'Maintain current water levels',
-          'Continue pest monitoring',
-          'Check again in 5 days'
-        ],
-        urgency: 'low',
-        nextSteps: i18n.language === 'hi' ? [
-          'फसल की ऊंचाई नोट करें',
-          'मौसम पर नज़र रखें'
-        ] : [
-          'Record crop height',
-          'Monitor weather'
-        ]
-      };
-    } else if (ndvi > 0.5) {
-      return {
-        status: 'good',
-        mainMessage: i18n.language === 'hi' ? 
-          '🌿 अच्छा! थोड़ा सुधार कर सकते हैं' : 
-          '🌿 Good! Small improvements possible',
-        actionItems: i18n.language === 'hi' ? [
-          ndwi < 0.3 ? '💧 पानी की मात्रा बढ़ाएं' : 'पानी ठीक है',
-          'हल्का उर्वरक दे सकते हैं',
-          'खरपतवार हटाएं'
-        ] : [
-          ndwi < 0.3 ? '💧 Increase irrigation' : 'Water is adequate',
-          'Can apply light fertilizer',
-          'Remove weeds if any'
-        ],
-        urgency: 'medium',
-        nextSteps: i18n.language === 'hi' ? [
-          '3 दिन में फिर जांचें',
-          'पत्तों का रंग देखें'
-        ] : [
-          'Check in 3 days',
-          'Observe leaf color'
-        ]
-      };
-    } else if (ndvi > 0.3) {
-      return {
-        status: 'moderate',
-        mainMessage: i18n.language === 'hi' ? 
-          '⚠️ ध्यान दें! फसल में तनाव है' : 
-          '⚠️ Attention! Crop shows stress',
-        actionItems: i18n.language === 'hi' ? [
-          '🚨 तुरंत पानी दें',
-          '🌾 उर्वरक की जांच करें',
-          '🐛 कीट-रोग देखें',
-          '📞 विशेषज्ञ से बात करें'
-        ] : [
-          '🚨 Irrigate immediately',
-          '🌾 Check nutrients',
-          '🐛 Look for pests/disease',
-          '📞 Contact expert'
-        ],
-        urgency: 'high',
-        nextSteps: i18n.language === 'hi' ? [
-          'कल फिर जांचें',
-          'फोटो लेकर रखें'
-        ] : [
-          'Check tomorrow',
-          'Take photos'
-        ]
-      };
-    } else {
-      return {
-        status: 'poor',
-        mainMessage: i18n.language === 'hi' ? 
-          '🆘 गंभीर! तुरंत कार्रवाई करें' : 
-          '🆘 Critical! Immediate action needed',
-        actionItems: i18n.language === 'hi' ? [
-          '💦 अभी पानी दें',
-          '☎️ कृषि अधिकारी को बुलाएं',
-          '💊 दवा छिड़काव करें',
-          '📋 बीमा कंपनी को सूचना दें'
-        ] : [
-          '💦 Water now',
-          '☎️ Call agriculture officer',
-          '💊 Apply treatment',
-          '📋 Inform insurance'
-        ],
-        urgency: 'high',
-        nextSteps: i18n.language === 'hi' ? [
-          'रोज़ जांचें',
-          'सबूत इकट्ठा करें'
-        ] : [
-          'Check daily',
-          'Document evidence'
-        ]
-      };
-    }
-  };
-
-  const advice = generateAdvice(ndviData || []);
 
   // Auto-select first land
   useEffect(() => {
@@ -304,13 +150,13 @@ const NDVIAnalysis = () => {
     try {
       await Promise.all([refetchLands(), refetchNDVI()]);
       toast({
-        title: "✅ Data Refreshed",
-        description: "Latest satellite data loaded",
+        title: t('ndvi.refresh.data_refreshed', '✅ Data Refreshed'),
+        description: t('ndvi.refresh.latest_data', 'Latest satellite data loaded'),
       });
     } catch (error) {
       toast({
-        title: "❌ Refresh Failed",
-        description: "Please try again",
+        title: t('ndvi.refresh.refresh_failed', '❌ Refresh Failed'),
+        description: t('ndvi.refresh.try_again', 'Please try again'),
         variant: "destructive",
       });
     } finally {
@@ -318,501 +164,542 @@ const NDVIAnalysis = () => {
     }
   };
 
-  const getHealthColor = (ndvi: number) => {
-    if (ndvi > 0.7) return 'from-green-500 to-emerald-500';
-    if (ndvi > 0.5) return 'from-emerald-500 to-teal-500';
-    if (ndvi > 0.3) return 'from-yellow-500 to-orange-500';
-    return 'from-red-500 to-pink-500';
+  const getHealthGradient = (ndvi: number) => {
+    if (ndvi >= 0.7) return 'from-success to-success/80';
+    if (ndvi >= 0.5) return 'from-primary to-primary/80';
+    if (ndvi >= 0.3) return 'from-warning to-warning/80';
+    return 'from-destructive to-destructive/80';
   };
 
-  const getUrgencyBadge = (urgency: string) => {
-    const variants = {
-      low: 'bg-green-100 text-green-700',
-      medium: 'bg-yellow-100 text-yellow-700',
-      high: 'bg-red-100 text-red-700'
-    };
-    return variants[urgency as keyof typeof variants] || variants.medium;
-  };
-
-  const speakAdvice = () => {
+  const speakSummary = () => {
     if (isSpeaking) {
       stop();
     } else {
-      const text = `${advice.mainMessage}. ${advice.actionItems.join('. ')}`;
-      speak(text);
+      const ndvi = ndviCurrent?.ndvi_value ?? 0;
+      const healthLabel = ndviCurrent?.metadata?.health_label ?? 'Unknown';
+      const alerts = ndviCurrent?.metadata?.alerts ?? [];
+      
+      let message = i18n.language === 'hi'
+        ? `आपकी फसल की स्थिति ${healthLabel} है। NDVI मान ${ndvi.toFixed(2)} है।`
+        : `Your crop health status is ${healthLabel}. NDVI value is ${ndvi.toFixed(2)}.`;
+      
+      if (alerts.length > 0) {
+        message += i18n.language === 'hi'
+          ? ` चेतावनी: ${alerts[0]}`
+          : ` Alert: ${alerts[0]}`;
+      }
+      
+      speak(message);
     }
   };
 
   return (
-    <div className="flex flex-col h-screen bg-gradient-to-b from-background via-background/95 to-muted/30">
+    <div className="flex flex-col min-h-screen bg-gradient-to-b from-background via-background/95 to-muted/30">
       {/* Modern Mobile Header */}
-      <div className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
+      <motion.div 
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50"
+      >
         <div className="flex items-center justify-between p-4">
           <div className="flex items-center gap-3">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => navigate(-1)}
-              className="hover:scale-110 transition-transform"
+              className="hover:scale-110 transition-transform rounded-full"
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div>
               <h1 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-                NDVI Analysis
+                {t('ndvi.title', 'NDVI Analysis')}
               </h1>
               <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <Satellite className="h-3 w-3 animate-pulse" />
-                Satellite monitoring
+                <Satellite className="h-3 w-3 animate-pulse text-primary" />
+                {t('ndvi.satellite_monitoring', 'Satellite monitoring')}
               </p>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            className="hover:scale-110 transition-all"
-          >
-            <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
-          </Button>
-        </div>
-      </div>
-
-      {/* Land Selection */}
-      {!selectedLandId && (
-        <ScrollArea className="flex-1">
-          <div className="p-4 space-y-4">
-            <Card className="border-none shadow-xl bg-gradient-to-br from-card via-card/95 to-muted/20">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <MapPin className="h-5 w-5 text-primary" />
-                  Select Your Field
-                </CardTitle>
-                <CardDescription>Choose a field to analyze</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {landsLoading ? (
-                  <div className="space-y-3">
-                    {[1, 2, 3].map((i) => (
-                      <Skeleton key={i} className="h-20 w-full rounded-xl" />
-                    ))}
-                  </div>
-                ) : lands && lands.length > 0 ? (
-                  <div className="space-y-3">
-                    {lands.map((land) => (
-                      <Card
-                        key={land.id}
-                        className="cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-[1.02] border-border/50 bg-gradient-to-r from-card to-muted/10"
-                        onClick={() => setSelectedLandId(land.id)}
-                      >
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <h3 className="font-semibold text-base">{land.name}</h3>
-                              <div className="flex items-center gap-3 mt-1">
-                                <span className="text-xs text-muted-foreground">
-                                  {land.area_acres} acres
-                                </span>
-                                {land.current_crop && (
-                                  <Badge variant="secondary" className="text-xs">
-                                    {land.current_crop}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                            <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 space-y-4">
-                    <TreePine className="h-12 w-12 mx-auto text-muted-foreground/50" />
-                    <p className="text-muted-foreground">No fields found</p>
-                    <Button 
-                      onClick={() => navigate('/app/lands')}
-                      className="hover:scale-105 transition-transform"
-                    >
-                      Add Your First Field
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </ScrollArea>
-      )}
-
-      {/* NDVI Dashboard */}
-      {selectedLandId && (
-        <div className="flex-1 flex flex-col">
-          {/* Quick Health Status */}
-          {ndviData && ndviData.length > 0 && (
-            <div className="px-4 pt-4 pb-2">
-              <Card className={cn(
-                "border-none shadow-lg bg-gradient-to-r",
-                getHealthColor(ndviData[0].ndvi_value || 0),
-                "text-white"
-              )}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full bg-white animate-pulse" />
-                      <span className="font-semibold text-sm">
-                        {advice.status === 'excellent' ? '🌱' : 
-                         advice.status === 'good' ? '🌿' :
-                         advice.status === 'moderate' ? '🍂' : '🍁'}
-                        {' '}{advice.status.charAt(0).toUpperCase() + advice.status.slice(1)} Health
-                      </span>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={speakAdvice}
-                      className="hover:scale-110 transition-transform"
-                    >
-                      <Volume2 className={cn("h-4 w-4", isSpeaking && "animate-pulse")} />
-                    </Button>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2">
-                      <div className="flex items-center gap-1 mb-1">
-                        <Leaf className="h-3 w-3" />
-                        <span className="text-xs font-medium">NDVI</span>
-                      </div>
-                      <div className="text-xl font-bold">
-                        {(ndviData[0].ndvi_value || 0).toFixed(2)}
-                      </div>
-                    </div>
-                    
-                    <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2">
-                      <div className="flex items-center gap-1 mb-1">
-                        <Droplets className="h-3 w-3" />
-                        <span className="text-xs font-medium">Water</span>
-                      </div>
-                      <div className="text-xl font-bold">
-                        {(ndviData[0].ndwi_value || 0).toFixed(2)}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {/* Back Button */}
-          <div className="px-4 pb-2">
+          <div className="flex items-center gap-2">
             <Button
               variant="ghost"
-              size="sm"
-              onClick={() => setSelectedLandId(null)}
-              className="text-xs"
+              size="icon"
+              onClick={speakSummary}
+              className="hover:scale-110 transition-transform rounded-full"
             >
-              <ArrowLeft className="mr-1 h-3 w-3" />
-              Change Field
+              <Volume2 className={cn("h-4 w-4", isSpeaking && "text-primary animate-pulse")} />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="hover:scale-110 transition-all rounded-full"
+            >
+              <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
             </Button>
           </div>
+        </div>
+      </motion.div>
 
-          {/* Modern Tabs */}
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-            <TabsList className="mx-4 grid grid-cols-4 h-auto p-1 bg-muted/50">
-              <TabsTrigger value="overview" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <div className="flex flex-col items-center py-2">
-                  <Eye className="h-4 w-4 mb-1" />
-                  <span className="text-xs">Overview</span>
-                </div>
-              </TabsTrigger>
-              <TabsTrigger value="map" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <div className="flex flex-col items-center py-2">
-                  <Map className="h-4 w-4 mb-1" />
-                  <span className="text-xs">Map</span>
-                </div>
-              </TabsTrigger>
-              <TabsTrigger value="trends" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <div className="flex flex-col items-center py-2">
-                  <Activity className="h-4 w-4 mb-1" />
-                  <span className="text-xs">Trends</span>
-                </div>
-              </TabsTrigger>
-              <TabsTrigger value="advice" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">
-                <div className="flex flex-col items-center py-2">
-                  <Lightbulb className="h-4 w-4 mb-1" />
-                  <span className="text-xs">Advice</span>
-                </div>
-              </TabsTrigger>
-            </TabsList>
-
+      {/* Land Selection */}
+      <AnimatePresence mode="wait">
+        {!selectedLandId && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
             <ScrollArea className="flex-1">
-              {/* Overview Tab */}
-              <TabsContent value="overview" className="p-4 space-y-4">
-                {ndviData && ndviData.length > 0 ? (
-                  <>
-                    <Card className="border-none shadow-lg">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-base">Vegetation Indices</CardTitle>
-                        <CardDescription className="text-xs">
-                          Last updated: {new Date(ndviData[0].date).toLocaleDateString()}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium">NDVI</span>
-                              <span className="text-sm font-bold text-green-600">
-                                {(ndviData[0].ndvi_value || 0).toFixed(3)}
-                              </span>
-                            </div>
-                            <Progress value={(ndviData[0].ndvi_value || 0) * 100} className="h-2" />
-                            <span className="text-xs text-muted-foreground">Vegetation Health</span>
-                          </div>
-                          
-                          {ndviData[0].evi_value !== undefined && (
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium">EVI</span>
-                                <span className="text-sm font-bold text-emerald-600">
-                                  {ndviData[0].evi_value.toFixed(3)}
-                                </span>
-                              </div>
-                              <Progress value={ndviData[0].evi_value * 100} className="h-2" />
-                              <span className="text-xs text-muted-foreground">Enhanced Index</span>
-                            </div>
-                          )}
-                          
-                          {ndviData[0].ndwi_value !== undefined && (
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium">NDWI</span>
-                                <span className="text-sm font-bold text-blue-600">
-                                  {ndviData[0].ndwi_value.toFixed(3)}
-                                </span>
-                              </div>
-                              <Progress value={ndviData[0].ndwi_value * 100} className="h-2" />
-                              <span className="text-xs text-muted-foreground">Water Content</span>
-                            </div>
-                          )}
-                          
-                          {ndviData[0].savi_value !== undefined && (
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium">SAVI</span>
-                                <span className="text-sm font-bold text-purple-600">
-                                  {ndviData[0].savi_value.toFixed(3)}
-                                </span>
-                              </div>
-                              <Progress value={ndviData[0].savi_value * 100} className="h-2" />
-                              <span className="text-xs text-muted-foreground">Soil Adjusted</span>
-                            </div>
-                          )}
-                        </div>
-
-                        {ndviData[0].cloud_coverage !== undefined && ndviData[0].cloud_coverage > 20 && (
-                          <Alert className="border-yellow-200 bg-yellow-50">
-                            <CloudRain className="h-4 w-4 text-yellow-600" />
-                            <AlertDescription className="text-xs">
-                              High cloud coverage ({ndviData[0].cloud_coverage.toFixed(0)}%) may affect accuracy
-                            </AlertDescription>
-                          </Alert>
-                        )}
-                      </CardContent>
-                    </Card>
-
-                    <Card className="border-none shadow-lg">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-base">Field Information</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <span className="text-xs text-muted-foreground">Field Name</span>
-                            <p className="font-medium text-sm">{selectedLand?.name}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <span className="text-xs text-muted-foreground">Area</span>
-                            <p className="font-medium text-sm">{selectedLand?.area_acres} acres</p>
-                          </div>
-                          {selectedLand?.current_crop && (
-                            <div className="space-y-1">
-                              <span className="text-xs text-muted-foreground">Current Crop</span>
-                              <p className="font-medium text-sm">{selectedLand.current_crop}</p>
-                            </div>
-                          )}
-                          {selectedLand?.soil_type && (
-                            <div className="space-y-1">
-                              <span className="text-xs text-muted-foreground">Soil Type</span>
-                              <p className="font-medium text-sm">{selectedLand.soil_type}</p>
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </>
-                ) : (
-                  <Card className="border-none shadow-lg">
-                    <CardContent className="flex flex-col items-center justify-center py-12">
-                      <Satellite className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                      <p className="text-muted-foreground text-center">
-                        No satellite data available yet
-                      </p>
-                      <p className="text-xs text-muted-foreground text-center mt-2">
-                        Check back after next satellite pass
-                      </p>
-                    </CardContent>
-                  </Card>
-                )}
-              </TabsContent>
-
-              {/* Map Tab */}
-              <TabsContent value="map" className="p-4">
-                <NDVIMapView 
-                  landId={selectedLandId}
-                  boundary={getBoundaryCoordinates()}
-                  centerLat={getCenterCoordinates().lat}
-                  centerLng={getCenterCoordinates().lng}
-                  areaAcres={selectedLand?.area_acres}
-                  soilType={selectedLand?.soil_type}
-                  currentCrop={selectedLand?.current_crop}
-                />
-              </TabsContent>
-
-              {/* Trends Tab */}
-              <TabsContent value="trends" className="p-4">
-                {ndviData && ndviData.length > 1 ? (
-                  <NDVITrendChart 
-                    data={ndviData.map(d => ({
-                      date: d.date,
-                      ndvi: d.ndvi_value,
-                      evi: d.evi_value || 0,
-                      ndwi: d.ndwi_value || 0,
-                      savi: d.savi_value || 0
-                    }))}
-                    selectedIndex="ndvi"
-                  />
-                ) : (
-                  <Card className="border-none shadow-lg">
-                    <CardContent className="flex flex-col items-center justify-center py-12">
-                      <Activity className="h-12 w-12 text-muted-foreground/50 mb-4" />
-                      <p className="text-muted-foreground text-center">
-                        Not enough data for trends
-                      </p>
-                      <p className="text-xs text-muted-foreground text-center mt-2">
-                        Need at least 2 data points
-                      </p>
-                    </CardContent>
-                  </Card>
-                )}
-              </TabsContent>
-
-              {/* Advice Tab */}
-              <TabsContent value="advice" className="p-4 space-y-4">
-                <Card className="border-none shadow-lg bg-gradient-to-br from-primary/5 to-primary/10">
+              <div className="p-4 space-y-4">
+                <Card className="border-none shadow-xl bg-gradient-to-br from-card via-card/95 to-muted/20 rounded-3xl overflow-hidden">
                   <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <MessageSquare className="h-5 w-5" />
-                        Farmer Advisory
-                      </CardTitle>
-                      <Badge className={getUrgencyBadge(advice.urgency)}>
-                        {advice.urgency} priority
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="p-3 bg-background rounded-lg">
-                      <p className="font-semibold text-lg mb-2">{advice.mainMessage}</p>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Clock className="h-3 w-3" />
-                        Updated: {new Date().toLocaleTimeString()}
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <div className="p-2 rounded-full bg-primary/10">
+                        <MapPin className="h-5 w-5 text-primary" />
                       </div>
-                    </div>
-
-                    {advice.actionItems.length > 0 && (
-                      <div className="space-y-2">
-                        <h4 className="font-medium text-sm flex items-center gap-2">
-                          <CheckCircle2 className="h-4 w-4 text-primary" />
-                          Action Items
-                        </h4>
-                        <div className="space-y-2">
-                          {advice.actionItems.map((item, index) => (
-                            <div key={index} className="flex items-start gap-2 p-2 bg-muted/50 rounded-lg">
-                              <span className="text-xs font-bold text-primary">{index + 1}.</span>
-                              <span className="text-sm">{item}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {advice.nextSteps.length > 0 && (
-                      <div className="space-y-2">
-                        <h4 className="font-medium text-sm flex items-center gap-2">
-                          <Calendar className="h-4 w-4 text-primary" />
-                          Next Steps
-                        </h4>
-                        <div className="space-y-1">
-                          {advice.nextSteps.map((step, index) => (
-                            <div key={index} className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <ChevronRight className="h-3 w-3" />
-                              {step}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <Button 
-                      className="w-full"
-                      onClick={speakAdvice}
-                    >
-                      <Volume2 className={cn("h-4 w-4 mr-2", isSpeaking && "animate-pulse")} />
-                      {isSpeaking ? 'Stop' : 'Listen to Advice'}
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                {/* Weather Impact */}
-                <Card className="border-none shadow-lg">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <ThermometerSun className="h-5 w-5" />
-                      Weather Impact
+                      {t('ndvi.select_your_field', 'Select Your Field')}
                     </CardTitle>
+                    <CardDescription>{t('ndvi.choose_field_analyze', 'Choose a field to analyze')}</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
-                        <div className="flex items-center gap-2">
-                          <Sun className="h-4 w-4 text-yellow-500" />
-                          <span className="text-sm">Sunlight</span>
-                        </div>
-                        <span className="text-sm font-medium">Good</span>
+                    {landsLoading ? (
+                      <div className="space-y-3">
+                        {[1, 2, 3].map((i) => (
+                          <Skeleton key={i} className="h-20 w-full rounded-2xl" />
+                        ))}
                       </div>
-                      <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
-                        <div className="flex items-center gap-2">
-                          <Droplets className="h-4 w-4 text-blue-500" />
-                          <span className="text-sm">Rainfall</span>
-                        </div>
-                        <span className="text-sm font-medium">Moderate</span>
+                    ) : lands && lands.length > 0 ? (
+                      <div className="space-y-3">
+                        {lands.map((land: any, index: number) => (
+                          <motion.div
+                            key={land.id}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: index * 0.1 }}
+                          >
+                            <Card
+                              className="cursor-pointer hover:shadow-lg transition-all duration-300 hover:scale-[1.02] border-border/50 bg-gradient-to-r from-card to-muted/10 rounded-2xl active:scale-[0.98]"
+                              onClick={() => setSelectedLandId(land.id)}
+                            >
+                              <CardContent className="p-4">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1">
+                                    <h3 className="font-semibold text-base">{land.name}</h3>
+                                    <div className="flex items-center gap-3 mt-1">
+                                      <span className="text-xs text-muted-foreground">
+                                        {land.area_acres} {t('common.acres', 'acres')}
+                                      </span>
+                                      {land.current_crop && (
+                                        <Badge variant="secondary" className="text-xs rounded-full">
+                                          {land.current_crop}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                                </div>
+                              </CardContent>
+                            </Card>
+                          </motion.div>
+                        ))}
                       </div>
-                      <div className="flex items-center justify-between p-2 bg-muted/50 rounded-lg">
-                        <div className="flex items-center gap-2">
-                          <Gauge className="h-4 w-4 text-green-500" />
-                          <span className="text-sm">Growth Rate</span>
-                        </div>
-                        <span className="text-sm font-medium">Normal</span>
+                    ) : (
+                      <div className="text-center py-8 space-y-4">
+                        <TreePine className="h-12 w-12 mx-auto text-muted-foreground/50" />
+                        <p className="text-muted-foreground">{t('ndvi.no_fields_found', 'No fields found')}</p>
+                        <Button 
+                          onClick={() => navigate('/app/lands')}
+                          className="hover:scale-105 transition-transform rounded-full"
+                        >
+                          {t('ndvi.add_first_field', 'Add Your First Field')}
+                        </Button>
                       </div>
-                    </div>
+                    )}
                   </CardContent>
                 </Card>
-              </TabsContent>
+              </div>
             </ScrollArea>
-          </Tabs>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* NDVI Dashboard */}
+      <AnimatePresence mode="wait">
+        {selectedLandId && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex-1 flex flex-col"
+          >
+            {/* Alert Banner */}
+            {showAlertBanner && ndviCurrent?.metadata && (
+              <div className="px-4 pt-4">
+                <NDVIAlertBanner
+                  alerts={ndviCurrent.metadata.alerts || []}
+                  healthLabel={ndviCurrent.metadata.health_label || 'Moderate'}
+                  riskLevel={prediction?.risk_level || 'medium'}
+                  onDismiss={() => setShowAlertBanner(false)}
+                />
+              </div>
+            )}
+
+            {/* Back Button */}
+            <div className="px-4 pt-3 pb-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedLandId(null)}
+                className="text-xs rounded-full"
+              >
+                <ArrowLeft className="mr-1 h-3 w-3" />
+                {t('ndvi.change_field', 'Change Field')}
+              </Button>
+            </div>
+
+            {/* Modern Tabs */}
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+              <TabsList className="mx-4 grid grid-cols-5 h-auto p-1 bg-muted/50 rounded-2xl">
+                {[
+                  { value: 'dashboard', icon: Gauge, label: t('ndvi.tabs.dashboard', 'Health') },
+                  { value: 'prediction', icon: Sparkles, label: t('ndvi.tabs.prediction', 'Predict') },
+                  { value: 'map', icon: Map, label: t('ndvi.tabs.map', 'Map') },
+                  { value: 'trends', icon: BarChart3, label: t('ndvi.tabs.trends', 'Trends') },
+                  { value: 'advice', icon: Lightbulb, label: t('ndvi.tabs.advice', 'Advice') },
+                ].map((tab) => (
+                  <TabsTrigger 
+                    key={tab.value}
+                    value={tab.value} 
+                    className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-xl"
+                  >
+                    <div className="flex flex-col items-center py-1.5">
+                      <tab.icon className="h-4 w-4 mb-0.5" />
+                      <span className="text-[10px]">{tab.label}</span>
+                    </div>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+
+              <ScrollArea className="flex-1">
+                {/* Dashboard Tab */}
+                <TabsContent value="dashboard" className="p-4 space-y-4">
+                  {ndviLoading ? (
+                    <div className="space-y-4">
+                      <Skeleton className="h-48 w-full rounded-2xl" />
+                      <Skeleton className="h-36 w-full rounded-2xl" />
+                    </div>
+                  ) : ndviCurrent ? (
+                    <>
+                      {/* Health Score Card */}
+                      <NDVIHealthScore
+                        ndvi={ndviCurrent.ndvi_value}
+                        trend={ndviCurrent.metadata?.ndvi_trend ?? 0}
+                        healthLabel={ndviCurrent.metadata?.health_label ?? 'Moderate'}
+                      />
+
+                      {/* Quick Stats */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: 0.2 }}
+                        >
+                          <Card className="border-none shadow-lg rounded-2xl bg-gradient-to-br from-success/10 to-success/5">
+                            <CardContent className="p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Leaf className="h-4 w-4 text-success" />
+                                <span className="text-xs text-muted-foreground">NDVI</span>
+                              </div>
+                              <div className="flex items-baseline gap-1">
+                                <span className="text-2xl font-bold text-success">
+                                  {ndviCurrent.ndvi_value.toFixed(3)}
+                                </span>
+                                {ndviCurrent.metadata?.ndvi_trend && (
+                                  <span className={cn(
+                                    "text-xs",
+                                    ndviCurrent.metadata.ndvi_trend > 0 ? "text-success" : "text-destructive"
+                                  )}>
+                                    {ndviCurrent.metadata.ndvi_trend > 0 ? '+' : ''}{(ndviCurrent.metadata.ndvi_trend * 100).toFixed(2)}%
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {t('ndvi.vegetation_health', 'Vegetation Health')}
+                              </p>
+                            </CardContent>
+                          </Card>
+                        </motion.div>
+
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: 0.3 }}
+                        >
+                          <Card className="border-none shadow-lg rounded-2xl bg-gradient-to-br from-info/10 to-info/5">
+                            <CardContent className="p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <Droplets className="h-4 w-4 text-info" />
+                                <span className="text-xs text-muted-foreground">NDWI</span>
+                              </div>
+                              <div className="flex items-baseline gap-1">
+                                <span className="text-2xl font-bold text-info">
+                                  {(ndviCurrent.ndwi_value ?? 0).toFixed(3)}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {t('ndvi.water_content', 'Water Content')}
+                              </p>
+                            </CardContent>
+                          </Card>
+                        </motion.div>
+                      </div>
+
+                      {/* NDVI Stats */}
+                      {(ndviCurrent.min_ndvi || ndviCurrent.max_ndvi) && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.4 }}
+                        >
+                          <Card className="border-none shadow-lg rounded-2xl">
+                            <CardHeader className="pb-2">
+                              <CardTitle className="text-sm flex items-center gap-2">
+                                <Target className="h-4 w-4 text-primary" />
+                                {t('ndvi.field_statistics', 'Field Statistics')}
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                              <div className="grid grid-cols-3 gap-3">
+                                <div className="text-center p-2 rounded-xl bg-muted/50">
+                                  <p className="text-xs text-muted-foreground">{t('ndvi.min', 'Min')}</p>
+                                  <p className="text-lg font-semibold">{ndviCurrent.min_ndvi?.toFixed(3)}</p>
+                                </div>
+                                <div className="text-center p-2 rounded-xl bg-primary/10">
+                                  <p className="text-xs text-muted-foreground">{t('ndvi.mean', 'Mean')}</p>
+                                  <p className="text-lg font-semibold text-primary">{ndviCurrent.mean_ndvi?.toFixed(3)}</p>
+                                </div>
+                                <div className="text-center p-2 rounded-xl bg-muted/50">
+                                  <p className="text-xs text-muted-foreground">{t('ndvi.max', 'Max')}</p>
+                                  <p className="text-lg font-semibold">{ndviCurrent.max_ndvi?.toFixed(3)}</p>
+                                </div>
+                              </div>
+
+                              {/* Satellite Info */}
+                              <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border/50">
+                                <div className="flex items-center gap-1">
+                                  <Satellite className="h-3 w-3" />
+                                  <span>{ndviCurrent.satellite_source || 'Sentinel-2'}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Calendar className="h-3 w-3" />
+                                  <span>{new Date(ndviCurrent.date).toLocaleDateString()}</span>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </motion.div>
+                      )}
+
+                      {/* Early Warning */}
+                      <NDVIEarlyWarning
+                        metadata={ndviCurrent.metadata}
+                        prediction={prediction}
+                        ndviValue={ndviCurrent.ndvi_value}
+                      />
+                    </>
+                  ) : (
+                    <Card className="border-none shadow-lg rounded-2xl">
+                      <CardContent className="flex flex-col items-center justify-center py-12">
+                        <Satellite className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                        <p className="text-muted-foreground text-center">
+                          {t('ndvi.no_data', 'No satellite data available yet')}
+                        </p>
+                        <p className="text-xs text-muted-foreground text-center mt-2">
+                          {t('ndvi.check_back', 'Check back after next satellite pass')}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </TabsContent>
+
+                {/* Prediction Tab */}
+                <TabsContent value="prediction" className="p-4 space-y-4">
+                  <NDVIPredictionCard
+                    prediction={prediction}
+                    currentNdvi={ndviCurrent?.ndvi_value ?? 0}
+                  />
+
+                  {/* Trend Summary */}
+                  {ndviHistory.length > 1 && (
+                    <Card className="border-none shadow-lg rounded-2xl">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm flex items-center gap-2">
+                          <Activity className="h-4 w-4 text-primary" />
+                          {t('ndvi.recent_trend', 'Recent Trend')}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          {ndviHistory.slice(0, 5).map((item, index) => (
+                            <div 
+                              key={item.id}
+                              className="flex items-center justify-between p-2 rounded-xl bg-muted/30"
+                            >
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(item.date).toLocaleDateString()}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <Progress 
+                                  value={item.ndvi_value * 100} 
+                                  className="w-20 h-2"
+                                />
+                                <span className="text-sm font-medium w-12 text-right">
+                                  {item.ndvi_value.toFixed(3)}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </TabsContent>
+
+                {/* Map Tab */}
+                <TabsContent value="map" className="p-4">
+                  <NDVIMapView 
+                    landId={selectedLandId}
+                    boundary={getBoundaryCoordinates()}
+                    centerLat={getCenterCoordinates().lat}
+                    centerLng={getCenterCoordinates().lng}
+                    areaAcres={selectedLand?.area_acres}
+                    soilType={selectedLand?.soil_type}
+                    currentCrop={selectedLand?.current_crop}
+                  />
+                </TabsContent>
+
+                {/* Trends Tab */}
+                <TabsContent value="trends" className="p-4">
+                  {ndviHistory.length > 1 ? (
+                    <NDVITrendChart 
+                      data={ndviHistory.map(d => ({
+                        date: d.date,
+                        ndvi: d.ndvi_value,
+                        evi: d.evi_value || 0,
+                        ndwi: d.ndwi_value || 0,
+                        savi: d.savi_value || 0
+                      }))}
+                      selectedIndex="ndvi"
+                    />
+                  ) : (
+                    <Card className="border-none shadow-lg rounded-2xl">
+                      <CardContent className="flex flex-col items-center justify-center py-12">
+                        <Activity className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                        <p className="text-muted-foreground text-center">
+                          {t('ndvi.not_enough_data', 'Not enough data for trends')}
+                        </p>
+                        <p className="text-xs text-muted-foreground text-center mt-2">
+                          {t('ndvi.need_more_data', 'Need at least 2 data points')}
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </TabsContent>
+
+                {/* Advice Tab */}
+                <TabsContent value="advice" className="p-4 space-y-4">
+                  <Card className="border-none shadow-lg bg-gradient-to-br from-primary/5 to-primary/10 rounded-2xl">
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <div className="p-2 rounded-full bg-primary/10">
+                            <Zap className="h-4 w-4 text-primary" />
+                          </div>
+                          {t('ndvi.ai_advisory', 'AI Advisory')}
+                        </CardTitle>
+                        <Badge variant="secondary" className="rounded-full">
+                          <Sparkles className="h-3 w-3 mr-1" />
+                          {t('ndvi.ai_powered', 'AI Powered')}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      {prediction?.recommended_actions && prediction.recommended_actions.length > 0 ? (
+                        <div className="space-y-3">
+                          {prediction.recommended_actions.map((action, index) => (
+                            <motion.div
+                              key={index}
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: index * 0.1 }}
+                              className="flex items-start gap-3 p-3 bg-background rounded-xl"
+                            >
+                              <div className="p-1.5 rounded-full bg-primary/10 mt-0.5">
+                                <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+                              </div>
+                              <p className="text-sm flex-1">{action}</p>
+                            </motion.div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-background rounded-xl text-center">
+                          <p className="text-sm text-muted-foreground">
+                            {t('ndvi.no_recommendations', 'Continue regular monitoring')}
+                          </p>
+                        </div>
+                      )}
+
+                      <Button 
+                        className="w-full rounded-xl"
+                        onClick={speakSummary}
+                      >
+                        <Volume2 className={cn("h-4 w-4 mr-2", isSpeaking && "animate-pulse")} />
+                        {isSpeaking ? t('ndvi.stop', 'Stop') : t('ndvi.listen_advice', 'Listen to Advice')}
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  {/* Field Info */}
+                  <Card className="border-none shadow-lg rounded-2xl">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-primary" />
+                        {t('ndvi.field_info', 'Field Information')}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1 p-2 rounded-xl bg-muted/30">
+                          <span className="text-xs text-muted-foreground">{t('ndvi.field_name', 'Field')}</span>
+                          <p className="font-medium text-sm">{selectedLand?.name}</p>
+                        </div>
+                        <div className="space-y-1 p-2 rounded-xl bg-muted/30">
+                          <span className="text-xs text-muted-foreground">{t('ndvi.area', 'Area')}</span>
+                          <p className="font-medium text-sm">{selectedLand?.area_acres} {t('common.acres', 'acres')}</p>
+                        </div>
+                        {selectedLand?.current_crop && (
+                          <div className="space-y-1 p-2 rounded-xl bg-muted/30">
+                            <span className="text-xs text-muted-foreground">{t('ndvi.current_crop', 'Crop')}</span>
+                            <p className="font-medium text-sm">{selectedLand.current_crop}</p>
+                          </div>
+                        )}
+                        {selectedLand?.soil_type && (
+                          <div className="space-y-1 p-2 rounded-xl bg-muted/30">
+                            <span className="text-xs text-muted-foreground">{t('ndvi.soil_type', 'Soil')}</span>
+                            <p className="font-medium text-sm">{selectedLand.soil_type}</p>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </ScrollArea>
+            </Tabs>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
