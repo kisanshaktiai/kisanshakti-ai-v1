@@ -73,7 +73,7 @@ interface LandWithBoundary {
 const NDVIAnalysis = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { landId: urlLandId } = useParams<{ landId?: string }>();
+  const { id: urlLandId } = useParams<{ id?: string }>();
   const { session } = useAuthStore();
   const { tenant } = useTenant();
   const { toast } = useToast();
@@ -139,14 +139,14 @@ const NDVIAnalysis = () => {
     return { lat: 20.5937, lng: 78.9629 };
   };
 
-  // Use URL landId if provided, otherwise auto-select first land
+  // If route provides a land id, open that land; otherwise show the selection list
   useEffect(() => {
     if (urlLandId) {
       setSelectedLandId(urlLandId);
-    } else if (lands && lands.length > 0 && !selectedLandId) {
-      setSelectedLandId(lands[0].id);
+    } else {
+      setSelectedLandId(null);
     }
-  }, [lands, selectedLandId, urlLandId]);
+  }, [urlLandId]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
