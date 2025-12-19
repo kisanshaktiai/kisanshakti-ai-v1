@@ -539,22 +539,33 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
         {/* Task Statistics Widget */}
         <TaskStatisticsWidget scheduleId={schedule.id} className="mb-3" />
 
-        {/* Growth Tracking Button */}
+        {/* Crop Growth Tracking Card - Upload Photo Button */}
         <Card 
-          className="mb-3 bg-gradient-to-r from-primary/10 to-accent/5 border-primary/20 cursor-pointer hover:shadow-md transition-shadow"
-          onClick={() => navigate(`/app/crop-growth?landId=${landId}&scheduleId=${schedule.id}`)}
+          className="mb-3 border-primary/20 bg-gradient-to-r from-primary/5 to-accent/5"
         >
-          <div className="p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-full bg-primary/10">
-                <Camera className="h-5 w-5 text-primary" />
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-primary/10">
+                  <Camera className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm">{i18n.language === 'hi' ? 'फसल वृद्धि ट्रैकिंग' : i18n.language === 'mr' ? 'पीक वाढ ट्रॅकिंग' : 'Crop Growth Tracking'}</h3>
+                  <p className="text-xs text-muted-foreground">{i18n.language === 'hi' ? 'फोटो अपलोड करें और AI विश्लेषण प्राप्त करें' : i18n.language === 'mr' ? 'फोटो अपलोड करा आणि AI विश्लेषण मिळवा' : 'Upload photos for AI analysis'}</p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-semibold text-sm">{i18n.language === 'hi' ? 'फसल वृद्धि ट्रैकिंग' : i18n.language === 'mr' ? 'पीक वाढ ट्रॅकिंग' : 'Crop Growth Tracking'}</h3>
-                <p className="text-xs text-muted-foreground">{i18n.language === 'hi' ? 'फोटो अपलोड करें और AI विश्लेषण प्राप्त करें' : i18n.language === 'mr' ? 'फोटो अपलोड करा आणि AI विश्लेषण मिळवा' : 'Upload photos for AI analysis'}</p>
-              </div>
+              <Sprout className="h-5 w-5 text-primary" />
             </div>
-            <Sprout className="h-5 w-5 text-primary" />
+            {/* Quick Upload Button */}
+            <Button
+              variant="default"
+              size="sm"
+              className="w-full gap-2 bg-gradient-to-r from-primary to-accent hover:shadow-lg"
+              onClick={() => setShowLandPhotoUpload(true)}
+            >
+              <Camera className="h-4 w-4" />
+              {i18n.language === 'hi' ? 'फोटो अपलोड करें' : i18n.language === 'mr' ? 'फोटो अपलोड करा' : 'Upload Photo'}
+            </Button>
           </div>
         </Card>
 
@@ -588,18 +599,33 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                         <div className="flex-1">
                           <p className="font-semibold text-sm text-foreground">{task.task_name}</p>
                           <p className="text-xs text-muted-foreground mt-1">{task.task_description}</p>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 text-xs mt-2"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              speakTask(task);
-                            }}
-                          >
-                            <Volume2 className="h-3 w-3 mr-1" />
-                            Listen
-                          </Button>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                speakTask(task);
+                              }}
+                            >
+                              <Volume2 className="h-3 w-3 mr-1" />
+                              {i18n.language === 'hi' ? 'सुनें' : i18n.language === 'mr' ? 'ऐका' : 'Listen'}
+                            </Button>
+                            {/* Camera button for task photo */}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPhotoUploadTask(task);
+                              }}
+                            >
+                              <Camera className="h-3 w-3" />
+                              {i18n.language === 'hi' ? 'फोटो' : i18n.language === 'mr' ? 'फोटो' : 'Photo'}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -668,6 +694,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                     onTaskClick={(task: any) => setSelectedTask(task as ScheduleTask)}
                     onTaskComplete={refetchSchedules}
                     onTaskUpdate={handleTaskUpdate}
+                    onTakePhoto={(task: any) => setPhotoUploadTask(task as ScheduleTask)}
                   />
                 ) : (
                   <div className="grid gap-3">
