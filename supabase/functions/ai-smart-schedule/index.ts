@@ -3747,40 +3747,66 @@ OUTPUT: Return ONLY valid JSON object (no markdown, no explanation). Start with 
       }
     }
     
-    // Method 3: Try to extract JSON from text content (Gemini sometimes does this)
+    // Method 3: Try to parse JSON from text content (Gemini JSON-mode returns content)
     if (!scheduleData && message?.content) {
-      const content = message.content;
-      console.log(`📝 [AI] Attempting to extract JSON from text response...`);
-      
-      // Try to find JSON in the content
-      const jsonMatches = content.match(/\{[\s\S]*"tasks"[\s\S]*\}/);
-      if (jsonMatches) {
+      const content = String(message.content ?? "").trim();
+      const finishReason = aiData.choices?.[0]?.finish_reason as string | undefined;
+
+      const tryParse = (raw: string) => {
         try {
-          scheduleData = JSON.parse(jsonMatches[0]);
-          console.log(`✅ [AI] Extracted JSON from text content`);
-        } catch (e) {
-          console.warn(`⚠️ [AI] Failed to parse JSON from text:`, e);
+          return JSON.parse(raw);
+        } catch {
+          // ignore
+        }
+        // Fix common Gemini issues: literal newlines/tabs inside JSON strings
+        try {
+          return JSON.parse(raw.replace(/[\r\n\t]+/g, " "));
+        } catch {
+          // ignore
+        }
+        return null;
+      };
+
+      console.log(`📝 [AI] Attempting to parse JSON from message.content...`, {
+        finishReason,
+        contentLength: content.length,
+      });
+
+      // First try: content is the JSON object
+      scheduleData = tryParse(content);
+
+      // Second try: extract JSON object from surrounding text
+      if (!scheduleData) {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch?.[0]) {
+          scheduleData = tryParse(jsonMatch[0]);
+          if (scheduleData) console.log(`✅ [AI] Extracted JSON from text content`);
         }
       }
-      
-      // Try markdown code block
+
+      // Third try: markdown code block
       if (!scheduleData) {
         const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-        if (codeBlockMatch) {
-          try {
-            scheduleData = JSON.parse(codeBlockMatch[1]);
-            console.log(`✅ [AI] Extracted JSON from code block`);
-          } catch (e) {
-            console.warn(`⚠️ [AI] Failed to parse code block JSON:`, e);
-          }
+        if (codeBlockMatch?.[1]) {
+          scheduleData = tryParse(codeBlockMatch[1].trim());
+          if (scheduleData) console.log(`✅ [AI] Extracted JSON from code block`);
         }
       }
     }
-    
+
     // If still no schedule data, log and throw
     if (!scheduleData) {
-      console.error("❌ [AI] No structured data found. Response:", JSON.stringify(aiData).substring(0, 800));
-      throw new Error("AI did not return structured schedule. Please try again.");
+      const finishReason = aiData.choices?.[0]?.finish_reason as string | undefined;
+      console.error("❌ [AI] No structured data found.", {
+        finishReason,
+        snippet: JSON.stringify(aiData).substring(0, 800),
+      });
+
+      throw new Error(
+        finishReason === "length"
+          ? "AI response was truncated (too long). Please try again."
+          : "AI did not return structured schedule. Please try again."
+      );
     }
     
     console.log(`✅ [AI] Generated ${scheduleData.tasks?.length || 0} tasks`);
