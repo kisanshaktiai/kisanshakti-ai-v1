@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Clock, Volume2, Sparkles, RefreshCw, MapPin, ArrowLeft, Plus, FlaskConical } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Clock, Volume2, Sparkles, RefreshCw, MapPin, ArrowLeft, Plus, FlaskConical, Sprout, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -67,6 +68,7 @@ interface CropScheduleViewProps {
 }
 
 const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, currentCrop, onBack }) => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuthStore();
   const { t, i18n } = useTranslation();
@@ -533,6 +535,25 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
         {/* Task Statistics Widget */}
         <TaskStatisticsWidget scheduleId={schedule.id} className="mb-3" />
+
+        {/* Growth Tracking Button */}
+        <Card 
+          className="mb-3 bg-gradient-to-r from-primary/10 to-accent/5 border-primary/20 cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => navigate(`/app/crop-growth?landId=${landId}&scheduleId=${schedule.id}`)}
+        >
+          <div className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-full bg-primary/10">
+                <Camera className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-sm">{i18n.language === 'hi' ? 'फसल वृद्धि ट्रैकिंग' : i18n.language === 'mr' ? 'पीक वाढ ट्रॅकिंग' : 'Crop Growth Tracking'}</h3>
+                <p className="text-xs text-muted-foreground">{i18n.language === 'hi' ? 'फोटो अपलोड करें और AI विश्लेषण प्राप्त करें' : i18n.language === 'mr' ? 'फोटो अपलोड करा आणि AI विश्लेषण मिळवा' : 'Upload photos for AI analysis'}</p>
+              </div>
+            </div>
+            <Sprout className="h-5 w-5 text-primary" />
+          </div>
+        </Card>
 
         {/* Today's Priority Tasks - Big & Clear for Farmers */}
         {todayTasks.length > 0 && (
