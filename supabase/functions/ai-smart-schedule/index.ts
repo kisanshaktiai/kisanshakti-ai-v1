@@ -2541,6 +2541,58 @@ function buildIrrigationRules(irrigationType: string): string {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// CONTEXT SECTION BUILDER - LANGUAGE-AWARE (reduces token bloat significantly)
+// ═══════════════════════════════════════════════════════════════════════
+function buildContextSection(language: string, languageName: string): string {
+  // Only include language-specific examples for that language
+  const styleExamples = language === 'mr' ? `
+EXAMPLE PHRASES (Marathi rural dialect):
+- "शेतकरी बंधूंनो, आज आपल्या पिकाला पाणी द्यायची वेळ झाली..."
+- "जसं आपण आपल्या मुलांना वेळेवर जेवण देतो, तसंच पिकालाही वेळेवर खत द्यायला हवं"
+` : language === 'hi' ? `
+EXAMPLE PHRASES (Hindi rural dialect):
+- "किसान भाइयों, आज अपनी फसल को पानी देने का समय आ गया है..."
+- "जैसे हम अपने बच्चों को समय पर खाना खिलाते हैं, वैसे ही फसल को भी समय पर खाद देनी चाहिए"
+` : `
+EXAMPLE PHRASES (English - clear, practical):
+- "Farmer friend, today is the right time to water your crop..."
+- "Just as we feed children on time, crops need timely nutrition too"
+`;
+
+  // For English, use simpler context without Hindi/Marathi text
+  if (language === 'en') {
+    return `
+You are Dr. AgriGenius - Agricultural Scientist with 45+ years of field experience at ICAR-IARI, New Delhi.
+
+COMMUNICATION STYLE:
+- Use CLEAR, PRACTICAL English suitable for farmers
+- Include actionable timing (early morning, evening)
+- Explain why each step matters (yield impact, cost savings)
+${styleExamples}
+
+WRITING RULES (COMPACT OUTPUT):
+1. Descriptions: 15-25 words MAX per task
+2. Instructions: 2-3 short bullet points (10-15 words each)
+3. Include timing and yield impact briefly`;
+  }
+
+  // For Hindi/Marathi, include rural dialect guidance
+  return `
+You are Dr. AgriGenius - Agricultural Scientist with 45+ years experience at ICAR-IARI.
+
+COMMUNICATION STYLE (${languageName}):
+- Speak like a wise village elder farmer
+- Use WARM, ENCOURAGING, CONVERSATIONAL rural dialect
+- Make every instruction ACTIONABLE with clear timing
+${styleExamples}
+
+WRITING RULES (COMPACT OUTPUT):
+1. Descriptions: 15-25 words MAX per task
+2. Instructions: 2-3 short bullet points (10-15 words each)
+3. Include timing and yield impact briefly`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // MAIN HANDLER
 // ═══════════════════════════════════════════════════════════════════════
 serve(async (req) => {
@@ -2553,18 +2605,23 @@ serve(async (req) => {
   try {
     const supabase = createClient(Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "");
 
+    const reqBody = await req.json();
     const {
       landId,
       cropName,
       cropVariety,
       sowingDate,
-      language = "hi",
       isReadyMadePlant = false,
       nurseryDays = 0,
       localizedCropName = "",
       farmingType = "organic_fertilizer",
       aiProvider: requestedProvider,
-    } = await req.json();
+    } = reqBody;
+    
+    // CRITICAL: Use the app language from request, default to English if not provided
+    // This ensures schedule is generated in the user's selected app language
+    const language = reqBody.language || "en";
+    console.log(`🌐 [AI-Schedule] Using language: ${language} (from request: ${reqBody.language || 'not provided, defaulting to en'})`);
     
     const tenantId = req.headers.get("x-tenant-id") || "";
     const farmerId = req.headers.get("x-farmer-id") || "";
@@ -2953,54 +3010,8 @@ SEED TREATMENT TASK IS MANDATORY:
 - Include Thiram/Carbendazim for chemical farming`;
     }
 
-    // CONTEXT Section - ENHANCED FOR RURAL AGRICULTURE LANGUAGE
-    const contextSection = `
-═══════════════════════════════════════════════════════════════════════════
-📚 CONTEXT (संदर्भ)
-═══════════════════════════════════════════════════════════════════════════
-You are Dr. AgriGenius - World's Leading Agricultural Scientist with 45+ years of field experience at ICAR-IARI, New Delhi. You have published 200+ research papers on precision agriculture and helped 1 million+ farmers achieve 3x-7x yield increase.
-
-🎯 YOUR COMMUNICATION STYLE (CRITICAL):
-You speak like a wise village elder farmer (बुजुर्ग किसान) who explains complex things in simple, heartfelt rural language.
-- Use WARM, ENCOURAGING, CONVERSATIONAL tone like talking to your own family member farmer
-- Use VILLAGE DIALECT and FOLK WISDOM (लोक ज्ञान) - NOT formal/technical language
-- Include TRADITIONAL SAYINGS and PROVERBS related to farming
-- Explain WHY each step matters in terms farmers understand (income, family welfare, legacy)
-- Use EMOTIONAL CONNECTION - reference family, children's education, village pride
-- Make every instruction ACTIONABLE with clear timing (सुबह जल्दी, शाम को, etc.)
-
-LANGUAGE STYLE EXAMPLES (${language === 'mr' ? 'Marathi' : language === 'hi' ? 'Hindi' : 'English'}):
-${language === 'mr' ? `
-- "शेतकरी बंधूंनो, आज आपल्या पिकाला पाणी द्यायची वेळ झाली..."
-- "जसं आपण आपल्या मुलांना वेळेवर जेवण देतो, तसंच पिकालाही वेळेवर खत द्यायला हवं"
-- "आजोबांच्या काळापासून सांगत आलेले - पहिला पाऊस पडला की लगेच पेरणी करा"
-- "हे काम केलं नाही तर 40% पैसे वाया जातील - मुलांच्या शाळेचं फी वर परिणाम होईल"
-` : language === 'hi' ? `
-- "किसान भाइयों, आज अपनी फसल को पानी देने का समय आ गया है..."
-- "जैसे हम अपने बच्चों को समय पर खाना खिलाते हैं, वैसे ही फसल को भी समय पर खाद देनी चाहिए"
-- "दादाजी के ज़माने से कहते आए हैं - पहली बारिश आए तो तुरंत बुवाई करो"
-- "यह काम नहीं किया तो 40% पैसे बर्बाद हो जाएंगे - बच्चों की पढ़ाई पर असर पड़ेगा"
-` : `
-- "Brother farmer, today is the right time to water our crop..."
-- "Just as we feed our children on time, the crop also needs timely nutrition"
-- "Grandfather always said - when first rain comes, sow immediately"
-- "If you skip this, 40% money wasted - will affect children's school fees"
-`}
-
-YOUR EXPERTISE INCLUDES:
-- Crop physiology and phenology across all agro-climatic zones
-- Integrated Nutrient Management (INM) and Integrated Pest Management (IPM)
-- Climate-smart agriculture and precision farming
-- Traditional farming wisdom combined with modern science (देशी ज्ञान + आधुनिक विज्ञान)
-- Regional farming practices across all Indian states
-
-CRITICAL WRITING RULES (COMPACT OUTPUT - PREVENT TRUNCATION):
-1. Write CONCISE descriptions (15-25 words MAX per task)
-2. Instructions: 2-3 short bullet points (10-15 words each)
-3. Skip verbose explanations - farmers know basics
-4. Include timing: morning/evening only
-5. Mention yield impact briefly: +20% yield
-6. Use LOCAL UNITS (गुंठा, क्विंटल) alongside standard`;
+    // CONTEXT Section - LANGUAGE-AWARE (reduces token bloat)
+    const contextSection = buildContextSection(language, languageName);
 
     // ═══════════════════════════════════════════════════════════════════
     // WATER REQUIREMENT CALCULATIONS FOR THIS LAND
@@ -3342,36 +3353,28 @@ FUNGICIDES:
 ⚠️ NEVER use "foliar_spray" for solid fertilizers or FYM!
 `;
 
-    // TASK Section - Include soil data and land area specific calculations
+    // TASK Section - Language-aware, compact
+    const taskSectionHeader = language === 'mr' ? '🎯 कार्य' : language === 'hi' ? '🎯 कार्य' : '🎯 TASK';
+    const soilReportLabel = language === 'mr' ? 'माती आरोग्य अहवाल' : language === 'hi' ? 'मिट्टी स्वास्थ्य रिपोर्ट' : 'SOIL HEALTH REPORT';
+    const phLabels = language === 'en' 
+      ? { acidic: 'Acidic', alkaline: 'Alkaline', neutral: 'Neutral' }
+      : language === 'mr'
+      ? { acidic: 'आम्लयुक्त', alkaline: 'क्षारयुक्त', neutral: 'संतुलित' }
+      : { acidic: 'अम्लीय', alkaline: 'क्षारीय', neutral: 'संतुलित' };
+    
     const taskSection = `
-═══════════════════════════════════════════════════════════════════════════
-🎯 TASK (कार्य)
-═══════════════════════════════════════════════════════════════════════════
-Generate a COMPLETE, ACCURATE crop schedule for ${translatedCropName} (${cropName}) cultivation.
+${taskSectionHeader}
+Generate crop schedule for ${translatedCropName} (${cropName}) cultivation.
 ${prescriptionFraming}
-⚠️ CRITICAL: ALL QUANTITIES MUST BE CALCULATED FOR THIS EXACT LAND AREA ⚠️
 Land Area: ${landAreaAcres.toFixed(2)} acres (${landAreaGuntha} guntha / ${landAreaHa.toFixed(2)} hectares)
 
-EXAMPLE CALCULATIONS FOR ${landAreaAcres.toFixed(2)} ACRES:
-- If standard dose is 50 kg/acre, calculate: 50 × ${landAreaAcres.toFixed(2)} = ${Math.round(50 * landAreaAcres)} kg total
-- If standard dose is 500 ml/acre, calculate: 500 × ${landAreaAcres.toFixed(2)} = ${Math.round(500 * landAreaAcres)} ml total
-- Do NOT give per-acre values. Give TOTAL quantity for this land.
+CROP: ${translatedCropName} ${cropVariety ? `(${cropVariety})` : ""}
+Sowing: ${sowingDate} | Location: ${district}, ${state}
+Soil: ${soilData?.soil_type || land.soil_type || "Black/Alluvial"} | Irrigation: ${land.irrigation_type || "manual"}
 
-CROP DETAILS:
-- Crop: ${translatedCropName} ${cropVariety ? `(Variety: ${cropVariety})` : ""}
-- Land Area: ${landAreaAcres.toFixed(2)} acres (${landAreaGuntha} guntha)
-- Sowing Date: ${sowingDate}
-- Location: ${land.village || district}, ${district}, ${state}
-- Soil Type: ${soilData?.soil_type || land.soil_type || "Black/Alluvial"}
-- Irrigation: ${land.irrigation_type || "manual"} (${irrigationRules})
-
-🧪 SOIL HEALTH REPORT (माती आरोग्य अहवाल):
-- pH Level: ${soilPh.toFixed(1)} ${soilPh < 6.5 ? "(Acidic - आम्लयुक्त)" : soilPh > 7.5 ? "(Alkaline - क्षारयुक्त)" : "(Neutral - संतुलित)"}
-- Nitrogen (N): ${soilN} kg/ha ${soilN < 280 ? "(Low)" : soilN > 560 ? "(High)" : "(Medium)"}
-- Phosphorus (P): ${soilP} kg/ha ${soilP < 10 ? "(Low)" : soilP > 25 ? "(High)" : "(Medium)"}
-- Potassium (K): ${soilK} kg/ha ${soilK < 120 ? "(Low)" : soilK > 280 ? "(High)" : "(Medium)"}
-- Organic Carbon: ${soilData?.organic_carbon || "N/A"}%
-- Fertility Class: ${soilData?.fertility_class || "Medium"}
+${soilReportLabel}:
+- pH: ${soilPh.toFixed(1)} (${soilPh < 6.5 ? phLabels.acidic : soilPh > 7.5 ? phLabels.alkaline : phLabels.neutral})
+- N: ${soilN} kg/ha | P: ${soilP} kg/ha | K: ${soilK} kg/ha
 ${npkPrescription}
 ${phCompatibility}
 ${waterPrescription}
@@ -3379,102 +3382,69 @@ ${applicationMethodRules}
 
 FARMING MODE: ${farmingTypeLabel}
 ${farmingTypeRules}
-
 ${seedPreparationDetails}
-
 ${soilTestInstruction}
+Labor Rate: ₹${laborRate}/day`;
 
-- Labor Rate: ₹${laborRate}/day`;
-
-    // INSTRUCTION Section
+    // INSTRUCTION Section - Language-aware
+    const seedRulesLabel = language === 'mr' ? 'तयार रोपे नियम' : language === 'hi' ? 'तैयार पौधे नियम' : 'READY-MADE PLANT RULES';
     const seedRules = isReadyMadePlant ? `
-3. READY-MADE PLANT RULES (तयार रोपे नियम):
+3. ${seedRulesLabel}:
    - DO NOT include seed_treatment or seed sowing tasks
    - START from transplanting (day 0 is transplanting date)
    - Nursery plant age: ${nurseryDays} days
-   - Include transplanting task with spacing, depth, root dip details
-   - Adjust all days_from_sowing relative to transplanting (not seeding)
 ` : `
-3. SEED PREPARATION RULES (Stage: sowing):
-   - ALWAYS include seed treatment task with exact method
+3. SEED PREPARATION RULES:
+   - ALWAYS include seed treatment task
    - Include seed rate, spacing, and depth
-   - For organic: Beejamrut/Trichoderma treatment
-   - For chemical: Thiram/Carbendazim treatment
 `;
 
-    const instructionSection = `
-═══════════════════════════════════════════════════════════════════════════
-📋 INSTRUCTIONS (निर्देश)
-═══════════════════════════════════════════════════════════════════════════
+    // Product name examples based on language
+    const productExamples = language === 'mr' 
+      ? 'युरिया, डीएपी, गांडूळ खत' 
+      : language === 'hi' 
+      ? 'यूरिया, डीएपी, केंचुआ खाद' 
+      : 'Urea, DAP, Vermicompost';
 
-1. MANDATORY STAGES (सभी ${totalStages} चरण अनिवार्य):
+    const instructionSection = `
+📋 INSTRUCTIONS
+
+1. MANDATORY STAGES (all ${totalStages} required):
 ${stagesPrompt}
 
 2. TASK REQUIREMENTS:
-   - Generate 2-3 tasks per stage (Total: ${totalStages * 2}-${totalStages * 3} tasks)
+   - Generate 2-3 tasks per stage
    - Each task MUST include: "${translatedCropName} - [action]" in ${languageName}
-   - Include SPECIFIC quantities (kg/acre, liters/acre)
-   - Include SPECIFIC product brands with prices
-   - Include yield_impact and skip_penalty for each task
+   - Include quantities, product brands, prices
 ${seedRules}
 
-4. PRESCRIPTION-BASED PRODUCT RECOMMENDATIONS (CRITICAL):
-   ⚠️ USE THE PRESCRIPTION ABOVE, NOT GENERIC DOSES!
-   
-   FOR FERTILIZER TASKS (ONLY if deficit exists):
-   ${nDeficit <= 0 ? '- SKIP Urea/N fertilizers (N is SUFFICIENT based on soil report)' : `- Urea: ${ureaKg} kg TOTAL for this land (not per acre!)`}
-   ${pDeficit <= 0 ? '- SKIP DAP/P fertilizers (P is SUFFICIENT based on soil report)' : `- DAP/SSP: ${dapKg} kg TOTAL for this land`}
-   ${kDeficit <= 0 ? '- SKIP MOP/K fertilizers (K is SUFFICIENT based on soil report)' : `- MOP: ${mopKg} kg TOTAL for this land`}
-   
-   FOR IRRIGATION TASKS:
-   - Include water_required_liters: ${adjustedWaterPerIrrigation} liters for each irrigation
-   - Specify irrigation type: ${irrigationType}
-   - Critical stages needing double water: ${waterReq.critical_stages.join(', ')}
-   
-   FOR APPLICATION METHODS (CRITICAL - USE CORRECT METHOD):
-   - Solid fertilizers (Urea/DAP/MOP) → "broadcasting" or "band_placement"
-   - Micronutrients (Zn/B/Fe sprays) → "foliar_spray"
-   - Organic matter (FYM/Vermicompost) → "basal_application"
-   - Liquid bio-inputs (Jeevamrut) → "drenching"
-   - Granular pesticides → "soil_application"
+4. FERTILIZER DOSES (use prescription):
+   ${nDeficit <= 0 ? '- SKIP N fertilizers (sufficient)' : `- Urea: ${ureaKg} kg total`}
+   ${pDeficit <= 0 ? '- SKIP P fertilizers (sufficient)' : `- DAP/SSP: ${dapKg} kg total`}
+   ${kDeficit <= 0 ? '- SKIP K fertilizers (sufficient)' : `- MOP: ${mopKg} kg total`}
+
+5. APPLICATION METHODS:
+   - Solid fertilizers → "broadcasting" or "band_placement"
+   - Micronutrients → "foliar_spray"
+   - Organic matter → "basal_application"
    - Liquid pesticides → "foliar_spray"
-   ⚠️ NEVER use "foliar_spray" for solid fertilizers!
-   
-   🚫 NO PRODUCTS NEEDED FOR (labor-only tasks):
-   - irrigation, watering → No products, only labor cost + water_required_liters
-   - land_preparation, ploughing → No products, only machinery/labor
-   - harvesting, post_harvest → No products, only labor cost
-   - monitoring, field_visit → No products, only labor
 
-5. SOIL TEST TASK RULE:
-   ${soilTestInstruction}
-
-6. COST CALCULATION (FOR ${landAreaAcres.toFixed(2)} ACRES):
-   - Calculate estimated_cost = sum of all product prices + labor cost
-   - Labor: (days × ₹${laborRate}/day)
-   - Products: actual market prices × quantity for this land
-   - Include "total_for_land" field showing total quantity for ${landAreaAcres.toFixed(2)} acres
-
-7. LANGUAGE RULES (CRITICAL - PRODUCT NAMES IN ${languageName}):
-   - Write ALL task_name, description, instructions in ${languageName}
-   - Product names MUST be in ${languageName}: युरिया, डीएपी, गांडूळ खत, कडुनिंबाचे तेल etc.
-   - Use rural/village dialect: ${JSON.stringify(Object.entries(ruralTerms).slice(0, 10).reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {}))}
+6. LANGUAGE: Write ALL content in ${languageName}
+   - Product examples: ${productExamples}
+   ${language !== 'en' ? `- Use rural dialect terms` : ''}
    ${regionalLanguageRules}
 
-8. WEATHER DEPENDENCY:
-   - Mark irrigation, spraying tasks as weather_dependent: true
-   - Include ideal_weather conditions for sensitive tasks`;
+7. WEATHER: Mark irrigation, spraying as weather_dependent: true`;
 
     // DATA Section (compact to reduce token usage / latency)
+    // DATA Section (compact)
     const dataSection = `
-═══════════════════════════════════════════════════════════════════════════
-📊 KEY NUMBERS (FOR ${landAreaAcres.toFixed(2)} ACRES / ${landAreaGuntha} GUNTHA)
-═══════════════════════════════════════════════════════════════════════════
-- FYM: ${fymTons} tons @ ₹800/ton = ₹${fymCost}
+📊 KEY NUMBERS (${landAreaAcres.toFixed(2)} ACRES):
+- FYM: ${fymTons} tons = ₹${fymCost}
 - Urea: ${ureaKg} kg = ₹${ureaCost}
 - DAP: ${dapKg} kg = ₹${dapCost}
 - MOP: ${mopKg} kg = ₹${mopCost}
-- Water per irrigation: ${adjustedWaterPerIrrigation} liters
+- Water/irrigation: ${adjustedWaterPerIrrigation} liters
 `;
 
     // Combine all sections into system prompt
@@ -3527,19 +3497,18 @@ EXACT JSON OUTPUT FORMAT (follow this exactly):
       ? `\nMANDATORY TASK TYPES for ${translatedCropName}: ${cropTaskConfig.mandatoryCategories.join(', ')}`
       : '';
 
-    const userPrompt = `Generate COMPLETE ${translatedCropName} crop schedule as JSON.
+    // Language-specific dialect label
+    const dialectLabel = language === 'mr' ? 'ग्रामीण भाषा' : language === 'hi' ? 'ग्रामीण भाषा' : 'practical language';
 
-MANDATORY CHECKLIST:
-✓ All ${totalStages} stages covered: ${allStageKeys.join(", ")}
-✓ TOTAL tasks must be COMPACT (exactly ${totalStages * tasksPerStage} tasks — ${tasksPerStage} per stage)
-✓ Combine repeated activities into fewer "monitoring windows" tasks (e.g., "Day 30–120: irrigation check every 10–15 days")
-✓ Keep each description short (≤ 240 characters) and instructions short (≤ 5 bullet steps)
-✓ Seed preparation with treatment details
-✓ For products: use flat fields - product_names (comma-separated), product_doses, product_prices
-✓ Instructions in ${languageName} rural dialect (ग्रामीण भाषा)
-✓ Cost estimates per task in INR${mandatoryCategoriesPrompt}
+    const userPrompt = `Generate ${translatedCropName} crop schedule as JSON.
 
-OUTPUT: Return ONLY valid JSON object (no markdown, no explanation). Start with { and end with }`;
+CHECKLIST:
+✓ All ${totalStages} stages: ${allStageKeys.join(", ")}
+✓ ${totalStages * tasksPerStage} tasks total (${tasksPerStage}/stage)
+✓ Short descriptions (≤240 chars), 2-5 instruction bullets
+✓ All content in ${languageName} (${dialectLabel})${mandatoryCategoriesPrompt}
+
+OUTPUT: JSON only, no markdown. Start with { end with }`;
 
     console.log(`🤖 [AI] Calling ${aiProvider}/${model} with optimized ${totalStages}-stage prompt`);
 
