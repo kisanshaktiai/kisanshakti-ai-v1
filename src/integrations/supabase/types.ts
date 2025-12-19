@@ -3852,6 +3852,456 @@ export type Database = {
         }
         Relationships: []
       }
+      crop_growth_alerts: {
+        Row: {
+          action_deadline: string | null
+          actioned_at: string | null
+          alert_category: string
+          alert_type: string
+          analysis_id: string | null
+          created_at: string
+          dismissed_at: string | null
+          expires_at: string | null
+          farmer_id: string
+          id: string
+          is_actioned: boolean | null
+          is_read: boolean | null
+          land_id: string
+          message: string
+          recommended_action: string | null
+          severity: string
+          tenant_id: string
+          title: string
+          trigger_conditions: Json | null
+        }
+        Insert: {
+          action_deadline?: string | null
+          actioned_at?: string | null
+          alert_category: string
+          alert_type: string
+          analysis_id?: string | null
+          created_at?: string
+          dismissed_at?: string | null
+          expires_at?: string | null
+          farmer_id: string
+          id?: string
+          is_actioned?: boolean | null
+          is_read?: boolean | null
+          land_id: string
+          message: string
+          recommended_action?: string | null
+          severity: string
+          tenant_id: string
+          title: string
+          trigger_conditions?: Json | null
+        }
+        Update: {
+          action_deadline?: string | null
+          actioned_at?: string | null
+          alert_category?: string
+          alert_type?: string
+          analysis_id?: string | null
+          created_at?: string
+          dismissed_at?: string | null
+          expires_at?: string | null
+          farmer_id?: string
+          id?: string
+          is_actioned?: boolean | null
+          is_read?: boolean | null
+          land_id?: string
+          message?: string
+          recommended_action?: string | null
+          severity?: string
+          tenant_id?: string
+          title?: string
+          trigger_conditions?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_growth_alerts_analysis_id_fkey"
+            columns: ["analysis_id"]
+            isOneToOne: false
+            referencedRelation: "crop_growth_analysis"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_growth_alerts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_alerts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_alerts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_alerts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_alerts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_growth_alerts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crop_growth_analysis: {
+        Row: {
+          ai_model_used: string | null
+          canopy_health_score: number | null
+          confidence_score: number | null
+          conflicting_signals: Json | null
+          created_at: string
+          crop_current_status: string
+          detected_growth_stage: string | null
+          detected_issues: Json | null
+          expected_growth_stage: string | null
+          farmer_id: string
+          farmer_message: string
+          farmer_message_language: string | null
+          growth_stage_deviation: string | null
+          id: string
+          land_id: string
+          ndvi_weather_correlation: string | null
+          next_14_day_prediction: string | null
+          next_3_day_prediction: string | null
+          next_7_day_prediction: string | null
+          processing_time_ms: number | null
+          recommended_actions: Json
+          risk_factors: Json | null
+          risk_level: string | null
+          schedule_updates: Json | null
+          signal_confidence: string | null
+          tenant_id: string
+          uniformity_score: number | null
+          upload_id: string
+          visual_observation_summary: string
+          yield_impact_estimate: string | null
+        }
+        Insert: {
+          ai_model_used?: string | null
+          canopy_health_score?: number | null
+          confidence_score?: number | null
+          conflicting_signals?: Json | null
+          created_at?: string
+          crop_current_status: string
+          detected_growth_stage?: string | null
+          detected_issues?: Json | null
+          expected_growth_stage?: string | null
+          farmer_id: string
+          farmer_message: string
+          farmer_message_language?: string | null
+          growth_stage_deviation?: string | null
+          id?: string
+          land_id: string
+          ndvi_weather_correlation?: string | null
+          next_14_day_prediction?: string | null
+          next_3_day_prediction?: string | null
+          next_7_day_prediction?: string | null
+          processing_time_ms?: number | null
+          recommended_actions: Json
+          risk_factors?: Json | null
+          risk_level?: string | null
+          schedule_updates?: Json | null
+          signal_confidence?: string | null
+          tenant_id: string
+          uniformity_score?: number | null
+          upload_id: string
+          visual_observation_summary: string
+          yield_impact_estimate?: string | null
+        }
+        Update: {
+          ai_model_used?: string | null
+          canopy_health_score?: number | null
+          confidence_score?: number | null
+          conflicting_signals?: Json | null
+          created_at?: string
+          crop_current_status?: string
+          detected_growth_stage?: string | null
+          detected_issues?: Json | null
+          expected_growth_stage?: string | null
+          farmer_id?: string
+          farmer_message?: string
+          farmer_message_language?: string | null
+          growth_stage_deviation?: string | null
+          id?: string
+          land_id?: string
+          ndvi_weather_correlation?: string | null
+          next_14_day_prediction?: string | null
+          next_3_day_prediction?: string | null
+          next_7_day_prediction?: string | null
+          processing_time_ms?: number | null
+          recommended_actions?: Json
+          risk_factors?: Json | null
+          risk_level?: string | null
+          schedule_updates?: Json | null
+          signal_confidence?: string | null
+          tenant_id?: string
+          uniformity_score?: number | null
+          upload_id?: string
+          visual_observation_summary?: string
+          yield_impact_estimate?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_growth_analysis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_analysis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_analysis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_analysis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_analysis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_growth_analysis_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_growth_analysis_upload_id_fkey"
+            columns: ["upload_id"]
+            isOneToOne: false
+            referencedRelation: "crop_growth_uploads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crop_growth_history: {
+        Row: {
+          created_at: string
+          farmer_id: string
+          growth_stage: string | null
+          health_score: number | null
+          id: string
+          issues_detected: number | null
+          land_id: string
+          ndvi_value: number | null
+          record_date: string
+          tenant_id: string
+          weather_summary: Json | null
+        }
+        Insert: {
+          created_at?: string
+          farmer_id: string
+          growth_stage?: string | null
+          health_score?: number | null
+          id?: string
+          issues_detected?: number | null
+          land_id: string
+          ndvi_value?: number | null
+          record_date: string
+          tenant_id: string
+          weather_summary?: Json | null
+        }
+        Update: {
+          created_at?: string
+          farmer_id?: string
+          growth_stage?: string | null
+          health_score?: number | null
+          id?: string
+          issues_detected?: number | null
+          land_id?: string
+          ndvi_value?: number | null
+          record_date?: string
+          tenant_id?: string
+          weather_summary?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_growth_history_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_history_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_history_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_history_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_history_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_growth_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crop_growth_uploads: {
+        Row: {
+          capture_location: Json | null
+          created_at: string
+          farmer_id: string
+          file_type: string
+          file_url: string
+          id: string
+          is_processed: boolean | null
+          land_id: string
+          ndvi_at_capture: number | null
+          notes: string | null
+          processing_error: string | null
+          tenant_id: string
+          thumbnail_url: string | null
+          updated_at: string
+          upload_timestamp: string
+          weather_at_capture: Json | null
+        }
+        Insert: {
+          capture_location?: Json | null
+          created_at?: string
+          farmer_id: string
+          file_type: string
+          file_url: string
+          id?: string
+          is_processed?: boolean | null
+          land_id: string
+          ndvi_at_capture?: number | null
+          notes?: string | null
+          processing_error?: string | null
+          tenant_id: string
+          thumbnail_url?: string | null
+          updated_at?: string
+          upload_timestamp?: string
+          weather_at_capture?: Json | null
+        }
+        Update: {
+          capture_location?: Json | null
+          created_at?: string
+          farmer_id?: string
+          file_type?: string
+          file_url?: string
+          id?: string
+          is_processed?: boolean | null
+          land_id?: string
+          ndvi_at_capture?: number | null
+          notes?: string | null
+          processing_error?: string | null
+          tenant_id?: string
+          thumbnail_url?: string | null
+          updated_at?: string
+          upload_timestamp?: string
+          weather_at_capture?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_growth_uploads_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_uploads_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_uploads_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_uploads_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_growth_uploads_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_growth_uploads_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crop_health_assessments: {
         Row: {
           alert_level: string | null
