@@ -3531,17 +3531,13 @@ EXACT JSON OUTPUT FORMAT (follow this exactly):
 
 MANDATORY CHECKLIST:
 ✓ All ${totalStages} stages covered: ${allStageKeys.join(", ")}
-✓ MINIMUM ${minTaskCount} tasks required for this ${cropDurationDays}-day crop
+✓ TOTAL tasks must be COMPACT (exactly ${totalStages * tasksPerStage} tasks — ${tasksPerStage} per stage)
+✓ Combine repeated activities into fewer "monitoring windows" tasks (e.g., "Day 30–120: irrigation check every 10–15 days")
+✓ Keep each description short (≤ 240 characters) and instructions short (≤ 5 bullet steps)
 ✓ Seed preparation with treatment details
 ✓ For products: use flat fields - product_names (comma-separated), product_doses, product_prices
 ✓ Instructions in ${languageName} rural dialect (ग्रामीण भाषा)
 ✓ Cost estimates per task in INR${mandatoryCategoriesPrompt}
-
-CRITICAL FOR ${cropDurationDays}-DAY CROPS:
-- Include ${Math.ceil(cropDurationDays / 15)} irrigation monitoring tasks
-- Include ${Math.ceil(cropDurationDays / 30)} fertilizer applications
-- Include ${Math.ceil(cropDurationDays / 25)} weeding tasks
-- Include ${Math.ceil(cropDurationDays / 45)} pest/disease monitoring tasks
 
 OUTPUT: Return ONLY valid JSON object (no markdown, no explanation). Start with { and end with }`;
 
@@ -3822,12 +3818,25 @@ OUTPUT: Return ONLY valid JSON object (no markdown, no explanation). Start with 
             tasks: partialTasks
           };
         } else {
-          // Cannot recover - throw with helpful message
-          console.error("❌ [AI] No structured data found.", {
-            finishReason,
-            snippet: JSON.stringify(aiData).substring(0, 800),
-          });
-          throw new Error("AI response was truncated. Please try generating with a simpler crop or reduce land complexity.");
+          // Deterministic fallback: never fail hard on truncation.
+          // Build a compact, stage-complete schedule using pre-defined fallback templates.
+          console.warn("🛟 [AI] Truncated response could not be recovered. Using deterministic fallback schedule.");
+
+          const fallbackTasks = farmingStages.map((stage: FarmingStage) =>
+            generateFallbackTask(stage, translatedCropName, landAreaAcres, farmingType, language)
+          );
+
+          scheduleData = {
+            crop_name: translatedCropName,
+            total_duration_days: cropDurationDays,
+            expected_yield_quintals: 20,
+            yield_multiplier_target: 3,
+            stages_covered: allStageKeys,
+            tasks: fallbackTasks,
+            is_fallback_schedule: true,
+          };
+
+          console.log(`✅ [AI] Fallback schedule built with ${fallbackTasks.length} tasks`);
         }
       } else {
         console.error("❌ [AI] No structured data found.", {
