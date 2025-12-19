@@ -4,6 +4,7 @@ import { VoiceService } from '@/services/voice/voiceService';
 import { VoiceConfig, ASRResult, VoiceUtterance } from '@/services/voice/types';
 import { useTenant } from '@/hooks/useTenant';
 import { useAuthStore } from '@/stores/authStore';
+import { getVoicePlatformInfo, getUnsupportedMessage } from '@/services/voice/voicePlatformDetector';
 
 interface ModernVoiceContextType {
   isListening: boolean;
@@ -197,13 +198,18 @@ export const ModernVoiceProvider: React.FC<{ children: React.ReactNode }> = ({ c
       return;
     }
 
-    // Check browser support
+    // Check browser support with detailed platform info
     if (!voiceService.isSupported()) {
-      console.error('[Voice] Browser does not support Web Speech API');
+      const platformInfo = getVoicePlatformInfo();
+      const savedLang = localStorage.getItem('preferred_language') || 'en';
+      const message = getUnsupportedMessage(savedLang, platformInfo.unsupportedReason);
+      
+      console.error('[Voice] Platform does not support speech recognition:', platformInfo);
       toast({
-        title: "Not Supported",
-        description: "Your browser doesn't support voice recognition. Try Chrome, Edge, or Safari.",
+        title: message.title,
+        description: message.description,
         variant: "destructive",
+        duration: 6000,
       });
       return;
     }

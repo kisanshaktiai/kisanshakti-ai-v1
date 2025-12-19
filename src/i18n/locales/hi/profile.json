@@ -1,0 +1,104 @@
+{
+  "__meta": {
+    "page": "profile",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "profile": {
+    "role": {
+      "farmer": "किसान"
+    },
+    "farm_type": {
+      "general": "सामान्य",
+      "organic": "जैविक",
+      "commercial": "व्यावसायिक",
+      "subsistence": "निर्वाह"
+    },
+    "completion": {
+      "label": "प्रोफ़ाइल पूर्णता"
+    },
+    "info": {
+      "phone": "फोन",
+      "location": "स्थान",
+      "not_set": "सेट नहीं",
+      "location_not_set": "स्थान सेट नहीं"
+    },
+    "analytics": {
+      "title": "ऐप उपयोग सांख्यिकी",
+      "total_opens": "कुल खुलना",
+      "last_active": "अंतिम सक्रिय",
+      "never": "कभी नहीं",
+      "member_since": "सदस्य बने",
+      "unknown": "अज्ञात",
+      "ai_queries": "AI प्रश्न"
+    },
+    "performance": {
+      "title": "खेती प्रदर्शन",
+      "good": "अच्छा",
+      "excellent": "उत्कृष्ट",
+      "average": "औसत",
+      "yield": "उपज",
+      "efficiency": "दक्षता",
+      "sustainability": "स्थिरता"
+    },
+    "crops": {
+      "distribution_title": "फसल वितरण"
+    },
+    "yield": {
+      "trend_title": "उपज रुझान (पिछले 6 महीने)"
+    },
+    "farm_info": {
+      "title": "खेत की जानकारी",
+      "total_land": "कुल भूमि",
+      "acres": "एकड़",
+      "experience": "अनुभव",
+      "years": "वर्ष",
+      "farm_type": "खेत का प्रकार",
+      "not_specified": "निर्दिष्ट नहीं",
+      "irrigation": "सिंचाई",
+      "yes": "हां",
+      "no": "नहीं",
+      "tractor": "ट्रैक्टर",
+      "available": "उपलब्ध",
+      "not_available": "उपलब्ध नहीं",
+      "storage": "भंडारण"
+    },
+    "tts": {
+      "title": "आवाज़ सेटिंग्स",
+      "description": "टेक्स्ट-टू-स्पीच सेटिंग्स कॉन्फ़िगर करें",
+      "enable": "आवाज़ पढ़ना",
+      "toggle": "आवाज़ पढ़ना टॉगल करें",
+      "language": "आवाज़ की भाषा",
+      "speed": "गति",
+      "volume": "वॉल्यूम",
+      "test": "आवाज़ परीक्षण",
+      "loading": "लोड हो रहा है...",
+      "reset": "डिफ़ॉल्ट पर रीसेट",
+      "autoRead": "ऑटो पढ़ें",
+      "autoReadChat": "AI चैट प्रतिक्रियाएं",
+      "autoReadAlerts": "मौसम और अलर्ट",
+      "autoReadSchedule": "दैनिक कार्य"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show my profile",
+      "Edit my information",
+      "View farm analytics",
+      "Check my achievements"
+    ],
+    "voice_examples_hi": [
+      "मेरी प्रोफ़ाइल दिखाओ",
+      "मेरी जानकारी बदलें",
+      "खेती विश्लेषण देखें",
+      "मेरी उपलब्धियां जांचें"
+    ],
+    "voice_examples_mr": [
+      "माझी प्रोफाइल दाखवा",
+      "माझी माहिती बदला",
+      "शेती विश्लेषण पहा",
+      "माझी उपलब्धी तपासा"
+    ]
+  }
+}

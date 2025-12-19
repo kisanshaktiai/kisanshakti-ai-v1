@@ -4,6 +4,8 @@ import { toast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { tenantIsolationService } from './tenantIsolationService';
 import { networkStatusService } from './networkStatusService';
+import { landsApi } from './landsApi';
+import { schedulesApi } from './schedulesApi';
 
 interface SyncResult {
   success: boolean;
@@ -544,19 +546,17 @@ class SyncService {
         });
       }
 
-      // Download lands data
-      console.log('📥 [Sync] Fetching lands from server...');
-      const { data: lands, error: landsError } = await client
-        .from('lands')
-        .select('*')
-        .eq('tenant_id', tenant)
-        .eq('farmer_id', userId)
-        .order('created_at', { ascending: false });
-
-      if (landsError) {
-        console.error('❌ [Sync] Failed to fetch lands:', landsError);
-      } else {
-        console.log(`✅ [Sync] Fetched ${lands?.length || 0} lands from server`);
+      // Download lands data using edge function (bypasses RLS issues)
+      console.log('📥 [Sync] Fetching lands via lands-api edge function...');
+      let lands: any[] = [];
+      let landsError: Error | null = null;
+      
+      try {
+        lands = await landsApi.fetchLands();
+        console.log(`✅ [Sync] Fetched ${lands?.length || 0} lands from server via API`);
+      } catch (error) {
+        landsError = error as Error;
+        console.error('❌ [Sync] Failed to fetch lands via API:', landsError);
       }
 
       // CRITICAL: Clear existing lands before saving new data from server
@@ -660,20 +660,17 @@ class SyncService {
         console.log('ℹ️ [Sync] No lands to save from server');
       }
 
-      // Download schedules data
-      console.log('📥 [Sync] Fetching schedules from server...');
-      const { data: schedules, error: schedulesError } = await client
-        .from('crop_schedules')
-        .select('*')
-        .eq('tenant_id', tenant)
-        .eq('farmer_id', userId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-
-      if (schedulesError) {
-        console.error('❌ [Sync] Failed to fetch schedules:', schedulesError);
-      } else {
-        console.log(`✅ [Sync] Fetched ${schedules?.length || 0} schedules from server`);
+      // Download schedules data using edge function (bypasses RLS issues)
+      console.log('📥 [Sync] Fetching schedules via schedules-api edge function...');
+      let schedules: any[] = [];
+      let schedulesError: Error | null = null;
+      
+      try {
+        schedules = await schedulesApi.fetchSchedules();
+        console.log(`✅ [Sync] Fetched ${schedules?.length || 0} schedules from server via API`);
+      } catch (error) {
+        schedulesError = error as Error;
+        console.error('❌ [Sync] Failed to fetch schedules via API:', schedulesError);
       }
 
       // Clear existing schedules before saving
@@ -699,6 +696,7 @@ class SyncService {
         console.log('💾 [Sync] Saving schedules to localDB...');
         await localDB.bulkSave({
           schedules: schedules.map(s => ({
+            // Core fields
             id: s.id,
             tenant_id: tenantId,
             farmer_id: s.farmer_id,
@@ -712,11 +710,102 @@ class SyncService {
             generation_language: s.generation_language,
             generation_params: s.generation_params,
             country: s.country,
+            // Weather
             last_weather_update: s.last_weather_update,
+            last_weather_check: s.last_weather_check || null,
             weather_data: s.weather_data,
+            weather_auto_update_enabled: s.weather_auto_update_enabled || null,
             ai_model: s.ai_model,
+            // Status
             is_active: s.is_active,
             completed_at: s.completed_at,
+            status: s.status || null,
+            // Actual outcomes
+            actual_harvest_date: s.actual_harvest_date || null,
+            actual_profit: s.actual_profit || null,
+            actual_total_cost: s.actual_total_cost || null,
+            actual_yield_quintals: s.actual_yield_quintals || null,
+            outcome_recorded_at: s.outcome_recorded_at || null,
+            // Expected yields
+            expected_gross_revenue: s.expected_gross_revenue || null,
+            expected_market_price_per_quintal: s.expected_market_price_per_quintal || null,
+            expected_net_profit: s.expected_net_profit || null,
+            expected_profit: s.expected_profit || null,
+            expected_yield_per_acre: s.expected_yield_per_acre || null,
+            expected_yield_quintals: s.expected_yield_quintals || null,
+            // Farm inputs - Fertilizers
+            fertilizer_k_kg: s.fertilizer_k_kg || null,
+            fertilizer_n_kg: s.fertilizer_n_kg || null,
+            fertilizer_p_kg: s.fertilizer_p_kg || null,
+            organic_fertilizer_kg: s.organic_fertilizer_kg || null,
+            organic_manure_kg: s.organic_manure_kg || null,
+            vermicompost_kg: s.vermicompost_kg || null,
+            bio_fertilizer_units: s.bio_fertilizer_units || null,
+            // Farm inputs - Pesticides
+            bio_pesticide_ml: s.bio_pesticide_ml || null,
+            fungicide_gm: s.fungicide_gm || null,
+            herbicide_ml: s.herbicide_ml || null,
+            insecticide_ml: s.insecticide_ml || null,
+            pesticide_requirements: s.pesticide_requirements || null,
+            // Farm inputs - Other
+            seed_quantity_kg: s.seed_quantity_kg || null,
+            pgr_hormone_ml: s.pgr_hormone_ml || null,
+            growth_regulators: s.growth_regulators || null,
+            organic_input_details: s.organic_input_details || null,
+            // Water and irrigation
+            irrigation_count_total: s.irrigation_count_total || null,
+            water_per_irrigation_liters: s.water_per_irrigation_liters || null,
+            water_requirement_liters_total: s.water_requirement_liters_total || null,
+            total_water_requirement_liters: s.total_water_requirement_liters || null,
+            // Cost breakdown
+            cost_by_category: s.cost_by_category || null,
+            cost_by_stage: s.cost_by_stage || null,
+            total_estimated_cost: s.total_estimated_cost || null,
+            total_labor_cost: s.total_labor_cost || null,
+            total_material_cost: s.total_material_cost || null,
+            labor_rate_used: s.labor_rate_used || null,
+            // Task tracking
+            tasks_completed_count: s.tasks_completed_count || null,
+            tasks_on_time_count: s.tasks_on_time_count || null,
+            tasks_total_count: s.tasks_total_count || null,
+            total_duration_days: s.total_duration_days || null,
+            stages_covered: s.stages_covered || null,
+            // Location context
+            agro_climatic_zone: s.agro_climatic_zone || null,
+            district_name: s.district_name || null,
+            state_region: s.state_region || null,
+            taluka_name: s.taluka_name || null,
+            regional_dialect_zone: s.regional_dialect_zone || null,
+            // Farming details
+            farming_type: s.farming_type || null,
+            calculated_for_area_acres: s.calculated_for_area_acres || null,
+            // Suitability and quality
+            suitability_score: s.suitability_score || null,
+            suitability_warnings: s.suitability_warnings || null,
+            data_quality_score: s.data_quality_score || null,
+            schedule_accuracy_score: s.schedule_accuracy_score || null,
+            // Yield optimization
+            yield_boosting_techniques: s.yield_boosting_techniques || null,
+            yield_multiplier_target: s.yield_multiplier_target || null,
+            // Product recommendations
+            products_recommended_count: s.products_recommended_count || null,
+            recommendation_order: s.recommendation_order || null,
+            recommended_products: s.recommended_products || null,
+            // Training data flags
+            is_training_candidate: s.is_training_candidate || null,
+            training_batch_id: s.training_batch_id || null,
+            training_excluded_reason: s.training_excluded_reason || null,
+            training_processed: s.training_processed || null,
+            // Farmer feedback
+            farmer_feedback: s.farmer_feedback || null,
+            farmer_rating: s.farmer_rating || null,
+            // Input data snapshots
+            input_land_coordinates: s.input_land_coordinates || null,
+            input_soil_data: s.input_soil_data || null,
+            input_weather_data: s.input_weather_data || null,
+            // Additional metadata
+            metadata: s.metadata || null,
+            // Timestamps
             created_at: s.created_at,
             updated_at: s.updated_at,
             lastModified: new Date(s.updated_at || s.created_at).getTime(),
@@ -726,6 +815,84 @@ class SyncService {
         console.log(`✅ [Sync] Saved ${schedules.length} schedules to localDB`);
       } else {
         console.log('ℹ️ [Sync] No schedules to save from server');
+      }
+
+      // Download schedule_tasks for all schedules
+      console.log('📥 [Sync] Fetching schedule tasks...');
+      let tasks: any[] = [];
+      
+      try {
+        tasks = await schedulesApi.fetchTasks();
+        console.log(`✅ [Sync] Fetched ${tasks?.length || 0} tasks from server`);
+      } catch (error) {
+        console.warn('⚠️ [Sync] Failed to fetch tasks (may not be implemented yet):', error);
+      }
+
+      // Clear existing tasks before saving
+      if (tasks && tasks.length > 0) {
+        console.log('🗑️ [Sync] Clearing existing tasks before server data download...');
+        const db = (localDB as any).db;
+        if (db) {
+          const tx = db.transaction('scheduleTasks', 'readwrite');
+          const store = tx.objectStore('scheduleTasks');
+          await store.clear();
+          await tx.done;
+        }
+
+        console.log('💾 [Sync] Saving tasks to localDB...');
+        await localDB.bulkSave({
+          tasks: tasks.map(t => ({
+            id: t.id,
+            schedule_id: t.schedule_id,
+            tenant_id: tenantId,
+            farmer_id: t.farmer_id || null,
+            task_name: t.task_name,
+            task_type: t.task_type,
+            task_date: t.task_date,
+            task_description: t.task_description || null,
+            days_from_sowing: t.days_from_sowing || null,
+            sequence_order: t.sequence_order || null,
+            stage_key: t.stage_key || null,
+            stage_name: t.stage_name || null,
+            stage_order: t.stage_order || null,
+            duration_hours: t.duration_hours || null,
+            priority: t.priority || null,
+            weather_dependent: t.weather_dependent || null,
+            detailed_steps: t.detailed_steps || null,
+            resources: t.resources || null,
+            estimated_cost: t.estimated_cost || null,
+            currency: t.currency || null,
+            water_required_liters: t.water_required_liters || null,
+            instructions: t.instructions || null,
+            precautions: t.precautions || null,
+            regional_terms: t.regional_terms || null,
+            ideal_weather: t.ideal_weather || null,
+            weather_risk_level: t.weather_risk_level || null,
+            status: t.status || null,
+            completed_at: t.completed_at || null,
+            completed_by: t.completed_by || null,
+            completion_notes: t.completion_notes || null,
+            original_date: t.original_date || null,
+            reschedule_reason: t.reschedule_reason || null,
+            auto_rescheduled: t.auto_rescheduled || null,
+            climate_adjusted: t.climate_adjusted || null,
+            original_date_before_climate_adjust: t.original_date_before_climate_adjust || null,
+            climate_adjustment_reason: t.climate_adjustment_reason || null,
+            product_recommendations: t.product_recommendations || null,
+            product_type: t.product_type || null,
+            yield_boost_technique: t.yield_boost_technique || null,
+            yield_impact: t.yield_impact || null,
+            yield_impact_details: t.yield_impact_details || null,
+            skip_penalty: t.skip_penalty || null,
+            skip_penalty_details: t.skip_penalty_details || null,
+            language: t.language || null,
+            created_at: t.created_at || null,
+            updated_at: t.updated_at || null,
+            lastModified: new Date(t.updated_at || t.created_at || Date.now()).getTime(),
+            syncStatus: 'synced' as const,
+          })),
+        });
+        console.log(`✅ [Sync] Saved ${tasks.length} tasks to localDB`);
       }
       
       // VERIFY data was actually saved correctly

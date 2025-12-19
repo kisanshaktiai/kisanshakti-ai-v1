@@ -1,0 +1,112 @@
+{
+  "__meta": {
+    "page": "home",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "home": {
+    "namaste": "नमस्ते, {{name}}",
+    "last_synced": "अंतिम सिंक: {{time}}",
+    "default_name": "किसान",
+    "loading": "लोड हो रहा है...",
+    "view": "देखें",
+    "unnamed_land": "बिना नाम की भूमि",
+    "location_not_set": "स्थान सेट नहीं",
+    "no_crop": "कोई फसल नहीं",
+    "recent_activity": "हाल की गतिविधि",
+    "myLand": "मेरी भूमि",
+    "aiChat": "AI चैट",
+    "market": "मंडी",
+    "governmentSchemes": "सरकारी योजनाएं",
+    "weather": "मौसम",
+    "stats": {
+      "temperature": "तापमान",
+      "humidity": "नमी",
+      "wind_speed": "हवा की गति",
+      "wind": "हवा",
+      "pressure": "दबाव",
+      "temp": "तापमान",
+      "total_area": "कुल क्षेत्र",
+      "plots": "प्लॉट",
+      "area": "क्षेत्र",
+      "no_land": "कोई भूमि नहीं"
+    },
+    "features": {
+      "lands": {
+        "description": "अपनी कृषि भूमि प्रबंधित करें",
+        "plots": "{{count}} प्लॉट",
+        "plots_plural": "{{count}} प्लॉट",
+        "no_plots": "कोई प्लॉट नहीं"
+      },
+      "schedule": {
+        "title": "AI फसल अनुसूची",
+        "description": "स्मार्ट बुवाई कैलेंडर",
+        "next_crop": "अगली: {{crop}}",
+        "not_planned": "योजना नहीं बनी"
+      },
+      "chat": {
+        "description": "कृषि AI सहायक",
+        "online": "ऑनलाइन"
+      },
+      "market": {
+        "description": "उपज खरीदें और बेचें"
+      },
+      "community": {
+        "title": "समुदाय",
+        "description": "किसानों से जुड़ें",
+        "stats": "{{count}} सक्रिय"
+      },
+      "ndvi": {
+        "title": "NDVI और सैटेलाइट",
+        "description": "फसल स्वास्थ्य निगरानी",
+        "score": "स्कोर: {{score}}",
+        "no_data": "कोई डेटा नहीं"
+      },
+      "schemes": {
+        "description": "नवीनतम योजनाएं और सब्सिडी",
+        "count": "{{count}} सक्रिय"
+      },
+      "analytics": {
+        "title": "विश्लेषण",
+        "description": "खेती प्रदर्शन मेट्रिक्स",
+        "view_report": "रिपोर्ट देखें"
+      }
+    },
+    "badge": {
+      "active": "सक्रिय",
+      "add_land": "भूमि जोड़ें",
+      "ai": "AI",
+      "new": "नया",
+      "updated": "अपडेट"
+    },
+    "activity": {
+      "no_lands": "अभी तक कोई भूमि नहीं जोड़ी गई",
+      "add_first_land": "शुरू करने के लिए अपनी पहली भूमि जोड़ें",
+      "current_weather": "वर्तमान मौसम",
+      "loading_weather": "मौसम लोड हो रहा है...",
+      "govt_schemes": "सरकारी योजनाएं",
+      "check_subsidies": "उपलब्ध सब्सिडी जांचें"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show my lands",
+      "What's the weather today?",
+      "Open AI assistant",
+      "Check market prices"
+    ],
+    "voice_examples_hi": [
+      "मेरी जमीन दिखाओ",
+      "आज का मौसम क्या है?",
+      "AI सहायक खोलें",
+      "बाजार भाव जांचें"
+    ],
+    "voice_examples_mr": [
+      "माझी जमीन दाखवा",
+      "आजचे हवामान काय आहे?",
+      "AI सहाय्यक उघडा",
+      "बाजार भाव तपासा"
+    ]
+  }
+}

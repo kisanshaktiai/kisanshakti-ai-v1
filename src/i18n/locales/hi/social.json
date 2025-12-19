@@ -1,0 +1,122 @@
+{
+  "__meta": {
+    "page": "social",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "social": {
+    "header": {
+      "title": "समुदाय"
+    },
+    "user": {
+      "level": "स्तर {{level}}",
+      "points": "{{points}} अंक"
+    },
+    "search": {
+      "placeholder": "समुदाय खोजें..."
+    },
+    "tabs": {
+      "feed": "फीड",
+      "communities": "समुदाय",
+      "messages": "संदेश",
+      "rankings": "रैंकिंग",
+      "trending": "ट्रेंडिंग"
+    },
+    "notifications": {
+      "new_message": {
+        "title": "नया संदेश",
+        "message": "आपको एक नया संदेश मिला है"
+      },
+      "post_liked": {
+        "title": "पोस्ट पसंद की गई",
+        "message": "किसी ने आपकी पोस्ट पसंद की"
+      },
+      "new_follower": {
+        "title": "नया फॉलोअर",
+        "message": "{{name}} ने आपको फॉलो करना शुरू किया"
+      },
+      "comment": {
+        "title": "नई टिप्पणी",
+        "message": "{{name}} ने आपकी पोस्ट पर टिप्पणी की"
+      }
+    },
+    "post": {
+      "created": {
+        "title": "सफलता! 🎉",
+        "message": "आपकी पोस्ट समुदाय के साथ साझा की गई है।"
+      },
+      "create": "पोस्ट बनाएं",
+      "whats_on_mind": "आपके मन में क्या है?",
+      "add_photo": "फोटो जोड़ें",
+      "publish": "प्रकाशित करें",
+      "cancel": "रद्द करें",
+      "like": "पसंद करें",
+      "comment": "टिप्पणी",
+      "share": "साझा करें",
+      "liked_by": "{{count}} किसानों ने पसंद किया",
+      "comments": "{{count}} टिप्पणियां"
+    },
+    "community": {
+      "join": "शामिल हों",
+      "joined": "शामिल",
+      "members": "{{count}} सदस्य",
+      "posts": "{{count}} पोस्ट",
+      "about": "के बारे में",
+      "rules": "समुदाय नियम",
+      "moderators": "मॉडरेटर"
+    },
+    "messages": {
+      "title": "संदेश",
+      "new": "नया संदेश",
+      "no_messages": "अभी तक कोई संदेश नहीं",
+      "type_message": "संदेश टाइप करें...",
+      "send": "भेजें",
+      "online": "ऑनलाइन",
+      "offline": "ऑफलाइन",
+      "typing": "टाइप कर रहे हैं..."
+    },
+    "leaderboard": {
+      "title": "शीर्ष किसान",
+      "weekly": "इस सप्ताह",
+      "monthly": "इस महीने",
+      "all_time": "सर्वकालिक",
+      "rank": "रैंक",
+      "points": "अंक",
+      "badges": "बैज"
+    },
+    "trending": {
+      "title": "ट्रेंडिंग विषय",
+      "hashtag": "#{{tag}}",
+      "posts_count": "{{count}} पोस्ट"
+    },
+    "empty": {
+      "feed": "अभी तक कोई पोस्ट नहीं। समुदाय के साथ साझा करना शुरू करें!",
+      "messages": "अभी तक कोई बातचीत नहीं",
+      "communities": "कोई समुदाय नहीं मिला"
+    },
+    "profile": {
+      "activity_feed_soon": "गतिविधि फ़ीड जल्द आ रहा है"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show community feed",
+      "Create new post",
+      "Check my messages",
+      "View leaderboard"
+    ],
+    "voice_examples_hi": [
+      "समुदाय फीड दिखाओ",
+      "नई पोस्ट बनाएं",
+      "मेरे संदेश देखें",
+      "लीडरबोर्ड देखें"
+    ],
+    "voice_examples_mr": [
+      "समुदाय फीड दाखवा",
+      "नवीन पोस्ट तयार करा",
+      "माझे संदेश पहा",
+      "लीडरबोर्ड पहा"
+    ]
+  }
+}

@@ -61,7 +61,7 @@ export function SimpleCropSelector({
     try {
       const { data, error: fetchError } = await supabase
         .from('crop_groups')
-        .select('*')
+        .select('id, group_name, group_name_hi, group_name_mr, group_icon, display_order, is_active')
         .eq('is_active', true)
         .order('display_order');
 
@@ -80,7 +80,7 @@ export function SimpleCropSelector({
     try {
       const { data, error: fetchError } = await supabase
         .from('crops')
-        .select('*')
+        .select('id, label, label_hi, label_mr, icon, season, crop_group_id, is_active')
         .eq('id', cropId)
         .single();
 
@@ -100,7 +100,7 @@ export function SimpleCropSelector({
     try {
       const { data, error: fetchError } = await supabase
         .from('crops')
-        .select('*')
+        .select('id, label, label_hi, label_mr, icon, season, crop_group_id, is_active, display_order')
         .eq('crop_group_id', group.id)
         .eq('is_active', true)
         .order('display_order');

@@ -23,6 +23,7 @@ import {
   BarChart3,
   Clock
 } from 'lucide-react';
+import { TTSSettingsPanel } from '@/components/tts';
 import { useNavigate } from 'react-router-dom';
 import { format, formatDistanceToNow } from 'date-fns';
 import { 
@@ -180,10 +181,10 @@ export default function Profile() {
                 </h1>
                 <div className="flex items-center gap-2 mt-1">
                   <Badge variant="secondary" className="bg-primary/10 text-primary">
-                    Farmer
+                    {t('profile.role.farmer')}
                   </Badge>
                   <Badge variant="outline">
-                    {user?.farmType || 'General'}
+                    {user?.farmType ? t(`profile.farm_type.${user.farmType.toLowerCase()}`, user.farmType) : t('profile.farm_type.general')}
                   </Badge>
                 </div>
               </div>
@@ -192,7 +193,7 @@ export default function Profile() {
             {/* Profile Completion */}
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Profile Completion</span>
+                <span className="text-muted-foreground">{t('profile.completion.label')}</span>
                 <span className="font-medium">{profileCompletion}%</span>
               </div>
               <Progress value={profileCompletion} className="h-2" />
@@ -203,15 +204,15 @@ export default function Profile() {
               <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg">
                 <Phone className="w-4 h-4 text-primary" />
                 <div>
-                  <p className="text-xs text-muted-foreground">Phone</p>
-                  <p className="text-sm font-medium">{user?.phone || 'Not set'}</p>
+                  <p className="text-xs text-muted-foreground">{t('profile.info.phone')}</p>
+                  <p className="text-sm font-medium">{user?.phone || t('profile.info.not_set')}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 p-3 bg-primary/5 rounded-lg">
                 <MapPin className="w-4 h-4 text-primary" />
                 <div>
-                  <p className="text-xs text-muted-foreground">Location</p>
-                  <p className="text-sm font-medium truncate">{user?.district || 'Not set'}</p>
+                  <p className="text-xs text-muted-foreground">{t('profile.info.location')}</p>
+                  <p className="text-sm font-medium truncate">{user?.district || t('profile.info.not_set')}</p>
                 </div>
               </div>
             </div>
@@ -225,7 +226,7 @@ export default function Profile() {
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-primary" />
-              App Usage Statistics
+              {t('profile.analytics.title')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -233,7 +234,7 @@ export default function Profile() {
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Activity className="w-3 h-3" />
-                  <p className="text-xs">Total Opens</p>
+                  <p className="text-xs">{t('profile.analytics.total_opens')}</p>
                 </div>
                 <p className="text-2xl font-bold text-primary">{analyticsData.total_app_opens || 0}</p>
               </div>
@@ -241,31 +242,31 @@ export default function Profile() {
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Clock className="w-3 h-3" />
-                  <p className="text-xs">Last Active</p>
+                  <p className="text-xs">{t('profile.analytics.last_active')}</p>
                 </div>
                 <p className="text-sm font-semibold">
                   {analyticsData.last_app_open 
                     ? formatDistanceToNow(new Date(analyticsData.last_app_open), { addSuffix: true })
-                    : 'Never'}
+                    : t('profile.analytics.never')}
                 </p>
               </div>
 
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Calendar className="w-3 h-3" />
-                  <p className="text-xs">Member Since</p>
+                  <p className="text-xs">{t('profile.analytics.member_since')}</p>
                 </div>
                 <p className="text-xs font-medium">
                   {analyticsData.created_at 
                     ? format(new Date(analyticsData.created_at), 'MMM yyyy')
-                    : 'Unknown'}
+                    : t('profile.analytics.unknown')}
                 </p>
               </div>
 
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <TrendingUp className="w-3 h-3" />
-                  <p className="text-xs">AI Queries</p>
+                  <p className="text-xs">{t('profile.analytics.ai_queries')}</p>
                 </div>
                 <p className="text-2xl font-bold text-success">{analyticsData.total_queries || 0}</p>
               </div>
@@ -282,10 +283,10 @@ export default function Profile() {
             <div className="flex items-center justify-between">
               <CardTitle className="text-base flex items-center gap-2">
                 <Activity className="w-4 h-4 text-primary" />
-                Farm Performance
+                {t('profile.performance.title')}
               </CardTitle>
               <Badge variant="secondary" className="bg-success/10 text-success">
-                Good
+                {t('profile.performance.good')}
               </Badge>
             </div>
           </CardHeader>
@@ -300,15 +301,15 @@ export default function Profile() {
             </ResponsiveContainer>
             <div className="flex justify-around mt-2">
               <div className="text-center">
-                <p className="text-xs text-muted-foreground">Yield</p>
+                <p className="text-xs text-muted-foreground">{t('profile.performance.yield')}</p>
                 <p className="text-sm font-semibold">85%</p>
               </div>
               <div className="text-center">
-                <p className="text-xs text-muted-foreground">Efficiency</p>
+                <p className="text-xs text-muted-foreground">{t('profile.performance.efficiency')}</p>
                 <p className="text-sm font-semibold">72%</p>
               </div>
               <div className="text-center">
-                <p className="text-xs text-muted-foreground">Sustainability</p>
+                <p className="text-xs text-muted-foreground">{t('profile.performance.sustainability')}</p>
                 <p className="text-sm font-semibold">90%</p>
               </div>
             </div>
@@ -320,7 +321,7 @@ export default function Profile() {
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2">
               <Wheat className="w-4 h-4 text-primary" />
-              Crop Distribution
+              {t('profile.crops.distribution_title')}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -359,7 +360,7 @@ export default function Profile() {
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-primary" />
-            Yield Trend (Last 6 Months)
+            {t('profile.yield.trend_title')}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -391,7 +392,7 @@ export default function Profile() {
       {/* Farm Details */}
       <Card className="border-0 shadow-lg">
         <CardHeader>
-          <CardTitle className="text-base">Farm Information</CardTitle>
+          <CardTitle className="text-base">{t('profile.farm_info.title')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
@@ -401,8 +402,8 @@ export default function Profile() {
                   <MapPin className="w-4 h-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Total Land</p>
-                  <p className="text-sm font-semibold">{user?.totalLandAcres || 0} Acres</p>
+                  <p className="text-xs text-muted-foreground">{t('profile.farm_info.total_land')}</p>
+                  <p className="text-sm font-semibold">{user?.totalLandAcres || 0} {t('profile.farm_info.acres')}</p>
                 </div>
               </div>
               
@@ -411,8 +412,8 @@ export default function Profile() {
                   <Calendar className="w-4 h-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Experience</p>
-                  <p className="text-sm font-semibold">{user?.farmingExperienceYears || 0} Years</p>
+                  <p className="text-xs text-muted-foreground">{t('profile.farm_info.experience')}</p>
+                  <p className="text-sm font-semibold">{user?.farmingExperienceYears || 0} {t('profile.farm_info.years')}</p>
                 </div>
               </div>
 
@@ -421,8 +422,8 @@ export default function Profile() {
                   <Award className="w-4 h-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Farm Type</p>
-                  <p className="text-sm font-semibold">{user?.farmType || 'Not specified'}</p>
+                  <p className="text-xs text-muted-foreground">{t('profile.farm_info.farm_type')}</p>
+                  <p className="text-sm font-semibold">{user?.farmType ? t(`profile.farm_type.${user.farmType.toLowerCase()}`, user.farmType) : t('profile.farm_info.not_specified')}</p>
                 </div>
               </div>
             </div>
@@ -433,9 +434,9 @@ export default function Profile() {
                   <Droplets className="w-4 h-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Irrigation</p>
+                  <p className="text-xs text-muted-foreground">{t('profile.farm_info.irrigation')}</p>
                   <p className="text-sm font-semibold">
-                    {user?.hasIrrigation ? (user?.irrigationType || 'Yes') : 'No'}
+                    {user?.hasIrrigation ? (user?.irrigationType || t('profile.farm_info.yes')) : t('profile.farm_info.no')}
                   </p>
                 </div>
               </div>
@@ -445,8 +446,8 @@ export default function Profile() {
                   <Tractor className="w-4 h-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Tractor</p>
-                  <p className="text-sm font-semibold">{user?.hasTractor ? 'Available' : 'Not Available'}</p>
+                  <p className="text-xs text-muted-foreground">{t('profile.farm_info.tractor')}</p>
+                  <p className="text-sm font-semibold">{user?.hasTractor ? t('profile.farm_info.available') : t('profile.farm_info.not_available')}</p>
                 </div>
               </div>
 
@@ -455,8 +456,8 @@ export default function Profile() {
                   <Package className="w-4 h-4 text-primary" />
                 </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Storage</p>
-                  <p className="text-sm font-semibold">{user?.hasStorage ? 'Available' : 'Not Available'}</p>
+                  <p className="text-xs text-muted-foreground">{t('profile.farm_info.storage')}</p>
+                  <p className="text-sm font-semibold">{user?.hasStorage ? t('profile.farm_info.available') : t('profile.farm_info.not_available')}</p>
                 </div>
               </div>
             </div>
@@ -501,6 +502,9 @@ export default function Profile() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Voice Settings */}
+      <TTSSettingsPanel />
 
       {/* Action Buttons */}
       <div className="space-y-3">

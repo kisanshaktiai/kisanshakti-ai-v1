@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Badge } from '@/components/ui/badge';
-import { CalendarIcon, MapPin, ChevronLeft, Sparkles, Wheat, Droplets, Sun } from 'lucide-react';
+import { CalendarIcon, ChevronLeft, Sparkles, Droplets } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { CentralizedCropSelector } from '@/components/crops/CentralizedCropSelector';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
+import FarmingTypeDialog, { FarmingMode } from './FarmingTypeDialog';
 
 interface CropDateInputProps {
   land: {
@@ -24,7 +24,7 @@ interface CropDateInputProps {
     soil_type?: string;
     water_source?: string;
   };
-  onSubmit: (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant?: boolean) => void;
+  onSubmit: (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: FarmingMode, nurseryDays: number, localizedCropName: string) => void;
   onBack: () => void;
   loading?: boolean;
 }
@@ -36,17 +36,22 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   loading = false
 }) => {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [cropId, setCropId] = useState('');
   const [cropName, setCropName] = useState('');
+  const [localizedCropName, setLocalizedCropName] = useState('');
   const [cropVariety, setCropVariety] = useState('');
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
   const [isReadyMadePlant, setIsReadyMadePlant] = useState(false);
+  const [nurseryDays, setNurseryDays] = useState<number>(0);
+  const [showFarmingTypeDialog, setShowFarmingTypeDialog] = useState(false);
+  const [selectedFarmingType, setSelectedFarmingType] = useState<FarmingMode | null>(null);
 
   const handleSubmit = () => {
     if (!cropName) {
       toast({
-        title: 'Select Crop',
-        description: 'Please select a crop',
+        title: t('schedule.crop_input.select_crop'),
+        description: t('schedule.crop_input.please_select_crop'),
         variant: 'destructive',
       });
       return;
@@ -54,24 +59,38 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     
     if (!sowingDate) {
       toast({
-        title: 'Select Date',
-        description: 'Please select the sowing date',
+        title: t('schedule.crop_input.select_date'),
+        description: t('schedule.crop_input.please_select_date'),
         variant: 'destructive',
       });
       return;
     }
 
-    onSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant);
+    // Open farming type dialog instead of submitting directly
+    console.log('🔔 [CropDateInput] Opening farming type dialog for:', cropName);
+    setShowFarmingTypeDialog(true);
   };
 
-  const handleCropSelect = (id: string, name: string) => {
+  const handleFarmingTypeSelect = (farmingType: FarmingMode) => {
+    console.log('✅ [CropDateInput] Farming type selected:', farmingType);
+    setSelectedFarmingType(farmingType);
+    setShowFarmingTypeDialog(false);
+    // Now submit with the farming type - parent will handle loading state
+    if (sowingDate) {
+      console.log('🚀 [CropDateInput] Calling onSubmit with farmingType:', farmingType, 'nurseryDays:', nurseryDays);
+      onSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType, nurseryDays, localizedCropName);
+    }
+  };
+
+  const handleCropSelect = (id: string, name: string, localized: string, english: string) => {
     setCropId(id);
     setCropName(name);
+    setLocalizedCropName(localized || name);
     
     // Auto-suggest variety based on crop
-    if (name.toLowerCase().includes('rice')) setCropVariety('IR-64');
-    if (name.toLowerCase().includes('wheat')) setCropVariety('HD-2967');
-    if (name.toLowerCase().includes('cotton')) setCropVariety('BT Cotton');
+    if (english.toLowerCase().includes('rice')) setCropVariety('IR-64');
+    if (english.toLowerCase().includes('wheat')) setCropVariety('HD-2967');
+    if (english.toLowerCase().includes('cotton')) setCropVariety('BT Cotton');
   };
 
   return (
@@ -140,11 +159,11 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
             {/* Variety Input */}
             <div className="space-y-2">
               <Label htmlFor="variety" className="text-xs font-medium text-muted-foreground">
-                Variety (Optional)
+                {t('schedule.crop_input.variety_label')}
               </Label>
               <Input
                 id="variety"
-                placeholder="e.g., IR-64, HD-2967, BT Cotton"
+                placeholder={t('schedule.crop_input.variety_placeholder')}
                 value={cropVariety}
                 onChange={(e) => setCropVariety(e.target.value)}
                 className="h-10 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-white/30 dark:border-white/20 focus:border-primary/50 transition-all"
@@ -152,22 +171,49 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
             </div>
 
             {/* Ready-made Plant Checkbox */}
-            <div className="flex items-start gap-3 p-3 bg-accent/20 rounded-lg border border-border/50">
-              <input
-                type="checkbox"
-                id="ready-made-plant"
-                checked={isReadyMadePlant}
-                onChange={(e) => setIsReadyMadePlant(e.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-gray-300"
-              />
-              <div className="flex-1">
-                <Label htmlFor="ready-made-plant" className="text-xs font-medium cursor-pointer">
-                  Using ready-made nursery plants
-                </Label>
-                <p className="text-[10px] text-muted-foreground mt-0.5">
-                  Check if planting seedlings/transplants instead of sowing seeds
-                </p>
+            <div className="space-y-3">
+              <div className="flex items-start gap-3 p-3 bg-accent/20 rounded-lg border border-border/50">
+                <input
+                  type="checkbox"
+                  id="ready-made-plant"
+                  checked={isReadyMadePlant}
+                  onChange={(e) => {
+                    setIsReadyMadePlant(e.target.checked);
+                    if (!e.target.checked) setNurseryDays(0);
+                  }}
+                  className="mt-1 h-4 w-4 rounded border-gray-300"
+                />
+                <div className="flex-1">
+                  <Label htmlFor="ready-made-plant" className="text-xs font-medium cursor-pointer">
+                    {t('schedule.crop_input.ready_made_plant')}
+                  </Label>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {t('schedule.crop_input.ready_made_description')}
+                  </p>
+                </div>
               </div>
+
+              {/* Nursery Days Input - Only shown when ready-made plant is selected */}
+              {isReadyMadePlant && (
+                <div className="p-3 bg-primary/10 rounded-lg border border-primary/30 space-y-2">
+                  <Label htmlFor="nursery-days" className="text-xs font-medium text-primary">
+                    {t('schedule.crop_input.nursery_days_label', 'Plant age (days from seed sowing)')}
+                  </Label>
+                  <Input
+                    id="nursery-days"
+                    type="number"
+                    min={1}
+                    max={90}
+                    placeholder={t('schedule.crop_input.nursery_days_placeholder', 'e.g., 25, 30, 45 days')}
+                    value={nurseryDays || ''}
+                    onChange={(e) => setNurseryDays(parseInt(e.target.value) || 0)}
+                    className="h-10 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-primary/30 focus:border-primary/50 transition-all"
+                  />
+                  <p className="text-[10px] text-muted-foreground">
+                    {t('schedule.crop_input.nursery_days_help', 'Enter how many days old the nursery plant is. Schedule will start from transplanting.')}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Date Selection */}
@@ -175,7 +221,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
               <div className="flex items-center gap-2">
                 <CalendarIcon className="h-4 w-4 text-primary" />
                 <span className="text-xs font-medium">
-                  {isReadyMadePlant ? 'Planting Date' : 'Sowing Date'}
+                  {isReadyMadePlant ? t('schedule.crop_input.planting_date') : t('schedule.crop_input.sowing_date')}
                 </span>
               </div>
               
@@ -191,7 +237,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                     )}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
-                    {sowingDate ? format(sowingDate, "PPP") : "Pick a date"}
+                    {sowingDate ? format(sowingDate, "PPP") : t('schedule.crop_input.pick_date')}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0" align="start">
@@ -218,11 +264,11 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
               {loading ? (
                 <>
                   <Sparkles className="mr-2 h-4 w-4 animate-spin" />
-                  Generating AI Schedule...
+                  {t('schedule.crop_input.generating')}
                 </>
               ) : (
                 <>
-                  Generate AI Schedule
+                  {t('schedule.crop_input.generate_ai_schedule')}
                   <Sparkles className="ml-2 h-4 w-4" />
                 </>
               )}
@@ -231,6 +277,14 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         )}
 
       </motion.div>
+
+      {/* Farming Type Dialog */}
+      <FarmingTypeDialog
+        open={showFarmingTypeDialog}
+        onOpenChange={setShowFarmingTypeDialog}
+        onSelect={handleFarmingTypeSelect}
+        cropName={cropName}
+      />
     </div>
   );
 };

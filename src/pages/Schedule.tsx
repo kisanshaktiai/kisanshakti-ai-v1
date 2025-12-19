@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -13,6 +14,7 @@ import { landsApi } from '@/services/landsApi';
 import LandSelector from '@/components/schedule/LandSelector';
 import CropDateInput from '@/components/schedule/CropDateInput';
 import CropScheduleView from '@/components/schedule/CropScheduleView';
+import ScheduleLoadingOverlay from '@/components/schedule/ScheduleLoadingOverlay';
 import { format } from 'date-fns';
 import { useNotifications } from '@/hooks/useNotifications';
 import { useLocation } from '@/hooks/useLocation';
@@ -40,6 +42,7 @@ interface Land {
 type FlowStep = 'land-selection' | 'crop-input' | 'schedule-view';
 
 export default function Schedule() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user, session } = useAuthStore();
@@ -55,9 +58,12 @@ export default function Schedule() {
     cropVariety: string;
     sowingDate: Date;
     isReadyMadePlant?: boolean;
+    farmingType?: string;
   } | null>(null);
   const [generating, setGenerating] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
+  const [generatingCropName, setGeneratingCropName] = useState('');
+  const [generatingFarmingType, setGeneratingFarmingType] = useState('');
   const { scheduleTaskReminder } = useNotifications();
 
   // Get device location and weather data for AI schedule generation
@@ -111,13 +117,18 @@ export default function Schedule() {
     }
   };
 
-  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant?: boolean) => {
+  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '') => {
     if (!selectedLand) return;
 
-    setScheduleData({ cropName, cropVariety, sowingDate, isReadyMadePlant });
+    console.log('🚀 [Schedule] Starting schedule generation:', { cropName, localizedCropName, farmingType, isReadyMadePlant, nurseryDays });
+    
+    // Set generating state FIRST before anything else
+    setGenerating(true);
+    setGeneratingCropName(localizedCropName || cropName);
+    setGeneratingFarmingType(farmingType);
+    setScheduleData({ cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType });
     
     try {
-      setGenerating(true);
 
       // First, deactivate any existing active schedules for this land
       const { error: deactivateError } = await supabase
@@ -157,7 +168,15 @@ export default function Schedule() {
 
       console.log('Fetched real weather data for AI:', weatherData);
 
-      // Call the updated ai-smart-schedule edge function with user's preferred language
+      // Call the updated ai-smart-schedule edge function with user's current app language
+      // Priority: currentLanguage (from language store/UI) > user.preferredLanguage > 'hi' (default)
+      const scheduleLanguage = currentLanguage || user?.preferredLanguage || 'hi';
+      console.log('🌐 [Schedule] Generating schedule in language:', scheduleLanguage, {
+        currentLanguage,
+        userPreferredLanguage: user?.preferredLanguage,
+        userLanguage: user?.language
+      });
+      
       const response = await supabase.functions.invoke('ai-smart-schedule', {
         body: {
           landId: selectedLand.id,
@@ -165,31 +184,48 @@ export default function Schedule() {
           cropVariety,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
           isReadyMadePlant: isReadyMadePlant || false,
+          nurseryDays: nurseryDays || 0,
+          localizedCropName: localizedCropName || cropName,
+          farmingType: farmingType,
           weather: weatherData,
           regenerate: true,
-          tenantId: tenant?.id || user?.tenantId || '',
-          farmerId: user?.id || '',
-          language: user?.preferredLanguage || currentLanguage || 'en',
+          language: scheduleLanguage,
           country: 'India',
+        },
+        headers: {
+          'x-tenant-id': tenant?.id || user?.tenantId || '',
+          'x-farmer-id': user?.id || '',
         },
       });
 
-      if (response.error) throw response.error;
+      console.log('🔍 [Schedule] Edge function response:', { error: response.error, data: response.data });
+
+      // Handle edge function errors
+      if (response.error) {
+        console.error('❌ [Schedule] Edge function error:', response.error);
+        throw new Error(response.error.message || 'Edge function returned an error');
+      }
 
       const { data } = response;
+      
+      // Check if data contains an error response from the edge function
+      if (data?.error) {
+        console.error('❌ [Schedule] API error:', data.error, data.details);
+        throw new Error(data.error + (data.details ? `: ${data.details}` : ''));
+      }
       
       // Enhanced error handling with retry logic
       if (!data || !data.success) {
         if (retryCount < 2) {
           setRetryCount(prev => prev + 1);
           toast({
-            title: '🔄 Retrying...',
-            description: `Generating AI schedule (Attempt ${retryCount + 1}/2)`,
+            title: t('schedule.main.retrying'),
+            description: t('schedule.main.generating_attempt', { count: retryCount + 1 }),
             className: 'bg-accent/10 border-accent/20',
           });
           // Retry after 2 seconds
           setTimeout(() => {
-            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant);
+            handleCropDateSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant || false, farmingType);
           }, 2000);
           return;
         }
@@ -212,8 +248,8 @@ export default function Schedule() {
       }
       
       toast({
-        title: '✅ AI Schedule Generated!',
-        description: `Smart farming schedule created for ${cropName}`,
+        title: t('schedule.main.generated_success'),
+        description: t('schedule.main.generated_description', { crop: cropName }),
         className: 'bg-success/10 border-success/20',
       });
 
@@ -224,8 +260,8 @@ export default function Schedule() {
       
       // Show user-friendly error with retry option
       toast({
-        title: '❌ Generation Failed',
-        description: error instanceof Error ? error.message : 'Failed to generate schedule',
+        title: t('schedule.main.generation_failed'),
+        description: error instanceof Error ? error.message : t('schedule.toast.error'),
         variant: 'destructive',
         action: (
           <Button 
@@ -233,7 +269,7 @@ export default function Schedule() {
             variant="outline"
             onClick={() => {
               setRetryCount(0);
-              handleCropDateSubmit(cropName, cropVariety, sowingDate, scheduleData?.isReadyMadePlant);
+              handleCropDateSubmit(cropName, cropVariety, sowingDate, scheduleData?.isReadyMadePlant || false, scheduleData?.farmingType || 'organic_fertilizer');
             }}
           >
             Try Again
@@ -312,7 +348,7 @@ export default function Schedule() {
             {/* Syncing message */}
             <div className="flex items-center justify-center gap-2 text-muted-foreground">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
-              <p className="text-sm font-medium">Syncing data from server...</p>
+              <p className="text-sm font-medium">{t('schedule.loading.syncing')}</p>
             </div>
           </div>
         </div>
@@ -337,13 +373,13 @@ export default function Schedule() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No Lands Found</h3>
+            <h3 className="text-lg font-semibold mb-2">{t('schedule.empty.title')}</h3>
             <p className="text-muted-foreground text-center mb-6">
-              Add your land first to generate AI-powered crop schedules
+              {t('schedule.empty.message')}
             </p>
             <Button onClick={() => navigate('/app/lands/add')}>
               <Plus className="h-4 w-4 mr-2" />
-              Add Land
+              {t('schedule.main.add_land')}
             </Button>
           </CardContent>
         </Card>
@@ -368,12 +404,12 @@ export default function Schedule() {
               </Button>
               <div>
                 <h1 className="text-lg font-bold bg-gradient-to-r from-primary via-primary/80 to-accent bg-clip-text text-transparent animate-gradient">
-                  AI Crop Schedule
+                  {t('schedule.main.ai_crop_schedule')}
                 </h1>
                 <p className="text-xs text-muted-foreground font-medium">
-                  {flowStep === 'land-selection' && 'Step 1: Select Your Land'}
-                  {flowStep === 'crop-input' && 'Step 2: Crop Details'}
-                  {flowStep === 'schedule-view' && 'Step 3: AI Schedule'}
+                  {flowStep === 'land-selection' && t('schedule.steps.land_selection')}
+                  {flowStep === 'crop-input' && t('schedule.steps.crop_input')}
+                  {flowStep === 'schedule-view' && t('schedule.steps.schedule_view')}
                 </p>
               </div>
             </div>
@@ -387,8 +423,8 @@ export default function Schedule() {
                   onClick={() => {
                     refetchLands();
                     toast({
-                      title: '🔄 Refreshing',
-                      description: 'Syncing latest data...',
+                      title: t('schedule.main.refreshing'),
+                      description: t('schedule.main.syncing_latest'),
                       className: 'bg-accent/10 border-accent/20',
                     });
                   }}
@@ -415,7 +451,7 @@ export default function Schedule() {
                   ))}
                 </div>
                 <span className="text-[10px] text-muted-foreground font-medium">
-                  Step {['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep) + 1} of 3
+                  {t('schedule.steps.of_total', { current: ['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep) + 1, total: 3 })}
                 </span>
               </div>
             </div>
@@ -463,6 +499,13 @@ export default function Schedule() {
           </div>
         </div>
       </div>
+
+      {/* Global Loading Overlay - shows during API call */}
+      <ScheduleLoadingOverlay
+        isLoading={generating}
+        cropName={generatingCropName || scheduleData?.cropName || ''}
+        farmingType={generatingFarmingType || scheduleData?.farmingType || 'organic_fertilizer'}
+      />
     </div>
   );
 }

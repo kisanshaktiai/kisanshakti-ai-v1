@@ -1,0 +1,172 @@
+import { dataIsolation } from './dataIsolationService';
+import { SUPABASE_CONFIG, getSupabaseFunctionUrl } from '@/config/supabase';
+
+const SCHEDULES_API_URL = getSupabaseFunctionUrl('schedules-api');
+const MAX_RETRIES = 2;
+const RETRY_DELAY = 1000;
+
+export interface ScheduleData {
+  id: string;
+  farmer_id: string;
+  land_id: string;
+  tenant_id: string;
+  crop_name: string;
+  crop_variety?: string;
+  sowing_date: string;
+  expected_harvest_date?: string;
+  status: string;
+  is_active: boolean;
+  ai_generated?: boolean;
+  generation_params?: any;
+  schedule_summary?: any;
+  weather_adjustments?: any;
+  created_at: string;
+  updated_at: string;
+}
+
+class SchedulesApiService {
+  private async getHeaders(): Promise<HeadersInit> {
+    let attempts = 0;
+    const maxAttempts = 5;
+    
+    while (attempts < maxAttempts) {
+      const { tenantId, farmerId, isValid } = dataIsolation.getIsolationContext();
+      
+      if (isValid && tenantId && farmerId) {
+        const headers = dataIsolation.getIsolationHeaders();
+        console.log('🌐 [SchedulesAPI] Headers ready:', { 
+          tenantId: headers['x-tenant-id'], 
+          farmerId: headers['x-farmer-id'] 
+        });
+        return {
+          ...headers,
+          'apikey': SUPABASE_CONFIG.ANON_KEY
+        };
+      }
+      
+      console.log(`🌐 [SchedulesAPI] Waiting for context (attempt ${attempts + 1}/${maxAttempts})...`);
+      await new Promise(resolve => setTimeout(resolve, 300));
+      attempts++;
+    }
+    
+    console.error('❌ [SchedulesAPI] Context never became valid after waiting');
+    throw new Error('Please ensure you are logged in before accessing schedules');
+  }
+
+  private async fetchWithRetry(
+    url: string, 
+    options: RequestInit, 
+    retries = MAX_RETRIES
+  ): Promise<Response> {
+    let lastError: Error | null = null;
+    
+    for (let i = 0; i <= retries; i++) {
+      try {
+        const response = await fetch(url, options);
+        return response;
+      } catch (error) {
+        lastError = error as Error;
+        console.warn(`🌐 [SchedulesAPI] Fetch failed (attempt ${i + 1}/${retries + 1}):`, error);
+        
+        if (i < retries) {
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * (i + 1)));
+        }
+      }
+    }
+    
+    throw lastError || new Error('Request failed after retries');
+  }
+
+  async fetchSchedules(landId?: string): Promise<ScheduleData[]> {
+    try {
+      const headers = await this.getHeaders();
+      const url = landId ? `${SCHEDULES_API_URL}?land_id=${landId}` : SCHEDULES_API_URL;
+      
+      const response = await this.fetchWithRetry(url, {
+        method: 'GET',
+        headers,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to fetch schedules');
+      }
+
+      const result = await response.json();
+      return result.data || [];
+    } catch (error) {
+      console.error('❌ [SchedulesAPI] Error fetching schedules:', error);
+      throw error;
+    }
+  }
+
+  async fetchScheduleById(id: string): Promise<ScheduleData | null> {
+    try {
+      const headers = await this.getHeaders();
+      
+      const response = await this.fetchWithRetry(`${SCHEDULES_API_URL}/${id}`, {
+        method: 'GET',
+        headers,
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return null;
+        }
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to fetch schedule');
+      }
+
+      const result = await response.json();
+      return result.data || null;
+    } catch (error) {
+      console.error('❌ [SchedulesAPI] Error fetching schedule:', error);
+      return null;
+    }
+  }
+
+  async deleteSchedule(id: string): Promise<void> {
+    try {
+      const headers = await this.getHeaders();
+      const response = await this.fetchWithRetry(`${SCHEDULES_API_URL}/${id}`, {
+        method: 'DELETE',
+        headers,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to delete schedule');
+      }
+    } catch (error) {
+      console.error('❌ [SchedulesAPI] Error deleting schedule:', error);
+      throw error;
+    }
+  }
+
+  async fetchTasks(scheduleId?: string): Promise<any[]> {
+    try {
+      const headers = await this.getHeaders();
+      const url = scheduleId 
+        ? `${SCHEDULES_API_URL}/tasks?schedule_id=${scheduleId}` 
+        : `${SCHEDULES_API_URL}/tasks`;
+      
+      const response = await this.fetchWithRetry(url, {
+        method: 'GET',
+        headers,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to fetch tasks');
+      }
+
+      const result = await response.json();
+      return result.data || [];
+    } catch (error) {
+      console.error('❌ [SchedulesAPI] Error fetching tasks:', error);
+      throw error;
+    }
+  }
+}
+
+export const schedulesApi = new SchedulesApiService();

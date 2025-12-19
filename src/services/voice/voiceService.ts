@@ -4,6 +4,15 @@ import { VoiceAnalytics } from './voiceAnalytics';
 import { DialogManager } from './DialogManager';
 import { SlotExtractor } from './SlotExtractor';
 import { LanguageDetector } from './LanguageDetector';
+import { getVoicePlatformInfo, VoicePlatformInfo } from './voicePlatformDetector';
+import { 
+  shouldUseCapacitorSpeech, 
+  startCapacitorListening, 
+  stopCapacitorListening,
+  requestSpeechPermission,
+  initCapacitorSpeechRecognition 
+} from './capacitorSpeechRecognition';
+import { Capacitor } from '@capacitor/core';
 
 export class VoiceService {
   private config: VoiceConfig;
@@ -17,6 +26,8 @@ export class VoiceService {
   private synthesis: SpeechSynthesis;
   private isOnline: boolean = navigator.onLine;
   private lastSpokenText: string = '';
+  private useNativeSpeech: boolean = false;
+  private capacitorInitialized: boolean = false;
 
   constructor(config: VoiceConfig, tenantId?: string) {
     this.config = config;
@@ -27,6 +38,13 @@ export class VoiceService {
     this.slotExtractor = new SlotExtractor(config.language);
     this.languageDetector = new LanguageDetector();
     this.synthesis = window.speechSynthesis;
+    
+    // Check if we should use native speech recognition
+    this.useNativeSpeech = shouldUseCapacitorSpeech();
+    if (this.useNativeSpeech) {
+      console.log('[VoiceService] Will use Capacitor native speech recognition');
+      this.initCapacitor();
+    }
 
     // Load intents for current language
     if (this.tenantId) {
@@ -43,7 +61,26 @@ export class VoiceService {
     });
   }
 
+  private async initCapacitor(): Promise<void> {
+    try {
+      this.capacitorInitialized = await initCapacitorSpeechRecognition();
+      if (this.capacitorInitialized) {
+        // Request permission on init for native apps
+        await requestSpeechPermission();
+      }
+    } catch (error) {
+      console.error('[VoiceService] Capacitor init error:', error);
+    }
+  }
+
   async initializeASR(): Promise<void> {
+    // For native platforms, use Capacitor Speech Recognition
+    if (this.useNativeSpeech && this.capacitorInitialized) {
+      console.log('[VoiceService] Using Capacitor native speech recognition');
+      return;
+    }
+    
+    // For web, use Web Speech API
     const SpeechRecognition = (window as any).SpeechRecognition || 
                              (window as any).webkitSpeechRecognition;
 
@@ -81,6 +118,50 @@ export class VoiceService {
     onResult: (result: ASRResult) => void,
     onEnd: () => void
   ): Promise<void> {
+    const startTime = Date.now();
+    
+    // For native platforms, use Capacitor Speech Recognition
+    if (this.useNativeSpeech) {
+      console.log('[VoiceService] Starting Capacitor speech recognition');
+      
+      const success = await startCapacitorListening(
+        this.config.language,
+        (capResult) => {
+          const result: ASRResult = {
+            transcript: capResult.transcript,
+            confidence: capResult.confidence,
+            isFinal: capResult.isFinal,
+            language: this.config.language,
+            provider: 'browser', // Using 'browser' type for compatibility
+          };
+          onResult(result);
+          
+          if (capResult.isFinal) {
+            const latency = Date.now() - startTime;
+            const utterance = this.intentMatcher.matchIntent(capResult.transcript, !this.isOnline);
+            if (utterance) {
+              this.analytics.recordMetric({
+                asrLatency: latency,
+                intentAccuracy: utterance.confidence,
+                ttsLatency: 0,
+                language: this.config.language,
+                offline: !this.isOnline,
+                timestamp: Date.now(),
+              });
+            }
+          }
+        },
+        onEnd
+      );
+      
+      if (!success) {
+        console.error('[VoiceService] Failed to start Capacitor speech recognition');
+        onEnd();
+      }
+      return;
+    }
+    
+    // For web, use Web Speech API
     if (!this.recognition) {
       await this.initializeASR();
     }
@@ -91,7 +172,6 @@ export class VoiceService {
       return;
     }
 
-    const startTime = Date.now();
     const provider: ASRProvider = this.isOnline && this.config.asrProvider === 'hybrid' 
       ? 'browser' 
       : 'offline';
@@ -157,6 +237,15 @@ export class VoiceService {
   }
 
   stopListening(): void {
+    // For native platforms, use Capacitor Speech Recognition
+    if (this.useNativeSpeech) {
+      stopCapacitorListening().catch(error => {
+        console.error('[VoiceService] Error stopping Capacitor recognition:', error);
+      });
+      return;
+    }
+    
+    // For web, use Web Speech API
     if (this.recognition) {
       try {
         this.recognition.stop();
@@ -271,19 +360,31 @@ export class VoiceService {
     return detection.isCodeSwitching;
   }
 
+  /**
+   * Check if voice recognition is supported
+   * Uses comprehensive platform detection for web, native, and WebView environments
+   */
   isSupported(): boolean {
-    const SpeechRecognition = (window as any).SpeechRecognition || 
-                             (window as any).webkitSpeechRecognition;
-    const supported = !!(SpeechRecognition && window.speechSynthesis);
+    const platformInfo = this.getPlatformInfo();
     
-    console.log('[VoiceService] Browser support check:', {
-      hasSpeechRecognition: !!SpeechRecognition,
-      hasSpeechSynthesis: !!window.speechSynthesis,
-      supported,
-      userAgent: navigator.userAgent
+    console.log('[VoiceService] Platform support check:', {
+      platform: platformInfo.platform,
+      isNative: platformInfo.isNative,
+      hasBrowserAPI: platformInfo.hasBrowserSpeechAPI,
+      isWebView: platformInfo.isWebView,
+      browser: platformInfo.browserName,
+      isSupported: platformInfo.isSupported,
+      reason: platformInfo.unsupportedReason
     });
     
-    return supported;
+    return platformInfo.isSupported;
+  }
+
+  /**
+   * Get detailed platform information for voice support
+   */
+  getPlatformInfo(): VoicePlatformInfo {
+    return getVoicePlatformInfo();
   }
 
   getConfig(): VoiceConfig {

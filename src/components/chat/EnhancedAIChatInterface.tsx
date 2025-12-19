@@ -3,15 +3,14 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import { 
-  Send, Mic, MicOff, Volume2, VolumeX, Loader2, Bot, User, 
+  Send, Mic, MicOff, Loader2, Bot, 
   RefreshCw, Wifi, WifiOff, MessageSquare, Mountain, 
-  Paperclip, Camera, Image, ArrowLeft, ChevronDown,
-  ThumbsUp, ThumbsDown, Copy, Share2, Check, Search, X, Clock, MessageCircle
+  Paperclip, Camera, Image, ArrowLeft,
+  Search, X, Clock, MessageCircle
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -21,13 +20,20 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { landsApi } from '@/services/landsApi';
+import { localDB } from '@/services/localDB';
 import { LandContextCard } from './LandContextCard';
 import { GeneralChatWelcomeCard } from './GeneralChatWelcomeCard';
 import { ResponseSectionCard } from './ResponseSectionCard';
+import { ModernChatUI } from './ModernChatUI';
+import { WorldClassCamera } from './WorldClassCamera';
+import { VisionAnalysisCard, type VisionAnalysisResult } from './VisionAnalysisCard';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { useLanguageStore } from '@/stores/languageStore';
+import { useVoiceInitialization } from '@/hooks/useVoiceInitialization';
+import { VoiceDownloadCard } from '@/components/onboarding/VoiceDownloadCard';
+import { uploadChatImage, uploadCompressedVideo } from '@/utils/chatImageStorage';
 
 interface Message {
   id: string;
@@ -36,19 +42,50 @@ interface Message {
   timestamp: Date;
   isPlaying?: boolean;
   landContext?: any;
+  // Image/video support for persistent display
+  imageUrl?: string;
+  imageUrls?: string[];
+  videoUrl?: string;
+  messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response' | 'suggestion_selector' | 'targeted_solution';
+  // Full analysis result for detailed recommendation cards
+  analysisResult?: VisionAnalysisResult;
+  // ✅ NEW: Suggestion selection flow
+  awaitingSuggestionSelection?: boolean;
+  suggestionType?: 'organic' | 'fertilizer' | 'pesticide' | 'hybrid';
   structured?: {
     greeting?: string;
     landContext?: string;
     sections?: Array<{type: string, title: string, content: string, color: string}>;
     closingMessage?: string;
-    // Legacy format support
     irrigation?: string;
     fertilizer?: string;
     pest?: string;
     weather?: string;
   };
+  structuredResponse?: {
+    cards: Array<{
+      id: string;
+      type: 'organic' | 'fertilizer' | 'pesticide' | 'warning' | 'success' | 'info' | 'hormone' | 'irrigation';
+      title: string;
+      content: string;
+      color: string;
+      gradient: string[];
+      icon: string;
+      priority: number;
+    }>;
+    language: string;
+  };
   feedback?: 'like' | 'dislike' | null;
   isCopied?: boolean;
+  analytics?: {
+    responseTime?: number;
+    tokensUsed?: {
+      prompt: number;
+      completion: number;
+      total: number;
+    };
+    queryComplexity?: string;
+  };
 }
 
 export function EnhancedAIChatInterface() {
@@ -57,18 +94,12 @@ export function EnhancedAIChatInterface() {
   const { user } = useAuthStore();
   const { tenant, isLoading: isTenantLoading } = useTenant();
   const langStore = useLanguageStore();
-  const language = (langStore as any).selectedLanguage || 'en';
+  const language = langStore.currentLanguage || 'en'; // Use currentLanguage from store
   const isOnline = useOfflineStatus();
+  const { needsDownload, isInitialized, currentLanguage } = useVoiceInitialization();
+  const [showVoiceDownload, setShowVoiceDownload] = useState(false);
   
-  // Guard: Don't render until tenant is loaded
-  if (isTenantLoading || !tenant || !user) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-  
+  // ✅ ALL HOOKS MUST BE DECLARED BEFORE ANY CONDITIONAL RETURNS
   const [activeTab, setActiveTab] = useState('general');
   const [lands, setLands] = useState<any[]>([]);
   
@@ -83,6 +114,7 @@ export function EnhancedAIChatInterface() {
   });
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState(''); // ✅ NEW: Loading message state
   const [sessionIds, setSessionIds] = useState<Record<string, string>>({});
   const [loadedSessionIds, setLoadedSessionIds] = useState<Set<string>>(new Set()); // Track sessions loaded from DB
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
@@ -92,60 +124,74 @@ export function EnhancedAIChatInterface() {
   const [dynamicQuickReplies, setDynamicQuickReplies] = useState<Record<string, string[]>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true); // NEW: Loading state for chat history
+  // Camera and Vision Analysis states
+  const [showCamera, setShowCamera] = useState(false);
+  const [isAnalyzingImage, setIsAnalyzingImage] = useState(false);
+  const [pendingVisionAnalysis, setPendingVisionAnalysis] = useState<{
+    imageUrl?: string;
+    videoUrl?: string;
+    result?: VisionAnalysisResult;
+    error?: string;
+  } | null>(null);
   const [sessionStartTime, setSessionStartTime] = useState<Record<string, Date>>({});
+  const [isLoadingSuggestion, setIsLoadingSuggestion] = useState(false); // ✅ NEW: Loading state for suggestion selection
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const [isUserScrolling, setIsUserScrolling] = useState(false);
+  
   const lastScrollTop = useRef(0);
-  
+  const isUserScrollingRef = useRef(false);
+  const isAutoScrollingRef = useRef(false);
   const [transcript, setTranscript] = useState('');
+  const [touchStart, setTouchStart] = useState(0);
+  const [touchEnd, setTouchEnd] = useState(0);
+  
+  // Map language code to BCP-47 format for speech recognition
+  const speechLang = language === 'hi' ? 'hi-IN' : language === 'mr' ? 'mr-IN' : language === 'en' ? 'en-IN' : 'hi-IN';
+  
   const { isListening, startListening: originalStartListening, stopListening } = useSpeechRecognition({
-    onTranscript: (text) => setTranscript(text)
+    onTranscript: (text) => setTranscript(text),
+    language: speechLang
   });
   
+  // Pass language code directly - nativeTTSService handles all conversions and fallbacks
   const { speak, stop: stopSpeaking, isSpeaking } = useTextToSpeech({
-    language: language === 'hi' ? 'hi-IN' : language === 'pa' ? 'pa-IN' : language === 'mr' ? 'mr-IN' : language === 'ta' ? 'ta-IN' : 'en-IN'
+    language: language // Service will convert 'mr' → 'mr-IN', handle fallbacks etc.
   });
+  
+  // ✅ CRITICAL FIX: ALL HOOKS MUST BE BEFORE CONDITIONAL RETURNS
+  // Move useCallback and useEffect hooks here
+  const scrollToBottom = useCallback(() => {
+    // Don't auto-scroll if user is manually scrolling or already auto-scrolling
+    if (isUserScrollingRef.current || isAutoScrollingRef.current) return;
+    
+    isAutoScrollingRef.current = true;
+    
+    // Wait for next tick to ensure DOM is updated
+    setTimeout(() => {
+      if (scrollAreaRef.current) {
+        scrollAreaRef.current.scrollTo({
+          top: scrollAreaRef.current.scrollHeight,
+          behavior: 'smooth'
+        });
+      }
+      // Reset flag after scroll completes
+      setTimeout(() => {
+        isAutoScrollingRef.current = false;
+      }, 300);
+    }, 100);
+  }, []);
 
-  // Request microphone permission
-  const startListening = async () => {
-    try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      originalStartListening();
-    } catch (error) {
-      toast({
-        title: t('common.error'),
-        description: t('chat.microphonePermissionRequired'),
-        variant: 'destructive'
-      });
-    }
-  };
-
-  // Request camera permission
-  const requestCameraPermission = async () => {
-    try {
-      await navigator.mediaDevices.getUserMedia({ video: true });
-      return true;
-    } catch (error) {
-      toast({
-        title: t('common.error'),
-        description: t('chat.cameraPermissionRequired'),
-        variant: 'destructive'
-      });
-      return false;
-    }
-  };
-
-  // Pull to refresh handler
   const handleRefresh = useCallback(async () => {
     if (isRefreshing) return;
     
     setIsRefreshing(true);
     try {
-      await fetchLands();
+      // fetchLands will be called after the component is mounted
+      const fetchedLands = await landsApi.fetchLands();
+      setLands(fetchedLands);
       toast({
         title: t('common.success'),
         description: t('chat.refreshed')
@@ -155,42 +201,9 @@ export function EnhancedAIChatInterface() {
     } finally {
       setTimeout(() => setIsRefreshing(false), 1000);
     }
-  }, [isRefreshing]);
+  }, [isRefreshing, t]);
 
-  // Touch event handlers for pull-to-refresh
-  const [touchStart, setTouchStart] = useState(0);
-  const [touchEnd, setTouchEnd] = useState(0);
-  
-  const handleTouchStart = (e: React.TouchEvent) => {
-    setTouchStart(e.targetTouches[0].clientY);
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    setTouchEnd(e.targetTouches[0].clientY);
-  };
-
-  const handleTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-    const distance = touchEnd - touchStart;
-    const isDownSwipe = distance > 50;
-    const isAtTop = scrollAreaRef.current?.scrollTop === 0;
-    
-    if (isDownSwipe && isAtTop) {
-      handleRefresh();
-    }
-  };
-
-  useEffect(() => {
-    fetchLands();
-  }, []);
-
-  // Track session start time when switching tabs or sending first message
-  useEffect(() => {
-    if (!sessionStartTime[activeTab] && messages[activeTab]?.length > 0) {
-      setSessionStartTime(prev => ({ ...prev, [activeTab]: new Date() }));
-    }
-  }, [activeTab, messages]);
-
+  // All useEffect hooks MUST be before conditional return
   useEffect(() => {
     if (transcript) {
       setInputValue(transcript);
@@ -201,57 +214,308 @@ export function EnhancedAIChatInterface() {
     scrollToBottom();
   }, [messages, activeTab]);
 
-  // Load session and messages for a specific land (or general chat if landId is null)
-  const loadLandSession = async (landId: string | null) => {
+  // Track session start time when switching tabs or sending first message
+  useEffect(() => {
+    if (!sessionStartTime[activeTab] && messages[activeTab]?.length > 0) {
+      setSessionStartTime(prev => ({ ...prev, [activeTab]: new Date() }));
+    }
+  }, [activeTab, messages, sessionStartTime]);
+
+  // Detect user scroll vs auto-scroll
+  useEffect(() => {
+    const scrollContainer = scrollAreaRef.current;
+    if (!scrollContainer) return;
+
+    const handleScroll = () => {
+      const currentScrollTop = scrollContainer.scrollTop;
+      const scrollHeight = scrollContainer.scrollHeight;
+      const clientHeight = scrollContainer.clientHeight;
+      
+      // Check if user scrolled up (not at bottom)
+      const isAtBottom = scrollHeight - currentScrollTop - clientHeight < 50;
+      
+      // If user manually scrolled up, set flag
+      if (currentScrollTop < lastScrollTop.current && !isAtBottom) {
+        isUserScrollingRef.current = true;
+      }
+      // If user scrolled to bottom, clear flag
+      else if (isAtBottom) {
+        isUserScrollingRef.current = false;
+      }
+      
+      lastScrollTop.current = currentScrollTop;
+    };
+
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    return () => scrollContainer.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  // MutationObserver to watch for new messages
+  useEffect(() => {
+    const scrollContainer = scrollAreaRef.current;
+    if (!scrollContainer) return;
+
+    const observer = new MutationObserver((mutations) => {
+      // Ignore mutations during auto-scroll to prevent infinite loops
+      if (isAutoScrollingRef.current) return;
+      
+      // Check if new content was added (ignore attribute/style changes)
+      const hasNewContent = mutations.some(mutation => 
+        mutation.type === 'childList' && 
+        mutation.addedNodes.length > 0 &&
+        Array.from(mutation.addedNodes).some(node => node.nodeType === Node.ELEMENT_NODE)
+      );
+      
+      if (hasNewContent && !isUserScrollingRef.current) {
+        scrollToBottom();
+      }
+    });
+
+    observer.observe(scrollContainer, {
+      childList: true,
+      subtree: true
+    });
+
+    return () => observer.disconnect();
+  }, []);
+
+  // ✅ CRITICAL FIX: Define loadLandSession FIRST (before fetchLands that depends on it)
+  // Now with LocalDB caching for offline-first experience
+  // ✅ PRODUCTION-READY: Load session with proper error handling and offline support
+  const loadLandSession = useCallback(async (landId: string | null) => {
+    const sessionKey = landId || 'general';
+    
+    // ✅ CRITICAL: Early return if user or tenant not loaded yet
+    if (!user?.id || !tenant?.id) {
+      console.warn(`[Session] Skipping load - user or tenant not ready`);
+      return { sessionId: null, messages: [] };
+    }
+    
     try {
-      // Get existing active session for this land
-      const { data: existingSession } = await supabase
+      // 1. FIRST: Try to load from LocalDB (instant, offline-first)
+      let cachedMessages: Message[] = [];
+      try {
+        const localMessages = await localDB.getChatMessages(landId);
+        if (localMessages && localMessages.length > 0) {
+          cachedMessages = localMessages
+            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+            .map(msg => {
+              const metadata = msg.metadata as Record<string, any> | null;
+              const imageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
+              
+              // ✅ CRITICAL: Extract analysis_result for AI response cards  
+              const analysisResult = metadata?.analysis_result || undefined;
+              
+              // Debug log for analysis messages
+              if (msg.message_type?.includes('image') || msg.message_type?.includes('video')) {
+                console.log(`📷 [LocalDB] Analysis message cached:`, {
+                  id: msg.id,
+                  role: msg.role,
+                  message_type: msg.message_type,
+                  has_analysis_result: !!analysisResult,
+                  analysis_crop: analysisResult?.cropDetected?.name,
+                  resolved_url: imageUrl?.substring(0, 100)
+                });
+              }
+              
+              return {
+                id: msg.id,
+                role: msg.role as 'user' | 'assistant',
+                content: msg.content,
+                timestamp: new Date(msg.created_at),
+                imageUrl,
+                imageUrls: msg.image_urls || undefined,
+                videoUrl: metadata?.video_url || undefined,
+                messageType: msg.message_type as Message['messageType'] || 'text',
+                analysisResult,
+                feedback: msg.feedback_rating 
+                  ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
+                  : null
+              };
+            });
+          console.log(`⚡ [LocalDB] Loaded ${cachedMessages.length} cached messages for ${sessionKey}`);
+        }
+      } catch (localErr) {
+        console.warn('LocalDB read failed, continuing with Supabase:', localErr);
+      }
+      
+      // 2. THEN: Sync from Supabase in background (if online)
+      let sessionQuery = supabase
         .from('ai_chat_sessions')
         .select('id')
-        .eq('farmer_id', user?.id)
-        .eq('tenant_id', tenant?.id)
-        .eq('land_id', landId)
+        .eq('farmer_id', user.id)
+        .eq('tenant_id', tenant.id)
         .eq('is_active', true)
         .order('updated_at', { ascending: false })
-        .limit(1)
-        .single();
+        .limit(1);
+      
+      if (landId === null) {
+        sessionQuery = sessionQuery.is('land_id', null);
+      } else {
+        sessionQuery = sessionQuery.eq('land_id', landId);
+      }
+      
+      const { data: existingSession, error: sessionError } = await sessionQuery.maybeSingle();
+
+      if (sessionError) {
+        console.warn(`Session query error for ${sessionKey}:`, sessionError);
+        if (cachedMessages.length > 0) {
+          return { sessionId: null, messages: cachedMessages };
+        }
+        return { sessionId: null, messages: [] };
+      }
 
       if (existingSession) {
-        console.log(`✅ Loaded session for ${landId || 'general'}:`, existingSession.id);
+        console.log(`✅ Loaded session from Supabase for ${sessionKey}:`, existingSession.id, `land_id: ${landId}`);
+        
+        // ✅ Cache session to LocalDB for offline filtering
+        try {
+          await localDB.saveChatSession({
+            id: existingSession.id,
+            tenant_id: tenant?.id || '',
+            farmer_id: user?.id || '',
+            land_id: landId || null,
+            session_type: landId ? 'land_specific' : 'general',
+            session_title: landId ? `Land Chat ${landId}` : 'General Agriculture Chat',
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            metadata: {}
+          });
+          console.log(`💾 [LocalDB] Cached session ${existingSession.id} with land_id: ${landId}`);
+        } catch (cacheSessionErr) {
+          console.warn('Failed to cache session:', cacheSessionErr);
+        }
         
         // Load messages for this session
-        const { data: previousMessages } = await supabase
+        const { data: previousMessages, error: messagesError } = await supabase
           .from('ai_chat_messages')
           .select('*')
           .eq('session_id', existingSession.id)
           .eq('farmer_id', user?.id)
-          .order('created_at', { ascending: true });
+          .order('created_at', { ascending: true })
+          .limit(100); // Limit for performance
 
-        console.log(`📜 Loaded ${previousMessages?.length || 0} messages for ${landId || 'general'}`);
+        if (messagesError) {
+          console.warn(`Messages query error for ${sessionKey}:`, messagesError);
+          if (cachedMessages.length > 0) {
+            return { sessionId: existingSession.id, messages: cachedMessages };
+          }
+        }
 
-        return {
-          sessionId: existingSession.id,
-          messages: (previousMessages || []).map(msg => ({
+        console.log(`📜 Loaded ${previousMessages?.length || 0} messages from Supabase for ${sessionKey}`);
+
+        // 3. Cache to LocalDB for offline access (non-blocking)
+        if (previousMessages && previousMessages.length > 0) {
+          (async () => {
+            try {
+              for (const msg of previousMessages) {
+                await localDB.saveChatMessage({
+                  id: msg.id,
+                  session_id: msg.session_id,
+                  tenant_id: msg.tenant_id,
+                  farmer_id: msg.farmer_id,
+                  role: msg.role,
+                  content: msg.content,
+                  land_context: msg.land_context,
+                  crop_context: msg.crop_context,
+                  weather_context: msg.weather_context,
+                  location_context: msg.location_context,
+                  agro_climatic_zone: msg.agro_climatic_zone,
+                  soil_zone: msg.soil_zone,
+                  rainfall_zone: msg.rainfall_zone,
+                  crop_season: msg.crop_season,
+                  ai_model: msg.ai_model,
+                  response_time_ms: msg.response_time_ms,
+                  tokens_used: msg.tokens_used,
+                  feedback_rating: msg.feedback_rating,
+                  feedback_text: msg.feedback_text,
+                  attachments: msg.attachments,
+                  image_urls: msg.image_urls,
+                  status: msg.status,
+                  language: msg.language,
+                  message_type: msg.message_type,
+                  error_details: msg.error_details,
+                  is_edited: msg.is_edited,
+                  edited_at: msg.edited_at,
+                  parent_message_id: msg.parent_message_id,
+                  user_agent: msg.user_agent,
+                  ip_address: msg.ip_address,
+                  partition_key: msg.partition_key,
+                  word_count: msg.word_count,
+                  metadata: msg.metadata,
+                  created_at: msg.created_at,
+                  updated_at: msg.updated_at
+                });
+              }
+              console.log(`💾 [LocalDB] Cached ${previousMessages.length} messages`);
+            } catch (cacheErr) {
+              console.warn('Failed to cache messages to LocalDB:', cacheErr);
+            }
+          })();
+        }
+
+        // ✅ DEBUG: Log loaded messages with image info
+        const mappedMessages = (previousMessages || []).map(msg => {
+          const metadata = msg.metadata as Record<string, any> | null;
+          const imageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
+          
+          // ✅ CRITICAL: Extract analysis_result for AI response cards
+          const analysisResult = metadata?.analysis_result || undefined;
+          
+          // Log ALL image analysis messages for debugging
+          if (msg.message_type?.includes('image') || msg.message_type?.includes('video')) {
+            console.log(`📷 [loadLandSession] Analysis message loaded:`, {
+              id: msg.id,
+              role: msg.role,
+              message_type: msg.message_type,
+              image_urls: msg.image_urls,
+              has_analysis_result: !!analysisResult,
+              analysis_crop: analysisResult?.cropDetected?.name,
+              resolved_url: imageUrl?.substring(0, 100)
+            });
+          }
+          
+          return {
             id: msg.id,
             role: msg.role as 'user' | 'assistant',
             content: msg.content,
             timestamp: new Date(msg.created_at),
+            imageUrl,
+            imageUrls: msg.image_urls || undefined,
+            videoUrl: metadata?.video_url || undefined,
+            messageType: msg.message_type as Message['messageType'] || 'text',
+            analysisResult,
             feedback: msg.feedback_rating 
               ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
               : null
-          }))
+          };
+        });
+        
+        console.log(`✅ [loadLandSession] Loaded ${mappedMessages.length} messages for ${sessionKey}`);
+        return {
+          sessionId: existingSession.id,
+          messages: mappedMessages
         };
       }
 
-      console.log(`ℹ️ No existing session for ${landId || 'general'}`);
+      // If no Supabase session but we have cached messages, return them
+      if (cachedMessages.length > 0) {
+        console.log(`📦 Using ${cachedMessages.length} cached messages (no Supabase session)`);
+        return { sessionId: null, messages: cachedMessages };
+      }
+
+      console.log(`ℹ️ No existing session for ${sessionKey}`);
       return { sessionId: null, messages: [] };
     } catch (error) {
-      console.error(`Error loading session for ${landId || 'general'}:`, error);
+      console.error(`Error loading session for ${sessionKey}:`, error);
       return { sessionId: null, messages: [] };
     }
-  };
+  }, [user?.id, tenant?.id]);
 
-  const fetchLands = async () => {
+  // ✅ CRITICAL FIX: fetchLands wrapped in useCallback with proper dependencies
+  const fetchLands = useCallback(async () => {
+    setIsLoadingHistory(true);
     try {
       const fetchedLands = await landsApi.fetchLands();
       setLands(fetchedLands);
@@ -295,92 +559,148 @@ export function EnhancedAIChatInterface() {
       });
     } catch (error) {
       console.error('Error fetching lands:', error);
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, [loadLandSession]); // fetchLands depends on loadLandSession
+
+  // ✅ Initialize lands on mount - MUST be before conditional return
+  useEffect(() => {
+    fetchLands();
+  }, [fetchLands]);
+
+  // ✅ All hooks are now declared BEFORE conditional returns
+  // Guard: Don't render until tenant is loaded
+  if (isTenantLoading || !tenant || !user) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // Request microphone permission
+  const startListening = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      originalStartListening();
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: t('chat.microphonePermissionRequired'),
+        variant: 'destructive'
+      });
     }
   };
 
-  const scrollToBottom = useCallback(() => {
-    // Don't auto-scroll if user is manually scrolling
-    if (isUserScrolling) return;
+  // Request camera permission
+  const requestCameraPermission = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ video: true });
+      return true;
+    } catch (error) {
+      toast({
+        title: t('common.error'),
+        description: t('chat.cameraPermissionRequired'),
+        variant: 'destructive'
+      });
+      return false;
+    }
+  };
+
+  // Touch event handlers for pull-to-refresh
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStart(e.targetTouches[0].clientY);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientY);
+  };
+
+  const handleTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchEnd - touchStart;
+    const isDownSwipe = distance > 50;
+    const isAtTop = scrollAreaRef.current?.scrollTop === 0;
     
-    // Wait for next tick to ensure DOM is updated
-    setTimeout(() => {
-      if (scrollAreaRef.current) {
-        // Get the actual viewport element that contains the scroll
-        const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-        if (viewport) {
-          viewport.scrollTo({
-            top: viewport.scrollHeight,
-            behavior: 'smooth'
-          });
-        }
-      }
-    }, 100);
-  }, [isUserScrolling]);
+    if (isDownSwipe && isAtTop) {
+      handleRefresh();
+    }
+  };
 
-  // Detect user scroll vs auto-scroll
-  useEffect(() => {
-    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-    if (!viewport) return;
+  // ✅ MOVED: fetchLands and loadLandSession are now defined BEFORE conditional return as useCallback hooks
 
-    const handleScroll = () => {
-      const currentScrollTop = viewport.scrollTop;
-      const scrollHeight = viewport.scrollHeight;
-      const clientHeight = viewport.clientHeight;
-      
-      // Check if user scrolled up (not at bottom)
-      const isAtBottom = scrollHeight - currentScrollTop - clientHeight < 50;
-      
-      // If user manually scrolled up, set flag
-      if (currentScrollTop < lastScrollTop.current && !isAtBottom) {
-        setIsUserScrolling(true);
-      }
-      // If user scrolled to bottom, clear flag
-      else if (isAtBottom) {
-        setIsUserScrolling(false);
-      }
-      
-      lastScrollTop.current = currentScrollTop;
-    };
-
-    viewport.addEventListener('scroll', handleScroll, { passive: true });
-    return () => viewport.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  // MutationObserver to watch for new messages
-  useEffect(() => {
-    const viewport = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-    if (!viewport) return;
-
-    const observer = new MutationObserver((mutations) => {
-      // Check if new content was added
-      const hasNewContent = mutations.some(mutation => 
-        mutation.type === 'childList' && mutation.addedNodes.length > 0
-      );
-      
-      if (hasNewContent && !isUserScrolling) {
-        scrollToBottom();
-      }
-    });
-
-    observer.observe(viewport, {
-      childList: true,
-      subtree: true
-    });
-
-    return () => observer.disconnect();
-  }, [scrollToBottom, isUserScrolling]);
-
-  const getCurrentSessionId = () => {
-    // Check if we already have a session ID loaded from database or created in this session
-    if (sessionIds[activeTab]) {
-      console.log(`♻️ Reusing existing session for ${activeTab}:`, sessionIds[activeTab]);
-      return sessionIds[activeTab];
+  // ✅ CRITICAL FIX: Get or create session ID for the CURRENT TAB (land-specific isolation)
+  const getCurrentSessionId = async (): Promise<string> => {
+    const tabKey = activeTab; // 'general' or land_id
+    const landId = tabKey !== 'general' ? tabKey : null;
+    const land = landId ? lands.find(l => l.id === landId) : null;
+    
+    // ✅ CRITICAL: Ensure user and tenant are defined
+    if (!user?.id || !tenant?.id) {
+      console.error('[Session] Cannot create session - user or tenant undefined');
+      throw new Error('User or tenant not loaded');
     }
     
-    // Create new session ID only if none exists
+    // 1. Check if we already have a session ID for THIS SPECIFIC TAB
+    if (sessionIds[tabKey]) {
+      console.log(`♻️ Reusing existing session for ${tabKey}:`, sessionIds[tabKey]);
+      return sessionIds[tabKey];
+    }
+    
+    // 2. Query database for an existing session for this specific land
+    try {
+      let sessionQuery = supabase
+        .from('ai_chat_sessions')
+        .select('id')
+        .eq('farmer_id', user.id)
+        .eq('tenant_id', tenant.id)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      
+      // ✅ CRITICAL: Query for exact land_id match (null for general)
+      if (landId === null) {
+        sessionQuery = sessionQuery.is('land_id', null);
+      } else {
+        sessionQuery = sessionQuery.eq('land_id', landId);
+      }
+      
+      const { data: existingSession } = await sessionQuery.maybeSingle();
+      
+      if (existingSession) {
+        console.log(`📦 Found existing DB session for ${tabKey}:`, existingSession.id);
+        setSessionIds(prev => ({ ...prev, [tabKey]: existingSession.id }));
+        setLoadedSessionIds(prev => new Set([...prev, existingSession.id]));
+        return existingSession.id;
+      }
+    } catch (err) {
+      console.warn('Session query failed:', err);
+    }
+    
+    // 3. Create new session for this specific tab/land
     const newSessionId = crypto.randomUUID();
-    console.log(`🆕 Creating new session for ${activeTab}:`, newSessionId);
-    setSessionIds(prev => ({ ...prev, [activeTab]: newSessionId }));
+    console.log(`🆕 Creating new session for ${tabKey}:`, newSessionId);
+    
+    // ✅ CRITICAL: Create session in DB immediately with correct land_id
+    try {
+      await supabase.from('ai_chat_sessions').insert({
+        id: newSessionId,
+        tenant_id: tenant.id,
+        farmer_id: user.id,
+        session_type: landId ? 'land_specific' : 'general',
+        session_title: landId ? (land?.name || 'Land Chat') : 'General Agriculture Chat',
+        land_id: landId, // ✅ CRITICAL: Set correct land_id
+        is_active: true,
+        metadata: { language, platform: 'mobile', app_version: '1.0.0' }
+      });
+      console.log(`✅ Created new DB session for ${tabKey}:`, newSessionId);
+    } catch (err) {
+      console.warn('Session creation failed:', err);
+    }
+    
+    setSessionIds(prev => ({ ...prev, [tabKey]: newSessionId }));
+    setLoadedSessionIds(prev => new Set([...prev, newSessionId]));
     return newSessionId;
   };
 
@@ -395,10 +715,362 @@ export function EnhancedAIChatInterface() {
     }
   };
 
-  const handleCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const hasPermission = await requestCameraPermission();
-    if (hasPermission) {
-      handleFileSelect(e);
+  // ✅ Process attached images through AI Crop Scan
+  // ✅ FIXED: Single source of truth - only show analyze card, no duplicate user message image
+  const processAttachedImages = async (files: File[]) => {
+    if (!user?.id || !tenant?.id) return;
+    
+    setIsAnalyzingImage(true);
+    
+    try {
+      // Convert files to base64
+      const base64Images = await Promise.all(
+        files.map(file => new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        }))
+      );
+      
+      setPendingVisionAnalysis({ imageUrl: base64Images[0] });
+      
+      const landId = activeTab !== 'general' ? activeTab : undefined;
+      const land = landId ? lands.find(l => l.id === landId) : null;
+      // ✅ CRITICAL: Await async session ID getter
+      const sessionId = await getCurrentSessionId();
+      const userMessageId = crypto.randomUUID();
+      
+      // ✅ CRITICAL: Upload image to Supabase Storage for persistence
+      const { url: imageStorageUrl, compressedBase64, success: uploadSuccess } = await uploadChatImage(
+        base64Images[0],
+        sessionId,
+        userMessageId,
+        user.id
+      );
+      
+      if (!uploadSuccess) {
+        console.warn('⚠️ Image upload to storage failed, using base64 fallback');
+      }
+      
+      // ✅ SINGLE SOURCE: Don't create separate user message with image
+      // Only create a minimal placeholder - the analyze card shows the image
+      const userMessage: Message = {
+        id: userMessageId,
+        role: 'user',
+        content: `📷 ${language === 'hi' ? 'फोटो विश्लेषण के लिए' : language === 'mr' ? 'फोटो विश्लेषणासाठी' : 'Photo for analysis'}`,
+        timestamp: new Date(),
+        // ✅ REMOVED: Don't show image in user message - only in analyze card
+        messageType: 'image_analysis'
+      };
+      
+      setMessages(prev => ({
+        ...prev,
+        [activeTab]: [...(prev[activeTab] || []), userMessage]
+      }));
+      
+      // ✅ Session already created by getCurrentSessionId() - no need to duplicate
+      
+      const landContext = land ? {
+        land_id: land.id,
+        land_name: land.name,
+        soil_type: land.soil_type,
+        current_crop: land.current_crop
+      } : null;
+      
+      // Save user message to database (minimal, no image display)
+      await supabase.from('ai_chat_messages').insert({
+        id: userMessageId,
+        tenant_id: tenant.id,
+        farmer_id: user.id,
+        session_id: sessionId,
+        role: 'user',
+        content: userMessage.content,
+        message_type: 'image_analysis',
+        image_urls: [imageStorageUrl],
+        land_context: landContext,
+        language,
+        status: 'sent',
+        is_training_candidate: true,
+        word_count: 4
+      });
+      
+      // Call AI crop scan
+      const { data: scanResult, error } = await supabase.functions.invoke('ai-crop-scan', {
+        body: {
+          images: base64Images,
+          language,
+          farmerId: user?.id,
+          tenantId: tenant?.id,
+          landId,
+          landCrop: land?.current_crop,
+          mode: 'full'
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (scanResult?.success && scanResult?.result) {
+        // ✅ CHECK CROP MISMATCH - Don't show recommendations if mismatch
+        const isCropMismatch = land?.current_crop && scanResult.result.cropDetected?.matchesLandCrop === false;
+        
+        if (isCropMismatch) {
+          toast({
+            title: '⚠️ ' + (language === 'hi' ? 'फसल मेल नहीं खाती' : language === 'mr' ? 'पीक जुळत नाही' : 'Crop Mismatch'),
+            description: language === 'hi' 
+              ? `पहचानी गई: ${scanResult.result.cropDetected.name}। अपेक्षित: ${land.current_crop}। सामान्य चैट का उपयोग करें।`
+              : language === 'mr'
+              ? `ओळखलेले: ${scanResult.result.cropDetected.name}। अपेक्षित: ${land.current_crop}। सामान्य चॅट वापरा.`
+              : `Detected: ${scanResult.result.cropDetected.name}. Expected: ${land.current_crop}. Please use General Chat.`,
+            variant: 'destructive'
+          });
+        }
+        
+        // ✅ Create AI response - show diagnosis only, with suggestion selector
+        // If crop mismatch, don't show recommendation selector
+        const aiMessageId = crypto.randomUUID();
+        const aiContent = scanResult.result.diagnosis?.summary || 'Analysis complete';
+        const aiMessage: Message = {
+          id: aiMessageId,
+          role: 'assistant',
+          content: aiContent,
+          timestamp: new Date(),
+          messageType: 'image_analysis_response',
+          imageUrl: imageStorageUrl, // ✅ SINGLE SOURCE: Image only in analyze card
+          analysisResult: scanResult.result,
+          awaitingSuggestionSelection: !isCropMismatch // ✅ Only show selector if crop matches
+        };
+        
+        setMessages(prev => ({
+          ...prev,
+          [activeTab]: [...(prev[activeTab] || []), aiMessage]
+        }));
+        
+        setPendingVisionAnalysis(null);
+        
+        // Save AI response to database
+        await supabase.from('ai_chat_messages').insert({
+          id: aiMessageId,
+          tenant_id: tenant.id,
+          farmer_id: user.id,
+          session_id: sessionId,
+          role: 'assistant',
+          content: aiContent,
+          message_type: 'image_analysis_response',
+          ai_model: 'gemini-2.5-flash',
+          land_context: landContext,
+          image_urls: [imageStorageUrl],
+          metadata: {
+            analysis_result: scanResult.result,
+            crop_detected: scanResult.result.cropDetected,
+            diagnosis: scanResult.result.diagnosis,
+            image_analyzed: imageStorageUrl,
+            crop_mismatch: isCropMismatch
+          },
+          language,
+          status: 'sent',
+          is_training_candidate: true,
+          word_count: aiContent.split(' ').length
+        });
+        
+        console.log('✅ AI analysis saved', { isCropMismatch });
+        
+      } else {
+        throw new Error(scanResult?.error || 'Analysis failed');
+      }
+    } catch (err) {
+      console.error('Vision analysis error:', err);
+      setPendingVisionAnalysis(prev => prev ? { ...prev, error: err instanceof Error ? err.message : 'Analysis failed' } : null);
+      toast({
+        title: t('error.title'),
+        description: err instanceof Error ? err.message : 'Failed to analyze image',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsAnalyzingImage(false);
+    }
+  };
+
+  // World-class camera capture handler
+  // ✅ FIXED: Single source of truth - only show analyze card, no duplicate display
+  const handleWorldClassCapture = async (data: { type: 'photo' | 'video'; data: string; duration?: number }) => {
+    if (!user?.id || !tenant?.id) return;
+    
+    setShowCamera(false);
+    setIsAnalyzingImage(true);
+    
+    try {
+      const landId = activeTab !== 'general' ? activeTab : undefined;
+      const land = landId ? lands.find(l => l.id === landId) : null;
+      // ✅ CRITICAL: Await async session ID getter
+      const sessionId = await getCurrentSessionId();
+      const userMessageId = crypto.randomUUID();
+      const mediaType = data.type === 'photo' ? '📷' : '🎥';
+      const isPhoto = data.type === 'photo';
+      
+      // Upload to storage
+      let imageStorageUrl: string;
+      let videoStorageUrl: string | undefined;
+      let uploadSuccess = true;
+      
+      if (isPhoto) {
+        const result = await uploadChatImage(data.data, sessionId, userMessageId, user.id);
+        imageStorageUrl = result.url;
+        uploadSuccess = result.success;
+      } else {
+        const result = await uploadCompressedVideo(data.data, sessionId, userMessageId, user.id);
+        videoStorageUrl = result.videoUrl;
+        imageStorageUrl = result.thumbnailUrl;
+        uploadSuccess = result.success;
+      }
+      
+      if (!uploadSuccess) {
+        console.warn('⚠️ Media upload failed, using fallback');
+      }
+      
+      setPendingVisionAnalysis({ 
+        imageUrl: imageStorageUrl, 
+        videoUrl: videoStorageUrl
+      });
+      
+      // ✅ SINGLE SOURCE: Minimal user message - NO image display here
+      // Image shows ONLY in the analyze card below
+      const userMessage: Message = {
+        id: userMessageId,
+        role: 'user',
+        content: `${mediaType} ${language === 'hi' ? (isPhoto ? 'फोटो' : 'वीडियो') + ' विश्लेषण के लिए' : language === 'mr' ? (isPhoto ? 'फोटो' : 'व्हिडिओ') + ' विश्लेषणासाठी' : (isPhoto ? 'Photo' : 'Video') + ' for analysis'}`,
+        timestamp: new Date(),
+        // ✅ NO imageUrl here - only in analyze card
+        messageType: isPhoto ? 'image_analysis' : 'video_analysis'
+      };
+      
+      setMessages(prev => ({
+        ...prev,
+        [activeTab]: [...(prev[activeTab] || []), userMessage]
+      }));
+      
+      // ✅ Session already created by getCurrentSessionId() - no need to duplicate
+      
+      const landContext = land ? {
+        land_id: land.id,
+        land_name: land.name,
+        soil_type: land.soil_type,
+        current_crop: land.current_crop
+      } : null;
+      
+      // ✅ CRITICAL: Save user message with image URL to database
+      await supabase.from('ai_chat_messages').insert({
+        id: userMessageId,
+        tenant_id: tenant.id,
+        farmer_id: user.id,
+        session_id: sessionId,
+        role: 'user',
+        content: `[${mediaType} ${isPhoto ? 'Photo' : 'Video'} captured for analysis]`,
+        message_type: isPhoto ? 'image_analysis' : 'video_analysis',
+        image_urls: [imageStorageUrl],
+        land_context: landContext,
+        language,
+        status: 'sent',
+        is_training_candidate: true,
+        word_count: 5
+      });
+      
+      // Call AI crop scan (use original base64 for better quality analysis)
+      const { data: scanResult, error } = await supabase.functions.invoke('ai-crop-scan', {
+        body: {
+          images: isPhoto ? [data.data] : [],
+          videoFrames: !isPhoto ? [data.data] : [],
+          language,
+          farmerId: user?.id,
+          tenantId: tenant?.id,
+          landId,
+          landCrop: land?.current_crop,
+          mode: 'full'
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (scanResult?.success && scanResult?.result) {
+        // ✅ CHECK CROP MISMATCH - Don't show recommendations if mismatch
+        const isCropMismatch = land?.current_crop && scanResult.result.cropDetected?.matchesLandCrop === false;
+        
+        if (isCropMismatch) {
+          toast({
+            title: '⚠️ ' + (language === 'hi' ? 'फसल मेल नहीं खाती' : language === 'mr' ? 'पीक जुळत नाही' : 'Crop Mismatch'),
+            description: language === 'hi' 
+              ? `पहचानी गई: ${scanResult.result.cropDetected.name}। अपेक्षित: ${land.current_crop}। सामान्य चैट का उपयोग करें।`
+              : language === 'mr'
+              ? `ओळखलेले: ${scanResult.result.cropDetected.name}। अपेक्षित: ${land.current_crop}। सामान्य चॅट वापरा.`
+              : `Detected: ${scanResult.result.cropDetected.name}. Expected: ${land.current_crop}. Use General Chat.`,
+            variant: 'destructive'
+          });
+        }
+        
+        // ✅ Create AI response - show diagnosis only, with suggestion selector
+        const aiMessageId = crypto.randomUUID();
+        const aiContent = scanResult.result.diagnosis?.summary || 'Analysis complete';
+        const aiMessage: Message = {
+          id: aiMessageId,
+          role: 'assistant',
+          content: aiContent,
+          timestamp: new Date(),
+          messageType: isPhoto ? 'image_analysis_response' : 'video_analysis_response',
+          imageUrl: imageStorageUrl, // ✅ SINGLE SOURCE: Image only in analyze card
+          analysisResult: scanResult.result,
+          awaitingSuggestionSelection: !isCropMismatch // ✅ Only show selector if crop matches
+        };
+        
+        setMessages(prev => ({
+          ...prev,
+          [activeTab]: [...(prev[activeTab] || []), aiMessage]
+        }));
+        
+        setPendingVisionAnalysis(null);
+        
+        // Save AI response to database
+        await supabase.from('ai_chat_messages').insert({
+          id: aiMessageId,
+          tenant_id: tenant.id,
+          farmer_id: user.id,
+          session_id: sessionId,
+          role: 'assistant',
+          content: aiContent,
+          message_type: isPhoto ? 'image_analysis_response' : 'video_analysis_response',
+          image_urls: [imageStorageUrl],
+          ai_model: 'gemini-2.5-flash',
+          land_context: landContext,
+          metadata: {
+            analysis_result: scanResult.result,
+            crop_detected: scanResult.result.cropDetected,
+            diagnosis: scanResult.result.diagnosis,
+            media_type: data.type,
+            duration: data.duration,
+            image_analyzed: imageStorageUrl,
+            video_url: videoStorageUrl,
+            crop_mismatch: isCropMismatch
+          },
+          language,
+          status: 'sent',
+          is_training_candidate: true,
+          word_count: aiContent.split(' ').length
+        });
+        
+        console.log('✅ AI camera analysis saved', { isCropMismatch });
+        
+      } else {
+        throw new Error(scanResult?.error || 'Analysis failed');
+      }
+    } catch (err) {
+      console.error('Vision analysis error:', err);
+      setPendingVisionAnalysis(prev => prev ? { ...prev, error: err instanceof Error ? err.message : 'Analysis failed' } : null);
+      toast({
+        title: t('error.title'),
+        description: err instanceof Error ? err.message : 'Failed to analyze image',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsAnalyzingImage(false);
     }
   };
 
@@ -406,13 +1078,22 @@ export function EnhancedAIChatInterface() {
     const messageText = text || inputValue.trim();
     const finalMessage = quickAction ? `${quickAction}: ${messageText}` : messageText;
     
+    // Check for image attachments - process them through vision analysis
+    const imageFiles = attachedFiles.filter(f => f.type.startsWith('image/'));
+    if (imageFiles.length > 0 && !finalMessage) {
+      // Process attached images through AI crop scan
+      await processAttachedImages(imageFiles);
+      setAttachedFiles([]);
+      return;
+    }
+    
     if (!finalMessage && !quickAction && attachedFiles.length === 0) return;
     
     const userMessageId = crypto.randomUUID();
     const userMessage: Message = {
       id: userMessageId,
       role: 'user',
-      content: finalMessage,
+      content: finalMessage || (imageFiles.length > 0 ? `[Analyzing ${imageFiles.length} image(s)]` : ''),
       timestamp: new Date()
     };
     
@@ -425,70 +1106,29 @@ export function EnhancedAIChatInterface() {
     setAttachedFiles([]);
     setIsLoading(true);
     
+    // ✅ NEW: Show random loading messages
+    const loadingMessages = language === 'hi' 
+      ? ['जवाब तैयार कर रहा हूं...', 'सोच रहा हूं...', 'विश्लेषण कर रहा हूं...', 'समझ रहा हूं...']
+      : language === 'mr'
+      ? ['उत्तर तयार करत आहे...', 'विचार करत आहे...', 'विश्लेषण करत आहे...', 'समजत आहे...']
+      : ['Preparing answer...', 'Thinking...', 'Analyzing...', 'Understanding...'];
+    
+    const randomMessage = loadingMessages[Math.floor(Math.random() * loadingMessages.length)];
+    setLoadingMessage(randomMessage);
+    
     try {
-      const sessionId = getCurrentSessionId();
+      // ✅ CRITICAL: Await async session ID getter - handles session creation
+      const sessionId = await getCurrentSessionId();
       const landId = activeTab !== 'general' ? activeTab : undefined;
       const land = landId ? lands.find(l => l.id === landId) : null;
       
       const tenantId = tenant.id;
       const farmerId = user.id;
       
-      // Create session in database only if it's a new session (not loaded from DB)
-      if (!loadedSessionIds.has(sessionId)) {
-        console.log('💾 Creating new session in database:', sessionId);
-        const { error: sessionError } = await supabase.from('ai_chat_sessions').insert({
-          id: sessionId,
-          tenant_id: tenantId,
-          farmer_id: farmerId,
-          session_type: activeTab === 'general' ? 'general' : 'land_specific',
-          session_title: activeTab === 'general' ? 'General Agriculture Chat' : land?.name,
-          land_id: land?.id || null,
-          metadata: {
-            language,
-            platform: 'mobile',
-            app_version: '1.0.0'
-          }
-        });
-        
-        if (sessionError) {
-          console.error('Session creation error:', sessionError);
-        } else {
-          // Mark this session as loaded (exists in DB now)
-          setLoadedSessionIds(prev => new Set([...prev, sessionId]));
-        }
-      } else {
-        console.log('♻️ Reusing existing database session:', sessionId);
-      }
+      // ✅ Session already created by getCurrentSessionId() - no need to duplicate
+      console.log('♻️ Using session for message:', sessionId);
       
-      // Save user message immediately with status 'sending'
-      const { error: msgError } = await supabase.from('ai_chat_messages').insert({
-        id: userMessageId,
-        session_id: sessionId,
-        tenant_id: tenantId,
-        farmer_id: farmerId,
-        role: 'user',
-        content: finalMessage,
-        status: 'sending',
-        language: language,
-        message_type: attachedFiles.length > 0 ? 'multimedia' : 'text',
-        word_count: finalMessage.split(/\s+/).length,
-        metadata: {
-          tab: activeTab,
-          landId: land?.id,
-          quickAction: quickAction,
-          attachments: attachedFiles.length
-        },
-        land_context: land ? {
-          land_id: land.id,
-          land_name: land.name,
-          soil_type: land.soil_type,
-          area_acres: land.area_acres,
-          current_crop: land.current_crop
-        } : null,
-        crop_season: getCurrentSeason()
-      });
-      
-      if (msgError) console.error('Error saving user message:', msgError);
+      // ✅ Let edge function handle ALL message saves (prevents duplicates)
       
       // 🤖 Call Land-Specific AI Agent
       // Each land has its own AI agent that:
@@ -499,22 +1139,47 @@ export function EnhancedAIChatInterface() {
       console.log(`📊 Session ID: ${sessionId}`);
       console.log(`🗂️ Training data collected per land in: ai_chat_messages table`);
       
+      console.log('🤖 Sending AI request with language:', language);
+      
+      // Get session token from localStorage
+      const sessionToken = localStorage.getItem('app_session_token') || '';
+      
+      // CRITICAL: Pass tenant and farmer IDs as headers (required by edge function)
+      // ✅ Send conversation history (last 8 messages) for context
+      const conversationHistory = (messages[activeTab] || []).slice(-8).map(m => ({ 
+        role: m.role, 
+        content: m.content 
+      }));
+      
       const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
         body: {
-          messages: [{ role: 'user', content: finalMessage }],
+          messages: [...conversationHistory, { role: 'user', content: finalMessage }],
           sessionId,
           landId,
-          language,
+          language: language, // Pass user's selected language
           metadata: {
             tenantId,
             farmerId,
-            language,
+            language: language,
             landContext: land
           }
+        },
+        headers: {
+          'x-tenant-id': tenantId,
+          'x-farmer-id': farmerId,
+          'x-session-token': sessionToken
         }
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error('❌ AI Chat Error:', error);
+        throw new Error(error.message || 'AI request failed');
+      }
+      
+      if (!data || !data.response) {
+        console.error('❌ Invalid AI response:', data);
+        throw new Error('Invalid response from AI');
+      }
       
       // Update user message status to 'sent'
       await supabase.from('ai_chat_messages')
@@ -527,7 +1192,14 @@ export function EnhancedAIChatInterface() {
         role: 'assistant',
         content: data.response || t('chat.errorOccurred'),
         timestamp: new Date(),
-        structured: parseStructuredResponse(data.response)
+        structured: parseStructuredResponse(data.response),
+        structuredResponse: data.structuredResponse, // ✅ NEW: Color-coded cards from backend
+        // ✅ NEW: Include analytics for token display
+        analytics: {
+          responseTime: data.responseTime,
+          tokensUsed: data.analytics?.tokensUsed,
+          queryComplexity: data.analytics?.queryComplexity
+        }
       };
       
       setMessages(prev => ({
@@ -535,13 +1207,15 @@ export function EnhancedAIChatInterface() {
         [activeTab]: [...(prev[activeTab] || []), aiMessage]
       }));
       
-      // 🎯 Save Land-Specific Quick Replies
-      // Quick replies are generated based on:
-      // 1. Land context (crop type, soil type, growth stage)
-      // 2. AI response content (what was just discussed)
-      // 3. User's last message (conversation context)
-      if (data.quickReplies && data.quickReplies.length > 0) {
-        console.log(`💬 Land-specific quick replies for ${land?.name || 'General'}:`, data.quickReplies);
+      // 🎯 Save Dynamic Follow-Up Questions (AI-generated)
+      if (data.followUpQuestions && data.followUpQuestions.length > 0) {
+        console.log(`💡 Dynamic follow-ups for ${land?.name || 'General'}:`, data.followUpQuestions);
+        setDynamicQuickReplies(prev => ({
+          ...prev,
+          [activeTab]: data.followUpQuestions.map((q: any) => q.text)
+        }));
+      } else if (data.quickReplies && data.quickReplies.length > 0) {
+        // Fallback to quick replies
         setDynamicQuickReplies(prev => ({
           ...prev,
           [activeTab]: data.quickReplies
@@ -551,28 +1225,42 @@ export function EnhancedAIChatInterface() {
       // Save AI response - No need to save separately as edge function already does this
       
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('❌ Error sending message:', {
+        error: error instanceof Error ? error.message : error,
+        stack: error instanceof Error ? error.stack : undefined,
+        activeTab,
+        landId: activeTab !== 'general' ? activeTab : null,
+        language
+      });
       
       // Update message status to 'error' if failed
       await supabase.from('ai_chat_messages')
         .update({ 
           status: 'error',
-          error_details: { error: error instanceof Error ? error.message : 'Unknown error' }
+          error_details: { 
+            error: error instanceof Error ? error.message : 'Unknown error',
+            timestamp: new Date().toISOString()
+          }
         })
         .eq('id', userMessageId);
       
+      // Show detailed error message for debugging
+      const errorMessage = error instanceof Error ? error.message : t('error.unknown');
       toast({
-        title: t('common.error'),
-        description: isOnline ? t('chat.errorOccurred') : t('chat.offlineMessage'),
+        title: t('error.title'),
+        description: isOnline 
+          ? `${t('chat.messages.error')}: ${errorMessage}`
+          : t('chat.voice.error'),
         variant: 'destructive'
       });
     } finally {
       setIsLoading(false);
+      setLoadingMessage(''); // ✅ Clear loading message
     }
   };
 
   const parseStructuredResponse = (response: string) => {
-    // Parse color-coded sections from AI response
+    // Parse color-coded sections from AI response with enhanced detection
     const structured: any = {
       greeting: '',
       landContext: '',
@@ -580,52 +1268,97 @@ export function EnhancedAIChatInterface() {
       closingMessage: ''
     };
     
-    // Extract greeting (first line with emoji)
-    const greetingMatch = response.match(/^👨‍🌾.*?🙏/m);
+    // Extract greeting (first paragraph or line with greeting patterns)
+    const greetingMatch = response.match(/^[^।\n]*(नमस्ते|नमस्कार|Hello|Namaste)[^।\n]*/im);
     if (greetingMatch) {
-      structured.greeting = greetingMatch[0];
+      structured.greeting = greetingMatch[0].trim();
     }
     
-    // Extract land context line
-    const landContextMatch = response.match(/🌾.*?\|.*?\|.*$/m);
-    if (landContextMatch) {
-      structured.landContext = landContextMatch[0];
-    }
+    // Intelligent section detection based on keywords (multi-language support)
+    const detectSectionType = (text: string): string => {
+      const lowerText = text.toLowerCase();
+      
+      // Organic/Natural fertilizer keywords
+      if (lowerText.match(/(organic|जैविक|natural|नैसर्गिक|compost|कंपोस्ट|vermi|वर्मी|fym|गोबर|cow dung)/i)) {
+        return 'organic';
+      }
+      
+      // Chemical fertilizer keywords
+      if (lowerText.match(/(fertilizer|खत|उर्वरक|npk|urea|युरिया|dap|डीएपी|chemical|रासायनिक|potash|पोटॅश)/i)) {
+        return 'fertilizer';
+      }
+      
+      // Pesticide keywords
+      if (lowerText.match(/(pesticide|कीटनाशक|किटकनाशक|pest control|insect|किड|spray|फवारणी|fungicide)/i)) {
+        return 'pest';
+      }
+      
+      // Water/Irrigation keywords
+      if (lowerText.match(/(water|पाणी|irrigation|सिंचाई|पाणीपुरवठा|drip)/i)) {
+        return 'water';
+      }
+      
+      return 'other';
+    };
     
-    // Extract color-coded sections
-    const sectionPatterns = [
-      { emoji: '🟢', keyword: 'Organic Practices', type: 'organic', color: 'green' },
-      { emoji: '🟡', keyword: 'Fertilizer Schedule', type: 'fertilizer', color: 'yellow' },
-      { emoji: '🔴', keyword: 'Pesticide', type: 'pesticide', color: 'red' },
-      { emoji: '🟣', keyword: 'Hormone', type: 'hormone', color: 'purple' },
-      { emoji: '🟢', keyword: 'Advisory Note', type: 'advisory', color: 'blue' }
-    ];
+    // Split response into paragraphs and sections
+    const paragraphs = response.split(/\n\n+/);
+    let currentSection: any = null;
     
-    sectionPatterns.forEach(pattern => {
-      // More flexible regex to capture section content
-      const regex = new RegExp(`${pattern.emoji}\\s*\\*\\*([^*]+)\\*\\*([^🟢🟡🔴🟣🌾]+)`, 'g');
-      let match;
-      while ((match = regex.exec(response)) !== null) {
-        const title = match[1].trim();
-        const content = match[2].trim();
-        if (title.includes(pattern.keyword) && content) {
+    paragraphs.forEach(para => {
+      const trimmed = para.trim();
+      if (!trimmed) return;
+      
+      // Detect section headers (lines with special characters or all caps)
+      const isHeader = trimmed.match(/^[🟢🟡🔴🔵🟣🟤⚫⚪]/) || 
+                      trimmed.match(/^[A-Z\u0900-\u097F\s]{10,}:/) ||
+                      trimmed.match(/^\d+\.\s*[A-Z\u0900-\u097F]/);
+      
+      if (isHeader) {
+        // Save previous section if exists
+        if (currentSection && currentSection.content.trim()) {
+          const sectionType = detectSectionType(currentSection.title + ' ' + currentSection.content);
           structured.sections.push({
-            type: pattern.type,
-            title: title,
-            content: content,
-            color: pattern.color
+            ...currentSection,
+            type: sectionType
           });
         }
+        
+        // Start new section
+        currentSection = {
+          title: trimmed.replace(/^[🟢🟡🔴🔵🟣🟤⚫⚪]\s*/, '').replace(/\*\*/g, ''),
+          content: '',
+          type: 'other'
+        };
+      } else if (currentSection) {
+        // Add content to current section
+        currentSection.content += (currentSection.content ? '\n\n' : '') + trimmed;
+      } else if (!structured.greeting) {
+        // First paragraph becomes greeting if no greeting found
+        structured.greeting = trimmed;
       }
     });
     
-    // Extract closing message
-    const closingMatch = response.match(/🌾.*best friend!.*$/m);
-    if (closingMatch) {
-      structured.closingMessage = closingMatch[0];
+    // Save last section
+    if (currentSection && currentSection.content.trim()) {
+      const sectionType = detectSectionType(currentSection.title + ' ' + currentSection.content);
+      structured.sections.push({
+        ...currentSection,
+        type: sectionType
+      });
     }
     
-    // Return structured data if we found sections, otherwise return simple structure
+    // If no sections found, treat entire response as a single section
+    if (structured.sections.length === 0 && response.trim()) {
+      const sectionType = detectSectionType(response);
+      structured.sections.push({
+        title: structured.greeting || 'Response',
+        content: response.replace(structured.greeting, '').trim(),
+        type: sectionType
+      });
+    }
+    
+    // Return structured data
     return structured.sections.length > 0 ? structured : undefined;
   };
 
@@ -821,6 +1554,138 @@ export function EnhancedAIChatInterface() {
         title: t('common.copied'),
         description: t('chat.shareViaCopy'),
       });
+    }
+  };
+
+  // ✅ NEW: Handle suggestion type selection and generate targeted solution
+  const handleSuggestionSelect = async (messageId: string, suggestionType: 'organic' | 'fertilizer' | 'pesticide' | 'hybrid') => {
+    if (!user?.id || !tenant?.id) return;
+    
+    setIsLoadingSuggestion(true);
+    
+    try {
+      // Find the original message with analysis
+      const originalMessage = messages[activeTab]?.find(m => m.id === messageId);
+      if (!originalMessage?.analysisResult) {
+        console.error('No analysis result found for message:', messageId);
+        return;
+      }
+      
+      // Get land data for area calculations
+      const landId = activeTab !== 'general' ? activeTab : undefined;
+      const land = landId ? lands.find(l => l.id === landId) : null;
+      const sessionId = sessionIds[activeTab] || crypto.randomUUID();
+      
+      // Calculate area for dosage recommendations
+      const landArea = land?.area_guntha || land?.area_acres ? {
+        guntha: land.area_guntha || (land.area_acres * 40),
+        acres: land.area_acres || (land.area_guntha / 40),
+        sqft: land.area_sqft || (land.area_guntha * 1089)
+      } : null;
+      
+      console.log('🎯 Generating targeted solution:', {
+        messageId,
+        suggestionType,
+        landArea,
+        crop: originalMessage.analysisResult.cropDetected?.name
+      });
+      
+      // ✅ Mark original message as no longer awaiting selection
+      setMessages(prev => ({
+        ...prev,
+        [activeTab]: prev[activeTab].map(m => 
+          m.id === messageId 
+            ? { ...m, awaitingSuggestionSelection: false }
+            : m
+        )
+      }));
+      
+      // Call AI to generate targeted solution with land area context
+      const { data: solutionResult, error } = await supabase.functions.invoke('ai-crop-scan', {
+        body: {
+          mode: 'targeted_solution',
+          suggestionType,
+          language,
+          farmerId: user?.id,
+          tenantId: tenant?.id,
+          landId,
+          landArea,
+          landCrop: land?.current_crop || originalMessage.analysisResult.cropDetected?.name,
+          diagnosis: originalMessage.analysisResult.diagnosis,
+          cropDetected: originalMessage.analysisResult.cropDetected,
+          healthStatus: originalMessage.analysisResult.healthStatus
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (solutionResult?.success && solutionResult?.result) {
+        // Create targeted solution message
+        const solutionMessageId = crypto.randomUUID();
+        const solutionMessage: Message = {
+          id: solutionMessageId,
+          role: 'assistant',
+          content: solutionResult.result.summary || `${suggestionType} solution generated`,
+          timestamp: new Date(),
+          messageType: 'targeted_solution',
+          suggestionType,
+          analysisResult: {
+            ...originalMessage.analysisResult,
+            recommendations: solutionResult.result.recommendations
+          }
+        };
+        
+        setMessages(prev => ({
+          ...prev,
+          [activeTab]: [...(prev[activeTab] || []), solutionMessage]
+        }));
+        
+        // Save to database
+        const { error: insertError } = await supabase.from('ai_chat_messages').insert([{
+          tenant_id: tenant.id,
+          farmer_id: user.id,
+          session_id: sessionId,
+          role: 'assistant',
+          content: solutionMessage.content,
+          message_type: 'targeted_solution',
+          ai_model: 'gemini-2.5-flash',
+          metadata: {
+            suggestion_type: suggestionType,
+            land_area: landArea,
+            analysis_result: JSON.parse(JSON.stringify(solutionMessage.analysisResult)),
+            parent_message_id: messageId
+          } as any,
+          language,
+          status: 'sent',
+          is_training_candidate: true
+        }]);
+        
+        if (insertError) {
+          console.warn('Failed to save targeted solution:', insertError);
+        }
+        
+        console.log('✅ Targeted solution saved:', solutionMessageId);
+        
+        toast({
+          title: language === 'hi' ? 'समाधान तैयार' : language === 'mr' ? 'समाधान तयार' : 'Solution Ready',
+          description: language === 'hi' 
+            ? `${suggestionType === 'organic' ? 'जैविक' : suggestionType === 'fertilizer' ? 'खाद' : suggestionType === 'pesticide' ? 'कीटनाशक' : 'संपूर्ण'} समाधान उपलब्ध है`
+            : language === 'mr'
+            ? `${suggestionType === 'organic' ? 'सेंद्रिय' : suggestionType === 'fertilizer' ? 'खत' : suggestionType === 'pesticide' ? 'कीटकनाशक' : 'संपूर्ण'} समाधान उपलब्ध आहे`
+            : `${suggestionType} solution is ready`,
+        });
+      } else {
+        throw new Error(solutionResult?.error || 'Failed to generate solution');
+      }
+    } catch (err) {
+      console.error('Error generating targeted solution:', err);
+      toast({
+        title: t('error.title'),
+        description: err instanceof Error ? err.message : 'Failed to generate solution',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsLoadingSuggestion(false);
     }
   };
 
@@ -1053,10 +1918,30 @@ export function EnhancedAIChatInterface() {
         </div>
       )}
       
-      <ScrollArea className="h-full px-3 py-4" ref={scrollAreaRef}>
+      <div 
+        ref={scrollAreaRef}
+        className="h-full px-3 py-4 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent"
+      >
         <AnimatePresence mode="popLayout">
+          {/* Loading State for Chat History */}
+          {isLoadingHistory && messages[activeTab]?.length === 0 && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col items-center justify-center py-12 gap-3"
+            >
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <span className="text-sm text-muted-foreground">
+                {language === 'hi' ? 'चैट इतिहास लोड हो रहा है...' : 
+                 language === 'mr' ? 'चॅट इतिहास लोड होत आहे...' : 
+                 'Loading chat history...'}
+              </span>
+            </motion.div>
+          )}
+          
           {/* Show Welcome Card for general chat when no messages */}
-          {activeTab === 'general' && messages[activeTab]?.length === 0 && (
+          {activeTab === 'general' && messages[activeTab]?.length === 0 && !isLoadingHistory && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1069,7 +1954,7 @@ export function EnhancedAIChatInterface() {
           )}
           
           {/* Show Land Context as first message for land-specific chats */}
-          {activeTab !== 'general' && messages[activeTab]?.length === 0 && (
+          {activeTab !== 'general' && messages[activeTab]?.length === 0 && !isLoadingHistory && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1100,259 +1985,43 @@ export function EnhancedAIChatInterface() {
 
               {/* Messages for this date */}
               {group.messages.map((message) => (
-                <motion.div
+                <ModernChatUI
                   key={message.id}
-                  initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -20, scale: 0.95 }}
-                  transition={{ 
-                    duration: 0.5, 
-                    type: "spring", 
-                    stiffness: 300, 
-                    damping: 25 
-                  }}
-                  className={cn(
-                    "flex gap-2 mb-4",
-                    message.role === 'user' ? 'justify-end' : 'justify-start'
-                  )}
-                >
-                  {message.role === 'assistant' && (
-                    <Avatar className="h-8 w-8 shrink-0">
-                      <AvatarFallback className="bg-primary text-primary-foreground">
-                        <Bot className="h-4 w-4" />
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
-                  
-                  <div className={cn(
-                    "relative max-w-[85%]",
-                    message.role === 'user' && 'order-1'
-                  )}>
-                    {/* Message content - 2030 Modern UI with glassmorphism */}
-                    <div className={cn(
-                      "relative overflow-hidden group",
-                      message.role === 'user' 
-                        ? cn(
-                            // Base glassmorphism
-                            "backdrop-blur-2xl bg-gradient-to-br from-primary/90 via-primary to-primary-hover",
-                            // Asymmetric rounded corners
-                            "rounded-[2rem_2rem_0.5rem_2rem]",
-                            // Text color
-                            "text-primary-foreground",
-                            // Smooth animations
-                            "transition-all duration-500 ease-out",
-                            // Interactive hover
-                            "hover:scale-[1.02]",
-                            // Advanced shadows for depth
-                            "shadow-[0_8px_32px_rgba(33,150,243,0.25),0_16px_64px_rgba(33,150,243,0.15),0_0_0_1px_rgba(255,255,255,0.1)_inset]",
-                            "hover:shadow-[0_12px_48px_rgba(33,150,243,0.35)]",
-                            // Glow effect
-                            "after:absolute after:inset-0 after:rounded-[2rem_2rem_0.5rem_2rem]",
-                            "after:bg-gradient-to-t after:from-white/10 after:to-transparent after:pointer-events-none"
-                          )
-                        : cn(
-                            // Glassmorphism base
-                            "bg-card/60 backdrop-blur-2xl",
-                            // Multi-layer border
-                            "border-2 border-border/40",
-                            // Organic shape
-                            "rounded-[0.5rem_2rem_2rem_2rem]",
-                            // Smooth entrance animation
-                            "animate-in slide-in-from-left-4 fade-in duration-500",
-                            // Interactive
-                            "hover:border-border/60 transition-all duration-300",
-                            // Advanced shadows
-                            "shadow-[0_8px_32px_rgba(0,0,0,0.08),0_2px_8px_rgba(0,0,0,0.04),0_0_0_1px_rgba(255,255,255,0.05)_inset]",
-                            "hover:shadow-[0_12px_48px_rgba(0,0,0,0.12)]",
-                            // Inner glow
-                            "before:absolute before:inset-0 before:rounded-[0.5rem_2rem_2rem_2rem]",
-                            "before:bg-gradient-to-br before:from-primary/5 before:to-transparent before:pointer-events-none"
-                          )
-                    )}>
-                      <div className="p-5">
-                        {message.role === 'assistant' && message.structured?.sections ? (
-                          <div className="space-y-4">
-                            {message.structured.greeting && message.structured.greeting.trim() !== '' && (
-                              <div className="text-base font-medium text-foreground mb-3 pb-3 border-b border-border/20">
-                                {message.structured.greeting.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
-                              </div>
-                            )}
-                            {message.structured.sections.map((section: any, idx: number) => (
-                              <ResponseSectionCard 
-                                key={idx} 
-                                emoji={section.emoji || '📋'}
-                                title={section.title.replace(/\*\*/g, '')}
-                                content={section.content.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
-                                sectionType={section.type || 'other'}
-                              />
-                            ))}
-                            {message.structured.closingMessage && message.structured.closingMessage.trim() !== '' && (
-                              <div className="text-sm text-muted-foreground mt-3 pt-3 border-t border-border/20">
-                                {message.structured.closingMessage.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <p className="text-[15px] leading-[1.6] whitespace-pre-wrap break-words">
-                            {message.content.replace(/\*\*/g, '').replace(/\n\n\n+/g, '\n\n')}
-                          </p>
-                        )}
-                        
-                        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-border/10">
-                          <span className="text-xs opacity-60">
-                            {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Action buttons below message - Modern subtle design */}
-                    <div className={cn(
-                      "flex items-center gap-1 mt-2",
-                      message.role === 'user' ? 'justify-end' : 'justify-start'
-                    )}>
-                      {/* Read aloud button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          // Glassmorphism
-                          "backdrop-blur-xl bg-background/40",
-                          // Floating effect
-                          "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
-                          // Size and shape
-                          "h-7 px-2.5 rounded-full text-xs",
-                          // Smooth transitions
-                          "transition-all duration-300",
-                          // Interactive states
-                          "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
-                          "active:scale-95"
-                        )}
-                        onClick={() => handlePlayMessage(message.id, message.content)}
-                      >
-                        {playingMessageId === message.id && isSpeaking ? (
-                          <VolumeX className="h-3 w-3" />
-                        ) : (
-                          <Volume2 className="h-3 w-3" />
-                        )}
-                      </Button>
-                      
-                      {/* Like/Dislike buttons */}
-                      {message.role === 'assistant' && (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className={cn(
-                              // Glassmorphism
-                              "backdrop-blur-xl bg-background/40",
-                              // Floating effect
-                              "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
-                              // Size and shape
-                              "h-7 px-2.5 rounded-full text-xs",
-                              // Smooth transitions
-                              "transition-all duration-300",
-                              // Interactive states
-                              "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
-                              "active:scale-95",
-                              // Active state
-                              message.feedback === 'like' && "bg-primary/20 text-primary hover:bg-primary/30 border-primary/40"
-                            )}
-                            onClick={() => handleLike(message.id, true)}
-                          >
-                            <ThumbsUp className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className={cn(
-                              // Glassmorphism
-                              "backdrop-blur-xl bg-background/40",
-                              // Floating effect
-                              "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
-                              // Size and shape
-                              "h-7 px-2.5 rounded-full text-xs",
-                              // Smooth transitions
-                              "transition-all duration-300",
-                              // Interactive states
-                              "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
-                              "active:scale-95",
-                              // Active state
-                              message.feedback === 'dislike' && "bg-destructive/20 text-destructive hover:bg-destructive/30 border-destructive/40"
-                            )}
-                            onClick={() => handleLike(message.id, false)}
-                          >
-                            <ThumbsDown className="h-3 w-3" />
-                          </Button>
-                        </>
-                      )}
-                      
-                      {/* Copy button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          // Glassmorphism
-                          "backdrop-blur-xl bg-background/40",
-                          // Floating effect
-                          "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
-                          // Size and shape
-                          "h-7 px-2.5 rounded-full text-xs",
-                          // Smooth transitions
-                          "transition-all duration-300",
-                          // Interactive states
-                          "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
-                          "active:scale-95",
-                          // Active state
-                          copiedMessageId === message.id && "bg-success/20 text-success border-success/40"
-                        )}
-                        onClick={() => handleCopy(message.id, message.content)}
-                      >
-                        {copiedMessageId === message.id ? (
-                          <Check className="h-3 w-3" />
-                        ) : (
-                          <Copy className="h-3 w-3" />
-                        )}
-                      </Button>
-                      
-                      {/* Share button */}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          // Glassmorphism
-                          "backdrop-blur-xl bg-background/40",
-                          // Floating effect
-                          "border border-border/40 shadow-[0_4px_16px_rgba(0,0,0,0.1)]",
-                          // Size and shape
-                          "h-7 px-2.5 rounded-full text-xs",
-                          // Smooth transitions
-                          "transition-all duration-300",
-                          // Interactive states
-                          "hover:bg-background/60 hover:scale-110 hover:shadow-[0_6px_24px_rgba(0,0,0,0.15)]",
-                          "active:scale-95"
-                        )}
-                        onClick={() => handleShare(message.content)}
-                      >
-                        <Share2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  {message.role === 'user' && (
-                    <Avatar className="h-8 w-8 shrink-0">
-                      <AvatarFallback className="bg-secondary">
-                        <User className="h-4 w-4" />
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
-                </motion.div>
+                  message={message}
+                  onCopy={handleCopy}
+                  onLike={handleLike}
+                  onShare={handleShare}
+                  onPlay={handlePlayMessage}
+                  onSuggestionSelect={handleSuggestionSelect}
+                  isLoadingSuggestion={isLoadingSuggestion}
+                />
               ))}
             </div>
           ))}
         </AnimatePresence>
         
-        {isLoading && (
+        {/* Vision Analysis Card - ONLY show when actively analyzing (not after result is added to chat) */}
+        {isAnalyzingImage && !pendingVisionAnalysis?.result && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4"
+          >
+            <VisionAnalysisCard
+              imageUrl={pendingVisionAnalysis?.imageUrl}
+              videoUrl={pendingVisionAnalysis?.videoUrl}
+              isAnalyzing={true}
+              error={pendingVisionAnalysis?.error}
+              language={language}
+              onRetry={() => {
+                setPendingVisionAnalysis(null);
+                setShowCamera(true);
+              }}
+            />
+          </motion.div>
+        )}
+        
+        {isLoading && !isAnalyzingImage && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1364,15 +2033,20 @@ export function EnhancedAIChatInterface() {
               </AvatarFallback>
             </Avatar>
             <div className="bg-card border rounded-2xl p-3 shadow-sm">
-              <div className="flex gap-1">
-                <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              <div className="flex items-center gap-2">
+                <div className="flex gap-1">
+                  <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+                {loadingMessage && (
+                  <span className="text-xs text-muted-foreground ml-2">{loadingMessage}</span>
+                )}
               </div>
             </div>
           </motion.div>
         )}
-      </ScrollArea>
+      </div>
     </div>
 
       {/* Suggestion Chips - Show when no messages OR when AI has provided quick replies */}
@@ -1402,19 +2076,40 @@ export function EnhancedAIChatInterface() {
           </div>
         )}
         
-        {/* Attached files preview */}
+        {/* Attached files preview with image thumbnails */}
         {attachedFiles.length > 0 && (
-          <div className="flex gap-2 mb-2 overflow-x-auto">
+          <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
             {attachedFiles.map((file, index) => (
-              <div key={index} className="flex items-center gap-1 px-2 py-1 bg-secondary/20 rounded-full text-xs">
-                <Image className="w-3 h-3" />
-                {file.name}
-                <button 
-                  onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))}
-                  className="ml-1"
-                >
-                  ×
-                </button>
+              <div key={index} className="relative group shrink-0">
+                {file.type.startsWith('image/') ? (
+                  <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-primary/20">
+                    <img 
+                      src={URL.createObjectURL(file)} 
+                      alt={file.name}
+                      className="w-full h-full object-cover"
+                    />
+                    <button 
+                      onClick={() => {
+                        URL.revokeObjectURL(URL.createObjectURL(file));
+                        setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+                      }}
+                      className="absolute top-0 right-0 bg-destructive text-destructive-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs shadow-md hover:bg-destructive/90 transition-colors"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 px-3 py-2 bg-secondary/20 rounded-lg text-xs border">
+                    <Paperclip className="w-3 h-3" />
+                    <span className="max-w-20 truncate">{file.name}</span>
+                    <button 
+                      onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))}
+                      className="ml-1 hover:text-destructive"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -1440,22 +2135,16 @@ export function EnhancedAIChatInterface() {
                 <Paperclip className="h-4 w-4 text-muted-foreground" />
               </Button>
               
-              <input
-                ref={cameraInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                className="hidden"
-                onChange={handleCameraCapture}
-              />
+              {/* Camera Button - Opens WorldClassCamera */}
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6"
-                onClick={() => cameraInputRef.current?.click()}
+                onClick={() => setShowCamera(true)}
               >
                 <Camera className="h-4 w-4 text-muted-foreground" />
               </Button>
+              
             </div>
             
             <Input
@@ -1501,6 +2190,16 @@ export function EnhancedAIChatInterface() {
           </div>
         </div>
       </div>
+      
+      {/* WorldClassCamera Modal */}
+      {showCamera && (
+        <WorldClassCamera
+          onCapture={handleWorldClassCapture}
+          onClose={() => setShowCamera(false)}
+          maxVideoDuration={10}
+          language={language}
+        />
+      )}
     </div>
   );
 }

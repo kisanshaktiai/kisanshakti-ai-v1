@@ -1,0 +1,122 @@
+{
+  "__meta": {
+    "page": "social",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "social": {
+    "header": {
+      "title": "Community"
+    },
+    "user": {
+      "level": "Lvl {{level}}",
+      "points": "{{points}} pts"
+    },
+    "search": {
+      "placeholder": "Search communities..."
+    },
+    "tabs": {
+      "feed": "Feed",
+      "communities": "Communities",
+      "messages": "Messages",
+      "rankings": "Rankings",
+      "trending": "Trending"
+    },
+    "notifications": {
+      "new_message": {
+        "title": "New Message",
+        "message": "You have received a new message"
+      },
+      "post_liked": {
+        "title": "Post Liked",
+        "message": "Someone liked your post"
+      },
+      "new_follower": {
+        "title": "New Follower",
+        "message": "{{name}} started following you"
+      },
+      "comment": {
+        "title": "New Comment",
+        "message": "{{name}} commented on your post"
+      }
+    },
+    "post": {
+      "created": {
+        "title": "Success! 🎉",
+        "message": "Your post has been shared with the community."
+      },
+      "create": "Create Post",
+      "whats_on_mind": "What's on your mind?",
+      "add_photo": "Add Photo",
+      "publish": "Publish",
+      "cancel": "Cancel",
+      "like": "Like",
+      "comment": "Comment",
+      "share": "Share",
+      "liked_by": "Liked by {{count}} farmers",
+      "comments": "{{count}} comments"
+    },
+    "community": {
+      "join": "Join",
+      "joined": "Joined",
+      "members": "{{count}} members",
+      "posts": "{{count}} posts",
+      "about": "About",
+      "rules": "Community Rules",
+      "moderators": "Moderators"
+    },
+    "messages": {
+      "title": "Messages",
+      "new": "New Message",
+      "no_messages": "No messages yet",
+      "type_message": "Type a message...",
+      "send": "Send",
+      "online": "Online",
+      "offline": "Offline",
+      "typing": "typing..."
+    },
+    "leaderboard": {
+      "title": "Top Farmers",
+      "weekly": "This Week",
+      "monthly": "This Month",
+      "all_time": "All Time",
+      "rank": "Rank",
+      "points": "Points",
+      "badges": "Badges"
+    },
+    "trending": {
+      "title": "Trending Topics",
+      "hashtag": "#{{tag}}",
+      "posts_count": "{{count}} posts"
+    },
+    "empty": {
+      "feed": "No posts yet. Start sharing with the community!",
+      "messages": "No conversations yet",
+      "communities": "No communities found"
+    },
+    "profile": {
+      "activity_feed_soon": "Activity feed coming soon"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show community feed",
+      "Create new post",
+      "Check my messages",
+      "View leaderboard"
+    ],
+    "voice_examples_hi": [
+      "समुदाय फीड दिखाओ",
+      "नई पोस्ट बनाएं",
+      "मेरे संदेश देखें",
+      "लीडरबोर्ड देखें"
+    ],
+    "voice_examples_mr": [
+      "समुदाय फीड दाखवा",
+      "नवीन पोस्ट तयार करा",
+      "माझे संदेश पहा",
+      "लीडरबोर्ड पहा"
+    ]
+  }
+}

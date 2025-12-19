@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useTenant } from '@/hooks/useTenant';
+import { useTranslation } from 'react-i18next';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -12,6 +13,7 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 export default function InstallPWA() {
+  const { t } = useTranslation();
   const { branding } = useTenant();
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [platform, setPlatform] = useState<'ios' | 'android' | 'desktop' | null>(null);
@@ -40,58 +42,57 @@ export default function InstallPWA() {
       setPlatform('desktop');
     }
 
-    // Check global prompt from index.html script
-    const globalPrompt = (window as any).deferredPwaPrompt;
+    // FIX: Use correct global variable name from App.tsx
+    const globalPrompt = window.__capturedPwaPrompt;
     if (globalPrompt) {
+      console.log('✅ [InstallPWA] Found captured prompt');
       setDeferredPrompt(globalPrompt as BeforeInstallPromptEvent);
     }
 
-    // Listen for custom event
-    const handleCanInstall = () => {
-      const prompt = (window as any).deferredPwaPrompt;
+    // FIX: Listen for correct event name from App.tsx
+    const handlePromptCaptured = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      const prompt = customEvent.detail || window.__capturedPwaPrompt;
       if (prompt) {
+        console.log('✅ [InstallPWA] Received prompt from event');
         setDeferredPrompt(prompt as BeforeInstallPromptEvent);
       }
     };
 
-    document.addEventListener('pwa:can-install', handleCanInstall);
+    window.addEventListener('pwa-prompt-captured', handlePromptCaptured);
     
     return () => {
-      document.removeEventListener('pwa:can-install', handleCanInstall);
+      window.removeEventListener('pwa-prompt-captured', handlePromptCaptured);
     };
   }, []);
 
-  const handleInstall = async () => {
+  // FIX: Call prompt() IMMEDIATELY in click handler to preserve user gesture
+  const handleInstall = () => {
+    if (!deferredPrompt) {
+      console.error('❌ [InstallPWA] No deferred prompt available');
+      return;
+    }
+
     setInstalling(true);
-    
-    try {
-      // Use global install helper if available
-      const globalInstall = (window as any).triggerPwaInstall;
-      if (globalInstall) {
-        await globalInstall();
-        setIsInstalled(true);
-        return;
-      }
+    console.log('🚀 [InstallPWA] Install triggered (direct user gesture)');
 
-      // Fallback to component prompt
-      if (!deferredPrompt) {
-        setInstalling(false);
-        return;
-      }
+    // CRITICAL: Call prompt() IMMEDIATELY - no await before this
+    deferredPrompt.prompt();
 
-      await deferredPrompt.prompt();
-      const choiceResult = await deferredPrompt.userChoice;
+    // Handle result asynchronously
+    deferredPrompt.userChoice.then(choiceResult => {
+      console.log('👤 [InstallPWA] User choice:', choiceResult.outcome);
       
       if (choiceResult.outcome === 'accepted') {
         setIsInstalled(true);
       }
       
       setDeferredPrompt(null);
-    } catch (error) {
-      console.error('Install error:', error);
-    } finally {
+    }).catch(error => {
+      console.error('❌ [InstallPWA] Install error:', error);
+    }).finally(() => {
       setInstalling(false);
-    }
+    });
   };
 
   return (
@@ -107,10 +108,10 @@ export default function InstallPWA() {
             <Download className="w-12 h-12 text-primary-foreground" />
           </div>
           <h1 className="text-3xl font-bold mb-3">
-            Install {branding?.company_name || 'KisanShakti'}
+            {t('pwa.install_title', { appName: branding?.company_name || 'KisanShakti' })}
           </h1>
           <p className="text-muted-foreground">
-            Get the full app experience with offline access and notifications
+            {t('pwa.full_experience')}
           </p>
         </motion.div>
 
@@ -123,7 +124,7 @@ export default function InstallPWA() {
             <Alert className="bg-success/10 border-success mb-8">
               <CheckCircle className="w-5 h-5 text-success" />
               <AlertDescription className="text-success-foreground ml-2">
-                <strong>App installed!</strong> You can access it from your home screen.
+                <strong>{t('pwa.app_installed')}</strong> {t('pwa.access_home_screen')}
               </AlertDescription>
             </Alert>
           </motion.div>
@@ -131,13 +132,13 @@ export default function InstallPWA() {
 
         {/* Benefits */}
         <Card className="p-6 mb-8">
-          <h2 className="font-semibold text-lg mb-4">Why Install?</h2>
+          <h2 className="font-semibold text-lg mb-4">{t('pwa.why_install')}</h2>
           <div className="space-y-3">
             {[
-              { icon: '🚀', title: 'Faster Access', desc: 'Launch instantly from home screen' },
-              { icon: '📴', title: 'Work Offline', desc: 'Access your data without internet' },
-              { icon: '🔔', title: 'Get Notifications', desc: 'Stay updated with alerts' },
-              { icon: '💾', title: 'Save Data', desc: 'Uses less mobile data' },
+              { icon: '🚀', title: t('pwa.benefits.faster_access.title'), desc: t('pwa.benefits.faster_access.description') },
+              { icon: '📴', title: t('pwa.benefits.work_offline.title'), desc: t('pwa.benefits.work_offline.description') },
+              { icon: '🔔', title: t('pwa.benefits.get_notifications.title'), desc: t('pwa.benefits.get_notifications.description') },
+              { icon: '💾', title: t('pwa.benefits.save_data.title'), desc: t('pwa.benefits.save_data.description') },
             ].map((benefit, i) => (
               <div key={i} className="flex items-start gap-3">
                 <span className="text-2xl">{benefit.icon}</span>

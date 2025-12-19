@@ -28,7 +28,9 @@
     "save": "ਸੰਭਾਲੋ",
     "cancel": "ਰੱਦ ਕਰੋ",
     "search": "ਖੋਜੋ",
-    "filter": "ਫਿਲਟਰ"
+    "filter": "ਫਿਲਟਰ",
+    "getStarted": "ਸ਼ੁਰੂ ਕਰੋ",
+    "swipeLeft": "ਜਾਰੀ ਰੱਖਣ ਲਈ ਖੱਬੇ ਪਾਸੇ ਸਵਾਈਪ ਕਰੋ"
   },
   "home": {
     "greeting": "ਸਤ ਸ੍ਰੀ ਅਕਾਲ, {{name}}",

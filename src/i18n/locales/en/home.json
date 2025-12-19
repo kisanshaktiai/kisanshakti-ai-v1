@@ -1,0 +1,112 @@
+{
+  "__meta": {
+    "page": "home",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "home": {
+    "namaste": "Namaste, {{name}}",
+    "last_synced": "Last synced: {{time}}",
+    "default_name": "Farmer",
+    "loading": "Loading...",
+    "view": "View",
+    "unnamed_land": "Unnamed Land",
+    "location_not_set": "Location not set",
+    "no_crop": "No crop",
+    "recent_activity": "Recent Activity",
+    "myLand": "My Lands",
+    "aiChat": "AI Chat",
+    "market": "Market",
+    "governmentSchemes": "Government Schemes",
+    "weather": "Weather",
+    "stats": {
+      "temperature": "Temperature",
+      "humidity": "Humidity",
+      "wind_speed": "Wind Speed",
+      "wind": "Wind",
+      "pressure": "Pressure",
+      "temp": "Temp",
+      "total_area": "Total Area",
+      "plots": "Plots",
+      "area": "Area",
+      "no_land": "No land"
+    },
+    "features": {
+      "lands": {
+        "description": "Manage your agricultural lands",
+        "plots": "{{count}} Plot",
+        "plots_plural": "{{count}} Plots",
+        "no_plots": "No plots"
+      },
+      "schedule": {
+        "title": "AI Crop Schedule",
+        "description": "Smart planting calendar",
+        "next_crop": "Next: {{crop}}",
+        "not_planned": "Not planned"
+      },
+      "chat": {
+        "description": "Agricultural AI assistant",
+        "online": "Online"
+      },
+      "market": {
+        "description": "Buy & sell produce"
+      },
+      "community": {
+        "title": "Community",
+        "description": "Connect with farmers",
+        "stats": "{{count}} active"
+      },
+      "ndvi": {
+        "title": "NDVI & Satellite",
+        "description": "Crop health monitoring",
+        "score": "Score: {{score}}",
+        "no_data": "No data"
+      },
+      "schemes": {
+        "description": "Latest schemes & subsidies",
+        "count": "{{count}} Active"
+      },
+      "analytics": {
+        "title": "Analytics",
+        "description": "Farm performance metrics",
+        "view_report": "View Report"
+      }
+    },
+    "badge": {
+      "active": "Active",
+      "add_land": "Add Land",
+      "ai": "AI",
+      "new": "New",
+      "updated": "Updated"
+    },
+    "activity": {
+      "no_lands": "No lands added yet",
+      "add_first_land": "Add your first land to get started",
+      "current_weather": "Current Weather",
+      "loading_weather": "Loading weather...",
+      "govt_schemes": "Government Schemes",
+      "check_subsidies": "Check available subsidies"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show my lands",
+      "What's the weather today?",
+      "Open AI assistant",
+      "Check market prices"
+    ],
+    "voice_examples_hi": [
+      "मेरी जमीन दिखाओ",
+      "आज का मौसम क्या है?",
+      "AI सहायक खोलें",
+      "बाजार भाव जांचें"
+    ],
+    "voice_examples_mr": [
+      "माझी जमीन दाखवा",
+      "आजचे हवामान काय आहे?",
+      "AI सहाय्यक उघडा",
+      "बाजार भाव तपासा"
+    ]
+  }
+}

@@ -242,7 +242,7 @@ export default function SetPin() {
             className="mb-2"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            {t('common.back')}
+            {t('auth.back')}
           </Button>
           
           <div className="text-center space-y-3">
@@ -256,8 +256,8 @@ export default function SetPin() {
             </h1>
             <p className="text-sm text-muted-foreground">
               {step === 'set' 
-                ? t('auth.createPinDescription') || 'Create a 4-digit PIN to secure your account'
-                : t('auth.confirmPinDescription') || 'Re-enter your PIN to confirm'}
+                ? t('auth.createPinDescription')
+                : t('auth.confirmPinDescription')}
             </p>
             <p className="text-xs text-muted-foreground">
               {t('auth.mobile')}: +91 {mobile}
@@ -308,7 +308,7 @@ export default function SetPin() {
                 disabled={pin.length !== 4 || isLoading}
                 className="w-full h-12 text-base"
               >
-                {t('common.continue')}
+                {t('auth.continue')}
               </Button>
             ) : (
               <Button 
@@ -332,7 +332,7 @@ export default function SetPin() {
           {/* Helper Text */}
           <div className="text-center space-y-2">
             <p className="text-xs text-muted-foreground">
-              {t('auth.pinHelperText') || 'Remember this PIN. You\'ll need it to login next time.'}
+              {t('auth.pinHelperText')}
             </p>
             {isNewRegistration && (
               <p className="text-xs text-muted-foreground font-medium">

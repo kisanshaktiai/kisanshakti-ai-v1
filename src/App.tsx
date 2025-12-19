@@ -6,17 +6,25 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { I18nextProvider } from "react-i18next";
 import i18n from "@/i18n/config";
+import { getSupabaseFunctionUrl } from "@/config/supabase";
 
 // Components
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { LocationPermissionDialog } from "@/components/LocationPermissionDialog";
+import { FirstRunOnboardingController } from "@/components/onboarding/FirstRunOnboardingController";
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
 import { AppLoadingProgress } from "@/components/AppLoadingProgress";
+
+// Extend Window interface for PWA prompt
+declare global {
+  interface Window {
+    __capturedPwaPrompt?: any;
+  }
+}
 
 // Pages
 import Home from "./pages/Home";
@@ -56,7 +64,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useLanguageStore } from "@/stores/languageStore";
 import { toast } from "@/hooks/use-toast";
 import LocationService from "@/services/LocationService";
-import { useLocationPermission } from "@/hooks/useLocationPermission";
+// Removed: useLocationPermission - now using contextual PermissionManager
 import { WhiteLabelService } from "@/services/WhiteLabelService";
 import { useLocationPreloader } from "@/hooks/useLocationPreloader";
 import { syncService } from "@/services/syncService";
@@ -64,6 +72,7 @@ import { localDB } from "@/services/localDB";
 import { tenantIsolationService } from "@/services/tenantIsolationService";
 import { useGlobalRealtimeSync } from "@/hooks/useGlobalRealtimeSync";
 import { TenantProvider, useTenant } from "@/contexts/TenantContext";
+import { GoogleMapsProvider } from "@/contexts/GoogleMapsContext";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -80,9 +89,6 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   const { tenant, branding, isLoading: tenantLoading } = useTenant();
   const { checkAuth, requirePin, session } = useAuthStore();
   const { currentLanguage } = useLanguageStore();
-  const { permissionStatus, requestPermission } = useLocationPermission();
-  const [showLocationDialog, setShowLocationDialog] = useState(false);
-  const [hasRequestedPermission, setHasRequestedPermission] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [currentStep, setCurrentStep] = useState('Initializing...');
   
@@ -92,22 +98,15 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   // Initialize global real-time sync
   useGlobalRealtimeSync();
 
-  // Global beforeinstallprompt handler - captures event at app level
+  // PWA prompt is now captured in main.tsx BEFORE React loads
+  // This useEffect just logs if we already have a captured prompt
   useEffect(() => {
-    const handleBeforeInstallPrompt = (e: Event) => {
-      console.log('🎯 [PWA] beforeinstallprompt event captured at app level');
-      // Store event in window for PWAInstallPrompt component to access
-      (window as any).__pwaInstallPromptEvent = e;
-      // Dispatch custom event to notify PWAInstallPrompt
-      window.dispatchEvent(new CustomEvent('pwa-install-prompt-ready'));
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    console.log('👂 [PWA] Global beforeinstallprompt listener attached');
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
+    if (window.__capturedPwaPrompt) {
+      console.log('✅ [PWA] Prompt already captured before React mounted');
+      console.log('📋 [PWA] Captured at:', window.__pwaPromptCapturedAt ? new Date(window.__pwaPromptCapturedAt).toISOString() : 'unknown');
+    } else {
+      console.log('⏳ [PWA] No prompt captured yet - waiting for browser event');
+    }
   }, []);
 
   useEffect(() => {
@@ -136,26 +135,9 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           }
         };
         
-        // Set dynamic manifest link with caching (non-blocking)
-        runInBackground(() => {
-          const manifestCacheKey = 'manifest-url-cache';
-          const cachedManifestUrl = sessionStorage.getItem(manifestCacheKey);
-          const manifestLink = document.querySelector('link[rel="manifest"]') as HTMLLinkElement;
-          
-          if (manifestLink) {
-            if (cachedManifestUrl) {
-              // Use cached manifest URL to avoid rate limiting
-              manifestLink.href = cachedManifestUrl;
-              console.log('📱 [Manifest] Using cached manifest URL');
-            } else {
-              // Generate and cache new manifest URL
-              const manifestUrl = `https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/generate-manifest?domain=${encodeURIComponent(currentDomain)}`;
-              manifestLink.href = manifestUrl;
-              sessionStorage.setItem(manifestCacheKey, manifestUrl);
-              console.log('📱 [Manifest] Set and cached manifest URL');
-            }
-          }
-        });
+        // CRITICAL: Use static manifest.json only - no dynamic API calls
+        // This prevents 429 rate limiting errors and ensures PWA installability
+        console.log('📱 [Manifest] Using static /manifest.json (no API calls)');
         
         // STEP 1: Set tenant isolation context for all services (fast)
         setCurrentStep('Preparing your workspace...');
@@ -252,65 +234,35 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
 
   // Note: Theme is now applied by TenantProvider automatically
 
-  // Apply language changes
+  // Apply language changes - only if different from current i18n language
   useEffect(() => {
     if (currentLanguage && i18n.language !== currentLanguage) {
-      i18n.changeLanguage(currentLanguage);
+      console.log('🌐 [AppInitializer] Syncing language:', {
+        from: i18n.language,
+        to: currentLanguage
+      });
+      i18n.changeLanguage(currentLanguage).then(() => {
+        console.log('✅ [AppInitializer] Language synced successfully');
+      });
+    } else if (currentLanguage) {
+      console.log('✅ [AppInitializer] Language already in sync:', currentLanguage);
     }
   }, [currentLanguage]);
 
-  // Check and request location permission after auth (only once per session)
-  useEffect(() => {
-    const checkPermissions = async () => {
-      // Check if we've already shown the dialog in this browser session
-      const hasShownDialog = sessionStorage.getItem('location-dialog-shown');
-      if (hasShownDialog) return;
-
-      const storedSession = localStorage.getItem('auth-storage');
-      
-      if (storedSession) {
-        try {
-          const sessionData = JSON.parse(storedSession);
-          if (sessionData?.state?.session?.farmerId && 
-              sessionData?.state?.session?.isPinVerified &&
-              !hasRequestedPermission) {
-            
-            // Wait a bit to ensure app is loaded
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-            // Check if we need to show location permission dialog
-            if (permissionStatus === 'prompt' || permissionStatus === 'denied') {
-              setShowLocationDialog(true);
-              setHasRequestedPermission(true);
-              sessionStorage.setItem('location-dialog-shown', 'true');
-            }
-          }
-        } catch (error) {
-          console.error('Error parsing session:', error);
-        }
-      }
-    };
-
-    checkPermissions();
-  }, [permissionStatus, hasRequestedPermission]);
-
-  const handleLocationPermissionRequest = async () => {
-    const result = await requestPermission();
-    setShowLocationDialog(false);
-  };
+  // REMOVED: Automatic location permission request
+  // Location permission is now requested contextually when user accesses location-dependent features
+  // See PermissionManager service and usePermission hook for on-demand permission requests
 
   return (
     <>
       <AppLoadingProgress isLoading={isInitializing} currentStep={currentStep} />
       <OfflineIndicator />
       <PWAUpdatePrompt />
+      {/* PHASE 1 FIX: Single onboarding controller - no duplicates */}
+      <FirstRunOnboardingController />
+      {/* PHASE 2 FIX: Single PWA install component */}
+      <PWAInstallBanner />
       {children}
-      <LocationPermissionDialog 
-        open={showLocationDialog}
-        onOpenChange={setShowLocationDialog}
-        onAllow={handleLocationPermissionRequest}
-        onDeny={() => setShowLocationDialog(false)}
-      />
     </>
   );
 }
@@ -404,17 +356,19 @@ export default function App() {
     <I18nextProvider i18n={i18n}>
       <ErrorBoundary>
         <TenantProvider>
-          <QueryClientProvider client={queryClient}>
-            <TooltipProvider>
-              <AppInitializer>
-                <RouterProvider router={router} />
-              </AppInitializer>
-              <Toaster />
-              <Sonner />
-              <PWAUpdatePrompt />
-              <PWAInstallBanner />
-            </TooltipProvider>
-          </QueryClientProvider>
+          <GoogleMapsProvider>
+            <QueryClientProvider client={queryClient}>
+              <TooltipProvider>
+                <AppInitializer>
+                  <RouterProvider router={router} />
+                </AppInitializer>
+                <Toaster />
+                <Sonner />
+                {/* PHASE 2 FIX: Removed duplicate PWA components */}
+                {/* PWAInstallBanner is rendered in AppInitializer */}
+              </TooltipProvider>
+            </QueryClientProvider>
+          </GoogleMapsProvider>
         </TenantProvider>
       </ErrorBoundary>
     </I18nextProvider>

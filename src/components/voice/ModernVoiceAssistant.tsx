@@ -2,7 +2,6 @@ import React, { useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useModernVoice } from '@/contexts/ModernVoiceContext';
 import { SimpleVoiceMicButton } from './SimpleVoiceMicButton';
-import { VoiceOnboarding } from './VoiceOnboarding';
 import { useLanguageStore } from '@/stores/languageStore';
 
 export const ModernVoiceAssistant: React.FC = () => {
@@ -43,11 +42,11 @@ export const ModernVoiceAssistant: React.FC = () => {
     }
   }, [appLanguage, isReady, changeLanguage]);
 
-  // Don't render anything if onboarding is needed
-  if (showOnboarding) {
-    console.log('[ModernVoiceAssistant] Showing onboarding');
-    return <VoiceOnboarding onComplete={completeOnboarding} onSkip={skipOnboarding} />;
-  }
+  // PHASE 1 FIX: Removed duplicate VoiceOnboarding flow
+  // Voice onboarding is now handled ONLY by FirstRunOnboardingController
+  // This ensures single, consistent onboarding without nested/duplicate cards
+  console.log('[ModernVoiceAssistant] Using app language:', appLanguage);
+  console.log('[ModernVoiceAssistant] Onboarding managed by FirstRunOnboardingController');
 
   // Only render mic button when voice mode is active
   console.log('[ModernVoiceAssistant] Render check:', { 

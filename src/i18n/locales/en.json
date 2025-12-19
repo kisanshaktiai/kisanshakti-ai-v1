@@ -73,7 +73,10 @@
     "online": "Online",
     "copied": "Copied!",
     "offline": "Offline",
-    "comingSoon": "Coming Soon"
+    "comingSoon": "Coming Soon",
+    "getStarted": "Get Started",
+    "swipeLeft": "Swipe left to continue",
+    "loadingFeatures": "Loading features..."
   },
   "fab": {
     "myLands": "My Lands",
@@ -308,6 +311,8 @@
     "enableVoiceNav": "Enable voice navigation",
     "disableVoiceNav": "Disable voice navigation",
     "voiceInputActive": "Voice input active",
+    "close": "Close Voice",
+    "start": "Voice Assistant",
     "commands": {
       "home": "Home",
       "lands": "My lands",
@@ -319,6 +324,9 @@
       "community": "Community",
       "analytics": "Analytics"
     }
+  },
+  "feature": {
+    "title": "Features"
   },
   "instaScan": {
     "title": "InstaScan",
@@ -367,5 +375,30 @@
     "savedToFieldLog": "Saved to field log",
     "shareNotSupported": "Share not supported",
     "labTestRequested": "Lab test requested"
+  },
+  "tts": {
+    "enhanceVoice": "Enhance Voice Quality",
+    "downloadPrompt": "Download high-quality voices for clearer, more natural speech",
+    "howToDownload": "How to Download",
+    "openSettings": "Open Settings",
+    "voiceSettings": "Voice Settings",
+    "speechRate": "Speech Rate",
+    "pitch": "Pitch",
+    "volume": "Volume",
+    "slow": "Slow",
+    "normal": "Normal",
+    "fast": "Fast",
+    "slower": "Slower",
+    "faster": "Faster",
+    "lower": "Lower",
+    "higher": "Higher",
+    "quieter": "Quieter",
+    "louder": "Louder",
+    "resetDefaults": "Reset",
+    "testVoice": "Test Voice",
+    "playing": "Playing..."
+  },
+  "common": {
+    "notNow": "Not Now"
   }
 }

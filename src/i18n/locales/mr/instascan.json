@@ -1,0 +1,147 @@
+{
+  "__meta": {
+    "page": "instascan",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "instascan": {
+    "title": "InstaScan",
+    "subtitle": "पीक, कीड आणि रोग त्वरित ओळखा",
+    "camera": {
+      "title": "तुमचे पीक स्कॅन करा",
+      "instruction": "कॅमेरा वनस्पती किंवा पानावर थेट ठेवा",
+      "capture": "कॅप्चर करा",
+      "capture_aria": "प्रतिमा कॅप्चर करा",
+      "retake": "पुन्हा घ्या",
+      "gallery": "गॅलरी",
+      "gallery_aria": "गॅलरीमधून निवडा",
+      "flash_on": "फ्लॅश चालू",
+      "flash_off": "फ्लॅश बंद",
+      "switch_camera": "कॅमेरा बदला",
+      "permission_required": "कॅमेरा परवानगी आवश्यक",
+      "permission_description": "पीक स्कॅन करण्यासाठी आणि समस्या शोधण्यासाठी कॅमेरा अॅक्सेस द्या"
+    },
+    "analyzing": {
+      "title": "प्रतिमा विश्लेषण करत आहे...",
+      "message": "AI तुमच्या पिकाची ओळख करत आहे",
+      "progress": "{{percent}}% पूर्ण",
+      "wait": "कृपया प्रतीक्षा करा..."
+    },
+    "analyzing_title": "प्रतिमा विश्लेषण करत आहे...",
+    "aiWorking": "AI तुमच्या पिकाची ओळख करत आहे...",
+    "lowConfidence": "स्पष्ट ओळख होऊ शकली नाही. कृपया चांगला फोटो घ्या.",
+    "moderateConfidence": "विश्लेषण पूर्ण. चांगल्या अचूकतेसाठी अधिक फोटो घेण्याचा विचार करा.",
+    "needsMoreImages": "वेगवेगळ्या कोनातून कॅप्चर करण्याचा प्रयत्न करा",
+    "tryAgain": "कृपया पुन्हा प्रयत्न करा",
+    "analysisError": "विश्लेषण अयशस्वी",
+    "results": {
+      "title": "स्कॅन परिणाम",
+      "identified_as": "ओळखले गेले",
+      "confidence": "विश्वास पातळी",
+      "confidence_value": "{{percent}}%",
+      "health_status": "आरोग्य स्थिती",
+      "healthy": "निरोगी",
+      "disease_detected": "रोग आढळला",
+      "pest_detected": "कीड आढळली",
+      "nutrient_deficiency": "पोषक तत्वांची कमतरता"
+    },
+    "disease": {
+      "title": "रोग माहिती",
+      "name": "रोगाचे नाव",
+      "severity": "तीव्रता",
+      "low": "कमी",
+      "medium": "मध्यम",
+      "high": "जास्त",
+      "critical": "गंभीर",
+      "symptoms": "सामान्य लक्षणे",
+      "causes": "संभाव्य कारणे",
+      "spread": "कसे पसरते"
+    },
+    "treatment": {
+      "title": "उपचार शिफारसी",
+      "immediate_action": "तात्काळ कृती",
+      "organic_solution": "सेंद्रिय उपाय",
+      "chemical_solution": "रासायनिक उपचार",
+      "preventive_measures": "प्रतिबंधात्मक उपाय",
+      "timeline": "अपेक्षित पुनर्प्राप्ती वेळ",
+      "days": "{{count}} दिवस",
+      "weeks": "{{count}} आठवडे"
+    },
+    "pest": {
+      "title": "कीड माहिती",
+      "name": "कीडचे नाव",
+      "scientific_name": "वैज्ञानिक नाव",
+      "damage_level": "नुकसानाची पातळी",
+      "lifecycle": "जीवन चक्र",
+      "affected_parts": "प्रभावित वनस्पती भाग"
+    },
+    "nutrition": {
+      "title": "पोषक विश्लेषण",
+      "deficiency": "कमतरता आढळली",
+      "nitrogen": "नायट्रोजन (N)",
+      "phosphorus": "फॉस्फरस (P)",
+      "potassium": "पोटॅशियम (K)",
+      "other": "इतर पोषक तत्वे",
+      "fertilizer_recommendation": "शिफारस केलेले खत",
+      "dosage": "मात्रा",
+      "application_method": "वापर पद्धत"
+    },
+    "actions": {
+      "save_report": "अहवाल जतन करा",
+      "share": "शेअर करा",
+      "chat_with_ai": "AI तज्ञाला विचारा",
+      "view_products": "उत्पादने पहा",
+      "scan_again": "पुन्हा स्कॅन करा",
+      "close": "बंद करा"
+    },
+    "history": {
+      "title": "स्कॅन इतिहास",
+      "recent": "अलीकडील स्कॅन",
+      "date": "{{date}} रोजी स्कॅन केले",
+      "view_details": "तपशील पहा",
+      "delete": "हटवा",
+      "empty": "अजून स्कॅन इतिहास नाही"
+    },
+    "tips": {
+      "title": "स्कॅनिंग टिपा",
+      "tip_1": "चांगला प्रकाश वापरा",
+      "tip_2": "प्रभावित क्षेत्रावर लक्ष केंद्रित करा",
+      "tip_3": "कॅमेरा स्थिर ठेवा",
+      "tip_4": "स्पष्ट प्रतिमा कॅप्चर करा"
+    },
+    "error": {
+      "title": "स्कॅन अयशस्वी",
+      "no_crop_detected": "कोणतेही पीक आढळले नाही. कृपया पुन्हा प्रयत्न करा.",
+      "poor_image_quality": "प्रतिमा गुणवत्ता खूप कमी आहे. चांगल्या प्रकाशात पुन्हा घ्या.",
+      "network_error": "नेटवर्क त्रुटी. तुमचे कनेक्शन तपासा.",
+      "unknown": "विश्लेषण अयशस्वी. कृपया पुन्हा प्रयत्न करा.",
+      "retry": "पुन्हा स्कॅन करा"
+    },
+    "toast": {
+      "saved": "स्कॅन अहवाल यशस्वीरित्या जतन केला",
+      "shared": "अहवाल यशस्वीरित्या शेअर केला",
+      "error": "ऑपरेशन अयशस्वी"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Open InstaScan",
+      "Scan my crop",
+      "Show scan history",
+      "Identify this disease"
+    ],
+    "voice_examples_hi": [
+      "InstaScan खोलें",
+      "मेरी फसल स्कैन करें",
+      "स्कैन इतिहास दिखाएं",
+      "इस बीमारी की पहचान करें"
+    ],
+    "voice_examples_mr": [
+      "InstaScan उघडा",
+      "माझे पीक स्कॅन करा",
+      "स्कॅन इतिहास दाखवा",
+      "या रोगाची ओळख करा"
+    ]
+  }
+}

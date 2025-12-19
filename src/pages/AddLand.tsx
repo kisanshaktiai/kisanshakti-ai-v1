@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useGoogleMapsApi } from '@/hooks/useGoogleMapsApi';
+import { useTranslation } from 'react-i18next';
+import { GoogleMapsScriptProvider } from '@/components/maps/GoogleMapsScriptProvider';
 import { GoogleMapBoundaryDrawer } from '@/components/land/GoogleMapBoundaryDrawer';
 import { ModernLandWizard } from '@/components/land/ModernLandWizard';
 import { LandInstructionDialog } from '@/components/land/LandInstructionDialog';
-import { Card } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
 
 interface LatLng {
   lat: number;
@@ -14,7 +13,7 @@ interface LatLng {
 
 export default function AddLand() {
   const navigate = useNavigate();
-  const { isLoaded, loadError, isLoading } = useGoogleMapsApi();
+  const { t } = useTranslation();
   
   const [showInstructions, setShowInstructions] = useState(true);
   const [showMap, setShowMap] = useState(false);
@@ -47,32 +46,6 @@ export default function AddLand() {
     navigate('/app/lands');
   };
 
-  // Loading state
-  if (isLoading || !isLoaded) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center bg-background z-50">
-        <Card className="p-6 space-y-4 text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-          <p className="text-muted-foreground">Loading Google Maps...</p>
-        </Card>
-      </div>
-    );
-  }
-
-  // Error state
-  if (loadError) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center bg-background p-4 z-50">
-        <Card className="p-6 max-w-md w-full space-y-4">
-          <h2 className="text-xl font-semibold text-destructive">Failed to Load Maps</h2>
-          <p className="text-muted-foreground">
-            Could not load Google Maps. Please check your internet connection and try again.
-          </p>
-        </Card>
-      </div>
-    );
-  }
-
   // Show instructions dialog first
   if (showInstructions) {
     return (
@@ -96,15 +69,17 @@ export default function AddLand() {
     );
   }
 
-  // Show map for drawing boundary
+  // Show map for drawing boundary - wrapped with GoogleMapsScriptProvider
   if (showMap) {
     return (
-      <div className="fixed inset-0 z-[60] bg-background">
-        <GoogleMapBoundaryDrawer
-          onSave={handleMapSave}
-          onCancel={handleCancel}
-        />
-      </div>
+      <GoogleMapsScriptProvider>
+        <div className="fixed inset-0 z-[60] bg-background">
+          <GoogleMapBoundaryDrawer
+            onSave={handleMapSave}
+            onCancel={handleCancel}
+          />
+        </div>
+      </GoogleMapsScriptProvider>
     );
   }
 

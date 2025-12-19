@@ -1,0 +1,147 @@
+{
+  "__meta": {
+    "page": "instascan",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "instascan": {
+    "title": "InstaScan",
+    "subtitle": "Identify crops, pests & diseases instantly",
+    "camera": {
+      "title": "Scan Your Crop",
+      "instruction": "Point camera at plant or leaf",
+      "capture": "Capture",
+      "capture_aria": "Capture image",
+      "retake": "Retake",
+      "gallery": "Gallery",
+      "gallery_aria": "Choose from gallery",
+      "flash_on": "Flash On",
+      "flash_off": "Flash Off",
+      "switch_camera": "Switch Camera",
+      "permission_required": "Camera permission required",
+      "permission_description": "Allow camera access to scan crops and detect issues"
+    },
+    "analyzing": {
+      "title": "Analyzing Image...",
+      "message": "AI is identifying your crop",
+      "progress": "{{percent}}% complete",
+      "wait": "Please wait..."
+    },
+    "analyzing_title": "Analyzing Image...",
+    "aiWorking": "AI is identifying your crop...",
+    "lowConfidence": "Could not identify clearly. Please take a clearer photo.",
+    "moderateConfidence": "Analysis complete. Consider taking additional photos for better accuracy.",
+    "needsMoreImages": "Try capturing from different angles",
+    "tryAgain": "Please try again",
+    "analysisError": "Analysis failed",
+    "results": {
+      "title": "Scan Results",
+      "identified_as": "Identified as",
+      "confidence": "Confidence",
+      "confidence_value": "{{percent}}%",
+      "health_status": "Health Status",
+      "healthy": "Healthy",
+      "disease_detected": "Disease Detected",
+      "pest_detected": "Pest Detected",
+      "nutrient_deficiency": "Nutrient Deficiency"
+    },
+    "disease": {
+      "title": "Disease Information",
+      "name": "Disease Name",
+      "severity": "Severity",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "critical": "Critical",
+      "symptoms": "Common Symptoms",
+      "causes": "Possible Causes",
+      "spread": "How It Spreads"
+    },
+    "treatment": {
+      "title": "Treatment Recommendations",
+      "immediate_action": "Immediate Action",
+      "organic_solution": "Organic Solutions",
+      "chemical_solution": "Chemical Treatment",
+      "preventive_measures": "Preventive Measures",
+      "timeline": "Expected Recovery Time",
+      "days": "{{count}} days",
+      "weeks": "{{count}} weeks"
+    },
+    "pest": {
+      "title": "Pest Information",
+      "name": "Pest Name",
+      "scientific_name": "Scientific Name",
+      "damage_level": "Damage Level",
+      "lifecycle": "Life Cycle",
+      "affected_parts": "Affected Plant Parts"
+    },
+    "nutrition": {
+      "title": "Nutrient Analysis",
+      "deficiency": "Deficiency Detected",
+      "nitrogen": "Nitrogen (N)",
+      "phosphorus": "Phosphorus (P)",
+      "potassium": "Potassium (K)",
+      "other": "Other Nutrients",
+      "fertilizer_recommendation": "Recommended Fertilizer",
+      "dosage": "Dosage",
+      "application_method": "Application Method"
+    },
+    "actions": {
+      "save_report": "Save Report",
+      "share": "Share",
+      "chat_with_ai": "Ask AI Expert",
+      "view_products": "View Products",
+      "scan_again": "Scan Again",
+      "close": "Close"
+    },
+    "history": {
+      "title": "Scan History",
+      "recent": "Recent Scans",
+      "date": "Scanned on {{date}}",
+      "view_details": "View Details",
+      "delete": "Delete",
+      "empty": "No scan history yet"
+    },
+    "tips": {
+      "title": "Scanning Tips",
+      "tip_1": "Use good lighting",
+      "tip_2": "Focus on affected area",
+      "tip_3": "Keep camera steady",
+      "tip_4": "Capture clear images"
+    },
+    "error": {
+      "title": "Scan Failed",
+      "no_crop_detected": "No crop detected. Please try again.",
+      "poor_image_quality": "Image quality too low. Retake in better light.",
+      "network_error": "Network error. Check your connection.",
+      "unknown": "Analysis failed. Please retry.",
+      "retry": "Retry Scan"
+    },
+    "toast": {
+      "saved": "Scan report saved successfully",
+      "shared": "Report shared successfully",
+      "error": "Operation failed"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Open InstaScan",
+      "Scan my crop",
+      "Show scan history",
+      "Identify this disease"
+    ],
+    "voice_examples_hi": [
+      "InstaScan खोलें",
+      "मेरी फसल स्कैन करें",
+      "स्कैन इतिहास दिखाएं",
+      "इस बीमारी की पहचान करें"
+    ],
+    "voice_examples_mr": [
+      "InstaScan उघडा",
+      "माझे पीक स्कॅन करा",
+      "स्कॅन इतिहास दाखवा",
+      "या रोगाची ओळख करा"
+    ]
+  }
+}

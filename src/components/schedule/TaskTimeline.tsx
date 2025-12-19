@@ -2,16 +2,18 @@ import React, { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Droplets, Leaf, Bug, Scissors, Package, AlertCircle, CheckCircle2, Clock, Zap, ChevronDown, Volume2, VolumeX, Calendar, DollarSign, CloudRain, Thermometer, Loader2 } from 'lucide-react';
+import { Droplets, Leaf, Bug, Scissors, Package, AlertCircle, CheckCircle2, Clock, Zap, ChevronDown, Volume2, VolumeX, Calendar, IndianRupee, CloudRain, Thermometer, Loader2, Shield, BookOpen, AlertTriangle } from 'lucide-react';
 import { format, isToday, isTomorrow, isPast, differenceInDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TaskCompletionSection } from './TaskCompletionSection';
 import { VideoHelpButton } from './VideoHelpButton';
+import ProductRecommendationCard from './ProductRecommendationCard';
 import { cn } from '@/lib/utils';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { supabase } from '@/utils/supabase';
 import { toast } from 'sonner';
 import { useLanguageStore } from '@/stores/languageStore';
+import { useTranslation } from 'react-i18next';
 
 interface Task {
   id: string;
@@ -27,6 +29,15 @@ interface Task {
   instructions?: string[];
   precautions?: string[];
   resources?: Record<string, any>;
+  product_recommendations?: Array<{
+    product_name: string;
+    brand?: string;
+    dose_per_acre?: string;
+    price_estimate?: number;
+    product_type?: string;
+    active_ingredient?: string;
+    application_method?: string;
+  }>;
   ideal_weather?: {
     temperature?: string;
     humidity?: string;
@@ -46,6 +57,7 @@ interface TaskTimelineProps {
 }
 
 const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskComplete, onTaskUpdate }) => {
+  const { t } = useTranslation();
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
   const { currentLanguage } = useLanguageStore();
@@ -84,8 +96,8 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
     }
 
     // Show immediate feedback
-    toast.success('✅ Task completed!', {
-      description: 'Great work! Syncing...',
+    toast.success(t('schedule.toast.task_completed'), {
+      description: t('schedule.toast.great_work'),
       duration: 2000,
     });
 
@@ -125,8 +137,8 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
         });
       }
       
-      toast.error('❌ Failed to sync completion', {
-        description: 'Rolled back. Try again.',
+      toast.error(t('schedule.toast.sync_failed'), {
+        description: t('schedule.toast.rolled_back'),
       });
     }
   };
@@ -140,8 +152,8 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
       });
     }
 
-    toast.success('↩️ Task unmarked', {
-      description: 'Reverting completion...',
+    toast.success(t('schedule.toast.task_unmarked'), {
+      description: t('schedule.toast.reverting'),
       duration: 2000,
     });
 
@@ -175,8 +187,8 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
         });
       }
       
-      toast.error('❌ Failed to unmark', {
-        description: 'Try again.',
+      toast.error(t('schedule.toast.unmark_failed'), {
+        description: t('schedule.toast.try_again'),
       });
     }
   };
@@ -260,8 +272,8 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
 
   const getDateLabel = (dateStr: string) => {
     const date = new Date(dateStr);
-    if (isToday(date)) return { label: 'Today', variant: 'today' as const };
-    if (isTomorrow(date)) return { label: 'Tomorrow', variant: 'tomorrow' as const };
+    if (isToday(date)) return { label: t('schedule.timeline.today'), variant: 'today' as const };
+    if (isTomorrow(date)) return { label: t('schedule.timeline.tomorrow'), variant: 'tomorrow' as const };
     
     const daysFromNow = differenceInDays(date, new Date());
     if (daysFromNow > 0 && daysFromNow <= 7) {
@@ -289,10 +301,10 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
       {/* Modern Header */}
       <div className="flex items-center justify-between px-1">
         <h3 className="text-lg font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-          Timeline View
+          {t('schedule.timeline.title')}
         </h3>
         <Badge variant="outline" className="font-mono text-xs">
-          {tasks.length} tasks
+          {t('schedule.timeline.tasks_count', { count: tasks.length })}
         </Badge>
       </div>
 
@@ -350,7 +362,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                     {dateInfo.label}
                   </span>
                   <Badge variant="secondary" className="text-[10px] h-5">
-                    {dateTasks.length} {dateTasks.length === 1 ? 'task' : 'tasks'}
+                    {dateTasks.length} {dateTasks.length === 1 ? t('schedule.timeline.task') : t('schedule.timeline.tasks')}
                   </Badge>
                 </div>
               </div>
@@ -440,27 +452,27 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                                   {task.weather_dependent && (
                                     <Badge variant="outline" className="text-[10px] h-5 gap-1">
                                       <Droplets className="h-2.5 w-2.5" />
-                                      Weather
+                                      {t('schedule.badges.weather')}
                                     </Badge>
                                   )}
 
                                   {task.climate_adjusted && (
                                     <Badge className="bg-accent/10 text-accent border-accent/30 text-[10px] h-5 gap-1">
                                       <Zap className="h-2.5 w-2.5" />
-                                      AI Adjusted
+                                      {t('schedule.badges.ai_adjusted')}
                                     </Badge>
                                   )}
 
                                   {isCompleted && (
                                     <Badge className="bg-success/20 text-success border-success/30 text-[10px] h-5 gap-1">
                                       <CheckCircle2 className="h-2.5 w-2.5" />
-                                      Done
+                                      {t('schedule.timeline.done')}
                                     </Badge>
                                   )}
 
                                   {isOverdue && !isCompleted && (
                                     <Badge variant="destructive" className="text-[10px] h-5">
-                                      Overdue
+                                      {t('schedule.task_card.overdue')}
                                     </Badge>
                                   )}
                                 </div>
@@ -521,7 +533,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                             {/* Full Description */}
                             {task.task_description && (
                               <div>
-                                <h5 className="text-sm font-medium mb-2">Description</h5>
+                                <h5 className="text-sm font-medium mb-2">{t('schedule.task_card.description')}</h5>
                                 <p className="text-sm text-muted-foreground">{task.task_description}</p>
                               </div>
                             )}
@@ -529,7 +541,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                             {/* Instructions */}
                             {task.instructions && task.instructions.length > 0 && (
                               <div>
-                                <h5 className="text-sm font-medium mb-2">Instructions</h5>
+                                <h5 className="text-sm font-medium mb-2">{t('schedule.task_card.instructions')}</h5>
                                 <ol className="list-decimal list-inside space-y-1">
                                   {task.instructions.map((instruction, idx) => (
                                     <li key={idx} className="text-sm text-muted-foreground">{instruction}</li>
@@ -543,7 +555,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                               <div>
                                 <h5 className="text-sm font-medium mb-2 text-warning flex items-center gap-2">
                                   <AlertCircle className="h-4 w-4" />
-                                  Precautions
+                                  {t('schedule.task_card.precautions')}
                                 </h5>
                                 <ul className="list-disc list-inside space-y-1">
                                   {task.precautions.map((precaution, idx) => (
@@ -553,20 +565,73 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                               </div>
                             )}
 
-                            {/* Resources */}
-                            {task.resources && Object.keys(task.resources).length > 0 && (
-                              <div>
-                                <h5 className="text-sm font-medium mb-2">Required Resources</h5>
-                                <div className="grid grid-cols-2 gap-2">
-                                  {Object.entries(task.resources).map(([key, value]) => (
-                                    <div key={key} className="flex justify-between text-sm">
-                                      <span className="text-muted-foreground capitalize">{key.replace('_', ' ')}:</span>
-                                      <span className="font-medium">{String(value)}</span>
-                                    </div>
-                                  ))}
-                                </div>
+                            {/* Resources - Smart Display */}
+                            {task.resources && (
+                              <div className="space-y-3">
+                                {/* Quantity */}
+                                {task.resources.quantity && task.resources.quantity !== 'null' && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
+                                      <Package className="h-4 w-4 text-blue-500" />
+                                      {t('schedule.task_card.quantity')}
+                                    </h5>
+                                    <p className="text-sm text-muted-foreground p-2 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                                      {task.resources.quantity}
+                                    </p>
+                                  </div>
+                                )}
+                                {/* Product Details */}
+                                {task.resources.product_details && task.resources.product_details !== 'null' && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
+                                      <Leaf className="h-4 w-4 text-emerald-500" />
+                                      {t('schedule.task_card.product_details')}
+                                    </h5>
+                                    <p className="text-sm text-muted-foreground p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                                      {task.resources.product_details}
+                                    </p>
+                                  </div>
+                                )}
+                                {/* ICAR Guideline */}
+                                {task.resources.icar_guideline && task.resources.icar_guideline !== 'null' && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2 flex items-center gap-2 text-blue-600">
+                                      <BookOpen className="h-4 w-4" />
+                                      {t('schedule.task_card.icar_guideline')}
+                                    </h5>
+                                    <p className="text-sm text-muted-foreground p-2 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                                      {task.resources.icar_guideline}
+                                    </p>
+                                  </div>
+                                )}
+                                {/* Climate Risk */}
+                                {task.resources.climate_risk && task.resources.climate_risk !== 'null' && (
+                                  <div>
+                                    <h5 className="text-sm font-medium mb-2 flex items-center gap-2 text-orange-600">
+                                      <AlertTriangle className="h-4 w-4" />
+                                      {t('schedule.task_card.climate_risk')}
+                                    </h5>
+                                    <p className="text-sm text-orange-700 dark:text-orange-300 p-2 rounded-lg bg-orange-500/5 border border-orange-500/20">
+                                      {task.resources.climate_risk}
+                                    </p>
+                                  </div>
+                                )}
                               </div>
                             )}
+
+                            {/* Product Recommendations with FULL labor breakdown */}
+                            {(Array.isArray(task.product_recommendations) && task.product_recommendations.length > 0) || (task.resources?.labor_cost > 0) ? (
+                              <ProductRecommendationCard 
+                                products={task.product_recommendations || []}
+                                landAreaAcres={1}
+                                laborCost={task.resources?.labor_cost || 0}
+                                laborDays={task.resources?.labor_days || 0}
+                                laborWorkers={task.resources?.labor_workers || 0}
+                                laborDaysPerAcre={task.resources?.labor_days_per_acre || 0}
+                                laborDailyWage={task.resources?.labor_daily_wage || 350}
+                                laborDescription={task.resources?.labor_description || ''}
+                              />
+                            ) : null}
 
                             {/* Quick Info Pills */}
                             <div className="flex flex-wrap gap-2">
@@ -577,10 +642,10 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                                 </div>
                               )}
                               {task.estimated_cost && (
-                                <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-background/80 border border-border/50">
-                                  <DollarSign className="h-3.5 w-3.5 text-muted-foreground" />
-                                  <span className="text-xs text-muted-foreground">
-                                    {task.currency === 'INR' ? '₹' : '$'}{task.estimated_cost}
+                                <div className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/20">
+                                  <IndianRupee className="h-3.5 w-3.5 text-primary" />
+                                  <span className="text-xs font-medium text-primary">
+                                    ₹{task.estimated_cost.toLocaleString('en-IN')}
                                   </span>
                                 </div>
                               )}
@@ -590,8 +655,8 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                             {task.ideal_weather && (
                               <div>
                                 <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
-                                  <Thermometer className="h-4 w-4 text-info" />
-                                  Ideal Weather
+                                  <Thermometer className="h-4 w-4 text-sky-500" />
+                                  {t('schedule.task_card.ideal_weather')}
                                 </h5>
                                 <div className="grid grid-cols-2 gap-2 text-sm">
                                   {task.ideal_weather.temperature && (

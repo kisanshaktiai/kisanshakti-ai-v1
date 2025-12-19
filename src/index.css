@@ -225,6 +225,19 @@
     --chat-section-default-border: hsl(220 15% 75%);
     --chat-section-default-icon: hsl(220 15% 45%);
     --chat-section-default-badge: hsl(220 15% 50%);
+    
+    /* Multi-color User Bubble Variations (Theme-Based) */
+    --chat-user-1: 142 70% 45%;        /* Green - Success */
+    --chat-user-1-mid: 142 70% 38%;
+    --chat-user-1-end: 120 65% 50%;
+    
+    --chat-user-2: 270 70% 55%;        /* Purple - Creative */
+    --chat-user-2-mid: 270 70% 48%;
+    --chat-user-2-end: 280 75% 60%;
+    
+    --chat-user-3: 38 90% 50%;         /* Orange - Warm */
+    --chat-user-3-mid: 30 85% 45%;
+    --chat-user-3-end: 45 95% 55%;
   }
 
   .dark {
@@ -365,6 +378,19 @@
     --chat-section-default-border: hsl(220 15% 35%);
     --chat-section-default-icon: hsl(220 15% 65%);
     --chat-section-default-badge: hsl(220 15% 60%);
+    
+    /* Multi-color User Bubble Variations - Dark Mode */
+    --chat-user-1: 142 70% 50%;
+    --chat-user-1-mid: 142 70% 42%;
+    --chat-user-1-end: 120 65% 55%;
+    
+    --chat-user-2: 270 70% 60%;
+    --chat-user-2-mid: 270 70% 52%;
+    --chat-user-2-end: 280 75% 65%;
+    
+    --chat-user-3: 38 90% 55%;
+    --chat-user-3-mid: 30 85% 50%;
+    --chat-user-3-end: 45 95% 60%;
   }
 }
 
@@ -439,6 +465,15 @@
 
   .animate-scale-out {
     animation: scale-out 0.6s ease-out forwards;
+  }
+
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%) skewX(-12deg);
+    }
+    100% {
+      transform: translateX(200%) skewX(-12deg);
+    }
   }
 
   /* Radial gradient for FAB */

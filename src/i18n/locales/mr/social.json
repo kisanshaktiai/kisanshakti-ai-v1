@@ -1,0 +1,122 @@
+{
+  "__meta": {
+    "page": "social",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "social": {
+    "header": {
+      "title": "समुदाय"
+    },
+    "user": {
+      "level": "स्तर {{level}}",
+      "points": "{{points}} गुण"
+    },
+    "search": {
+      "placeholder": "समुदाय शोधा..."
+    },
+    "tabs": {
+      "feed": "फीड",
+      "communities": "समुदाय",
+      "messages": "संदेश",
+      "rankings": "रँकिंग",
+      "trending": "ट्रेंडिंग"
+    },
+    "notifications": {
+      "new_message": {
+        "title": "नवीन संदेश",
+        "message": "तुम्हाला नवीन संदेश मिळाला आहे"
+      },
+      "post_liked": {
+        "title": "पोस्ट आवडली",
+        "message": "कोणीतरी तुमची पोस्ट आवडली"
+      },
+      "new_follower": {
+        "title": "नवीन फॉलोअर",
+        "message": "{{name}} ने तुम्हाला फॉलो करायला सुरुवात केली"
+      },
+      "comment": {
+        "title": "नवीन टिप्पणी",
+        "message": "{{name}} ने तुमच्या पोस्टवर टिप्पणी केली"
+      }
+    },
+    "post": {
+      "created": {
+        "title": "यश! 🎉",
+        "message": "तुमची पोस्ट समुदायासह शेअर केली आहे."
+      },
+      "create": "पोस्ट तयार करा",
+      "whats_on_mind": "तुमच्या मनात काय आहे?",
+      "add_photo": "फोटो जोडा",
+      "publish": "प्रकाशित करा",
+      "cancel": "रद्द करा",
+      "like": "आवडले",
+      "comment": "टिप्पणी",
+      "share": "शेअर करा",
+      "liked_by": "{{count}} शेतकऱ्यांना आवडले",
+      "comments": "{{count}} टिप्पण्या"
+    },
+    "community": {
+      "join": "सामील व्हा",
+      "joined": "सामील झाले",
+      "members": "{{count}} सदस्य",
+      "posts": "{{count}} पोस्ट",
+      "about": "बद्दल",
+      "rules": "समुदाय नियम",
+      "moderators": "मॉडरेटर"
+    },
+    "messages": {
+      "title": "संदेश",
+      "new": "नवीन संदेश",
+      "no_messages": "अजून संदेश नाहीत",
+      "type_message": "संदेश टाइप करा...",
+      "send": "पाठवा",
+      "online": "ऑनलाइन",
+      "offline": "ऑफलाइन",
+      "typing": "टाइप करत आहे..."
+    },
+    "leaderboard": {
+      "title": "अग्रगण्य शेतकरी",
+      "weekly": "या आठवड्यात",
+      "monthly": "या महिन्यात",
+      "all_time": "सर्व काळातील",
+      "rank": "रँक",
+      "points": "गुण",
+      "badges": "बॅज"
+    },
+    "trending": {
+      "title": "ट्रेंडिंग विषय",
+      "hashtag": "#{{tag}}",
+      "posts_count": "{{count}} पोस्ट"
+    },
+    "empty": {
+      "feed": "अजून पोस्ट नाहीत. समुदायासह शेअर करायला सुरुवात करा!",
+      "messages": "अजून संभाषण नाहीत",
+      "communities": "समुदाय सापडले नाहीत"
+    },
+    "profile": {
+      "activity_feed_soon": "क्रियाकलाप फीड लवकरच येत आहे"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show community feed",
+      "Create new post",
+      "Check my messages",
+      "View leaderboard"
+    ],
+    "voice_examples_hi": [
+      "समुदाय फीड दिखाओ",
+      "नई पोस्ट बनाएं",
+      "मेरे संदेश देखें",
+      "लीडरबोर्ड देखें"
+    ],
+    "voice_examples_mr": [
+      "समुदाय फीड दाखवा",
+      "नवीन पोस्ट तयार करा",
+      "माझे संदेश पहा",
+      "लीडरबोर्ड पहा"
+    ]
+  }
+}

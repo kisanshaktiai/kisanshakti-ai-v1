@@ -43,11 +43,15 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       registerType: 'prompt',
       filename: 'sw.js',
-      manifestFilename: 'manifest.webmanifest',
+      // CRITICAL: Prevent auto-injection of registerSW.js - we handle it in main.tsx
+      injectRegister: false,
+      // CRITICAL: Use static manifest.json from public/ folder
+      manifestFilename: 'manifest.json',
       strategies: 'generateSW',
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg,jpeg,webp,woff,woff2}'],
         maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MB
+        navigateFallbackDenylist: [/^\/api/, /supabase/],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
@@ -68,8 +72,10 @@ export default defineConfig(({ mode }) => ({
           }
         ]
       },
-      includeAssets: ['favicon.ico', 'icon-192x192.png', 'icon-512x512.png', '.htaccess', '_redirects'],
-      manifest: false, // Use static manifest.webmanifest instead
+      // CRITICAL: Only include actual app assets - NOT server config files (.htaccess returns 403)
+      includeAssets: ['favicon.ico', 'icon-192x192.png', 'icon-512x512.png'],
+      // CRITICAL: false = use static manifest.json from public/ folder
+      manifest: false,
       devOptions: {
         enabled: false,
         type: 'module',

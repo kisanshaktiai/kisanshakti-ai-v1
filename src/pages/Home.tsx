@@ -38,6 +38,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { VideoHelpCard } from '@/components/home/VideoHelpCard';
 import { useVideoTutorials } from '@/hooks/useVideoTutorials';
+import WeatherScheduleAlerts from '@/components/schedule/WeatherScheduleAlerts';
 
 interface FeatureCard {
   title: string;
@@ -75,13 +76,13 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
-  // Auto-collapse weather card after 10 seconds
+  // Auto-collapse weather card after 4 seconds
   useEffect(() => {
     if (!hasAutoCollapsed) {
       const collapseTimer = setTimeout(() => {
         setIsWeatherExpanded(false);
         setHasAutoCollapsed(true);
-      }, 10000);
+      }, 4000);
       return () => clearTimeout(collapseTimer);
     }
   }, [hasAutoCollapsed]);
@@ -117,26 +118,26 @@ export default function Home() {
   const quickStats = [
     { 
       icon: Thermometer, 
-      label: 'Temperature', 
+      label: t('home.stats.temperature'), 
       value: currentWeather ? `${Math.round(currentWeather.temp)}°C` : '---', 
       trend: currentWeather && currentWeather.temp > 25 ? 'up' : 'stable' 
     },
     { 
       icon: Droplets, 
-      label: 'Humidity', 
+      label: t('home.stats.humidity'), 
       value: currentWeather ? `${currentWeather.humidity}%` : '---', 
       trend: currentWeather && currentWeather.humidity > 60 ? 'up' : 'down' 
     },
     { 
       icon: Wind, 
-      label: 'Wind Speed', 
+      label: t('home.stats.wind_speed'), 
       value: currentWeather ? `${Math.round(currentWeather.wind_speed * 3.6)} km/h` : '---', 
       trend: currentWeather && currentWeather.wind_speed > 5 ? 'up' : 'down' 
     },
     { 
       icon: Activity, 
-      label: 'Total Area', 
-      value: totalArea > 0 ? `${totalArea.toFixed(1)} acres` : 'No land', 
+      label: t('home.stats.total_area'), 
+      value: totalArea > 0 ? `${totalArea.toFixed(1)} acres` : t('home.stats.no_land'), 
       trend: lands.length > 0 ? 'up' : 'stable' 
     }
   ];
@@ -146,18 +147,18 @@ export default function Home() {
       title: t('home.myLand'),
       icon: MapPin,
       path: '/app/lands',
-      description: 'Manage your agricultural lands',
-      stats: lands.length > 0 ? `${lands.length} Plot${lands.length > 1 ? 's' : ''}` : 'No plots',
+      description: t('home.features.lands.description'),
+      stats: lands.length > 0 ? t('home.features.lands.plots', { count: lands.length }) : t('home.features.lands.no_plots'),
       color: 'bg-gradient-primary',
-      badge: lands.length > 0 ? 'Active' : 'Add Land',
+      badge: lands.length > 0 ? t('home.badge.active') : t('home.badge.add_land'),
       progress: lands.length > 0 ? Math.min((lands.length / 5) * 100, 100) : 0
     },
     {
-      title: 'AI Crop Schedule',
+      title: t('home.features.schedule.title'),
       icon: Calendar,
       path: '/app/schedule',
-      description: 'Smart planting calendar',
-      stats: `Next: ${nextCrop}`,
+      description: t('home.features.schedule.description'),
+      stats: t('home.features.schedule.next_crop', { crop: nextCrop }),
       color: 'bg-gradient-secondary',
       trend: lands.length > 0 ? 'up' : undefined,
       trendValue: lands.length > 0 ? '15%' : undefined
@@ -166,16 +167,16 @@ export default function Home() {
       title: t('home.aiChat'),
       icon: Bot,
       path: '/app/chat',
-      description: 'Agricultural AI assistant',
-      stats: 'Online',
+      description: t('home.features.chat.description'),
+      stats: t('home.features.chat.online'),
       color: 'bg-gradient-accent',
-      badge: 'AI'
+      badge: t('home.badge.ai')
     },
     {
       title: t('home.market'),
       icon: ShoppingCart,
       path: '/app/market',
-      description: 'Buy & sell produce',
+      description: t('home.features.market.description'),
       stats: '₹2,125/q',
       color: 'bg-gradient-success',
       trend: 'up',
@@ -185,21 +186,21 @@ export default function Home() {
 
   const secondaryFeatures: FeatureCard[] = [
     {
-      title: 'Community',
+      title: t('home.features.community.title'),
       icon: Users,
       path: '/app/social',
-      description: 'Connect with farmers',
-      stats: '1.2k active',
+      description: t('home.features.community.description'),
+      stats: '1.2k ' + t('home.badge.active').toLowerCase(),
       color: 'bg-secondary/10',
       iconColor: 'text-secondary',
-      badge: 'New'
+      badge: t('home.badge.new')
     },
     {
-      title: 'NDVI & Satellite',
+      title: t('home.features.ndvi.title'),
       icon: Satellite,
       path: '/app/ndvi',
-      description: 'Crop health monitoring',
-      stats: avgNdvi > 0 ? `Score: ${avgNdvi}` : 'No data',
+      description: t('home.features.ndvi.description'),
+      stats: avgNdvi > 0 ? t('home.features.ndvi.score', { score: avgNdvi }) : t('home.features.ndvi.no_data'),
       color: 'bg-primary/10',
       iconColor: 'text-primary',
       progress: avgNdvi > 0 ? avgNdvi * 100 : 0
@@ -208,18 +209,18 @@ export default function Home() {
       title: t('home.governmentSchemes'),
       icon: FileText,
       path: '/app/schemes',
-      description: 'Latest schemes & subsidies',
-      stats: '5 Active',
+      description: t('home.features.schemes.description'),
+      stats: `5 ${t('home.badge.active')}`,
       color: 'bg-success/10',
       iconColor: 'text-success',
-      badge: 'Updated'
+      badge: t('home.badge.updated')
     },
     {
-      title: 'Analytics',
+      title: t('home.features.analytics.title'),
       icon: BarChart3,
       path: '/app/analytics',
-      description: 'Farm performance metrics',
-      stats: 'View Report',
+      description: t('home.features.analytics.description'),
+      stats: t('home.features.analytics.view_report'),
       color: 'bg-destructive/10',
       iconColor: 'text-destructive',
       trend: 'up',
@@ -230,9 +231,9 @@ export default function Home() {
   // Auto-scroll Recent Activity every 5 seconds
   useEffect(() => {
     const activities = lands.length > 0 ? lands.slice(0, 5) : [
-      { id: 'default-1', name: 'No lands added yet', description: 'Add your first land to get started' },
-      { id: 'default-2', name: 'Current Weather', description: currentWeather?.description || 'Loading weather...' },
-      { id: 'default-3', name: 'Government Schemes', description: 'Check available subsidies' }
+      { id: 'default-1', name: t('home.activity.no_lands'), description: t('home.activity.add_first_land') },
+      { id: 'default-2', name: t('home.activity.current_weather'), description: currentWeather?.description || t('home.loading') },
+      { id: 'default-3', name: t('home.activity.govt_schemes'), description: t('home.activity.check_subsidies') }
     ];
     
     if (activities.length <= 1) return;
@@ -248,7 +249,7 @@ export default function Home() {
     return <HomeSkeleton />;
   }
 
-  const farmerName = user?.fullName?.split(' ')[0] || user?.farmerName?.split(' ')[0] || user?.name?.split(' ')[0] || t('home.farmer');
+  const farmerName = user?.fullName?.split(' ')[0] || user?.farmerName?.split(' ')[0] || user?.name?.split(' ')[0] || t('home.default_name');
   const formattedDate = currentTime.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' });
   const formattedTime = currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
@@ -358,9 +359,9 @@ export default function Home() {
                   >
                     <div className="flex items-center gap-1.5">
                       <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
-                      <span className="text-xs font-semibold text-foreground">Namaste, {farmerName}</span>
+                      <span className="text-xs font-semibold text-foreground">{t('home.namaste', { name: farmerName })}</span>
                     </div>
-                    <span className="text-[10px] text-muted-foreground">Last synced: {formattedTime}</span>
+                    <span className="text-[10px] text-muted-foreground">{t('home.last_synced', { time: formattedTime })}</span>
                   </motion.div>
 
                   {/* Rotating Single Metric */}
@@ -377,7 +378,7 @@ export default function Home() {
                         <>
                           <Thermometer className="w-4 h-4 text-primary" />
                           <div className="flex flex-col">
-                            <span className="text-[9px] text-muted-foreground">Temp</span>
+                            <span className="text-[9px] text-muted-foreground">{t('home.stats.temp')}</span>
                             <span className="text-sm font-bold text-foreground">
                               {currentWeather?.temp ? Math.round(currentWeather.temp) : '--'}°C
                             </span>
@@ -388,7 +389,7 @@ export default function Home() {
                         <>
                           <Droplets className="w-4 h-4 text-primary" />
                           <div className="flex flex-col">
-                            <span className="text-[9px] text-muted-foreground">Humidity</span>
+                            <span className="text-[9px] text-muted-foreground">{t('home.stats.humidity')}</span>
                             <span className="text-sm font-bold text-foreground">
                               {currentWeather?.humidity || '--'}%
                             </span>
@@ -399,7 +400,7 @@ export default function Home() {
                         <>
                           <Activity className="w-4 h-4 text-primary" />
                           <div className="flex flex-col">
-                            <span className="text-[9px] text-muted-foreground">Pressure</span>
+                            <span className="text-[9px] text-muted-foreground">{t('home.stats.pressure')}</span>
                             <span className="text-sm font-bold text-foreground">
                               {currentWeather?.pressure || '--'} hPa
                             </span>
@@ -439,9 +440,9 @@ export default function Home() {
                   <div className="flex flex-col gap-0.5 bg-primary/10 backdrop-blur-sm rounded-xl px-2.5 py-1.5">
                     <div className="flex items-center gap-1.5">
                       <div className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
-                      <span className="text-xs font-semibold text-primary">Namaste, {farmerName}</span>
+                      <span className="text-xs font-semibold text-primary">{t('home.namaste', { name: farmerName })}</span>
                     </div>
-                    <span className="text-[10px] text-muted-foreground">Last synced: {formattedTime}</span>
+                    <span className="text-[10px] text-muted-foreground">{t('home.last_synced', { time: formattedTime })}</span>
                   </div>
                   <div className="flex items-center gap-1 bg-background/50 backdrop-blur-sm rounded-xl px-2.5 py-1.5">
                     <Calendar className="w-3 h-3 text-muted-foreground" />
@@ -491,7 +492,7 @@ export default function Home() {
                       transition={{ delay: 0.25 }}
                       className="text-[10px] font-medium text-foreground/80 capitalize relative z-10"
                     >
-                      {currentWeather?.description || 'Loading...'}
+                      {currentWeather?.description || t('home.loading')}
                     </motion.p>
                   </motion.div>
                 </div>
@@ -509,7 +510,7 @@ export default function Home() {
                     transition={{ type: "spring", stiffness: 300 }}
                   >
                     <Wind className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-[10px] text-muted-foreground font-medium">Wind</span>
+                    <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.wind')}</span>
                     <span className="text-sm font-bold text-foreground">
                       {currentWeather?.wind_speed ? Math.round(currentWeather.wind_speed * 3.6) : '--'}<span className="text-[10px] font-normal"> km/h</span>
                     </span>
@@ -521,7 +522,7 @@ export default function Home() {
                     transition={{ type: "spring", stiffness: 300 }}
                   >
                     <Droplets className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-[10px] text-muted-foreground font-medium">Humidity</span>
+                    <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.humidity')}</span>
                     <span className="text-sm font-bold text-foreground">
                       {currentWeather?.humidity || '--'}<span className="text-[10px] font-normal">%</span>
                     </span>
@@ -533,7 +534,7 @@ export default function Home() {
                     transition={{ type: "spring", stiffness: 300 }}
                   >
                     <Activity className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-[10px] text-muted-foreground font-medium">Pressure</span>
+                    <span className="text-[10px] text-muted-foreground font-medium">{t('home.stats.pressure')}</span>
                     <span className="text-sm font-bold text-foreground">
                       {currentWeather?.pressure || '--'} <span className="text-[10px] font-normal">hPa</span>
                     </span>
@@ -555,7 +556,7 @@ export default function Home() {
                       <MapPin className="w-3.5 h-3.5 text-primary" />
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground font-medium">Plots</p>
+                      <p className="text-[10px] text-muted-foreground font-medium">{t('home.stats.plots')}</p>
                       <p className="text-sm font-bold text-foreground">{lands.length}</p>
                     </div>
                   </motion.div>
@@ -567,7 +568,7 @@ export default function Home() {
                       <Leaf className="w-3.5 h-3.5 text-primary" />
                     </div>
                     <div>
-                      <p className="text-[10px] text-muted-foreground font-medium">Area</p>
+                      <p className="text-[10px] text-muted-foreground font-medium">{t('home.stats.area')}</p>
                       <p className="text-sm font-bold text-foreground">{totalArea.toFixed(1)} <span className="text-[10px] font-normal">ac</span></p>
                     </div>
                   </motion.div>
@@ -591,6 +592,9 @@ export default function Home() {
           damping: 25
         }}
       >
+        {/* Weather Schedule Alerts - Shows task adjustments due to weather */}
+        <WeatherScheduleAlerts className="mb-4" maxAlerts={3} />
+
         {/* Main Features Grid */}
         <motion.div 
           className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4"
@@ -726,7 +730,7 @@ export default function Home() {
           <Card className="mb-4 border-border/40 backdrop-blur-sm p-3">
             <div className="flex items-center gap-2 mb-2">
               <Activity className="w-4 h-4 text-primary" />
-              <span className="text-sm font-semibold">Recent Activity</span>
+              <span className="text-sm font-semibold">{t('home.recent_activity')}</span>
             </div>
             <div className="overflow-hidden relative">
               <AnimatePresence mode="wait">
@@ -742,14 +746,14 @@ export default function Home() {
                     <div className="flex items-center gap-3">
                       <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
                       <div>
-                        <p className="text-sm font-medium">{lands[currentActivityIndex]?.name || 'Unnamed Land'}</p>
+                        <p className="text-sm font-medium">{lands[currentActivityIndex]?.name || t('home.unnamed_land')}</p>
                         <p className="text-xs text-muted-foreground">
-                          {lands[currentActivityIndex]?.area_acres} acres • {lands[currentActivityIndex]?.village || 'Location not set'}
+                          {lands[currentActivityIndex]?.area_acres} acres • {lands[currentActivityIndex]?.village || t('home.location_not_set')}
                         </p>
                       </div>
                     </div>
                     <Badge variant="secondary" className="text-xs">
-                      {lands[currentActivityIndex]?.current_crop || 'No crop'}
+                      {lands[currentActivityIndex]?.current_crop || t('home.no_crop')}
                     </Badge>
                   </motion.div>
                 ) : (
@@ -766,27 +770,27 @@ export default function Home() {
                       <div>
                         {currentActivityIndex === 0 && (
                           <>
-                            <p className="text-sm font-medium">No lands added yet</p>
-                            <p className="text-xs text-muted-foreground">Add your first land to get started</p>
+                            <p className="text-sm font-medium">{t('home.activity.no_lands')}</p>
+                            <p className="text-xs text-muted-foreground">{t('home.activity.add_first_land')}</p>
                           </>
                         )}
                         {currentActivityIndex === 1 && (
                           <>
-                            <p className="text-sm font-medium">Current Weather</p>
-                            <p className="text-xs text-muted-foreground">{currentWeather?.description || 'Loading...'}</p>
+                            <p className="text-sm font-medium">{t('home.activity.current_weather')}</p>
+                            <p className="text-xs text-muted-foreground">{currentWeather?.description || t('home.loading')}</p>
                           </>
                         )}
                         {currentActivityIndex === 2 && (
                           <>
-                            <p className="text-sm font-medium">Government Schemes</p>
-                            <p className="text-xs text-muted-foreground">Check available subsidies</p>
+                            <p className="text-sm font-medium">{t('home.activity.govt_schemes')}</p>
+                            <p className="text-xs text-muted-foreground">{t('home.activity.check_subsidies')}</p>
                           </>
                         )}
                       </div>
                     </div>
-                    {currentActivityIndex === 0 && <Link to="/app/lands/add" className="text-xs text-primary">Add Land</Link>}
+                    {currentActivityIndex === 0 && <Link to="/app/lands/add" className="text-xs text-primary">{t('home.badge.add_land')}</Link>}
                     {currentActivityIndex === 1 && currentWeather && <span className="text-xs text-muted-foreground">{Math.round(currentWeather.temp)}°C</span>}
-                    {currentActivityIndex === 2 && <Link to="/app/schemes" className="text-xs text-primary">View</Link>}
+                    {currentActivityIndex === 2 && <Link to="/app/schemes" className="text-xs text-primary">{t('home.view')}</Link>}
                   </motion.div>
                 )}
               </AnimatePresence>

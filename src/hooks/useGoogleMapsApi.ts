@@ -1,99 +1,81 @@
-import { useState, useEffect, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useLoadScript, Libraries } from '@react-google-maps/api';
+import { useGoogleMaps, getGoogleMapsApiKey } from '@/contexts/GoogleMapsContext';
+import { useGoogleMapsScript } from '@/components/maps/GoogleMapsScriptProvider';
 
-// Define libraries with proper typing
-const libraries: Libraries = ['drawing', 'geometry'];
-
-// Global flag to prevent multiple API key fetches
-let apiKeyFetched = false;
-let globalApiKey: string | null = null;
-
+/**
+ * Primary hook for Google Maps API
+ * 
+ * USAGE:
+ * - For components that need the full Google Maps API (interactive maps),
+ *   wrap them with <GoogleMapsScriptProvider> and use this hook.
+ * 
+ * - For components that only need the API key (static maps, thumbnails),
+ *   use useGoogleMaps() directly from the context.
+ * 
+ * This hook combines:
+ * - API key state from GoogleMapsContext
+ * - Script loading state from GoogleMapsScriptProvider
+ */
 export function useGoogleMapsApi() {
-  const [apiKey, setApiKey] = useState<string | null>(globalApiKey);
-  const [error, setError] = useState<string | null>(null);
-  const [isKeyLoading, setIsKeyLoading] = useState(!apiKeyFetched);
-  const isMounted = useRef(true);
+  // Get API key from context (single source of truth)
+  const { 
+    apiKey, 
+    isLoading: isKeyLoading, 
+    error: keyError, 
+    retry: retryKey,
+    isReady: isKeyReady 
+  } = useGoogleMaps();
 
-  useEffect(() => {
-    // Cleanup function to track component mount status
-    return () => {
-      isMounted.current = false;
-    };
-  }, []);
+  // Get script loading state from provider
+  // This will return defaults if not inside GoogleMapsScriptProvider
+  let scriptState = { isLoaded: false, loadError: null as string | null, isLoading: false };
+  
+  try {
+    scriptState = useGoogleMapsScript();
+  } catch {
+    // Not inside GoogleMapsScriptProvider - that's okay for thumbnail components
+  }
 
-  useEffect(() => {
-    async function fetchApiKey() {
-      // Skip if already fetched
-      if (apiKeyFetched && globalApiKey) {
-        setApiKey(globalApiKey);
-        setIsKeyLoading(false);
-        return;
-      }
+  // Combined loading state
+  const isLoading = isKeyLoading || scriptState.isLoading;
+  
+  // Combined loaded state - both API key ready AND script loaded
+  const isLoaded = isKeyReady && scriptState.isLoaded;
+  
+  // Combined error - prefer key error over script error
+  const loadError = keyError || scriptState.loadError;
 
-      try {
-        console.log('Fetching Google Maps API key...');
-        
-        // No authentication needed - function is public
-        const response = await supabase.functions.invoke('google-maps-config');
-
-        console.log('Edge function response:', response);
-
-        if (!isMounted.current) return;
-
-        if (response.error) {
-          throw new Error(response.error.message || 'Failed to fetch API key');
-        }
-
-        if (response.data?.apiKey) {
-          console.log('API key received successfully');
-          globalApiKey = response.data.apiKey;
-          apiKeyFetched = true;
-          setApiKey(response.data.apiKey);
-        } else {
-          throw new Error('API key not found in response');
-        }
-      } catch (err) {
-        if (!isMounted.current) return;
-        console.error('Error fetching Google Maps API key:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load Google Maps');
-      } finally {
-        if (isMounted.current) {
-          setIsKeyLoading(false);
-        }
-      }
-    }
-
-    if (!apiKeyFetched) {
-      fetchApiKey();
-    }
-  }, []);
-
-  // Only load the script once we have an API key
-  const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: apiKey || '',
-    libraries,
-    preventGoogleFontsLoading: true,
-    id: 'google-map-script',
-  });
-
-  // Better error handling for loadError
-  const actualLoadError = loadError ? 
-    (typeof loadError === 'string' ? loadError : 
-     loadError.message || 'Failed to load Google Maps') : null;
-
-  console.log('useGoogleMapsApi state:', { 
-    apiKey: !!apiKey, 
-    isLoaded, 
-    loadError: actualLoadError, 
-    error, 
-    isKeyLoading 
-  });
+  // Retry function
+  const retry = () => {
+    console.log('🗺️ [useGoogleMapsApi] Retry triggered');
+    retryKey();
+  };
 
   return {
-    isLoaded: !!(isLoaded && apiKey && !isKeyLoading),
-    loadError: actualLoadError || error,
-    isLoading: isKeyLoading || (!apiKey && !error),
-    apiKey, // Return the API key for static map generation
+    isLoaded,
+    loadError,
+    isLoading,
+    apiKey,
+    retry,
   };
+}
+
+/**
+ * Get the cached API key synchronously (for static maps, thumbnails)
+ * Re-exported from context for backwards compatibility
+ */
+export { getGoogleMapsApiKey };
+
+/**
+ * Preload the Google Maps API key in the background
+ * Call this early in the app lifecycle for faster map loading
+ */
+export function preloadGoogleMapsApiKey(): void {
+  console.log('🗺️ [useGoogleMapsApi] Preload triggered (handled by context)');
+}
+
+/**
+ * Reset Google Maps state (for testing/debugging)
+ */
+export function resetGoogleMapsState(): void {
+  console.log('🗺️ [useGoogleMapsApi] Reset triggered');
 }

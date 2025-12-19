@@ -60,7 +60,7 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
             <span className="text-foreground">{t('schedule.taskDetails')}</span>
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            Update task status and add notes
+            {t('schedule.dialog.update_status')}
           </DialogDescription>
         </DialogHeader>
 
@@ -85,7 +85,7 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
           {/* Resources */}
           {task.required_resources && (
             <div className="bg-muted/30 p-3 rounded-lg border border-border/30">
-              <p className="text-xs font-semibold text-muted-foreground mb-2">Resources Needed:</p>
+              <p className="text-xs font-semibold text-muted-foreground mb-2">{t('schedule.dialog.resources_needed_label')}</p>
               <p className="text-sm text-foreground">{task.required_resources}</p>
             </div>
           )}
@@ -121,10 +121,10 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
               {selectedAction && (
                 <div className="space-y-2 animate-in slide-in-from-top-2">
                   <label className="text-sm font-medium text-foreground">
-                    Notes <span className="text-muted-foreground">(Optional)</span>
+                    {t('schedule.dialog.notes_label')} <span className="text-muted-foreground">{t('schedule.dialog.notes_optional')}</span>
                   </label>
                   <Textarea
-                    placeholder="Add any notes about this task..."
+                    placeholder={t('schedule.dialog.notes_placeholder')}
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     className="resize-none bg-background/60 border-border/50"

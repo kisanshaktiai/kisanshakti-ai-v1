@@ -1,0 +1,104 @@
+{
+  "__meta": {
+    "page": "profile",
+    "version": "1.0",
+    "updated_by": "AI Localization Engineer",
+    "last_updated": "2025-11-29"
+  },
+  "profile": {
+    "role": {
+      "farmer": "Farmer"
+    },
+    "farm_type": {
+      "general": "General",
+      "organic": "Organic",
+      "commercial": "Commercial",
+      "subsistence": "Subsistence"
+    },
+    "completion": {
+      "label": "Profile Completion"
+    },
+    "info": {
+      "phone": "Phone",
+      "location": "Location",
+      "not_set": "Not set",
+      "location_not_set": "Location not set"
+    },
+    "analytics": {
+      "title": "App Usage Statistics",
+      "total_opens": "Total Opens",
+      "last_active": "Last Active",
+      "never": "Never",
+      "member_since": "Member Since",
+      "unknown": "Unknown",
+      "ai_queries": "AI Queries"
+    },
+    "performance": {
+      "title": "Farm Performance",
+      "good": "Good",
+      "excellent": "Excellent",
+      "average": "Average",
+      "yield": "Yield",
+      "efficiency": "Efficiency",
+      "sustainability": "Sustainability"
+    },
+    "crops": {
+      "distribution_title": "Crop Distribution"
+    },
+    "yield": {
+      "trend_title": "Yield Trend (Last 6 Months)"
+    },
+    "farm_info": {
+      "title": "Farm Information",
+      "total_land": "Total Land",
+      "acres": "Acres",
+      "experience": "Experience",
+      "years": "Years",
+      "farm_type": "Farm Type",
+      "not_specified": "Not specified",
+      "irrigation": "Irrigation",
+      "yes": "Yes",
+      "no": "No",
+      "tractor": "Tractor",
+      "available": "Available",
+      "not_available": "Not Available",
+      "storage": "Storage"
+    },
+    "tts": {
+      "title": "Voice Settings",
+      "description": "Configure text-to-speech settings",
+      "enable": "Voice Readout",
+      "toggle": "Toggle voice readout",
+      "language": "Voice Language",
+      "speed": "Speed",
+      "volume": "Volume",
+      "test": "Test Voice",
+      "loading": "Loading...",
+      "reset": "Reset to defaults",
+      "autoRead": "Auto Read",
+      "autoReadChat": "AI Chat Responses",
+      "autoReadAlerts": "Weather & Alerts",
+      "autoReadSchedule": "Daily Tasks"
+    }
+  },
+  "__qa": {
+    "voice_examples_en": [
+      "Show my profile",
+      "Edit my information",
+      "View farm analytics",
+      "Check my achievements"
+    ],
+    "voice_examples_hi": [
+      "मेरी प्रोफ़ाइल दिखाओ",
+      "मेरी जानकारी बदलें",
+      "खेती विश्लेषण देखें",
+      "मेरी उपलब्धियां जांचें"
+    ],
+    "voice_examples_mr": [
+      "माझी प्रोफाइल दाखवा",
+      "माझी माहिती बदला",
+      "शेती विश्लेषण पहा",
+      "माझी उपलब्धी तपासा"
+    ]
+  }
+}

@@ -112,8 +112,8 @@ export default function Social() {
         () => {
           setUnreadCount(prev => prev + 1);
           toast({
-            title: 'New Message',
-            description: 'You have received a new message',
+            title: t('social.notifications.new_message.title'),
+            description: t('social.notifications.new_message.message'),
           });
         }
       )
@@ -127,8 +127,8 @@ export default function Social() {
         (payload) => {
           // Check if the like is for user's post
           toast({
-            title: 'Post Liked',
-            description: 'Someone liked your post',
+            title: t('social.notifications.post_liked.title'),
+            description: t('social.notifications.post_liked.message'),
           });
         }
       )
@@ -140,11 +140,11 @@ export default function Social() {
   }, [user?.id, toast]);
 
   const tabConfig = [
-    { id: 'feed', label: 'Feed', icon: Home },
-    { id: 'communities', label: 'Communities', icon: Users },
-    { id: 'messages', label: 'Messages', icon: MessageSquare, badge: unreadCount },
-    { id: 'leaderboard', label: 'Rankings', icon: Trophy },
-    { id: 'trending', label: 'Trending', icon: TrendingUp },
+    { id: 'feed', label: t('social.tabs.feed'), icon: Home },
+    { id: 'communities', label: t('social.tabs.communities'), icon: Users },
+    { id: 'messages', label: t('social.tabs.messages'), icon: MessageSquare, badge: unreadCount },
+    { id: 'leaderboard', label: t('social.tabs.rankings'), icon: Trophy },
+    { id: 'trending', label: t('social.tabs.trending'), icon: TrendingUp },
   ];
 
   return (
@@ -159,15 +159,15 @@ export default function Social() {
             </div>
             <div className="min-w-0 flex-1">
               <h1 className="text-lg md:text-xl font-bold bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text text-transparent truncate">
-                Community
+                {t('social.header.title')}
               </h1>
               {userStats && (
                 <div className="flex items-center gap-1.5 mt-0.5">
                   <Badge className="h-4 px-1.5 text-[9px] md:text-[10px] bg-gradient-to-r from-primary/20 to-accent/20 text-primary border-primary/30">
-                    Lvl {userStats.level}
+                    {t('social.user.level', { level: userStats.level })}
                   </Badge>
                   <Badge variant="outline" className="h-4 px-1.5 text-[9px] md:text-[10px]">
-                    {userStats.points} pts
+                    {t('social.user.points', { points: userStats.points })}
                   </Badge>
                 </div>
               )}
@@ -204,7 +204,7 @@ export default function Social() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
             <Input
-              placeholder="Search communities..."
+              placeholder={t('social.search.placeholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10 pr-10 h-10 rounded-xl bg-gradient-to-br from-muted/50 via-muted/30 to-muted/20 border-border/50 focus:border-primary/50 placeholder:text-muted-foreground/50 transition-all duration-300"
@@ -315,8 +315,8 @@ export default function Social() {
           onPostCreated={() => {
             setShowCreatePost(false);
             toast({
-              title: "Success! 🎉",
-              description: "Your post has been shared with the community.",
+              title: t('social.post.created.title'),
+              description: t('social.post.created.message'),
               className: "bg-gradient-to-r from-green-500/10 to-emerald-500/10 border-green-500/30"
             });
           }}

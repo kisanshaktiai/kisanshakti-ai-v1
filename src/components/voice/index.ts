@@ -1,5 +1,3 @@
-export { VoiceAssistant } from './VoiceAssistant';
-export { VoiceButton } from './VoiceButton';
 export { VoiceInput } from './VoiceInput';
 export { VoiceCard } from './VoiceCard';
 export { ModernVoiceAssistant } from './ModernVoiceAssistant';
@@ -14,3 +12,4 @@ export { VoiceTranscriptOverlay } from './VoiceTranscriptOverlay';
 export { VoiceFocusHighlight, useVoiceFocus } from './VoiceFocusHighlight';
 export { VoiceContextualHints } from './VoiceContextualHints';
 export { UnifiedVoiceOrchestrator } from './UnifiedVoiceOrchestrator';
+export { NativeVoiceButton } from './NativeVoiceButton';
