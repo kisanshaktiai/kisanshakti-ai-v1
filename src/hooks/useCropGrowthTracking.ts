@@ -63,21 +63,6 @@ interface CropGrowthAlert {
   created_at: string;
 }
 
-interface CropGrowthAlert {
-  id: string;
-  land_id: string;
-  alert_type: 'observation' | 'action_required' | 'critical_risk';
-  alert_category: string;
-  title: string;
-  message: string;
-  severity: 'info' | 'warning' | 'danger';
-  recommended_action?: string;
-  action_deadline?: string;
-  is_read: boolean;
-  is_actioned: boolean;
-  created_at: string;
-}
-
 export function useCropGrowthTracking(landId?: string, farmerId?: string, tenantId?: string) {
   const { i18n } = useTranslation();
   const queryClient = useQueryClient();

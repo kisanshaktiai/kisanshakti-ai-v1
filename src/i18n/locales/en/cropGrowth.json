@@ -5,6 +5,8 @@
     "takePhoto": "Take Photo",
     "uploadFile": "Upload",
     "uploadHint": "Upload crop photos for AI-powered growth analysis",
+    "uploadPhoto": "Upload Crop Photo",
+    "trackGrowth": "Track Growth",
     "addNotes": "Add notes about the crop condition (optional)...",
     "addLocation": "Add Location",
     "uploading": "Uploading...",

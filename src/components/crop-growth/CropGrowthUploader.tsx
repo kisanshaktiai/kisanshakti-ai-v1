@@ -1,18 +1,21 @@
 import React, { useRef, useState, useCallback } from 'react';
-import { Camera, Upload, Video, X, Loader2, MapPin } from 'lucide-react';
+import { Camera, Upload, Video, X, Loader2, MapPin, Sprout } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { CropPhotoGuidelines } from './CropPhotoGuidelines';
 
 interface CropGrowthUploaderProps {
   onUpload: (file: File, notes?: string, location?: { lat: number; lng: number }) => Promise<any>;
   isUploading: boolean;
+  scheduleId?: string;
+  cropName?: string;
   className?: string;
 }
 
-export function CropGrowthUploader({ onUpload, isUploading, className }: CropGrowthUploaderProps) {
+export function CropGrowthUploader({ onUpload, isUploading, scheduleId, cropName, className }: CropGrowthUploaderProps) {
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -79,51 +82,63 @@ export function CropGrowthUploader({ onUpload, isUploading, className }: CropGro
   };
 
   return (
-    <Card className={cn("border-dashed", className)}>
-      <CardContent className="p-4">
-        {!selectedFile ? (
-          <div className="space-y-4">
-            <div className="text-center py-6">
-              <div className="flex justify-center gap-3">
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => cameraInputRef.current?.click()}
-                >
-                  <Camera className="h-5 w-5" />
-                  {t('cropGrowth.takePhoto', 'Take Photo')}
-                </Button>
-                <Button
-                  variant="outline"
-                  className="gap-2"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload className="h-5 w-5" />
-                  {t('cropGrowth.uploadFile', 'Upload')}
-                </Button>
+    <div className={cn("space-y-3", className)}>
+      {/* Photo Guidelines - Always show */}
+      <CropPhotoGuidelines collapsed={true} />
+      
+      <Card className="border-dashed border-primary/30">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sprout className="h-4 w-4 text-primary" />
+            {cropName ? `${t('cropGrowth.trackGrowth', 'Track Growth')}: ${cropName}` : t('cropGrowth.uploadPhoto', 'Upload Crop Photo')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {!selectedFile ? (
+            <div className="space-y-4">
+              <div className="text-center py-6 border-2 border-dashed border-border/50 rounded-lg bg-muted/20">
+                <div className="flex justify-center gap-3">
+                  <Button
+                    variant="default"
+                    size="lg"
+                    className="gap-2 shadow-lg"
+                    onClick={() => cameraInputRef.current?.click()}
+                  >
+                    <Camera className="h-5 w-5" />
+                    {t('cropGrowth.takePhoto', 'Take Photo')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="gap-2"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="h-5 w-5" />
+                    {t('cropGrowth.uploadFile', 'Upload')}
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground mt-4">
+                  {t('cropGrowth.uploadHint', 'Upload crop photos for AI-powered growth analysis')}
+                </p>
               </div>
-              <p className="text-sm text-muted-foreground mt-3">
-                {t('cropGrowth.uploadHint', 'Upload crop photos for AI-powered growth analysis')}
-              </p>
+              
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
             </div>
-            
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,video/*"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-            <input
-              ref={cameraInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-          </div>
-        ) : (
+          ) : (
           <div className="space-y-4">
             <div className="relative">
               <Button
@@ -198,9 +213,10 @@ export function CropGrowthUploader({ onUpload, isUploading, className }: CropGro
                 )}
               </Button>
             </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
