@@ -59,6 +59,7 @@ import AIScheduleDashboard from "./pages/AIScheduleDashboard";
 import VideoReels from "./pages/VideoReels";
 import InstallPWA from "./pages/InstallPWA";
 import NotificationSettingsPage from "./pages/NotificationSettingsPage";
+import CropGrowthTracking from "./pages/CropGrowthTracking";
 
 // Stores and Services
 import { useAuthStore } from "@/stores/authStore";
@@ -340,6 +341,8 @@ const router = createBrowserRouter([
       { path: "ndvi", element: <NDVIAnalysis /> },
       { path: "videos", element: <VideoReels /> },
       { path: "notifications/settings", element: <NotificationSettingsPage /> },
+      { path: "crop-growth", element: <CropGrowthTracking /> },
+      { path: "growth-tracking", element: <CropGrowthTracking /> },
     ],
   },
   {
