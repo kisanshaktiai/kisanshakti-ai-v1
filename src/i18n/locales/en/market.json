@@ -1,9 +1,9 @@
 {
   "__meta": {
     "page": "market",
-    "version": "1.0",
+    "version": "2.0",
     "updated_by": "AI Localization Engineer",
-    "last_updated": "2025-11-29"
+    "last_updated": "2025-12-19"
   },
   "market": {
     "tabs": {
@@ -107,6 +107,60 @@
       "analytics_tab": "Analytics",
       "order_management_soon": "Order management coming soon",
       "analytics_dashboard_soon": "Analytics dashboard coming soon"
+    },
+    "intelligence": {
+      "title": "Market Price Intelligence",
+      "subtitle": "Real-time prices from MSAMB",
+      "selectFilters": "Select Filters",
+      "cropType": "Crop Type",
+      "selectMarket": "Select Market",
+      "allMarkets": "All Markets",
+      "selectCrop": "Select Crop",
+      "crops": "crops",
+      "more": "more",
+      "clearSelection": "Clear selection",
+      "selectCropType": "Select a crop type above",
+      "date": "Date",
+      "search": "Search...",
+      "refresh": "Refresh",
+      "aiAdvice": "AI Advice",
+      "prices": "Prices",
+      "nearby": "Nearby",
+      "comparison": "Compare",
+      "ai": "AI",
+      "noPrices": "No price data for selected filters",
+      "arrival": "Arrival",
+      "other": "Other",
+      "locationRequired": "Location Required",
+      "locationRequiredDesc": "Add land coordinates in your land settings to see nearby markets within 50km radius",
+      "nearbyTitle": "Markets within 50km",
+      "noNearbyMarkets": "No market data found within 50km radius",
+      "selectCropFirst": "Select a Crop",
+      "selectCropFirstDesc": "Choose a crop to view historical price comparison",
+      "priceComparison": "Price Comparison",
+      "loadData": "Load Data",
+      "week": "Week",
+      "month": "Month",
+      "year": "Year",
+      "avgPrice": "Avg Price",
+      "priceRange": "Range",
+      "trend": "Trend",
+      "dataPoints": "Data Points",
+      "noHistoricalData": "No historical data available",
+      "viewAllCrops": "View All Crops",
+      "viewAllMarkets": "View All Markets",
+      "cropGroups": {
+        "grains": "Grains",
+        "pulses": "Pulses",
+        "vegetables": "Vegetables",
+        "fruits": "Fruits",
+        "spices": "Spices",
+        "oilseeds": "Oilseeds",
+        "jaggerySugar": "Jaggery & Sugar",
+        "cotton": "Cotton",
+        "others": "Others",
+        "all": "All Crops"
+      }
     }
   },
   "__qa": {
