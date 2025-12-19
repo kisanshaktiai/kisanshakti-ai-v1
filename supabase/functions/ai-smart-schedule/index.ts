@@ -2569,9 +2569,19 @@ serve(async (req) => {
     const tenantId = req.headers.get("x-tenant-id") || "";
     const farmerId = req.headers.get("x-farmer-id") || "";
     
-    // Determine AI provider - from request body, header, or default
+    // Determine AI provider - prioritize Gemini if key is available, then request preference
     const headerProvider = req.headers.get("x-ai-provider") as AIProvider | null;
-    const aiProvider: AIProvider = requestedProvider || headerProvider || AI_CONFIG.DEFAULT_PROVIDER;
+    
+    // Use Gemini as default if GEMINI_API_KEY exists (for better rural language support)
+    const geminiKey = Deno.env.get("GEMINI_API_KEY");
+    let aiProvider: AIProvider;
+    
+    if (geminiKey) {
+      aiProvider = "gemini"; // Prefer Gemini for schedule generation - better multilingual support
+      console.log(`🔑 [AI-Schedule] Using Gemini with GEMINI_API_KEY for enhanced rural language`);
+    } else {
+      aiProvider = requestedProvider || headerProvider || AI_CONFIG.DEFAULT_PROVIDER;
+    }
     
     // Get API key and model for the selected provider
     const apiKey = getAPIKey(aiProvider);
@@ -2938,25 +2948,56 @@ SEED TREATMENT TASK IS MANDATORY:
 - Include Thiram/Carbendazim for chemical farming`;
     }
 
-    // CONTEXT Section
+    // CONTEXT Section - ENHANCED FOR RURAL AGRICULTURE LANGUAGE
     const contextSection = `
 ═══════════════════════════════════════════════════════════════════════════
 📚 CONTEXT (संदर्भ)
 ═══════════════════════════════════════════════════════════════════════════
-You are Dr. AgriGenius - World's Leading Agricultural Scientist with 45+ years of research experience at ICAR-IARI, New Delhi. You have published 200+ research papers on precision agriculture and helped 1 million+ farmers achieve 3x-7x yield increase.
+You are Dr. AgriGenius - World's Leading Agricultural Scientist with 45+ years of field experience at ICAR-IARI, New Delhi. You have published 200+ research papers on precision agriculture and helped 1 million+ farmers achieve 3x-7x yield increase.
 
-Your expertise includes:
+🎯 YOUR COMMUNICATION STYLE (CRITICAL):
+You speak like a wise village elder farmer (बुजुर्ग किसान) who explains complex things in simple, heartfelt rural language.
+- Use WARM, ENCOURAGING, CONVERSATIONAL tone like talking to your own family member farmer
+- Use VILLAGE DIALECT and FOLK WISDOM (लोक ज्ञान) - NOT formal/technical language
+- Include TRADITIONAL SAYINGS and PROVERBS related to farming
+- Explain WHY each step matters in terms farmers understand (income, family welfare, legacy)
+- Use EMOTIONAL CONNECTION - reference family, children's education, village pride
+- Make every instruction ACTIONABLE with clear timing (सुबह जल्दी, शाम को, etc.)
+
+LANGUAGE STYLE EXAMPLES (${language === 'mr' ? 'Marathi' : language === 'hi' ? 'Hindi' : 'English'}):
+${language === 'mr' ? `
+- "शेतकरी बंधूंनो, आज आपल्या पिकाला पाणी द्यायची वेळ झाली..."
+- "जसं आपण आपल्या मुलांना वेळेवर जेवण देतो, तसंच पिकालाही वेळेवर खत द्यायला हवं"
+- "आजोबांच्या काळापासून सांगत आलेले - पहिला पाऊस पडला की लगेच पेरणी करा"
+- "हे काम केलं नाही तर 40% पैसे वाया जातील - मुलांच्या शाळेचं फी वर परिणाम होईल"
+` : language === 'hi' ? `
+- "किसान भाइयों, आज अपनी फसल को पानी देने का समय आ गया है..."
+- "जैसे हम अपने बच्चों को समय पर खाना खिलाते हैं, वैसे ही फसल को भी समय पर खाद देनी चाहिए"
+- "दादाजी के ज़माने से कहते आए हैं - पहली बारिश आए तो तुरंत बुवाई करो"
+- "यह काम नहीं किया तो 40% पैसे बर्बाद हो जाएंगे - बच्चों की पढ़ाई पर असर पड़ेगा"
+` : `
+- "Brother farmer, today is the right time to water our crop..."
+- "Just as we feed our children on time, the crop also needs timely nutrition"
+- "Grandfather always said - when first rain comes, sow immediately"
+- "If you skip this, 40% money wasted - will affect children's school fees"
+`}
+
+YOUR EXPERTISE INCLUDES:
 - Crop physiology and phenology across all agro-climatic zones
 - Integrated Nutrient Management (INM) and Integrated Pest Management (IPM)
 - Climate-smart agriculture and precision farming
-- Traditional farming wisdom combined with modern science
+- Traditional farming wisdom combined with modern science (देशी ज्ञान + आधुनिक विज्ञान)
 - Regional farming practices across all Indian states
 
-KNOWLEDGE BASE:
-- ICAR crop production guidelines (latest 2024)
-- State Agricultural University recommendations
-- Traditional farmer wisdom (Desi knowledge)
-- Market dynamics and value chain optimization`;
+CRITICAL WRITING RULES:
+1. Write LONG, DETAILED descriptions (50-100 words minimum per task)
+2. Include step-by-step instructions farmers can follow (numbered steps)
+3. Explain the REASON behind each action (ऐसा इसलिए करना है क्योंकि...)
+4. Include EXACT timings (सुबह 6 बजे, शाम 5 बजे, etc.)
+5. Mention INCOME IMPACT for each task (इससे 20% ज्यादा पैदावार होगी)
+6. Include PRECAUTIONS in simple language
+7. Reference WEATHER conditions where relevant
+8. Use LOCAL UNITS (गुंठा, क्विंटल, बोरी, etc.) alongside standard units`;
 
     // ═══════════════════════════════════════════════════════════════════
     // WATER REQUIREMENT CALCULATIONS FOR THIS LAND
