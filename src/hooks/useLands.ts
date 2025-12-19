@@ -163,23 +163,27 @@ export function useLands() {
     retryDelay: 1000, // Quick retry
   });
 
-  // Mutation for deleting a land
+  // Mutation for deleting a land (soft delete - marks as inactive)
   const deleteMutation = useMutation({
     mutationFn: async (landId: string) => {
+      console.log('🗑️ [useLands] Delete mutation started for:', landId);
       await landsApi.deleteLand(landId);
+      console.log('✅ [useLands] Delete mutation completed for:', landId);
     },
     onSuccess: () => {
+      console.log('✅ [useLands] Delete successful, invalidating queries');
       queryClient.invalidateQueries({ queryKey: ['lands'] });
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
       toast({
-        title: 'Success',
-        description: 'Land deleted successfully',
+        title: 'Land Removed',
+        description: 'Land has been removed from your list',
       });
     },
-    onError: (error) => {
+    onError: (error: any) => {
+      console.error('❌ [useLands] Delete mutation error:', error);
       toast({
         title: 'Error',
-        description: 'Failed to delete land',
+        description: error?.message || 'Failed to remove land',
         variant: 'destructive',
       });
     },
