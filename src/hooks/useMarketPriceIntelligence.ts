@@ -60,6 +60,7 @@ export function useMarketPriceIntelligence(farmerId?: string) {
   const [aiAnalysis, setAiAnalysis] = useState<AIAnalysis | null>(null);
   const [farmerLocation, setFarmerLocation] = useState<FarmerLocation | null>(null);
   const [states, setStates] = useState<string[]>([]);
+  const [markets, setMarkets] = useState<string[]>([]);
   const [crops, setCrops] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -76,11 +77,12 @@ export function useMarketPriceIntelligence(farmerId?: string) {
     return data;
   }, []);
 
-  const fetchFarmerLocation = useCallback(async () => {
-    if (!farmerId) return null;
+  const fetchFarmerLocation = useCallback(async (id?: string) => {
+    const farmId = id || farmerId;
+    if (!farmId) return null;
     
     try {
-      const data = await callEdgeFunction('getFarmerLocation', { farmerId });
+      const data = await callEdgeFunction('getFarmerLocation', { farmerId: farmId });
       setFarmerLocation(data.location);
       return data.location;
     } catch (err) {
@@ -100,9 +102,21 @@ export function useMarketPriceIntelligence(farmerId?: string) {
     }
   }, [callEdgeFunction]);
 
-  const fetchCrops = useCallback(async (state?: string) => {
+  const fetchMarkets = useCallback(async () => {
     try {
-      const data = await callEdgeFunction('getCrops', { state });
+      const data = await callEdgeFunction('getMarkets');
+      setMarkets(data.markets || []);
+      return data.markets;
+    } catch (err) {
+      console.error('Error fetching markets:', err);
+      return [];
+    }
+  }, [callEdgeFunction]);
+
+  const fetchCrops = useCallback(async () => {
+    try {
+      // FIXED: No state parameter needed since all data is from Maharashtra
+      const data = await callEdgeFunction('getCrops', {});
       setCrops(data.crops || []);
       setCategories(data.categories || []);
       return data.crops;
@@ -113,16 +127,17 @@ export function useMarketPriceIntelligence(farmerId?: string) {
   }, [callEdgeFunction]);
 
   const fetchPrices = useCallback(async (params: {
-    state?: string;
     crop?: string;
     date?: string;
     district?: string;
+    market?: string;
     limit?: number;
-  }) => {
+  } = {}) => {
     setIsLoading(true);
     setError(null);
     
     try {
+      // FIXED: Removed state parameter - filter by market location instead
       const data = await callEdgeFunction('fetchPrices', params);
       setPrices(data.data || []);
       setGroupedPrices(data.groupedByDate || {});
@@ -159,14 +174,15 @@ export function useMarketPriceIntelligence(farmerId?: string) {
 
   const getHistoricalComparison = useCallback(async (params: {
     crop?: string;
-    state?: string;
     district?: string;
+    market?: string;
     periods?: ('week' | 'month' | 'year')[];
   }) => {
     setIsLoading(true);
     setError(null);
     
     try {
+      // FIXED: Removed state parameter
       const data = await callEdgeFunction('getHistoricalComparison', params);
       setHistoricalData(data.comparisons || {});
       return data.comparisons;
@@ -180,8 +196,8 @@ export function useMarketPriceIntelligence(farmerId?: string) {
 
   const getAIAnalysis = useCallback(async (params: {
     crop?: string;
-    state?: string;
     district?: string;
+    market?: string;
     currentPrice?: number;
     historicalData?: any;
   }) => {
@@ -189,6 +205,7 @@ export function useMarketPriceIntelligence(farmerId?: string) {
     setError(null);
     
     try {
+      // FIXED: Removed state parameter
       const data = await callEdgeFunction('getAIAnalysis', params);
       setAiAnalysis(data.analysis || null);
       return data.analysis;
@@ -209,6 +226,7 @@ export function useMarketPriceIntelligence(farmerId?: string) {
     aiAnalysis,
     farmerLocation,
     states,
+    markets,
     crops,
     categories,
     
@@ -219,6 +237,7 @@ export function useMarketPriceIntelligence(farmerId?: string) {
     // Actions
     fetchFarmerLocation,
     fetchStates,
+    fetchMarkets,
     fetchCrops,
     fetchPrices,
     fetchNearbyMarkets,

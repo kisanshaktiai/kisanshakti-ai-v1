@@ -24,46 +24,93 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 // Parse location to get approximate coordinates (simplified geocoding)
-function getMarketCoordinates(location: string, district: string, state: string): { lat: number; lon: number } | null {
-  // Maharashtra major market coordinates
+function getMarketCoordinates(location: string, district: string): { lat: number; lon: number } | null {
+  // Maharashtra major market coordinates - includes Marathi names
   const marketCoords: Record<string, { lat: number; lon: number }> = {
     'pune': { lat: 18.5204, lon: 73.8567 },
+    'पुणे': { lat: 18.5204, lon: 73.8567 },
     'mumbai': { lat: 19.0760, lon: 72.8777 },
+    'मुंबई': { lat: 19.0760, lon: 72.8777 },
     'nashik': { lat: 19.9975, lon: 73.7898 },
+    'नाशिक': { lat: 19.9975, lon: 73.7898 },
     'nagpur': { lat: 21.1458, lon: 79.0882 },
+    'नागपूर': { lat: 21.1458, lon: 79.0882 },
     'aurangabad': { lat: 19.8762, lon: 75.3433 },
+    'औरंगाबाद': { lat: 19.8762, lon: 75.3433 },
     'kolhapur': { lat: 16.7050, lon: 74.2433 },
+    'कोल्हापूर': { lat: 16.7050, lon: 74.2433 },
     'solapur': { lat: 17.6599, lon: 75.9064 },
+    'सोलापूर': { lat: 17.6599, lon: 75.9064 },
     'sangli': { lat: 16.8524, lon: 74.5815 },
+    'सांगली': { lat: 16.8524, lon: 74.5815 },
     'satara': { lat: 17.6805, lon: 74.0183 },
+    'सातारा': { lat: 17.6805, lon: 74.0183 },
     'ahmednagar': { lat: 19.0948, lon: 74.7480 },
+    'अहमदनगर': { lat: 19.0948, lon: 74.7480 },
     'jalgaon': { lat: 21.0077, lon: 75.5626 },
+    'जळगाव': { lat: 21.0077, lon: 75.5626 },
     'dhule': { lat: 20.9042, lon: 74.7749 },
+    'धुळे': { lat: 20.9042, lon: 74.7749 },
     'nanded': { lat: 19.1383, lon: 77.3210 },
+    'नांदेड': { lat: 19.1383, lon: 77.3210 },
     'latur': { lat: 18.4088, lon: 76.5604 },
+    'लातूर': { lat: 18.4088, lon: 76.5604 },
     'osmanabad': { lat: 18.1860, lon: 76.0440 },
+    'उस्मानाबाद': { lat: 18.1860, lon: 76.0440 },
     'beed': { lat: 18.9891, lon: 75.7531 },
+    'बीड': { lat: 18.9891, lon: 75.7531 },
     'parbhani': { lat: 19.2610, lon: 76.7748 },
+    'परभणी': { lat: 19.2610, lon: 76.7748 },
     'hingoli': { lat: 19.7173, lon: 77.1461 },
+    'हिंगोली': { lat: 19.7173, lon: 77.1461 },
     'akola': { lat: 20.7002, lon: 77.0082 },
+    'अकोला': { lat: 20.7002, lon: 77.0082 },
     'amravati': { lat: 20.9374, lon: 77.7796 },
+    'अमरावती': { lat: 20.9374, lon: 77.7796 },
     'yavatmal': { lat: 20.3899, lon: 78.1307 },
+    'यवतमाळ': { lat: 20.3899, lon: 78.1307 },
     'wardha': { lat: 20.7453, lon: 78.6022 },
+    'वर्धा': { lat: 20.7453, lon: 78.6022 },
     'chandrapur': { lat: 19.9615, lon: 79.2961 },
+    'चंद्रपूर': { lat: 19.9615, lon: 79.2961 },
     'gadchiroli': { lat: 20.1809, lon: 80.0000 },
+    'गडचिरोली': { lat: 20.1809, lon: 80.0000 },
     'bhandara': { lat: 21.1669, lon: 79.6500 },
+    'भंडारा': { lat: 21.1669, lon: 79.6500 },
     'gondia': { lat: 21.4602, lon: 80.1920 },
+    'गोंदिया': { lat: 21.4602, lon: 80.1920 },
     'buldhana': { lat: 20.5293, lon: 76.1842 },
+    'बुलढाणा': { lat: 20.5293, lon: 76.1842 },
     'washim': { lat: 20.1120, lon: 77.1339 },
+    'वाशिम': { lat: 20.1120, lon: 77.1339 },
     'ratnagiri': { lat: 16.9902, lon: 73.3120 },
+    'रत्नागिरी': { lat: 16.9902, lon: 73.3120 },
     'sindhudurg': { lat: 16.3489, lon: 73.5339 },
+    'सिंधुदुर्ग': { lat: 16.3489, lon: 73.5339 },
     'raigad': { lat: 18.5158, lon: 73.1822 },
+    'रायगड': { lat: 18.5158, lon: 73.1822 },
     'thane': { lat: 19.2183, lon: 72.9781 },
+    'ठाणे': { lat: 19.2183, lon: 72.9781 },
     'palghar': { lat: 19.6967, lon: 72.7699 },
+    'पालघर': { lat: 19.6967, lon: 72.7699 },
   };
   
-  const searchKey = (location || district || '').toLowerCase().split(' ')[0];
-  return marketCoords[searchKey] || null;
+  // Try exact match first, then partial match
+  const searchText = (location || district || '').toLowerCase();
+  
+  // Direct lookup
+  if (marketCoords[searchText]) {
+    return marketCoords[searchText];
+  }
+  
+  // Try to find a matching key
+  for (const [key, coords] of Object.entries(marketCoords)) {
+    if (searchText.includes(key) || key.includes(searchText)) {
+      return coords;
+    }
+  }
+  
+  return null;
 }
 
 serve(async (req) => {
@@ -79,7 +126,8 @@ serve(async (req) => {
 
     switch (action) {
       case 'fetchPrices': {
-        const { state, crop, date, district, limit = 100 } = params;
+        // FIXED: Removed state filter since all data is from Maharashtra (state column is NULL)
+        const { crop, date, district, market, limit = 100 } = params;
         
         let query = supabase
           .from('market_prices')
@@ -87,14 +135,20 @@ serve(async (req) => {
           .order('price_date', { ascending: false })
           .limit(limit);
 
-        if (state) query = query.ilike('state', `%${state}%`);
-        if (crop) query = query.ilike('crop_name', `%${crop}%`);
+        // Filter by crop name
+        if (crop && crop !== 'all') query = query.ilike('crop_name', `%${crop}%`);
+        // Filter by district
         if (district) query = query.ilike('district', `%${district}%`);
+        // Filter by market location
+        if (market && market !== 'all') query = query.ilike('market_location', `%${market}%`);
+        // Filter by exact date
         if (date) query = query.eq('price_date', date);
 
         const { data, error } = await query;
         
         if (error) throw error;
+
+        console.log(`[market-price-intelligence] fetchPrices returned ${data?.length || 0} records`);
 
         // Group by date
         const groupedByDate: Record<string, any[]> = {};
@@ -127,26 +181,26 @@ serve(async (req) => {
           });
         }
 
-        // Fetch all Maharashtra market prices
+        // FIXED: Removed state filter - fetch all market prices
         let query = supabase
           .from('market_prices')
           .select('*')
-          .ilike('state', '%maharashtra%')
           .order('price_date', { ascending: false })
           .limit(500);
 
-        if (crop) query = query.ilike('crop_name', `%${crop}%`);
+        if (crop && crop !== 'all') query = query.ilike('crop_name', `%${crop}%`);
 
         const { data, error } = await query;
         if (error) throw error;
+
+        console.log(`[market-price-intelligence] fetchNearbyMarkets fetched ${data?.length || 0} records for distance calc`);
 
         // Calculate distances and filter nearby markets
         const nearbyMarkets = (data || [])
           .map((market: any) => {
             const marketCoords = getMarketCoordinates(
               market.market_location || '',
-              market.district || '',
-              market.state || ''
+              market.district || ''
             );
             
             if (!marketCoords) return null;
@@ -157,6 +211,8 @@ serve(async (req) => {
           .filter((m: any) => m && m.distance <= radiusKm)
           .sort((a: any, b: any) => a.distance - b.distance)
           .slice(0, limit);
+
+        console.log(`[market-price-intelligence] Found ${nearbyMarkets.length} nearby markets within ${radiusKm}km`);
 
         return new Response(JSON.stringify({ 
           success: true, 
@@ -169,7 +225,8 @@ serve(async (req) => {
       }
 
       case 'getHistoricalComparison': {
-        const { crop, state, district, periods = ['week', 'month', 'year'] } = params;
+        // FIXED: Removed state filter
+        const { crop, district, market, periods = ['week', 'month', 'year'] } = params;
         
         const today = new Date();
         const comparisons: Record<string, any> = {};
@@ -189,9 +246,9 @@ serve(async (req) => {
             .gte('price_date', pastDateStr)
             .order('price_date', { ascending: true });
 
-          if (crop) query = query.ilike('crop_name', `%${crop}%`);
-          if (state) query = query.ilike('state', `%${state}%`);
+          if (crop && crop !== 'all') query = query.ilike('crop_name', `%${crop}%`);
           if (district) query = query.ilike('district', `%${district}%`);
+          if (market) query = query.ilike('market_location', `%${market}%`);
 
           const { data, error } = await query.limit(200);
           if (error) throw error;
@@ -232,7 +289,7 @@ serve(async (req) => {
       }
 
       case 'getAIAnalysis': {
-        const { crop, state, district, currentPrice, historicalData } = params;
+        const { crop, district, market, currentPrice, historicalData } = params;
 
         if (!openaiApiKey) {
           return new Response(JSON.stringify({ 
@@ -244,15 +301,14 @@ serve(async (req) => {
           });
         }
 
-        // Fetch recent market data for context
+        // Fetch recent market data for context - FIXED: removed state filter
         let query = supabase
           .from('market_prices')
           .select('*')
           .order('price_date', { ascending: false })
           .limit(50);
 
-        if (crop) query = query.ilike('crop_name', `%${crop}%`);
-        if (state) query = query.ilike('state', `%${state}%`);
+        if (crop && crop !== 'all') query = query.ilike('crop_name', `%${crop}%`);
 
         const { data: marketData } = await query;
 
@@ -261,8 +317,9 @@ serve(async (req) => {
 Analyze this market data and provide selling recommendations:
 
 Crop: ${crop || 'General'}
-State: ${state || 'Maharashtra'}
+State: Maharashtra (MSAMB data)
 District: ${district || 'Not specified'}
+Market: ${market || 'Not specified'}
 Current Price: ₹${currentPrice || 'Not available'}
 
 Recent Market Data:
@@ -366,38 +423,51 @@ Respond ONLY with valid JSON, no markdown.`;
       }
 
       case 'getStates': {
+        // FIXED: All data is from Maharashtra (MSAMB source), state column is NULL
+        // Return hardcoded Maharashtra
+        return new Response(JSON.stringify({ 
+          success: true, 
+          states: ['महाराष्ट्र'],
+          note: 'Currently showing Maharashtra state data from MSAMB'
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      case 'getMarkets': {
+        // NEW: Fetch unique market locations
         const { data, error } = await supabase
           .from('market_prices')
-          .select('state')
-          .not('state', 'is', null);
+          .select('market_location')
+          .not('market_location', 'is', null);
 
         if (error) throw error;
 
-        const uniqueStates = [...new Set((data || []).map((d: any) => d.state))].filter(Boolean).sort();
+        const uniqueMarkets = [...new Set((data || []).map((d: any) => d.market_location))].filter(Boolean).sort();
+
+        console.log(`[market-price-intelligence] Found ${uniqueMarkets.length} unique markets`);
 
         return new Response(JSON.stringify({ 
           success: true, 
-          states: uniqueStates 
+          markets: uniqueMarkets 
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
       case 'getCrops': {
-        const { state } = params;
-        
-        let query = supabase
+        // FIXED: Removed state filter
+        const { data, error } = await supabase
           .from('market_prices')
           .select('crop_name, commodity_category')
           .not('crop_name', 'is', null);
 
-        if (state) query = query.ilike('state', `%${state}%`);
-
-        const { data, error } = await query;
         if (error) throw error;
 
         const uniqueCrops = [...new Set((data || []).map((d: any) => d.crop_name))].filter(Boolean).sort();
         const categories = [...new Set((data || []).map((d: any) => d.commodity_category))].filter(Boolean);
+
+        console.log(`[market-price-intelligence] Found ${uniqueCrops.length} unique crops`);
 
         return new Response(JSON.stringify({ 
           success: true, 
