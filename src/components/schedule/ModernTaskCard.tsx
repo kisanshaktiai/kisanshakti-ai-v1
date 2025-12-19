@@ -32,7 +32,8 @@ import {
   Sparkles,
   ChevronRight,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Camera
 } from 'lucide-react';
 import { format, isToday, isTomorrow } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -46,6 +47,7 @@ interface TaskCardProps {
   onSpeak: () => void;
   isSpeaking?: boolean;
   readOnly?: boolean;
+  onTakePhoto?: () => void;
 }
 
 const taskTypeConfig = {
@@ -76,7 +78,8 @@ export default function ModernTaskCard({
   daysUntil, 
   onSpeak,
   isSpeaking = false,
-  readOnly = false
+  readOnly = false,
+  onTakePhoto
 }: TaskCardProps) {
   const { t } = useTranslation();
   const [showDetails, setShowDetails] = useState(false);
@@ -168,18 +171,33 @@ export default function ModernTaskCard({
                 </div>
               </div>
               
-              {/* Speaker button */}
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className={cn(
-                  "h-9 w-9 rounded-full shrink-0 transition-all",
-                  isSpeaking ? "bg-primary/20 text-primary" : "hover:bg-primary/10"
+              {/* Action buttons */}
+              <div className="flex items-center gap-1">
+                {/* Camera button for task photo */}
+                {onTakePhoto && (
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-9 w-9 rounded-full shrink-0 hover:bg-primary/10 text-primary"
+                    onClick={(e) => { e.stopPropagation(); onTakePhoto(); }}
+                  >
+                    <Camera className="h-4 w-4" />
+                  </Button>
                 )}
-                onClick={(e) => { e.stopPropagation(); onSpeak(); }}
-              >
-                {isSpeaking ? <VolumeX className="h-4 w-4 animate-pulse" /> : <Volume2 className="h-4 w-4" />}
-              </Button>
+                
+                {/* Speaker button */}
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className={cn(
+                    "h-9 w-9 rounded-full shrink-0 transition-all",
+                    isSpeaking ? "bg-primary/20 text-primary" : "hover:bg-primary/10"
+                  )}
+                  onClick={(e) => { e.stopPropagation(); onSpeak(); }}
+                >
+                  {isSpeaking ? <VolumeX className="h-4 w-4 animate-pulse" /> : <Volume2 className="h-4 w-4" />}
+                </Button>
+              </div>
             </div>
 
             {/* Description preview */}

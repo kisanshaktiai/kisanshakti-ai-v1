@@ -21,6 +21,7 @@ import ModernTaskCard from './ModernTaskCard';
 import TaskActionDialog from './TaskActionDialog';
 import ClimateAlertBanner from './ClimateAlertBanner';
 import { TaskStatisticsWidget } from './TaskStatisticsWidget';
+import { TaskPhotoUploadDialog } from './TaskPhotoUploadDialog';
 import { useSchedules } from '@/hooks/useSchedules';
 import { localDB } from '@/services/localDB';
 
@@ -100,6 +101,8 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const [climateData, setClimateData] = useState<any>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
   const [loadingTasks, setLoadingTasks] = useState(false);
+  const [photoUploadTask, setPhotoUploadTask] = useState<ScheduleTask | null>(null);
+  const [showLandPhotoUpload, setShowLandPhotoUpload] = useState(false);
 
   // Task type icons and colors
   const taskTypeConfig = {
@@ -682,6 +685,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                             isOverdue={isOverdue}
                             daysUntil={daysUntil}
                             readOnly={true}
+                            onTakePhoto={() => setPhotoUploadTask(task)}
                           />
                         </div>
                       );
@@ -702,6 +706,43 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
           onClose={() => setSelectedTask(null)}
           onSpeak={() => speakTask(selectedTask)}
           readOnly={true}
+        />
+      )}
+
+      {/* Task Photo Upload Dialog */}
+      {photoUploadTask && schedule && user && (
+        <TaskPhotoUploadDialog
+          isOpen={!!photoUploadTask}
+          onClose={() => setPhotoUploadTask(null)}
+          taskId={photoUploadTask.id}
+          taskType={photoUploadTask.task_type}
+          taskName={photoUploadTask.task_name}
+          scheduleId={schedule.id}
+          landId={landId}
+          farmerId={user.id}
+          tenantId={user.tenantId || ''}
+          cropName={schedule.crop_name}
+          onUploadComplete={() => {
+            setPhotoUploadTask(null);
+            refetchSchedules();
+          }}
+        />
+      )}
+
+      {/* Land Photo Upload Dialog (general) */}
+      {showLandPhotoUpload && schedule && user && (
+        <TaskPhotoUploadDialog
+          isOpen={showLandPhotoUpload}
+          onClose={() => setShowLandPhotoUpload(false)}
+          scheduleId={schedule.id}
+          landId={landId}
+          farmerId={user.id}
+          tenantId={user.tenantId || ''}
+          cropName={schedule.crop_name}
+          onUploadComplete={() => {
+            setShowLandPhotoUpload(false);
+            refetchSchedules();
+          }}
         />
       )}
     </div>
