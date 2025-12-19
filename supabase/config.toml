@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.community-tts]
 verify_jwt = false
+
+[functions.market-price-intelligence]
+verify_jwt = false
