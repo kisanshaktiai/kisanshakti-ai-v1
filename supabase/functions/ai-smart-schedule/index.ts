@@ -2813,9 +2813,10 @@ serve(async (req) => {
     
     // GET MINIMUM TASK COUNT FOR THIS CROP (addresses Issue #3 - sugarcane needs 30+ tasks)
     const cropTaskConfig = CROP_TASK_MULTIPLIERS[cropLower] || CROP_TASK_MULTIPLIERS['default'];
-    // CAP task count to prevent JSON truncation (max 25 tasks to stay within token limits)
-    const rawMinTasks = Math.max(totalStages * 2, cropTaskConfig.minTasks);
-    const minTaskCount = Math.min(rawMinTasks, 25);
+    // CAP task count to prevent JSON truncation (max 20 tasks to stay well within token limits)
+    // Long duration crops like Sugarcane still get good coverage with fewer, more comprehensive tasks
+    const rawMinTasks = Math.max(totalStages * 2, Math.min(cropTaskConfig.minTasks, 20));
+    const minTaskCount = Math.min(rawMinTasks, 20);
     const cropDurationDays = cropTaskConfig.durationDays;
     console.log(`📋 [AI] Building prompt for ${totalStages} stages, min ${minTaskCount} tasks for ${cropDurationDays}-day crop`);
 
@@ -3615,8 +3616,8 @@ OUTPUT: Return ONLY valid JSON object (no markdown, no explanation). Start with 
           ],
           currentProvider === "gemini" 
             ? {
-                // Use Gemini's maximum token limit (8192 output) to prevent truncation
-                maxTokens: 8192,
+                // CRITICAL: Use Gemini 2.5 Flash's actual max output (16384 tokens) to prevent truncation
+                maxTokens: 16384,
                 useJsonMode: true, // Use JSON mode for Gemini
               }
             : {

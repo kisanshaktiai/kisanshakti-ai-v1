@@ -611,19 +611,19 @@ export const CROP_DURATIONS: Record<string, {
     { name: 'vegetative_growth', days: 35 }, { name: 'reproductive', days: 25 },
     { name: 'maturity', days: 14 }, { name: 'harvest', days: 7 }
   ]},
-  cotton: { rule_id: 'DUR_COTTON_001', duration_days: 180, min_tasks: 28, stages: [
+  cotton: { rule_id: 'DUR_COTTON_001', duration_days: 180, min_tasks: 20, stages: [
     { name: 'planning', days: 7 }, { name: 'land_preparation', days: 14 },
     { name: 'sowing', days: 7 }, { name: 'germination', days: 14 },
     { name: 'vegetative_growth', days: 45 }, { name: 'reproductive', days: 60 },
     { name: 'maturity', days: 25 }, { name: 'harvest', days: 8 }
   ]},
-  sugarcane: { rule_id: 'DUR_SUGARCANE_001', duration_days: 365, min_tasks: 35, stages: [
+  sugarcane: { rule_id: 'DUR_SUGARCANE_001', duration_days: 365, min_tasks: 18, stages: [
     { name: 'planning', days: 7 }, { name: 'land_preparation', days: 21 },
     { name: 'sowing', days: 14 }, { name: 'germination', days: 30 },
     { name: 'vegetative_growth', days: 120 }, { name: 'reproductive', days: 90 },
     { name: 'maturity', days: 60 }, { name: 'harvest', days: 23 }
   ]},
-  tomato: { rule_id: 'DUR_TOMATO_001', duration_days: 120, min_tasks: 22, stages: [
+  tomato: { rule_id: 'DUR_TOMATO_001', duration_days: 120, min_tasks: 18, stages: [
     { name: 'planning', days: 5 }, { name: 'land_preparation', days: 7 },
     { name: 'sowing', days: 7 }, { name: 'germination', days: 14 },
     { name: 'vegetative_growth', days: 35 }, { name: 'reproductive', days: 30 },
