@@ -157,6 +157,8 @@ function calculatePrediction(history: NDVIDataComplete[]): NDVIPrediction | null
 export function useNDVIAnalysis(landId: string | null): NDVIAnalysisResult {
   const { tenant } = useTenant();
   const { session } = useAuthStore();
+  const tenantId = tenant?.id ?? session?.tenantId;
+  const farmerId = session?.farmerId;
 
   const {
     data,
@@ -164,12 +166,12 @@ export function useNDVIAnalysis(landId: string | null): NDVIAnalysisResult {
     error,
     refetch,
   } = useQuery({
-    queryKey: ['ndvi-analysis', landId, tenant?.id],
+    queryKey: ['ndvi-analysis', landId, tenantId],
     queryFn: async () => {
       if (!landId) return { current: null, history: [] };
 
-      const client = supabaseWithAuth(session?.farmerId, tenant?.id);
-      
+      const client = supabaseWithAuth(farmerId, tenantId);
+
       const { data: ndviData, error: ndviError } = await client
         .from('ndvi_data')
         .select('*')
@@ -190,7 +192,7 @@ export function useNDVIAnalysis(landId: string | null): NDVIAnalysisResult {
         history: parsedData,
       };
     },
-    enabled: !!landId && !!session?.farmerId,
+    enabled: !!landId && !!farmerId && !!tenantId,
     refetchInterval: 60000,
     staleTime: 30000,
   });
@@ -210,14 +212,16 @@ export function useNDVIAnalysis(landId: string | null): NDVIAnalysisResult {
 export function useNDVIComparison(landIds: string[]) {
   const { tenant } = useTenant();
   const { session } = useAuthStore();
+  const tenantId = tenant?.id ?? session?.tenantId;
+  const farmerId = session?.farmerId;
 
   return useQuery({
-    queryKey: ['ndvi-comparison', landIds, tenant?.id],
+    queryKey: ['ndvi-comparison', landIds, tenantId],
     queryFn: async () => {
       if (landIds.length === 0) return [];
 
-      const client = supabaseWithAuth(session?.farmerId, tenant?.id);
-      
+      const client = supabaseWithAuth(farmerId, tenantId);
+
       const { data, error } = await client
         .from('ndvi_data')
         .select('*')
@@ -239,6 +243,6 @@ export function useNDVIComparison(landIds: string[]) {
 
       return Array.from(latestByLand.values());
     },
-    enabled: landIds.length > 0,
+    enabled: landIds.length > 0 && !!farmerId && !!tenantId,
   });
 }
