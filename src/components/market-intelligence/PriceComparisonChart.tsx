@@ -29,7 +29,6 @@ import { cn } from '@/lib/utils';
 interface PriceComparisonChartProps {
   historicalData: HistoricalComparison;
   selectedCrop?: string;
-  selectedState?: string;
   isLoading: boolean;
   onFetchComparison: () => void;
 }
@@ -37,7 +36,6 @@ interface PriceComparisonChartProps {
 export function PriceComparisonChart({ 
   historicalData, 
   selectedCrop, 
-  selectedState,
   isLoading,
   onFetchComparison 
 }: PriceComparisonChartProps) {
@@ -100,7 +98,7 @@ export function PriceComparisonChart({
             {t('market.intelligence.priceComparison', 'Price Comparison')}
           </h3>
           <p className="text-sm text-muted-foreground">
-            {selectedCrop} • {selectedState}
+            {selectedCrop} • महाराष्ट्र
           </p>
         </div>
         

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '@/stores/authStore';
 import { useMarketPriceIntelligence } from '@/hooks/useMarketPriceIntelligence';
-import { MarketStateSelector } from './MarketStateSelector';
 import { MarketPriceCard } from './MarketPriceCard';
 import { NearbyMarketsSection } from './NearbyMarketsSection';
 import { PriceComparisonChart } from './PriceComparisonChart';
@@ -23,7 +22,8 @@ import {
   RefreshCw,
   Loader2,
   Wheat,
-  BarChart3
+  BarChart3,
+  Store
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -32,7 +32,7 @@ export function MarketPriceIntelligence() {
   const { t } = useTranslation();
   const { user } = useAuthStore();
   const [activeTab, setActiveTab] = useState('prices');
-  const [selectedState, setSelectedState] = useState<string>('');
+  const [selectedMarket, setSelectedMarket] = useState<string>('');
   const [selectedCrop, setSelectedCrop] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
@@ -45,10 +45,12 @@ export function MarketPriceIntelligence() {
     aiAnalysis,
     farmerLocation,
     states,
+    markets,
     crops,
     isLoading,
     fetchFarmerLocation,
     fetchStates,
+    fetchMarkets,
     fetchCrops,
     fetchPrices,
     fetchNearbyMarkets,
@@ -59,41 +61,41 @@ export function MarketPriceIntelligence() {
   // Initialize data on mount
   useEffect(() => {
     const init = async () => {
-      await fetchStates();
+      console.log('[MarketPriceIntelligence] Initializing...');
+      
+      // Fetch all data in parallel - no state dependency
+      await Promise.all([
+        fetchStates(),
+        fetchMarkets(),
+        fetchCrops(),
+      ]);
+      
+      // Fetch farmer location for nearby markets
       const location = await fetchFarmerLocation();
       
-      // Auto-select farmer's state
-      if (location?.state) {
-        setSelectedState(location.state);
-        await fetchCrops(location.state);
-        await fetchPrices({ state: location.state, limit: 100 });
-        
-        // Fetch nearby markets if coordinates available
-        if (location.lat && location.lon) {
-          await fetchNearbyMarkets({ 
-            lat: location.lat, 
-            lon: location.lon, 
-            radiusKm: 50 
-          });
-        }
-      } else {
-        // Default to Maharashtra
-        setSelectedState('Maharashtra');
-        await fetchCrops('Maharashtra');
-        await fetchPrices({ state: 'Maharashtra', limit: 100 });
+      // Fetch initial prices - NO state filter needed
+      console.log('[MarketPriceIntelligence] Fetching initial prices...');
+      await fetchPrices({ limit: 100 });
+      
+      // Fetch nearby markets if coordinates available
+      if (location?.lat && location?.lon) {
+        console.log('[MarketPriceIntelligence] Fetching nearby markets for location:', location);
+        await fetchNearbyMarkets({ 
+          lat: location.lat, 
+          lon: location.lon, 
+          radiusKm: 50 
+        });
       }
     };
     
     init();
   }, [user?.id]);
 
-  const handleStateChange = async (state: string) => {
-    setSelectedState(state);
-    setSelectedCrop('');
-    await fetchCrops(state);
+  const handleMarketChange = async (market: string) => {
+    setSelectedMarket(market);
     await fetchPrices({ 
-      state, 
-      crop: selectedCrop || undefined,
+      market: market === 'all' ? undefined : market,
+      crop: selectedCrop === 'all' ? undefined : selectedCrop,
       date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined 
     });
   };
@@ -101,36 +103,36 @@ export function MarketPriceIntelligence() {
   const handleCropChange = async (crop: string) => {
     setSelectedCrop(crop);
     await fetchPrices({ 
-      state: selectedState, 
-      crop: crop || undefined,
+      market: selectedMarket === 'all' ? undefined : selectedMarket,
+      crop: crop === 'all' ? undefined : crop,
       date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined 
     });
     
-    // Update historical data and AI analysis for selected crop
-    if (crop) {
-      await getHistoricalComparison({ crop, state: selectedState });
+    // Update historical data for selected crop
+    if (crop && crop !== 'all') {
+      await getHistoricalComparison({ crop });
     }
   };
 
   const handleDateChange = async (date: Date | undefined) => {
     setSelectedDate(date);
     await fetchPrices({ 
-      state: selectedState, 
-      crop: selectedCrop || undefined,
+      market: selectedMarket === 'all' ? undefined : selectedMarket,
+      crop: selectedCrop === 'all' ? undefined : selectedCrop,
       date: date ? format(date, 'yyyy-MM-dd') : undefined 
     });
   };
 
   const handleRefresh = async () => {
     await fetchPrices({ 
-      state: selectedState, 
-      crop: selectedCrop || undefined,
+      market: selectedMarket === 'all' ? undefined : selectedMarket,
+      crop: selectedCrop === 'all' ? undefined : selectedCrop,
       date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined 
     });
   };
 
   const handleGetAIAdvice = async () => {
-    if (!selectedCrop) return;
+    if (!selectedCrop || selectedCrop === 'all') return;
     
     const avgPrice = prices.length > 0 
       ? prices.reduce((sum, p) => sum + (p.modal_price || p.price_per_unit || 0), 0) / prices.length 
@@ -138,7 +140,7 @@ export function MarketPriceIntelligence() {
       
     await getAIAnalysis({
       crop: selectedCrop,
-      state: selectedState,
+      market: selectedMarket === 'all' ? undefined : selectedMarket,
       currentPrice: avgPrice,
       historicalData
     });
@@ -171,12 +173,21 @@ export function MarketPriceIntelligence() {
             {t('market.intelligence.subtitle', 'AI-powered insights to help you sell at the best price')}
           </p>
           
-          {farmerLocation && (
-            <div className="flex items-center gap-2 mt-3 text-sm text-muted-foreground">
-              <MapPin className="w-4 h-4 text-primary" />
-              <span>{farmerLocation.district}, {farmerLocation.state}</span>
+          <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Store className="w-4 h-4 text-primary" />
+              <span>महाराष्ट्र (MSAMB)</span>
             </div>
-          )}
+            {farmerLocation && (
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-accent" />
+                <span>{farmerLocation.district || 'Your location'}</span>
+              </div>
+            )}
+            <div className="flex items-center gap-2 bg-primary/10 px-2 py-1 rounded-full">
+              <span className="text-xs font-medium text-primary">{prices.length} prices loaded</span>
+            </div>
+          </div>
         </div>
       </motion.div>
 
@@ -187,13 +198,21 @@ export function MarketPriceIntelligence() {
         transition={{ delay: 0.1 }}
         className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-6"
       >
-        <MarketStateSelector
-          states={states}
-          selectedState={selectedState}
-          farmerState={farmerLocation?.state}
-          onStateChange={handleStateChange}
-        />
+        {/* Market Location Selector */}
+        <Select value={selectedMarket} onValueChange={handleMarketChange}>
+          <SelectTrigger className="h-12 rounded-2xl bg-card/50 backdrop-blur border-border/50">
+            <Store className="w-4 h-4 mr-2 text-muted-foreground" />
+            <SelectValue placeholder={t('market.intelligence.selectMarket', 'Select Market')} />
+          </SelectTrigger>
+          <SelectContent className="max-h-60">
+            <SelectItem value="all">{t('market.intelligence.allMarkets', 'All Markets')}</SelectItem>
+            {markets.map((market) => (
+              <SelectItem key={market} value={market}>{market}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
+        {/* Crop Selector */}
         <Select value={selectedCrop} onValueChange={handleCropChange}>
           <SelectTrigger className="h-12 rounded-2xl bg-card/50 backdrop-blur border-border/50">
             <Wheat className="w-4 h-4 mr-2 text-muted-foreground" />
@@ -207,6 +226,7 @@ export function MarketPriceIntelligence() {
           </SelectContent>
         </Select>
 
+        {/* Date Picker */}
         <Popover>
           <PopoverTrigger asChild>
             <Button
@@ -230,6 +250,7 @@ export function MarketPriceIntelligence() {
           </PopoverContent>
         </Popover>
 
+        {/* Search */}
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
@@ -256,7 +277,7 @@ export function MarketPriceIntelligence() {
         <Button 
           onClick={handleGetAIAdvice}
           className="rounded-xl bg-gradient-to-r from-primary to-accent hover:opacity-90"
-          disabled={isLoading || !selectedCrop}
+          disabled={isLoading || !selectedCrop || selectedCrop === 'all'}
         >
           <Brain className="w-4 h-4 mr-2" />
           {t('market.intelligence.getAIAdvice', 'Get AI Advice')}
@@ -352,7 +373,7 @@ export function MarketPriceIntelligence() {
                   lat: farmerLocation.lat, 
                   lon: farmerLocation.lon, 
                   radiusKm: 50,
-                  crop: selectedCrop || undefined
+                  crop: selectedCrop === 'all' ? undefined : selectedCrop
                 });
               }
             }}
@@ -363,11 +384,10 @@ export function MarketPriceIntelligence() {
           <PriceComparisonChart
             historicalData={historicalData}
             selectedCrop={selectedCrop}
-            selectedState={selectedState}
             isLoading={isLoading}
             onFetchComparison={() => getHistoricalComparison({ 
-              crop: selectedCrop, 
-              state: selectedState 
+              crop: selectedCrop === 'all' ? undefined : selectedCrop,
+              market: selectedMarket === 'all' ? undefined : selectedMarket
             })}
           />
         </TabsContent>
