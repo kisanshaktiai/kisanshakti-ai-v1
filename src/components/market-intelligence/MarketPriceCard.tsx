@@ -1,11 +1,27 @@
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { MarketPrice } from '@/hooks/useMarketPriceIntelligence';
-import { TrendingUp, TrendingDown, MapPin, Wheat, Package } from 'lucide-react';
+import { TrendingUp, TrendingDown, MapPin, Wheat, Package, Tag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MarketPriceCardProps {
   price: MarketPrice;
+}
+
+// Get group icon based on commodity_category
+function getGroupIcon(category: string | undefined): string {
+  const icons: Record<string, string> = {
+    'धान्ये': '🌾',
+    'डाळी': '🫘',
+    'भाज्या': '🥬',
+    'फळे': '🍎',
+    'मसाले': '🧄',
+    'तेलबिया': '🌻',
+    'गूळ व साखर': '🍯',
+    'कापूस': '🧶',
+    'इतर': '📦',
+  };
+  return icons[category || ''] || '🌱';
 }
 
 export function MarketPriceCard({ price }: MarketPriceCardProps) {
@@ -19,6 +35,7 @@ export function MarketPriceCard({ price }: MarketPriceCardProps) {
 
   // Determine if price is high/low based on spread
   const isPriceHigh = priceSpread > 0 && modalPrice >= (minPrice + priceSpread * 0.7);
+  const groupIcon = getGroupIcon(price.commodity_category);
 
   return (
     <motion.div
@@ -29,27 +46,35 @@ export function MarketPriceCard({ price }: MarketPriceCardProps) {
       className={cn(
         "relative overflow-hidden rounded-2xl p-4",
         "bg-gradient-to-br from-card via-card to-card/80",
-        "border border-border/50 shadow-lg shadow-black/5",
-        "backdrop-blur-xl"
+        "border border-border/50",
+        "shadow-sm hover:shadow-md transition-shadow"
       )}
     >
       {/* Decorative gradient */}
-      <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-primary/10 to-transparent rounded-full -translate-y-1/2 translate-x-1/2" />
+      <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-primary/10 to-transparent rounded-full -translate-y-1/2 translate-x-1/2" />
       
+      {/* Group Badge - Always show */}
+      <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted/80 text-xs">
+        <span>{groupIcon}</span>
+        <span className="text-muted-foreground font-medium truncate max-w-[60px]">
+          {price.commodity_category || 'इतर'}
+        </span>
+      </div>
+
       {/* Distance badge if available */}
       {price.distance !== undefined && (
-        <div className="absolute top-3 right-3 px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
+        <div className="absolute bottom-2 right-2 px-2 py-1 rounded-full bg-info/10 text-info text-xs font-medium">
           {price.distance} km
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex items-start gap-3 mb-3">
-        <div className="p-2.5 rounded-xl bg-primary/10">
-          <Wheat className="w-5 h-5 text-primary" />
+      {/* Header with crop name */}
+      <div className="flex items-start gap-3 mb-3 pr-20">
+        <div className="p-2 rounded-xl bg-primary/10 flex-shrink-0">
+          <Wheat className="w-4 h-4 text-primary" />
         </div>
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-foreground truncate">
+          <h3 className="font-semibold text-foreground truncate text-sm">
             {price.crop_name}
           </h3>
           {price.variety && (
@@ -63,36 +88,41 @@ export function MarketPriceCard({ price }: MarketPriceCardProps) {
       {/* Price Section */}
       <div className="mb-3">
         <div className="flex items-baseline gap-1">
-          <span className="text-2xl font-bold text-foreground">
+          <span className="text-xl font-bold text-foreground">
             ₹{modalPrice.toLocaleString('en-IN')}
           </span>
-          <span className="text-sm text-muted-foreground">/{price.unit || 'Qtl'}</span>
+          <span className="text-xs text-muted-foreground">/{price.unit || 'Qtl'}</span>
         </div>
         
         {/* Price Range */}
         <div className="flex items-center gap-2 mt-1.5">
           <div className="flex items-center gap-1 text-xs">
-            <TrendingDown className="w-3 h-3 text-red-500" />
+            <TrendingDown className="w-3 h-3 text-destructive" />
             <span className="text-muted-foreground">₹{minPrice.toLocaleString('en-IN')}</span>
           </div>
           <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
             <div 
-              className="h-full bg-gradient-to-r from-red-500 via-yellow-500 to-green-500 rounded-full"
+              className={cn(
+                "h-full rounded-full transition-all",
+                isPriceHigh 
+                  ? "bg-gradient-to-r from-warning via-success to-success" 
+                  : "bg-gradient-to-r from-destructive via-warning to-warning"
+              )}
               style={{ 
                 width: `${Math.min(100, ((modalPrice - minPrice) / (priceSpread || 1)) * 100)}%` 
               }}
             />
           </div>
           <div className="flex items-center gap-1 text-xs">
-            <TrendingUp className="w-3 h-3 text-green-500" />
+            <TrendingUp className="w-3 h-3 text-success" />
             <span className="text-muted-foreground">₹{maxPrice.toLocaleString('en-IN')}</span>
           </div>
         </div>
       </div>
 
       {/* Location */}
-      <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-2">
-        <MapPin className="w-3.5 h-3.5" />
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+        <MapPin className="w-3 h-3 text-primary" />
         <span className="truncate">
           {price.market_location || price.district}
         </span>
@@ -102,14 +132,16 @@ export function MarketPriceCard({ price }: MarketPriceCardProps) {
       {price.arrival && (
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <Package className="w-3 h-3" />
-          <span>{t('market.intelligence.arrival', 'Arrival')}: {price.arrival} {price.unit || 'Qtl'}</span>
+          <span>आवक: {price.arrival} {price.unit || 'Qtl'}</span>
         </div>
       )}
 
-      {/* Price indicator */}
+      {/* Price indicator bar */}
       <div className={cn(
         "absolute bottom-0 left-0 right-0 h-1",
-        isPriceHigh ? "bg-gradient-to-r from-green-500 to-green-400" : "bg-gradient-to-r from-yellow-500 to-orange-400"
+        isPriceHigh 
+          ? "bg-gradient-to-r from-success to-success/70" 
+          : "bg-gradient-to-r from-warning to-warning/70"
       )} />
     </motion.div>
   );

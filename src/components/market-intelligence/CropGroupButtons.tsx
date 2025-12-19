@@ -31,41 +31,42 @@ export function CropGroupButtons({
   onSelectGroup,
   isLoading = false 
 }: CropGroupButtonsProps) {
+  // Use API groups if available, otherwise use defaults
   const displayGroups = groups.length > 0 ? groups.slice(0, 6) : defaultGroups;
 
   return (
     <div className="w-full">
-      <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-        <span className="text-lg">🌱</span>
-        पीक प्रकार निवडा • Select Crop Type
+      <h3 className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-2">
+        <span className="text-base">🌱</span>
+        पीक प्रकार • Crop Type
       </h3>
       
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
         {displayGroups.map((group, index) => (
           <motion.button
             key={group.name}
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: index * 0.05 }}
+            transition={{ delay: index * 0.03 }}
             onClick={() => onSelectGroup(group.name)}
             disabled={isLoading}
             className={cn(
-              "relative flex flex-col items-center justify-center p-3 md:p-4 rounded-2xl transition-all duration-200",
-              "min-h-[80px] md:min-h-[100px]",
-              "border-2 touch-manipulation",
+              "relative flex flex-col items-center justify-center p-2.5 md:p-3 rounded-xl transition-all duration-200",
+              "min-h-[70px] md:min-h-[80px]",
+              "border touch-manipulation",
               "active:scale-95",
               selectedGroup === group.name
-                ? "bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/25"
+                ? "bg-primary text-primary-foreground border-primary shadow-md"
                 : "bg-card/80 backdrop-blur border-border/50 hover:border-primary/50 hover:bg-primary/5",
               isLoading && "opacity-50 cursor-not-allowed"
             )}
           >
             {/* Icon */}
-            <span className="text-2xl md:text-3xl mb-1">{group.icon}</span>
+            <span className="text-xl md:text-2xl mb-0.5">{group.icon}</span>
             
             {/* Marathi Name */}
             <span className={cn(
-              "text-xs md:text-sm font-semibold text-center leading-tight",
+              "text-[10px] md:text-xs font-semibold text-center leading-tight",
               selectedGroup === group.name ? "text-primary-foreground" : "text-foreground"
             )}>
               {group.name}
@@ -73,7 +74,7 @@ export function CropGroupButtons({
             
             {/* English Name */}
             <span className={cn(
-              "text-[10px] md:text-xs text-center",
+              "text-[8px] md:text-[10px] text-center",
               selectedGroup === group.name ? "text-primary-foreground/80" : "text-muted-foreground"
             )}>
               {group.en}
@@ -82,22 +83,13 @@ export function CropGroupButtons({
             {/* Count Badge */}
             {group.count > 0 && (
               <span className={cn(
-                "absolute -top-1 -right-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[20px]",
+                "absolute -top-1 -right-1 text-[8px] font-bold px-1 py-0.5 rounded-full min-w-[16px]",
                 selectedGroup === group.name
                   ? "bg-primary-foreground text-primary"
                   : "bg-primary/10 text-primary"
               )}>
                 {group.count > 999 ? '999+' : group.count}
               </span>
-            )}
-
-            {/* Selection Indicator */}
-            {selectedGroup === group.name && (
-              <motion.div
-                layoutId="groupSelection"
-                className="absolute inset-0 rounded-2xl border-2 border-primary"
-                transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
-              />
             )}
           </motion.button>
         ))}
@@ -107,11 +99,11 @@ export function CropGroupButtons({
       <motion.button
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.3 }}
+        transition={{ delay: 0.2 }}
         onClick={() => onSelectGroup('all')}
         className={cn(
-          "w-full mt-3 py-3 rounded-xl text-sm font-medium transition-all",
-          "border-2 touch-manipulation active:scale-[0.98]",
+          "w-full mt-2 py-2.5 rounded-xl text-xs font-medium transition-all",
+          "border touch-manipulation active:scale-[0.98]",
           selectedGroup === 'all' || !selectedGroup
             ? "bg-accent text-accent-foreground border-accent"
             : "bg-muted/50 text-muted-foreground border-border/50 hover:bg-muted"
