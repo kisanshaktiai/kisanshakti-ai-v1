@@ -2818,11 +2818,11 @@ serve(async (req) => {
     
     console.log(`📋 [AI] Building prompt for ${totalStages} stages, min ${minTaskCount} tasks for ${cropDurationDays}-day crop`);
 
-    // OPTIMIZED: Compact stage prompt with more tasks per stage for long-duration crops
+    // OPTIMIZED: Force a compact output size (prevents JSON truncation)
     const tasksPerStage = Math.ceil(minTaskCount / totalStages);
     const stagesPrompt = farmingStages
       .map((stage: FarmingStage) => {
-        return `${stage.stage_order}. ${stage.stage_name} (${stage.stage_key}): ${stage.stage_description} - ${tasksPerStage}-${tasksPerStage + 2} tasks`;
+        return `${stage.stage_order}. ${stage.stage_name} (${stage.stage_key}): ${stage.stage_description} - exactly ${tasksPerStage} tasks`;
       })
       .join("\n");
 
@@ -3465,31 +3465,17 @@ ${seedRules}
    - Mark irrigation, spraying tasks as weather_dependent: true
    - Include ideal_weather conditions for sensitive tasks`;
 
-    // DATA Section
+    // DATA Section (compact to reduce token usage / latency)
     const dataSection = `
 ═══════════════════════════════════════════════════════════════════════════
-📊 DATA (FOR ${landAreaAcres.toFixed(2)} ACRES / ${landAreaGuntha} GUNTHA)
+📊 KEY NUMBERS (FOR ${landAreaAcres.toFixed(2)} ACRES / ${landAreaGuntha} GUNTHA)
 ═══════════════════════════════════════════════════════════════════════════
-
-YIELD BOOSTING TECHNIQUES PER STAGE:
-${Object.entries(YIELD_BOOST_TECHNIQUES).map(([stage, data]) => 
-  `${stage}: ${data.techniques.slice(0, 2).join(", ")} | Impact: ${data.yieldImpact.substring(0, 50)}...`
-).join("\n")}
-
-FYM/ORGANIC INPUTS (TOTAL for ${landAreaAcres.toFixed(2)} acres):
 - FYM: ${fymTons} tons @ ₹800/ton = ₹${fymCost}
-- Vermicompost: ${Math.round(landAreaAcres * 200)} kg @ ₹12/kg = ₹${Math.round(landAreaAcres * 200 * 12)}
-- Jeevamrut: ${Math.round(landAreaAcres)} batches @ ₹80/batch = ₹${Math.round(landAreaAcres * 80)}
-
-FERTILIZER REQUIREMENTS (TOTAL for ${landAreaAcres.toFixed(2)} acres):
-- Urea: ${ureaKg} kg @ ₹${FERTILIZER_PRICES.urea.price_per_kg}/kg = ₹${ureaCost}
-- DAP: ${dapKg} kg @ ₹${FERTILIZER_PRICES.dap.price_per_kg}/kg = ₹${dapCost}
-- MOP: ${mopKg} kg @ ₹${FERTILIZER_PRICES.mop.price_per_kg}/kg = ₹${mopCost}
-
-GROWTH PROMOTERS (prices for ${landAreaAcres.toFixed(2)} acres):
-- Seaweed Extract: ${Math.round(landAreaAcres * 500)}ml @ ₹1.1/ml = ₹${Math.round(landAreaAcres * 550)}
-- Humic Acid: ${Math.round(landAreaAcres)}L @ ₹480/L = ₹${Math.round(landAreaAcres * 480)}
-- Amino Acid: ${Math.round(landAreaAcres)}L @ ₹620/L = ₹${Math.round(landAreaAcres * 620)}`;
+- Urea: ${ureaKg} kg = ₹${ureaCost}
+- DAP: ${dapKg} kg = ₹${dapCost}
+- MOP: ${mopKg} kg = ₹${mopCost}
+- Water per irrigation: ${adjustedWaterPerIrrigation} liters
+`;
 
     // Combine all sections into system prompt
     const systemPrompt = `${contextSection}
@@ -3630,8 +3616,9 @@ OUTPUT: Return ONLY valid JSON object (no markdown, no explanation). Start with 
           ],
           currentProvider === "gemini" 
             ? {
-                maxTokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
-                useJsonMode: true,  // Use JSON mode for Gemini
+                // Keep output small/fast; prompt enforces compact JSON
+                maxTokens: Math.min(AI_CONFIG.MAX_TOKENS_SCHEDULE, 7000),
+                useJsonMode: true, // Use JSON mode for Gemini
               }
             : {
                 maxTokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
