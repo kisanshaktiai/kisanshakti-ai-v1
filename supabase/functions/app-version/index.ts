@@ -45,17 +45,20 @@ Deno.serve(async (req) => {
       }
     );
 
-    // Fetch current version
-    const { data: currentVersion, error } = await supabaseClient
+    // Fetch current version - get the most recently deployed one with is_current=true
+    const { data: versions, error } = await supabaseClient
       .from('app_versions')
       .select('*')
       .eq('is_current', true)
-      .maybeSingle();
+      .order('deployed_at', { ascending: false, nullsFirst: false })
+      .limit(1);
 
     if (error) {
       console.error('[app-version] Database error:', error);
       throw error;
     }
+
+    const currentVersion = versions?.[0] || null;
 
     if (!currentVersion) {
       console.warn('[app-version] No current version found in database');
