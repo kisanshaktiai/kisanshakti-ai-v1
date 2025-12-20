@@ -14,6 +14,12 @@ import { NDVIMapView } from '@/components/land/NDVIMapView';
 import { NDVITrendChart } from '@/components/land/NDVITrendChart';
 import { useNDVIAnalysis } from '@/hooks/useNDVIAnalysis';
 import { 
+  getScientificHealthStatus, 
+  formatNDVI, 
+  NDVI_THRESHOLDS,
+  getTrendDirection 
+} from '@/lib/ndviScience';
+import { 
   ArrowLeft, 
   Map, 
   TrendingUp,
@@ -43,7 +49,8 @@ import {
   CloudRain,
   Phone,
   Camera,
-  Share2
+  Share2,
+  Info
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
@@ -128,32 +135,20 @@ const NDVIAnalysis = () => {
   const speakSummary = () => {
     if (isSpeaking) return stop();
     const ndvi = ndviCurrent?.ndvi_value ?? 0;
-    const label = ndviCurrent?.metadata?.health_label ?? 'Unknown';
-    speak(`Crop health: ${label}. NDVI value: ${ndvi.toFixed(2)}`);
+    const status = getScientificHealthStatus(ndvi);
+    speak(`Crop health: ${status.label}. NDVI value: ${formatNDVI(ndvi, 2)}`);
   };
 
-  // Health score calculation
-  const healthScore = ndviCurrent ? Math.round(Math.min(100, Math.max(0, ndviCurrent.ndvi_value * 100))) : 0;
-  const getHealthColor = (score: number) => {
-    if (score >= 70) return 'text-emerald-500';
-    if (score >= 50) return 'text-amber-500';
-    if (score >= 30) return 'text-orange-500';
-    return 'text-red-500';
-  };
-  const getHealthBg = (score: number) => {
-    if (score >= 70) return 'from-emerald-500/20 to-emerald-500/5';
-    if (score >= 50) return 'from-amber-500/20 to-amber-500/5';
-    if (score >= 30) return 'from-orange-500/20 to-orange-500/5';
-    return 'from-red-500/20 to-red-500/5';
-  };
-  const getHealthLabel = () => ndviCurrent?.metadata?.health_label ?? 'Unknown';
-
-  // SVG ring
+  // Scientific health status (no 0-100 conversion)
+  const currentNdvi = ndviCurrent?.ndvi_value ?? 0;
+  const healthStatus = getScientificHealthStatus(currentNdvi);
+  
+  // SVG ring - uses NDVI directly (0-1 scale)
   const ringSize = 140;
   const strokeW = 10;
   const radius = (ringSize - strokeW) / 2;
   const circumference = radius * 2 * Math.PI;
-  const offset = circumference - (healthScore / 100) * circumference;
+  const offset = circumference - (Math.max(0, Math.min(1, currentNdvi)) * circumference);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
@@ -215,7 +210,9 @@ const NDVIAnalysis = () => {
                     {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 rounded-2xl" />)}
                   </div>
                 ) : lands && lands.length > 0 ? (
-                  lands.map((land, i) => (
+                  lands.map((land, i) => {
+                    const landHealth = land.last_ndvi_value ? getScientificHealthStatus(land.last_ndvi_value) : null;
+                    return (
                     <motion.div
                       key={land.id}
                       initial={{ opacity: 0, x: -20 }}
@@ -228,15 +225,11 @@ const NDVIAnalysis = () => {
                         <CardContent className="p-4 flex items-center gap-4">
                           <div className={cn(
                             "w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-br",
-                            land.last_ndvi_value && land.last_ndvi_value > 0.5 ? "from-emerald-500/20 to-emerald-500/5" :
-                            land.last_ndvi_value && land.last_ndvi_value > 0.3 ? "from-amber-500/20 to-amber-500/5" :
-                            "from-muted to-muted/50"
+                            landHealth ? landHealth.bgColor : "from-muted to-muted/50"
                           )}>
                             <Leaf className={cn(
                               "h-6 w-6",
-                              land.last_ndvi_value && land.last_ndvi_value > 0.5 ? "text-emerald-500" :
-                              land.last_ndvi_value && land.last_ndvi_value > 0.3 ? "text-amber-500" :
-                              "text-muted-foreground"
+                              landHealth ? landHealth.textColor : "text-muted-foreground"
                             )} />
                           </div>
                           <div className="flex-1 min-w-0">
@@ -248,10 +241,10 @@ const NDVIAnalysis = () => {
                           </div>
                           {land.last_ndvi_value ? (
                             <div className="text-right">
-                              <p className={cn("text-lg font-bold", getHealthColor(land.last_ndvi_value * 100))}>
-                                {(land.last_ndvi_value * 100).toFixed(0)}
+                              <p className={cn("text-lg font-bold", landHealth?.textColor)}>
+                                {formatNDVI(land.last_ndvi_value)}
                               </p>
-                              <p className="text-[10px] text-muted-foreground">NDVI Score</p>
+                              <p className="text-[10px] text-muted-foreground">{landHealth?.label}</p>
                             </div>
                           ) : (
                             <Badge variant="outline" className="text-[10px]">No Data</Badge>
@@ -259,7 +252,7 @@ const NDVIAnalysis = () => {
                         </CardContent>
                       </Card>
                     </motion.div>
-                  ))
+                  )})
                 ) : (
                   <div className="text-center py-12">
                     <TreePine className="h-12 w-12 mx-auto text-muted-foreground/30 mb-4" />
@@ -338,16 +331,16 @@ const NDVIAnalysis = () => {
                     </div>
                   ) : ndviCurrent ? (
                     <>
-                      {/* Hero Health Ring */}
+                      {/* Hero Health Ring - Scientific NDVI Display */}
                       <motion.div
                         initial={{ scale: 0.9, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        className={cn("relative rounded-3xl p-6 bg-gradient-to-br", getHealthBg(healthScore))}
+                        className={cn("relative rounded-3xl p-6 bg-gradient-to-br", healthStatus.bgColor)}
                       >
                         <div className="absolute top-4 right-4">
                           <Badge className="bg-background/80 backdrop-blur-xl text-foreground border-0 shadow-lg">
                             <Sparkles className="h-3 w-3 mr-1 text-primary" />
-                            AI Powered
+                            Scientific Analysis
                           </Badge>
                         </div>
                         
@@ -370,11 +363,7 @@ const NDVIAnalysis = () => {
                                 fill="none"
                                 strokeWidth={strokeW}
                                 strokeLinecap="round"
-                                className={cn(
-                                  healthScore >= 70 ? "stroke-emerald-500" :
-                                  healthScore >= 50 ? "stroke-amber-500" :
-                                  healthScore >= 30 ? "stroke-orange-500" : "stroke-red-500"
-                                )}
+                                className={healthStatus.strokeColor}
                                 initial={{ strokeDashoffset: circumference }}
                                 animate={{ strokeDashoffset: offset }}
                                 transition={{ duration: 1.5, ease: "easeOut" }}
@@ -383,27 +372,27 @@ const NDVIAnalysis = () => {
                             </svg>
                             <div className="absolute inset-0 flex flex-col items-center justify-center">
                               <motion.span 
-                                className={cn("text-4xl font-black", getHealthColor(healthScore))}
+                                className={cn("text-3xl font-black", healthStatus.textColor)}
                                 initial={{ scale: 0 }}
                                 animate={{ scale: 1 }}
                                 transition={{ delay: 0.3, type: "spring" }}
                               >
-                                {healthScore}
+                                {formatNDVI(currentNdvi)}
                               </motion.span>
-                              <span className="text-[10px] text-muted-foreground uppercase tracking-widest">Score</span>
+                              <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium">NDVI</span>
                             </div>
                           </div>
                           
                           <div className="flex-1 space-y-3">
                             <div>
                               <p className="text-xs text-muted-foreground uppercase tracking-wider">Status</p>
-                              <p className={cn("text-xl font-bold", getHealthColor(healthScore))}>{getHealthLabel()}</p>
+                              <p className={cn("text-xl font-bold", healthStatus.textColor)}>{healthStatus.label}</p>
                             </div>
                             <div className="flex items-center gap-2">
                               {(ndviCurrent.metadata?.ndvi_trend ?? 0) > 0 ? (
-                                <TrendingUp className="h-4 w-4 text-emerald-500" />
+                                <TrendingUp className="h-4 w-4 text-green-600" />
                               ) : (ndviCurrent.metadata?.ndvi_trend ?? 0) < 0 ? (
-                                <TrendingDown className="h-4 w-4 text-red-500" />
+                                <TrendingDown className="h-4 w-4 text-red-600" />
                               ) : (
                                 <Minus className="h-4 w-4 text-muted-foreground" />
                               )}
@@ -412,6 +401,14 @@ const NDVIAnalysis = () => {
                               </span>
                             </div>
                           </div>
+                        </div>
+
+                        {/* Scientific Reference */}
+                        <div className="mt-4 pt-3 border-t border-border/30">
+                          <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                            <Info className="h-3 w-3" />
+                            NASA/ESA Standard: 0.0 (bare) → 1.0 (dense) | Healthy ≥{NDVI_THRESHOLDS.HEALTHY} | Excellent ≥{NDVI_THRESHOLDS.EXCELLENT}
+                          </p>
                         </div>
                       </motion.div>
 

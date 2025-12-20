@@ -2,6 +2,11 @@ import { useQuery } from '@tanstack/react-query';
 import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthStore } from '@/stores/authStore';
+import { 
+  getScientificRiskLevel, 
+  getTrendDirection, 
+  NDVI_THRESHOLDS 
+} from '@/lib/ndviScience';
 
 export interface NDVIMetadata {
   alerts: string[];
@@ -89,50 +94,52 @@ function calculatePrediction(history: NDVIDataComplete[]): NDVIPrediction | null
   const predicted7 = Math.max(0, Math.min(1, currentNdvi + (ndviTrend * 7)));
   const predicted14 = Math.max(0, Math.min(1, currentNdvi + (ndviTrend * 14)));
 
-  // Determine trend direction
-  const getTrendDirection = (trend: number): 'improving' | 'declining' | 'stable' => {
-    if (trend > 0.001) return 'improving';
-    if (trend < -0.001) return 'declining';
-    return 'stable';
-  };
-
-  // Calculate risk level
-  const getRiskLevel = (ndvi: number, trend: number): 'low' | 'medium' | 'high' | 'critical' => {
-    if (ndvi < 0.2 || (ndvi < 0.4 && trend < -0.005)) return 'critical';
-    if (ndvi < 0.4 || (ndvi < 0.5 && trend < -0.003)) return 'high';
-    if (ndvi < 0.5 || trend < -0.001) return 'medium';
-    return 'low';
-  };
-
-  // Generate recommended actions based on analysis
+  // Generate recommended actions based on scientific thresholds
   const getRecommendedActions = (healthLabel: string, alerts: string[], ndvi: number): string[] => {
     const actions: string[] = [];
     
-    if (alerts?.includes('Very low vegetation cover')) {
-      actions.push('Immediate soil and water assessment required');
+    // Critical threshold (below 0.20)
+    if (ndvi < NDVI_THRESHOLDS.POOR) {
+      actions.push('🚨 Urgent: Immediate soil and water assessment required');
+      actions.push('📞 Contact agricultural expert immediately');
+      actions.push('📸 Document crop condition with photos');
       actions.push('Consider replanting or crop rotation');
     }
-    
-    if (alerts?.includes('Crop water stress likely') || alerts?.includes('Moderate vegetation stress')) {
-      actions.push('Increase irrigation frequency');
-      actions.push('Apply foliar nutrients');
+    // Poor threshold (0.20 - 0.35)
+    else if (ndvi < NDVI_THRESHOLDS.MODERATE) {
+      actions.push('💧 Increase irrigation frequency');
+      actions.push('🌾 Check for nutrient deficiency');
+      actions.push('🐛 Inspect for pest/disease damage');
+      actions.push('Apply foliar nutrients if needed');
+    }
+    // Moderate threshold (0.35 - 0.50)
+    else if (ndvi < NDVI_THRESHOLDS.HEALTHY) {
+      actions.push('Monitor water stress levels');
+      actions.push('Consider supplemental irrigation');
+      actions.push('Check soil moisture regularly');
+    }
+    // Healthy/Excellent (above 0.50)
+    else {
+      actions.push('✅ Maintain current care routine');
+      actions.push('Continue regular monitoring');
+      if (ndvi >= NDVI_THRESHOLDS.EXCELLENT) {
+        actions.push('🌿 Crop is in excellent condition');
+      }
     }
     
-    if (healthLabel === 'Critical') {
-      actions.push('Urgent: Contact agricultural expert');
-      actions.push('Document crop condition with photos');
+    // Add alert-specific actions
+    if (alerts?.includes('Crop water stress likely')) {
+      actions.push('💧 Water stress detected - irrigate soon');
     }
-    
-    if (ndvi > 0.6) {
-      actions.push('Maintain current care routine');
-      actions.push('Monitor for pest activity');
+    if (alerts?.includes('Very low vegetation cover')) {
+      actions.push('Consider replanting affected areas');
     }
 
     return actions.length > 0 ? actions : ['Continue regular monitoring'];
   };
 
   const trendDirection = getTrendDirection(ndviTrend);
-  const riskLevel = getRiskLevel(currentNdvi, ndviTrend);
+  const riskLevel = getScientificRiskLevel(currentNdvi, ndviTrend);
 
   return {
     days7: {

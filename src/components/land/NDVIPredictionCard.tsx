@@ -11,9 +11,15 @@ import {
   TrendingDown, 
   Minus,
   Target,
-  Gauge
+  Gauge,
+  Info
 } from 'lucide-react';
 import type { NDVIPrediction } from '@/hooks/useNDVIAnalysis';
+import { 
+  getScientificHealthStatus, 
+  formatNDVI,
+  NDVI_THRESHOLDS 
+} from '@/lib/ndviScience';
 
 interface NDVIPredictionCardProps {
   prediction: NDVIPrediction | null;
@@ -39,29 +45,38 @@ export function NDVIPredictionCard({ prediction, currentNdvi, className }: NDVIP
 
   const getTrendIcon = (direction: string) => {
     switch (direction) {
-      case 'improving': return <TrendingUp className="h-4 w-4 text-success" />;
-      case 'declining': return <TrendingDown className="h-4 w-4 text-destructive" />;
+      case 'improving': return <TrendingUp className="h-4 w-4 text-green-600" />;
+      case 'declining': return <TrendingDown className="h-4 w-4 text-red-600" />;
       default: return <Minus className="h-4 w-4 text-muted-foreground" />;
     }
   };
 
   const getTrendColor = (direction: string) => {
     switch (direction) {
-      case 'improving': return 'text-success';
-      case 'declining': return 'text-destructive';
+      case 'improving': return 'text-green-600';
+      case 'declining': return 'text-red-600';
       default: return 'text-muted-foreground';
     }
   };
 
-  const getHealthStatus = (ndvi: number) => {
-    if (ndvi >= 0.7) return { label: t('ndvi.health.excellent', 'Excellent'), color: 'bg-success text-success-foreground' };
-    if (ndvi >= 0.5) return { label: t('ndvi.health.good', 'Good'), color: 'bg-primary text-primary-foreground' };
-    if (ndvi >= 0.3) return { label: t('ndvi.health.moderate', 'Moderate'), color: 'bg-warning text-warning-foreground' };
-    return { label: t('ndvi.health.poor', 'Poor'), color: 'bg-destructive text-destructive-foreground' };
+  // Use scientific health status
+  const getHealthBadge = (ndvi: number) => {
+    const status = getScientificHealthStatus(ndvi);
+    return {
+      label: status.label,
+      className: cn(
+        status.level === 'excellent' && 'bg-green-600 text-white',
+        status.level === 'healthy' && 'bg-emerald-500 text-white',
+        status.level === 'moderate' && 'bg-amber-500 text-white',
+        status.level === 'poor' && 'bg-orange-500 text-white',
+        status.level === 'critical' && 'bg-red-600 text-white'
+      )
+    };
   };
 
-  const current7Status = getHealthStatus(prediction.days7.predicted_ndvi);
-  const current14Status = getHealthStatus(prediction.days14.predicted_ndvi);
+  const currentStatus = getHealthBadge(currentNdvi);
+  const status7 = getHealthBadge(prediction.days7.predicted_ndvi);
+  const status14 = getHealthBadge(prediction.days14.predicted_ndvi);
 
   return (
     <Card className={cn("relative overflow-hidden border-none shadow-xl bg-gradient-to-br from-card to-muted/20", className)}>
@@ -77,16 +92,16 @@ export function NDVIPredictionCard({ prediction, currentNdvi, className }: NDVIP
       </CardHeader>
 
       <CardContent className="space-y-5">
-        {/* Current Status */}
+        {/* Current Status - Scientific NDVI Value */}
         <div className="flex items-center justify-between p-3 rounded-xl bg-muted/50">
           <div className="flex items-center gap-2">
             <Target className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">{t('ndvi.prediction.current', 'Current')}</span>
+            <span className="text-sm text-muted-foreground">{t('ndvi.prediction.current', 'Current NDVI')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-lg font-bold">{currentNdvi.toFixed(3)}</span>
-            <Badge className={getHealthStatus(currentNdvi).color}>
-              {getHealthStatus(currentNdvi).label}
+            <span className="text-lg font-bold">{formatNDVI(currentNdvi, 3)}</span>
+            <Badge className={currentStatus.className}>
+              {currentStatus.label}
             </Badge>
           </div>
         </div>
@@ -105,8 +120,8 @@ export function NDVIPredictionCard({ prediction, currentNdvi, className }: NDVIP
             </div>
             <div className="flex items-center gap-1.5">
               {getTrendIcon(prediction.days7.trend_direction)}
-              <span className={cn("text-sm", getTrendColor(prediction.days7.trend_direction))}>
-                {prediction.days7.predicted_ndvi.toFixed(3)}
+              <span className={cn("text-sm font-semibold", getTrendColor(prediction.days7.trend_direction))}>
+                {formatNDVI(prediction.days7.predicted_ndvi, 3)}
               </span>
             </div>
           </div>
@@ -117,8 +132,8 @@ export function NDVIPredictionCard({ prediction, currentNdvi, className }: NDVIP
               className="h-3 bg-muted"
             />
             <div className="flex items-center justify-between mt-1">
-              <Badge variant="outline" className={current7Status.color}>
-                {current7Status.label}
+              <Badge variant="outline" className={status7.className}>
+                {status7.label}
               </Badge>
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Gauge className="h-3 w-3" />
@@ -142,8 +157,8 @@ export function NDVIPredictionCard({ prediction, currentNdvi, className }: NDVIP
             </div>
             <div className="flex items-center gap-1.5">
               {getTrendIcon(prediction.days14.trend_direction)}
-              <span className={cn("text-sm", getTrendColor(prediction.days14.trend_direction))}>
-                {prediction.days14.predicted_ndvi.toFixed(3)}
+              <span className={cn("text-sm font-semibold", getTrendColor(prediction.days14.trend_direction))}>
+                {formatNDVI(prediction.days14.predicted_ndvi, 3)}
               </span>
             </div>
           </div>
@@ -154,8 +169,8 @@ export function NDVIPredictionCard({ prediction, currentNdvi, className }: NDVIP
               className="h-3 bg-muted"
             />
             <div className="flex items-center justify-between mt-1">
-              <Badge variant="outline" className={current14Status.color}>
-                {current14Status.label}
+              <Badge variant="outline" className={status14.className}>
+                {status14.label}
               </Badge>
               <div className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Gauge className="h-3 w-3" />
@@ -170,13 +185,13 @@ export function NDVIPredictionCard({ prediction, currentNdvi, className }: NDVIP
           <p className="text-sm text-muted-foreground">
             {prediction.days7.trend_direction === 'improving' && (
               <>
-                <span className="text-success font-medium">📈 {t('ndvi.prediction.improving_msg', 'Good news!')}</span>{' '}
+                <span className="text-green-600 font-medium">📈 {t('ndvi.prediction.improving_msg', 'Good news!')}</span>{' '}
                 {t('ndvi.prediction.improving_detail', 'Your crop health is expected to improve over the next 2 weeks.')}
               </>
             )}
             {prediction.days7.trend_direction === 'declining' && (
               <>
-                <span className="text-destructive font-medium">📉 {t('ndvi.prediction.declining_msg', 'Attention needed!')}</span>{' '}
+                <span className="text-red-600 font-medium">📉 {t('ndvi.prediction.declining_msg', 'Attention needed!')}</span>{' '}
                 {t('ndvi.prediction.declining_detail', 'Crop health may decline. Consider taking preventive action.')}
               </>
             )}
@@ -186,6 +201,14 @@ export function NDVIPredictionCard({ prediction, currentNdvi, className }: NDVIP
                 {t('ndvi.prediction.stable_detail', 'Crop health is expected to remain steady. Continue current care.')}
               </>
             )}
+          </p>
+        </div>
+
+        {/* Scientific Reference */}
+        <div className="pt-2 border-t border-border/30">
+          <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+            <Info className="h-3 w-3" />
+            NDVI thresholds: Excellent ≥{NDVI_THRESHOLDS.EXCELLENT} | Healthy ≥{NDVI_THRESHOLDS.HEALTHY} | Moderate ≥{NDVI_THRESHOLDS.MODERATE}
           </p>
         </div>
       </CardContent>
