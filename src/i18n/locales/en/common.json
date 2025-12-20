@@ -56,6 +56,7 @@
     "optional": "Optional",
     "noResults": "No results found",
     "pageNotFound": "Page not found",
-    "returnToHome": "Return to Home"
+    "returnToHome": "Return to Home",
+    "swipeLeft": "Swipe left to continue"
   }
 }
