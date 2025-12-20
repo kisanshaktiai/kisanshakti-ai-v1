@@ -45,10 +45,11 @@ Deno.serve(async (req) => {
       }
     );
 
-    // Fetch current version - get the most recently deployed one with is_current=true
+    // Fetch current version for farmer_app only
     const { data: versions, error } = await supabaseClient
       .from('app_versions')
       .select('*')
+      .eq('app_key', 'farmer_app')
       .eq('is_current', true)
       .order('deployed_at', { ascending: false, nullsFirst: false })
       .limit(1);
