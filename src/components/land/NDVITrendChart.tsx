@@ -58,39 +58,42 @@ export function NDVITrendChart({ data, selectedIndex: initialIndex = 'ndvi' }: N
   };
 
   return (
-    <Card className="border-0 shadow-xl rounded-3xl overflow-hidden">
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base flex items-center gap-2">
-            <div className="p-2 rounded-xl" style={{ backgroundColor: `${config.color}20` }}>
-              <TrendingUp className="h-4 w-4" style={{ color: config.color }} />
+    <Card className="border-0 shadow-xl rounded-3xl overflow-hidden w-full max-w-full">
+      <CardHeader className="pb-2 px-3 sm:px-6">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-sm sm:text-base flex items-center gap-2 min-w-0">
+            <div className="p-1.5 sm:p-2 rounded-xl shrink-0" style={{ backgroundColor: `${config.color}20` }}>
+              <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4" style={{ color: config.color }} />
             </div>
-            Trend Analysis
+            <span className="truncate">Trend Analysis</span>
           </CardTitle>
-          <div className="flex items-center gap-1">
+          <div className="shrink-0">
             {trend > 0.001 ? (
-              <Badge className="bg-emerald-500/10 text-emerald-600 border-0">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                Improving
+              <Badge className="bg-emerald-500/10 text-emerald-600 border-0 text-[10px] sm:text-xs px-2">
+                <TrendingUp className="h-3 w-3 mr-0.5 sm:mr-1" />
+                <span className="hidden xs:inline">Improving</span>
+                <span className="xs:hidden">↑</span>
               </Badge>
             ) : trend < -0.001 ? (
-              <Badge className="bg-red-500/10 text-red-600 border-0">
-                <TrendingDown className="h-3 w-3 mr-1" />
-                Declining
+              <Badge className="bg-red-500/10 text-red-600 border-0 text-[10px] sm:text-xs px-2">
+                <TrendingDown className="h-3 w-3 mr-0.5 sm:mr-1" />
+                <span className="hidden xs:inline">Declining</span>
+                <span className="xs:hidden">↓</span>
               </Badge>
             ) : (
-              <Badge className="bg-muted text-muted-foreground border-0">
-                <Minus className="h-3 w-3 mr-1" />
-                Stable
+              <Badge className="bg-muted text-muted-foreground border-0 text-[10px] sm:text-xs px-2">
+                <Minus className="h-3 w-3 mr-0.5 sm:mr-1" />
+                <span className="hidden xs:inline">Stable</span>
+                <span className="xs:hidden">—</span>
               </Badge>
             )}
           </div>
         </div>
       </CardHeader>
       
-      <CardContent className="space-y-4">
-        {/* Index Selector */}
-        <div className="flex gap-1.5 p-1 bg-muted/50 rounded-xl">
+      <CardContent className="space-y-3 sm:space-y-4 px-3 sm:px-6">
+        {/* Index Selector - Horizontal scroll on small screens */}
+        <div className="flex gap-1 p-1 bg-muted/50 rounded-xl overflow-x-auto scrollbar-hide -mx-1 px-1">
           {(Object.keys(indexConfig) as Array<keyof typeof indexConfig>).map((key) => {
             const idx = indexConfig[key];
             const Icon = idx.icon;
@@ -101,12 +104,12 @@ export function NDVITrendChart({ data, selectedIndex: initialIndex = 'ndvi' }: N
                 size="sm"
                 onClick={() => setSelectedIndex(key)}
                 className={cn(
-                  "flex-1 h-9 rounded-lg transition-all",
+                  "shrink-0 h-8 px-2.5 sm:px-3 rounded-lg transition-all",
                   selectedIndex === key && "bg-background shadow-sm"
                 )}
               >
-                <Icon className="h-3.5 w-3.5 mr-1" style={{ color: selectedIndex === key ? idx.color : undefined }} />
-                <span className="text-xs">{idx.label}</span>
+                <Icon className="h-3 w-3 sm:h-3.5 sm:w-3.5 mr-1" style={{ color: selectedIndex === key ? idx.color : undefined }} />
+                <span className="text-[10px] sm:text-xs whitespace-nowrap">{idx.label}</span>
               </Button>
             );
           })}
@@ -118,10 +121,10 @@ export function NDVITrendChart({ data, selectedIndex: initialIndex = 'ndvi' }: N
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3 }}
-          className="h-64"
+          className="h-48 sm:h-64 w-full"
         >
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={sortedData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+            <AreaChart data={sortedData} margin={{ top: 10, right: 5, left: -25, bottom: 0 }}>
               <defs>
                 <linearGradient id={`gradient-${selectedIndex}`} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={config.color} stopOpacity={0.3} />
@@ -132,60 +135,64 @@ export function NDVITrendChart({ data, selectedIndex: initialIndex = 'ndvi' }: N
               <XAxis 
                 dataKey="date" 
                 tickFormatter={formatDate}
-                tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
                 axisLine={{ stroke: 'hsl(var(--border))' }}
                 tickLine={false}
+                interval="preserveStartEnd"
               />
               <YAxis 
                 domain={[0, 1]}
-                tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))' }}
                 axisLine={{ stroke: 'hsl(var(--border))' }}
                 tickLine={false}
                 tickFormatter={(v) => v.toFixed(1)}
+                width={30}
               />
               <Tooltip content={<CustomTooltip />} />
               <Area 
                 type="monotone" 
                 dataKey={selectedIndex} 
                 stroke={config.color}
-                strokeWidth={2.5}
+                strokeWidth={2}
                 fill={`url(#gradient-${selectedIndex})`}
-                dot={{ fill: config.color, strokeWidth: 0, r: 3 }}
-                activeDot={{ r: 6, strokeWidth: 2, stroke: 'hsl(var(--background))' }}
+                dot={{ fill: config.color, strokeWidth: 0, r: 2 }}
+                activeDot={{ r: 5, strokeWidth: 2, stroke: 'hsl(var(--background))' }}
               />
             </AreaChart>
           </ResponsiveContainer>
         </motion.div>
 
-        {/* Summary Stats */}
-        <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border/30">
-          <div className="text-center">
-            <p className="text-xs text-muted-foreground">Latest</p>
-            <p className="text-lg font-bold" style={{ color: config.color }}>
-              {latestValue.toFixed(3)}
+        {/* Summary Stats - Responsive grid */}
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 pt-2 border-t border-border/30">
+          <div className="text-center p-2 rounded-lg bg-muted/30">
+            <p className="text-[9px] sm:text-xs text-muted-foreground truncate">Latest</p>
+            <p className="text-sm sm:text-lg font-bold truncate" style={{ color: config.color }}>
+              {latestValue.toFixed(2)}
             </p>
           </div>
-          <div className="text-center">
-            <p className="text-xs text-muted-foreground">Average</p>
-            <p className="text-lg font-bold">
-              {(sortedData.reduce((acc, d) => acc + (d[selectedIndex] || 0), 0) / sortedData.length).toFixed(3)}
+          <div className="text-center p-2 rounded-lg bg-muted/30">
+            <p className="text-[9px] sm:text-xs text-muted-foreground truncate">Average</p>
+            <p className="text-sm sm:text-lg font-bold truncate">
+              {(sortedData.reduce((acc, d) => acc + (d[selectedIndex] || 0), 0) / sortedData.length).toFixed(2)}
             </p>
           </div>
-          <div className="text-center">
-            <p className="text-xs text-muted-foreground">Data Points</p>
-            <p className="text-lg font-bold">{sortedData.length}</p>
+          <div className="text-center p-2 rounded-lg bg-muted/30">
+            <p className="text-[9px] sm:text-xs text-muted-foreground truncate">Points</p>
+            <p className="text-sm sm:text-lg font-bold">{sortedData.length}</p>
           </div>
         </div>
 
-        {/* Description with Scientific Reference */}
-        <div className="p-3 bg-muted/30 rounded-xl">
-          <p className="text-xs text-muted-foreground">
+        {/* Description - Collapsible on mobile */}
+        <div className="p-2.5 sm:p-3 bg-muted/30 rounded-xl">
+          <p className="text-[10px] sm:text-xs text-muted-foreground leading-relaxed">
             <span className="font-medium" style={{ color: config.color }}>{config.label}</span>
-            {' - '}{config.description}. 
-            {selectedIndex === 'ndvi' && ' Scientific thresholds: Excellent ≥0.65 | Healthy ≥0.50 | Moderate ≥0.35 | Poor ≥0.20'}
-            {selectedIndex === 'evi' && ' Enhanced sensitivity in high biomass regions.'}
-            {selectedIndex === 'ndwi' && ' Negative values indicate water stress.'}
-            {selectedIndex === 'savi' && ' Optimized for areas with exposed soil.'}
+            {' - '}{config.description}
+            <span className="hidden sm:inline">
+              {selectedIndex === 'ndvi' && '. Scientific thresholds: Excellent ≥0.65 | Healthy ≥0.50 | Moderate ≥0.35 | Poor ≥0.20'}
+              {selectedIndex === 'evi' && '. Enhanced sensitivity in high biomass regions.'}
+              {selectedIndex === 'ndwi' && '. Negative values indicate water stress.'}
+              {selectedIndex === 'savi' && '. Optimized for areas with exposed soil.'}
+            </span>
           </p>
         </div>
       </CardContent>
