@@ -177,12 +177,12 @@ export function NDVITrendChart({ data, selectedIndex: initialIndex = 'ndvi' }: N
           </div>
         </div>
 
-        {/* Description */}
+        {/* Description with Scientific Reference */}
         <div className="p-3 bg-muted/30 rounded-xl">
           <p className="text-xs text-muted-foreground">
             <span className="font-medium" style={{ color: config.color }}>{config.label}</span>
             {' - '}{config.description}. 
-            {selectedIndex === 'ndvi' && ' Values above 0.6 indicate healthy vegetation.'}
+            {selectedIndex === 'ndvi' && ' Scientific thresholds: Excellent ≥0.65 | Healthy ≥0.50 | Moderate ≥0.35 | Poor ≥0.20'}
             {selectedIndex === 'evi' && ' Enhanced sensitivity in high biomass regions.'}
             {selectedIndex === 'ndwi' && ' Negative values indicate water stress.'}
             {selectedIndex === 'savi' && ' Optimized for areas with exposed soil.'}

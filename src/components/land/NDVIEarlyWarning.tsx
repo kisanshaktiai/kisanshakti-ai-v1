@@ -14,10 +14,12 @@ import {
   Droplets,
   Bug,
   Thermometer,
-  Leaf
+  Leaf,
+  Info
 } from 'lucide-react';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import type { NDVIMetadata, NDVIPrediction } from '@/hooks/useNDVIAnalysis';
+import { formatNDVI, getScientificHealthStatus, NDVI_THRESHOLDS } from '@/lib/ndviScience';
 
 interface NDVIEarlyWarningProps {
   metadata: NDVIMetadata | null;
@@ -31,8 +33,8 @@ export function NDVIEarlyWarning({ metadata, prediction, ndviValue, className }:
   const { speak, isSpeaking, stop } = useTextToSpeech({ language: i18n.language === 'hi' ? 'hi-IN' : 'en-US' });
 
   const alerts = metadata?.alerts || [];
-  const healthLabel = metadata?.health_label || 'Moderate';
   const riskLevel = prediction?.risk_level || 'medium';
+  const healthStatus = getScientificHealthStatus(ndviValue);
 
   const getAlertIcon = (alert: string) => {
     if (alert.toLowerCase().includes('water') || alert.toLowerCase().includes('moisture')) {
@@ -55,9 +57,9 @@ export function NDVIEarlyWarning({ metadata, prediction, ndviValue, className }:
       case 'critical':
         return {
           icon: AlertTriangle,
-          color: 'text-destructive',
-          bg: 'bg-destructive/10',
-          border: 'border-destructive/30',
+          color: 'text-red-600',
+          bg: 'bg-red-600/10',
+          border: 'border-red-600/30',
           label: t('ndvi.risk.critical', 'Critical Risk'),
         };
       case 'high':
@@ -71,17 +73,17 @@ export function NDVIEarlyWarning({ metadata, prediction, ndviValue, className }:
       case 'medium':
         return {
           icon: Bell,
-          color: 'text-warning',
-          bg: 'bg-warning/10',
-          border: 'border-warning/30',
+          color: 'text-amber-500',
+          bg: 'bg-amber-500/10',
+          border: 'border-amber-500/30',
           label: t('ndvi.risk.medium', 'Medium Risk'),
         };
       default:
         return {
           icon: CheckCircle2,
-          color: 'text-success',
-          bg: 'bg-success/10',
-          border: 'border-success/30',
+          color: 'text-green-600',
+          bg: 'bg-green-600/10',
+          border: 'border-green-600/30',
           label: t('ndvi.risk.low', 'Low Risk'),
         };
     }
@@ -136,7 +138,7 @@ export function NDVIEarlyWarning({ metadata, prediction, ndviValue, className }:
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {/* Risk Level Badge */}
+        {/* NDVI Value with Scientific Status */}
         <div className="flex items-center justify-between">
           <Badge 
             variant="outline" 
@@ -144,9 +146,14 @@ export function NDVIEarlyWarning({ metadata, prediction, ndviValue, className }:
           >
             {riskConfig.label}
           </Badge>
-          <span className="text-sm text-muted-foreground">
-            NDVI: <span className="font-semibold text-foreground">{ndviValue.toFixed(3)}</span>
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">
+              NDVI: <span className={cn("font-bold", healthStatus.textColor)}>{formatNDVI(ndviValue, 3)}</span>
+            </span>
+            <Badge variant="outline" className={cn("text-xs", healthStatus.textColor, healthStatus.borderColor)}>
+              {healthStatus.label}
+            </Badge>
+          </div>
         </div>
 
         {/* Active Alerts */}
