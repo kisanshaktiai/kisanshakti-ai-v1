@@ -12,6 +12,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { landsApi } from '@/services/landsApi';
 import { NDVIMapView } from '@/components/land/NDVIMapView';
 import { NDVITrendChart } from '@/components/land/NDVITrendChart';
+import { GoogleMapsScriptProvider } from '@/components/maps/GoogleMapsScriptProvider';
 import { useNDVIAnalysis } from '@/hooks/useNDVIAnalysis';
 import { 
   getScientificHealthStatus, 
@@ -318,9 +319,9 @@ const NDVIAnalysis = () => {
                 </TabsList>
               </div>
 
-              <ScrollArea className="flex-1 mt-3">
+              <ScrollArea className="flex-1 mt-3 h-[calc(100vh-220px)]">
                 {/* HEALTH TAB */}
-                <TabsContent value="health" className="px-4 pb-8 space-y-4 mt-0">
+                <TabsContent value="health" className="px-4 pb-24 space-y-4 mt-0">
                   {ndviLoading ? (
                     <div className="space-y-4">
                       <Skeleton className="h-52 rounded-3xl" />
@@ -525,7 +526,7 @@ const NDVIAnalysis = () => {
                 </TabsContent>
 
                 {/* PREDICTION TAB */}
-                <TabsContent value="predict" className="px-4 pb-8 space-y-4 mt-0">
+                <TabsContent value="predict" className="px-4 pb-24 space-y-4 mt-0">
                   {!prediction ? (
                     <Card className="border-dashed border-2 rounded-3xl">
                       <CardContent className="flex flex-col items-center justify-center py-16">
@@ -631,20 +632,22 @@ const NDVIAnalysis = () => {
                 </TabsContent>
 
                 {/* MAP TAB */}
-                <TabsContent value="map" className="px-4 pb-8 mt-0">
-                  <NDVIMapView 
-                    landId={selectedLandId}
-                    boundary={getBoundaryCoordinates()}
-                    centerLat={getCenterCoordinates().lat}
-                    centerLng={getCenterCoordinates().lng}
-                    areaAcres={selectedLand?.area_acres}
-                    soilType={selectedLand?.soil_type}
-                    currentCrop={selectedLand?.current_crop}
-                  />
+                <TabsContent value="map" className="px-4 pb-24 mt-0">
+                  <GoogleMapsScriptProvider>
+                    <NDVIMapView 
+                      landId={selectedLandId}
+                      boundary={getBoundaryCoordinates()}
+                      centerLat={getCenterCoordinates().lat}
+                      centerLng={getCenterCoordinates().lng}
+                      areaAcres={selectedLand?.area_acres}
+                      soilType={selectedLand?.soil_type}
+                      currentCrop={selectedLand?.current_crop}
+                    />
+                  </GoogleMapsScriptProvider>
                 </TabsContent>
 
                 {/* TRENDS TAB */}
-                <TabsContent value="trends" className="px-4 pb-8 mt-0">
+                <TabsContent value="trends" className="px-4 pb-24 mt-0">
                   {ndviHistory.length > 1 ? (
                     <NDVITrendChart 
                       data={ndviHistory.map(d => ({
@@ -668,7 +671,7 @@ const NDVIAnalysis = () => {
                 </TabsContent>
 
                 {/* ADVICE TAB */}
-                <TabsContent value="advice" className="px-4 pb-8 space-y-4 mt-0">
+                <TabsContent value="advice" className="px-4 pb-24 space-y-4 mt-0">
                   <Card className="border-0 shadow-xl rounded-3xl bg-gradient-to-br from-primary/5 via-card to-emerald-500/5 overflow-hidden">
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
