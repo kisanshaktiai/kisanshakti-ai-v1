@@ -152,7 +152,7 @@ const NDVIAnalysis = () => {
   const offset = circumference - (Math.max(0, Math.min(1, currentNdvi)) * circumference);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20">
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-muted/20 overflow-x-hidden">
       {/* Glassmorphic Header */}
       <motion.header 
         initial={{ y: -20, opacity: 0 }}
@@ -321,7 +321,7 @@ const NDVIAnalysis = () => {
 
               <ScrollArea className="flex-1 mt-3 h-[calc(100vh-220px)]">
                 {/* HEALTH TAB */}
-                <TabsContent value="health" className="px-4 pb-24 space-y-4 mt-0">
+                <TabsContent value="health" className="px-3 sm:px-4 pb-24 space-y-3 sm:space-y-4 mt-0">
                   {ndviLoading ? (
                     <div className="space-y-4">
                       <Skeleton className="h-52 rounded-3xl" />
@@ -413,34 +413,34 @@ const NDVIAnalysis = () => {
                         </div>
                       </motion.div>
 
-                      {/* Quick Stats Grid */}
-                      <div className="grid grid-cols-2 gap-3">
+                      {/* Quick Stats Grid - Mobile optimized */}
+                      <div className="grid grid-cols-2 gap-2 sm:gap-3">
                         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
                           <Card className="border-0 shadow-lg rounded-2xl bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 overflow-hidden">
-                            <CardContent className="p-4">
-                              <div className="flex items-center gap-2 mb-2">
-                                <div className="p-1.5 rounded-lg bg-emerald-500/20">
-                                  <Leaf className="h-3.5 w-3.5 text-emerald-500" />
+                            <CardContent className="p-3 sm:p-4">
+                              <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
+                                <div className="p-1 sm:p-1.5 rounded-lg bg-emerald-500/20">
+                                  <Leaf className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-emerald-500" />
                                 </div>
-                                <span className="text-xs text-muted-foreground font-medium">NDVI</span>
+                                <span className="text-[10px] sm:text-xs text-muted-foreground font-medium">NDVI</span>
                               </div>
-                              <p className="text-2xl font-black text-emerald-500">{ndviCurrent.ndvi_value.toFixed(3)}</p>
-                              <p className="text-[10px] text-muted-foreground mt-1">Vegetation Index</p>
+                              <p className="text-xl sm:text-2xl font-black text-emerald-500">{ndviCurrent.ndvi_value.toFixed(2)}</p>
+                              <p className="text-[9px] sm:text-[10px] text-muted-foreground mt-0.5 sm:mt-1 truncate">Vegetation</p>
                             </CardContent>
                           </Card>
                         </motion.div>
 
                         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
                           <Card className="border-0 shadow-lg rounded-2xl bg-gradient-to-br from-blue-500/10 to-blue-500/5 overflow-hidden">
-                            <CardContent className="p-4">
-                              <div className="flex items-center gap-2 mb-2">
-                                <div className="p-1.5 rounded-lg bg-blue-500/20">
-                                  <Droplets className="h-3.5 w-3.5 text-blue-500" />
+                            <CardContent className="p-3 sm:p-4">
+                              <div className="flex items-center gap-1.5 sm:gap-2 mb-1.5 sm:mb-2">
+                                <div className="p-1 sm:p-1.5 rounded-lg bg-blue-500/20">
+                                  <Droplets className="h-3 w-3 sm:h-3.5 sm:w-3.5 text-blue-500" />
                                 </div>
-                                <span className="text-xs text-muted-foreground font-medium">NDWI</span>
+                                <span className="text-[10px] sm:text-xs text-muted-foreground font-medium">NDWI</span>
                               </div>
-                              <p className="text-2xl font-black text-blue-500">{(ndviCurrent.ndwi_value ?? 0).toFixed(3)}</p>
-                              <p className="text-[10px] text-muted-foreground mt-1">Water Content</p>
+                              <p className="text-xl sm:text-2xl font-black text-blue-500">{(ndviCurrent.ndwi_value ?? 0).toFixed(2)}</p>
+                              <p className="text-[9px] sm:text-[10px] text-muted-foreground mt-0.5 sm:mt-1 truncate">Water</p>
                             </CardContent>
                           </Card>
                         </motion.div>
@@ -526,7 +526,7 @@ const NDVIAnalysis = () => {
                 </TabsContent>
 
                 {/* PREDICTION TAB */}
-                <TabsContent value="predict" className="px-4 pb-24 space-y-4 mt-0">
+                <TabsContent value="predict" className="px-3 sm:px-4 pb-24 space-y-3 sm:space-y-4 mt-0">
                   {!prediction ? (
                     <Card className="border-dashed border-2 rounded-3xl">
                       <CardContent className="flex flex-col items-center justify-center py-16">
@@ -632,7 +632,7 @@ const NDVIAnalysis = () => {
                 </TabsContent>
 
                 {/* MAP TAB */}
-                <TabsContent value="map" className="px-4 pb-24 mt-0">
+                <TabsContent value="map" className="px-3 sm:px-4 pb-24 mt-0">
                   <GoogleMapsScriptProvider>
                     <NDVIMapView 
                       landId={selectedLandId}
@@ -647,7 +647,7 @@ const NDVIAnalysis = () => {
                 </TabsContent>
 
                 {/* TRENDS TAB */}
-                <TabsContent value="trends" className="px-4 pb-24 mt-0">
+                <TabsContent value="trends" className="px-3 sm:px-4 pb-24 mt-0">
                   {ndviHistory.length > 1 ? (
                     <NDVITrendChart 
                       data={ndviHistory.map(d => ({
@@ -671,7 +671,7 @@ const NDVIAnalysis = () => {
                 </TabsContent>
 
                 {/* ADVICE TAB */}
-                <TabsContent value="advice" className="px-4 pb-24 space-y-4 mt-0">
+                <TabsContent value="advice" className="px-3 sm:px-4 pb-24 space-y-3 sm:space-y-4 mt-0">
                   <Card className="border-0 shadow-xl rounded-3xl bg-gradient-to-br from-primary/5 via-card to-emerald-500/5 overflow-hidden">
                     <CardHeader className="pb-2">
                       <div className="flex items-center justify-between">
