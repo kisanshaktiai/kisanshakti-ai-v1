@@ -176,11 +176,23 @@ export function NDVIMapView({
 
   if (!isLoaded) {
     return (
-      <Card>
-        <CardContent className="flex items-center justify-center h-96">
+      <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+        <CardContent className="flex items-center justify-center h-80">
           <div className="text-center space-y-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
-            <p className="text-muted-foreground">Loading map...</p>
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-foreground">Loading Map</p>
+              <p className="text-xs text-muted-foreground">Connecting to satellite imagery...</p>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => window.location.reload()}
+              className="mt-2"
+            >
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Retry
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -189,12 +201,25 @@ export function NDVIMapView({
 
   if (loadError) {
     return (
-      <Card>
-        <CardContent className="flex items-center justify-center h-96">
-          <div className="text-center space-y-4">
-            <MapPin className="h-12 w-12 text-muted-foreground mx-auto" />
-            <p className="text-muted-foreground">Unable to load map</p>
+      <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+        <CardContent className="flex flex-col items-center justify-center h-80 space-y-4">
+          <div className="p-4 rounded-full bg-orange-500/10">
+            <MapPin className="h-8 w-8 text-orange-500" />
           </div>
+          <div className="text-center space-y-1">
+            <p className="font-medium text-foreground">Map Unavailable</p>
+            <p className="text-xs text-muted-foreground max-w-[200px]">
+              Could not load map. Check your internet connection.
+            </p>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => window.location.reload()}
+          >
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Try Again
+          </Button>
         </CardContent>
       </Card>
     );
