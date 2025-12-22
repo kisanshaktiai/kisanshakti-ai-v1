@@ -1,7 +1,10 @@
 import React from 'react';
-import { Card } from '@/components/ui/card';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { 
+  Droplet, Leaf, Bug, AlertTriangle, CheckCircle, Info, 
+  FlaskConical, Sprout, Timer, BookOpen 
+} from 'lucide-react';
 
 interface ColorCodedCardProps {
   card: {
@@ -17,61 +20,52 @@ interface ColorCodedCardProps {
   index: number;
 }
 
+// ✅ Map icon string names to actual Lucide components
+const ICON_MAP: Record<string, React.ReactNode> = {
+  'droplet': <Droplet className="h-4 w-4" />,
+  'leaf': <Leaf className="h-4 w-4" />,
+  'bug': <Bug className="h-4 w-4" />,
+  'alert-triangle': <AlertTriangle className="h-4 w-4" />,
+  'check-circle': <CheckCircle className="h-4 w-4" />,
+  'info': <Info className="h-4 w-4" />,
+  'flask': <FlaskConical className="h-4 w-4" />,
+  'sprout': <Sprout className="h-4 w-4" />,
+  'timer': <Timer className="h-4 w-4" />,
+  'book': <BookOpen className="h-4 w-4" />,
+};
+
+// ✅ Get icon component or fallback
+const getIcon = (iconName: string, cardType: string): React.ReactNode => {
+  if (ICON_MAP[iconName]) return ICON_MAP[iconName];
+  
+  // Fallback based on card type
+  switch (cardType) {
+    case 'irrigation': return <Droplet className="h-4 w-4" />;
+    case 'fertilizer': return <Leaf className="h-4 w-4" />;
+    case 'pesticide': return <Bug className="h-4 w-4" />;
+    case 'warning': return <AlertTriangle className="h-4 w-4" />;
+    case 'success': return <CheckCircle className="h-4 w-4" />;
+    case 'organic': return <Sprout className="h-4 w-4" />;
+    case 'hormone': return <FlaskConical className="h-4 w-4" />;
+    default: return <Info className="h-4 w-4" />;
+  }
+};
+
+// ✅ Parse content into urgency and source
+const parseContent = (content: string): { urgency: string; source: string } => {
+  const parts = content.split('|').map(p => p.trim());
+  return {
+    urgency: parts[0] || '',
+    source: parts[1] || ''
+  };
+};
+
 export function ColorCodedCard({
   card,
   index
 }: ColorCodedCardProps) {
-  // Format content with proper line breaks and numbered list detection
-  const formatContent = (text: string) => {
-    if (!text) return null;
-    
-    // ✅ Step 1: Normalize text - ensure numbered points start on new lines
-    let formattedText = text
-      // Add newline before numbered points (1. 2. 3. etc.)
-      .replace(/([^\n])(\d+\.)\s+/g, '$1\n$2 ')
-      // Add newline before Hindi numbers (१. २. ३. etc.)
-      .replace(/([^\n])([१२३४५६७८९०]+\.)\s+/g, '$1\n$2 ')
-      // Add newline before bullet points
-      .replace(/([^\n])([•·\-])\s+/g, '$1\n$2 ')
-      // Add newline before emoji markers (🌱, 💧, ⚠️, etc.)
-      .replace(/([^\n])([\u{1F300}-\u{1F9FF}])/gu, '$1\n$2')
-      // Clean up multiple newlines
-      .replace(/\n{3,}/g, '\n\n')
-      // Clean leading newlines
-      .replace(/^\n+/, '');
-    
-    // ✅ Step 2: Split into lines and render each properly
-    const lines = formattedText.split('\n');
-    
-    return lines.map((line, idx) => {
-      const trimmedLine = line.trim();
-      if (!trimmedLine) {
-        // Empty line = spacing
-        return <div key={idx} className="h-2" />;
-      }
-      
-      // Check if it's a numbered point (1., 2., or Hindi १., २.)
-      const isNumberedPoint = /^(\d+\.|[१२३४५६७८९०]+\.)/.test(trimmedLine);
-      // Check if it's a bullet point
-      const isBulletPoint = /^[•·\-\*]/.test(trimmedLine);
-      // Check if it starts with an emoji (section header)
-      const isEmojiSection = /^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u.test(trimmedLine);
-      
-      return (
-        <div 
-          key={idx} 
-          className={cn(
-            "mb-1.5 last:mb-0 leading-relaxed",
-            isNumberedPoint && "pl-3 border-l-2 border-primary/30 ml-1",
-            isBulletPoint && "pl-3 ml-1",
-            isEmojiSection && "font-medium mt-2 first:mt-0"
-          )}
-        >
-          {trimmedLine}
-        </div>
-      );
-    });
-  };
+  const { urgency, source } = parseContent(card.content);
+  const icon = getIcon(card.icon, card.type);
 
   return (
     <motion.div 
@@ -81,23 +75,37 @@ export function ColorCodedCard({
     >
       <div 
         className={cn(
-          "w-full px-3 py-2 relative",
-          "border-l-3 rounded-md",
-          "bg-card/50"
+          "w-full px-3 py-2.5 relative",
+          "border-l-4 rounded-lg",
+          "bg-gradient-to-r from-card/80 to-card/50",
+          "hover:shadow-sm transition-shadow duration-200"
         )} 
         style={{
-          borderLeftColor: card.color,
-          borderLeftWidth: '3px'
+          borderLeftColor: card.color
         }}
       >
-        {card.title && (
-          <div className="font-medium text-sm mb-1 text-foreground flex items-center gap-1.5">
-            <span className="text-xs">{card.icon}</span>
-            <span>{card.title}</span>
-          </div>
-        )}
-        <div className="w-full text-sm text-foreground/90 leading-snug">
-          {formatContent(card.content)}
+        {/* Title with Icon */}
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-primary" style={{ color: card.color }}>
+            {icon}
+          </span>
+          <span className="font-semibold text-sm text-foreground">{card.title}</span>
+        </div>
+        
+        {/* Urgency and Source in better format */}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {urgency && (
+            <span className="flex items-center gap-1 text-muted-foreground">
+              <Timer className="h-3 w-3" />
+              {urgency}
+            </span>
+          )}
+          {source && (
+            <span className="flex items-center gap-1 text-primary/70">
+              <BookOpen className="h-3 w-3" />
+              {source}
+            </span>
+          )}
         </div>
       </div>
     </motion.div>
