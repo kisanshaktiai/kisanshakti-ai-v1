@@ -827,10 +827,67 @@ export function EnhancedAIChatInterface() {
           });
         }
         
-        // ✅ Create AI response - show diagnosis only, with suggestion selector
-        // If crop mismatch, don't show recommendation selector
+        // ═══════════════════════════════════════════════════════════════════════
+        // 🧠 VISION + DECISION BRAIN INTEGRATION
+        // After AI vision analysis, run Decision Brain for ICAR/FAO recommendations
+        // ═══════════════════════════════════════════════════════════════════════
+        let decisionBrainCards: any[] = [];
+        let decisionBrainSource = false;
+        
+        if (!isCropMismatch && land) {
+          try {
+            // Build land context with vision analysis results
+            const visionEnhancedContext: DecisionLandContext = {
+              id: land.id,
+              name: land.name,
+              crop_name: scanResult.result.cropDetected?.name || land.current_crop || land.crop_name,
+              crop_code: land.crop_code,
+              area_hectares: land.area_hectares || (land.area_acres ? land.area_acres * 0.404686 : undefined),
+              farming_mode: land.farming_mode,
+              irrigation_type: land.irrigation_type,
+              sowing_date: land.sowing_date || land.cultivation_date,
+              soil_data: land.soil_data,
+              ndvi_data: land.ndvi_data,
+              weather_data: land.weather_data,
+              location: land.location || { state: land.state, district: land.district },
+              // ✅ NEW: Vision context for Decision Brain
+              vision_context: {
+                detected_crop: scanResult.result.cropDetected?.name,
+                detected_diseases: scanResult.result.diagnosis?.diseases?.map((d: any) => d.name) || [],
+                detected_pests: scanResult.result.diagnosis?.pests?.map((p: any) => p.name) || [],
+                health_score: scanResult.result.diagnosis?.healthScore,
+                confidence: scanResult.result.cropDetected?.confidence
+              }
+            };
+            
+            console.log('🧠 [Vision+Brain] Running Decision Brain with vision context...');
+            const brainResult = tryDecisionBrain(
+              'Analyze crop health and provide recommendations', 
+              visionEnhancedContext, 
+              language, 
+              user.id, 
+              tenant.id
+            );
+            
+            if (brainResult.handled && brainResult.response?.structuredResponse?.cards) {
+              decisionBrainCards = brainResult.response.structuredResponse.cards;
+              decisionBrainSource = true;
+              console.log(`✅ [Vision+Brain] Decision Brain added ${decisionBrainCards.length} recommendation cards (0 AI tokens)`);
+            }
+          } catch (brainError) {
+            console.warn('⚠️ [Vision+Brain] Decision Brain failed, using AI recommendations only:', brainError);
+          }
+        }
+        
+        // ✅ Create AI response - show diagnosis with Decision Brain recommendations
         const aiMessageId = crypto.randomUUID();
         const aiContent = scanResult.result.diagnosis?.summary || 'Analysis complete';
+        
+        // Merge AI analysis with Decision Brain cards
+        const mergedStructuredResponse = decisionBrainCards.length > 0 
+          ? { cards: decisionBrainCards, language, source: 'decision_brain' }
+          : undefined;
+        
         const aiMessage: Message = {
           id: aiMessageId,
           role: 'assistant',
@@ -839,7 +896,13 @@ export function EnhancedAIChatInterface() {
           messageType: 'image_analysis_response',
           imageUrl: imageStorageUrl, // ✅ SINGLE SOURCE: Image only in analyze card
           analysisResult: scanResult.result,
-          awaitingSuggestionSelection: !isCropMismatch // ✅ Only show selector if crop matches
+          structuredResponse: mergedStructuredResponse, // ✅ Decision Brain cards if available
+          awaitingSuggestionSelection: !isCropMismatch && !decisionBrainSource, // Only show selector if no Brain cards
+          analytics: decisionBrainSource ? {
+            responseTime: 50, // Decision Brain is fast
+            tokensUsed: { prompt: 0, completion: 0, total: 0 },
+            queryComplexity: 'vision_plus_decision_brain'
+          } : undefined
         };
         
         setMessages(prev => ({
@@ -858,7 +921,7 @@ export function EnhancedAIChatInterface() {
           role: 'assistant',
           content: aiContent,
           message_type: 'image_analysis_response',
-          ai_model: 'gemini-2.5-flash',
+          ai_model: decisionBrainSource ? 'decision_brain' : 'gemini-2.5-flash',
           land_context: landContext,
           image_urls: [imageStorageUrl],
           metadata: {
@@ -866,7 +929,9 @@ export function EnhancedAIChatInterface() {
             crop_detected: scanResult.result.cropDetected,
             diagnosis: scanResult.result.diagnosis,
             image_analyzed: imageStorageUrl,
-            crop_mismatch: isCropMismatch
+            crop_mismatch: isCropMismatch,
+            decision_brain_used: decisionBrainSource,
+            decision_brain_cards: decisionBrainCards.length
           },
           language,
           status: 'sent',
@@ -874,7 +939,11 @@ export function EnhancedAIChatInterface() {
           word_count: aiContent.split(' ').length
         });
         
-        console.log('✅ AI analysis saved', { isCropMismatch });
+        console.log('✅ AI analysis saved', { 
+          isCropMismatch, 
+          decisionBrainUsed: decisionBrainSource,
+          brainCards: decisionBrainCards.length 
+        });
         
       } else {
         throw new Error(scanResult?.error || 'Analysis failed');
@@ -1008,18 +1077,78 @@ export function EnhancedAIChatInterface() {
           });
         }
         
-        // ✅ Create AI response - show diagnosis only, with suggestion selector
+        // ═══════════════════════════════════════════════════════════════════════
+        // 🧠 VISION + DECISION BRAIN INTEGRATION (Camera capture)
+        // ═══════════════════════════════════════════════════════════════════════
+        let decisionBrainCards: any[] = [];
+        let decisionBrainSource = false;
+        
+        if (!isCropMismatch && land) {
+          try {
+            const visionEnhancedContext: DecisionLandContext = {
+              id: land.id,
+              name: land.name,
+              crop_name: scanResult.result.cropDetected?.name || land.current_crop || land.crop_name,
+              crop_code: land.crop_code,
+              area_hectares: land.area_hectares || (land.area_acres ? land.area_acres * 0.404686 : undefined),
+              farming_mode: land.farming_mode,
+              irrigation_type: land.irrigation_type,
+              sowing_date: land.sowing_date || land.cultivation_date,
+              soil_data: land.soil_data,
+              ndvi_data: land.ndvi_data,
+              weather_data: land.weather_data,
+              location: land.location || { state: land.state, district: land.district },
+              vision_context: {
+                detected_crop: scanResult.result.cropDetected?.name,
+                detected_diseases: scanResult.result.diagnosis?.diseases?.map((d: any) => d.name) || [],
+                detected_pests: scanResult.result.diagnosis?.pests?.map((p: any) => p.name) || [],
+                health_score: scanResult.result.diagnosis?.healthScore,
+                confidence: scanResult.result.cropDetected?.confidence
+              }
+            };
+            
+            console.log('🧠 [Camera+Brain] Running Decision Brain with vision context...');
+            const brainResult = tryDecisionBrain(
+              'Analyze crop health and provide recommendations', 
+              visionEnhancedContext, 
+              language, 
+              user.id, 
+              tenant.id
+            );
+            
+            if (brainResult.handled && brainResult.response?.structuredResponse?.cards) {
+              decisionBrainCards = brainResult.response.structuredResponse.cards;
+              decisionBrainSource = true;
+              console.log(`✅ [Camera+Brain] Decision Brain added ${decisionBrainCards.length} recommendation cards (0 AI tokens)`);
+            }
+          } catch (brainError) {
+            console.warn('⚠️ [Camera+Brain] Decision Brain failed:', brainError);
+          }
+        }
+        
+        // ✅ Create AI response with Decision Brain integration
         const aiMessageId = crypto.randomUUID();
         const aiContent = scanResult.result.diagnosis?.summary || 'Analysis complete';
+        
+        const mergedStructuredResponse = decisionBrainCards.length > 0 
+          ? { cards: decisionBrainCards, language, source: 'decision_brain' }
+          : undefined;
+        
         const aiMessage: Message = {
           id: aiMessageId,
           role: 'assistant',
           content: aiContent,
           timestamp: new Date(),
           messageType: isPhoto ? 'image_analysis_response' : 'video_analysis_response',
-          imageUrl: imageStorageUrl, // ✅ SINGLE SOURCE: Image only in analyze card
+          imageUrl: imageStorageUrl,
           analysisResult: scanResult.result,
-          awaitingSuggestionSelection: !isCropMismatch // ✅ Only show selector if crop matches
+          structuredResponse: mergedStructuredResponse,
+          awaitingSuggestionSelection: !isCropMismatch && !decisionBrainSource,
+          analytics: decisionBrainSource ? {
+            responseTime: 50,
+            tokensUsed: { prompt: 0, completion: 0, total: 0 },
+            queryComplexity: 'camera_plus_decision_brain'
+          } : undefined
         };
         
         setMessages(prev => ({
@@ -1039,7 +1168,7 @@ export function EnhancedAIChatInterface() {
           content: aiContent,
           message_type: isPhoto ? 'image_analysis_response' : 'video_analysis_response',
           image_urls: [imageStorageUrl],
-          ai_model: 'gemini-2.5-flash',
+          ai_model: decisionBrainSource ? 'decision_brain' : 'gemini-2.5-flash',
           land_context: landContext,
           metadata: {
             analysis_result: scanResult.result,
@@ -1049,7 +1178,9 @@ export function EnhancedAIChatInterface() {
             duration: data.duration,
             image_analyzed: imageStorageUrl,
             video_url: videoStorageUrl,
-            crop_mismatch: isCropMismatch
+            crop_mismatch: isCropMismatch,
+            decision_brain_used: decisionBrainSource,
+            decision_brain_cards: decisionBrainCards.length
           },
           language,
           status: 'sent',
@@ -1057,7 +1188,11 @@ export function EnhancedAIChatInterface() {
           word_count: aiContent.split(' ').length
         });
         
-        console.log('✅ AI camera analysis saved', { isCropMismatch });
+        console.log('✅ AI camera analysis saved', { 
+          isCropMismatch, 
+          decisionBrainUsed: decisionBrainSource,
+          brainCards: decisionBrainCards.length 
+        });
         
       } else {
         throw new Error(scanResult?.error || 'Analysis failed');
@@ -1132,20 +1267,34 @@ export function EnhancedAIChatInterface() {
       // ═══════════════════════════════════════════════════════════════════════
       // 🧠 DECISION BRAIN FIRST - Try deterministic engine before AI
       // ═══════════════════════════════════════════════════════════════════════
+      // ✅ CRITICAL FIX: Use current_crop from landsApi (not crop_name)
       const landContextForBrain: DecisionLandContext | null = land ? {
         id: land.id,
         name: land.name,
-        crop_name: land.crop_name,
-        crop_code: land.crop_code || land.crop_name?.toLowerCase(),
-        area_hectares: land.area_hectares,
+        // Priority: current_crop → crop_name → crop_code (landsApi returns current_crop)
+        crop_name: land.current_crop || land.crop_name,
+        crop_code: land.crop_code || (land.current_crop || land.crop_name)?.toLowerCase(),
+        area_hectares: land.area_hectares || (land.area_acres ? land.area_acres * 0.404686 : undefined),
         farming_mode: land.farming_mode,
         irrigation_type: land.irrigation_type,
-        sowing_date: land.sowing_date,
+        sowing_date: land.sowing_date || land.cultivation_date,
         soil_data: land.soil_data,
         ndvi_data: land.ndvi_data,
         weather_data: land.weather_data,
-        location: land.location
+        location: land.location || {
+          state: land.state,
+          district: land.district
+        }
       } : null;
+      
+      console.log('🌾 [Chat] Land context for Decision Brain:', {
+        landId: land?.id,
+        landName: land?.name,
+        cropFromCurrentCrop: land?.current_crop,
+        cropFromCropName: land?.crop_name,
+        resolvedCrop: landContextForBrain?.crop_name,
+        hasLocation: !!landContextForBrain?.location
+      });
       
       const brainResult = tryDecisionBrain(finalMessage, landContextForBrain, language, farmerId, tenantId);
       

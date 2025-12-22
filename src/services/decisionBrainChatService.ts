@@ -253,13 +253,17 @@ export function classifyQueryForDecisionBrain(query: string): QueryClassificatio
 export interface LandContext {
   id?: string;
   name?: string;
-  crop_name?: string;
+  // ✅ CRITICAL: Support both current_crop (from landsApi) and crop_name (legacy)
+  crop_name?: string;        // Primary crop identifier
+  current_crop?: string;     // From landsApi (alternative source)
   crop_code?: string;
   crop_group?: string;
   area_hectares?: number;
+  area_acres?: number;       // From landsApi - will convert
   farming_mode?: string;
   irrigation_type?: string;
   sowing_date?: string;
+  cultivation_date?: string; // From landsApi (alternative source)
   soil_data?: {
     n?: number;
     p?: number;
@@ -284,10 +288,19 @@ export interface LandContext {
     latitude?: number;
     longitude?: number;
   };
+  // Vision analysis context (when coming from image/video analysis)
+  vision_context?: {
+    detected_crop?: string;
+    detected_diseases?: string[];
+    detected_pests?: string[];
+    health_score?: number;
+    confidence?: number;
+  };
 }
 
 /**
  * Convert land context to DecisionInput for the engine
+ * ✅ FIXED: Handles both current_crop (landsApi) and crop_name (legacy)
  */
 export function landContextToDecisionInput(
   land: LandContext | null,
@@ -297,8 +310,10 @@ export function landContextToDecisionInput(
   console.log(`🔄 [Decision Brain] Converting land context:`, {
     landId: land?.id,
     landName: land?.name,
+    current_crop: land?.current_crop,
     crop_name: land?.crop_name,
     crop_code: land?.crop_code,
+    vision_context: land?.vision_context,
     hasSoilData: !!land?.soil_data,
     hasNdviData: !!land?.ndvi_data,
     hasWeatherData: !!land?.weather_data
@@ -309,15 +324,29 @@ export function landContextToDecisionInput(
     return null;
   }
   
-  // Try to get crop code from crop_code or crop_name
-  let cropCode = land.crop_code || normalizeCropName(land.crop_name);
+  // ✅ CRITICAL FIX: Priority order for crop resolution
+  // 1. Vision detected crop (from image analysis)
+  // 2. current_crop (from landsApi)
+  // 3. crop_name (legacy field)
+  // 4. crop_code (direct code)
+  const rawCropValue = land.vision_context?.detected_crop 
+    || land.current_crop 
+    || land.crop_name 
+    || land.crop_code;
+  
+  let cropCode = normalizeCropName(rawCropValue);
   
   if (!cropCode) {
-    console.log(`❌ [Decision Brain] No valid crop code found. crop_name: "${land.crop_name}", crop_code: "${land.crop_code}"`);
+    console.log(`❌ [Decision Brain] No valid crop code found.`, {
+      vision_detected: land.vision_context?.detected_crop,
+      current_crop: land.current_crop,
+      crop_name: land.crop_name,
+      crop_code: land.crop_code
+    });
     return null;
   }
   
-  console.log(`✅ [Decision Brain] Resolved crop code: "${cropCode}" from "${land.crop_name || land.crop_code}"`);
+  console.log(`✅ [Decision Brain] Resolved crop code: "${cropCode}" from source: "${rawCropValue}"`);
   
   // Calculate days after sowing
   let sowingDate = new Date();
@@ -325,9 +354,21 @@ export function landContextToDecisionInput(
   
   if (land.sowing_date) {
     sowingDate = new Date(land.sowing_date);
+  } else if (land.cultivation_date) {
+    sowingDate = new Date(land.cultivation_date);
   }
   
   cropCode = cropCode.toLowerCase();
+  
+  // ✅ FIX: Convert area_acres to hectares if needed
+  const areaHectares = land.area_hectares || (land.area_acres ? land.area_acres * 0.404686 : 1);
+  
+  // ✅ VISION CONTEXT: Use detected diseases/pests to infer risk
+  let inferredNdvi = land.ndvi_data?.value ?? 0.55;
+  if (land.vision_context?.health_score) {
+    // Convert health score (0-100) to NDVI-like value (0.2-0.8)
+    inferredNdvi = 0.2 + (land.vision_context.health_score / 100) * 0.6;
+  }
   
   // Build raw farm data for the fact extractor with sensible defaults
   const rawFarmData = {
@@ -346,8 +387,8 @@ export function landContextToDecisionInput(
     soilMoisture: land.soil_data?.moisture ?? 50,  // Default moderate moisture
     soilOrganicCarbon: land.soil_data?.organic_carbon,
     
-    // NDVI data with defaults
-    ndviValue: land.ndvi_data?.value ?? 0.55,  // Default healthy NDVI
+    // NDVI data (may be inferred from vision analysis)
+    ndviValue: inferredNdvi,
     ndviTrend: land.ndvi_data?.trend ?? 0,  // Default stable trend
     
     // Weather data with defaults
@@ -361,7 +402,11 @@ export function landContextToDecisionInput(
     districtCode: land.location?.district,
     
     // Irrigation
-    irrigationMethod: land.irrigation_type
+    irrigationMethod: land.irrigation_type,
+    
+    // ✅ NEW: Vision-detected issues (will be used for pest/disease rules)
+    detectedDiseases: land.vision_context?.detected_diseases || [],
+    detectedPests: land.vision_context?.detected_pests || []
   };
   
   console.log(`📊 [Decision Brain] Raw farm data:`, {
@@ -371,7 +416,8 @@ export function landContextToDecisionInput(
     soilP: rawFarmData.soilP,
     soilK: rawFarmData.soilK,
     ndviValue: rawFarmData.ndviValue,
-    temperature: rawFarmData.temperature
+    temperature: rawFarmData.temperature,
+    hasVisionContext: !!(land.vision_context?.detected_diseases?.length || land.vision_context?.detected_pests?.length)
   });
   
   try {
@@ -847,4 +893,69 @@ export function getDecisionBrainStatus(): {
     version: '1.0.0',
     rulesLoaded: true
   };
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * AI FINE-TUNING FOR COMPLEX/CRITICAL CASES
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Only use AI to polish Decision Brain output when:
+ * 1. Risk level is CRITICAL or HIGH
+ * 2. Multiple complex causes detected
+ * 3. Farmer feedback indicates confusion
+ * 
+ * AI receives Decision Brain advisory as CONTEXT, not for reasoning.
+ * Max 200 tokens for refinement.
+ */
+export interface AIRefinementResult {
+  refined: boolean;
+  refinedResponse?: string;
+  tokensUsed: number;
+  reason: string;
+}
+
+export function shouldRefineWithAI(advisory: UnifiedAdvisory): boolean {
+  // Only refine critical/high risk or complex multi-cause scenarios
+  const isCriticalRisk = advisory.risk_level === RiskLevel.CRITICAL || advisory.risk_level === RiskLevel.HIGH;
+  const isComplexScenario = advisory.causes.length >= 3;
+  const hasMultipleUrgentActions = advisory.actions.filter(a => a.priority <= 2).length >= 2;
+  
+  const shouldRefine = isCriticalRisk || isComplexScenario || hasMultipleUrgentActions;
+  
+  console.log(`🤖 [AI Refinement] Should refine: ${shouldRefine}`, {
+    riskLevel: advisory.risk_level,
+    causesCount: advisory.causes.length,
+    urgentActionsCount: advisory.actions.filter(a => a.priority <= 2).length
+  });
+  
+  return shouldRefine;
+}
+
+/**
+ * Build AI refinement prompt from Decision Brain advisory
+ * This is used when calling AI to polish the response
+ */
+export function buildRefinementPrompt(
+  advisory: UnifiedAdvisory,
+  language: string
+): string {
+  const langInstructions = {
+    hi: 'हिंदी में संक्षिप्त और स्पष्ट उत्तर दें।',
+    mr: 'मराठीत थोडक्यात आणि स्पष्ट उत्तर द्या.',
+    en: 'Provide a brief and clear response in simple English.'
+  };
+  
+  return `You are refining a farming advisory from our Decision Brain (ICAR/FAO rules).
+DO NOT change the recommendations - only make them clearer and more actionable.
+
+ADVISORY TO REFINE:
+- Risk Level: ${advisory.risk_level}
+- Issues: ${advisory.causes.join(', ')}
+- Actions: ${advisory.actions.map(a => a.action).join(', ')}
+- Confidence: ${Math.round(advisory.confidence * 100)}%
+
+${langInstructions[language as keyof typeof langInstructions] || langInstructions.en}
+
+Keep response under 100 words. Focus on WHAT to do TODAY.`;
 }
