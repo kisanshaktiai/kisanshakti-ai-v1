@@ -1,10 +1,17 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * ORGANIC INTELLIGENCE LAYER
+ * ORGANIC INTELLIGENCE LAYER - PRODUCTION GRADE
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Scientific organic farming equivalents and mode-based filtering.
  * Based on ICAR-NPOF, OFAI, and certification standards.
+ * 
+ * CRITICAL RULES:
+ * - Organic-only farmers NEVER receive chemical advice
+ * - Organic advice must clearly state limitations & slower response
+ * - Cost & labour impact must be visible to farmer
+ * - No placeholders, no optimistic assumptions
+ * - Farmer trust must be preserved
  * 
  * Scientific Sources:
  * - ICAR-National Project on Organic Farming (NPOF)
@@ -12,596 +19,879 @@
  * - APEDA-NPOP Certification Standards
  * - ICAR-IARI Organic Package of Practices
  * 
- * Version: 1.0.0
+ * Version: 2.0.0 (Production)
  */
 
 import { Action, FarmingMode } from '../types';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ORGANIC EQUIVALENT INTERFACES
+// ORGANIC ALTERNATIVE CLASSIFICATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+export enum OrganicActionType {
+  PREVENTIVE = 'PREVENTIVE',     // Applied before problem occurs
+  CURATIVE = 'CURATIVE',         // Applied after problem detected
+  SUPPORTIVE = 'SUPPORTIVE'      // General health/growth support
+}
+
+export enum LabourIntensity {
+  LOW = 'LOW',           // < 2 hours/ha
+  MEDIUM = 'MEDIUM',     // 2-8 hours/ha
+  HIGH = 'HIGH',         // 8-20 hours/ha
+  VERY_HIGH = 'VERY_HIGH' // > 20 hours/ha
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ORGANIC ALTERNATIVE INTERFACE - PRODUCTION GRADE
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface OrganicAlternative {
-  input: string;
+  // ─────────────────────────────────────────────────────────────────────────
+  // IDENTIFICATION
+  // ─────────────────────────────────────────────────────────────────────────
+  input_name: string;
+  local_names: {
+    hindi?: string;
+    tamil?: string;
+    telugu?: string;
+    kannada?: string;
+  };
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // CLASSIFICATION
+  // ─────────────────────────────────────────────────────────────────────────
+  action_type: OrganicActionType;
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // APPLICATION DETAILS
+  // ─────────────────────────────────────────────────────────────────────────
   dose: string;
-  effectiveness_pct: number;  // Relative effectiveness vs chemical (%)
-  certification_safe: boolean;  // NPOP/USDA Organic compliant
+  application_method: string;
   preparation_method?: string;
-  application_timing?: string;
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // TIMING & FREQUENCY
+  // ─────────────────────────────────────────────────────────────────────────
+  application_frequency: string;       // e.g., "Every 7-10 days", "Once at sowing"
+  time_to_effect_days: number;         // Days until visible effect
+  effect_duration_days: number;        // How long effect lasts
+  application_timing: string;          // Best time of day/crop stage
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // EFFECTIVENESS
+  // ─────────────────────────────────────────────────────────────────────────
+  effectiveness_pct: number;           // Relative to chemical (%)
+  effectiveness_conditions: string[];  // When it works best
+  effectiveness_limitations: string[]; // When it fails or underperforms
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // CERTIFICATION
+  // ─────────────────────────────────────────────────────────────────────────
+  npop_certified: boolean;             // APEDA-NPOP compliant
+  usda_organic_certified: boolean;     // USDA NOP compliant
+  eu_organic_certified: boolean;       // EU organic compliant
+  certification_notes?: string;
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // COST & LABOUR
+  // ─────────────────────────────────────────────────────────────────────────
+  cost_inr_per_ha: number;
+  cost_breakdown?: string;
+  labour_hours_per_ha: number;
+  labour_intensity: LabourIntensity;
+  equipment_needed: string[];
+  skill_level_required: 'low' | 'medium' | 'high';
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // STORAGE & SHELF LIFE
+  // ─────────────────────────────────────────────────────────────────────────
+  shelf_life_days: number;
+  storage_conditions: string;
+  can_prepare_in_advance: boolean;
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // SCIENTIFIC REFERENCE
+  // ─────────────────────────────────────────────────────────────────────────
   scientific_source: string;
+  scientific_basis: string;
 }
 
 export interface OrganicEquivalent {
   chemical_input: string;
   chemical_category: 'fertilizer' | 'insecticide' | 'fungicide' | 'herbicide' | 'growth_regulator';
   organic_alternatives: OrganicAlternative[];
+  
+  // Honest comparison note
+  honest_comparison: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FERTILIZER ORGANIC EQUIVALENTS (15+ alternatives)
+// FERTILIZER ORGANIC EQUIVALENTS - PRODUCTION GRADE
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const FERTILIZER_EQUIVALENTS: OrganicEquivalent[] = [
-  // ─────────────────────────────────────────────────────────────────────────
-  // NITROGEN SOURCES
-  // ─────────────────────────────────────────────────────────────────────────
   {
     chemical_input: 'Urea (46% N)',
     chemical_category: 'fertilizer',
+    honest_comparison: 'Organic nitrogen sources release slower (2-8 weeks vs immediate). Expect 15-25% lower yield in first 2-3 years until soil biology improves. Long-term soil health benefits may offset initial losses.',
     organic_alternatives: [
       {
-        input: 'Jeevamrut',
-        dose: '500 L/ha every 15 days',
+        input_name: 'Jeevamrut',
+        local_names: {
+          hindi: 'Jeevamrut',
+          tamil: 'Jeevamrut',
+          telugu: 'Jeevamrut',
+          kannada: 'Jeevamrut'
+        },
+        action_type: OrganicActionType.SUPPORTIVE,
+        dose: '500 L/ha in 500 L water',
+        application_method: 'Foliar spray or soil drench through irrigation',
+        preparation_method: '10 kg fresh cow dung + 10 L cow urine + 2 kg jaggery + 2 kg pulse flour (besan/dal powder) + handful of forest/bund soil in 200 L water. Ferment 5-7 days with daily stirring. Use within 7 days.',
+        application_frequency: 'Every 15 days during crop growth',
+        time_to_effect_days: 7,
+        effect_duration_days: 15,
+        application_timing: 'Early morning or late evening. Start from 7 DAS.',
         effectiveness_pct: 55,
-        certification_safe: true,
-        preparation_method: '10 kg cow dung + 10 L cow urine + 2 kg jaggery + 2 kg pulse flour + handful soil in 200 L water, ferment 5-7 days',
-        application_timing: 'Foliar or soil drench during vegetative growth',
-        scientific_source: 'ICAR-IARI Zero Budget Natural Farming'
+        effectiveness_conditions: [
+          'Works best in soils with existing organic matter',
+          'More effective in warm weather (25-35°C)',
+          'Better results when combined with mulching'
+        ],
+        effectiveness_limitations: [
+          'SLOWER than urea - visible effect takes 7+ days',
+          'Nutrient content varies with preparation',
+          'Not suitable as sole N source for high-demand crops',
+          'Rain within 6 hours reduces efficacy',
+          'May not meet N demand during peak growth'
+        ],
+        npop_certified: true,
+        usda_organic_certified: true,
+        eu_organic_certified: true,
+        certification_notes: 'Cow must not be treated with antibiotics. Use indigenous cow dung/urine for best results.',
+        cost_inr_per_ha: 500,
+        cost_breakdown: 'Cow dung ₹50, Jaggery ₹100, Pulse flour ₹50, Labour ₹300',
+        labour_hours_per_ha: 4,
+        labour_intensity: LabourIntensity.MEDIUM,
+        equipment_needed: ['200 L drum/tank', 'Stirring stick', 'Sprayer or irrigation system', 'Strainer'],
+        skill_level_required: 'low',
+        shelf_life_days: 7,
+        storage_conditions: 'Keep covered in shade. Use fresh for best results.',
+        can_prepare_in_advance: false,
+        scientific_source: 'ICAR-IARI ZBNF, Subhash Palekar Natural Farming',
+        scientific_basis: 'Jeevamrut contains beneficial microorganisms that enhance soil microbial activity and nutrient cycling. Does NOT directly supply N like urea but improves N availability from soil organic matter. Expect 2-4 kg N/ha equivalent per application.'
       },
       {
-        input: 'Vermicompost',
+        input_name: 'Vermicompost',
+        local_names: {
+          hindi: 'Kechua Khad',
+          tamil: 'Mun Puzu Uram',
+          telugu: 'Verm Compost',
+          kannada: 'Huluva Gombari'
+        },
+        action_type: OrganicActionType.SUPPORTIVE,
         dose: '2-3 tonnes/ha',
+        application_method: 'Broadcast and incorporate before sowing OR band placement near seed rows',
+        preparation_method: 'Purchase ready-made or prepare using Eisenia fetida earthworms with agri-waste',
+        application_frequency: 'Once before sowing + optional 1 tonne/ha at 30 DAS',
+        time_to_effect_days: 14,
+        effect_duration_days: 90,
+        application_timing: 'Basal application 2-3 days before sowing. Incorporate into soil.',
         effectiveness_pct: 70,
-        certification_safe: true,
-        application_timing: 'Basal application during field preparation',
-        scientific_source: 'ICAR-NPOF Ghaziabad'
+        effectiveness_conditions: [
+          'High-quality vermicompost with 1.5-2% N',
+          'Moist soil conditions for microbial activity',
+          'Combined with Jeevamrut for faster nutrient release'
+        ],
+        effectiveness_limitations: [
+          'N content only 1.5-2% vs 46% in urea',
+          'Large volumes needed (2-3 tonnes vs 50-100 kg urea)',
+          'Transport cost significant for large farms',
+          'Quality varies widely between sources',
+          'Slow release may not meet peak N demand'
+        ],
+        npop_certified: true,
+        usda_organic_certified: true,
+        eu_organic_certified: true,
+        certification_notes: 'Must be from organic waste. Verify source for certification.',
+        cost_inr_per_ha: 12000,
+        cost_breakdown: '₹4000/tonne x 3 tonnes = ₹12000. Transport ₹2000-4000 extra.',
+        labour_hours_per_ha: 8,
+        labour_intensity: LabourIntensity.MEDIUM,
+        equipment_needed: ['Tractor-trolley for transport', 'Broadcast spreader or manual labour'],
+        skill_level_required: 'low',
+        shelf_life_days: 180,
+        storage_conditions: 'Keep moist (30-40% moisture). Covered storage in shade.',
+        can_prepare_in_advance: true,
+        scientific_source: 'ICAR-NPOF Ghaziabad, TNAU Coimbatore',
+        scientific_basis: 'Vermicompost contains 1.5-2% N, 0.5-1% P, 0.5-1% K plus micronutrients and beneficial microbes. Slow-release nature reduces leaching. Provides ~30-40 kg N/ha with 2 tonnes application vs 23-46 kg N from 50-100 kg urea.'
       },
       {
-        input: 'FYM (Well-decomposed)',
-        dose: '10-12 tonnes/ha',
-        effectiveness_pct: 60,
-        certification_safe: true,
-        application_timing: '2-3 weeks before sowing, incorporate in soil',
-        scientific_source: 'ICAR-IARI'
-      },
-      {
-        input: 'Neem Cake',
-        dose: '250-500 kg/ha',
-        effectiveness_pct: 50,
-        certification_safe: true,
-        application_timing: 'Basal application, also has pest deterrent properties',
-        scientific_source: 'ICAR-NPOF'
-      },
-      {
-        input: 'Green Manure (Dhaincha/Sesbania)',
-        dose: '25 kg seed/ha, incorporate at 45-50 DAS',
+        input_name: 'Green Manure (Dhaincha)',
+        local_names: {
+          hindi: 'Dhaincha',
+          tamil: 'Sannai',
+          telugu: 'Giliricidia',
+          kannada: 'Dhaincha'
+        },
+        action_type: OrganicActionType.PREVENTIVE,
+        dose: '25-30 kg seed/ha, incorporate at 45-55 DAS',
+        application_method: 'Sow dhaincha 45-55 days before main crop. Incorporate in situ at 50% flowering.',
+        preparation_method: 'Broadcast seed, irrigate, allow growth for 45-55 days, incorporate with disc harrow',
+        application_frequency: 'Once per season as pre-sowing crop',
+        time_to_effect_days: 55,
+        effect_duration_days: 120,
+        application_timing: '45-55 days before main crop sowing. Incorporate before flowering.',
         effectiveness_pct: 75,
-        certification_safe: true,
-        preparation_method: 'Sow dhaincha 45-50 days before main crop, incorporate in situ',
-        application_timing: 'Pre-sowing green manure',
-        scientific_source: 'ICAR-IARI'
+        effectiveness_conditions: [
+          'Adequate moisture for dhaincha growth',
+          'Incorporation at 50% flowering (max N)',
+          'Decomposition period of 10-15 days before sowing'
+        ],
+        effectiveness_limitations: [
+          'Delays main crop sowing by 55-70 days',
+          'Requires extra irrigation for green manure crop',
+          'Not suitable for late sowing windows',
+          'Occupies land that could have cash crop'
+        ],
+        npop_certified: true,
+        usda_organic_certified: true,
+        eu_organic_certified: true,
+        cost_inr_per_ha: 2500,
+        cost_breakdown: 'Seed ₹800, Irrigation ₹500, Incorporation ₹1200',
+        labour_hours_per_ha: 12,
+        labour_intensity: LabourIntensity.MEDIUM,
+        equipment_needed: ['Seed broadcaster', 'Disc harrow/rotavator', 'Irrigation'],
+        skill_level_required: 'medium',
+        shelf_life_days: 0,
+        storage_conditions: 'N/A - grown in situ',
+        can_prepare_in_advance: false,
+        scientific_source: 'ICAR-IARI, ICAR-IISS Bhopal',
+        scientific_basis: 'Sesbania aculeata (Dhaincha) fixes 60-80 kg N/ha in 45-55 days through rhizobial symbiosis. Biomass incorporation adds 4-6 tonnes organic matter/ha. N release occurs over 8-12 weeks post-incorporation.'
       },
       {
-        input: 'Azolla',
-        dose: '8-10 tonnes fresh/ha',
-        effectiveness_pct: 65,
-        certification_safe: true,
-        application_timing: 'Dual cropping in rice - fixes 40-60 kg N/ha',
-        scientific_source: 'ICAR-CRRI Cuttack'
-      },
-      {
-        input: 'Panchagavya',
-        dose: '30 L/ha as foliar spray (3% solution)',
-        effectiveness_pct: 45,
-        certification_safe: true,
-        preparation_method: 'Cow dung + cow urine + milk + curd + ghee, ferment 21 days',
-        application_timing: 'Foliar spray at critical growth stages',
-        scientific_source: 'TNAU Organic Farming'
+        input_name: 'FYM (Well-decomposed)',
+        local_names: {
+          hindi: 'Gober Ki Khad',
+          tamil: 'Thozhu Uram',
+          telugu: 'Peeru Eda',
+          kannada: 'Kombu Gombari'
+        },
+        action_type: OrganicActionType.SUPPORTIVE,
+        dose: '10-12 tonnes/ha',
+        application_method: 'Broadcast and incorporate 2-3 weeks before sowing',
+        preparation_method: 'Compost cow dung for 3-4 months with turning. Dark brown, crumbly, earthy smell indicates readiness.',
+        application_frequency: 'Once before sowing each season',
+        time_to_effect_days: 21,
+        effect_duration_days: 180,
+        application_timing: '2-3 weeks before sowing to allow initial decomposition',
+        effectiveness_pct: 60,
+        effectiveness_conditions: [
+          'Well-decomposed (C:N ratio <20:1)',
+          'Incorporated into moist soil',
+          'Combined with biofertilizers for faster nutrient cycling'
+        ],
+        effectiveness_limitations: [
+          'N content only 0.5-0.8% (vs 46% urea)',
+          'Very large volumes needed - transport intensive',
+          'Incompletely decomposed FYM causes N immobilization',
+          'Weed seeds if not properly composted',
+          'Variable quality between sources'
+        ],
+        npop_certified: true,
+        usda_organic_certified: true,
+        eu_organic_certified: true,
+        certification_notes: 'Must be from animals not fed GM feed or treated with prohibited substances in organic systems.',
+        cost_inr_per_ha: 6000,
+        cost_breakdown: 'FYM ₹400/tonne x 12 = ₹4800, Transport ₹1200',
+        labour_hours_per_ha: 16,
+        labour_intensity: LabourIntensity.HIGH,
+        equipment_needed: ['Tractor-trolley', 'Spreader or manual labour', 'Disc harrow'],
+        skill_level_required: 'low',
+        shelf_life_days: 365,
+        storage_conditions: 'Store in heaps, covered to prevent nutrient loss. Keep moist.',
+        can_prepare_in_advance: true,
+        scientific_source: 'ICAR-IARI, ICAR-NPOF',
+        scientific_basis: 'FYM contains 0.5-0.8% N, 0.2-0.3% P, 0.5-0.6% K. At 12 tonnes/ha, provides 60-100 kg N, but only 30-40% available in first season. Builds soil organic matter long-term.'
       }
     ]
   },
   {
     chemical_input: 'DAP (18-46-0)',
     chemical_category: 'fertilizer',
+    honest_comparison: 'Organic P sources are less soluble and slower to act. Response visible in 3-4 weeks vs 7-10 days for DAP. P availability strongly pH-dependent - works best in acidic soils.',
     organic_alternatives: [
       {
-        input: 'Bone Meal',
-        dose: '300-500 kg/ha',
-        effectiveness_pct: 70,
-        certification_safe: true,
-        application_timing: 'Basal application, slow-release P source',
-        scientific_source: 'ICAR-NPOF'
-      },
-      {
-        input: 'Rock Phosphate',
+        input_name: 'Rock Phosphate',
+        local_names: {
+          hindi: 'Rock Phosphate',
+          tamil: 'Rock Phosphate',
+          telugu: 'Rock Phosphate',
+          kannada: 'Rock Phosphate'
+        },
+        action_type: OrganicActionType.SUPPORTIVE,
         dose: '400-500 kg/ha',
-        effectiveness_pct: 60,
-        certification_safe: true,
-        application_timing: 'Basal application, better in acidic soils',
-        scientific_source: 'ICAR-IARI'
-      },
-      {
-        input: 'Vermicompost (P-enriched)',
-        dose: '3-4 tonnes/ha',
+        application_method: 'Broadcast and incorporate before sowing. Mix with organic matter for better availability.',
+        preparation_method: 'Mix rock phosphate with equal volume of FYM or compost. Apply together.',
+        application_frequency: 'Once every 2-3 years as soil amendment',
+        time_to_effect_days: 30,
+        effect_duration_days: 730,
+        application_timing: 'Basal application 30 days before sowing for acidic soils',
         effectiveness_pct: 55,
-        certification_safe: true,
-        preparation_method: 'Add rock phosphate to vermicomposting process',
-        application_timing: 'Basal application',
-        scientific_source: 'ICAR-NPOF'
+        effectiveness_conditions: [
+          'Acidic soils (pH < 6.5) for best solubility',
+          'Mixed with organic matter for PSB colonization',
+          'Applied well in advance for dissolution'
+        ],
+        effectiveness_limitations: [
+          'Very slow release - may take season to show effect',
+          'Poor availability in alkaline soils (pH > 7.5)',
+          'Not suitable for immediate P deficiency correction',
+          'Heavy metals in some sources - verify quality'
+        ],
+        npop_certified: true,
+        usda_organic_certified: true,
+        eu_organic_certified: true,
+        certification_notes: 'Check for heavy metal contamination. Udaipur/Jhamarkotra rock phosphate is certified.',
+        cost_inr_per_ha: 5000,
+        cost_breakdown: '₹10/kg x 500 kg = ₹5000',
+        labour_hours_per_ha: 6,
+        labour_intensity: LabourIntensity.MEDIUM,
+        equipment_needed: ['Spreader', 'Disc harrow'],
+        skill_level_required: 'low',
+        shelf_life_days: 1825,
+        storage_conditions: 'Keep dry. Indefinite shelf life if dry.',
+        can_prepare_in_advance: true,
+        scientific_source: 'ICAR-IARI, ICAR-IISS',
+        scientific_basis: 'Rock phosphate contains 18-20% P2O5 but only 2-5% is immediately available. PSB inoculation increases availability 2-3x. Works best when applied with organic matter in acidic soils.'
       },
       {
-        input: 'PSB (Phosphate Solubilizing Bacteria)',
-        dose: '5 kg/ha with carrier or 1 L liquid culture',
-        effectiveness_pct: 50,
-        certification_safe: true,
-        application_timing: 'Seed treatment or soil application',
-        scientific_source: 'ICAR-NBAIM'
-      }
-    ]
-  },
-  {
-    chemical_input: 'MOP (Muriate of Potash 60% K2O)',
-    chemical_category: 'fertilizer',
-    organic_alternatives: [
-      {
-        input: 'Wood Ash',
-        dose: '500-1000 kg/ha',
-        effectiveness_pct: 60,
-        certification_safe: true,
-        application_timing: 'Basal or top-dressing, also provides Ca and Mg',
-        scientific_source: 'ICAR-NPOF'
-      },
-      {
-        input: 'Banana Pseudostem Ash',
-        dose: '300-500 kg/ha',
-        effectiveness_pct: 55,
-        certification_safe: true,
-        application_timing: 'Basal application',
-        scientific_source: 'ICAR-NRC Banana'
-      },
-      {
-        input: 'Tobacco Dust/Ash',
-        dose: '200-300 kg/ha',
-        effectiveness_pct: 50,
-        certification_safe: true,
-        application_timing: 'Basal application',
-        scientific_source: 'ICAR-CTRI'
-      },
-      {
-        input: 'K-Solubilizing Bacteria',
-        dose: '5 kg/ha',
+        input_name: 'PSB (Phosphate Solubilizing Bacteria)',
+        local_names: {
+          hindi: 'PSB',
+          tamil: 'PSB',
+          telugu: 'PSB',
+          kannada: 'PSB'
+        },
+        action_type: OrganicActionType.SUPPORTIVE,
+        dose: '5 kg/ha or 10 g/kg seed treatment',
+        application_method: 'Seed treatment OR soil application with FYM',
+        preparation_method: 'Mix PSB culture with FYM at 1:100 ratio for soil application. For seed treatment, make slurry with jaggery solution.',
+        application_frequency: 'Once at sowing',
+        time_to_effect_days: 21,
+        effect_duration_days: 90,
+        application_timing: 'At sowing time for seed treatment. Before sowing for soil application.',
         effectiveness_pct: 45,
-        certification_safe: true,
-        application_timing: 'Soil application at sowing',
-        scientific_source: 'ICAR-NBAIM'
-      }
-    ]
-  },
-  {
-    chemical_input: 'Zinc Sulphate',
-    chemical_category: 'fertilizer',
-    organic_alternatives: [
-      {
-        input: 'Zinc-enriched Compost',
-        dose: '2-3 tonnes/ha',
-        effectiveness_pct: 60,
-        certification_safe: true,
-        preparation_method: 'Add ZnSO4 during composting (permitted under organic)',
-        scientific_source: 'ICAR-IARI'
+        effectiveness_conditions: [
+          'Sufficient soil organic matter present',
+          'Soil temperature 25-35°C',
+          'Adequate soil moisture',
+          'Combined with rock phosphate for best results'
+        ],
+        effectiveness_limitations: [
+          'Does NOT add P - only solubilizes existing soil P',
+          'Effect limited in low-organic matter soils',
+          'High soil P may reduce PSB activity',
+          'Requires living organisms - storage sensitive'
+        ],
+        npop_certified: true,
+        usda_organic_certified: true,
+        eu_organic_certified: true,
+        cost_inr_per_ha: 500,
+        cost_breakdown: '₹100/kg x 5 kg = ₹500',
+        labour_hours_per_ha: 2,
+        labour_intensity: LabourIntensity.LOW,
+        equipment_needed: ['Seed treatment drum', 'Mixing container'],
+        skill_level_required: 'low',
+        shelf_life_days: 180,
+        storage_conditions: 'Store at 15-25°C away from sunlight. Check expiry date.',
+        can_prepare_in_advance: false,
+        scientific_source: 'ICAR-NBAIM Mau',
+        scientific_basis: 'Bacillus, Pseudomonas, and Aspergillus species produce organic acids that solubilize fixed soil P. Can mobilize 15-30 kg P/ha from soil reserves. Most effective when combined with rock phosphate application.'
       },
       {
-        input: 'Zinc Solubilizing Bacteria',
-        dose: '2 kg/ha',
-        effectiveness_pct: 50,
-        certification_safe: true,
-        application_timing: 'Seed treatment or soil application',
-        scientific_source: 'ICAR-NBAIM'
+        input_name: 'Bone Meal',
+        local_names: {
+          hindi: 'Haddi Ka Churna',
+          tamil: 'Elumbu Podi',
+          telugu: 'Emuka Podi',
+          kannada: 'Moole Pudi'
+        },
+        action_type: OrganicActionType.SUPPORTIVE,
+        dose: '300-500 kg/ha',
+        application_method: 'Broadcast and incorporate OR band placement near rows',
+        preparation_method: 'Use steamed bone meal (processed at high temperature)',
+        application_frequency: 'Once before sowing',
+        time_to_effect_days: 21,
+        effect_duration_days: 180,
+        application_timing: 'Basal application, incorporate 2-3 weeks before sowing',
+        effectiveness_pct: 65,
+        effectiveness_conditions: [
+          'Acidic to neutral soils for better availability',
+          'Moist soil conditions',
+          'Incorporated well into root zone'
+        ],
+        effectiveness_limitations: [
+          'Slow P release vs DAP',
+          'Less effective in alkaline soils',
+          'Some certifications restrict animal products',
+          'Strong odor during application'
+        ],
+        npop_certified: true,
+        usda_organic_certified: true,
+        eu_organic_certified: false,
+        certification_notes: 'Must be from organically raised animals in some standards. EU restricts animal-origin fertilizers.',
+        cost_inr_per_ha: 6000,
+        cost_breakdown: '₹15/kg x 400 kg = ₹6000',
+        labour_hours_per_ha: 6,
+        labour_intensity: LabourIntensity.MEDIUM,
+        equipment_needed: ['Spreader', 'Gloves', 'Mask'],
+        skill_level_required: 'low',
+        shelf_life_days: 365,
+        storage_conditions: 'Keep dry. Store away from pests.',
+        can_prepare_in_advance: true,
+        scientific_source: 'ICAR-NPOF',
+        scientific_basis: 'Bone meal contains 20-24% P2O5 and 3-4% N. P release is slower than DAP but more sustained. Also provides calcium (20-25%) beneficial for acidic soils.'
       }
     ]
   }
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
-// INSECTICIDE ORGANIC EQUIVALENTS (20+ alternatives)
+// INSECTICIDE ORGANIC EQUIVALENTS - PRODUCTION GRADE
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const INSECTICIDE_EQUIVALENTS: OrganicEquivalent[] = [
   {
     chemical_input: 'Imidacloprid (for sucking pests)',
     chemical_category: 'insecticide',
+    honest_comparison: 'Organic options require 3-4x more applications. Control is 60-70% vs 90%+ for chemicals. Early detection is critical - organic methods fail against heavy infestations. Expect some crop damage even with best organic management.',
     organic_alternatives: [
       {
-        input: 'Neem Oil (Azadirachtin)',
-        dose: '5 mL/L (10,000 ppm) or 2 mL/L (50,000 ppm)',
-        effectiveness_pct: 70,
-        certification_safe: true,
-        application_timing: 'Evening spray, repeat every 7-10 days',
-        scientific_source: 'ICAR-NBAIR Bangalore'
-      },
-      {
-        input: 'NSKE (Neem Seed Kernel Extract)',
-        dose: '5% solution (50 g neem seed powder/L)',
+        input_name: 'Neem Oil (Azadirachtin)',
+        local_names: {
+          hindi: 'Neem Tel',
+          tamil: 'Vembu Ennai',
+          telugu: 'Vepa Noone',
+          kannada: 'Bevu Enne'
+        },
+        action_type: OrganicActionType.CURATIVE,
+        dose: '5 mL/L water (10000 ppm) or 2 mL/L (50000 ppm)',
+        application_method: 'Foliar spray with hand-held or knapsack sprayer. Cover undersides of leaves.',
+        preparation_method: 'Dilute neem oil in water. Add 1 mL liquid soap as emulsifier. Mix well before spraying.',
+        application_frequency: 'Every 7-10 days during pest activity',
+        time_to_effect_days: 3,
+        effect_duration_days: 7,
+        application_timing: 'Early morning or late evening. Avoid midday heat. Apply at first sign of pest.',
         effectiveness_pct: 65,
-        certification_safe: true,
-        preparation_method: 'Soak crushed neem seeds overnight, filter and spray',
-        application_timing: 'Early morning or evening',
-        scientific_source: 'ICAR-IARI'
+        effectiveness_conditions: [
+          'Applied at early infestation (< 10 pests/plant)',
+          'Good spray coverage including leaf undersides',
+          'No rain for 4-6 hours after application',
+          'Temperature below 30°C during application'
+        ],
+        effectiveness_limitations: [
+          'SLOWER action than imidacloprid - 2-3 days vs hours',
+          'Requires REPEATED applications (4-6 per season)',
+          'Less effective against heavy infestations',
+          'Breaks down in sunlight - reapply after 7 days',
+          'Some pest populations show reduced sensitivity',
+          'May cause phytotoxicity in hot weather'
+        ],
+        npop_certified: true,
+        usda_organic_certified: true,
+        eu_organic_certified: true,
+        certification_notes: 'Use cold-pressed neem oil. Azadirachtin content should be certified.',
+        cost_inr_per_ha: 1200,
+        cost_breakdown: 'Neem oil ₹800/L, 1.5 L needed = ₹1200 per spray. 4-6 sprays needed.',
+        labour_hours_per_ha: 6,
+        labour_intensity: LabourIntensity.MEDIUM,
+        equipment_needed: ['Knapsack sprayer', 'Liquid soap/emulsifier', 'Measuring cup', 'Protective gear'],
+        skill_level_required: 'medium',
+        shelf_life_days: 365,
+        storage_conditions: 'Store in cool, dark place. Keep sealed. Away from direct sunlight.',
+        can_prepare_in_advance: false,
+        scientific_source: 'ICAR-NBAIR Bangalore',
+        scientific_basis: 'Azadirachtin disrupts insect growth hormones (ecdysone), causing molting failure. Also acts as antifeedant and repellent. Effective against aphids, whiteflies, thrips, jassids at early stages. Does NOT kill adults immediately but prevents reproduction.'
       },
       {
-        input: 'Yellow Sticky Traps',
-        dose: '20-25 traps/ha',
-        effectiveness_pct: 40,
-        certification_safe: true,
-        application_timing: 'Install at crop canopy level',
-        scientific_source: 'ICAR-NBAIR'
-      },
-      {
-        input: 'Beauveria bassiana',
+        input_name: 'Beauveria bassiana',
+        local_names: {
+          hindi: 'Beauveria',
+          tamil: 'Beauveria',
+          telugu: 'Beauveria',
+          kannada: 'Beauveria'
+        },
+        action_type: OrganicActionType.CURATIVE,
         dose: '2.5 kg/ha (1 x 10^8 cfu/g)',
-        effectiveness_pct: 60,
-        certification_safe: true,
-        application_timing: 'Evening spray in high humidity conditions',
-        scientific_source: 'ICAR-NBAIR'
+        application_method: 'Foliar spray in evening. High humidity increases efficacy.',
+        preparation_method: 'Mix powder in water with sticker. Spray within 2 hours of mixing.',
+        application_frequency: 'Every 10-15 days, 3-4 applications',
+        time_to_effect_days: 7,
+        effect_duration_days: 15,
+        application_timing: 'Evening spray when humidity is high. Avoid hot, dry conditions.',
+        effectiveness_pct: 55,
+        effectiveness_conditions: [
+          'High humidity (>80% RH) for spore germination',
+          'Temperature 20-28°C optimal',
+          'Applied to young pest stages',
+          'No fungicide spray for 7 days before/after'
+        ],
+        effectiveness_limitations: [
+          'VERY SLOW - takes 5-10 days to kill',
+          'Requires high humidity - fails in dry conditions',
+          'Incompatible with fungicides',
+          'Sunlight kills spores - evening application only',
+          'Living organism - proper storage critical'
+        ],
+        npop_certified: true,
+        usda_organic_certified: true,
+        eu_organic_certified: true,
+        cost_inr_per_ha: 1500,
+        cost_breakdown: '₹600/kg x 2.5 kg = ₹1500 per application',
+        labour_hours_per_ha: 4,
+        labour_intensity: LabourIntensity.MEDIUM,
+        equipment_needed: ['Sprayer', 'Sticker/spreader'],
+        skill_level_required: 'medium',
+        shelf_life_days: 180,
+        storage_conditions: 'Refrigerate at 4-8°C. Check viability before use. Use before expiry.',
+        can_prepare_in_advance: false,
+        scientific_source: 'ICAR-NBAIR',
+        scientific_basis: 'Beauveria bassiana is an entomopathogenic fungus. Spores attach to insect cuticle, germinate, and penetrate body causing death in 5-10 days. Most effective on soft-bodied insects in humid conditions. White fungal growth visible on dead insects.'
       },
       {
-        input: 'Verticillium lecanii',
-        dose: '2.5 kg/ha',
-        effectiveness_pct: 55,
-        certification_safe: true,
-        application_timing: 'Effective against whitefly, aphids in humid conditions',
-        scientific_source: 'ICAR-NBAIR'
+        input_name: 'Yellow Sticky Traps',
+        local_names: {
+          hindi: 'Peela Chipkane Wala Trap',
+          tamil: 'Manjal Ottum Pori',
+          telugu: 'Pasupu Trap',
+          kannada: 'Haladi Trap'
+        },
+        action_type: OrganicActionType.PREVENTIVE,
+        dose: '20-25 traps/ha',
+        application_method: 'Install at crop canopy level. Replace when covered.',
+        preparation_method: 'Purchase ready-made or make with yellow plastic sheets + castor oil/grease',
+        application_frequency: 'Replace every 7-10 days or when 50% covered',
+        time_to_effect_days: 1,
+        effect_duration_days: 10,
+        application_timing: 'Install at crop emergence. Monitor and replace regularly.',
+        effectiveness_pct: 35,
+        effectiveness_conditions: [
+          'Used as MONITORING tool primarily',
+          'Effective for early detection',
+          'Reduces flying adult population',
+          'Works best for whiteflies and aphids'
+        ],
+        effectiveness_limitations: [
+          'MONITORING tool - NOT primary control',
+          'Does not control larvae or eggs',
+          'Requires regular replacement',
+          'May trap beneficial insects',
+          'Ineffective for heavy infestations'
+        ],
+        npop_certified: true,
+        usda_organic_certified: true,
+        eu_organic_certified: true,
+        cost_inr_per_ha: 1000,
+        cost_breakdown: '₹40/trap x 25 = ₹1000. Replace 4-5 times per season.',
+        labour_hours_per_ha: 4,
+        labour_intensity: LabourIntensity.LOW,
+        equipment_needed: ['Traps', 'Support stakes', 'Wires/strings'],
+        skill_level_required: 'low',
+        shelf_life_days: 180,
+        storage_conditions: 'Store flat in dry conditions. Protect from dust.',
+        can_prepare_in_advance: true,
+        scientific_source: 'ICAR-NBAIR',
+        scientific_basis: 'Yellow attracts whiteflies, aphids, leaf miners, and thrips. Used for population monitoring (ETL determination) and mass trapping. Cannot control heavy infestations alone - use as part of IPM strategy.'
       }
     ]
   },
   {
     chemical_input: 'Chlorpyriphos (for borers)',
     chemical_category: 'insecticide',
+    honest_comparison: 'Organic borer control is challenging. Bt is effective but requires precise timing. Expect 15-25% more borer damage in organic vs chemical systems. Prevention through trap crops and egg parasitoids is critical.',
     organic_alternatives: [
       {
-        input: 'Bt (Bacillus thuringiensis)',
-        dose: '1-1.5 kg/ha',
-        effectiveness_pct: 75,
-        certification_safe: true,
-        application_timing: 'Spray when larvae are young (1st-2nd instar)',
-        scientific_source: 'ICAR-NBAIR'
-      },
-      {
-        input: 'NPV (Nuclear Polyhedrosis Virus)',
-        dose: '250-500 LE/ha (Helicoverpa/Spodoptera)',
+        input_name: 'Bacillus thuringiensis (Bt)',
+        local_names: {
+          hindi: 'Bt',
+          tamil: 'Bt',
+          telugu: 'Bt',
+          kannada: 'Bt'
+        },
+        action_type: OrganicActionType.CURATIVE,
+        dose: '1-1.5 kg/ha (Bt kurstaki for caterpillars)',
+        application_method: 'Foliar spray targeting young larvae. Spray into whorls/growing points.',
+        preparation_method: 'Mix powder in water. Add sticker. Use immediately.',
+        application_frequency: 'Every 7-10 days during pest window, 3-4 applications',
+        time_to_effect_days: 3,
+        effect_duration_days: 5,
+        application_timing: 'Evening spray when larvae are feeding. Target 1st-2nd instar larvae.',
         effectiveness_pct: 70,
-        certification_safe: true,
-        preparation_method: 'Mix with 0.1% Tinopal as UV protectant',
-        application_timing: 'Evening spray on young larvae',
-        scientific_source: 'ICAR-NBAIR'
+        effectiveness_conditions: [
+          'Applied to YOUNG larvae (1st-2nd instar)',
+          'Larvae must ingest Bt on treated surfaces',
+          'Applied before larvae bore into stems/fruits',
+          'Repeated applications at 7-10 day intervals'
+        ],
+        effectiveness_limitations: [
+          'ONLY kills larvae that eat treated surfaces',
+          'Ineffective on older larvae and pupae',
+          'Once larvae bore inside, Bt cannot reach them',
+          'UV degrades Bt - reapply after 5-7 days',
+          'Requires precise timing - miss window and fails'
+        ],
+        npop_certified: true,
+        usda_organic_certified: true,
+        eu_organic_certified: true,
+        cost_inr_per_ha: 800,
+        cost_breakdown: '₹500/kg x 1.5 kg = ₹750 + application = ₹800',
+        labour_hours_per_ha: 4,
+        labour_intensity: LabourIntensity.MEDIUM,
+        equipment_needed: ['Sprayer', 'Sticker'],
+        skill_level_required: 'high',
+        shelf_life_days: 365,
+        storage_conditions: 'Store cool, dry, dark. Avoid heat and moisture.',
+        can_prepare_in_advance: false,
+        scientific_source: 'ICAR-NBAIR',
+        scientific_basis: 'Bt produces crystal proteins (Cry toxins) that destroy larval gut when ingested. Death occurs in 2-5 days. Must be eaten to work - no contact action. Timing is CRITICAL - apply when young larvae are actively feeding on surfaces.'
       },
       {
-        input: 'Trichogramma chilonis',
+        input_name: 'Trichogramma (Egg Parasitoid)',
+        local_names: {
+          hindi: 'Trichogramma',
+          tamil: 'Trichogramma',
+          telugu: 'Trichogramma',
+          kannada: 'Trichogramma'
+        },
+        action_type: OrganicActionType.PREVENTIVE,
         dose: '1-1.5 lakh eggs/ha, 6-8 releases',
-        effectiveness_pct: 65,
-        certification_safe: true,
-        application_timing: 'Release at egg-laying stage of pest',
-        scientific_source: 'ICAR-NBAIR'
-      },
-      {
-        input: 'Pheromone Traps',
-        dose: '5-8 traps/ha',
-        effectiveness_pct: 40,
-        certification_safe: true,
-        application_timing: 'Install at 1 month after sowing, monitor weekly',
-        scientific_source: 'ICAR-NBAIR'
-      }
-    ]
-  },
-  {
-    chemical_input: 'Cypermethrin (for caterpillars)',
-    chemical_category: 'insecticide',
-    organic_alternatives: [
-      {
-        input: 'Bt kurstaki',
-        dose: '1-2 kg/ha',
-        effectiveness_pct: 80,
-        certification_safe: true,
-        application_timing: 'Spray on young caterpillars',
-        scientific_source: 'ICAR-NBAIR'
-      },
-      {
-        input: 'Spinosad (Saccharopolyspora spinosa)',
-        dose: '75-100 mL/ha',
-        effectiveness_pct: 85,
-        certification_safe: true,
-        application_timing: 'Evening spray, avoid mixing with alkaline pesticides',
-        scientific_source: 'ICAR-NBAIR'
-      },
-      {
-        input: 'Metarhizium anisopliae',
-        dose: '2.5 kg/ha',
-        effectiveness_pct: 55,
-        certification_safe: true,
-        application_timing: 'Soil application for soil-dwelling pests',
-        scientific_source: 'ICAR-NBAIR'
-      }
-    ]
-  },
-  {
-    chemical_input: 'Carbofuran (for soil insects)',
-    chemical_category: 'insecticide',
-    organic_alternatives: [
-      {
-        input: 'Neem Cake',
-        dose: '250-500 kg/ha',
-        effectiveness_pct: 55,
-        certification_safe: true,
-        application_timing: 'Incorporate in soil during field preparation',
-        scientific_source: 'ICAR-IARI'
-      },
-      {
-        input: 'Metarhizium anisopliae',
-        dose: '2.5 kg/ha (soil application)',
+        application_method: 'Release tricho-cards at 10-15 points per hectare at weekly intervals',
+        preparation_method: 'Order fresh cards from biocontrol labs. Use within 2-3 days of receipt.',
+        application_frequency: 'Weekly release for 6-8 weeks during egg-laying period',
+        time_to_effect_days: 7,
+        effect_duration_days: 7,
+        application_timing: 'Start release at first moth trap catch or egg sighting. Release in evening.',
         effectiveness_pct: 60,
-        certification_safe: true,
-        application_timing: 'Mix with FYM and broadcast',
-        scientific_source: 'ICAR-NBAIR'
+        effectiveness_conditions: [
+          'Released when pest eggs are present',
+          'Adequate Trichogramma numbers (150,000+/ha)',
+          'Multiple releases (6-8) at weekly intervals',
+          'No broad-spectrum insecticide use'
+        ],
+        effectiveness_limitations: [
+          'ONLY parasitizes eggs - not larvae',
+          'Requires consistent weekly releases',
+          'Supply chain dependent - fresh cards needed',
+          'Cannot control existing larvae',
+          'Hot/dry weather reduces wasp activity'
+        ],
+        npop_certified: true,
+        usda_organic_certified: true,
+        eu_organic_certified: true,
+        cost_inr_per_ha: 4500,
+        cost_breakdown: '₹750/release x 6 releases = ₹4500',
+        labour_hours_per_ha: 8,
+        labour_intensity: LabourIntensity.MEDIUM,
+        equipment_needed: ['Tricho-cards', 'Stapler/pins for attaching'],
+        skill_level_required: 'medium',
+        shelf_life_days: 2,
+        storage_conditions: 'Use immediately. Keep in shade during transport. Refrigerate if delay.',
+        can_prepare_in_advance: false,
+        scientific_source: 'ICAR-NBAIR, State Biocontrol Labs',
+        scientific_basis: 'Trichogramma chilonis lays eggs inside pest eggs, killing the embryo. Each Trichogramma female parasitizes 40-50 pest eggs. PREVENTIVE measure - must be in field before pest egg-laying peak. Combine with pheromone traps for monitoring.'
       },
       {
-        input: 'Entomopathogenic Nematodes (EPN)',
-        dose: '1-2 billion IJs/ha',
+        input_name: 'NPV (Nuclear Polyhedrosis Virus)',
+        local_names: {
+          hindi: 'NPV',
+          tamil: 'NPV',
+          telugu: 'NPV',
+          kannada: 'NPV'
+        },
+        action_type: OrganicActionType.CURATIVE,
+        dose: '250-500 LE (Larval Equivalents)/ha',
+        application_method: 'Foliar spray in evening. Add 0.1% Tinopal (optical brightener) as UV protectant.',
+        preparation_method: 'Dilute NPV concentrate in water. Add Tinopal and jaggery solution. Spray same day.',
+        application_frequency: 'Every 10-15 days, 2-3 applications during pest window',
+        time_to_effect_days: 5,
+        effect_duration_days: 14,
+        application_timing: 'Evening spray. Target young larvae. Use at low-moderate infestation.',
         effectiveness_pct: 65,
-        certification_safe: true,
-        application_timing: 'Soil application in moist conditions',
-        scientific_source: 'ICAR-NBAIR'
-      }
-    ]
-  },
-  {
-    chemical_input: 'Monocrotophos (for mites)',
-    chemical_category: 'insecticide',
-    organic_alternatives: [
-      {
-        input: 'Sulphur 80% WP',
-        dose: '2-3 g/L',
-        effectiveness_pct: 75,
-        certification_safe: true,
-        application_timing: 'Avoid in hot weather (>35°C)',
-        scientific_source: 'ICAR-IIHR'
-      },
-      {
-        input: 'Neem Oil',
-        dose: '5 mL/L',
-        effectiveness_pct: 60,
-        certification_safe: true,
-        application_timing: 'Cover undersides of leaves',
-        scientific_source: 'ICAR-NBAIR'
-      },
-      {
-        input: 'Predatory Mites (Phytoseiulus)',
-        dose: '50,000-100,000/ha',
-        effectiveness_pct: 70,
-        certification_safe: true,
-        application_timing: 'Release when pest population is low-moderate',
-        scientific_source: 'ICAR-NBAIR'
+        effectiveness_conditions: [
+          'Applied to young larvae (1st-3rd instar)',
+          'UV protection (Tinopal) used',
+          'Applied in evening for overnight activity',
+          'Population not too high (not rescue treatment)'
+        ],
+        effectiveness_limitations: [
+          'Species-specific - HaNPV for Helicoverpa only',
+          'Takes 5-10 days to kill larvae',
+          'UV light degrades virus rapidly',
+          'Cannot control heavy infestations',
+          'Requires cold chain for storage'
+        ],
+        npop_certified: true,
+        usda_organic_certified: true,
+        eu_organic_certified: true,
+        cost_inr_per_ha: 1200,
+        cost_breakdown: '₹400/250 LE x 2-3 applications',
+        labour_hours_per_ha: 4,
+        labour_intensity: LabourIntensity.MEDIUM,
+        equipment_needed: ['Sprayer', 'Tinopal', 'Jaggery'],
+        skill_level_required: 'high',
+        shelf_life_days: 180,
+        storage_conditions: 'Refrigerate at 4°C. Protect from heat and light.',
+        can_prepare_in_advance: false,
+        scientific_source: 'ICAR-NBAIR, ICRISAT',
+        scientific_basis: 'NPV is species-specific virus. HaNPV for Helicoverpa, SlNPV for Spodoptera. Larvae die in 5-10 days, liquefy, and release virus to infect others. Epizootics can develop. Tinopal protects virus from UV for 2-3 days longer.'
       }
     ]
   }
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FUNGICIDE ORGANIC EQUIVALENTS (15+ alternatives)
+// FUNGICIDE ORGANIC EQUIVALENTS - PRODUCTION GRADE
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const FUNGICIDE_EQUIVALENTS: OrganicEquivalent[] = [
   {
     chemical_input: 'Mancozeb (broad-spectrum)',
     chemical_category: 'fungicide',
+    honest_comparison: 'Organic fungicides are primarily PREVENTIVE. Once infection is established, control is very limited. Expect 20-30% more disease in organic systems. Prevention through resistant varieties and cultural practices is essential.',
     organic_alternatives: [
       {
-        input: 'Trichoderma viride/harzianum',
-        dose: '4-5 kg/ha (seed treatment 10g/kg seed)',
-        effectiveness_pct: 65,
-        certification_safe: true,
-        application_timing: 'Seed treatment or soil application with FYM',
-        scientific_source: 'ICAR-NBAIR'
-      },
-      {
-        input: 'Pseudomonas fluorescens',
-        dose: '2.5 kg/ha (10g/kg seed treatment)',
+        input_name: 'Trichoderma viride/harzianum',
+        local_names: {
+          hindi: 'Trichoderma',
+          tamil: 'Trichoderma',
+          telugu: 'Trichoderma',
+          kannada: 'Trichoderma'
+        },
+        action_type: OrganicActionType.PREVENTIVE,
+        dose: '4-5 kg/ha (soil application) or 10 g/kg seed',
+        application_method: 'Seed treatment OR soil application with FYM carrier',
+        preparation_method: 'Mix Trichoderma with FYM at 1:100 ratio. Broadcast and incorporate OR treat seed with slurry.',
+        application_frequency: 'Once at sowing + one soil drench at 30 DAS if needed',
+        time_to_effect_days: 14,
+        effect_duration_days: 60,
+        application_timing: 'Apply before disease onset. Soil application 7 days before sowing.',
         effectiveness_pct: 60,
-        certification_safe: true,
-        application_timing: 'Seed treatment, soil drench, or foliar spray',
-        scientific_source: 'ICAR-IARI'
+        effectiveness_conditions: [
+          'Applied BEFORE disease establishment',
+          'Adequate soil organic matter',
+          'Moist soil conditions (25-35°C)',
+          'No fungicide use for 15 days before/after'
+        ],
+        effectiveness_limitations: [
+          'PREVENTIVE only - will NOT cure established disease',
+          'Slow to establish in soil (7-14 days)',
+          'Killed by chemical fungicides',
+          'Requires moist conditions to survive',
+          'Less effective in low-organic-matter soils'
+        ],
+        npop_certified: true,
+        usda_organic_certified: true,
+        eu_organic_certified: true,
+        cost_inr_per_ha: 1000,
+        cost_breakdown: '₹200/kg x 5 kg = ₹1000',
+        labour_hours_per_ha: 4,
+        labour_intensity: LabourIntensity.LOW,
+        equipment_needed: ['Mixing container', 'FYM carrier', 'Seed treatment drum'],
+        skill_level_required: 'low',
+        shelf_life_days: 180,
+        storage_conditions: 'Cool, dry, dark. Check viability before use.',
+        can_prepare_in_advance: false,
+        scientific_source: 'ICAR-NBAIR, ICAR-IARI',
+        scientific_basis: 'Trichoderma is antagonistic fungus that parasitizes pathogens and produces antibiotics. Colonizes rhizosphere protecting roots. Also induces systemic resistance in plants. MUST be applied before disease for effectiveness.'
       },
       {
-        input: 'Bordeaux Mixture',
-        dose: '1% (1 kg each CuSO4 + lime in 100 L water)',
-        effectiveness_pct: 75,
-        certification_safe: true,
-        preparation_method: 'Prepare fresh, use within 24 hours',
-        application_timing: 'Prophylactic spray before disease onset',
-        scientific_source: 'ICAR-IIHR'
-      },
-      {
-        input: 'Copper Hydroxide',
-        dose: '2.5 g/L',
+        input_name: 'Bordeaux Mixture',
+        local_names: {
+          hindi: 'Bordeaux Mixture',
+          tamil: 'Bordeaux Mixture',
+          telugu: 'Bordeaux Mixture',
+          kannada: 'Bordeaux Mixture'
+        },
+        action_type: OrganicActionType.PREVENTIVE,
+        dose: '1% solution (1 kg CuSO4 + 1 kg lime in 100 L water)',
+        application_method: 'Foliar spray. Good coverage essential. Avoid runoff.',
+        preparation_method: 'Dissolve CuSO4 in 50 L water. Slake lime in 50 L water separately. Pour CuSO4 into lime solution (NOT reverse). Test pH with knife - no corrosion.',
+        application_frequency: 'Every 10-15 days during disease-prone weather',
+        time_to_effect_days: 0,
+        effect_duration_days: 10,
+        application_timing: 'Apply before rain/infection period. Prophylactic use only.',
         effectiveness_pct: 70,
-        certification_safe: true,
-        application_timing: 'Preventive spray, avoid excess use (Cu accumulation)',
-        scientific_source: 'ICAR-IIHR'
-      }
-    ]
-  },
-  {
-    chemical_input: 'Carbendazim (for wilt/rot)',
-    chemical_category: 'fungicide',
-    organic_alternatives: [
-      {
-        input: 'Trichoderma harzianum',
-        dose: '5 kg/ha with 100 kg FYM',
-        effectiveness_pct: 65,
-        certification_safe: true,
-        application_timing: 'Soil application at sowing',
-        scientific_source: 'ICAR-NBAIR'
+        effectiveness_conditions: [
+          'Applied BEFORE infection',
+          'Good spray coverage',
+          'Freshly prepared mixture',
+          'pH 7-8 (neutral to slightly alkaline)'
+        ],
+        effectiveness_limitations: [
+          'PREVENTIVE only - no curative action',
+          'Copper accumulation in soil with repeated use',
+          'Phytotoxicity in acidic conditions',
+          'Stains fruit - cosmetic issue',
+          'Must prepare fresh (use within 24 hours)'
+        ],
+        npop_certified: true,
+        usda_organic_certified: true,
+        eu_organic_certified: true,
+        certification_notes: 'Copper use limited to 6 kg/ha/year in EU organic. Cumulative soil loading concerns.',
+        cost_inr_per_ha: 600,
+        cost_breakdown: 'CuSO4 ₹300 + Lime ₹100 + Labour ₹200',
+        labour_hours_per_ha: 6,
+        labour_intensity: LabourIntensity.MEDIUM,
+        equipment_needed: ['Two containers', 'Sprayer', 'Gloves', 'Testing knife'],
+        skill_level_required: 'medium',
+        shelf_life_days: 1,
+        storage_conditions: 'Prepare fresh. Cannot store mixed solution.',
+        can_prepare_in_advance: false,
+        scientific_source: 'ICAR-IIHR, ICAR-CPCRI',
+        scientific_basis: 'Copper ions disrupt fungal enzyme systems. Contact fungicide - must be on leaf surface before spore germination. Does NOT move into plant. Rain washes off - reapply after heavy rain.'
       },
       {
-        input: 'Pseudomonas fluorescens',
-        dose: '2.5-5 kg/ha',
-        effectiveness_pct: 60,
-        certification_safe: true,
-        application_timing: 'Soil drench at 15-20 DAS',
-        scientific_source: 'ICAR-IARI'
-      },
-      {
-        input: 'Beejamrut',
-        dose: 'Seed treatment (dip for 30 min)',
-        effectiveness_pct: 50,
-        certification_safe: true,
-        preparation_method: '5 kg cow dung + 5 L cow urine + 50 g lime + 20 L water',
-        application_timing: 'Before sowing',
-        scientific_source: 'ZBNF Standards'
-      }
-    ]
-  },
-  {
-    chemical_input: 'Sulphur 80% WP (for powdery mildew)',
-    chemical_category: 'fungicide',
-    organic_alternatives: [
-      {
-        input: 'Wettable Sulphur',
-        dose: '2-3 g/L',
-        effectiveness_pct: 90,
-        certification_safe: true,
-        application_timing: 'Avoid in temperatures >32°C',
-        scientific_source: 'ICAR-IIHR'
-      },
-      {
-        input: 'Milk Spray',
-        dose: '10% solution (100 mL milk/L water)',
+        input_name: 'Pseudomonas fluorescens',
+        local_names: {
+          hindi: 'Pseudomonas',
+          tamil: 'Pseudomonas',
+          telugu: 'Pseudomonas',
+          kannada: 'Pseudomonas'
+        },
+        action_type: OrganicActionType.PREVENTIVE,
+        dose: '2.5-5 kg/ha (10 g/kg seed treatment)',
+        application_method: 'Seed treatment OR soil drench OR foliar spray',
+        preparation_method: 'Seed treatment: slurry with jaggery solution. Soil: mix with FYM. Foliar: 5 g/L water.',
+        application_frequency: 'Seed treatment + foliar at 15-day intervals if needed',
+        time_to_effect_days: 14,
+        effect_duration_days: 45,
+        application_timing: 'Seed treatment before sowing. Soil drench at transplanting.',
         effectiveness_pct: 55,
-        certification_safe: true,
-        application_timing: 'Weekly spray as preventive',
-        scientific_source: 'OFAI'
-      },
-      {
-        input: 'Baking Soda (Sodium bicarbonate)',
-        dose: '5 g/L + 5 mL soap',
-        effectiveness_pct: 50,
-        certification_safe: true,
-        application_timing: 'At first sign of infection',
-        scientific_source: 'OFAI'
-      },
-      {
-        input: 'Ampelomyces quisqualis',
-        dose: 'Commercial formulation as per label',
-        effectiveness_pct: 60,
-        certification_safe: true,
-        application_timing: 'Mycoparasite of powdery mildew fungi',
-        scientific_source: 'ICAR-NBAIR'
-      }
-    ]
-  },
-  {
-    chemical_input: 'Metalaxyl (for downy mildew)',
-    chemical_category: 'fungicide',
-    organic_alternatives: [
-      {
-        input: 'Bordeaux Mixture',
-        dose: '1%',
-        effectiveness_pct: 70,
-        certification_safe: true,
-        application_timing: 'Prophylactic spray',
-        scientific_source: 'ICAR-IIHR'
-      },
-      {
-        input: 'Copper Oxychloride',
-        dose: '2.5 g/L',
-        effectiveness_pct: 65,
-        certification_safe: true,
-        application_timing: 'At disease initiation',
-        scientific_source: 'ICAR-IIHR'
-      }
-    ]
-  }
-];
-
-// ═══════════════════════════════════════════════════════════════════════════
-// HERBICIDE ORGANIC EQUIVALENTS (limited options)
-// ═══════════════════════════════════════════════════════════════════════════
-
-export const HERBICIDE_EQUIVALENTS: OrganicEquivalent[] = [
-  {
-    chemical_input: 'Pendimethalin (pre-emergence)',
-    chemical_category: 'herbicide',
-    organic_alternatives: [
-      {
-        input: 'Stale Seedbed Technique',
-        dose: 'N/A',
-        effectiveness_pct: 60,
-        certification_safe: true,
-        preparation_method: 'Pre-sowing irrigation, allow weeds to germinate, destroy by tillage/flame',
-        application_timing: '15-20 days before actual sowing',
-        scientific_source: 'ICAR-DWR'
-      },
-      {
-        input: 'Black Polythene Mulch',
-        dose: '400-500 kg/ha (25-50 micron)',
-        effectiveness_pct: 85,
-        certification_safe: true,
-        application_timing: 'Lay before transplanting, make planting holes',
-        scientific_source: 'ICAR-IIHR'
-      },
-      {
-        input: 'Organic Mulch (Straw/Leaves)',
-        dose: '5-8 tonnes/ha',
-        effectiveness_pct: 55,
-        certification_safe: true,
-        application_timing: 'After crop emergence, 10-15 cm thickness',
-        scientific_source: 'ICAR-NPOF'
-      }
-    ]
-  },
-  {
-    chemical_input: '2,4-D (post-emergence)',
-    chemical_category: 'herbicide',
-    organic_alternatives: [
-      {
-        input: 'Hand Weeding',
-        dose: '2-3 weedings/season',
-        effectiveness_pct: 90,
-        certification_safe: true,
-        application_timing: 'At critical weed competition periods',
-        scientific_source: 'ICAR-DWR'
-      },
-      {
-        input: 'Mechanical Weeding (Cono-weeder)',
-        dose: '2-3 operations',
-        effectiveness_pct: 75,
-        certification_safe: true,
-        application_timing: '20 and 40 DAT in transplanted crops',
-        scientific_source: 'ICAR-CRRI'
-      },
-      {
-        input: 'Inter-cultivation',
-        dose: '2-3 operations',
-        effectiveness_pct: 70,
-        certification_safe: true,
-        application_timing: 'At 15-20 and 30-35 DAS',
-        scientific_source: 'ICAR-DWR'
-      },
-      {
-        input: 'Flame Weeding',
-        dose: 'N/A',
-        effectiveness_pct: 75,
-        certification_safe: true,
-        application_timing: 'Before crop emergence (stale seedbed) or in orchards',
-        scientific_source: 'ICAR-NPOF'
+        effectiveness_conditions: [
+          'Applied preventively before disease',
+          'Moist conditions for establishment',
+          'No antibiotic/fungicide use'
+        ],
+        effectiveness_limitations: [
+          'PREVENTIVE - limited curative action',
+          'Requires establishment period (14 days)',
+          'Effectiveness varies by strain',
+          'Moisture-dependent survival'
+        ],
+        npop_certified: true,
+        usda_organic_certified: true,
+        eu_organic_certified: true,
+        cost_inr_per_ha: 800,
+        cost_breakdown: '₹200/kg x 4 kg = ₹800',
+        labour_hours_per_ha: 3,
+        labour_intensity: LabourIntensity.LOW,
+        equipment_needed: ['Seed treatment drum', 'Sprayer'],
+        skill_level_required: 'low',
+        shelf_life_days: 180,
+        storage_conditions: 'Store at 15-25°C. Check viability.',
+        can_prepare_in_advance: false,
+        scientific_source: 'ICAR-IARI, ICAR-NBAIR',
+        scientific_basis: 'Pseudomonas produces siderophores, HCN, and antibiotics that suppress pathogens. Also induces systemic resistance (ISR). Effective against bacterial and fungal diseases when applied preventively.'
       }
     ]
   }
@@ -614,15 +904,13 @@ export const HERBICIDE_EQUIVALENTS: OrganicEquivalent[] = [
 export const ALL_ORGANIC_EQUIVALENTS: OrganicEquivalent[] = [
   ...FERTILIZER_EQUIVALENTS,
   ...INSECTICIDE_EQUIVALENTS,
-  ...FUNGICIDE_EQUIVALENTS,
-  ...HERBICIDE_EQUIVALENTS
+  ...FUNGICIDE_EQUIVALENTS
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ACTION CLASSIFICATION FOR FARMING MODE
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Actions that are ONLY allowed in conventional farming */
 const CHEMICAL_ONLY_ACTIONS: Action[] = [
   Action.APPLY_INSECTICIDE,
   Action.APPLY_FUNGICIDE,
@@ -630,7 +918,6 @@ const CHEMICAL_ONLY_ACTIONS: Action[] = [
   Action.HERBICIDE_POST_EMERGENCE
 ];
 
-/** Actions that are ONLY allowed in conventional + organic_fertilizer modes */
 const SYNTHETIC_FERTILIZER_ACTIONS: Action[] = [
   Action.APPLY_NITROGEN,
   Action.APPLY_PHOSPHORUS,
@@ -640,89 +927,119 @@ const SYNTHETIC_FERTILIZER_ACTIONS: Action[] = [
   Action.APPLY_LIME
 ];
 
-/** Actions allowed in ALL farming modes */
-const UNIVERSAL_ACTIONS: Action[] = [
-  Action.IRRIGATE_IMMEDIATELY,
-  Action.IRRIGATE_LIGHT,
-  Action.IRRIGATE_HEAVY,
-  Action.DELAY_IRRIGATION,
-  Action.SKIP_IRRIGATION,
-  Action.DRAIN_FIELD,
-  Action.DRAIN_EXCESS_WATER,
-  Action.APPLY_ORGANIC_MANURE,
-  Action.APPLY_NEEM_OIL,
-  Action.APPLY_BIO_CONTROL,
-  Action.APPLY_BT_SPRAY,
-  Action.APPLY_TRICHODERMA,
-  Action.INSTALL_TRAPS,
-  Action.INSTALL_PHEROMONE_TRAPS,
-  Action.RELEASE_BIOAGENT,
-  Action.MECHANICAL_WEEDING,
-  Action.HAND_WEEDING,
-  Action.APPLY_MULCH,
-  Action.STALE_SEEDBED,
-  Action.SHADE_COVER,
-  Action.FROST_PROTECTION,
-  Action.WINDBREAK,
-  Action.LIGHT_IRRIGATION_COOLING,
-  Action.DELAYED_SOWING,
-  Action.EARLY_HARVEST,
-  Action.MONITOR_CLOSELY,
-  Action.WAIT_AND_WATCH,
-  Action.CONSULT_EXPERT,
-  Action.SOIL_TEST,
-  Action.TISSUE_TEST,
-  Action.CONTINUE_CURRENT,
-  Action.SCOUT_FIELD,
-  Action.EMERGENCY_IRRIGATION,
-  Action.SALVAGE_HARVEST,
-  Action.INSURANCE_CLAIM,
-  Action.CROP_DESTRUCTION,
-  Action.FOLIAR_SPRAY,
-  Action.SKIP_NITROGEN,
-  Action.DELAY_SPRAY,
-  Action.APPLY_MICRONUTRIENTS
-];
-
 // ═══════════════════════════════════════════════════════════════════════════
-// FARMING MODE FILTER FUNCTIONS
+// CONFLICT DETECTION & VALIDATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Check if an action is compatible with organic farming
- */
-export function isOrganicCompatible(action: Action): boolean {
-  // Chemical-only actions are NOT organic compatible
-  if (CHEMICAL_ONLY_ACTIONS.includes(action)) {
-    return false;
-  }
-  
-  // Synthetic fertilizer actions are NOT purely organic compatible
-  if (SYNTHETIC_FERTILIZER_ACTIONS.includes(action)) {
-    return false;
-  }
-  
-  return true;
+export interface OrganicValidationResult {
+  is_allowed: boolean;
+  violations: string[];
+  warnings: string[];
+  organic_alternatives: OrganicAlternative[];
+  honest_assessment: string;
 }
 
 /**
- * Check if an action is compatible with organic_fertilizer mode
- * (synthetic fertilizers allowed, but no pesticides)
+ * CRITICAL: Validate that organic farmers NEVER receive chemical advice
  */
-export function isOrganicFertilizerCompatible(action: Action): boolean {
-  // Chemical pesticide actions are NOT allowed
-  if (CHEMICAL_ONLY_ACTIONS.includes(action)) {
-    return false;
+export function validateOrganicCompliance(
+  recommendedAction: Action,
+  farmingMode: FarmingMode,
+  actionDescription: string = ''
+): OrganicValidationResult {
+  const result: OrganicValidationResult = {
+    is_allowed: true,
+    violations: [],
+    warnings: [],
+    organic_alternatives: [],
+    honest_assessment: ''
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ORGANIC_ONLY MODE - ABSOLUTE BLOCKS
+  // ─────────────────────────────────────────────────────────────────────────
+  if (farmingMode === FarmingMode.ORGANIC_ONLY) {
+    // Block chemical pesticides
+    if (CHEMICAL_ONLY_ACTIONS.includes(recommendedAction)) {
+      result.is_allowed = false;
+      result.violations.push(
+        `BLOCKED: ${recommendedAction} is a CHEMICAL action - strictly prohibited for organic farmers`,
+        'Organic certification would be VOID if chemical inputs are used',
+        'See organic alternatives below'
+      );
+      
+      // Find organic alternatives
+      const equivalent = ALL_ORGANIC_EQUIVALENTS.find(eq => 
+        eq.organic_alternatives.length > 0
+      );
+      if (equivalent) {
+        result.organic_alternatives = equivalent.organic_alternatives;
+        result.honest_assessment = equivalent.honest_comparison;
+      }
+    }
+
+    // Block synthetic fertilizers
+    if (SYNTHETIC_FERTILIZER_ACTIONS.includes(recommendedAction)) {
+      result.is_allowed = false;
+      result.violations.push(
+        `BLOCKED: ${recommendedAction} implies synthetic fertilizer - prohibited for organic farmers`,
+        'Use organic nutrient sources only'
+      );
+      
+      const fertEquivalent = FERTILIZER_EQUIVALENTS[0];
+      if (fertEquivalent) {
+        result.organic_alternatives = fertEquivalent.organic_alternatives;
+        result.honest_assessment = fertEquivalent.honest_comparison;
+      }
+    }
+
+    // Add honest assessment for organic mode
+    if (result.is_allowed) {
+      result.honest_assessment = 'Organic inputs work slower and may provide 60-70% effectiveness compared to chemicals. Expect some yield reduction but soil health improves over time.';
+    }
   }
-  
-  // Synthetic fertilizer actions ARE allowed
-  // Universal actions ARE allowed
-  return true;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ORGANIC_FERTILIZER MODE - Synthetic fertilizers OK, pesticides blocked
+  // ─────────────────────────────────────────────────────────────────────────
+  if (farmingMode === FarmingMode.ORGANIC_FERTILIZER) {
+    if (CHEMICAL_ONLY_ACTIONS.includes(recommendedAction)) {
+      result.is_allowed = false;
+      result.violations.push(
+        `BLOCKED: ${recommendedAction} is a chemical pesticide - not allowed in organic fertilizer mode`,
+        'Synthetic fertilizers are allowed, but chemical pesticides are not'
+      );
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // KEYWORD CHECK IN DESCRIPTION
+  // ─────────────────────────────────────────────────────────────────────────
+  if (farmingMode === FarmingMode.ORGANIC_ONLY && actionDescription) {
+    const chemicalKeywords = [
+      'urea', 'dap', 'mop', 'npk', 'imidacloprid', 'chlorpyriphos',
+      'cypermethrin', 'carbofuran', 'monocrotophos', 'mancozeb',
+      'carbendazim', 'metalaxyl', 'pendimethalin', '2,4-d', 'atrazine',
+      'glyphosate', 'paraquat', 'isoproturon', 'fipronil', 'thiamethoxam'
+    ];
+
+    const lowerDesc = actionDescription.toLowerCase();
+    const foundChemicals = chemicalKeywords.filter(kw => lowerDesc.includes(kw));
+
+    if (foundChemicals.length > 0) {
+      result.is_allowed = false;
+      result.violations.push(
+        `BLOCKED: Description contains chemical keywords: ${foundChemicals.join(', ')}`,
+        'Organic farmers must NEVER receive chemical recommendations'
+      );
+    }
+  }
+
+  return result;
 }
 
 /**
- * Filter actions based on farming mode
- * CRITICAL: This function MUST be called before returning recommendations
+ * Filter actions based on farming mode - CRITICAL function
  */
 export function filterByFarmingMode(
   actions: Action[],
@@ -730,125 +1047,137 @@ export function filterByFarmingMode(
 ): Action[] {
   switch (mode) {
     case FarmingMode.ORGANIC_ONLY:
-      return actions.filter(action => isOrganicCompatible(action));
+      return actions.filter(action => 
+        !CHEMICAL_ONLY_ACTIONS.includes(action) && 
+        !SYNTHETIC_FERTILIZER_ACTIONS.includes(action)
+      );
     
     case FarmingMode.ORGANIC_FERTILIZER:
-      return actions.filter(action => isOrganicFertilizerCompatible(action));
+      return actions.filter(action => !CHEMICAL_ONLY_ACTIONS.includes(action));
     
     case FarmingMode.CONVENTIONAL:
     default:
-      return actions; // All actions allowed
+      return actions;
   }
 }
 
 /**
- * Get organic alternatives for a recommended action
+ * Get organic alternatives with full cost/labour/effectiveness info
  */
-export function getOrganicAlternatives(
-  action: Action,
-  mode: FarmingMode
-): OrganicAlternative[] {
-  // If mode is conventional, no alternatives needed
-  if (mode === FarmingMode.CONVENTIONAL) {
-    return [];
+export function getOrganicAlternativesWithDetails(
+  chemicalAction: Action,
+  farmingMode: FarmingMode
+): {
+  alternatives: OrganicAlternative[];
+  honest_comparison: string;
+  total_cost_inr: number;
+  total_labour_hours: number;
+  expected_effectiveness: number;
+} {
+  if (farmingMode === FarmingMode.CONVENTIONAL) {
+    return {
+      alternatives: [],
+      honest_comparison: 'Conventional farming - chemical options available',
+      total_cost_inr: 0,
+      total_labour_hours: 0,
+      expected_effectiveness: 100
+    };
   }
-  
-  // Map action to chemical input
-  const actionToChemical: Record<string, string> = {
-    [Action.APPLY_NITROGEN]: 'Urea (46% N)',
-    [Action.APPLY_PHOSPHORUS]: 'DAP (18-46-0)',
-    [Action.APPLY_POTASSIUM]: 'MOP (Muriate of Potash 60% K2O)',
-    [Action.APPLY_ZINC]: 'Zinc Sulphate',
-    [Action.APPLY_INSECTICIDE]: 'Imidacloprid (for sucking pests)',
-    [Action.APPLY_FUNGICIDE]: 'Mancozeb (broad-spectrum)',
-    [Action.HERBICIDE_PRE_EMERGENCE]: 'Pendimethalin (pre-emergence)',
-    [Action.HERBICIDE_POST_EMERGENCE]: '2,4-D (post-emergence)'
-  };
-  
-  const chemicalInput = actionToChemical[action];
-  if (!chemicalInput) {
-    return [];
+
+  // Map action to equivalent
+  let equivalent: OrganicEquivalent | undefined;
+
+  if (chemicalAction === Action.APPLY_NITROGEN) {
+    equivalent = FERTILIZER_EQUIVALENTS.find(e => e.chemical_input.includes('Urea'));
+  } else if (chemicalAction === Action.APPLY_PHOSPHORUS) {
+    equivalent = FERTILIZER_EQUIVALENTS.find(e => e.chemical_input.includes('DAP'));
+  } else if (chemicalAction === Action.APPLY_INSECTICIDE) {
+    equivalent = INSECTICIDE_EQUIVALENTS[0];
+  } else if (chemicalAction === Action.APPLY_FUNGICIDE) {
+    equivalent = FUNGICIDE_EQUIVALENTS[0];
   }
-  
-  const equivalent = ALL_ORGANIC_EQUIVALENTS.find(
-    eq => eq.chemical_input === chemicalInput
-  );
-  
+
   if (!equivalent) {
-    return [];
+    return {
+      alternatives: [],
+      honest_comparison: 'No organic equivalent found for this action',
+      total_cost_inr: 0,
+      total_labour_hours: 0,
+      expected_effectiveness: 0
+    };
   }
-  
-  // Filter based on mode
-  if (mode === FarmingMode.ORGANIC_ONLY) {
-    return equivalent.organic_alternatives.filter(alt => alt.certification_safe);
-  }
-  
-  return equivalent.organic_alternatives;
+
+  const alternatives = equivalent.organic_alternatives;
+  const totalCost = alternatives.reduce((sum, alt) => sum + alt.cost_inr_per_ha, 0);
+  const totalLabour = alternatives.reduce((sum, alt) => sum + alt.labour_hours_per_ha, 0);
+  const avgEffectiveness = alternatives.length > 0
+    ? alternatives.reduce((sum, alt) => sum + alt.effectiveness_pct, 0) / alternatives.length
+    : 0;
+
+  return {
+    alternatives,
+    honest_comparison: equivalent.honest_comparison,
+    total_cost_inr: totalCost,
+    total_labour_hours: totalLabour,
+    expected_effectiveness: Math.round(avgEffectiveness)
+  };
 }
 
 /**
- * Get best organic alternative (highest effectiveness)
+ * Generate honest organic advisory with clear limitations
  */
-export function getBestOrganicAlternative(
-  action: Action,
-  mode: FarmingMode
-): OrganicAlternative | null {
-  const alternatives = getOrganicAlternatives(action, mode);
-  
-  if (alternatives.length === 0) {
-    return null;
-  }
-  
-  // Sort by effectiveness and return best
-  return alternatives.sort((a, b) => b.effectiveness_pct - a.effectiveness_pct)[0];
-}
-
-/**
- * Convert chemical action to organic action description
- */
-export function convertToOrganicRecommendation(
-  action: Action,
-  mode: FarmingMode
+export function generateOrganicAdvisory(
+  alternative: OrganicAlternative,
+  isPrimaryRecommendation: boolean = false
 ): string {
-  const bestAlt = getBestOrganicAlternative(action, mode);
-  
-  if (!bestAlt) {
-    return `Manual/mechanical alternative for ${action}`;
-  }
-  
-  let recommendation = `Apply ${bestAlt.input} @ ${bestAlt.dose}`;
-  
-  if (bestAlt.application_timing) {
-    recommendation += `. Timing: ${bestAlt.application_timing}`;
-  }
-  
-  if (bestAlt.preparation_method) {
-    recommendation += `. Preparation: ${bestAlt.preparation_method}`;
-  }
-  
-  return recommendation;
-}
+  const lines: string[] = [];
 
-/**
- * Validate that no chemical inputs are in organic recommendation
- * CRITICAL: This is a safety check before returning to AI layer
- */
-export function validateOrganicRecommendation(
-  recommendation: string,
-  mode: FarmingMode
-): boolean {
-  if (mode !== FarmingMode.ORGANIC_ONLY) {
-    return true; // No validation needed for non-organic
+  // Header
+  lines.push(`📗 ORGANIC: ${alternative.input_name}`);
+  if (alternative.local_names.hindi) {
+    lines.push(`   (${alternative.local_names.hindi})`);
   }
-  
-  const chemicalKeywords = [
-    'urea', 'dap', 'mop', 'npk', 'imidacloprid', 'chlorpyriphos',
-    'cypermethrin', 'carbofuran', 'monocrotophos', 'mancozeb',
-    'carbendazim', 'metalaxyl', 'pendimethalin', '2,4-d', 'atrazine',
-    'glyphosate', 'paraquat', 'isoproturon'
-  ];
-  
-  const lowerRec = recommendation.toLowerCase();
-  
-  return !chemicalKeywords.some(keyword => lowerRec.includes(keyword));
+
+  // Classification
+  const typeEmoji = {
+    [OrganicActionType.PREVENTIVE]: '🛡️ PREVENTIVE',
+    [OrganicActionType.CURATIVE]: '💊 CURATIVE',
+    [OrganicActionType.SUPPORTIVE]: '🌱 SUPPORTIVE'
+  };
+  lines.push(`   Type: ${typeEmoji[alternative.action_type]}`);
+
+  // Application
+  lines.push(`   Dose: ${alternative.dose}`);
+  lines.push(`   Timing: ${alternative.application_timing}`);
+  lines.push(`   Frequency: ${alternative.application_frequency}`);
+
+  // Effectiveness - HONEST
+  lines.push('');
+  lines.push(`   ⚡ Effectiveness: ${alternative.effectiveness_pct}% vs chemical`);
+  lines.push(`   ⏱️ Time to Effect: ${alternative.time_to_effect_days} days`);
+  lines.push(`   📅 Lasts: ${alternative.effect_duration_days} days`);
+
+  // Cost & Labour - VISIBLE
+  lines.push('');
+  lines.push(`   💰 Cost: ₹${alternative.cost_inr_per_ha}/ha`);
+  lines.push(`   👷 Labour: ${alternative.labour_hours_per_ha} hours/ha (${alternative.labour_intensity})`);
+
+  // Limitations - NEVER HIDE THESE
+  if (alternative.effectiveness_limitations.length > 0) {
+    lines.push('');
+    lines.push('   ⚠️ LIMITATIONS (Read Carefully):');
+    alternative.effectiveness_limitations.forEach(lim => {
+      lines.push(`   • ${lim}`);
+    });
+  }
+
+  // Certification
+  lines.push('');
+  const certs: string[] = [];
+  if (alternative.npop_certified) certs.push('NPOP');
+  if (alternative.usda_organic_certified) certs.push('USDA');
+  if (alternative.eu_organic_certified) certs.push('EU');
+  lines.push(`   ✅ Certified: ${certs.join(', ') || 'Check local standards'}`);
+
+  return lines.join('\n');
 }
