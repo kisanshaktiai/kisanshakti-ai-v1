@@ -1,15 +1,23 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * DECISION BRAIN CHAT SERVICE
+ * DECISION BRAIN CHAT SERVICE - Land-Scoped, Intent-Aware
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Integrates the Symbolic Decision Graph Engine with the AI Chat.
  * 
- * CRITICAL FLOW:
- * 1. User asks agricultural question
- * 2. Try Decision Brain FIRST (0 tokens, <100ms, deterministic)
- * 3. If Decision Brain returns advisory → format and return (no AI)
- * 4. If Decision Brain cannot answer → fall back to AI
+ * CRITICAL 4-STAGE PIPELINE:
+ * 1. Land-Scoped Context (MANDATORY - chat NEVER runs without land)
+ * 2. Intent Inference (Symbolic + Tolerant - offline-capable)
+ * 3. Full Decision Graph (UNCHANGED - runs complete reasoning)
+ * 4. Intent-Based Action Filtering (CRITICAL FIX - filters AFTER reasoning)
+ * 
+ * NON-NEGOTIABLE RULES:
+ * ❌ Do NOT change Decision Graph logic
+ * ❌ Do NOT let AI decide actions
+ * ❌ Do NOT return unrelated advice
+ * ✅ Filter advice AFTER reasoning based on farmer's intent
+ * ✅ Say "no action needed" when appropriate
+ * ✅ Log all interactions for training
  * 
  * ZERO AI for farming recommendations - all from ICAR/FAO rules
  */
@@ -35,6 +43,20 @@ import {
   Action,
   getCropGroup
 } from '@/decision-graph';
+
+// ✅ NEW: Import Intent-Aware Services
+import {
+  inferFarmerIntent,
+  filterActionsByIntent,
+  createChatInteractionLog,
+  logChatInteraction,
+  type FarmerIntent,
+  type IntentInferenceResult,
+  type IntentFilteredAdvisory
+} from '@/services/chat/farmerIntentService';
+
+// Re-export for external use
+export { inferFarmerIntent, type FarmerIntent, type IntentInferenceResult };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CROP NAME TO CODE MAPPING (Multi-language support)
@@ -1117,7 +1139,7 @@ function filterAdvisoryByQueryType(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MAIN SERVICE FUNCTION
+// MAIN SERVICE FUNCTION - Intent-Aware Pipeline
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface DecisionBrainResult {
@@ -1125,10 +1147,20 @@ export interface DecisionBrainResult {
   response?: ChatResponse;
   fallbackToAI: boolean;
   reason?: string;
+  // ✅ NEW: Intent tracking for debugging and training
+  inferredIntent?: FarmerIntent;
+  intentConfidence?: number;
 }
 
 /**
- * Try to answer using Decision Brain
+ * Try to answer using Decision Brain with Intent-Aware Filtering
+ * 
+ * THE 4-STAGE PIPELINE:
+ * 1. Land-Scoped Context (MANDATORY)
+ * 2. Intent Inference (Symbolic + Tolerant)
+ * 3. Full Decision Graph (UNCHANGED)
+ * 4. Intent-Based Action Filtering (CRITICAL FIX)
+ * 
  * Returns handled=true if answered, fallbackToAI=true if AI needed
  */
 export function tryDecisionBrain(
@@ -1136,33 +1168,23 @@ export function tryDecisionBrain(
   landContext: LandContext | null,
   language: string = 'en',
   farmerId: string = 'anonymous',
-  tenantId: string = 'default'
+  tenantId: string = 'default',
+  supabaseClient?: any // For logging
 ): DecisionBrainResult {
   const startTime = Date.now();
   
   console.log(`\n════════════════════════════════════════════════════════════════`);
-  console.log(`🧠 [DECISION BRAIN] Starting analysis...`);
+  console.log(`🧠 [DECISION BRAIN] Starting Intent-Aware Analysis...`);
   console.log(`Query: "${query.substring(0, 100)}..."`);
   console.log(`Language: ${language}`);
   console.log(`Land: ${landContext?.name || 'No land context'}`);
   console.log(`Crop: ${landContext?.crop_name || landContext?.crop_code || 'Unknown'}`);
   console.log(`════════════════════════════════════════════════════════════════\n`);
   
-  // Step 1: Classify query
-  const classification = classifyQueryForDecisionBrain(query);
-  console.log(`📋 [Decision Brain] Classification:`, classification);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STAGE 1: LAND-SCOPED CONTEXT CHECK (MANDATORY)
+  // ═══════════════════════════════════════════════════════════════════════════
   
-  // If not agricultural, fall back to AI
-  if (!classification.isAgricultural) {
-    console.log(`❌ [Decision Brain] Query not agricultural → AI Fallback`);
-    return {
-      handled: false,
-      fallbackToAI: true,
-      reason: 'non_agricultural_query'
-    };
-  }
-  
-  // Step 2: Check if we have land context
   if (!landContext) {
     console.log(`❌ [Decision Brain] No land context → AI Fallback`);
     return {
@@ -1172,55 +1194,134 @@ export function tryDecisionBrain(
     };
   }
   
-  // Step 3: Convert land context to decision input
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STAGE 2: INTENT INFERENCE (Symbolic + Tolerant, Offline-capable)
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  const intentResult = inferFarmerIntent(query, language);
+  
+  console.log(`🎯 [Decision Brain] Intent Inference:`, {
+    intent: intentResult.intent,
+    confidence: Math.round(intentResult.confidence * 100) + '%',
+    keywords: intentResult.matchedKeywords,
+    secondaryIntent: intentResult.secondaryIntent,
+    isAmbiguous: intentResult.isAmbiguous
+  });
+  
+  // Check basic agricultural classification (still needed for non-agri queries)
+  const classification = classifyQueryForDecisionBrain(query);
+  
+  // If not agricultural at all, fall back to AI
+  if (!classification.isAgricultural && intentResult.intent === 'GENERAL' && intentResult.confidence < 0.2) {
+    console.log(`❌ [Decision Brain] Query not agricultural → AI Fallback`);
+    return {
+      handled: false,
+      fallbackToAI: true,
+      reason: 'non_agricultural_query',
+      inferredIntent: intentResult.intent,
+      intentConfidence: intentResult.confidence
+    };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STAGE 3: RUN FULL DECISION GRAPH (UNCHANGED)
+  // ═══════════════════════════════════════════════════════════════════════════
+  
   const decisionInput = landContextToDecisionInput(landContext, farmerId, tenantId);
   if (!decisionInput) {
     console.log(`❌ [Decision Brain] Invalid land data → AI Fallback`);
     return {
       handled: false,
       fallbackToAI: true,
-      reason: 'invalid_land_data'
+      reason: 'invalid_land_data',
+      inferredIntent: intentResult.intent,
+      intentConfidence: intentResult.confidence
     };
   }
   
-  // Step 4: Run Decision Graph
   try {
-    console.log(`🔄 [Decision Brain] Running Decision Graph...`);
-    console.log(`📊 [Decision Brain] Query type: ${classification.queryType}`);
+    console.log(`🔄 [Decision Brain] Running Full Decision Graph (UNCHANGED)...`);
     
-    const advisory = runDecisionGraphSync(decisionInput);
+    // Run the COMPLETE decision graph - no filtering at this stage
+    const fullAdvisory = runDecisionGraphSync(decisionInput);
     
-    // ✅ FIX: Filter actions based on query type for more relevant responses
-    let filteredAdvisory = { ...advisory };
-    if (classification.queryType !== 'general') {
-      filteredAdvisory = filterAdvisoryByQueryType(advisory, classification.queryType);
-      console.log(`🔍 [Decision Brain] Filtered to ${filteredAdvisory.actions.length} relevant actions for query type: ${classification.queryType}`);
-    }
-    
-    console.log(`📊 [Decision Brain] Advisory result:`, {
-      risk_level: filteredAdvisory.risk_level,
-      causes_count: filteredAdvisory.causes.length,
-      actions_count: filteredAdvisory.actions.length,
-      confidence: filteredAdvisory.confidence,
-      rules_applied: filteredAdvisory.rules_applied.length
+    console.log(`📊 [Decision Brain] Full Advisory (before intent filtering):`, {
+      risk_level: fullAdvisory.risk_level,
+      causes_count: fullAdvisory.causes.length,
+      actions_count: fullAdvisory.actions.length,
+      rules_applied: fullAdvisory.rules_applied.length
     });
     
-    // Step 5: Format response with land context
-    const chatResponse = formatAdvisoryForChat(filteredAdvisory, language, landContext);
+    // ═══════════════════════════════════════════════════════════════════════════
+    // STAGE 4: INTENT-BASED ACTION FILTERING (CRITICAL FIX)
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    console.log(`🔍 [Decision Brain] Filtering actions for intent: ${intentResult.intent}...`);
+    
+    const filteredResult = filterActionsByIntent(fullAdvisory, intentResult, language);
+    
+    console.log(`✂️ [Decision Brain] Intent Filtering Result:`, {
+      intent: intentResult.intent,
+      actionsReturned: filteredResult.filteredActions.length,
+      actionsFilteredOut: filteredResult.filteredOutActions.length,
+      hasRelevantActions: filteredResult.hasRelevantActions,
+      noActionReason: filteredResult.noActionReason
+    });
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FORMAT RESPONSE (with "no action needed" handling)
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    let chatResponse: ChatResponse;
+    
+    if (filteredResult.hasRelevantActions) {
+      // Normal case: we have relevant actions for this intent
+      chatResponse = formatAdvisoryForChat(filteredResult.advisory, language, landContext);
+    } else {
+      // CRITICAL: No action needed for this intent - generate safe response
+      chatResponse = formatNoActionResponse(
+        intentResult,
+        filteredResult,
+        fullAdvisory,
+        language,
+        landContext
+      );
+    }
+    
     chatResponse.executionTimeMs = Date.now() - startTime;
     
+    // ═══════════════════════════════════════════════════════════════════════════
+    // LOG INTERACTION FOR TRAINING (Non-blocking)
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    const interactionLog = createChatInteractionLog(
+      landContext.id || 'unknown',
+      query,
+      intentResult,
+      filteredResult,
+      !navigator.onLine
+    );
+    
+    // Fire and forget - don't block on logging
+    logChatInteraction(interactionLog, supabaseClient).catch(e => 
+      console.warn('Chat logging failed:', e)
+    );
+    
     console.log(`\n════════════════════════════════════════════════════════════════`);
-    console.log(`✅ [DECISION BRAIN] SUCCESS!`);
+    console.log(`✅ [DECISION BRAIN] SUCCESS - Intent-Aware Response!`);
     console.log(`⏱️ Execution time: ${chatResponse.executionTimeMs}ms`);
-    console.log(`📏 Rules applied: ${filteredAdvisory.rules_applied.length}`);
-    console.log(`🎯 Actions generated: ${filteredAdvisory.actions.length}`);
+    console.log(`🎯 Intent: ${intentResult.intent} (${Math.round(intentResult.confidence * 100)}%)`);
+    console.log(`📏 Actions for this intent: ${filteredResult.filteredActions.length}`);
+    console.log(`🚫 Actions filtered out: ${filteredResult.filteredOutActions.length}`);
     console.log(`💰 AI tokens used: 0`);
     console.log(`════════════════════════════════════════════════════════════════\n`);
     
     return {
       handled: true,
       response: chatResponse,
-      fallbackToAI: false
+      fallbackToAI: false,
+      inferredIntent: intentResult.intent,
+      intentConfidence: intentResult.confidence
     };
     
   } catch (error) {
@@ -1228,9 +1329,116 @@ export function tryDecisionBrain(
     return {
       handled: false,
       fallbackToAI: true,
-      reason: 'execution_error'
+      reason: 'execution_error',
+      inferredIntent: intentResult.intent,
+      intentConfidence: intentResult.confidence
     };
   }
+}
+
+/**
+ * Format a "No Action Needed" response when the farmer's intent
+ * doesn't match any current actions from the Decision Graph.
+ * 
+ * CRITICAL: This prevents returning unrelated advice!
+ */
+function formatNoActionResponse(
+  intentResult: IntentInferenceResult,
+  filteredResult: IntentFilteredAdvisory,
+  fullAdvisory: UnifiedAdvisory,
+  language: string,
+  landContext?: LandContext
+): ChatResponse {
+  const t = TRANSLATIONS[language] || TRANSLATIONS.en;
+  
+  // Build the farmer-friendly "no action" message
+  const intentLabels: Record<FarmerIntent, Record<string, string>> = {
+    WATER: { en: 'irrigation', hi: 'सिंचाई', mr: 'पाणी' },
+    NUTRIENT: { en: 'fertilizer', hi: 'खाद', mr: 'खत' },
+    PEST: { en: 'pest control', hi: 'कीट नियंत्रण', mr: 'कीड नियंत्रण' },
+    WEED: { en: 'weeding', hi: 'निराई', mr: 'निंदणी' },
+    DISEASE: { en: 'disease treatment', hi: 'रोग उपचार', mr: 'रोग उपचार' },
+    HARVEST: { en: 'harvesting', hi: 'कटाई', mr: 'कापणी' },
+    STATUS_CHECK: { en: 'status check', hi: 'स्थिति जांच', mr: 'स्थिती तपासणी' },
+    WHEN: { en: 'timing', hi: 'समय', mr: 'वेळ' },
+    WHY: { en: 'explanation', hi: 'कारण', mr: 'कारण' },
+    GENERAL: { en: 'advice', hi: 'सलाह', mr: 'सल्ला' }
+  };
+  
+  const intentLabel = intentLabels[intentResult.intent]?.[language] || intentLabels[intentResult.intent]?.en || 'advice';
+  const cropName = landContext?.crop_name || landContext?.current_crop || 'crop';
+  
+  // Build message based on language
+  let farmerMessage: string;
+  let noActionMessage: string;
+  
+  if (language === 'hi') {
+    noActionMessage = filteredResult.noActionReason || `${intentLabel} की अभी जरूरत नहीं है।`;
+    farmerMessage = `🌾 **आपके ${cropName} के लिए:**\n\n` +
+      `✅ ${noActionMessage}\n\n` +
+      `📋 ${filteredResult.noActionExplanation || 'फसल की स्थिति अच्छी है। नियमित निगरानी जारी रखें।'}\n\n` +
+      `---\n` +
+      `🧠 *निर्णय मस्तिष्क (0 AI टोकन, तुरंत)*`;
+  } else if (language === 'mr') {
+    noActionMessage = filteredResult.noActionReason || `${intentLabel} ची आत्ता गरज नाही।`;
+    farmerMessage = `🌾 **तुमच्या ${cropName} साठी:**\n\n` +
+      `✅ ${noActionMessage}\n\n` +
+      `📋 ${filteredResult.noActionExplanation || 'पिकाची स्थिती चांगली आहे। नियमित निरीक्षण सुरू ठेवा.'}\n\n` +
+      `---\n` +
+      `🧠 *निर्णय मेंदू (0 AI टोकन, त्वरित)*`;
+  } else {
+    noActionMessage = filteredResult.noActionReason || `No ${intentLabel} action required at this time.`;
+    farmerMessage = `🌾 **For your ${cropName}:**\n\n` +
+      `✅ ${noActionMessage}\n\n` +
+      `📋 ${filteredResult.noActionExplanation || 'Crop condition is good. Continue regular monitoring.'}\n\n` +
+      `---\n` +
+      `🧠 *Decision Brain (0 AI tokens, instant)*`;
+  }
+  
+  // Build structured response with "no action" card
+  const decisionBrainResponse: DecisionBrainResponse = {
+    landContext: landContext ? {
+      cropName: landContext.crop_name || landContext.current_crop || 'Unknown',
+      cropGroup: landContext.crop_group || getCropGroup(landContext.crop_code || '') || 'Unknown',
+      growthStage: 'Growing',
+      landArea: landContext.area_acres ? `${Math.round(landContext.area_acres * 40)} गुंठा` : undefined,
+      farmingMode: landContext.farming_mode || 'INTEGRATED'
+    } : undefined,
+    farmerMessage,
+    primaryActions: [],
+    secondaryActions: [],
+    blockedActions: [],
+    confidence: {
+      riskLevel: fullAdvisory.risk_level === RiskLevel.LOW ? 'LOW' : 
+                 fullAdvisory.risk_level === RiskLevel.MEDIUM ? 'MEDIUM' :
+                 fullAdvisory.risk_level === RiskLevel.HIGH ? 'HIGH' : 'CRITICAL',
+      confidence: Math.round(fullAdvisory.confidence * 100),
+      explanations: [],
+      rulesApplied: fullAdvisory.rules_applied.length
+    },
+    language
+  };
+  
+  return {
+    response: farmerMessage,
+    structuredResponse: {
+      cards: [{
+        id: 'no-action',
+        type: 'success',
+        title: noActionMessage,
+        content: filteredResult.noActionExplanation || 'Continue regular monitoring.',
+        color: '#22C55E',
+        gradient: ['#22C55E', '#16A34A'],
+        icon: 'check-circle',
+        priority: 1
+      }],
+      language
+    },
+    decisionBrainResponse,
+    source: 'decision_brain',
+    advisory: fullAdvisory, // Keep full advisory for reference
+    executionTimeMs: 0
+  };
 }
 
 /**
@@ -1243,7 +1451,7 @@ export function getDecisionBrainStatus(): {
 } {
   return {
     available: true,
-    version: '1.0.0',
+    version: '2.0.0-intent-aware',
     rulesLoaded: true
   };
 }
@@ -1325,8 +1533,8 @@ export async function tryDecisionBrainWithAIRefinement(
   tenantId: string = 'default',
   supabaseClient?: any // Pass supabase client for edge function calls
 ): Promise<DecisionBrainResult> {
-  // First, run the synchronous Decision Brain
-  const brainResult = tryDecisionBrain(query, landContext, language, farmerId, tenantId);
+  // First, run the synchronous Decision Brain with supabase client for logging
+  const brainResult = tryDecisionBrain(query, landContext, language, farmerId, tenantId, supabaseClient);
   
   // If Decision Brain didn't handle it, return as-is
   if (!brainResult.handled || !brainResult.response) {
