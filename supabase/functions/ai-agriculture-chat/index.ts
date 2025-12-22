@@ -689,11 +689,43 @@ serve(async (req) => {
 
   try {
     const startTime = Date.now();
-    
-    const requestBody = await req.json();
-    const { 
-      messages = [], 
-      landId, 
+
+    // ✅ Robust JSON parsing (prevents "Unexpected end of JSON input" when body is empty/truncated)
+    const rawBody = await req.text();
+    if (!rawBody || !rawBody.trim()) {
+      console.error('🚨 [ai-agriculture-chat] Missing JSON body');
+      return new Response(
+        JSON.stringify({
+          error: 'Missing request body',
+          details: 'Expected JSON body but received an empty payload',
+          timestamp: new Date().toISOString(),
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
+    let requestBody: any;
+    try {
+      requestBody = JSON.parse(rawBody);
+    } catch (e) {
+      console.error('🚨 [ai-agriculture-chat] Invalid JSON body', {
+        length: rawBody.length,
+        preview: rawBody.slice(0, 120),
+      });
+      return new Response(
+        JSON.stringify({
+          error: 'Invalid JSON body',
+          details: e instanceof Error ? e.message : 'Invalid JSON',
+          length: rawBody.length,
+          timestamp: new Date().toISOString(),
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
+    const {
+      messages = [],
+      landId,
       sessionId,
       imageUrl,
       language = 'en',

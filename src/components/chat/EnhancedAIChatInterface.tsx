@@ -1370,7 +1370,7 @@ export function EnhancedAIChatInterface() {
             tenantId,
             farmerId,
             language: language,
-            landContext: land,
+            landContext: landContextForBrain, // ✅ keep payload small to avoid request truncation
             decisionBrainFallback: true,
             fallbackReason: brainResult.reason
           }
