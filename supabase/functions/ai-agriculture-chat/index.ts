@@ -692,8 +692,23 @@ serve(async (req) => {
 
     // ✅ Robust JSON parsing (prevents "Unexpected end of JSON input" when body is empty/truncated)
     const rawBody = await req.text();
+    
+    // ✅ Enhanced logging for debugging empty body issue
+    console.log(`📥 [ai-agriculture-chat] Request received:`, {
+      method: req.method,
+      bodyLength: rawBody?.length || 0,
+      hasBody: !!rawBody && rawBody.trim().length > 0,
+      contentType: req.headers.get('content-type'),
+      tenantId: req.headers.get('x-tenant-id'),
+      farmerId: req.headers.get('x-farmer-id')
+    });
+    
     if (!rawBody || !rawBody.trim()) {
-      console.error('🚨 [ai-agriculture-chat] Missing JSON body');
+      console.error('🚨 [ai-agriculture-chat] Missing JSON body - Request details:', {
+        method: req.method,
+        url: req.url,
+        headers: Object.fromEntries(req.headers.entries())
+      });
       return new Response(
         JSON.stringify({
           error: 'Missing request body',
