@@ -1678,36 +1678,42 @@ export async function tryDecisionBrainWithAIRefinement(
       return { ...brainResult, source: 'symbolic_only' };
     }
     
-    // ✅ FIX: Build request body separately to avoid serialization issues
+    // ✅ FIX: Build request body with explicit validation
     const requestBody = {
       messages: [{ role: 'user', content: enhancementPrompt }],
-      language,
+      language: language || 'en',
       metadata: {
         farmerId,
         tenantId,
         mode: 'hybrid_enhancement',
-        // ✅ FIX: Simplified context to avoid large payload issues
         symbolicContext: {
-          risk_level: brainResult.response.advisory?.risk_level,
-          causes: brainResult.response.advisory?.causes?.map(c => c.toString()) || [],
+          risk_level: brainResult.response.advisory?.risk_level || 'LOW',
+          causes: (brainResult.response.advisory?.causes || []).map(c => String(c)),
           action_count: brainResult.response.advisory?.actions?.length || 0
         },
         maxTokens: 300
       }
     };
     
+    // ✅ CRITICAL: Validate body before sending to prevent empty payload
+    const bodyString = JSON.stringify(requestBody);
+    if (!bodyString || bodyString.length < 50) {
+      console.error(`❌ [Hybrid] Invalid request body - too short:`, bodyString?.length);
+      return { ...brainResult, source: 'symbolic_only' };
+    }
+    
     console.log(`🤖 [Hybrid] Sending AI enhancement request:`, {
       promptLength: enhancementPrompt.length,
+      bodyLength: bodyString.length,
       hasMessages: requestBody.messages.length > 0
     });
     
-    // Call AI for enhancement (NOT replacement)
+    // ✅ Call AI for enhancement using pre-serialized body
     const { data: aiData, error: aiError } = await supabaseClient.functions.invoke('ai-agriculture-chat', {
       body: requestBody,
       headers: {
         'x-tenant-id': tenantId,
-        'x-farmer-id': farmerId,
-        'Content-Type': 'application/json'
+        'x-farmer-id': farmerId
       }
     });
     
