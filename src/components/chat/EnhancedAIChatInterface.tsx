@@ -1330,6 +1330,91 @@ export function EnhancedAIChatInterface() {
           [activeTab]: [...(prev[activeTab] || []), aiMessage]
         }));
         
+        // ═══════════════════════════════════════════════════════════════════════
+        // ✅ CRITICAL FIX: Save BOTH user and Decision Brain messages to database
+        // This data is ESSENTIAL for LLM training
+        // ═══════════════════════════════════════════════════════════════════════
+        
+        // Save user message
+        await supabase.from('ai_chat_messages').insert({
+          session_id: sessionId,
+          tenant_id: tenantId,
+          farmer_id: farmerId,
+          role: 'user',
+          content: finalMessage,
+          status: 'sent',
+          language: language,
+          message_type: 'text',
+          word_count: finalMessage.split(/\s+/).length,
+          land_context: landContextForBrain ? {
+            land_id: landContextForBrain.id,
+            crop_name: landContextForBrain.crop_name,
+            area_hectares: landContextForBrain.area_hectares
+          } : null,
+          is_training_candidate: true,
+          complexity_level: 'simple',
+          domain_tags: brainResult.inferredIntent ? [brainResult.inferredIntent] : ['GENERAL'],
+          metadata: {
+            source: 'decision_brain',
+            inferred_intent: brainResult.inferredIntent,
+            intent_confidence: brainResult.intentConfidence
+          }
+        }).then(({ error }) => {
+          if (error) console.error('❌ Error saving user message:', error);
+        });
+        
+        // Save Decision Brain response
+        await supabase.from('ai_chat_messages').insert({
+          session_id: sessionId,
+          tenant_id: tenantId,
+          farmer_id: farmerId,
+          role: 'assistant',
+          content: brainResult.response.response,
+          status: 'sent',
+          language: language,
+          message_type: 'decision_brain',
+          ai_model: usedAI ? 'decision_brain_refined' : 'decision_brain',
+          response_time_ms: brainResult.response.executionTimeMs,
+          tokens_used: usedAI ? 200 : 0,
+          word_count: brainResult.response.response.split(/\s+/).length,
+          land_context: landContextForBrain ? {
+            land_id: landContextForBrain.id,
+            crop_name: landContextForBrain.crop_name,
+            area_hectares: landContextForBrain.area_hectares,
+            farming_mode: landContextForBrain.farming_mode
+          } : null,
+          is_training_candidate: true,
+          human_verified: false,
+          complexity_level: brainResult.response.advisory?.actions?.length && brainResult.response.advisory.actions.length > 2 ? 'medium' : 'simple',
+          domain_tags: brainResult.inferredIntent ? [brainResult.inferredIntent] : ['GENERAL'],
+          agricultural_accuracy: brainResult.response.advisory?.confidence || 0.8,
+          conversation_quality_score: brainResult.intentConfidence || 0.7,
+          off_topic: false,
+          training_processed: false,
+          metadata: {
+            source: 'decision_brain',
+            advisory_id: brainResult.response.advisory?.advisory_id,
+            risk_level: brainResult.response.advisory?.risk_level,
+            causes: brainResult.response.advisory?.causes?.map(c => c.toString()),
+            actions: brainResult.response.advisory?.actions?.map(a => ({
+              action: a.action.toString(),
+              priority: a.priority,
+              urgency: a.urgency
+            })),
+            rules_applied: brainResult.response.advisory?.rules_applied,
+            inferred_intent: brainResult.inferredIntent,
+            intent_confidence: brainResult.intentConfidence,
+            used_ai_refinement: usedAI,
+            structured_cards: brainResult.response.structuredResponse?.cards?.length || 0
+          }
+        }).then(({ error }) => {
+          if (error) {
+            console.error('❌ Error saving Decision Brain response:', error);
+          } else {
+            console.log('✅ Decision Brain messages saved to database for LLM training');
+          }
+        });
+        
         // Generate follow-up questions based on advisory
         if (brainResult.response.advisory?.actions?.length) {
           const followUps = brainResult.response.advisory.actions.slice(0, 3).map(a => 
