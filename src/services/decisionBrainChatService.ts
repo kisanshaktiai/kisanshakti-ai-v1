@@ -32,8 +32,132 @@ import {
   SoilPHState,
   SoilMoistureState,
   getRiskDescription,
-  Action
+  Action,
+  getCropGroup
 } from '@/decision-graph';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CROP NAME TO CODE MAPPING (Multi-language support)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CROP_NAME_TO_CODE: Record<string, string> = {
+  // English
+  'wheat': 'wheat',
+  'rice': 'rice',
+  'paddy': 'rice',
+  'cotton': 'cotton',
+  'sugarcane': 'sugarcane',
+  'soybean': 'soybean',
+  'maize': 'maize',
+  'corn': 'maize',
+  'groundnut': 'groundnut',
+  'peanut': 'groundnut',
+  'tomato': 'tomato',
+  'onion': 'onion',
+  'potato': 'potato',
+  'gram': 'gram',
+  'chickpea': 'gram',
+  'mustard': 'mustard',
+  'sunflower': 'sunflower',
+  'turmeric': 'turmeric',
+  'ginger': 'ginger',
+  'banana': 'banana',
+  'mango': 'mango',
+  'grapes': 'grapes',
+  'pomegranate': 'pomegranate',
+  'chilli': 'chilli',
+  'brinjal': 'brinjal',
+  'okra': 'okra',
+  'cabbage': 'cabbage',
+  'cauliflower': 'cauliflower',
+  
+  // Hindi (हिंदी)
+  'गेहूं': 'wheat',
+  'गेहूँ': 'wheat',
+  'चावल': 'rice',
+  'धान': 'rice',
+  'कपास': 'cotton',
+  'रुई': 'cotton',
+  'गन्ना': 'sugarcane',
+  'ईख': 'sugarcane',
+  'सोयाबीन': 'soybean',
+  'मक्का': 'maize',
+  'मूंगफली': 'groundnut',
+  'टमाटर': 'tomato',
+  'प्याज': 'onion',
+  'आलू': 'potato',
+  'चना': 'gram',
+  'सरसों': 'mustard',
+  'सूरजमुखी': 'sunflower',
+  'हल्दी': 'turmeric',
+  'अदरक': 'ginger',
+  'केला': 'banana',
+  'आम': 'mango',
+  'अंगूर': 'grapes',
+  'अनार': 'pomegranate',
+  'मिर्च': 'chilli',
+  'बैंगन': 'brinjal',
+  'भिंडी': 'okra',
+  'बंदगोभी': 'cabbage',
+  'फूलगोभी': 'cauliflower',
+  
+  // Marathi (मराठी)
+  'गहू': 'wheat',
+  'तांदूळ': 'rice',
+  'भात': 'rice',
+  'कापूस': 'cotton',
+  'ऊस': 'sugarcane',
+  'सोयाबिन': 'soybean',
+  'मका': 'maize',
+  'भुईमूग': 'groundnut',
+  'शेंगदाणा': 'groundnut',
+  'टोमॅटो': 'tomato',
+  'कांदा': 'onion',
+  'बटाटा': 'potato',
+  'हरभरा': 'gram',
+  'मोहरी': 'mustard',
+  'सूर्यफूल': 'sunflower',
+  'हळद': 'turmeric',
+  'आले': 'ginger',
+  'केळी': 'banana',
+  'आंबा': 'mango',
+  'द्राक्षे': 'grapes',
+  'डाळिंब': 'pomegranate',
+  'मिरची': 'chilli',
+  'वांगी': 'brinjal',
+  'भेंडी': 'okra',
+  'कोबी': 'cabbage',
+  'फ्लॉवर': 'cauliflower'
+};
+
+/**
+ * Normalize crop name to crop code
+ */
+function normalizeCropName(cropName: string | undefined): string | null {
+  if (!cropName) return null;
+  
+  const normalized = cropName.toLowerCase().trim();
+  
+  // Direct match
+  if (CROP_NAME_TO_CODE[normalized]) {
+    return CROP_NAME_TO_CODE[normalized];
+  }
+  
+  // Case-insensitive match for Hindi/Marathi
+  if (CROP_NAME_TO_CODE[cropName]) {
+    return CROP_NAME_TO_CODE[cropName];
+  }
+  
+  // Partial match
+  for (const [name, code] of Object.entries(CROP_NAME_TO_CODE)) {
+    if (normalized.includes(name.toLowerCase()) || name.toLowerCase().includes(normalized)) {
+      return code;
+    }
+  }
+  
+  // Return as-is if no match (might be valid crop code)
+  return normalized;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // QUERY CLASSIFICATION
@@ -44,6 +168,7 @@ interface QueryClassification {
   queryType: 'watering' | 'fertilizer' | 'pest' | 'disease' | 'harvest' | 'weather' | 'general' | 'non_agri';
   canUseDecisionBrain: boolean;
   requiresAI: boolean;
+  matchedKeywords: string[];
 }
 
 /**
@@ -51,29 +176,34 @@ interface QueryClassification {
  */
 export function classifyQueryForDecisionBrain(query: string): QueryClassification {
   const q = query.toLowerCase();
+  const matchedKeywords: string[] = [];
   
   // Agricultural keywords (Hindi, Marathi, English)
   const agriKeywords = {
     watering: [
       'water', 'irrigation', 'irrigate', 'पानी', 'सिंचाई', 'पाणी', 'सिंचन',
-      'drip', 'ड्रिप', 'कब पानी', 'when to water', 'कितना पानी', 'how much water'
+      'drip', 'ड्रिप', 'कब पानी', 'when to water', 'कितना पानी', 'how much water',
+      'पाणी द्या', 'पाणी देणे', 'पाणी कधी'
     ],
     fertilizer: [
       'fertilizer', 'खाद', 'खत', 'urea', 'यूरिया', 'युरिया', 'dap', 'डीएपी',
       'npk', 'potash', 'पोटाश', 'nitrogen', 'नाइट्रोजन', 'nutrient', 'पोषण',
-      'कौनसी खाद', 'which fertilizer', 'कितनी खाद', 'how much fertilizer'
+      'कौनसी खाद', 'which fertilizer', 'कितनी खाद', 'how much fertilizer',
+      'खत द्या', 'खत कधी'
     ],
     pest: [
       'pest', 'कीट', 'किड', 'insect', 'bug', 'worm', 'कीड़ा', 'इल्ली',
-      'spray', 'स्प्रे', 'फवारणी', 'pesticide', 'कीटनाशक', 'किटकनाशक'
+      'spray', 'स्प्रे', 'फवारणी', 'pesticide', 'कीटनाशक', 'किटकनाशक',
+      'किडा', 'कीड', 'अळी'
     ],
     disease: [
       'disease', 'रोग', 'blight', 'rust', 'wilt', 'rot', 'fungus',
-      'फफूंद', 'पीला पड़ना', 'yellowing', 'spots', 'धब्बे'
+      'फफूंद', 'पीला पड़ना', 'yellowing', 'spots', 'धब्बे',
+      'करपा', 'तांबेरा', 'बुरशी'
     ],
     harvest: [
       'harvest', 'कटाई', 'कापणी', 'when to harvest', 'कब काटें',
-      'ready', 'mature', 'पकना', 'तैयार'
+      'ready', 'mature', 'पकना', 'तैयार', 'पिकले', 'काढणी'
     ],
     weather: [
       'weather', 'मौसम', 'हवामान', 'rain', 'बारिश', 'पाऊस',
@@ -83,28 +213,36 @@ export function classifyQueryForDecisionBrain(query: string): QueryClassificatio
       'crop', 'फसल', 'पीक', 'field', 'खेत', 'शेत', 'land', 'जमीन',
       'farming', 'खेती', 'शेती', 'agriculture', 'कृषि', 'grow', 'उगाना',
       'sowing', 'बुवाई', 'पेरणी', 'plant', 'पौधा', 'झाड', 'aaj kya karna hai',
-      'आज क्या करना है', 'आज काय करायचे', 'today', 'आज'
+      'आज क्या करना है', 'आज काय करायचे', 'today', 'आज', 'advice', 'सलाह',
+      'काय करू', 'क्या करें', 'what should i do', 'tell me', 'बताओ', 'सांगा'
     ]
   };
   
   // Check each category
   for (const [category, keywords] of Object.entries(agriKeywords)) {
-    if (keywords.some(kw => q.includes(kw))) {
-      return {
-        isAgricultural: true,
-        queryType: category as QueryClassification['queryType'],
-        canUseDecisionBrain: ['watering', 'fertilizer', 'pest', 'disease', 'harvest', 'general'].includes(category),
-        requiresAI: false
-      };
+    for (const kw of keywords) {
+      if (q.includes(kw)) {
+        matchedKeywords.push(kw);
+        console.log(`🔍 [Decision Brain] Query matched keyword: "${kw}" → category: ${category}`);
+        return {
+          isAgricultural: true,
+          queryType: category as QueryClassification['queryType'],
+          canUseDecisionBrain: ['watering', 'fertilizer', 'pest', 'disease', 'harvest', 'general'].includes(category),
+          requiresAI: false,
+          matchedKeywords
+        };
+      }
     }
   }
   
   // Non-agricultural query
+  console.log(`🔍 [Decision Brain] Query not matched as agricultural: "${q.substring(0, 50)}..."`);
   return {
     isAgricultural: false,
     queryType: 'non_agri',
     canUseDecisionBrain: false,
-    requiresAI: true
+    requiresAI: true,
+    matchedKeywords
   };
 }
 
@@ -156,9 +294,30 @@ export function landContextToDecisionInput(
   farmerId: string = 'anonymous',
   tenantId: string = 'default'
 ) {
-  if (!land || !land.crop_code) {
+  console.log(`🔄 [Decision Brain] Converting land context:`, {
+    landId: land?.id,
+    landName: land?.name,
+    crop_name: land?.crop_name,
+    crop_code: land?.crop_code,
+    hasSoilData: !!land?.soil_data,
+    hasNdviData: !!land?.ndvi_data,
+    hasWeatherData: !!land?.weather_data
+  });
+
+  if (!land) {
+    console.log(`❌ [Decision Brain] No land context provided`);
     return null;
   }
+  
+  // Try to get crop code from crop_code or crop_name
+  let cropCode = land.crop_code || normalizeCropName(land.crop_name);
+  
+  if (!cropCode) {
+    console.log(`❌ [Decision Brain] No valid crop code found. crop_name: "${land.crop_name}", crop_code: "${land.crop_code}"`);
+    return null;
+  }
+  
+  console.log(`✅ [Decision Brain] Resolved crop code: "${cropCode}" from "${land.crop_name || land.crop_code}"`);
   
   // Calculate days after sowing
   let sowingDate = new Date();
@@ -168,9 +327,9 @@ export function landContextToDecisionInput(
     sowingDate = new Date(land.sowing_date);
   }
   
-  const cropCode = land.crop_code.toLowerCase();
+  cropCode = cropCode.toLowerCase();
   
-  // Build raw farm data for the fact extractor
+  // Build raw farm data for the fact extractor with sensible defaults
   const rawFarmData = {
     farmerId: farmerId,
     landId: land.id || 'unknown',
@@ -179,23 +338,23 @@ export function landContextToDecisionInput(
     sowingDate: sowingDate.toISOString(),
     farmingMode: land.farming_mode,
     
-    // Soil data
-    soilN: land.soil_data?.n,
-    soilP: land.soil_data?.p,
-    soilK: land.soil_data?.k,
-    soilPH: land.soil_data?.ph,
-    soilMoisture: land.soil_data?.moisture,
+    // Soil data with defaults
+    soilN: land.soil_data?.n ?? 80,  // Default adequate N
+    soilP: land.soil_data?.p ?? 40,  // Default adequate P
+    soilK: land.soil_data?.k ?? 40,  // Default adequate K
+    soilPH: land.soil_data?.ph ?? 7.0,  // Default neutral pH
+    soilMoisture: land.soil_data?.moisture ?? 50,  // Default moderate moisture
     soilOrganicCarbon: land.soil_data?.organic_carbon,
     
-    // NDVI data
-    ndviValue: land.ndvi_data?.value,
-    ndviTrend: land.ndvi_data?.trend,
+    // NDVI data with defaults
+    ndviValue: land.ndvi_data?.value ?? 0.55,  // Default healthy NDVI
+    ndviTrend: land.ndvi_data?.trend ?? 0,  // Default stable trend
     
-    // Weather data
-    temperature: land.weather_data?.temperature,
-    humidity: land.weather_data?.humidity,
-    rainExpected: land.weather_data?.rain_expected,
-    windSpeed: land.weather_data?.wind_speed,
+    // Weather data with defaults
+    temperature: land.weather_data?.temperature ?? 28,  // Default moderate temp
+    humidity: land.weather_data?.humidity ?? 60,  // Default moderate humidity
+    rainExpected: land.weather_data?.rain_expected ?? false,
+    windSpeed: land.weather_data?.wind_speed ?? 10,
     
     // Regional info
     stateCode: land.location?.state,
@@ -205,7 +364,31 @@ export function landContextToDecisionInput(
     irrigationMethod: land.irrigation_type
   };
   
-  return buildDecisionInput(rawFarmData);
+  console.log(`📊 [Decision Brain] Raw farm data:`, {
+    cropCode: rawFarmData.cropCode,
+    sowingDate: rawFarmData.sowingDate,
+    soilN: rawFarmData.soilN,
+    soilP: rawFarmData.soilP,
+    soilK: rawFarmData.soilK,
+    ndviValue: rawFarmData.ndviValue,
+    temperature: rawFarmData.temperature
+  });
+  
+  try {
+    const decisionInput = buildDecisionInput(rawFarmData);
+    console.log(`✅ [Decision Brain] Built DecisionInput:`, {
+      crop_code: decisionInput.crop_code,
+      crop_group: decisionInput.crop_group,
+      crop_stage: decisionInput.crop_stage,
+      days_after_sowing: decisionInput.days_after_sowing,
+      ndvi_state: decisionInput.ndvi_state,
+      farming_mode: decisionInput.farming_mode
+    });
+    return decisionInput;
+  } catch (error) {
+    console.error(`❌ [Decision Brain] Failed to build DecisionInput:`, error);
+    return null;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -250,7 +433,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     pestControl: "Pest Control",
     diseaseControl: "Disease Management",
     harvestReady: "Harvest Time",
-    priority: "Priority"
+    priority: "Priority",
+    source: "🧠 Decision Brain (0 AI tokens, instant)"
   },
   hi: {
     greeting: "आपकी खेती की सलाह",
@@ -269,7 +453,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     pestControl: "कीट नियंत्रण",
     diseaseControl: "रोग प्रबंधन",
     harvestReady: "कटाई का समय",
-    priority: "प्राथमिकता"
+    priority: "प्राथमिकता",
+    source: "🧠 निर्णय मस्तिष्क (0 AI टोकन, तुरंत)"
   },
   mr: {
     greeting: "तुमची शेती सल्ला",
@@ -288,7 +473,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     pestControl: "कीड नियंत्रण",
     diseaseControl: "रोग व्यवस्थापन",
     harvestReady: "कापणीची वेळ",
-    priority: "प्राधान्य"
+    priority: "प्राधान्य",
+    source: "🧠 निर्णय मेंदू (0 AI टोकन, त्वरित)"
   }
 };
 
@@ -448,6 +634,9 @@ export function formatAdvisoryForChat(
   let responseText = '';
   const cards: ChatResponse['structuredResponse']['cards'] = [];
   
+  // Add greeting
+  responseText += `🌾 **${t.greeting}**\n\n`;
+  
   // Add risk-based greeting
   if (advisory.risk_level === RiskLevel.CRITICAL) {
     responseText += `⚠️ ${t.riskCritical}\n\n`;
@@ -461,7 +650,7 @@ export function formatAdvisoryForChat(
   
   // Add causes if any
   if (advisory.causes.length > 0) {
-    responseText += `📊 ${t.causesTitle}:\n`;
+    responseText += `📊 **${t.causesTitle}:**\n`;
     for (const cause of advisory.causes.slice(0, 3)) {
       responseText += `• ${formatCause(cause, language)}\n`;
     }
@@ -470,14 +659,14 @@ export function formatAdvisoryForChat(
   
   // Add actions
   if (advisory.actions.length > 0) {
-    responseText += `✅ ${t.actionsTitle}:\n\n`;
+    responseText += `✅ **${t.actionsTitle}:**\n\n`;
     
     for (let i = 0; i < Math.min(advisory.actions.length, 5); i++) {
       const action = advisory.actions[i];
       const actionText = formatAction(action.action, language);
       const urgencyText = action.urgency.replace(/_/g, ' ');
       
-      responseText += `${i + 1}. ${actionText}\n`;
+      responseText += `${i + 1}. **${actionText}**\n`;
       responseText += `   ⏰ ${urgencyText}\n`;
       if (action.scientific_source) {
         responseText += `   📚 ${action.scientific_source}\n`;
@@ -523,9 +712,10 @@ export function formatAdvisoryForChat(
     responseText += `✅ ${t.noActionNeeded}\n\n`;
   }
   
-  // Add scientific basis
-  responseText += `\n📚 ${t.scientificBasis}\n`;
-  responseText += `${t.confidence}: ${Math.round(advisory.confidence * 100)}% | ${advisory.rules_applied.length} ${t.rulesApplied}`;
+  // Add scientific basis and source
+  responseText += `\n---\n📚 ${t.scientificBasis}\n`;
+  responseText += `${t.confidence}: ${Math.round(advisory.confidence * 100)}% | ${advisory.rules_applied.length} ${t.rulesApplied}\n`;
+  responseText += `\n_${t.source}_`;
   
   return {
     response: responseText,
@@ -560,11 +750,21 @@ export function tryDecisionBrain(
 ): DecisionBrainResult {
   const startTime = Date.now();
   
+  console.log(`\n════════════════════════════════════════════════════════════════`);
+  console.log(`🧠 [DECISION BRAIN] Starting analysis...`);
+  console.log(`Query: "${query.substring(0, 100)}..."`);
+  console.log(`Language: ${language}`);
+  console.log(`Land: ${landContext?.name || 'No land context'}`);
+  console.log(`Crop: ${landContext?.crop_name || landContext?.crop_code || 'Unknown'}`);
+  console.log(`════════════════════════════════════════════════════════════════\n`);
+  
   // Step 1: Classify query
   const classification = classifyQueryForDecisionBrain(query);
+  console.log(`📋 [Decision Brain] Classification:`, classification);
   
   // If not agricultural, fall back to AI
   if (!classification.isAgricultural) {
+    console.log(`❌ [Decision Brain] Query not agricultural → AI Fallback`);
     return {
       handled: false,
       fallbackToAI: true,
@@ -574,6 +774,7 @@ export function tryDecisionBrain(
   
   // Step 2: Check if we have land context
   if (!landContext) {
+    console.log(`❌ [Decision Brain] No land context → AI Fallback`);
     return {
       handled: false,
       fallbackToAI: true,
@@ -584,6 +785,7 @@ export function tryDecisionBrain(
   // Step 3: Convert land context to decision input
   const decisionInput = landContextToDecisionInput(landContext, farmerId, tenantId);
   if (!decisionInput) {
+    console.log(`❌ [Decision Brain] Invalid land data → AI Fallback`);
     return {
       handled: false,
       fallbackToAI: true,
@@ -593,13 +795,28 @@ export function tryDecisionBrain(
   
   // Step 4: Run Decision Graph
   try {
+    console.log(`🔄 [Decision Brain] Running Decision Graph...`);
     const advisory = runDecisionGraphSync(decisionInput);
+    
+    console.log(`📊 [Decision Brain] Advisory result:`, {
+      risk_level: advisory.risk_level,
+      causes_count: advisory.causes.length,
+      actions_count: advisory.actions.length,
+      confidence: advisory.confidence,
+      rules_applied: advisory.rules_applied.length
+    });
     
     // Step 5: Format response
     const chatResponse = formatAdvisoryForChat(advisory, language);
     chatResponse.executionTimeMs = Date.now() - startTime;
     
-    console.log(`🧠 [Decision Brain] Answered in ${chatResponse.executionTimeMs}ms with ${advisory.rules_applied.length} rules, 0 AI tokens`);
+    console.log(`\n════════════════════════════════════════════════════════════════`);
+    console.log(`✅ [DECISION BRAIN] SUCCESS!`);
+    console.log(`⏱️ Execution time: ${chatResponse.executionTimeMs}ms`);
+    console.log(`📏 Rules applied: ${advisory.rules_applied.length}`);
+    console.log(`🎯 Actions generated: ${advisory.actions.length}`);
+    console.log(`💰 AI tokens used: 0`);
+    console.log(`════════════════════════════════════════════════════════════════\n`);
     
     return {
       handled: true,
@@ -608,7 +825,7 @@ export function tryDecisionBrain(
     };
     
   } catch (error) {
-    console.error('[Decision Brain] Execution error:', error);
+    console.error(`❌ [Decision Brain] Execution error:`, error);
     return {
       handled: false,
       fallbackToAI: true,
