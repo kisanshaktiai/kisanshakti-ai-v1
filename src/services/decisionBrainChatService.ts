@@ -214,9 +214,31 @@ export function classifyQueryForDecisionBrain(query: string): QueryClassificatio
       'farming', 'खेती', 'शेती', 'agriculture', 'कृषि', 'grow', 'उगाना',
       'sowing', 'बुवाई', 'पेरणी', 'plant', 'पौधा', 'झाड', 'aaj kya karna hai',
       'आज क्या करना है', 'आज काय करायचे', 'today', 'आज', 'advice', 'सलाह',
-      'काय करू', 'क्या करें', 'what should i do', 'tell me', 'बताओ', 'सांगा'
+      'काय करू', 'क्या करें', 'what should i do', 'current condition', 'crop condition'
+    ],
+    // ✅ Follow-up questions should go to AI for detailed explanations
+    followup: [
+      'tell me more', 'बताओ', 'सांगा', 'explain', 'समझाओ', 'समजावून सांगा',
+      'how to', 'कैसे', 'कसे', 'why', 'क्यों', 'का', 'what is', 'क्या है', 'काय आहे',
+      'details', 'विस्तार', 'विस्तृत', 'more about', 'के बारे में', 'बद्दल',
+      'step by step', 'कदम', 'पायऱ्या'
     ]
   };
+  
+  // ✅ CRITICAL: Check follow-up questions FIRST - these need AI for detailed explanations
+  for (const kw of agriKeywords.followup) {
+    if (q.includes(kw)) {
+      matchedKeywords.push(kw);
+      console.log(`🔍 [Decision Brain] Follow-up query detected: "${kw}" → requires AI for detailed explanation`);
+      return {
+        isAgricultural: true,
+        queryType: 'general',
+        canUseDecisionBrain: false,
+        requiresAI: true,
+        matchedKeywords
+      };
+    }
+  }
   
   // Check each category
   for (const [category, keywords] of Object.entries(agriKeywords)) {
