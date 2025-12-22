@@ -182,23 +182,46 @@ function normalizeCropName(cropName: string | undefined): string | null {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// QUERY CLASSIFICATION
+// QUERY CLASSIFICATION - HYBRID APPROACH (Symbolic Brain + Neural Enhancement)
 // ═══════════════════════════════════════════════════════════════════════════
+// 🎯 2030-READY PRINCIPLE: Every answer comes from symbolic logic. AI only refines language.
 
 interface QueryClassification {
   isAgricultural: boolean;
   queryType: 'watering' | 'fertilizer' | 'pest' | 'disease' | 'harvest' | 'weather' | 'general' | 'non_agri';
   canUseDecisionBrain: boolean;
   requiresAI: boolean;
+  requiresAIEnhancement: boolean; // ✅ NEW: AI enhances but doesn't decide
+  isFollowUp: boolean;           // ✅ NEW: Track follow-up questions
+  isDetailedQuestion: boolean;   // ✅ NEW: Questions needing explanation
   matchedKeywords: string[];
 }
 
 /**
- * Classify user query to determine if Decision Brain can handle it
+ * Classify user query to determine processing path
+ * 
+ * 🎯 CRITICAL 2030 HYBRID RULES:
+ * 1. Symbolic Brain ALWAYS runs for agricultural queries
+ * 2. AI Enhancement is triggered for complex questions
+ * 3. AI NEVER decides - only makes answers farmer-friendly
  */
 export function classifyQueryForDecisionBrain(query: string): QueryClassification {
   const q = query.toLowerCase();
   const matchedKeywords: string[] = [];
+  
+  // ✅ HYBRID: Detect if this is a follow-up/detailed question
+  const followupPatterns = [
+    'tell me more', 'बताओ', 'सांगा', 'explain', 'समझाओ', 'समजावून सांगा',
+    'how to', 'कैसे', 'कसे', 'why', 'क्यों', 'का', 'what is', 'क्या है', 'काय आहे',
+    'details', 'विस्तार', 'विस्तृत', 'more about', 'के बारे में', 'बद्दल',
+    'step by step', 'कदम', 'पायऱ्या', 'how much', 'कितना', 'किती',
+    'which', 'कौनसा', 'कोणता', 'और', 'आणखी', 'more'
+  ];
+  
+  const isFollowUp = followupPatterns.some(p => q.includes(p));
+  const isDetailedQuestion = /\b(how|why|when|what|which|explain|details|step)\b/i.test(q) ||
+                             /\b(कैसे|क्यों|कब|क्या|कौन|समझाओ|विस्तार)\b/.test(q) ||
+                             /\b(कसे|का|कधी|काय|कोण|समजावा|विस्तृत)\b/.test(q);
   
   // Agricultural keywords (Hindi, Marathi, English)
   const agriKeywords = {
@@ -237,55 +260,61 @@ export function classifyQueryForDecisionBrain(query: string): QueryClassificatio
       'sowing', 'बुवाई', 'पेरणी', 'plant', 'पौधा', 'झाड', 'aaj kya karna hai',
       'आज क्या करना है', 'आज काय करायचे', 'today', 'आज', 'advice', 'सलाह',
       'काय करू', 'क्या करें', 'what should i do', 'current condition', 'crop condition'
-    ],
-    // ✅ Follow-up questions should go to AI for detailed explanations
-    followup: [
-      'tell me more', 'बताओ', 'सांगा', 'explain', 'समझाओ', 'समजावून सांगा',
-      'how to', 'कैसे', 'कसे', 'why', 'क्यों', 'का', 'what is', 'क्या है', 'काय आहे',
-      'details', 'विस्तार', 'विस्तृत', 'more about', 'के बारे में', 'बद्दल',
-      'step by step', 'कदम', 'पायऱ्या'
     ]
   };
   
-  // ✅ CRITICAL: Check follow-up questions FIRST - these need AI for detailed explanations
-  for (const kw of agriKeywords.followup) {
-    if (q.includes(kw)) {
-      matchedKeywords.push(kw);
-      console.log(`🔍 [Decision Brain] Follow-up query detected: "${kw}" → requires AI for detailed explanation`);
-      return {
-        isAgricultural: true,
-        queryType: 'general',
-        canUseDecisionBrain: false,
-        requiresAI: true,
-        matchedKeywords
-      };
-    }
-  }
-  
-  // Check each category
+  // ✅ CRITICAL FIX: Check each category - BUT NEVER bypass symbolic brain
   for (const [category, keywords] of Object.entries(agriKeywords)) {
     for (const kw of keywords) {
       if (q.includes(kw)) {
         matchedKeywords.push(kw);
-        console.log(`🔍 [Decision Brain] Query matched keyword: "${kw}" → category: ${category}`);
+        const isBrainCategory = ['watering', 'fertilizer', 'pest', 'disease', 'harvest', 'general'].includes(category);
+        
+        console.log(`🔍 [Decision Brain] Query matched: "${kw}" → ${category} | FollowUp: ${isFollowUp} | Detailed: ${isDetailedQuestion}`);
+        
         return {
           isAgricultural: true,
           queryType: category as QueryClassification['queryType'],
-          canUseDecisionBrain: ['watering', 'fertilizer', 'pest', 'disease', 'harvest', 'general'].includes(category),
-          requiresAI: false,
+          canUseDecisionBrain: isBrainCategory, // ✅ ALWAYS true for agri queries
+          requiresAI: false, // ✅ NEVER bypass brain for pure AI
+          requiresAIEnhancement: isFollowUp || isDetailedQuestion, // ✅ AI enhances AFTER brain
+          isFollowUp,
+          isDetailedQuestion,
           matchedKeywords
         };
       }
     }
   }
   
+  // Non-agricultural query - check if it might be agricultural but missed
+  const maybeAgri = /\b(crop|plant|farm|field|soil|seed|harvest|grow)\b/i.test(q) ||
+                    /\b(फसल|पौधा|खेत|मिट्टी|बीज|बुवाई|उगाना)\b/.test(q) ||
+                    /\b(पीक|झाड|शेत|माती|बियाणे|पेरणी)\b/.test(q);
+  
+  if (maybeAgri) {
+    console.log(`🔍 [Decision Brain] Possible agri query, running brain anyway: "${q.substring(0, 50)}..."`);
+    return {
+      isAgricultural: true,
+      queryType: 'general',
+      canUseDecisionBrain: true,
+      requiresAI: false,
+      requiresAIEnhancement: true, // Let AI enhance the response
+      isFollowUp: false,
+      isDetailedQuestion: true,
+      matchedKeywords
+    };
+  }
+  
   // Non-agricultural query
-  console.log(`🔍 [Decision Brain] Query not matched as agricultural: "${q.substring(0, 50)}..."`);
+  console.log(`🔍 [Decision Brain] Non-agricultural query: "${q.substring(0, 50)}..."`);
   return {
     isAgricultural: false,
     queryType: 'non_agri',
     canUseDecisionBrain: false,
     requiresAI: true,
+    requiresAIEnhancement: false,
+    isFollowUp: false,
+    isDetailedQuestion: false,
     matchedKeywords
   };
 }
@@ -1458,16 +1487,16 @@ export function getDecisionBrainStatus(): {
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * AI FINE-TUNING FOR COMPLEX/CRITICAL CASES
+ * AI FINE-TUNING FOR COMPLEX/CRITICAL CASES - 2030-READY HYBRID
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Only use AI to polish Decision Brain output when:
  * 1. Risk level is CRITICAL or HIGH
  * 2. Multiple complex causes detected
- * 3. Farmer feedback indicates confusion
+ * 3. Farmer asks detailed questions (how, why, explain)
  * 
  * AI receives Decision Brain advisory as CONTEXT, not for reasoning.
- * Max 200 tokens for refinement.
+ * Max 300 tokens for refinement.
  */
 export interface AIRefinementResult {
   refined: boolean;
@@ -1476,32 +1505,58 @@ export interface AIRefinementResult {
   reason: string;
 }
 
-export function shouldRefineWithAI(advisory: UnifiedAdvisory): boolean {
-  // Only refine critical/high risk or complex multi-cause scenarios
-  const isCriticalRisk = advisory.risk_level === RiskLevel.CRITICAL || advisory.risk_level === RiskLevel.HIGH;
-  const isComplexScenario = advisory.causes.length >= 3;
-  const hasMultipleUrgentActions = advisory.actions.filter(a => a.priority <= 2).length >= 2;
+/**
+ * ✅ HYBRID ENHANCEMENT: Build prompt for AI to refine symbolic brain output
+ * AI does NOT decide - only makes the advisory farmer-friendly
+ */
+export function buildHybridEnhancementPrompt(
+  advisory: UnifiedAdvisory,
+  query: string,
+  language: string
+): string {
+  const langInstructions: Record<string, string> = {
+    hi: 'हिंदी में गांव की बोली में संक्षिप्त और स्पष्ट उत्तर दें। सरल शब्दों का उपयोग करें।',
+    mr: 'मराठीत गावाकडची बोली वापरून थोडक्यात आणि स्पष्ट उत्तर द्या. सोप्या शब्दांचा वापर करा.',
+    en: 'Provide a brief and clear response in simple village English. Use easy words.'
+  };
   
-  const shouldRefine = isCriticalRisk || isComplexScenario || hasMultipleUrgentActions;
+  const actionsText = advisory.actions.length > 0 
+    ? advisory.actions.map(a => `• ${a.action}: ${a.justification_key || ''} (₹${a.estimated_cost_inr || 0})`).join('\n')
+    : '• No immediate action needed - crop is in good condition';
   
-  console.log(`🤖 [AI Refinement] Should refine: ${shouldRefine}`, {
-    riskLevel: advisory.risk_level,
-    causesCount: advisory.causes.length,
-    urgentActionsCount: advisory.actions.filter(a => a.priority <= 2).length
-  });
-  
-  return shouldRefine;
+  return `🧠 DECISION BRAIN OUTPUT (ICAR/FAO Verified Rules - DO NOT CHANGE):
+═══════════════════════════════════════════════════════════════
+CROP: ${advisory.facts.crop_code} | STAGE: ${advisory.facts.crop_stage}
+RISK: ${advisory.risk_level} (${Math.round(advisory.confidence * 100)}% confidence)
+ISSUES: ${advisory.causes.length > 0 ? advisory.causes.join(', ') : 'No issues detected'}
+ACTIONS:
+${actionsText}
+═══════════════════════════════════════════════════════════════
+
+👨‍🌾 FARMER'S QUESTION: "${query}"
+
+📝 YOUR TASK (Language Refinement ONLY):
+1. KEEP all recommended actions EXACTLY as given above
+2. EXPLAIN them in simple farmer language
+3. Add practical timing (morning/evening) if helpful
+4. Mention economic benefit in ₹ if cost is given
+5. Keep response under 200 words
+
+${langInstructions[language] || langInstructions.en}
+
+⚠️ CRITICAL RULES:
+- DO NOT add new recommendations
+- DO NOT change quantities/dosages
+- DO NOT suggest alternatives
+- ONLY rephrase in farmer-friendly language
+- If "No action needed", reassure farmer their crop is healthy`;
 }
 
-/**
- * Build AI refinement prompt from Decision Brain advisory
- * This is used when calling AI to polish the response
- */
 export function buildRefinementPrompt(
   advisory: UnifiedAdvisory,
   language: string
 ): string {
-  const langInstructions = {
+  const langInstructions: Record<string, string> = {
     hi: 'हिंदी में संक्षिप्त और स्पष्ट उत्तर दें।',
     mr: 'मराठीत थोडक्यात आणि स्पष्ट उत्तर द्या.',
     en: 'Provide a brief and clear response in simple English.'
@@ -1516,14 +1571,40 @@ ADVISORY TO REFINE:
 - Actions: ${advisory.actions.map(a => a.action).join(', ')}
 - Confidence: ${Math.round(advisory.confidence * 100)}%
 
-${langInstructions[language as keyof typeof langInstructions] || langInstructions.en}
+${langInstructions[language] || langInstructions.en}
 
 Keep response under 100 words. Focus on WHAT to do TODAY.`;
 }
 
 /**
- * ✅ NEW: Async version of tryDecisionBrain that includes optional AI refinement
- * This sends the symbolic result to AI for natural language polishing
+ * ✅ ENHANCED: Check if AI refinement/enhancement is needed
+ * Combines classification info with advisory complexity
+ */
+export function shouldRefineWithAI(advisory: UnifiedAdvisory, classification?: QueryClassification): boolean {
+  // Always enhance if classification says so
+  if (classification?.requiresAIEnhancement) {
+    console.log(`🤖 [Hybrid] AI enhancement requested by classification`);
+    return true;
+  }
+  
+  // Complex advisories with multiple actions benefit from AI explanation
+  if (advisory.actions.length > 2) {
+    console.log(`🤖 [Hybrid] AI enhancement for complex advisory (${advisory.actions.length} actions)`);
+    return true;
+  }
+  
+  // High risk situations need clear farmer communication
+  if (advisory.risk_level === RiskLevel.HIGH || advisory.risk_level === RiskLevel.CRITICAL) {
+    console.log(`🤖 [Hybrid] AI enhancement for high risk situation`);
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * ✅ 2030-READY HYBRID: Async version that ALWAYS runs symbolic brain first
+ * Then optionally enhances with AI for farmer-friendly language
  */
 export async function tryDecisionBrainWithAIRefinement(
   query: string,
@@ -1531,44 +1612,66 @@ export async function tryDecisionBrainWithAIRefinement(
   language: string = 'en',
   farmerId: string = 'anonymous',
   tenantId: string = 'default',
-  supabaseClient?: any // Pass supabase client for edge function calls
-): Promise<DecisionBrainResult> {
-  // First, run the synchronous Decision Brain with supabase client for logging
+  supabaseClient?: any
+): Promise<DecisionBrainResult & { source: 'symbolic_only' | 'symbolic_ai_enhanced' | 'ai_fallback' }> {
+  // ✅ STEP 1: Classify the query
+  const classification = classifyQueryForDecisionBrain(query);
+  
+  console.log(`🎯 [Hybrid] Query classification:`, {
+    queryType: classification.queryType,
+    canUseDecisionBrain: classification.canUseDecisionBrain,
+    requiresAIEnhancement: classification.requiresAIEnhancement,
+    isFollowUp: classification.isFollowUp
+  });
+  
+  // ✅ STEP 2: ALWAYS run symbolic brain first for agricultural queries
   const brainResult = tryDecisionBrain(query, landContext, language, farmerId, tenantId, supabaseClient);
   
-  // If Decision Brain didn't handle it, return as-is
+  // If Decision Brain didn't handle it (non-agri query), return for AI fallback
   if (!brainResult.handled || !brainResult.response) {
-    return brainResult;
+    console.log(`⚠️ [Hybrid] Symbolic brain couldn't handle - pure AI fallback`);
+    return { ...brainResult, source: 'ai_fallback' };
   }
   
-  // Check if AI refinement is needed
-  if (!brainResult.response.advisory || !shouldRefineWithAI(brainResult.response.advisory)) {
-    console.log(`🧠 [Decision Brain] No AI refinement needed - returning deterministic result`);
-    return brainResult;
+  // ✅ STEP 3: Check if AI enhancement is needed
+  const needsEnhancement = brainResult.response.advisory && 
+    shouldRefineWithAI(brainResult.response.advisory, classification);
+  
+  if (!needsEnhancement) {
+    console.log(`🧠 [Hybrid] Returning pure symbolic brain result (no AI enhancement needed)`);
+    return { ...brainResult, source: 'symbolic_only' };
   }
   
-  // If no supabase client provided, skip AI refinement
+  // If no supabase client provided, skip AI enhancement
   if (!supabaseClient) {
-    console.log(`⚠️ [Decision Brain] No supabase client for AI refinement - returning deterministic result`);
-    return brainResult;
+    console.log(`⚠️ [Hybrid] No supabase client for AI enhancement - returning symbolic result`);
+    return { ...brainResult, source: 'symbolic_only' };
   }
   
-  console.log(`🤖 [Decision Brain] Requesting AI refinement for farmer-friendly response...`);
+  console.log(`🤖 [Hybrid] Enhancing symbolic brain output with AI for farmer-friendly language...`);
   
   try {
-    const refinementPrompt = buildRefinementPrompt(brainResult.response.advisory, language);
+    // ✅ STEP 4: Build hybrid enhancement prompt with FULL symbolic context
+    const enhancementPrompt = buildHybridEnhancementPrompt(
+      brainResult.response.advisory!,
+      query,
+      language
+    );
     
-    // Call AI for refinement (using ai-agriculture-chat edge function)
-    // ✅ FIX: Use 'messages' array format as expected by the edge function
+    // Call AI for enhancement (NOT replacement)
     const { data: aiData, error: aiError } = await supabaseClient.functions.invoke('ai-agriculture-chat', {
       body: {
-        messages: [{ role: 'user', content: refinementPrompt }],
+        messages: [{ role: 'user', content: enhancementPrompt }],
         language,
         metadata: {
           farmerId,
           tenantId,
-          mode: 'refinement', // Marker for quick refinement
-          maxTokens: 200
+          mode: 'hybrid_enhancement', // ✅ NEW: Hybrid mode marker
+          symbolicContext: {
+            advisory: brainResult.response.advisory,
+            decisionBrainResponse: brainResult.response.decisionBrainResponse
+          },
+          maxTokens: 300
         }
       },
       headers: {
@@ -1579,22 +1682,22 @@ export async function tryDecisionBrainWithAIRefinement(
     });
     
     if (aiError || !aiData?.response) {
-      console.warn(`⚠️ [AI Refinement] Failed:`, aiError);
-      return brainResult; // Return original result on failure
+      console.warn(`⚠️ [Hybrid] AI enhancement failed:`, aiError);
+      return { ...brainResult, source: 'symbolic_only' }; // Fallback to symbolic
     }
     
-    console.log(`✅ [AI Refinement] Successfully refined response`);
+    console.log(`✅ [Hybrid] AI enhanced response ready`);
     
-    // Update the farmer message with AI-refined version
+    // ✅ STEP 5: Update response with AI-enhanced version
     if (brainResult.response.decisionBrainResponse) {
       brainResult.response.decisionBrainResponse.farmerMessage = aiData.response;
     }
     brainResult.response.response = aiData.response;
     
-    return brainResult;
+    return { ...brainResult, source: 'symbolic_ai_enhanced' };
     
   } catch (error) {
-    console.warn(`⚠️ [AI Refinement] Exception:`, error);
-    return brainResult; // Return original result on exception
+    console.warn(`⚠️ [Hybrid] AI enhancement exception:`, error);
+    return { ...brainResult, source: 'symbolic_only' }; // Fallback to symbolic
   }
 }
