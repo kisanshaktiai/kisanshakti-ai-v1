@@ -21,7 +21,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { landsApi } from '@/services/landsApi';
 import { localDB } from '@/services/localDB';
-import { tryDecisionBrain, LandContext as DecisionLandContext } from '@/services/decisionBrainChatService';
+import { tryDecisionBrain, tryDecisionBrainWithAIRefinement, LandContext as DecisionLandContext, shouldRefineWithAI } from '@/services/decisionBrainChatService';
 import { LandContextCard } from './LandContextCard';
 import { GeneralChatWelcomeCard } from './GeneralChatWelcomeCard';
 import { ResponseSectionCard } from './ResponseSectionCard';
@@ -1299,11 +1299,15 @@ export function EnhancedAIChatInterface() {
         hasLocation: !!landContextForBrain?.location
       });
       
-      const brainResult = tryDecisionBrain(finalMessage, landContextForBrain, language, farmerId, tenantId);
+      // ✅ Use async version with optional AI refinement for critical/complex cases
+      const brainResult = await tryDecisionBrainWithAIRefinement(
+        finalMessage, landContextForBrain, language, farmerId, tenantId, supabase
+      );
       
       if (brainResult.handled && brainResult.response) {
-        // 🧠 Decision Brain answered! (0 AI tokens, <100ms)
-        console.log(`🧠 [Decision Brain] Answered in ${brainResult.response.executionTimeMs}ms - 0 AI tokens used`);
+        // 🧠 Decision Brain answered!
+        const usedAI = brainResult.response.advisory && shouldRefineWithAI(brainResult.response.advisory);
+        console.log(`🧠 [Decision Brain] Answered in ${brainResult.response.executionTimeMs}ms - ${usedAI ? 'AI refined' : '0 AI tokens'}`);
         
         const aiMessageId = crypto.randomUUID();
         const aiMessage: Message = {
@@ -1316,8 +1320,8 @@ export function EnhancedAIChatInterface() {
           decisionBrainResponse: brainResult.response.decisionBrainResponse,
           analytics: {
             responseTime: brainResult.response.executionTimeMs,
-            tokensUsed: { prompt: 0, completion: 0, total: 0 },
-            queryComplexity: 'decision_brain'
+            tokensUsed: usedAI ? { prompt: 100, completion: 100, total: 200 } : { prompt: 0, completion: 0, total: 0 },
+            queryComplexity: usedAI ? 'decision_brain_refined' : 'decision_brain'
           }
         };
         
@@ -1338,7 +1342,7 @@ export function EnhancedAIChatInterface() {
         
         setIsLoading(false);
         setLoadingMessage('');
-        return; // Exit early - no AI needed!
+        return; // Exit early - Decision Brain handled it!
       }
       
       // ═══════════════════════════════════════════════════════════════════════
