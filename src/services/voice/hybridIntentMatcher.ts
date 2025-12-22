@@ -29,6 +29,100 @@ export interface IntentPattern {
   priority: 'high' | 'medium' | 'low';
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ADVISORY VOICE INTENTS - Decision Graph Integration
+// ═══════════════════════════════════════════════════════════════════════════
+
+const ADVISORY_INTENTS: Record<string, IntentPattern[]> = {
+  // English
+  en: [
+    { id: 'today_advisory', patterns: ['what should i do today', 'today work', 'what to do', 'today advisory', 'my tasks today', 'daily advice', 'what now'], action: 'get_advisory', offline: true, priority: 'high' },
+    { id: 'explain_advisory', patterns: ['explain', 'explain again', 'why', 'tell me why', 'reason', 'explain more', 'what does that mean', 'i dont understand'], action: 'explain_advisory', offline: true, priority: 'high' },
+    { id: 'mark_done', patterns: ['done', 'completed', 'finished', 'i did it', 'task done', 'work done', 'complete'], action: 'mark_done', offline: true, priority: 'high' },
+    { id: 'mark_not_done', patterns: ['not done', 'skip', 'later', 'not today', 'cant do', 'skip this', 'ignore', 'postpone'], action: 'mark_not_done', offline: true, priority: 'high' },
+    { id: 'next_task', patterns: ['next task', 'what else', 'next', 'more tasks', 'other work', 'anything else'], action: 'next_task', offline: true, priority: 'high' },
+    { id: 'urgent_tasks', patterns: ['urgent', 'important', 'critical', 'emergency', 'urgent tasks', 'high priority'], action: 'urgent_tasks', offline: true, priority: 'high' },
+    { id: 'weather_impact', patterns: ['weather effect', 'rain impact', 'weather advisory', 'will rain affect', 'weather problem'], action: 'weather_impact', offline: true, priority: 'medium' },
+    { id: 'crop_status', patterns: ['crop status', 'how is my crop', 'crop health', 'plant health', 'crop condition'], action: 'crop_status', offline: true, priority: 'medium' },
+  ],
+  // Hindi
+  hi: [
+    { id: 'today_advisory', patterns: ['aaj kya karna hai', 'आज क्या करना है', 'aaj ka kaam', 'आज का काम', 'kya karu', 'क्या करूं', 'aaj ki salah', 'आज की सलाह'], action: 'get_advisory', offline: true, priority: 'high' },
+    { id: 'explain_advisory', patterns: ['phir se samjhao', 'फिर से समझाओ', 'samjhao', 'समझाओ', 'kyun', 'क्यों', 'kaise', 'कैसे', 'dobara batao', 'दोबारा बताओ'], action: 'explain_advisory', offline: true, priority: 'high' },
+    { id: 'mark_done', patterns: ['ho gaya', 'हो गया', 'kar diya', 'कर दिया', 'kaam khatam', 'काम खत्म', 'complete', 'pura ho gaya', 'पूरा हो गया'], action: 'mark_done', offline: true, priority: 'high' },
+    { id: 'mark_not_done', patterns: ['nahi kiya', 'नहीं किया', 'chhod do', 'छोड़ दो', 'baad mein', 'बाद में', 'aaj nahi', 'आज नहीं', 'skip karo', 'स्किप करो'], action: 'mark_not_done', offline: true, priority: 'high' },
+    { id: 'next_task', patterns: ['agla kaam', 'अगला काम', 'aur kya', 'और क्या', 'next', 'aur batao', 'और बताओ'], action: 'next_task', offline: true, priority: 'high' },
+    { id: 'urgent_tasks', patterns: ['zaroori kaam', 'ज़रूरी काम', 'urgent', 'jaldi karo', 'जल्दी करो', 'important', 'pehle kya'], action: 'urgent_tasks', offline: true, priority: 'high' },
+    { id: 'weather_impact', patterns: ['mausam se asar', 'मौसम से असर', 'baarish ka asar', 'बारिश का असर', 'mausam ki salah'], action: 'weather_impact', offline: true, priority: 'medium' },
+    { id: 'crop_status', patterns: ['fasal kaisi hai', 'फसल कैसी है', 'crop health', 'paudha kaisa hai', 'पौधा कैसा है'], action: 'crop_status', offline: true, priority: 'medium' },
+  ],
+  // Marathi
+  mr: [
+    { id: 'today_advisory', patterns: ['आज काय करायचे', 'aaj kay karaycha', 'आजचे काम', 'aajche kaam', 'काय करू', 'kay karu'], action: 'get_advisory', offline: true, priority: 'high' },
+    { id: 'explain_advisory', patterns: ['परत सांगा', 'parat sanga', 'समजावून सांगा', 'samjavun sanga', 'का', 'ka', 'कसे'], action: 'explain_advisory', offline: true, priority: 'high' },
+    { id: 'mark_done', patterns: ['झाले', 'jhale', 'केले', 'kele', 'काम पूर्ण', 'kaam purna', 'complete'], action: 'mark_done', offline: true, priority: 'high' },
+    { id: 'mark_not_done', patterns: ['केले नाही', 'kele nahi', 'सोडा', 'soda', 'नंतर', 'nantar', 'आज नाही', 'aaj nahi'], action: 'mark_not_done', offline: true, priority: 'high' },
+    { id: 'next_task', patterns: ['पुढचे काम', 'pudhche kaam', 'आणखी काय', 'anakhi kay', 'next'], action: 'next_task', offline: true, priority: 'high' },
+    { id: 'urgent_tasks', patterns: ['तातडीचे', 'tatadiche', 'महत्त्वाचे', 'mahattvache', 'urgent'], action: 'urgent_tasks', offline: true, priority: 'high' },
+  ],
+  // Punjabi
+  pa: [
+    { id: 'today_advisory', patterns: ['ਅੱਜ ਕੀ ਕਰਨਾ ਹੈ', 'aaj ki karna hai', 'ਅੱਜ ਦਾ ਕੰਮ', 'aaj da kamm', 'ਕੀ ਕਰਾਂ', 'ki karan'], action: 'get_advisory', offline: true, priority: 'high' },
+    { id: 'explain_advisory', patterns: ['ਫੇਰ ਦੱਸੋ', 'fer dasso', 'ਸਮਝਾਓ', 'samjhao', 'ਕਿਉਂ', 'kiun', 'ਕਿਵੇਂ', 'kiven'], action: 'explain_advisory', offline: true, priority: 'high' },
+    { id: 'mark_done', patterns: ['ਹੋ ਗਿਆ', 'ho giya', 'ਕਰ ਦਿੱਤਾ', 'kar ditta', 'ਕੰਮ ਮੁੱਕਿਆ', 'kamm mukkiya'], action: 'mark_done', offline: true, priority: 'high' },
+    { id: 'mark_not_done', patterns: ['ਨਹੀਂ ਕੀਤਾ', 'nahi keeta', 'ਛੱਡੋ', 'chhado', 'ਬਾਅਦ ਵਿੱਚ', 'baad vich'], action: 'mark_not_done', offline: true, priority: 'high' },
+    { id: 'next_task', patterns: ['ਅਗਲਾ ਕੰਮ', 'agla kamm', 'ਹੋਰ ਕੀ', 'hor ki', 'next'], action: 'next_task', offline: true, priority: 'high' },
+  ],
+  // Tamil
+  ta: [
+    { id: 'today_advisory', patterns: ['இன்று என்ன செய்ய வேண்டும்', 'inru enna seyya vendum', 'இன்றைய வேலை', 'inraiya velai', 'என்ன செய்யணும்'], action: 'get_advisory', offline: true, priority: 'high' },
+    { id: 'explain_advisory', patterns: ['மீண்டும் சொல்லுங்க', 'meendum sollungka', 'புரியவில்லை', 'puriyavillai', 'ஏன்', 'en', 'எப்படி'], action: 'explain_advisory', offline: true, priority: 'high' },
+    { id: 'mark_done', patterns: ['முடிந்தது', 'mudinthathu', 'செய்துவிட்டேன்', 'seythuvitten', 'வேலை முடிந்தது'], action: 'mark_done', offline: true, priority: 'high' },
+    { id: 'mark_not_done', patterns: ['செய்யவில்லை', 'seyyavillai', 'பின்னர்', 'pinnar', 'இன்று வேண்டாம்', 'inru vendam'], action: 'mark_not_done', offline: true, priority: 'high' },
+    { id: 'next_task', patterns: ['அடுத்த வேலை', 'aduttha velai', 'வேறு என்ன', 'veru enna', 'next'], action: 'next_task', offline: true, priority: 'high' },
+  ],
+  // Telugu
+  te: [
+    { id: 'today_advisory', patterns: ['ఈరోజు ఏమి చేయాలి', 'eeroju emi cheyaali', 'ఈరోజు పని', 'eeroju pani', 'ఏమి చేయాలి'], action: 'get_advisory', offline: true, priority: 'high' },
+    { id: 'explain_advisory', patterns: ['మళ్ళీ చెప్పండి', 'malli cheppandi', 'అర్థం కాలేదు', 'artham kaledu', 'ఎందుకు', 'enduku', 'ఎలా'], action: 'explain_advisory', offline: true, priority: 'high' },
+    { id: 'mark_done', patterns: ['అయిపోయింది', 'aipoyindi', 'చేసాను', 'chesanu', 'పని పూర్తి'], action: 'mark_done', offline: true, priority: 'high' },
+    { id: 'mark_not_done', patterns: ['చేయలేదు', 'cheyaledu', 'వదిలేయండి', 'vadileyandi', 'తర్వాత', 'tarvaata'], action: 'mark_not_done', offline: true, priority: 'high' },
+    { id: 'next_task', patterns: ['తదుపరి పని', 'tadupari pani', 'ఇంకా ఏమి', 'inkaa emi', 'next'], action: 'next_task', offline: true, priority: 'high' },
+  ],
+  // Kannada
+  kn: [
+    { id: 'today_advisory', patterns: ['ಇಂದು ಏನು ಮಾಡಬೇಕು', 'indu enu maadabeku', 'ಇಂದಿನ ಕೆಲಸ', 'indina kelasa', 'ಏನು ಮಾಡಲಿ'], action: 'get_advisory', offline: true, priority: 'high' },
+    { id: 'explain_advisory', patterns: ['ಮತ್ತೆ ಹೇಳಿ', 'matte heli', 'ಅರ್ಥ ಆಗಲಿಲ್ಲ', 'artha agalilla', 'ಯಾಕೆ', 'yaake', 'ಹೇಗೆ'], action: 'explain_advisory', offline: true, priority: 'high' },
+    { id: 'mark_done', patterns: ['ಆಯಿತು', 'aayithu', 'ಮಾಡಿದೆ', 'maadide', 'ಕೆಲಸ ಮುಗಿಯಿತು'], action: 'mark_done', offline: true, priority: 'high' },
+    { id: 'mark_not_done', patterns: ['ಮಾಡಿಲ್ಲ', 'maadilla', 'ಬಿಡಿ', 'bidi', 'ನಂತರ', 'nantara'], action: 'mark_not_done', offline: true, priority: 'high' },
+    { id: 'next_task', patterns: ['ಮುಂದಿನ ಕೆಲಸ', 'mundina kelasa', 'ಇನ್ನೇನು', 'innenu', 'next'], action: 'next_task', offline: true, priority: 'high' },
+  ],
+  // Bengali
+  bn: [
+    { id: 'today_advisory', patterns: ['আজ কী করতে হবে', 'aaj ki korte hobe', 'আজকের কাজ', 'aajker kaaj', 'কী করব'], action: 'get_advisory', offline: true, priority: 'high' },
+    { id: 'explain_advisory', patterns: ['আবার বলুন', 'abar bolun', 'বোঝা যাচ্ছে না', 'bojha jacche na', 'কেন', 'keno', 'কীভাবে'], action: 'explain_advisory', offline: true, priority: 'high' },
+    { id: 'mark_done', patterns: ['হয়ে গেছে', 'hoye geche', 'করেছি', 'korechi', 'কাজ শেষ'], action: 'mark_done', offline: true, priority: 'high' },
+    { id: 'mark_not_done', patterns: ['করিনি', 'korini', 'ছেড়ে দিন', 'chere din', 'পরে', 'pore'], action: 'mark_not_done', offline: true, priority: 'high' },
+    { id: 'next_task', patterns: ['পরের কাজ', 'porer kaaj', 'আর কী', 'aar ki', 'next'], action: 'next_task', offline: true, priority: 'high' },
+  ],
+  // Gujarati
+  gu: [
+    { id: 'today_advisory', patterns: ['આજે શું કરવું', 'aaje shu karvu', 'આજનું કામ', 'aajnu kaam', 'શું કરું'], action: 'get_advisory', offline: true, priority: 'high' },
+    { id: 'explain_advisory', patterns: ['ફરીથી સમજાવો', 'farithi samjavo', 'સમજાતું નથી', 'samjaatu nathi', 'કેમ', 'kem', 'કેવી રીતે'], action: 'explain_advisory', offline: true, priority: 'high' },
+    { id: 'mark_done', patterns: ['થઈ ગયું', 'thai gayu', 'કર્યું', 'karyu', 'કામ પૂરું'], action: 'mark_done', offline: true, priority: 'high' },
+    { id: 'mark_not_done', patterns: ['કર્યું નથી', 'karyu nathi', 'છોડો', 'chhodo', 'પછીથી', 'pachhithi'], action: 'mark_not_done', offline: true, priority: 'high' },
+    { id: 'next_task', patterns: ['આગળનું કામ', 'agalnu kaam', 'બીજું શું', 'biju shu', 'next'], action: 'next_task', offline: true, priority: 'high' },
+  ],
+  // Odia
+  or: [
+    { id: 'today_advisory', patterns: ['ଆଜି କଣ କରିବ', 'aaji kana kariba', 'ଆଜିର କାମ', 'aajira kaama', 'କଣ କରିବି'], action: 'get_advisory', offline: true, priority: 'high' },
+    { id: 'explain_advisory', patterns: ['ପୁଣି କୁହ', 'puni kuha', 'ବୁଝିଲା ନାହିଁ', 'bujhila nahin', 'କାହିଁକି', 'kahinki', 'କେମିତି'], action: 'explain_advisory', offline: true, priority: 'high' },
+    { id: 'mark_done', patterns: ['ହୋଇଗଲା', 'hoigala', 'କରିଦେଲି', 'karideli', 'କାମ ଶେଷ'], action: 'mark_done', offline: true, priority: 'high' },
+    { id: 'mark_not_done', patterns: ['କରିନି', 'karini', 'ଛାଡ଼ିଦିଅ', 'chhadidia', 'ପରେ', 'pare'], action: 'mark_not_done', offline: true, priority: 'high' },
+    { id: 'next_task', patterns: ['ପରବର୍ତ୍ତୀ କାମ', 'parabarti kaama', 'ଆଉ କଣ', 'aau kana', 'next'], action: 'next_task', offline: true, priority: 'high' },
+  ],
+};
+
 // Fast local intent patterns - comprehensive coverage
 const LOCAL_INTENTS: Record<string, IntentPattern[]> = {
   en: [
@@ -59,6 +153,8 @@ const LOCAL_INTENTS: Record<string, IntentPattern[]> = {
     { id: 'no', patterns: ['no', 'nope', 'cancel', 'stop', 'dont'], action: 'confirm', params: { confirmation: false }, offline: true, priority: 'high' },
     { id: 'help', patterns: ['help', 'commands', 'what can you do'], action: 'help', params: { type: 'examples' }, offline: true, priority: 'medium' },
     { id: 'stop', patterns: ['stop', 'silence', 'quiet', 'shut up'], action: 'help', params: { type: 'stop_speaking' }, offline: true, priority: 'high' },
+    // Include advisory intents
+    ...ADVISORY_INTENTS.en,
   ],
   hi: [
     { id: 'home', patterns: ['होम', 'घर', 'मुख्य', 'ghar', 'home', 'ghar jao', 'home kholo'], action: 'navigate', route: '/app', offline: true, priority: 'high' },
@@ -81,6 +177,8 @@ const LOCAL_INTENTS: Record<string, IntentPattern[]> = {
     { id: 'no', patterns: ['नहीं', 'ना', 'मत', 'नही', 'nahi', 'na', 'mat', 'no'], action: 'confirm', params: { confirmation: false }, offline: true, priority: 'high' },
     { id: 'help', patterns: ['मदद', 'क्या बोलूं', 'कमांड', 'madad', 'help', 'kya bolu'], action: 'help', params: { type: 'examples' }, offline: true, priority: 'medium' },
     { id: 'stop', patterns: ['रुको', 'चुप', 'बस', 'ruko', 'chup', 'bas', 'stop'], action: 'help', params: { type: 'stop_speaking' }, offline: true, priority: 'high' },
+    // Include advisory intents
+    ...ADVISORY_INTENTS.hi,
   ],
   mr: [
     { id: 'home', patterns: ['होम', 'घर', 'मुख्य', 'मुख्य पृष्ठ'], action: 'navigate', route: '/app', offline: true, priority: 'high' },
@@ -94,68 +192,128 @@ const LOCAL_INTENTS: Record<string, IntentPattern[]> = {
     { id: 'save', patterns: ['जतन करा', 'सेव्ह करा', 'ठीक'], action: 'form_action', params: { action: 'save' }, offline: true, priority: 'high' },
     { id: 'yes', patterns: ['हो', 'होय', 'ठीक'], action: 'confirm', params: { confirmation: true }, offline: true, priority: 'high' },
     { id: 'no', patterns: ['नाही', 'नको'], action: 'confirm', params: { confirmation: false }, offline: true, priority: 'high' },
+    // Include advisory intents
+    ...(ADVISORY_INTENTS.mr || []),
+  ],
+  pa: [
+    { id: 'home', patterns: ['ਹੋਮ', 'ਘਰ', 'ਮੁੱਖ'], action: 'navigate', route: '/app', offline: true, priority: 'high' },
+    { id: 'lands', patterns: ['ਜ਼ਮੀਨ', 'ਖੇਤ', 'ਮੇਰੀ ਜ਼ਮੀਨ'], action: 'navigate', route: '/app/lands', offline: true, priority: 'high' },
+    { id: 'weather', patterns: ['ਮੌਸਮ', 'ਬਾਰਿਸ਼', 'ਤਾਪਮਾਨ'], action: 'navigate', route: '/app/weather', offline: true, priority: 'high' },
+    { id: 'schedule', patterns: ['ਸ਼ੈਡਿਊਲ', 'ਕੰਮ', 'ਅੱਜ ਦੇ ਕੰਮ'], action: 'navigate', route: '/app/schedule', offline: true, priority: 'high' },
+    { id: 'back', patterns: ['ਪਿੱਛੇ', 'ਵਾਪਸ'], action: 'back', offline: true, priority: 'high' },
+    { id: 'yes', patterns: ['ਹਾਂ', 'ਠੀਕ', 'ਜੀ'], action: 'confirm', params: { confirmation: true }, offline: true, priority: 'high' },
+    { id: 'no', patterns: ['ਨਹੀਂ', 'ਨਾ'], action: 'confirm', params: { confirmation: false }, offline: true, priority: 'high' },
+    // Include advisory intents
+    ...(ADVISORY_INTENTS.pa || []),
+  ],
+  ta: [
+    { id: 'home', patterns: ['ஹோம்', 'வீடு', 'முகப்பு'], action: 'navigate', route: '/app', offline: true, priority: 'high' },
+    { id: 'lands', patterns: ['நிலம்', 'என் நிலம்', 'வயல்'], action: 'navigate', route: '/app/lands', offline: true, priority: 'high' },
+    { id: 'weather', patterns: ['வானிலை', 'மழை', 'வெப்பநிலை'], action: 'navigate', route: '/app/weather', offline: true, priority: 'high' },
+    { id: 'schedule', patterns: ['அட்டவணை', 'வேலை', 'இன்றைய வேலை'], action: 'navigate', route: '/app/schedule', offline: true, priority: 'high' },
+    { id: 'back', patterns: ['பின்னால்', 'திரும்பு'], action: 'back', offline: true, priority: 'high' },
+    { id: 'yes', patterns: ['ஆம்', 'சரி'], action: 'confirm', params: { confirmation: true }, offline: true, priority: 'high' },
+    { id: 'no', patterns: ['இல்லை', 'வேண்டாம்'], action: 'confirm', params: { confirmation: false }, offline: true, priority: 'high' },
+    // Include advisory intents
+    ...(ADVISORY_INTENTS.ta || []),
+  ],
+  te: [
+    { id: 'home', patterns: ['హోమ్', 'ఇల్లు', 'ముఖ్య'], action: 'navigate', route: '/app', offline: true, priority: 'high' },
+    { id: 'lands', patterns: ['భూమి', 'నా భూమి', 'పొలం'], action: 'navigate', route: '/app/lands', offline: true, priority: 'high' },
+    { id: 'weather', patterns: ['వాతావరణం', 'వర్షం', 'ఉష్ణోగ్రత'], action: 'navigate', route: '/app/weather', offline: true, priority: 'high' },
+    { id: 'schedule', patterns: ['షెడ్యూల్', 'పని', 'ఈరోజు పని'], action: 'navigate', route: '/app/schedule', offline: true, priority: 'high' },
+    { id: 'back', patterns: ['వెనక్కి', 'తిరిగి'], action: 'back', offline: true, priority: 'high' },
+    { id: 'yes', patterns: ['అవును', 'సరే'], action: 'confirm', params: { confirmation: true }, offline: true, priority: 'high' },
+    { id: 'no', patterns: ['లేదు', 'వద్దు'], action: 'confirm', params: { confirmation: false }, offline: true, priority: 'high' },
+    // Include advisory intents
+    ...(ADVISORY_INTENTS.te || []),
+  ],
+  kn: [
+    { id: 'home', patterns: ['ಹೋಮ್', 'ಮನೆ', 'ಮುಖ್ಯ'], action: 'navigate', route: '/app', offline: true, priority: 'high' },
+    { id: 'lands', patterns: ['ಭೂಮಿ', 'ನನ್ನ ಭೂಮಿ', 'ಹೊಲ'], action: 'navigate', route: '/app/lands', offline: true, priority: 'high' },
+    { id: 'weather', patterns: ['ಹವಾಮಾನ', 'ಮಳೆ', 'ಉಷ್ಣತೆ'], action: 'navigate', route: '/app/weather', offline: true, priority: 'high' },
+    { id: 'schedule', patterns: ['ಶೆಡ್ಯೂಲ್', 'ಕೆಲಸ', 'ಇಂದಿನ ಕೆಲಸ'], action: 'navigate', route: '/app/schedule', offline: true, priority: 'high' },
+    { id: 'back', patterns: ['ಹಿಂದೆ', 'ವಾಪಸ್'], action: 'back', offline: true, priority: 'high' },
+    { id: 'yes', patterns: ['ಹೌದು', 'ಸರಿ'], action: 'confirm', params: { confirmation: true }, offline: true, priority: 'high' },
+    { id: 'no', patterns: ['ಇಲ್ಲ', 'ಬೇಡ'], action: 'confirm', params: { confirmation: false }, offline: true, priority: 'high' },
+    // Include advisory intents
+    ...(ADVISORY_INTENTS.kn || []),
+  ],
+  bn: [
+    { id: 'home', patterns: ['হোম', 'বাড়ি', 'প্রধান'], action: 'navigate', route: '/app', offline: true, priority: 'high' },
+    { id: 'lands', patterns: ['জমি', 'আমার জমি', 'ক্ষেত'], action: 'navigate', route: '/app/lands', offline: true, priority: 'high' },
+    { id: 'weather', patterns: ['আবহাওয়া', 'বৃষ্টি', 'তাপমাত্রা'], action: 'navigate', route: '/app/weather', offline: true, priority: 'high' },
+    { id: 'schedule', patterns: ['সময়সূচী', 'কাজ', 'আজকের কাজ'], action: 'navigate', route: '/app/schedule', offline: true, priority: 'high' },
+    { id: 'back', patterns: ['পেছনে', 'ফিরে যাও'], action: 'back', offline: true, priority: 'high' },
+    { id: 'yes', patterns: ['হ্যাঁ', 'ঠিক আছে'], action: 'confirm', params: { confirmation: true }, offline: true, priority: 'high' },
+    { id: 'no', patterns: ['না', 'লাগবে না'], action: 'confirm', params: { confirmation: false }, offline: true, priority: 'high' },
+    // Include advisory intents
+    ...(ADVISORY_INTENTS.bn || []),
+  ],
+  gu: [
+    { id: 'home', patterns: ['હોમ', 'ઘર', 'મુખ્ય'], action: 'navigate', route: '/app', offline: true, priority: 'high' },
+    { id: 'lands', patterns: ['જમીન', 'મારી જમીન', 'ખેતર'], action: 'navigate', route: '/app/lands', offline: true, priority: 'high' },
+    { id: 'weather', patterns: ['હવામાન', 'વરસાદ', 'તાપમાન'], action: 'navigate', route: '/app/weather', offline: true, priority: 'high' },
+    { id: 'schedule', patterns: ['શેડ્યૂલ', 'કામ', 'આજનું કામ'], action: 'navigate', route: '/app/schedule', offline: true, priority: 'high' },
+    { id: 'back', patterns: ['પાછળ', 'પાછા જાઓ'], action: 'back', offline: true, priority: 'high' },
+    { id: 'yes', patterns: ['હા', 'બરાબર'], action: 'confirm', params: { confirmation: true }, offline: true, priority: 'high' },
+    { id: 'no', patterns: ['ના', 'નથી જોઈતું'], action: 'confirm', params: { confirmation: false }, offline: true, priority: 'high' },
+    // Include advisory intents
+    ...(ADVISORY_INTENTS.gu || []),
+  ],
+  or: [
+    { id: 'home', patterns: ['ହୋମ', 'ଘର', 'ମୁଖ୍ୟ'], action: 'navigate', route: '/app', offline: true, priority: 'high' },
+    { id: 'lands', patterns: ['ଜମି', 'ମୋର ଜମି', 'କ୍ଷେତ'], action: 'navigate', route: '/app/lands', offline: true, priority: 'high' },
+    { id: 'weather', patterns: ['ପାଗ', 'ବର୍ଷା', 'ତାପମାନ'], action: 'navigate', route: '/app/weather', offline: true, priority: 'high' },
+    { id: 'schedule', patterns: ['ସୂଚୀ', 'କାମ', 'ଆଜିର କାମ'], action: 'navigate', route: '/app/schedule', offline: true, priority: 'high' },
+    { id: 'back', patterns: ['ପଛକୁ', 'ଫେରିଯାଅ'], action: 'back', offline: true, priority: 'high' },
+    { id: 'yes', patterns: ['ହଁ', 'ଠିକ ଅଛି'], action: 'confirm', params: { confirmation: true }, offline: true, priority: 'high' },
+    { id: 'no', patterns: ['ନା', 'ଦରକାର ନାହିଁ'], action: 'confirm', params: { confirmation: false }, offline: true, priority: 'high' },
+    // Include advisory intents
+    ...(ADVISORY_INTENTS.or || []),
   ],
 };
 
-// Announcements per language
+// Announcements per language (including advisory actions)
 const ANNOUNCEMENTS: Record<string, Record<string, string>> = {
   en: {
-    home: 'Opening home',
-    lands: 'Opening your lands',
-    weather: 'Opening weather',
-    schedule: 'Opening schedule',
-    chat: 'Opening chat',
-    market: 'Opening market',
-    profile: 'Opening profile',
-    community: 'Opening community',
-    analytics: 'Opening analytics',
-    add_land: 'Add new land',
-    scan: 'Opening scanner',
-    back: 'Going back',
+    home: 'Opening home', lands: 'Opening your lands', weather: 'Opening weather',
+    schedule: 'Opening schedule', chat: 'Opening chat', market: 'Opening market',
+    profile: 'Opening profile', community: 'Opening community', analytics: 'Opening analytics',
+    add_land: 'Add new land', scan: 'Opening scanner', back: 'Going back',
+    today_advisory: 'Getting your advisory for today', explain_advisory: 'Let me explain',
+    mark_done: 'Marked as done', mark_not_done: 'Skipped for now', next_task: 'Here is the next task',
+    urgent_tasks: 'Showing urgent tasks', weather_impact: 'Checking weather impact', crop_status: 'Checking crop status',
   },
   hi: {
-    home: 'होम खोल रहे हैं',
-    lands: 'आपकी जमीन खोल रहे हैं',
-    weather: 'मौसम खोल रहे हैं',
-    schedule: 'कार्यक्रम खोल रहे हैं',
-    chat: 'चैट खोल रहे हैं',
-    market: 'बाजार खोल रहे हैं',
-    profile: 'प्रोफाइल खोल रहे हैं',
-    community: 'समुदाय खोल रहे हैं',
-    analytics: 'विश्लेषण खोल रहे हैं',
-    add_land: 'नई जमीन जोड़ें',
-    scan: 'स्कैनर खोल रहे हैं',
-    back: 'वापस जा रहे हैं',
+    home: 'होम खोल रहे हैं', lands: 'आपकी जमीन खोल रहे हैं', weather: 'मौसम खोल रहे हैं',
+    schedule: 'कार्यक्रम खोल रहे हैं', chat: 'चैट खोल रहे हैं', market: 'बाजार खोल रहे हैं',
+    profile: 'प्रोफाइल खोल रहे हैं', community: 'समुदाय खोल रहे हैं', analytics: 'विश्लेषण खोल रहे हैं',
+    add_land: 'नई जमीन जोड़ें', scan: 'स्कैनर खोल रहे हैं', back: 'वापस जा रहे हैं',
+    today_advisory: 'आज की सलाह ला रहे हैं', explain_advisory: 'समझाता हूं',
+    mark_done: 'पूरा हुआ', mark_not_done: 'बाद में करेंगे', next_task: 'अगला काम',
+    urgent_tasks: 'ज़रूरी काम दिखा रहे हैं', weather_impact: 'मौसम का असर देख रहे हैं', crop_status: 'फसल की हालत देख रहे हैं',
   },
   mr: {
-    home: 'होम उघडत आहे',
-    lands: 'तुमची जमीन उघडत आहे',
-    weather: 'हवामान उघडत आहे',
-    schedule: 'वेळापत्रक उघडत आहे',
-    chat: 'चॅट उघडत आहे',
-    market: 'बाजार उघडत आहे',
-    profile: 'प्रोफाइल उघडत आहे',
-    back: 'मागे जात आहे',
+    home: 'होम उघडत आहे', lands: 'तुमची जमीन उघडत आहे', weather: 'हवामान उघडत आहे',
+    schedule: 'वेळापत्रक उघडत आहे', chat: 'चॅट उघडत आहे', market: 'बाजार उघडत आहे',
+    profile: 'प्रोफाइल उघडत आहे', back: 'मागे जात आहे',
+    today_advisory: 'आजची सल्ला आणत आहे', explain_advisory: 'समजावून सांगतो',
+    mark_done: 'पूर्ण झाले', mark_not_done: 'नंतर करू', next_task: 'पुढचे काम',
   },
   pa: {
-    home: 'ਹੋਮ ਖੋਲ ਰਿਹਾ ਹੈ',
-    lands: 'ਤੁਹਾਡੀ ਜ਼ਮੀਨ ਖੋਲ ਰਿਹਾ ਹੈ',
-    weather: 'ਮੌਸਮ ਖੋਲ ਰਿਹਾ ਹੈ',
-    schedule: 'ਸ਼ੈਡਿਊਲ ਖੋਲ ਰਿਹਾ ਹੈ',
-    chat: 'ਚੈਟ ਖੋਲ ਰਿਹਾ ਹੈ',
-    market: 'ਬਾਜ਼ਾਰ ਖੋਲ ਰਿਹਾ ਹੈ',
-    profile: 'ਪ੍ਰੋਫਾਈਲ ਖੋਲ ਰਿਹਾ ਹੈ',
-    back: 'ਪਿੱਛੇ ਜਾ ਰਿਹਾ ਹੈ',
+    home: 'ਹੋਮ ਖੋਲ ਰਿਹਾ ਹੈ', lands: 'ਤੁਹਾਡੀ ਜ਼ਮੀਨ ਖੋਲ ਰਿਹਾ ਹੈ', weather: 'ਮੌਸਮ ਖੋਲ ਰਿਹਾ ਹੈ',
+    schedule: 'ਸ਼ੈਡਿਊਲ ਖੋਲ ਰਿਹਾ ਹੈ', chat: 'ਚੈਟ ਖੋਲ ਰਿਹਾ ਹੈ', market: 'ਬਾਜ਼ਾਰ ਖੋਲ ਰਿਹਾ ਹੈ',
+    profile: 'ਪ੍ਰੋਫਾਈਲ ਖੋਲ ਰਿਹਾ ਹੈ', back: 'ਪਿੱਛੇ ਜਾ ਰਿਹਾ ਹੈ',
+    today_advisory: 'ਅੱਜ ਦੀ ਸਲਾਹ ਲਿਆ ਰਿਹਾ ਹੈ', explain_advisory: 'ਸਮਝਾਉਂਦਾ ਹਾਂ',
+    mark_done: 'ਹੋ ਗਿਆ', mark_not_done: 'ਬਾਅਦ ਵਿੱਚ ਕਰਾਂਗੇ', next_task: 'ਅਗਲਾ ਕੰਮ',
   },
   ta: {
-    home: 'ஹோம் திறக்கிறது',
-    lands: 'உங்கள் நிலம் திறக்கிறது',
-    weather: 'வானிலை திறக்கிறது',
-    schedule: 'அட்டவணை திறக்கிறது',
-    chat: 'சாட் திறக்கிறது',
-    market: 'சந்தை திறக்கிறது',
-    profile: 'சுயவிவரம் திறக்கிறது',
-    back: 'பின்னால் செல்கிறது',
+    home: 'ஹோம் திறக்கிறது', lands: 'உங்கள் நிலம் திறக்கிறது', weather: 'வானிலை திறக்கிறது',
+    schedule: 'அட்டவணை திறக்கிறது', chat: 'சாட் திறக்கிறது', market: 'சந்தை திறக்கிறது',
+    profile: 'சுயவிவரம் திறக்கிறது', back: 'பின்னால் செல்கிறது',
+    today_advisory: 'இன்றைய ஆலோசனை', explain_advisory: 'விளக்குகிறேன்',
+    mark_done: 'முடிந்தது', mark_not_done: 'பின்னர் செய்வோம்', next_task: 'அடுத்த வேலை',
   },
 };
 
