@@ -272,6 +272,15 @@ const INTENT_PATTERNS: Record<FarmerIntent, Record<string, string[]>> = {
  * CRITICAL: This is OFFLINE-CAPABLE - no cloud NLP services.
  * Works even in rural areas with no internet.
  */
+/**
+ * ✅ ENHANCED 2030-READY: Infer farmer's intent with improved confidence scoring
+ * 
+ * IMPROVEMENTS:
+ * 1. Compound intent detection ("when to water" = WHEN + WATER → WATER with high confidence)
+ * 2. Higher weight for multi-word phrase matches
+ * 3. Boost for exact phrase matches
+ * 4. Better handling of follow-up questions
+ */
 export function inferFarmerIntent(
   question: string,
   language: string = 'en'
@@ -292,6 +301,47 @@ export function inferFarmerIntent(
     GENERAL: { score: 0, keywords: [] }
   };
   
+  // ✅ NEW: Compound intent patterns (these get HIGHEST priority)
+  const compoundPatterns: Array<{ pattern: RegExp; primary: FarmerIntent; secondary: FarmerIntent; boost: number }> = [
+    // Water timing patterns
+    { pattern: /when.*(water|irrigat|पानी|सिंचाई|पाणी)/i, primary: 'WATER', secondary: 'WHEN', boost: 5 },
+    { pattern: /(water|irrigat|पानी|सिंचाई|पाणी).*when/i, primary: 'WATER', secondary: 'WHEN', boost: 5 },
+    { pattern: /how\s+much\s+(water|पानी|पाणी)/i, primary: 'WATER', secondary: 'WHEN', boost: 6 },
+    { pattern: /(कितना|किती)\s*(पानी|पाणी)/i, primary: 'WATER', secondary: 'WHEN', boost: 6 },
+    { pattern: /(कब|कधी)\s*(पानी|पाणी)/i, primary: 'WATER', secondary: 'WHEN', boost: 6 },
+    
+    // Fertilizer timing patterns
+    { pattern: /when.*(fertiliz|खाद|खत|urea|dap)/i, primary: 'NUTRIENT', secondary: 'WHEN', boost: 5 },
+    { pattern: /(fertiliz|खाद|खत|urea|dap).*when/i, primary: 'NUTRIENT', secondary: 'WHEN', boost: 5 },
+    { pattern: /how\s+much\s+(fertiliz|खाद|खत)/i, primary: 'NUTRIENT', secondary: 'WHEN', boost: 6 },
+    { pattern: /(कितनी|किती)\s*(खाद|खत)/i, primary: 'NUTRIENT', secondary: 'WHEN', boost: 6 },
+    { pattern: /(कौनसी|कोणते)\s*(खाद|खत)/i, primary: 'NUTRIENT', secondary: 'WHEN', boost: 6 },
+    
+    // Pest patterns
+    { pattern: /how.*(spray|pest|कीट|किड)/i, primary: 'PEST', secondary: 'WHEN', boost: 5 },
+    { pattern: /(spray|pest|कीट|किड).*(when|how)/i, primary: 'PEST', secondary: 'WHEN', boost: 5 },
+    
+    // Harvest patterns
+    { pattern: /when.*(harvest|कटाई|कापणी)/i, primary: 'HARVEST', secondary: 'WHEN', boost: 5 },
+    
+    // Why patterns
+    { pattern: /why.*(yellow|पीला|पिवळ)/i, primary: 'DISEASE', secondary: 'WHY', boost: 5 },
+    { pattern: /why.*(dry|सूख|कोरड)/i, primary: 'WATER', secondary: 'WHY', boost: 5 }
+  ];
+  
+  // ✅ Check compound patterns first (highest priority)
+  let compoundMatch: { primary: FarmerIntent; secondary: FarmerIntent } | null = null;
+  for (const cp of compoundPatterns) {
+    if (cp.pattern.test(normalizedQuestion)) {
+      scores[cp.primary].score += cp.boost;
+      scores[cp.secondary].score += 2;
+      scores[cp.primary].keywords.push(`compound: ${cp.pattern.toString()}`);
+      compoundMatch = { primary: cp.primary, secondary: cp.secondary };
+      console.log(`🎯 [Intent] Compound match: ${cp.primary} + ${cp.secondary} (boost: ${cp.boost})`);
+      break; // Use first compound match
+    }
+  }
+  
   // Check patterns for each intent
   for (const [intent, langPatterns] of Object.entries(INTENT_PATTERNS) as [FarmerIntent, Record<string, string[]>][]) {
     // Try current language first, then fallback to English
@@ -299,8 +349,14 @@ export function inferFarmerIntent(
     
     for (const pattern of patterns) {
       if (normalizedQuestion.includes(pattern.toLowerCase())) {
-        scores[intent].score += pattern.split(' ').length; // Weight by phrase length
-        scores[intent].keywords.push(pattern);
+        // ✅ IMPROVED: Weight by phrase length with multiplier
+        const phraseLength = pattern.split(' ').length;
+        const scoreBoost = phraseLength * 1.5; // Higher weight for phrases
+        scores[intent].score += scoreBoost;
+        
+        if (!scores[intent].keywords.includes(pattern)) {
+          scores[intent].keywords.push(pattern);
+        }
       }
     }
     
@@ -308,7 +364,8 @@ export function inferFarmerIntent(
     if (language !== 'en' && langPatterns.en) {
       for (const pattern of langPatterns.en) {
         if (normalizedQuestion.includes(pattern.toLowerCase())) {
-          scores[intent].score += pattern.split(' ').length * 0.8; // Slightly less weight for English fallback
+          const phraseLength = pattern.split(' ').length;
+          scores[intent].score += phraseLength * 0.8; // Slightly less weight for English fallback
           if (!scores[intent].keywords.includes(pattern)) {
             scores[intent].keywords.push(pattern);
           }
@@ -338,7 +395,7 @@ export function inferFarmerIntent(
     }
   }
   
-  // Detect combined intents (e.g., "when should I water" = WHEN + WATER)
+  // ✅ IMPROVED: Better handling of WHEN/WHY as modifiers
   // If WHEN or WHY is primary and a specific topic is secondary, swap them
   if ((primaryIntent === 'WHEN' || primaryIntent === 'WHY') && secondaryIntent) {
     const topicIntents: FarmerIntent[] = ['WATER', 'NUTRIENT', 'PEST', 'WEED', 'DISEASE', 'HARVEST'];
@@ -347,31 +404,44 @@ export function inferFarmerIntent(
       const temp = primaryIntent;
       primaryIntent = secondaryIntent;
       secondaryIntent = temp;
+      // ✅ Also swap scores
+      const tempScore = primaryScore;
+      primaryScore = secondaryScore;
+      secondaryScore = tempScore;
     }
   }
   
-  // Calculate confidence (0.0 - 1.0)
-  // Higher confidence if single clear intent, lower if ambiguous
-  const maxPossibleScore = 10; // Approximate max for a clear intent
-  let confidence = Math.min(primaryScore / maxPossibleScore, 1.0);
+  // ✅ IMPROVED: Better confidence calculation
+  // Use logarithmic scaling for more realistic confidence
+  const minConfidenceScore = 3; // Minimum score for 50% confidence
+  let confidence: number;
   
-  // Reduce confidence if it's very close to secondary
-  const isAmbiguous = secondaryScore > 0 && (primaryScore - secondaryScore) < 2;
-  if (isAmbiguous) {
-    confidence *= 0.7; // Reduce confidence for ambiguous cases
+  if (primaryScore >= 8) {
+    confidence = 0.95; // Very high confidence
+  } else if (primaryScore >= 5) {
+    confidence = 0.7 + (primaryScore - 5) * 0.05; // 70-85%
+  } else if (primaryScore >= minConfidenceScore) {
+    confidence = 0.5 + (primaryScore - minConfidenceScore) * 0.1; // 50-70%
+  } else if (primaryScore > 0) {
+    confidence = 0.3 + (primaryScore / minConfidenceScore) * 0.2; // 30-50%
+  } else {
+    confidence = 0.1; // Fallback
   }
   
-  // Fallback to GENERAL with low confidence if no clear intent
-  if (primaryScore === 0) {
-    confidence = 0.1;
+  // ✅ IMPROVED: Only reduce for truly ambiguous cases
+  const isAmbiguous = secondaryScore > 0 && (primaryScore - secondaryScore) < 1.5;
+  if (isAmbiguous && !compoundMatch) {
+    confidence *= 0.8; // Less aggressive reduction
   }
   
   console.log(`🎯 [Intent Inference] Question: "${question.substring(0, 50)}..."`, {
     primaryIntent,
+    primaryScore: Math.round(primaryScore * 10) / 10,
     confidence: Math.round(confidence * 100),
-    matchedKeywords: scores[primaryIntent].keywords,
+    matchedKeywords: scores[primaryIntent].keywords.slice(0, 5),
     secondaryIntent,
-    isAmbiguous
+    isAmbiguous,
+    hasCompoundMatch: !!compoundMatch
   });
   
   return {
