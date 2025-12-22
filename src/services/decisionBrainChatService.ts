@@ -716,32 +716,59 @@ export function formatAdvisoryForChat(
   let landContextDisplay: LandContextDisplay | undefined;
   
   if (landContext) {
+    // ✅ FIX: Convert area to Gunta (1 acre = 40 guntas)
+    const areaAcres = landContext.area_acres || (landContext.area_hectares ? landContext.area_hectares * 2.47105 : undefined);
+    const areaGuntas = areaAcres ? Math.round(areaAcres * 40) : undefined;
+    
+    // ✅ FIX: Properly detect soil status from actual data
+    const soilStatus = landContext.soil_data ? {
+      nitrogen: landContext.soil_data.n !== undefined 
+        ? (landContext.soil_data.n < 50 ? 'LOW' : landContext.soil_data.n > 100 ? 'HIGH' : 'ADEQUATE')
+        : 'UNKNOWN',
+      phosphorus: landContext.soil_data.p !== undefined 
+        ? (landContext.soil_data.p < 25 ? 'LOW' : landContext.soil_data.p > 50 ? 'HIGH' : 'ADEQUATE')
+        : 'UNKNOWN',
+      potassium: landContext.soil_data.k !== undefined 
+        ? (landContext.soil_data.k < 30 ? 'LOW' : landContext.soil_data.k > 60 ? 'HIGH' : 'ADEQUATE')
+        : 'UNKNOWN',
+      ph: landContext.soil_data.ph !== undefined 
+        ? (landContext.soil_data.ph < 6.0 ? 'ACIDIC' : landContext.soil_data.ph > 7.5 ? 'ALKALINE' : 'NEUTRAL')
+        : undefined,
+      moisture: landContext.soil_data.moisture !== undefined 
+        ? (landContext.soil_data.moisture < 30 ? 'DRY' : landContext.soil_data.moisture > 70 ? 'WET' : 'MOIST')
+        : undefined
+    } : undefined;
+    
+    // ✅ FIX: Properly detect NDVI state from actual data
+    const ndviValue = landContext.ndvi_data?.value;
+    const ndviState = ndviValue !== undefined
+      ? (ndviValue > 0.6 ? 'HEALTHY' : ndviValue > 0.4 ? 'MODERATE_STRESS' : ndviValue > 0.2 ? 'SEVERE_STRESS' : 'CRITICAL')
+      : (advisory.causes.includes(Cause.OPTIMAL_GROWTH) ? 'HEALTHY' 
+        : advisory.causes.some(c => c.toString().includes('STRESS')) ? 'MODERATE_STRESS' 
+        : undefined);
+    
     landContextDisplay = {
       cropName: landContext.crop_name || landContext.current_crop || 'Unknown',
-      cropGroup: landContext.crop_group || 'Unknown',
+      cropGroup: landContext.crop_group || getCropGroup(landContext.crop_code || '') || 'Unknown',
       growthStage: advisory.rules_applied.find(r => r.includes('STAGE'))?.replace(/.*_STAGE_/, '') || 'Growing',
-      landArea: landContext.area_hectares 
-        ? `${landContext.area_hectares.toFixed(1)} ha` 
-        : landContext.area_acres 
-          ? `${landContext.area_acres.toFixed(1)} acre` 
-          : undefined,
-      soilStatus: landContext.soil_data ? {
-        nitrogen: landContext.soil_data.n && landContext.soil_data.n < 50 ? 'LOW' : 'ADEQUATE',
-        phosphorus: landContext.soil_data.p && landContext.soil_data.p < 25 ? 'LOW' : 'ADEQUATE',
-        potassium: landContext.soil_data.k && landContext.soil_data.k < 30 ? 'LOW' : 'ADEQUATE'
-      } : undefined,
-      ndviState: advisory.causes.includes(Cause.OPTIMAL_GROWTH) ? 'HEALTHY' 
-        : advisory.causes.some(c => c.toString().includes('STRESS')) ? 'MODERATE_STRESS' 
-        : 'UNKNOWN',
-      ndviTrend: landContext.ndvi_data?.trend && landContext.ndvi_data.trend < -0.05 ? 'DECLINING'
-        : landContext.ndvi_data?.trend && landContext.ndvi_data.trend > 0.05 ? 'IMPROVING'
-        : 'STABLE',
+      landArea: areaGuntas ? `${areaGuntas} गुंठा` : areaAcres ? `${areaAcres.toFixed(2)} एकर` : undefined,
+      landAreaGunta: areaGuntas,
+      landAreaAcre: areaAcres,
+      soilStatus,
+      ndviState,
+      ndviValue,
+      ndviTrend: landContext.ndvi_data?.trend !== undefined 
+        ? (landContext.ndvi_data.trend < -0.05 ? 'DECLINING' : landContext.ndvi_data.trend > 0.05 ? 'IMPROVING' : 'STABLE')
+        : undefined,
       weather: landContext.weather_data ? {
         temperature: landContext.weather_data.temperature || 28,
         humidity: landContext.weather_data.humidity || 60,
         rainExpected: landContext.weather_data.rain_expected || false
       } : undefined,
-      farmingMode: landContext.farming_mode || 'INTEGRATED'
+      farmingMode: landContext.farming_mode || 'INTEGRATED',
+      daysAfterSowing: landContext.sowing_date 
+        ? Math.floor((Date.now() - new Date(landContext.sowing_date).getTime()) / (1000 * 60 * 60 * 24))
+        : undefined
     };
   }
   
@@ -995,6 +1022,100 @@ function formatUrgency(urgency: string, language: string): string {
   return map[urgency] || urgency.replace(/_/g, ' ').toLowerCase();
 }
 
+/**
+ * ✅ FIX: Filter advisory actions based on query type
+ * This ensures different questions get different, relevant answers
+ */
+function filterAdvisoryByQueryType(
+  advisory: UnifiedAdvisory, 
+  queryType: string
+): UnifiedAdvisory {
+  const irrigationActions = [
+    Action.IRRIGATE_IMMEDIATELY, Action.IRRIGATE_LIGHT, Action.IRRIGATE_HEAVY, 
+    Action.EMERGENCY_IRRIGATION, Action.DRAIN_FIELD
+  ];
+  const nutrientActions = [
+    Action.APPLY_NITROGEN, Action.APPLY_PHOSPHORUS, Action.APPLY_POTASSIUM, 
+    Action.APPLY_ZINC, Action.APPLY_ORGANIC_MANURE, Action.APPLY_MICRONUTRIENTS
+  ];
+  const pestActions = [
+    Action.APPLY_INSECTICIDE, Action.APPLY_NEEM_OIL, Action.APPLY_BIO_CONTROL, 
+    Action.INSTALL_PHEROMONE_TRAPS, Action.INSTALL_TRAPS
+  ];
+  const diseaseActions = [
+    Action.APPLY_FUNGICIDE, Action.APPLY_TRICHODERMA
+  ];
+  const harvestActions = [
+    Action.EARLY_HARVEST, Action.SALVAGE_HARVEST
+  ];
+  
+  let relevantActions: Action[] = [];
+  let relevantCauses: Cause[] = [];
+  
+  switch (queryType) {
+    case 'watering':
+      relevantActions = irrigationActions;
+      relevantCauses = advisory.causes.filter(c => 
+        c.toString().includes('WATER') || c.toString().includes('MOISTURE') || c.toString().includes('IRRIGATION')
+      );
+      break;
+    case 'fertilizer':
+      relevantActions = nutrientActions;
+      relevantCauses = advisory.causes.filter(c => 
+        c.toString().includes('NITROGEN') || c.toString().includes('PHOSPHORUS') || 
+        c.toString().includes('POTASSIUM') || c.toString().includes('NUTRIENT') ||
+        c.toString().includes('DEFICIENCY')
+      );
+      break;
+    case 'pest':
+      relevantActions = pestActions;
+      relevantCauses = advisory.causes.filter(c => 
+        c.toString().includes('PEST') || c.toString().includes('INSECT') || 
+        c.toString().includes('WORM') || c.toString().includes('APHID') ||
+        c.toString().includes('BOLLWORM')
+      );
+      break;
+    case 'disease':
+      relevantActions = diseaseActions;
+      relevantCauses = advisory.causes.filter(c => 
+        c.toString().includes('DISEASE') || c.toString().includes('FUNGUS') || 
+        c.toString().includes('BLAST') || c.toString().includes('RUST') ||
+        c.toString().includes('BLIGHT')
+      );
+      break;
+    case 'harvest':
+      relevantActions = harvestActions;
+      relevantCauses = advisory.causes.filter(c => 
+        c.toString().includes('HARVEST') || c.toString().includes('MATURE') || c.toString().includes('READY')
+      );
+      break;
+    default:
+      // For 'general' queries, return all actions
+      return advisory;
+  }
+  
+  // Filter actions to only include relevant ones
+  const filteredActions = advisory.actions.filter(a => relevantActions.includes(a.action));
+  
+  // If no specific actions found, include monitoring actions as fallback
+  if (filteredActions.length === 0) {
+    const monitoringActions = advisory.actions.filter(a => 
+      a.action === Action.MONITOR_CLOSELY || a.action === Action.WAIT_AND_WATCH || a.action === Action.CONTINUE_CURRENT
+    );
+    return {
+      ...advisory,
+      actions: monitoringActions.length > 0 ? monitoringActions : advisory.actions.slice(0, 2),
+      causes: relevantCauses.length > 0 ? relevantCauses : advisory.causes
+    };
+  }
+  
+  return {
+    ...advisory,
+    actions: filteredActions,
+    causes: relevantCauses.length > 0 ? relevantCauses : advisory.causes
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN SERVICE FUNCTION
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1065,25 +1186,34 @@ export function tryDecisionBrain(
   // Step 4: Run Decision Graph
   try {
     console.log(`🔄 [Decision Brain] Running Decision Graph...`);
+    console.log(`📊 [Decision Brain] Query type: ${classification.queryType}`);
+    
     const advisory = runDecisionGraphSync(decisionInput);
     
+    // ✅ FIX: Filter actions based on query type for more relevant responses
+    let filteredAdvisory = { ...advisory };
+    if (classification.queryType !== 'general') {
+      filteredAdvisory = filterAdvisoryByQueryType(advisory, classification.queryType);
+      console.log(`🔍 [Decision Brain] Filtered to ${filteredAdvisory.actions.length} relevant actions for query type: ${classification.queryType}`);
+    }
+    
     console.log(`📊 [Decision Brain] Advisory result:`, {
-      risk_level: advisory.risk_level,
-      causes_count: advisory.causes.length,
-      actions_count: advisory.actions.length,
-      confidence: advisory.confidence,
-      rules_applied: advisory.rules_applied.length
+      risk_level: filteredAdvisory.risk_level,
+      causes_count: filteredAdvisory.causes.length,
+      actions_count: filteredAdvisory.actions.length,
+      confidence: filteredAdvisory.confidence,
+      rules_applied: filteredAdvisory.rules_applied.length
     });
     
     // Step 5: Format response with land context
-    const chatResponse = formatAdvisoryForChat(advisory, language, landContext);
+    const chatResponse = formatAdvisoryForChat(filteredAdvisory, language, landContext);
     chatResponse.executionTimeMs = Date.now() - startTime;
     
     console.log(`\n════════════════════════════════════════════════════════════════`);
     console.log(`✅ [DECISION BRAIN] SUCCESS!`);
     console.log(`⏱️ Execution time: ${chatResponse.executionTimeMs}ms`);
-    console.log(`📏 Rules applied: ${advisory.rules_applied.length}`);
-    console.log(`🎯 Actions generated: ${advisory.actions.length}`);
+    console.log(`📏 Rules applied: ${filteredAdvisory.rules_applied.length}`);
+    console.log(`🎯 Actions generated: ${filteredAdvisory.actions.length}`);
     console.log(`💰 AI tokens used: 0`);
     console.log(`════════════════════════════════════════════════════════════════\n`);
     
@@ -1181,4 +1311,74 @@ ADVISORY TO REFINE:
 ${langInstructions[language as keyof typeof langInstructions] || langInstructions.en}
 
 Keep response under 100 words. Focus on WHAT to do TODAY.`;
+}
+
+/**
+ * ✅ NEW: Async version of tryDecisionBrain that includes optional AI refinement
+ * This sends the symbolic result to AI for natural language polishing
+ */
+export async function tryDecisionBrainWithAIRefinement(
+  query: string,
+  landContext: LandContext | null,
+  language: string = 'en',
+  farmerId: string = 'anonymous',
+  tenantId: string = 'default',
+  supabaseClient?: any // Pass supabase client for edge function calls
+): Promise<DecisionBrainResult> {
+  // First, run the synchronous Decision Brain
+  const brainResult = tryDecisionBrain(query, landContext, language, farmerId, tenantId);
+  
+  // If Decision Brain didn't handle it, return as-is
+  if (!brainResult.handled || !brainResult.response) {
+    return brainResult;
+  }
+  
+  // Check if AI refinement is needed
+  if (!brainResult.response.advisory || !shouldRefineWithAI(brainResult.response.advisory)) {
+    console.log(`🧠 [Decision Brain] No AI refinement needed - returning deterministic result`);
+    return brainResult;
+  }
+  
+  // If no supabase client provided, skip AI refinement
+  if (!supabaseClient) {
+    console.log(`⚠️ [Decision Brain] No supabase client for AI refinement - returning deterministic result`);
+    return brainResult;
+  }
+  
+  console.log(`🤖 [Decision Brain] Requesting AI refinement for farmer-friendly response...`);
+  
+  try {
+    const refinementPrompt = buildRefinementPrompt(brainResult.response.advisory, language);
+    
+    // Call AI for refinement (using ai-agriculture-chat edge function)
+    const { data: aiData, error: aiError } = await supabaseClient.functions.invoke('ai-agriculture-chat', {
+      body: {
+        message: refinementPrompt,
+        language,
+        farmerId,
+        tenantId,
+        mode: 'refinement', // Special mode for quick refinement
+        maxTokens: 200
+      }
+    });
+    
+    if (aiError || !aiData?.response) {
+      console.warn(`⚠️ [AI Refinement] Failed:`, aiError);
+      return brainResult; // Return original result on failure
+    }
+    
+    console.log(`✅ [AI Refinement] Successfully refined response`);
+    
+    // Update the farmer message with AI-refined version
+    if (brainResult.response.decisionBrainResponse) {
+      brainResult.response.decisionBrainResponse.farmerMessage = aiData.response;
+    }
+    brainResult.response.response = aiData.response;
+    
+    return brainResult;
+    
+  } catch (error) {
+    console.warn(`⚠️ [AI Refinement] Exception:`, error);
+    return brainResult; // Return original result on exception
+  }
 }

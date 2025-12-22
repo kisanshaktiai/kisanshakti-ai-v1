@@ -17,20 +17,26 @@ export interface LandContextDisplay {
   cropName: string;
   cropGroup: string;
   growthStage: string;
-  landArea: string;
+  landArea: string; // Formatted as "X Gunta" or "X.X Acre"
+  landAreaGunta?: number;
+  landAreaAcre?: number;
   soilStatus?: {
     nitrogen: string;
     phosphorus: string;
     potassium: string;
+    ph?: string;
+    moisture?: string;
   };
   ndviState?: string;
   ndviTrend?: string;
+  ndviValue?: number;
   weather?: {
     temperature: number;
     humidity: number;
     rainExpected: boolean;
   };
   farmingMode?: string;
+  daysAfterSowing?: number;
 }
 
 export interface ActionItem {
@@ -175,12 +181,18 @@ export function LandContextSummaryCard({ context, language }: LandContextCardPro
           <span className="font-medium">{context.growthStage}</span>
         </div>
         
-        {/* Area */}
-        {context.landArea && (
+        {/* Area - Show in Gunta or Acre */}
+        {(context.landAreaGunta || context.landAreaAcre || context.landArea) && (
           <div className="flex items-center gap-1.5">
             <MapPin className="h-3 w-3 text-muted-foreground" />
             <span className="text-muted-foreground">{labels.area}:</span>
-            <span className="font-medium">{context.landArea}</span>
+            <span className="font-medium">
+              {context.landAreaGunta 
+                ? `${context.landAreaGunta} गुंठा` 
+                : context.landAreaAcre 
+                  ? `${context.landAreaAcre.toFixed(2)} एकर`
+                  : context.landArea}
+            </span>
           </div>
         )}
         
