@@ -49,6 +49,7 @@ import Social from "./pages/Social";
 import Analytics from "./pages/Analytics";
 import { CommunityPage } from "./components/social/CommunityPage";
 import { ModernCommunityChatRoom } from "./components/social/ModernCommunityChatRoom";
+import AICommunityPage from "./pages/CommunityPage";
 import CropSelectionTest from "./pages/CropSelectionTest";
 import Schedule from "./pages/Schedule";
 import MobileAuth from "./pages/MobileAuth";
@@ -58,6 +59,7 @@ import AIScheduleDashboard from "./pages/AIScheduleDashboard";
 import VideoReels from "./pages/VideoReels";
 import InstallPWA from "./pages/InstallPWA";
 import NotificationSettingsPage from "./pages/NotificationSettingsPage";
+import CropGrowthTracking from "./pages/CropGrowthTracking";
 
 // Stores and Services
 import { useAuthStore } from "@/stores/authStore";
@@ -331,6 +333,7 @@ const router = createBrowserRouter([
       { path: "social", element: <Social /> },
       { path: "social/community/:communityId", element: <CommunityPage /> },
       { path: "social/community/:communityId/chat/:channelId", element: <ModernCommunityChatRoom /> },
+      { path: "community", element: <AICommunityPage /> },
       { path: "analytics", element: <Analytics /> },
       { path: "test/crop-selection", element: <CropSelectionTest /> },
       { path: "schedule", element: <Schedule /> },
@@ -338,6 +341,8 @@ const router = createBrowserRouter([
       { path: "ndvi", element: <NDVIAnalysis /> },
       { path: "videos", element: <VideoReels /> },
       { path: "notifications/settings", element: <NotificationSettingsPage /> },
+      { path: "crop-growth", element: <CropGrowthTracking /> },
+      { path: "growth-tracking", element: <CropGrowthTracking /> },
     ],
   },
   {

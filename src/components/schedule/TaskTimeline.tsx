@@ -2,12 +2,13 @@ import React, { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Droplets, Leaf, Bug, Scissors, Package, AlertCircle, CheckCircle2, Clock, Zap, ChevronDown, Volume2, VolumeX, Calendar, IndianRupee, CloudRain, Thermometer, Loader2, Shield, BookOpen, AlertTriangle } from 'lucide-react';
+import { Droplets, Leaf, Bug, Scissors, Package, AlertCircle, CheckCircle2, Clock, Zap, ChevronDown, Volume2, VolumeX, Calendar, IndianRupee, CloudRain, Thermometer, Loader2, Shield, BookOpen, AlertTriangle, Camera, Pencil } from 'lucide-react';
 import { format, isToday, isTomorrow, isPast, differenceInDays } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TaskCompletionSection } from './TaskCompletionSection';
 import { VideoHelpButton } from './VideoHelpButton';
 import ProductRecommendationCard from './ProductRecommendationCard';
+import TaskEditDialog from './TaskEditDialog';
 import { cn } from '@/lib/utils';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { supabase } from '@/utils/supabase';
@@ -54,12 +55,15 @@ interface TaskTimelineProps {
   onTaskClick?: (task: Task) => void;
   onTaskComplete?: () => void;
   onTaskUpdate?: (taskId: string, updates: Partial<Task>) => void;
+  onTakePhoto?: (task: Task) => void;
+  onEditTask?: (task: Task) => void;
 }
 
-const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskComplete, onTaskUpdate }) => {
+const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskComplete, onTaskUpdate, onTakePhoto, onEditTask }) => {
   const { t } = useTranslation();
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
   const { currentLanguage } = useLanguageStore();
   
   // Map language codes to speech synthesis language codes
@@ -486,6 +490,39 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                           <div className="px-4 pb-4 space-y-4" onClick={(e) => e.stopPropagation()}>
                             {/* Action Buttons */}
                             <div className="flex justify-end gap-2 relative z-20">
+                              {/* Camera Button for Photo Upload - PROMINENT & BLINKING */}
+                              {onTakePhoto && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    e.preventDefault();
+                                    onTakePhoto(task);
+                                  }}
+                                  className="gap-2 pointer-events-auto bg-gradient-to-r from-primary to-accent text-white shadow-lg shadow-primary/40 hover:shadow-xl hover:shadow-primary/50 hover:scale-105 transition-all duration-300 animate-pulse hover:animate-none font-semibold px-4"
+                                >
+                                  <Camera className="h-5 w-5" />
+                                  <span className="font-bold">{t('cropGrowth.takePhoto') || 'Photo'}</span>
+                                </Button>
+                              )}
+
+                              {/* Edit Button */}
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  setEditingTask(task);
+                                }}
+                                className="gap-2 pointer-events-auto border-accent/30 text-accent hover:bg-accent/10"
+                              >
+                                <Pencil className="h-4 w-4" />
+                                <span>{t('schedule.dialog.edit') || 'Edit'}</span>
+                              </Button>
+
                               {/* Video Help Button */}
                               <VideoHelpButton
                                 category={task.task_type}
@@ -707,6 +744,16 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
           );
         })}
       </div>
+
+      {/* Task Edit Dialog */}
+      <TaskEditDialog
+        task={editingTask}
+        open={!!editingTask}
+        onOpenChange={(open) => !open && setEditingTask(null)}
+        onSave={() => {
+          if (onTaskComplete) onTaskComplete();
+        }}
+      />
     </div>
   );
 };

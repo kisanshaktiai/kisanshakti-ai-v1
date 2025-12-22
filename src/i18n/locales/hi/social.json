@@ -1,29 +1,34 @@
 {
   "__meta": {
     "page": "social",
-    "version": "1.0",
+    "version": "2.0",
     "updated_by": "AI Localization Engineer",
-    "last_updated": "2025-11-29"
+    "last_updated": "2025-12-18"
   },
   "social": {
     "header": {
-      "title": "समुदाय"
-    },
-    "user": {
-      "level": "स्तर {{level}}",
-      "points": "{{points}} अंक"
-    },
-    "search": {
-      "placeholder": "समुदाय खोजें..."
+      "title": "किसान समुदाय",
+      "subtitle": "{{count}} किसान ऑनलाइन",
+      "search_placeholder": "पोस्ट, किसान खोजें..."
     },
     "tabs": {
-      "feed": "फीड",
-      "communities": "समुदाय",
-      "messages": "संदेश",
-      "rankings": "रैंकिंग",
-      "trending": "ट्रेंडिंग"
+      "feed": "फ़ीड",
+      "groups": "समूह",
+      "trending": "ट्रेंडिंग",
+      "my_posts": "मेरी पोस्ट",
+      "saved": "सहेजी गई"
+    },
+    "search": {
+      "placeholder": "समुदाय खोजें...",
+      "title": "खोजें",
+      "recent": "हाल की खोजें",
+      "results": "खोज परिणाम",
+      "no_results": "कोई परिणाम नहीं मिला"
     },
     "notifications": {
+      "title": "सूचनाएं",
+      "empty": "कोई नई सूचना नहीं",
+      "mark_read": "सभी पढ़ी गई चिह्नित करें",
       "new_message": {
         "title": "नया संदेश",
         "message": "आपको एक नया संदेश मिला है"
@@ -47,15 +52,61 @@
         "message": "आपकी पोस्ट समुदाय के साथ साझा की गई है।"
       },
       "create": "पोस्ट बनाएं",
-      "whats_on_mind": "आपके मन में क्या है?",
+      "whats_on_mind": "अपनी खेती की जानकारी साझा करें...",
+      "tap_or_speak": "टाइप करने के लिए टैप करें या बोलने के लिए माइक दबाए रखें...",
       "add_photo": "फोटो जोड़ें",
-      "publish": "प्रकाशित करें",
+      "publish": "पोस्ट करें",
       "cancel": "रद्द करें",
+      "clear": "साफ़ करें",
       "like": "पसंद करें",
       "comment": "टिप्पणी",
       "share": "साझा करें",
       "liked_by": "{{count}} किसानों ने पसंद किया",
-      "comments": "{{count}} टिप्पणियां"
+      "comments": "{{count}} टिप्पणियां",
+      "success": "पोस्ट सफलतापूर्वक साझा की गई! 🎉",
+      "empty_error": "कृपया कुछ लिखें या बोलें",
+      "recording_error": "माइक्रोफ़ोन तक पहुंच नहीं मिली",
+      "transcribed": "आवाज़ टेक्स्ट में बदली गई!",
+      "transcription_error": "आवाज़ बदलने में विफल",
+      "hold_mic": "अपनी भाषा में बोलने के लिए 🎤 बटन दबाए रखें",
+      "release_to_stop": "🎤 रिकॉर्डिंग... रोकने के लिए छोड़ें",
+      "converting": "✨ आवाज़ को टेक्स्ट में बदल रहे हैं..."
+    },
+    "groups": {
+      "search": "समूह खोजें...",
+      "create": "नया समूह बनाएं",
+      "crop_groups": "फसल समूह",
+      "community_groups": "सामुदायिक समूह",
+      "discuss": "चर्चा",
+      "join": "जुड़ें",
+      "leave": "छोड़ें",
+      "members": "सदस्य",
+      "no_crop_groups": "कोई फसल समूह नहीं मिला",
+      "no_groups": "अभी तक कोई समूह नहीं",
+      "be_first": "पहला समूह बनाने वाले बनें!",
+      "opening_discussion": "{{name}} चर्चा खोल रहे हैं",
+      "discussion_title": "{{name}} चर्चा",
+      "type_message": "अपना संदेश टाइप करें...",
+      "send": "भेजें",
+      "you": "आप",
+      "anonymous": "अज्ञात किसान",
+      "no_messages": "अभी तक कोई संदेश नहीं। बातचीत शुरू करें!"
+    },
+    "feed": {
+      "refreshing": "रिफ्रेश हो रहा है...",
+      "refresh": "पोस्ट रिफ्रेश करें",
+      "loading": "पोस्ट लोड हो रही हैं...",
+      "new_posts": "नई पोस्ट उपलब्ध"
+    },
+    "empty": {
+      "feed": "अभी कोई पोस्ट नहीं",
+      "feed_hint": "अपनी खेती की जानकारी साझा करने वाले पहले बनें!",
+      "my_posts": "आपने अभी तक कोई पोस्ट नहीं की",
+      "my_posts_hint": "समुदाय के साथ अपनी खेती की जानकारी साझा करें!",
+      "saved": "सहेजी गई पोस्ट यहां दिखाई देंगी",
+      "saved_hint": "सहेजने के लिए किसी भी पोस्ट को बाएं स्वाइप करें",
+      "messages": "अभी तक कोई बातचीत नहीं",
+      "communities": "कोई समुदाय नहीं मिला"
     },
     "community": {
       "join": "शामिल हों",
@@ -90,33 +141,8 @@
       "hashtag": "#{{tag}}",
       "posts_count": "{{count}} पोस्ट"
     },
-    "empty": {
-      "feed": "अभी तक कोई पोस्ट नहीं। समुदाय के साथ साझा करना शुरू करें!",
-      "messages": "अभी तक कोई बातचीत नहीं",
-      "communities": "कोई समुदाय नहीं मिला"
-    },
     "profile": {
-      "activity_feed_soon": "गतिविधि फ़ीड जल्द आ रहा है"
+      "activity_feed_soon": "गतिविधि फ़ीड जल्द आ रही है"
     }
-  },
-  "__qa": {
-    "voice_examples_en": [
-      "Show community feed",
-      "Create new post",
-      "Check my messages",
-      "View leaderboard"
-    ],
-    "voice_examples_hi": [
-      "समुदाय फीड दिखाओ",
-      "नई पोस्ट बनाएं",
-      "मेरे संदेश देखें",
-      "लीडरबोर्ड देखें"
-    ],
-    "voice_examples_mr": [
-      "समुदाय फीड दाखवा",
-      "नवीन पोस्ट तयार करा",
-      "माझे संदेश पहा",
-      "लीडरबोर्ड पहा"
-    ]
   }
 }

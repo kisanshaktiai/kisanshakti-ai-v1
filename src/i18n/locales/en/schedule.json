@@ -148,6 +148,9 @@
       "sync_failed": "Failed to sync completion",
       "rolled_back": "Rolled back. Try again.",
       "task_unmarked": "Task unmarked",
+      "task_updated": "Task updated successfully",
+      "changes_saved": "Your changes have been saved",
+      "update_failed": "Failed to update task",
       "reverting": "Reverting completion...",
       "unmark_failed": "Failed to unmark",
       "try_again": "Try again."
@@ -229,12 +232,14 @@
       "notes_label": "Notes",
       "notes_optional": "(Optional)",
       "notes_placeholder": "Add any notes about this task...",
-      "done": "Done",
+      "done": "Confirm",
       "skipped": "Skipped",
       "weather": "Weather",
       "high": "High",
       "medium": "Medium",
-      "low": "Low"
+      "low": "Low",
+      "hours": "hours",
+      "persons": "persons"
     },
     "climate": {
       "ai_active": "AI Active",

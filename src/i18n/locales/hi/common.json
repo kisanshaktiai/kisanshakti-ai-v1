@@ -56,6 +56,7 @@
     "optional": "वैकल्पिक",
     "noResults": "कोई परिणाम नहीं मिला",
     "pageNotFound": "पेज नहीं मिला",
-    "returnToHome": "होम पर वापस जाएं"
+    "returnToHome": "होम पर वापस जाएं",
+    "swipeLeft": "जारी रखने के लिए बाएं स्वाइप करें"
   }
 }

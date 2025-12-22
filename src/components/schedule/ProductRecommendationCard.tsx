@@ -21,6 +21,10 @@ interface ProductRecommendation {
   product_name: string;
   product_type?: string;
   active_ingredient?: string;
+  chemical_class?: string;
+  regulatory_status?: 'approved' | 'restricted' | 'banned' | 'organic';
+  organic_alternative?: string;
+  dosage_reasoning?: string;
   dose_per_acre?: string;
   application_method?: string;
   precautions?: string;
@@ -335,15 +339,64 @@ export default function ProductRecommendationCard({
                   )}
                 </div>
 
-                {/* Active Ingredient */}
+                {/* Active Ingredient with Chemical Details */}
                 {product.active_ingredient && (
-                  <div className="flex items-start gap-2 text-xs">
-                    <FlaskConical className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                    <span className="text-muted-foreground">
-                      <span className="font-medium text-foreground">
-                        {lang === 'hi' ? 'सक्रिय तत्व:' : lang === 'mr' ? 'सक्रिय घटक:' : 'Active:'}
+                  <div className="space-y-2 p-2.5 rounded-lg bg-muted/30 border border-border/50">
+                    <div className="flex items-start gap-2 text-xs">
+                      <FlaskConical className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                      <span className="text-muted-foreground">
+                        <span className="font-medium text-foreground">
+                          {lang === 'hi' ? 'सक्रिय तत्व:' : lang === 'mr' ? 'सक्रिय घटक:' : 'Active:'}
+                        </span>{' '}
+                        {product.active_ingredient}
+                      </span>
+                    </div>
+                    
+                    {/* Chemical Class & Regulatory Status */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {product.chemical_class && (
+                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400">
+                          {product.chemical_class}
+                        </Badge>
+                      )}
+                      {product.regulatory_status && (
+                        <Badge 
+                          variant="outline" 
+                          className={cn(
+                            "text-[9px] px-1.5 py-0",
+                            product.regulatory_status === 'approved' && "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
+                            product.regulatory_status === 'restricted' && "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400",
+                            product.regulatory_status === 'banned' && "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400",
+                            product.regulatory_status === 'organic' && "bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400"
+                          )}
+                        >
+                          {product.regulatory_status === 'approved' && '✅ '}
+                          {product.regulatory_status === 'restricted' && '⚠️ '}
+                          {product.regulatory_status === 'banned' && '🚫 '}
+                          {product.regulatory_status === 'organic' && '🌿 '}
+                          {product.regulatory_status.charAt(0).toUpperCase() + product.regulatory_status.slice(1)}
+                        </Badge>
+                      )}
+                    </div>
+                    
+                    {/* Dosage Reasoning */}
+                    {product.dosage_reasoning && (
+                      <p className="text-[10px] text-muted-foreground italic leading-relaxed">
+                        💡 {product.dosage_reasoning}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Organic Alternative */}
+                {product.organic_alternative && (
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-green-500/10 border border-green-500/20">
+                    <Leaf className="h-3.5 w-3.5 text-green-600 shrink-0 mt-0.5" />
+                    <span className="text-xs text-green-700 dark:text-green-400">
+                      <span className="font-medium">
+                        {lang === 'hi' ? 'जैविक विकल्प:' : lang === 'mr' ? 'सेंद्रिय पर्याय:' : 'Organic alternative:'}
                       </span>{' '}
-                      {product.active_ingredient}
+                      {product.organic_alternative}
                     </span>
                   </div>
                 )}

@@ -2541,6 +2541,58 @@ function buildIrrigationRules(irrigationType: string): string {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// CONTEXT SECTION BUILDER - LANGUAGE-AWARE (reduces token bloat significantly)
+// ═══════════════════════════════════════════════════════════════════════
+function buildContextSection(language: string, languageName: string): string {
+  // Only include language-specific examples for that language
+  const styleExamples = language === 'mr' ? `
+EXAMPLE PHRASES (Marathi rural dialect):
+- "शेतकरी बंधूंनो, आज आपल्या पिकाला पाणी द्यायची वेळ झाली..."
+- "जसं आपण आपल्या मुलांना वेळेवर जेवण देतो, तसंच पिकालाही वेळेवर खत द्यायला हवं"
+` : language === 'hi' ? `
+EXAMPLE PHRASES (Hindi rural dialect):
+- "किसान भाइयों, आज अपनी फसल को पानी देने का समय आ गया है..."
+- "जैसे हम अपने बच्चों को समय पर खाना खिलाते हैं, वैसे ही फसल को भी समय पर खाद देनी चाहिए"
+` : `
+EXAMPLE PHRASES (English - clear, practical):
+- "Farmer friend, today is the right time to water your crop..."
+- "Just as we feed children on time, crops need timely nutrition too"
+`;
+
+  // For English, use simpler context without Hindi/Marathi text
+  if (language === 'en') {
+    return `
+You are Dr. AgriGenius - Agricultural Scientist with 45+ years of field experience at ICAR-IARI, New Delhi.
+
+COMMUNICATION STYLE:
+- Use CLEAR, PRACTICAL English suitable for farmers
+- Include actionable timing (early morning, evening)
+- Explain why each step matters (yield impact, cost savings)
+${styleExamples}
+
+WRITING RULES (COMPACT OUTPUT):
+1. Descriptions: 15-25 words MAX per task
+2. Instructions: 2-3 short bullet points (10-15 words each)
+3. Include timing and yield impact briefly`;
+  }
+
+  // For Hindi/Marathi, include rural dialect guidance
+  return `
+You are Dr. AgriGenius - Agricultural Scientist with 45+ years experience at ICAR-IARI.
+
+COMMUNICATION STYLE (${languageName}):
+- Speak like a wise village elder farmer
+- Use WARM, ENCOURAGING, CONVERSATIONAL rural dialect
+- Make every instruction ACTIONABLE with clear timing
+${styleExamples}
+
+WRITING RULES (COMPACT OUTPUT):
+1. Descriptions: 15-25 words MAX per task
+2. Instructions: 2-3 short bullet points (10-15 words each)
+3. Include timing and yield impact briefly`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // MAIN HANDLER
 // ═══════════════════════════════════════════════════════════════════════
 serve(async (req) => {
@@ -2553,33 +2605,51 @@ serve(async (req) => {
   try {
     const supabase = createClient(Deno.env.get("SUPABASE_URL") || "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "");
 
+    const reqBody = await req.json();
     const {
       landId,
       cropName,
       cropVariety,
       sowingDate,
-      language = "hi",
       isReadyMadePlant = false,
       nurseryDays = 0,
       localizedCropName = "",
       farmingType = "organic_fertilizer",
       aiProvider: requestedProvider,
-    } = await req.json();
+    } = reqBody;
+    
+    // CRITICAL: Use the app language from request, default to English if not provided
+    // This ensures schedule is generated in the user's selected app language
+    const language = reqBody.language || "en";
+    console.log(`🌐 [AI-Schedule] Using language: ${language} (from request: ${reqBody.language || 'not provided, defaulting to en'})`);
     
     const tenantId = req.headers.get("x-tenant-id") || "";
     const farmerId = req.headers.get("x-farmer-id") || "";
     
-    // Determine AI provider - from request body, header, or default
+    // Determine AI provider - PRODUCTION: prioritize Gemini 2.5 Flash if key is available
     const headerProvider = req.headers.get("x-ai-provider") as AIProvider | null;
-    const aiProvider: AIProvider = requestedProvider || headerProvider || AI_CONFIG.DEFAULT_PROVIDER;
     
-    // Get API key and model for the selected provider
+    // Check for GEMINI_API_KEY in Supabase secrets (best for rural agriculture language)
+    const geminiKey = Deno.env.get("GEMINI_API_KEY");
+    let aiProvider: AIProvider;
+    
+    if (geminiKey && geminiKey.trim() !== "") {
+      aiProvider = "gemini";
+      console.log(`✅ [AI-Schedule] Using Gemini 2.5 Flash with GEMINI_API_KEY from Supabase secrets`);
+      console.log(`🌾 [AI-Schedule] Enhanced rural agriculture language support enabled`);
+    } else {
+      aiProvider = requestedProvider || headerProvider || AI_CONFIG.DEFAULT_PROVIDER;
+      console.log(`⚠️ [AI-Schedule] GEMINI_API_KEY not found, using ${aiProvider} provider`);
+    }
+    
+    // Get API key and model for the selected provider - all from secrets
     const apiKey = getAPIKey(aiProvider);
     const apiEndpoint = getAPIEndpoint(aiProvider);
     const model = getModel(aiProvider, "default");
     const fallbackModel = getModel(aiProvider, "fallback");
     
-    console.log(`🤖 [AI-Schedule] Provider: ${aiProvider} | Model: ${model} | Endpoint: ${apiEndpoint}`);
+    console.log(`🤖 [AI-Schedule] Provider: ${aiProvider} | Model: ${model}`);
+    console.log(`📡 [AI-Schedule] Endpoint: ${apiEndpoint}`);
     console.log(`🌾 [AI-Schedule] isReadyMadePlant: ${isReadyMadePlant}, nurseryDays: ${nurseryDays}`);
 
     // ═══════════════════════════════════════════════════════════════════
@@ -2800,16 +2870,18 @@ serve(async (req) => {
     
     // GET MINIMUM TASK COUNT FOR THIS CROP (addresses Issue #3 - sugarcane needs 30+ tasks)
     const cropTaskConfig = CROP_TASK_MULTIPLIERS[cropLower] || CROP_TASK_MULTIPLIERS['default'];
-    const minTaskCount = Math.max(totalStages * 2, cropTaskConfig.minTasks);
+    // CAP task count to prevent JSON truncation (max 20 tasks to stay well within token limits)
+    // Long duration crops like Sugarcane still get good coverage with fewer, more comprehensive tasks
+    const rawMinTasks = Math.max(totalStages * 2, Math.min(cropTaskConfig.minTasks, 20));
+    const minTaskCount = Math.min(rawMinTasks, 20);
     const cropDurationDays = cropTaskConfig.durationDays;
-    
     console.log(`📋 [AI] Building prompt for ${totalStages} stages, min ${minTaskCount} tasks for ${cropDurationDays}-day crop`);
 
-    // OPTIMIZED: Compact stage prompt with more tasks per stage for long-duration crops
+    // OPTIMIZED: Force a compact output size (prevents JSON truncation)
     const tasksPerStage = Math.ceil(minTaskCount / totalStages);
     const stagesPrompt = farmingStages
       .map((stage: FarmingStage) => {
-        return `${stage.stage_order}. ${stage.stage_name} (${stage.stage_key}): ${stage.stage_description} - ${tasksPerStage}-${tasksPerStage + 2} tasks`;
+        return `${stage.stage_order}. ${stage.stage_name} (${stage.stage_key}): ${stage.stage_description} - exactly ${tasksPerStage} tasks`;
       })
       .join("\n");
 
@@ -2938,25 +3010,8 @@ SEED TREATMENT TASK IS MANDATORY:
 - Include Thiram/Carbendazim for chemical farming`;
     }
 
-    // CONTEXT Section
-    const contextSection = `
-═══════════════════════════════════════════════════════════════════════════
-📚 CONTEXT (संदर्भ)
-═══════════════════════════════════════════════════════════════════════════
-You are Dr. AgriGenius - World's Leading Agricultural Scientist with 45+ years of research experience at ICAR-IARI, New Delhi. You have published 200+ research papers on precision agriculture and helped 1 million+ farmers achieve 3x-7x yield increase.
-
-Your expertise includes:
-- Crop physiology and phenology across all agro-climatic zones
-- Integrated Nutrient Management (INM) and Integrated Pest Management (IPM)
-- Climate-smart agriculture and precision farming
-- Traditional farming wisdom combined with modern science
-- Regional farming practices across all Indian states
-
-KNOWLEDGE BASE:
-- ICAR crop production guidelines (latest 2024)
-- State Agricultural University recommendations
-- Traditional farmer wisdom (Desi knowledge)
-- Market dynamics and value chain optimization`;
+    // CONTEXT Section - LANGUAGE-AWARE (reduces token bloat)
+    const contextSection = buildContextSection(language, languageName);
 
     // ═══════════════════════════════════════════════════════════════════
     // WATER REQUIREMENT CALCULATIONS FOR THIS LAND
@@ -3298,36 +3353,28 @@ FUNGICIDES:
 ⚠️ NEVER use "foliar_spray" for solid fertilizers or FYM!
 `;
 
-    // TASK Section - Include soil data and land area specific calculations
+    // TASK Section - Language-aware, compact
+    const taskSectionHeader = language === 'mr' ? '🎯 कार्य' : language === 'hi' ? '🎯 कार्य' : '🎯 TASK';
+    const soilReportLabel = language === 'mr' ? 'माती आरोग्य अहवाल' : language === 'hi' ? 'मिट्टी स्वास्थ्य रिपोर्ट' : 'SOIL HEALTH REPORT';
+    const phLabels = language === 'en' 
+      ? { acidic: 'Acidic', alkaline: 'Alkaline', neutral: 'Neutral' }
+      : language === 'mr'
+      ? { acidic: 'आम्लयुक्त', alkaline: 'क्षारयुक्त', neutral: 'संतुलित' }
+      : { acidic: 'अम्लीय', alkaline: 'क्षारीय', neutral: 'संतुलित' };
+    
     const taskSection = `
-═══════════════════════════════════════════════════════════════════════════
-🎯 TASK (कार्य)
-═══════════════════════════════════════════════════════════════════════════
-Generate a COMPLETE, ACCURATE crop schedule for ${translatedCropName} (${cropName}) cultivation.
+${taskSectionHeader}
+Generate crop schedule for ${translatedCropName} (${cropName}) cultivation.
 ${prescriptionFraming}
-⚠️ CRITICAL: ALL QUANTITIES MUST BE CALCULATED FOR THIS EXACT LAND AREA ⚠️
 Land Area: ${landAreaAcres.toFixed(2)} acres (${landAreaGuntha} guntha / ${landAreaHa.toFixed(2)} hectares)
 
-EXAMPLE CALCULATIONS FOR ${landAreaAcres.toFixed(2)} ACRES:
-- If standard dose is 50 kg/acre, calculate: 50 × ${landAreaAcres.toFixed(2)} = ${Math.round(50 * landAreaAcres)} kg total
-- If standard dose is 500 ml/acre, calculate: 500 × ${landAreaAcres.toFixed(2)} = ${Math.round(500 * landAreaAcres)} ml total
-- Do NOT give per-acre values. Give TOTAL quantity for this land.
+CROP: ${translatedCropName} ${cropVariety ? `(${cropVariety})` : ""}
+Sowing: ${sowingDate} | Location: ${district}, ${state}
+Soil: ${soilData?.soil_type || land.soil_type || "Black/Alluvial"} | Irrigation: ${land.irrigation_type || "manual"}
 
-CROP DETAILS:
-- Crop: ${translatedCropName} ${cropVariety ? `(Variety: ${cropVariety})` : ""}
-- Land Area: ${landAreaAcres.toFixed(2)} acres (${landAreaGuntha} guntha)
-- Sowing Date: ${sowingDate}
-- Location: ${land.village || district}, ${district}, ${state}
-- Soil Type: ${soilData?.soil_type || land.soil_type || "Black/Alluvial"}
-- Irrigation: ${land.irrigation_type || "manual"} (${irrigationRules})
-
-🧪 SOIL HEALTH REPORT (माती आरोग्य अहवाल):
-- pH Level: ${soilPh.toFixed(1)} ${soilPh < 6.5 ? "(Acidic - आम्लयुक्त)" : soilPh > 7.5 ? "(Alkaline - क्षारयुक्त)" : "(Neutral - संतुलित)"}
-- Nitrogen (N): ${soilN} kg/ha ${soilN < 280 ? "(Low)" : soilN > 560 ? "(High)" : "(Medium)"}
-- Phosphorus (P): ${soilP} kg/ha ${soilP < 10 ? "(Low)" : soilP > 25 ? "(High)" : "(Medium)"}
-- Potassium (K): ${soilK} kg/ha ${soilK < 120 ? "(Low)" : soilK > 280 ? "(High)" : "(Medium)"}
-- Organic Carbon: ${soilData?.organic_carbon || "N/A"}%
-- Fertility Class: ${soilData?.fertility_class || "Medium"}
+${soilReportLabel}:
+- pH: ${soilPh.toFixed(1)} (${soilPh < 6.5 ? phLabels.acidic : soilPh > 7.5 ? phLabels.alkaline : phLabels.neutral})
+- N: ${soilN} kg/ha | P: ${soilP} kg/ha | K: ${soilK} kg/ha
 ${npkPrescription}
 ${phCompatibility}
 ${waterPrescription}
@@ -3335,117 +3382,70 @@ ${applicationMethodRules}
 
 FARMING MODE: ${farmingTypeLabel}
 ${farmingTypeRules}
-
 ${seedPreparationDetails}
-
 ${soilTestInstruction}
+Labor Rate: ₹${laborRate}/day`;
 
-- Labor Rate: ₹${laborRate}/day`;
-
-    // INSTRUCTION Section
+    // INSTRUCTION Section - Language-aware
+    const seedRulesLabel = language === 'mr' ? 'तयार रोपे नियम' : language === 'hi' ? 'तैयार पौधे नियम' : 'READY-MADE PLANT RULES';
     const seedRules = isReadyMadePlant ? `
-3. READY-MADE PLANT RULES (तयार रोपे नियम):
+3. ${seedRulesLabel}:
    - DO NOT include seed_treatment or seed sowing tasks
    - START from transplanting (day 0 is transplanting date)
    - Nursery plant age: ${nurseryDays} days
-   - Include transplanting task with spacing, depth, root dip details
-   - Adjust all days_from_sowing relative to transplanting (not seeding)
 ` : `
-3. SEED PREPARATION RULES (Stage: sowing):
-   - ALWAYS include seed treatment task with exact method
+3. SEED PREPARATION RULES:
+   - ALWAYS include seed treatment task
    - Include seed rate, spacing, and depth
-   - For organic: Beejamrut/Trichoderma treatment
-   - For chemical: Thiram/Carbendazim treatment
 `;
 
-    const instructionSection = `
-═══════════════════════════════════════════════════════════════════════════
-📋 INSTRUCTIONS (निर्देश)
-═══════════════════════════════════════════════════════════════════════════
+    // Product name examples based on language
+    const productExamples = language === 'mr' 
+      ? 'युरिया, डीएपी, गांडूळ खत' 
+      : language === 'hi' 
+      ? 'यूरिया, डीएपी, केंचुआ खाद' 
+      : 'Urea, DAP, Vermicompost';
 
-1. MANDATORY STAGES (सभी ${totalStages} चरण अनिवार्य):
+    const instructionSection = `
+📋 INSTRUCTIONS
+
+1. MANDATORY STAGES (all ${totalStages} required):
 ${stagesPrompt}
 
 2. TASK REQUIREMENTS:
-   - Generate 2-3 tasks per stage (Total: ${totalStages * 2}-${totalStages * 3} tasks)
+   - Generate 2-3 tasks per stage
    - Each task MUST include: "${translatedCropName} - [action]" in ${languageName}
-   - Include SPECIFIC quantities (kg/acre, liters/acre)
-   - Include SPECIFIC product brands with prices
-   - Include yield_impact and skip_penalty for each task
+   - Include quantities, product brands, prices
 ${seedRules}
 
-4. PRESCRIPTION-BASED PRODUCT RECOMMENDATIONS (CRITICAL):
-   ⚠️ USE THE PRESCRIPTION ABOVE, NOT GENERIC DOSES!
-   
-   FOR FERTILIZER TASKS (ONLY if deficit exists):
-   ${nDeficit <= 0 ? '- SKIP Urea/N fertilizers (N is SUFFICIENT based on soil report)' : `- Urea: ${ureaKg} kg TOTAL for this land (not per acre!)`}
-   ${pDeficit <= 0 ? '- SKIP DAP/P fertilizers (P is SUFFICIENT based on soil report)' : `- DAP/SSP: ${dapKg} kg TOTAL for this land`}
-   ${kDeficit <= 0 ? '- SKIP MOP/K fertilizers (K is SUFFICIENT based on soil report)' : `- MOP: ${mopKg} kg TOTAL for this land`}
-   
-   FOR IRRIGATION TASKS:
-   - Include water_required_liters: ${adjustedWaterPerIrrigation} liters for each irrigation
-   - Specify irrigation type: ${irrigationType}
-   - Critical stages needing double water: ${waterReq.critical_stages.join(', ')}
-   
-   FOR APPLICATION METHODS (CRITICAL - USE CORRECT METHOD):
-   - Solid fertilizers (Urea/DAP/MOP) → "broadcasting" or "band_placement"
-   - Micronutrients (Zn/B/Fe sprays) → "foliar_spray"
-   - Organic matter (FYM/Vermicompost) → "basal_application"
-   - Liquid bio-inputs (Jeevamrut) → "drenching"
-   - Granular pesticides → "soil_application"
+4. FERTILIZER DOSES (use prescription):
+   ${nDeficit <= 0 ? '- SKIP N fertilizers (sufficient)' : `- Urea: ${ureaKg} kg total`}
+   ${pDeficit <= 0 ? '- SKIP P fertilizers (sufficient)' : `- DAP/SSP: ${dapKg} kg total`}
+   ${kDeficit <= 0 ? '- SKIP K fertilizers (sufficient)' : `- MOP: ${mopKg} kg total`}
+
+5. APPLICATION METHODS:
+   - Solid fertilizers → "broadcasting" or "band_placement"
+   - Micronutrients → "foliar_spray"
+   - Organic matter → "basal_application"
    - Liquid pesticides → "foliar_spray"
-   ⚠️ NEVER use "foliar_spray" for solid fertilizers!
-   
-   🚫 NO PRODUCTS NEEDED FOR (labor-only tasks):
-   - irrigation, watering → No products, only labor cost + water_required_liters
-   - land_preparation, ploughing → No products, only machinery/labor
-   - harvesting, post_harvest → No products, only labor cost
-   - monitoring, field_visit → No products, only labor
 
-5. SOIL TEST TASK RULE:
-   ${soilTestInstruction}
-
-6. COST CALCULATION (FOR ${landAreaAcres.toFixed(2)} ACRES):
-   - Calculate estimated_cost = sum of all product prices + labor cost
-   - Labor: (days × ₹${laborRate}/day)
-   - Products: actual market prices × quantity for this land
-   - Include "total_for_land" field showing total quantity for ${landAreaAcres.toFixed(2)} acres
-
-7. LANGUAGE RULES (CRITICAL - PRODUCT NAMES IN ${languageName}):
-   - Write ALL task_name, description, instructions in ${languageName}
-   - Product names MUST be in ${languageName}: युरिया, डीएपी, गांडूळ खत, कडुनिंबाचे तेल etc.
-   - Use rural/village dialect: ${JSON.stringify(Object.entries(ruralTerms).slice(0, 10).reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {}))}
+6. LANGUAGE: Write ALL content in ${languageName}
+   - Product examples: ${productExamples}
+   ${language !== 'en' ? `- Use rural dialect terms` : ''}
    ${regionalLanguageRules}
 
-8. WEATHER DEPENDENCY:
-   - Mark irrigation, spraying tasks as weather_dependent: true
-   - Include ideal_weather conditions for sensitive tasks`;
+7. WEATHER: Mark irrigation, spraying as weather_dependent: true`;
 
-    // DATA Section
+    // DATA Section (compact to reduce token usage / latency)
+    // DATA Section (compact)
     const dataSection = `
-═══════════════════════════════════════════════════════════════════════════
-📊 DATA (FOR ${landAreaAcres.toFixed(2)} ACRES / ${landAreaGuntha} GUNTHA)
-═══════════════════════════════════════════════════════════════════════════
-
-YIELD BOOSTING TECHNIQUES PER STAGE:
-${Object.entries(YIELD_BOOST_TECHNIQUES).map(([stage, data]) => 
-  `${stage}: ${data.techniques.slice(0, 2).join(", ")} | Impact: ${data.yieldImpact.substring(0, 50)}...`
-).join("\n")}
-
-FYM/ORGANIC INPUTS (TOTAL for ${landAreaAcres.toFixed(2)} acres):
-- FYM: ${fymTons} tons @ ₹800/ton = ₹${fymCost}
-- Vermicompost: ${Math.round(landAreaAcres * 200)} kg @ ₹12/kg = ₹${Math.round(landAreaAcres * 200 * 12)}
-- Jeevamrut: ${Math.round(landAreaAcres)} batches @ ₹80/batch = ₹${Math.round(landAreaAcres * 80)}
-
-FERTILIZER REQUIREMENTS (TOTAL for ${landAreaAcres.toFixed(2)} acres):
-- Urea: ${ureaKg} kg @ ₹${FERTILIZER_PRICES.urea.price_per_kg}/kg = ₹${ureaCost}
-- DAP: ${dapKg} kg @ ₹${FERTILIZER_PRICES.dap.price_per_kg}/kg = ₹${dapCost}
-- MOP: ${mopKg} kg @ ₹${FERTILIZER_PRICES.mop.price_per_kg}/kg = ₹${mopCost}
-
-GROWTH PROMOTERS (prices for ${landAreaAcres.toFixed(2)} acres):
-- Seaweed Extract: ${Math.round(landAreaAcres * 500)}ml @ ₹1.1/ml = ₹${Math.round(landAreaAcres * 550)}
-- Humic Acid: ${Math.round(landAreaAcres)}L @ ₹480/L = ₹${Math.round(landAreaAcres * 480)}
-- Amino Acid: ${Math.round(landAreaAcres)}L @ ₹620/L = ₹${Math.round(landAreaAcres * 620)}`;
+📊 KEY NUMBERS (${landAreaAcres.toFixed(2)} ACRES):
+- FYM: ${fymTons} tons = ₹${fymCost}
+- Urea: ${ureaKg} kg = ₹${ureaCost}
+- DAP: ${dapKg} kg = ₹${dapCost}
+- MOP: ${mopKg} kg = ₹${mopCost}
+- Water/irrigation: ${adjustedWaterPerIrrigation} liters
+`;
 
     // Combine all sections into system prompt
     const systemPrompt = `${contextSection}
@@ -3456,42 +3456,63 @@ ${dataSection}
 ═══════════════════════════════════════════════════════════════════════════
 ⚠️ CRITICAL OUTPUT RULES
 ═══════════════════════════════════════════════════════════════════════════
-1. You MUST call the create_schedule function with properly structured JSON
+1. Return a valid JSON object with the exact structure shown below
 2. Every task_name MUST start with "${translatedCropName} -"
 3. All ${totalStages} stages (${allStageKeys.join(", ")}) MUST have at least 1 task
 4. ${hasSoilData ? 'DO NOT include soil test task - soil data already exists!' : 'Include soil test task in planning stage'}
 5. Use PRESCRIPTION doses from NPK PRESCRIPTION section above - NOT generic doses
 6. Use CORRECT application_method for each product type
 7. Include water_required_liters for irrigation tasks: ${adjustedWaterPerIrrigation} liters
-8. NO text responses - ONLY function call with JSON data`;
+
+EXACT JSON OUTPUT FORMAT (follow this exactly):
+{
+  "crop_name": "${translatedCropName}",
+  "total_duration_days": ${cropDurationDays},
+  "expected_yield_quintals": <number>,
+  "yield_multiplier_target": 3,
+  "stages_covered": ["planning", "land_preparation", "sowing", "germination", "vegetative_growth", "reproductive", "maturity", "harvest", "post_harvest", "fallow_restoration"],
+  "tasks": [
+    {
+      "task_name": "${translatedCropName} - <task description>",
+      "stage_key": "<one of: planning|land_preparation|sowing|germination|vegetative_growth|reproductive|maturity|harvest|post_harvest|fallow_restoration>",
+      "stage_order": <1-10>,
+      "category": "<fertilizer|pest_control|irrigation|sowing|harvest|monitoring|land_preparation|growth_promoter|other>",
+      "days_from_sowing": <integer, can be negative for planning>",
+      "priority": "<critical|high|medium|low>",
+      "description": "<detailed description in ${languageName}>",
+      "instructions": ["<step 1>", "<step 2>", "..."],
+      "quantity": "<e.g., 50 kg, 2 liters>",
+      "estimated_cost": <number in INR>,
+      "weather_dependent": <true|false>,
+      "yield_impact": "<e.g., 20% yield boost>",
+      "product_names": "<comma-separated product names>",
+      "product_doses": "<comma-separated doses>",
+      "product_prices": "<comma-separated prices in INR>"
+    }
+  ]
+}`;
 
     // Build mandatory task categories string for long-duration crops
     const mandatoryCategoriesPrompt = cropTaskConfig.mandatoryCategories.length > 0
       ? `\nMANDATORY TASK TYPES for ${translatedCropName}: ${cropTaskConfig.mandatoryCategories.join(', ')}`
       : '';
 
-    const userPrompt = `Generate COMPLETE ${translatedCropName} crop schedule NOW.
+    // Language-specific dialect label
+    const dialectLabel = language === 'mr' ? 'ग्रामीण भाषा' : language === 'hi' ? 'ग्रामीण भाषा' : 'practical language';
 
-MANDATORY CHECKLIST:
-✓ All ${totalStages} stages covered: ${allStageKeys.join(", ")}
-✓ MINIMUM ${minTaskCount} tasks required for this ${cropDurationDays}-day crop
-✓ Seed preparation with treatment details
-✓ For products: use flat fields - product_names (comma-separated), product_doses, product_prices
-✓ Instructions in ${languageName} rural dialect
-✓ Cost estimates per task${mandatoryCategoriesPrompt}
+    const userPrompt = `Generate ${translatedCropName} crop schedule as JSON.
 
-CRITICAL FOR ${cropDurationDays}-DAY CROPS:
-- Include ${Math.ceil(cropDurationDays / 15)} irrigation monitoring tasks
-- Include ${Math.ceil(cropDurationDays / 30)} fertilizer applications
-- Include ${Math.ceil(cropDurationDays / 25)} weeding tasks
-- Include ${Math.ceil(cropDurationDays / 45)} pest/disease monitoring tasks
+CHECKLIST:
+✓ All ${totalStages} stages: ${allStageKeys.join(", ")}
+✓ ${totalStages * tasksPerStage} tasks total (${tasksPerStage}/stage)
+✓ Short descriptions (≤240 chars), 2-5 instruction bullets
+✓ All content in ${languageName} (${dialectLabel})${mandatoryCategoriesPrompt}
 
-Call the create_schedule function with ${minTaskCount}-${minTaskCount + 10} tasks.`;
+OUTPUT: JSON only, no markdown. Start with { end with }`;
 
     console.log(`🤖 [AI] Calling ${aiProvider}/${model} with optimized ${totalStages}-stage prompt`);
 
-    // SIMPLIFIED tool schema for Google Gemini compatibility (reduced complexity)
-    // Google has strict limits on schema states - keep it minimal
+    // Tool schema for OpenAI/Google (not used for Gemini)
     const toolSchema = {
       type: "function",
       function: {
@@ -3550,7 +3571,7 @@ Call the create_schedule function with ${minTaskCount}-${minTaskCount + 10} task
         const currentEndpoint = getAPIEndpoint(currentProvider);
         const currentApiKey = getAPIKey(currentProvider);
 
-        // Build request payload using helper function
+        // Build request payload - Gemini uses JSON mode, others use function calling
         const requestPayload = buildAIRequest(
           currentProvider,
           currentModel,
@@ -3558,12 +3579,21 @@ Call the create_schedule function with ${minTaskCount}-${minTaskCount + 10} task
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },
           ],
-          {
-            maxTokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
-            tools: [toolSchema],
-            toolChoice: { type: "function", function: { name: "create_schedule" } },
-          }
+          currentProvider === "gemini" 
+            ? {
+                // CRITICAL: Use Gemini 2.5 Flash's actual max output (16384 tokens) to prevent truncation
+                maxTokens: 16384,
+                useJsonMode: true, // Use JSON mode for Gemini
+              }
+            : {
+                maxTokens: AI_CONFIG.MAX_TOKENS_SCHEDULE,
+                tools: [toolSchema],
+                toolChoice: { type: "function", function: { name: "create_schedule" } },
+                useJsonMode: false,
+              }
         );
+        
+        console.log(`📤 [AI] Request mode: ${currentProvider === "gemini" ? "JSON mode" : "Function calling"}`);
 
         aiResponse = await fetch(currentEndpoint, {
           method: "POST",
@@ -3669,40 +3699,121 @@ Call the create_schedule function with ${minTaskCount}-${minTaskCount + 10} task
       }
     }
     
-    // Method 3: Try to extract JSON from text content (Gemini sometimes does this)
+    // Method 3: Try to parse JSON from text content (Gemini JSON-mode returns content)
     if (!scheduleData && message?.content) {
-      const content = message.content;
-      console.log(`📝 [AI] Attempting to extract JSON from text response...`);
-      
-      // Try to find JSON in the content
-      const jsonMatches = content.match(/\{[\s\S]*"tasks"[\s\S]*\}/);
-      if (jsonMatches) {
+      const content = String(message.content ?? "").trim();
+      const finishReason = aiData.choices?.[0]?.finish_reason as string | undefined;
+
+      const tryParse = (raw: string) => {
         try {
-          scheduleData = JSON.parse(jsonMatches[0]);
-          console.log(`✅ [AI] Extracted JSON from text content`);
-        } catch (e) {
-          console.warn(`⚠️ [AI] Failed to parse JSON from text:`, e);
+          return JSON.parse(raw);
+        } catch {
+          // ignore
+        }
+        // Fix common Gemini issues: literal newlines/tabs inside JSON strings
+        try {
+          return JSON.parse(raw.replace(/[\r\n\t]+/g, " "));
+        } catch {
+          // ignore
+        }
+        return null;
+      };
+
+      console.log(`📝 [AI] Attempting to parse JSON from message.content...`, {
+        finishReason,
+        contentLength: content.length,
+      });
+
+      // First try: content is the JSON object
+      scheduleData = tryParse(content);
+
+      // Second try: extract JSON object from surrounding text
+      if (!scheduleData) {
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch?.[0]) {
+          scheduleData = tryParse(jsonMatch[0]);
+          if (scheduleData) console.log(`✅ [AI] Extracted JSON from text content`);
         }
       }
-      
-      // Try markdown code block
+
+      // Third try: markdown code block
       if (!scheduleData) {
         const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-        if (codeBlockMatch) {
-          try {
-            scheduleData = JSON.parse(codeBlockMatch[1]);
-            console.log(`✅ [AI] Extracted JSON from code block`);
-          } catch (e) {
-            console.warn(`⚠️ [AI] Failed to parse code block JSON:`, e);
-          }
+        if (codeBlockMatch?.[1]) {
+          scheduleData = tryParse(codeBlockMatch[1].trim());
+          if (scheduleData) console.log(`✅ [AI] Extracted JSON from code block`);
         }
       }
     }
-    
-    // If still no schedule data, log and throw
+
+    // If still no schedule data, check for truncation and handle gracefully
     if (!scheduleData) {
-      console.error("❌ [AI] No structured data found. Response:", JSON.stringify(aiData).substring(0, 800));
-      throw new Error("AI did not return structured schedule. Please try again.");
+      const finishReason = aiData.choices?.[0]?.finish_reason as string | undefined;
+      
+      // CRITICAL: Handle truncation by building minimal fallback schedule
+      if (finishReason === "length") {
+        console.warn("⚠️ [AI] Response truncated (finish_reason=length). Building minimal schedule...");
+        
+        // Extract partial data if available from truncated response
+        const partialContent = aiData.choices?.[0]?.message?.content || "";
+        let partialTasks: any[] = [];
+        
+        // Try to extract any valid tasks from partial response
+        try {
+          const tasksMatch = partialContent.match(/"tasks"\s*:\s*\[([\s\S]*)/);
+          if (tasksMatch) {
+            // Try to find complete task objects
+            const taskPattern = /\{[^{}]*"task_name"[^{}]*"stage_key"[^{}]*\}/g;
+            const matches = partialContent.match(taskPattern);
+            if (matches) {
+              partialTasks = matches.slice(0, 10).map((m: string) => {
+                try { return JSON.parse(m); } catch { return null; }
+              }).filter(Boolean);
+            }
+          }
+        } catch (e) {
+          console.warn("⚠️ [AI] Could not extract partial tasks:", e);
+        }
+
+        // Build minimal schedule with extracted or default tasks
+        if (partialTasks.length >= 3) {
+          console.log(`✅ [AI] Recovered ${partialTasks.length} tasks from truncated response`);
+          scheduleData = {
+            crop_name: translatedCropName,
+            total_duration_days: cropDurationDays,
+            expected_yield_quintals: 20,
+            yield_multiplier_target: 3,
+            stages_covered: allStageKeys,
+            tasks: partialTasks
+          };
+        } else {
+          // Deterministic fallback: never fail hard on truncation.
+          // Build a compact, stage-complete schedule using pre-defined fallback templates.
+          console.warn("🛟 [AI] Truncated response could not be recovered. Using deterministic fallback schedule.");
+
+          const fallbackTasks = farmingStages.map((stage: FarmingStage) =>
+            generateFallbackTask(stage, translatedCropName, landAreaAcres, farmingType, language)
+          );
+
+          scheduleData = {
+            crop_name: translatedCropName,
+            total_duration_days: cropDurationDays,
+            expected_yield_quintals: 20,
+            yield_multiplier_target: 3,
+            stages_covered: allStageKeys,
+            tasks: fallbackTasks,
+            is_fallback_schedule: true,
+          };
+
+          console.log(`✅ [AI] Fallback schedule built with ${fallbackTasks.length} tasks`);
+        }
+      } else {
+        console.error("❌ [AI] No structured data found.", {
+          finishReason,
+          snippet: JSON.stringify(aiData).substring(0, 800),
+        });
+        throw new Error("AI did not return structured schedule. Please try again.");
+      }
     }
     
     console.log(`✅ [AI] Generated ${scheduleData.tasks?.length || 0} tasks`);

@@ -33,13 +33,10 @@ verify_jwt = false
 [functions.ai-smart-schedule]
 verify_jwt = true
 
-[functions.ai-schedule-monitor]
-verify_jwt = true
+[functions.ai-schedule-ops]
+verify_jwt = false
 
 [functions.ai-marketing-insights]
-verify_jwt = true
-
-[functions.ai-schedule-climate-monitor]
 verify_jwt = true
 
 [functions.voice-navigation-agent]
@@ -51,5 +48,14 @@ verify_jwt = false
 [functions.mcp-handler]
 verify_jwt = false
 
-[functions.ai-weather-schedule-sync]
+[functions.translate-text]
+verify_jwt = false
+
+[functions.transcribe-voice]
+verify_jwt = false
+
+[functions.community-tts]
+verify_jwt = false
+
+[functions.market-price-intelligence]
 verify_jwt = false

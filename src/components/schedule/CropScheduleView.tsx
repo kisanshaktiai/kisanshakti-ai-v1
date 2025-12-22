@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Clock, Volume2, Sparkles, RefreshCw, MapPin, ArrowLeft, Plus, FlaskConical } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Calendar, Droplets, Leaf, Bug, Scissors, Package, AlertCircle, Clock, Volume2, Sparkles, RefreshCw, MapPin, ArrowLeft, Plus, FlaskConical, Sprout, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -20,6 +21,7 @@ import ModernTaskCard from './ModernTaskCard';
 import TaskActionDialog from './TaskActionDialog';
 import ClimateAlertBanner from './ClimateAlertBanner';
 import { TaskStatisticsWidget } from './TaskStatisticsWidget';
+import { TaskPhotoUploadDialog } from './TaskPhotoUploadDialog';
 import { useSchedules } from '@/hooks/useSchedules';
 import { localDB } from '@/services/localDB';
 
@@ -67,6 +69,7 @@ interface CropScheduleViewProps {
 }
 
 const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, currentCrop, onBack }) => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuthStore();
   const { t, i18n } = useTranslation();
@@ -98,6 +101,8 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const [climateData, setClimateData] = useState<any>(null);
   const [speakingTaskId, setSpeakingTaskId] = useState<string | null>(null);
   const [loadingTasks, setLoadingTasks] = useState(false);
+  const [photoUploadTask, setPhotoUploadTask] = useState<ScheduleTask | null>(null);
+  const [showLandPhotoUpload, setShowLandPhotoUpload] = useState(false);
 
   // Task type icons and colors
   const taskTypeConfig = {
@@ -534,6 +539,36 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
         {/* Task Statistics Widget */}
         <TaskStatisticsWidget scheduleId={schedule.id} className="mb-3" />
 
+        {/* Crop Growth Tracking Card - Upload Photo Button */}
+        <Card 
+          className="mb-3 border-primary/20 bg-gradient-to-r from-primary/5 to-accent/5"
+        >
+          <div className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full bg-primary/10">
+                  <Camera className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-sm">{i18n.language === 'hi' ? 'फसल वृद्धि ट्रैकिंग' : i18n.language === 'mr' ? 'पीक वाढ ट्रॅकिंग' : 'Crop Growth Tracking'}</h3>
+                  <p className="text-xs text-muted-foreground">{i18n.language === 'hi' ? 'फोटो अपलोड करें और AI विश्लेषण प्राप्त करें' : i18n.language === 'mr' ? 'फोटो अपलोड करा आणि AI विश्लेषण मिळवा' : 'Upload photos for AI analysis'}</p>
+                </div>
+              </div>
+              <Sprout className="h-5 w-5 text-primary" />
+            </div>
+            {/* Quick Upload Button */}
+            <Button
+              variant="default"
+              size="sm"
+              className="w-full gap-2 bg-gradient-to-r from-primary to-accent hover:shadow-lg"
+              onClick={() => setShowLandPhotoUpload(true)}
+            >
+              <Camera className="h-4 w-4" />
+              {i18n.language === 'hi' ? 'फोटो अपलोड करें' : i18n.language === 'mr' ? 'फोटो अपलोड करा' : 'Upload Photo'}
+            </Button>
+          </div>
+        </Card>
+
         {/* Today's Priority Tasks - Big & Clear for Farmers */}
         {todayTasks.length > 0 && (
           <Card className="mb-3 bg-gradient-to-r from-primary/10 to-accent/10 border-primary/30 shadow-lg">
@@ -564,18 +599,33 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                         <div className="flex-1">
                           <p className="font-semibold text-sm text-foreground">{task.task_name}</p>
                           <p className="text-xs text-muted-foreground mt-1">{task.task_description}</p>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 text-xs mt-2"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              speakTask(task);
-                            }}
-                          >
-                            <Volume2 className="h-3 w-3 mr-1" />
-                            Listen
-                          </Button>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                speakTask(task);
+                              }}
+                            >
+                              <Volume2 className="h-3 w-3 mr-1" />
+                              {i18n.language === 'hi' ? 'सुनें' : i18n.language === 'mr' ? 'ऐका' : 'Listen'}
+                            </Button>
+                            {/* Camera button for task photo */}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPhotoUploadTask(task);
+                              }}
+                            >
+                              <Camera className="h-3 w-3" />
+                              {i18n.language === 'hi' ? 'फोटो' : i18n.language === 'mr' ? 'फोटो' : 'Photo'}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -644,6 +694,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                     onTaskClick={(task: any) => setSelectedTask(task as ScheduleTask)}
                     onTaskComplete={refetchSchedules}
                     onTaskUpdate={handleTaskUpdate}
+                    onTakePhoto={(task: any) => setPhotoUploadTask(task as ScheduleTask)}
                   />
                 ) : (
                   <div className="grid gap-3">
@@ -661,6 +712,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                             isOverdue={isOverdue}
                             daysUntil={daysUntil}
                             readOnly={true}
+                            onTakePhoto={() => setPhotoUploadTask(task)}
                           />
                         </div>
                       );
@@ -681,6 +733,43 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
           onClose={() => setSelectedTask(null)}
           onSpeak={() => speakTask(selectedTask)}
           readOnly={true}
+        />
+      )}
+
+      {/* Task Photo Upload Dialog */}
+      {photoUploadTask && schedule && user && (
+        <TaskPhotoUploadDialog
+          isOpen={!!photoUploadTask}
+          onClose={() => setPhotoUploadTask(null)}
+          taskId={photoUploadTask.id}
+          taskType={photoUploadTask.task_type}
+          taskName={photoUploadTask.task_name}
+          scheduleId={schedule.id}
+          landId={landId}
+          farmerId={user.id}
+          tenantId={user.tenantId || ''}
+          cropName={schedule.crop_name}
+          onUploadComplete={() => {
+            setPhotoUploadTask(null);
+            refetchSchedules();
+          }}
+        />
+      )}
+
+      {/* Land Photo Upload Dialog (general) */}
+      {showLandPhotoUpload && schedule && user && (
+        <TaskPhotoUploadDialog
+          isOpen={showLandPhotoUpload}
+          onClose={() => setShowLandPhotoUpload(false)}
+          scheduleId={schedule.id}
+          landId={landId}
+          farmerId={user.id}
+          tenantId={user.tenantId || ''}
+          cropName={schedule.crop_name}
+          onUploadComplete={() => {
+            setShowLandPhotoUpload(false);
+            refetchSchedules();
+          }}
         />
       )}
     </div>

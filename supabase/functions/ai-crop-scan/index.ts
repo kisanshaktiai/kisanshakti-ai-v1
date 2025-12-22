@@ -8,21 +8,26 @@ const corsHeaders = {
 };
 
 interface ScanRequest {
-  images?: string[]; // base64 encoded images
-  videoFrames?: string[]; // extracted video frames
+  images?: string[];
+  videoFrames?: string[];
   userNotes?: string;
   language?: string;
   farmerId?: string;
   tenantId?: string;
   landId?: string;
-  landCrop?: string; // Current crop in the land for validation
-  mode?: 'quick' | 'full' | 'targeted_solution'; // quick = fast detection only, full = complete analysis, targeted_solution = generate specific solution type
-  // For targeted_solution mode
+  landCrop?: string;
+  mode?: 'quick' | 'full' | 'targeted_solution' | 'growth_tracking';
   suggestionType?: 'organic' | 'fertilizer' | 'pesticide' | 'hybrid';
   landArea?: { guntha: number; acres: number; sqft: number };
   diagnosis?: any;
   cropDetected?: any;
   healthStatus?: any;
+  // Growth tracking specific fields
+  uploadId?: string;
+  sowingDate?: string;
+  expectedStage?: string;
+  ndviData?: any[];
+  soilData?: any;
 }
 
 interface ThreeCategoryRecommendation {
@@ -96,22 +101,138 @@ serve(async (req) => {
   const startTime = Date.now();
   
   try {
-    // Use Lovable AI or OpenAI
-    const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+    // Try OpenAI first, fall back to Gemini
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+    const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
     
-    const apiKey = lovableApiKey || openAIApiKey;
-    const apiEndpoint = lovableApiKey 
-      ? 'https://ai.gateway.lovable.dev/v1/chat/completions'
-      : 'https://api.openai.com/v1/chat/completions';
+    // Determine available providers
+    const hasOpenAI = !!openAIApiKey;
+    const hasGemini = !!geminiApiKey;
     
-    if (!apiKey) {
-      console.error('No AI API key configured');
+    if (!hasOpenAI && !hasGemini) {
+      console.error('No AI API key configured (OPENAI_API_KEY or GEMINI_API_KEY)');
       return new Response(
         JSON.stringify({ success: false, error: 'AI service not configured' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Helper function to call AI with fallback
+    const callAIWithFallback = async (
+      systemPrompt: string,
+      userContent: any[],
+      maxTokens: number = 4000
+    ): Promise<any> => {
+      // Try OpenAI first if available
+      if (hasOpenAI) {
+        try {
+          console.log('🤖 [AI] Trying OpenAI gpt-4o...');
+          const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${openAIApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o',
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userContent }
+              ],
+              max_tokens: maxTokens,
+              response_format: { type: 'json_object' }
+            }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            console.log('✅ [AI] OpenAI succeeded');
+            return { success: true, data, provider: 'openai' };
+          }
+
+          if (response.status === 429) {
+            console.warn('⚠️ [AI] OpenAI rate limited, trying Gemini fallback...');
+          } else {
+            const errorText = await response.text();
+            console.warn(`⚠️ [AI] OpenAI error ${response.status}: ${errorText.substring(0, 200)}`);
+          }
+        } catch (e) {
+          console.warn('⚠️ [AI] OpenAI failed:', e);
+        }
+      }
+
+      // Fallback to Gemini
+      if (hasGemini) {
+        try {
+          console.log('🤖 [AI] Trying Gemini gemini-2.0-flash...');
+          
+          // Convert image_url format to Gemini format
+          const geminiContent = userContent.map((item: any) => {
+            if (item.type === 'image_url') {
+              const url = item.image_url.url;
+              if (url.startsWith('data:')) {
+                const [meta, base64] = url.split(',');
+                const mimeType = meta.match(/data:([^;]+)/)?.[1] || 'image/jpeg';
+                return {
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: base64
+                  }
+                };
+              }
+            }
+            return { text: item.text || JSON.stringify(item) };
+          });
+
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: [
+                  { role: 'user', parts: [{ text: systemPrompt }, ...geminiContent] }
+                ],
+                generationConfig: {
+                  maxOutputTokens: maxTokens,
+                  responseMimeType: 'application/json'
+                }
+              }),
+            }
+          );
+
+          if (response.ok) {
+            const geminiData = await response.json();
+            const content = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            console.log('✅ [AI] Gemini succeeded');
+            
+            // Parse Gemini response
+            let parsed;
+            try {
+              parsed = JSON.parse(content);
+            } catch {
+              const jsonMatch = content.match(/\{[\s\S]*\}/);
+              parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : { raw: content };
+            }
+            
+            return { 
+              success: true, 
+              data: { choices: [{ message: { content: JSON.stringify(parsed) } }] },
+              provider: 'gemini' 
+            };
+          }
+
+          const errorText = await response.text();
+          console.error('❌ [AI] Gemini error:', response.status, errorText.substring(0, 200));
+        } catch (e) {
+          console.error('❌ [AI] Gemini failed:', e);
+        }
+      }
+
+      return { success: false, error: 'All AI providers failed' };
+    };
+
+    const apiEndpoint = 'https://api.openai.com/v1/chat/completions';
 
     const requestData: ScanRequest = await req.json();
     const { 
@@ -128,10 +249,189 @@ serve(async (req) => {
       landArea,
       diagnosis,
       cropDetected,
-      healthStatus
+      healthStatus,
+      uploadId,
+      sowingDate,
+      expectedStage,
+      ndviData,
+      soilData
     } = requestData;
 
-    // Handle targeted_solution mode (no images needed)
+    // Handle growth_tracking mode
+    if (mode === 'growth_tracking') {
+      console.log('🌱 Growth Tracking Mode:', { landId, uploadId, expectedStage });
+      
+      const allImages = [...(images || []), ...(videoFrames || [])];
+      if (allImages.length === 0) {
+        return new Response(
+          JSON.stringify({ success: false, error: 'No images provided for growth tracking' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const languageInstruction = language === 'hi' 
+        ? 'Respond in Hindi (हिंदी). Use simple farmer-friendly language. Address farmer as "किसान मित्र".'
+        : language === 'mr'
+        ? 'Respond in Marathi (मराठी). Use simple farmer-friendly language. Address farmer as "शेतकरी मित्र".'
+        : 'Respond in simple Indian English. Address farmer as "Farmer Mitra".';
+
+      const growthTrackingPrompt = `You are a Senior Agriculture Scientist with 50+ years of experience across Indian agro-climatic zones.
+
+ROLE: Monitor crop growth, detect early stress signals, provide proactive guidance to prevent losses.
+
+CRITICAL RULES:
+1. Treat each photo as time-series growth evidence
+2. Compare with expected growth stage: ${expectedStage || 'unknown'}
+3. Correlate visual data with NDVI: ${ndviData?.[0]?.ndvi_value || 'N/A'}, Soil: ${soilData ? 'available' : 'N/A'}
+4. If signals conflict, flag as "needs_observation"
+5. Predict what will happen in next 3-7-14 days
+6. Give ACTIONABLE advice with specific quantities
+
+CONTEXT:
+- Crop: ${landCrop || 'Unknown'}
+- Sowing Date: ${sowingDate || 'Unknown'}
+- Land Area: ${landArea?.guntha || 'Unknown'} guntha
+- Latest NDVI: ${ndviData?.[0]?.ndvi_value || 'N/A'}
+- Soil NPK: ${soilData?.nitrogen_level || 'N/A'}/${soilData?.phosphorus_level || 'N/A'}/${soilData?.potassium_level || 'N/A'}
+
+${languageInstruction}
+
+Return JSON:
+{
+  "crop_current_status": "1-2 sentence status",
+  "growth_stage_analysis": {
+    "detected_stage": "detected stage name",
+    "expected_stage": "${expectedStage || 'unknown'}",
+    "deviation": "ahead|on_track|slightly_delayed|delayed|severely_delayed",
+    "stage_confidence": 0-100
+  },
+  "visual_observation_summary": "3-5 sentence visual analysis",
+  "detected_issues": [{"type": "pest|disease|nutrient_deficiency|water_stress|none", "name": "Issue name", "severity": "mild|moderate|severe", "confidence": 0-100, "symptoms": ["symptoms"]}],
+  "canopy_health_score": 0-100,
+  "uniformity_score": 0-100,
+  "ndvi_weather_correlation": "How NDVI/weather correlate with visuals",
+  "signal_confidence": "high|medium|low|needs_observation",
+  "predictions": {
+    "next_3_day": "3-day prediction",
+    "next_7_day": "7-day prediction with risks",
+    "next_14_day": "14-day prediction and yield impact"
+  },
+  "risk_level": "low|medium|high|critical",
+  "risk_factors": [{"factor": "name", "probability": 0-100, "impact": "low|medium|high", "timeframe": "when"}],
+  "yield_impact_estimate": "Impact if issues not addressed",
+  "recommended_actions": [{"action": "specific action", "timing": "when", "reason": "why", "priority": "critical|high|medium|low", "product": "product name", "dosage": "per acre", "cost_estimate": "INR"}],
+  "schedule_updates": [{"task_type": "irrigation|fertilizer|pesticide", "change_type": "advance|delay|add", "new_timing": "new time", "reason": "why"}],
+  "alert_type": "observation|action_required|critical_risk|none",
+  "farmer_message": "Complete friendly message with specific actionable advice (3-5 sentences)"
+}`;
+
+      const imageContents = allImages.slice(0, 4).map(img => ({
+        type: "image_url" as const,
+        image_url: {
+          url: img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`,
+          detail: "high" as const
+        }
+      }));
+
+      // Use fallback-enabled AI call
+      const userContent = [
+        { type: 'text', text: `Analyze this crop photo for growth tracking. ${userNotes ? `Farmer notes: ${userNotes}` : ''}` },
+        ...imageContents
+      ];
+
+      const aiResult = await callAIWithFallback(growthTrackingPrompt, userContent, 4000);
+      
+      if (!aiResult.success) {
+        console.error('❌ All AI providers failed for growth tracking');
+        return new Response(
+          JSON.stringify({ success: false, error: 'AI analysis temporarily unavailable. Please try again.' }),
+          { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const content = aiResult.data.choices?.[0]?.message?.content || '';
+      
+      let analysisResult;
+      try {
+        analysisResult = JSON.parse(content);
+      } catch {
+        analysisResult = { crop_current_status: content, farmer_message: content };
+      }
+
+      // Store analysis if we have Supabase access
+      if (farmerId && tenantId && uploadId) {
+        try {
+          const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+          const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+          const supabase = createClient(supabaseUrl, supabaseKey);
+
+          await supabase.from('crop_growth_analysis').insert({
+            upload_id: uploadId,
+            land_id: landId,
+            farmer_id: farmerId,
+            tenant_id: tenantId,
+            crop_current_status: analysisResult.crop_current_status,
+            detected_growth_stage: analysisResult.growth_stage_analysis?.detected_stage,
+            expected_growth_stage: analysisResult.growth_stage_analysis?.expected_stage,
+            growth_stage_deviation: analysisResult.growth_stage_analysis?.deviation,
+            visual_observation_summary: analysisResult.visual_observation_summary,
+            detected_issues: analysisResult.detected_issues,
+            canopy_health_score: (analysisResult.canopy_health_score || 0) / 100,
+            uniformity_score: (analysisResult.uniformity_score || 0) / 100,
+            ndvi_weather_correlation: analysisResult.ndvi_weather_correlation,
+            signal_confidence: analysisResult.signal_confidence,
+            next_3_day_prediction: analysisResult.predictions?.next_3_day,
+            next_7_day_prediction: analysisResult.predictions?.next_7_day,
+            next_14_day_prediction: analysisResult.predictions?.next_14_day,
+            risk_level: analysisResult.risk_level,
+            risk_factors: analysisResult.risk_factors,
+            yield_impact_estimate: analysisResult.yield_impact_estimate,
+            recommended_actions: analysisResult.recommended_actions,
+            schedule_updates: analysisResult.schedule_updates,
+            farmer_message: analysisResult.farmer_message,
+            farmer_message_language: language,
+            ai_model_used: aiResult.provider === 'gemini' ? 'gemini-2.0-flash' : 'gpt-4o',
+            processing_time_ms: Date.now() - startTime,
+            confidence_score: (analysisResult.growth_stage_analysis?.stage_confidence || 70) / 100
+          });
+
+          // Create alert if needed
+          if (analysisResult.alert_type && analysisResult.alert_type !== 'none') {
+            await supabase.from('crop_growth_alerts').insert({
+              land_id: landId,
+              farmer_id: farmerId,
+              tenant_id: tenantId,
+              alert_type: analysisResult.alert_type,
+              alert_category: analysisResult.detected_issues?.[0]?.type || 'general',
+              title: analysisResult.detected_issues?.[0]?.name || 'Crop Health Alert',
+              message: analysisResult.farmer_message,
+              severity: analysisResult.risk_level === 'critical' || analysisResult.risk_level === 'high' ? 'danger' : analysisResult.risk_level === 'medium' ? 'warning' : 'info',
+              recommended_action: analysisResult.recommended_actions?.[0]?.action,
+              expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+            });
+          }
+
+          // Mark upload as processed
+          if (uploadId) {
+            await supabase.from('crop_growth_uploads').update({ is_processed: true }).eq('id', uploadId);
+          }
+        } catch (dbError) {
+          console.error('Database error:', dbError);
+        }
+      }
+
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          analysis: analysisResult, 
+          processingTimeMs: Date.now() - startTime,
+          provider: aiResult.provider 
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Handle targeted_solution mode (no images needed) - use gpt-4o-mini for text-only
     if (mode === 'targeted_solution' && suggestionType && diagnosis) {
       console.log('🎯 Targeted Solution Request:', { suggestionType, landArea, cropDetected: cropDetected?.name });
       
@@ -182,19 +482,32 @@ Return JSON with this structure:
       const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          'Authorization': `Bearer ${openAIApiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
+          model: 'gpt-4o-mini', // Use cheaper model for text-only
           messages: [
             { role: 'system', content: 'You are an expert agricultural scientist. Provide specific, actionable product recommendations with exact quantities.' },
             { role: 'user', content: targetedPrompt }
           ],
-          temperature: 0.3,
           max_tokens: 2000,
         }),
       });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('OpenAI API error:', response.status, errorText);
+        
+        if (response.status === 429) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Rate limit exceeded. Please try again.', rateLimited: true }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        throw new Error(`OpenAI API error: ${response.status}`);
+      }
 
       const aiResponse = await response.json();
       const content = aiResponse.choices?.[0]?.message?.content || '';
@@ -462,28 +775,26 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
       }
     ];
 
-    console.log('📡 Calling AI Vision API...');
+    console.log('📡 Calling OpenAI Vision API (gpt-4o)...');
     
-    const model = lovableApiKey ? 'google/gemini-2.5-pro' : 'gpt-4o';
-    
+    // Use gpt-4o for vision tasks
     const response = await fetch(apiEndpoint, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${openAIApiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model,
+        model: 'gpt-4o', // Vision model
         messages,
-        max_tokens: 8000, // Increased for comprehensive Hindi/Marathi responses
-        temperature: 0.3,
+        max_tokens: 8000,
         response_format: { type: "json_object" }
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('AI API Error:', response.status, errorText);
+      console.error('OpenAI API Error:', response.status, errorText);
       
       if (response.status === 429) {
         return new Response(
@@ -496,18 +807,18 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
         );
       }
       
-      if (response.status === 402) {
+      if (response.status === 402 || response.status === 401) {
         return new Response(
           JSON.stringify({ 
             success: false, 
-            error: 'AI quota exceeded. Please contact support.',
+            error: 'OpenAI API authentication/billing error.',
             quotaExceeded: true 
           }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: response.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      throw new Error(`AI API error: ${response.status} ${errorText}`);
+      throw new Error(`OpenAI API error: ${response.status} ${errorText}`);
     }
 
     const aiResponse = await response.json();
@@ -522,7 +833,6 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
     // Helper function to repair truncated JSON
     const repairTruncatedJSON = (content: string): object | null => {
       try {
-        // Try to find the last complete object by tracking braces
         let depth = 0;
         let lastValidIndex = 0;
         let inString = false;
@@ -568,7 +878,6 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
     // Parse AI response
     let analysisResult;
     try {
-      // Clean up response if needed
       let cleanContent = aiContent.trim();
       if (cleanContent.startsWith('```json')) {
         cleanContent = cleanContent.replace(/^```json\n?/, '').replace(/\n?```$/, '');
@@ -581,7 +890,6 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
       console.error('Failed to parse AI response, attempting repair:', parseError);
       console.error('Raw content length:', aiContent.length);
       
-      // Try to repair truncated JSON
       let cleanContent = aiContent.trim();
       if (cleanContent.startsWith('```json')) {
         cleanContent = cleanContent.replace(/^```json\n?/, '').replace(/\n?```$/, '');
@@ -593,7 +901,6 @@ CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no explanations o
       
       if (!analysisResult) {
         console.error('JSON repair failed, returning fallback response');
-        // Return a fallback response instead of failing completely
         analysisResult = {
           cropDetected: {
             name: "Crop detected",

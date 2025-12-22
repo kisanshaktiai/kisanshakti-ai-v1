@@ -28,8 +28,8 @@ interface NDVIMapViewProps {
 
 const mapContainerStyle = {
   width: '100%',
-  height: '400px',
-  borderRadius: '0.5rem',
+  height: '300px',
+  borderRadius: '0',
 };
 
 // Mock data for demonstration - replace with actual API data
@@ -176,11 +176,23 @@ export function NDVIMapView({
 
   if (!isLoaded) {
     return (
-      <Card>
-        <CardContent className="flex items-center justify-center h-96">
+      <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+        <CardContent className="flex items-center justify-center h-80">
           <div className="text-center space-y-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
-            <p className="text-muted-foreground">Loading map...</p>
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary mx-auto" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-foreground">Loading Map</p>
+              <p className="text-xs text-muted-foreground">Connecting to satellite imagery...</p>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => window.location.reload()}
+              className="mt-2"
+            >
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Retry
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -189,12 +201,25 @@ export function NDVIMapView({
 
   if (loadError) {
     return (
-      <Card>
-        <CardContent className="flex items-center justify-center h-96">
-          <div className="text-center space-y-4">
-            <MapPin className="h-12 w-12 text-muted-foreground mx-auto" />
-            <p className="text-muted-foreground">Unable to load map</p>
+      <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+        <CardContent className="flex flex-col items-center justify-center h-80 space-y-4">
+          <div className="p-4 rounded-full bg-orange-500/10">
+            <MapPin className="h-8 w-8 text-orange-500" />
           </div>
+          <div className="text-center space-y-1">
+            <p className="font-medium text-foreground">Map Unavailable</p>
+            <p className="text-xs text-muted-foreground max-w-[200px]">
+              Could not load map. Check your internet connection.
+            </p>
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => window.location.reload()}
+          >
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Try Again
+          </Button>
         </CardContent>
       </Card>
     );
@@ -203,23 +228,23 @@ export function NDVIMapView({
   const { status, advice } = getInterpretation();
 
   return (
-    <div className="space-y-4">
-      {/* Vegetation Indices Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div className="space-y-3 sm:space-y-4 w-full max-w-full overflow-hidden">
+      {/* Vegetation Indices Stats - 2x2 grid on mobile */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-3">
         <Card 
           className={cn(
-            "cursor-pointer transition-all",
-            selectedIndex === 'ndvi' && "ring-2 ring-primary"
+            "cursor-pointer transition-all border-0 shadow-md",
+            selectedIndex === 'ndvi' && "ring-2 ring-primary shadow-lg"
           )}
           onClick={() => setSelectedIndex('ndvi')}
         >
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-muted-foreground">NDVI</p>
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+              <p className="text-[10px] sm:text-xs text-muted-foreground font-medium">NDVI</p>
               {getTrendIcon(mockNDVIData.current.ndvi, mockNDVIData.previous.ndvi)}
             </div>
-            <p className="text-2xl font-bold">{mockNDVIData.current.ndvi.toFixed(2)}</p>
-            <Badge className={cn("mt-2", getIndexColor(mockNDVIData.current.ndvi, 'ndvi'))}>
+            <p className="text-lg sm:text-2xl font-bold">{mockNDVIData.current.ndvi.toFixed(2)}</p>
+            <Badge className={cn("mt-1.5 sm:mt-2 text-[10px] sm:text-xs", getIndexColor(mockNDVIData.current.ndvi, 'ndvi'))}>
               {mockNDVIData.current.ndvi > 0.6 ? 'Healthy' : mockNDVIData.current.ndvi > 0.3 ? 'Moderate' : 'Stress'}
             </Badge>
           </CardContent>
@@ -227,18 +252,18 @@ export function NDVIMapView({
 
         <Card 
           className={cn(
-            "cursor-pointer transition-all",
-            selectedIndex === 'evi' && "ring-2 ring-primary"
+            "cursor-pointer transition-all border-0 shadow-md",
+            selectedIndex === 'evi' && "ring-2 ring-primary shadow-lg"
           )}
           onClick={() => setSelectedIndex('evi')}
         >
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-muted-foreground">EVI</p>
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+              <p className="text-[10px] sm:text-xs text-muted-foreground font-medium">EVI</p>
               {getTrendIcon(mockNDVIData.current.evi, mockNDVIData.previous.evi)}
             </div>
-            <p className="text-2xl font-bold">{mockNDVIData.current.evi.toFixed(2)}</p>
-            <Badge className={cn("mt-2", getIndexColor(mockNDVIData.current.evi, 'evi'))}>
+            <p className="text-lg sm:text-2xl font-bold">{mockNDVIData.current.evi.toFixed(2)}</p>
+            <Badge className={cn("mt-1.5 sm:mt-2 text-[10px] sm:text-xs", getIndexColor(mockNDVIData.current.evi, 'evi'))}>
               {mockNDVIData.current.evi > 0.5 ? 'Optimal' : mockNDVIData.current.evi > 0.2 ? 'Good' : 'Poor'}
             </Badge>
           </CardContent>
@@ -246,18 +271,18 @@ export function NDVIMapView({
 
         <Card 
           className={cn(
-            "cursor-pointer transition-all",
-            selectedIndex === 'ndwi' && "ring-2 ring-primary"
+            "cursor-pointer transition-all border-0 shadow-md",
+            selectedIndex === 'ndwi' && "ring-2 ring-primary shadow-lg"
           )}
           onClick={() => setSelectedIndex('ndwi')}
         >
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-muted-foreground">NDWI</p>
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+              <p className="text-[10px] sm:text-xs text-muted-foreground font-medium">NDWI</p>
               {getTrendIcon(mockNDVIData.current.ndwi, mockNDVIData.previous.ndwi)}
             </div>
-            <p className="text-2xl font-bold">{mockNDVIData.current.ndwi.toFixed(2)}</p>
-            <Badge className={cn("mt-2", getIndexColor(mockNDVIData.current.ndwi, 'ndwi'))}>
+            <p className="text-lg sm:text-2xl font-bold">{mockNDVIData.current.ndwi.toFixed(2)}</p>
+            <Badge className={cn("mt-1.5 sm:mt-2 text-[10px] sm:text-xs", getIndexColor(mockNDVIData.current.ndwi, 'ndwi'))}>
               {mockNDVIData.current.ndwi > 0.3 ? 'Wet' : mockNDVIData.current.ndwi > 0 ? 'Moist' : 'Dry'}
             </Badge>
           </CardContent>
@@ -265,18 +290,18 @@ export function NDVIMapView({
 
         <Card 
           className={cn(
-            "cursor-pointer transition-all",
-            selectedIndex === 'savi' && "ring-2 ring-primary"
+            "cursor-pointer transition-all border-0 shadow-md",
+            selectedIndex === 'savi' && "ring-2 ring-primary shadow-lg"
           )}
           onClick={() => setSelectedIndex('savi')}
         >
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-muted-foreground">SAVI</p>
+          <CardContent className="p-3 sm:p-4">
+            <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+              <p className="text-[10px] sm:text-xs text-muted-foreground font-medium">SAVI</p>
               {getTrendIcon(mockNDVIData.current.savi, mockNDVIData.previous.savi)}
             </div>
-            <p className="text-2xl font-bold">{mockNDVIData.current.savi.toFixed(2)}</p>
-            <Badge className="mt-2 bg-secondary text-secondary-foreground">
+            <p className="text-lg sm:text-2xl font-bold">{mockNDVIData.current.savi.toFixed(2)}</p>
+            <Badge className="mt-1.5 sm:mt-2 text-[10px] sm:text-xs bg-secondary text-secondary-foreground">
               Soil Adjusted
             </Badge>
           </CardContent>
@@ -284,30 +309,28 @@ export function NDVIMapView({
       </div>
 
       {/* Map and Analysis Tabs */}
-      <Tabs defaultValue="map" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="map">Satellite View</TabsTrigger>
-          <TabsTrigger value="analysis">Analysis</TabsTrigger>
+      <Tabs defaultValue="map" className="space-y-3 sm:space-y-4">
+        <TabsList className="grid w-full grid-cols-2 h-10 sm:h-11">
+          <TabsTrigger value="map" className="text-xs sm:text-sm">Satellite View</TabsTrigger>
+          <TabsTrigger value="analysis" className="text-xs sm:text-sm">Analysis</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="map" className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Satellite className="h-5 w-5" />
-                  Land Boundary Map
+        <TabsContent value="map" className="space-y-3 sm:space-y-4">
+          <Card className="border-0 shadow-lg rounded-2xl overflow-hidden">
+            <CardHeader className="pb-2 sm:pb-3 px-3 sm:px-6">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-sm sm:text-lg flex items-center gap-2">
+                  <Satellite className="h-4 w-4 sm:h-5 sm:w-5" />
+                  <span className="truncate">Land Boundary Map</span>
                 </CardTitle>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5 sm:gap-2 shrink-0">
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => setShowOverlay(!showOverlay)}
+                    className="h-8 px-2 sm:px-3"
                   >
-                    {showOverlay ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    <span className="ml-1 hidden sm:inline">
-                      {showOverlay ? 'Hide' : 'Show'} NDVI
-                    </span>
+                    {showOverlay ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                   </Button>
                   <Button
                     size="sm"
@@ -320,8 +343,9 @@ export function NDVIMapView({
                       }, 1000);
                     }}
                     disabled={loading}
+                    className="h-8 px-2 sm:px-3"
                   >
-                    <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+                    <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
                   </Button>
                 </div>
               </div>

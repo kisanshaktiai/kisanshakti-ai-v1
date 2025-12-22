@@ -136,6 +136,14 @@
     "wizard": {
       "step_of_total": "Step {{current}} of {{total}}: {{title}}",
       "voice_guide": "Voice Guide",
+      "tap_to_select": "Tap to select",
+      "select_crop_category": "Select a crop category",
+      "select_crop": "Choose your crop",
+      "search_crops": "Search crops...",
+      "crop_selection": "Crop Selection",
+      "current_crop": "Current Crop",
+      "previous_crop": "Previous Crop",
+      "popular": "Popular",
       "steps": {
         "basic_info": "Basic Info",
         "location": "Location",

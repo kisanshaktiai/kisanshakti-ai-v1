@@ -174,12 +174,14 @@
       "notes_label": "नोट्स",
       "notes_optional": "(पर्यायी)",
       "notes_placeholder": "या कामाबद्दल काही नोट्स जोडा...",
-      "done": "पूर्ण",
+      "done": "पुष्टी करा",
       "skipped": "वगळले",
       "weather": "हवामान",
       "high": "उच्च",
       "medium": "मध्यम",
-      "low": "कमी"
+      "low": "कमी",
+      "hours": "तास",
+      "persons": "व्यक्ती"
     },
     "land_selector": {
       "ai_schedule_ready": "AI वेळापत्रक तयार",

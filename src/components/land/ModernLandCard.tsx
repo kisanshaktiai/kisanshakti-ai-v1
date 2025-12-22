@@ -77,20 +77,27 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
   const handleDelete = async () => {
     setIsDeleting(true);
     try {
+      console.log('🗑️ [ModernLandCard] Starting delete for land:', land.id, land.name);
       const { landsApi } = await import('@/services/landsApi');
       await landsApi.deleteLand(land.id);
       
+      console.log('✅ [ModernLandCard] Delete successful for land:', land.id);
       toast({
         title: t('lands.card.toast.removed_title'),
         description: t('lands.card.toast.removed_message', { name: land.name }),
       });
       
       onRefresh();
-    } catch (error) {
-      console.error('Error deleting land:', error);
+    } catch (error: any) {
+      console.error('❌ [ModernLandCard] Error deleting land:', {
+        landId: land.id,
+        landName: land.name,
+        error: error?.message || error,
+        stack: error?.stack
+      });
       toast({
-        title: t('lands.wizard.toast.error_title'),
-        description: t('lands.card.toast.error'),
+        title: t('lands.details.error.not_found_title'),
+        description: error?.message || t('lands.card.toast.error'),
         variant: 'destructive',
       });
     } finally {
