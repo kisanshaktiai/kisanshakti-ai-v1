@@ -1559,14 +1559,17 @@ export async function tryDecisionBrainWithAIRefinement(
     const refinementPrompt = buildRefinementPrompt(brainResult.response.advisory, language);
     
     // Call AI for refinement (using ai-agriculture-chat edge function)
+    // ✅ FIX: Use 'messages' array format as expected by the edge function
     const { data: aiData, error: aiError } = await supabaseClient.functions.invoke('ai-agriculture-chat', {
       body: {
-        message: refinementPrompt,
+        messages: [{ role: 'user', content: refinementPrompt }],
         language,
-        farmerId,
-        tenantId,
-        mode: 'refinement', // Special mode for quick refinement
-        maxTokens: 200
+        metadata: {
+          farmerId,
+          tenantId,
+          mode: 'refinement', // Marker for quick refinement
+          maxTokens: 200
+        }
       },
       headers: {
         'x-tenant-id': tenantId,
