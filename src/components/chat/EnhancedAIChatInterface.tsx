@@ -845,6 +845,10 @@ export function EnhancedAIChatInterface() {
               name: land.name,
               crop_name: scanResult.result.cropDetected?.name || land.current_crop || land.crop_name,
               crop_code: land.crop_code,
+              // ✅ 2030-READY: Previous crop for rotation-aware recommendations
+              previous_crop: land.previous_crop,
+              previous_crop_id: land.previous_crop_id,
+              last_harvest_date: land.last_harvest_date,
               area_hectares: land.area_hectares || (land.area_acres ? land.area_acres * 0.404686 : undefined),
               farming_mode: land.farming_mode,
               irrigation_type: land.irrigation_type,
@@ -853,7 +857,7 @@ export function EnhancedAIChatInterface() {
               ndvi_data: land.ndvi_data,
               weather_data: land.weather_data,
               location: land.location || { state: land.state, district: land.district },
-              // ✅ NEW: Vision context for Decision Brain
+              // ✅ Vision context for Decision Brain
               vision_context: {
                 detected_crop: scanResult.result.cropDetected?.name,
                 detected_diseases: scanResult.result.diagnosis?.diseases?.map((d: any) => d.name) || [],
@@ -1093,6 +1097,10 @@ export function EnhancedAIChatInterface() {
               name: land.name,
               crop_name: scanResult.result.cropDetected?.name || land.current_crop || land.crop_name,
               crop_code: land.crop_code,
+              // ✅ 2030-READY: Previous crop for rotation-aware recommendations
+              previous_crop: land.previous_crop,
+              previous_crop_id: land.previous_crop_id,
+              last_harvest_date: land.last_harvest_date,
               area_hectares: land.area_hectares || (land.area_acres ? land.area_acres * 0.404686 : undefined),
               farming_mode: land.farming_mode,
               irrigation_type: land.irrigation_type,
@@ -1268,15 +1276,24 @@ export function EnhancedAIChatInterface() {
       console.log('♻️ Using session for message:', sessionId);
       
       // ═══════════════════════════════════════════════════════════════════════
-      // 🧠 DECISION BRAIN FIRST - Try deterministic engine before AI
+      // 🧠 DECISION BRAIN FIRST (LAND-SPECIFIC ONLY)
+      // General Chat → Direct AI (no symbolic brain)
+      // Land-Specific → Symbolic Brain (FACTS→SYMBOLS→CAUSES→ACTIONS) + AI refinement
       // ═══════════════════════════════════════════════════════════════════════
-      // ✅ CRITICAL FIX: Use current_crop from landsApi (not crop_name)
+      
+      const isLandSpecificChat = activeTab !== 'general' && land !== null;
+      
+      // ✅ CRITICAL FIX: Build land context with previous crop for rotation-aware recommendations
       const landContextForBrain: DecisionLandContext | null = land ? {
         id: land.id,
         name: land.name,
         // Priority: current_crop → crop_name → crop_code (landsApi returns current_crop)
         crop_name: land.current_crop || land.crop_name,
         crop_code: land.crop_code || (land.current_crop || land.crop_name)?.toLowerCase(),
+        // ✅ 2030-READY: Previous crop context for rotation-aware recommendations
+        previous_crop: land.previous_crop,
+        previous_crop_id: land.previous_crop_id,
+        last_harvest_date: land.last_harvest_date,
         area_hectares: land.area_hectares || (land.area_acres ? land.area_acres * 0.404686 : undefined),
         farming_mode: land.farming_mode,
         irrigation_type: land.irrigation_type,
@@ -1291,18 +1308,26 @@ export function EnhancedAIChatInterface() {
       } : null;
       
       console.log('🌾 [Chat] Land context for Decision Brain:', {
+        isLandSpecificChat,
         landId: land?.id,
         landName: land?.name,
-        cropFromCurrentCrop: land?.current_crop,
-        cropFromCropName: land?.crop_name,
-        resolvedCrop: landContextForBrain?.crop_name,
+        currentCrop: landContextForBrain?.crop_name,
+        previousCrop: landContextForBrain?.previous_crop,
         hasLocation: !!landContextForBrain?.location
       });
       
-      // ✅ Use async version with optional AI refinement for critical/complex cases
-      const brainResult = await tryDecisionBrainWithAIRefinement(
-        finalMessage, landContextForBrain, language, farmerId, tenantId, supabase
-      );
+      // ✅ CORE RULE: Only use Decision Brain for LAND-SPECIFIC chats
+      let brainResult: any = { handled: false, fallbackToAI: true, reason: 'general_chat' };
+      
+      if (isLandSpecificChat) {
+        // ✅ LAND-SPECIFIC: Use symbolic brain (FACTS→SYMBOLS→CAUSES→ACTIONS) + AI refinement
+        brainResult = await tryDecisionBrainWithAIRefinement(
+          finalMessage, landContextForBrain, language, farmerId, tenantId, supabase
+        );
+      } else {
+        // ✅ GENERAL CHAT: Skip Decision Brain, go directly to AI
+        console.log('🤖 [General Chat] Skipping Decision Brain - using direct AI for general agriculture queries');
+      }
       
       if (brainResult.handled && brainResult.response) {
         // 🧠 Decision Brain answered!

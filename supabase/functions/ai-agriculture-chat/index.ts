@@ -799,6 +799,60 @@ serve(async (req) => {
       return await handleTrainingDataCollection(requestBody);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ✅ HYBRID ENHANCEMENT MODE - AI only refines Decision Brain output
+    // This is used when land-specific chat needs AI to make farmer-friendly language
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (metadata?.mode === 'hybrid_enhancement') {
+      console.log('🤖+🧠 [Hybrid Mode] AI enhancement for Decision Brain output');
+      
+      const symbolicContext = metadata.symbolicContext;
+      const maxTokens = metadata.maxTokens || 300;
+      
+      // Call AI to refine the language only - NOT to change recommendations
+      const aiGatewayUrl = 'https://ai.gateway.lovable.dev/v1/chat/completions';
+      const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+      
+      const enhancementResponse = await fetch(aiGatewayUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${lovableApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'google/gemini-2.5-flash',
+          messages: messages,
+          max_tokens: maxTokens,
+          temperature: 0.7
+        })
+      });
+      
+      if (!enhancementResponse.ok) {
+        console.error('❌ [Hybrid Mode] AI enhancement failed:', await enhancementResponse.text());
+        return new Response(
+          JSON.stringify({ 
+            error: 'AI enhancement failed',
+            response: symbolicContext?.advisory ? 'Decision Brain recommendations available but AI enhancement failed.' : null
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      const enhancementData = await enhancementResponse.json();
+      const refinedResponse = enhancementData.choices?.[0]?.message?.content || '';
+      
+      console.log('✅ [Hybrid Mode] AI enhancement successful - language refined');
+      
+      return new Response(
+        JSON.stringify({
+          response: refinedResponse,
+          source: 'symbolic_ai_enhanced',
+          tokensUsed: enhancementData.usage?.total_tokens || 0
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // SECURITY: Extract and validate tenant and farmer IDs from headers
     const tenantId = req.headers.get('x-tenant-id');
     const farmerId = req.headers.get('x-farmer-id');

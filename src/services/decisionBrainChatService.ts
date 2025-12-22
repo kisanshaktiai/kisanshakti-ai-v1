@@ -331,6 +331,10 @@ export interface LandContext {
   current_crop?: string;     // From landsApi (alternative source)
   crop_code?: string;
   crop_group?: string;
+  // ✅ 2030-READY: Previous crop context for rotation-aware recommendations
+  previous_crop?: string;    // Last season's crop
+  previous_crop_id?: string; // For database reference
+  last_harvest_date?: string; // When previous crop was harvested
   area_hectares?: number;
   area_acres?: number;       // From landsApi - will convert
   farming_mode?: string;
@@ -477,13 +481,17 @@ export function landContextToDecisionInput(
     // Irrigation
     irrigationMethod: land.irrigation_type,
     
-    // ✅ NEW: Vision-detected issues (will be used for pest/disease rules)
+    // ✅ 2030-READY: Previous crop for rotation-aware recommendations
+    previousCrop: land.previous_crop ? normalizeCropName(land.previous_crop) : undefined,
+    
+    // ✅ Vision-detected issues (will be used for pest/disease rules)
     detectedDiseases: land.vision_context?.detected_diseases || [],
     detectedPests: land.vision_context?.detected_pests || []
   };
   
   console.log(`📊 [Decision Brain] Raw farm data:`, {
     cropCode: rawFarmData.cropCode,
+    previousCrop: rawFarmData.previousCrop,
     sowingDate: rawFarmData.sowingDate,
     soilN: rawFarmData.soilN,
     soilP: rawFarmData.soilP,
