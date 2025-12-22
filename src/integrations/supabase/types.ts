@@ -1058,6 +1058,8 @@ export type Database = {
       }
       ai_chat_messages: {
         Row: {
+          actions_filtered_out: Json | null
+          actions_returned: Json | null
           agricultural_accuracy: number | null
           agro_climatic_zone: string | null
           ai_model: string | null
@@ -1070,6 +1072,7 @@ export type Database = {
           created_at: string
           crop_context: Json | null
           crop_season: string | null
+          decision_brain_source: boolean | null
           domain_tags: string[] | null
           edited_at: string | null
           error_details: Json | null
@@ -1081,6 +1084,8 @@ export type Database = {
           human_verified: boolean | null
           id: string
           image_urls: string[] | null
+          inferred_intent: string | null
+          intent_confidence: number | null
           ip_address: unknown
           is_edited: boolean | null
           is_training_candidate: boolean | null
@@ -1108,6 +1113,8 @@ export type Database = {
           word_count: number | null
         }
         Insert: {
+          actions_filtered_out?: Json | null
+          actions_returned?: Json | null
           agricultural_accuracy?: number | null
           agro_climatic_zone?: string | null
           ai_model?: string | null
@@ -1120,6 +1127,7 @@ export type Database = {
           created_at?: string
           crop_context?: Json | null
           crop_season?: string | null
+          decision_brain_source?: boolean | null
           domain_tags?: string[] | null
           edited_at?: string | null
           error_details?: Json | null
@@ -1131,6 +1139,8 @@ export type Database = {
           human_verified?: boolean | null
           id?: string
           image_urls?: string[] | null
+          inferred_intent?: string | null
+          intent_confidence?: number | null
           ip_address?: unknown
           is_edited?: boolean | null
           is_training_candidate?: boolean | null
@@ -1158,6 +1168,8 @@ export type Database = {
           word_count?: number | null
         }
         Update: {
+          actions_filtered_out?: Json | null
+          actions_returned?: Json | null
           agricultural_accuracy?: number | null
           agro_climatic_zone?: string | null
           ai_model?: string | null
@@ -1170,6 +1182,7 @@ export type Database = {
           created_at?: string
           crop_context?: Json | null
           crop_season?: string | null
+          decision_brain_source?: boolean | null
           domain_tags?: string[] | null
           edited_at?: string | null
           error_details?: Json | null
@@ -1181,6 +1194,8 @@ export type Database = {
           human_verified?: boolean | null
           id?: string
           image_urls?: string[] | null
+          inferred_intent?: string | null
+          intent_confidence?: number | null
           ip_address?: unknown
           is_edited?: boolean | null
           is_training_candidate?: boolean | null

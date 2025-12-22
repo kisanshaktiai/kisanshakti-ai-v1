@@ -1335,7 +1335,7 @@ export function EnhancedAIChatInterface() {
         // This data is ESSENTIAL for LLM training
         // ═══════════════════════════════════════════════════════════════════════
         
-        // Save user message
+        // Save user message with intent tracking for LLM training
         await supabase.from('ai_chat_messages').insert({
           session_id: sessionId,
           tenant_id: tenantId,
@@ -1351,19 +1351,22 @@ export function EnhancedAIChatInterface() {
             crop_name: landContextForBrain.crop_name,
             area_hectares: landContextForBrain.area_hectares
           } : null,
+          // ✅ NEW: Dedicated intent columns for LLM training
+          inferred_intent: brainResult.inferredIntent || 'GENERAL',
+          intent_confidence: brainResult.intentConfidence || 0.5,
+          decision_brain_source: true,
           is_training_candidate: true,
           complexity_level: 'simple',
           domain_tags: brainResult.inferredIntent ? [brainResult.inferredIntent] : ['GENERAL'],
           metadata: {
             source: 'decision_brain',
-            inferred_intent: brainResult.inferredIntent,
-            intent_confidence: brainResult.intentConfidence
+            query_type: brainResult.inferredIntent
           }
         }).then(({ error }) => {
           if (error) console.error('❌ Error saving user message:', error);
         });
         
-        // Save Decision Brain response
+        // Save Decision Brain response with full training data
         await supabase.from('ai_chat_messages').insert({
           session_id: sessionId,
           tenant_id: tenantId,
@@ -1383,6 +1386,16 @@ export function EnhancedAIChatInterface() {
             area_hectares: landContextForBrain.area_hectares,
             farming_mode: landContextForBrain.farming_mode
           } : null,
+          // ✅ NEW: Dedicated intent & action columns for LLM training
+          inferred_intent: brainResult.inferredIntent || 'GENERAL',
+          intent_confidence: brainResult.intentConfidence || 0.5,
+          decision_brain_source: true,
+          actions_returned: brainResult.response.advisory?.actions?.map(a => ({
+            action: a.action.toString(),
+            priority: a.priority,
+            urgency: a.urgency
+          })) || [],
+          // Training metadata
           is_training_candidate: true,
           human_verified: false,
           complexity_level: brainResult.response.advisory?.actions?.length && brainResult.response.advisory.actions.length > 2 ? 'medium' : 'simple',
@@ -1396,16 +1409,9 @@ export function EnhancedAIChatInterface() {
             advisory_id: brainResult.response.advisory?.advisory_id,
             risk_level: brainResult.response.advisory?.risk_level,
             causes: brainResult.response.advisory?.causes?.map(c => c.toString()),
-            actions: brainResult.response.advisory?.actions?.map(a => ({
-              action: a.action.toString(),
-              priority: a.priority,
-              urgency: a.urgency
-            })),
             rules_applied: brainResult.response.advisory?.rules_applied,
-            inferred_intent: brainResult.inferredIntent,
-            intent_confidence: brainResult.intentConfidence,
             used_ai_refinement: usedAI,
-            structured_cards: brainResult.response.structuredResponse?.cards?.length || 0
+            structured_cards_count: brainResult.response.structuredResponse?.cards?.length || 0
           }
         }).then(({ error }) => {
           if (error) {
