@@ -217,7 +217,7 @@ interface ChatResponse {
   structuredResponse?: {
     cards: Array<{
       id: string;
-      type: string;
+      type: 'organic' | 'fertilizer' | 'pesticide' | 'warning' | 'success' | 'info' | 'hormone' | 'irrigation';
       title: string;
       content: string;
       color: string;
@@ -360,58 +360,58 @@ function formatCause(cause: Cause, language: string): string {
 function formatAction(action: Action, language: string): string {
   const actionTranslations: Record<string, Partial<Record<Action, string>>> = {
     en: {
-      [Action.IRRIGATE_NORMAL]: "Apply normal irrigation",
-      [Action.IRRIGATE_CRITICAL]: "Apply emergency irrigation immediately",
+      [Action.IRRIGATE_IMMEDIATELY]: "Apply irrigation immediately",
       [Action.IRRIGATE_LIGHT]: "Apply light irrigation",
-      [Action.APPLY_UREA]: "Apply Urea fertilizer",
-      [Action.APPLY_DAP]: "Apply DAP fertilizer",
-      [Action.APPLY_MOP]: "Apply Muriate of Potash",
-      [Action.APPLY_NPK_COMPLEX]: "Apply NPK complex fertilizer",
-      [Action.APPLY_COMPOST]: "Apply organic compost",
-      [Action.APPLY_FYM]: "Apply Farm Yard Manure",
-      [Action.SPRAY_INSECTICIDE]: "Spray insecticide",
-      [Action.SPRAY_FUNGICIDE]: "Spray fungicide",
+      [Action.IRRIGATE_HEAVY]: "Apply heavy irrigation",
+      [Action.EMERGENCY_IRRIGATION]: "Apply emergency irrigation",
+      [Action.APPLY_NITROGEN]: "Apply nitrogen fertilizer",
+      [Action.APPLY_PHOSPHORUS]: "Apply phosphorus fertilizer",
+      [Action.APPLY_POTASSIUM]: "Apply potassium fertilizer",
+      [Action.APPLY_ORGANIC_MANURE]: "Apply organic manure",
+      [Action.APPLY_INSECTICIDE]: "Apply insecticide",
+      [Action.APPLY_FUNGICIDE]: "Apply fungicide",
+      [Action.APPLY_NEEM_OIL]: "Apply neem oil spray",
       [Action.MONITOR_CLOSELY]: "Monitor field closely",
       [Action.WAIT_AND_WATCH]: "Wait and observe",
       [Action.CONTINUE_CURRENT]: "Continue current practices",
-      [Action.HARVEST_NOW]: "Harvest immediately",
-      [Action.PREPARE_HARVEST]: "Prepare for harvesting"
+      [Action.EARLY_HARVEST]: "Harvest early",
+      [Action.SALVAGE_HARVEST]: "Salvage harvest immediately"
     },
     hi: {
-      [Action.IRRIGATE_NORMAL]: "सामान्य सिंचाई करें",
-      [Action.IRRIGATE_CRITICAL]: "तुरंत आपातकालीन सिंचाई करें",
+      [Action.IRRIGATE_IMMEDIATELY]: "तुरंत सिंचाई करें",
       [Action.IRRIGATE_LIGHT]: "हल्की सिंचाई करें",
-      [Action.APPLY_UREA]: "यूरिया खाद डालें",
-      [Action.APPLY_DAP]: "DAP खाद डालें",
-      [Action.APPLY_MOP]: "पोटाश खाद डालें",
-      [Action.APPLY_NPK_COMPLEX]: "NPK मिश्रित खाद डालें",
-      [Action.APPLY_COMPOST]: "जैविक खाद डालें",
-      [Action.APPLY_FYM]: "गोबर की खाद डालें",
-      [Action.SPRAY_INSECTICIDE]: "कीटनाशक स्प्रे करें",
-      [Action.SPRAY_FUNGICIDE]: "फफूंदनाशक स्प्रे करें",
+      [Action.IRRIGATE_HEAVY]: "भारी सिंचाई करें",
+      [Action.EMERGENCY_IRRIGATION]: "आपातकालीन सिंचाई करें",
+      [Action.APPLY_NITROGEN]: "नाइट्रोजन खाद डालें",
+      [Action.APPLY_PHOSPHORUS]: "फॉस्फोरस खाद डालें",
+      [Action.APPLY_POTASSIUM]: "पोटाश खाद डालें",
+      [Action.APPLY_ORGANIC_MANURE]: "जैविक खाद डालें",
+      [Action.APPLY_INSECTICIDE]: "कीटनाशक स्प्रे करें",
+      [Action.APPLY_FUNGICIDE]: "फफूंदनाशक स्प्रे करें",
+      [Action.APPLY_NEEM_OIL]: "नीम तेल स्प्रे करें",
       [Action.MONITOR_CLOSELY]: "बारीकी से निगरानी करें",
       [Action.WAIT_AND_WATCH]: "इंतजार करें और देखें",
       [Action.CONTINUE_CURRENT]: "वर्तमान तरीके जारी रखें",
-      [Action.HARVEST_NOW]: "अभी कटाई करें",
-      [Action.PREPARE_HARVEST]: "कटाई की तैयारी करें"
+      [Action.EARLY_HARVEST]: "जल्दी कटाई करें",
+      [Action.SALVAGE_HARVEST]: "तुरंत बचाव कटाई करें"
     },
     mr: {
-      [Action.IRRIGATE_NORMAL]: "सामान्य पाणी द्या",
-      [Action.IRRIGATE_CRITICAL]: "ताबडतोब आणीबाणी पाणी द्या",
+      [Action.IRRIGATE_IMMEDIATELY]: "ताबडतोब पाणी द्या",
       [Action.IRRIGATE_LIGHT]: "हलके पाणी द्या",
-      [Action.APPLY_UREA]: "युरिया खत द्या",
-      [Action.APPLY_DAP]: "DAP खत द्या",
-      [Action.APPLY_MOP]: "पोटॅश खत द्या",
-      [Action.APPLY_NPK_COMPLEX]: "NPK मिश्रित खत द्या",
-      [Action.APPLY_COMPOST]: "सेंद्रिय खत द्या",
-      [Action.APPLY_FYM]: "शेणखत द्या",
-      [Action.SPRAY_INSECTICIDE]: "किटकनाशक फवारणी करा",
-      [Action.SPRAY_FUNGICIDE]: "बुरशीनाशक फवारणी करा",
+      [Action.IRRIGATE_HEAVY]: "जास्त पाणी द्या",
+      [Action.EMERGENCY_IRRIGATION]: "आणीबाणी पाणी द्या",
+      [Action.APPLY_NITROGEN]: "नायट्रोजन खत द्या",
+      [Action.APPLY_PHOSPHORUS]: "स्फुरद खत द्या",
+      [Action.APPLY_POTASSIUM]: "पालाश खत द्या",
+      [Action.APPLY_ORGANIC_MANURE]: "सेंद्रिय खत द्या",
+      [Action.APPLY_INSECTICIDE]: "किटकनाशक फवारणी करा",
+      [Action.APPLY_FUNGICIDE]: "बुरशीनाशक फवारणी करा",
+      [Action.APPLY_NEEM_OIL]: "कडुलिंब तेल फवारणी करा",
       [Action.MONITOR_CLOSELY]: "बारकाईने निरीक्षण करा",
       [Action.WAIT_AND_WATCH]: "थांबा आणि पहा",
       [Action.CONTINUE_CURRENT]: "सध्याच्या पद्धती सुरू ठेवा",
-      [Action.HARVEST_NOW]: "आत्ता कापणी करा",
-      [Action.PREPARE_HARVEST]: "कापणीची तयारी करा"
+      [Action.EARLY_HARVEST]: "लवकर कापणी करा",
+      [Action.SALVAGE_HARVEST]: "ताबडतोब बचाव कापणी करा"
     }
   };
   
@@ -423,10 +423,10 @@ function formatAction(action: Action, language: string): string {
  * Get action category for card styling
  */
 function getActionCategory(action: Action): string {
-  const irrigationActions = [Action.IRRIGATE_NORMAL, Action.IRRIGATE_CRITICAL, Action.IRRIGATE_LIGHT, Action.DRAIN_WATER];
-  const nutrientActions = [Action.APPLY_UREA, Action.APPLY_DAP, Action.APPLY_MOP, Action.APPLY_NPK_COMPLEX, Action.APPLY_COMPOST, Action.APPLY_FYM];
-  const pestActions = [Action.SPRAY_INSECTICIDE, Action.SPRAY_ORGANIC_PESTICIDE, Action.INSTALL_PHEROMONE_TRAP, Action.BIOLOGICAL_CONTROL];
-  const diseaseActions = [Action.SPRAY_FUNGICIDE, Action.SPRAY_ORGANIC_FUNGICIDE, Action.REMOVE_INFECTED_PLANTS];
+  const irrigationActions = [Action.IRRIGATE_IMMEDIATELY, Action.IRRIGATE_LIGHT, Action.IRRIGATE_HEAVY, Action.EMERGENCY_IRRIGATION, Action.DRAIN_FIELD];
+  const nutrientActions = [Action.APPLY_NITROGEN, Action.APPLY_PHOSPHORUS, Action.APPLY_POTASSIUM, Action.APPLY_ZINC, Action.APPLY_ORGANIC_MANURE, Action.APPLY_MICRONUTRIENTS];
+  const pestActions = [Action.APPLY_INSECTICIDE, Action.APPLY_NEEM_OIL, Action.APPLY_BIO_CONTROL, Action.INSTALL_PHEROMONE_TRAPS, Action.INSTALL_TRAPS];
+  const diseaseActions = [Action.APPLY_FUNGICIDE, Action.APPLY_TRICHODERMA];
   
   if (irrigationActions.includes(action)) return 'irrigation';
   if (nutrientActions.includes(action)) return 'nutrient';
@@ -486,7 +486,7 @@ export function formatAdvisoryForChat(
       
       // Create card for structured response
       const category = getActionCategory(action.action);
-      let cardType = 'info';
+      let cardType: 'organic' | 'fertilizer' | 'pesticide' | 'warning' | 'success' | 'info' | 'hormone' | 'irrigation' = 'info';
       let cardIcon = 'info';
       let cardColor = '#3B82F6';
       
@@ -590,47 +590,6 @@ export function tryDecisionBrain(
       reason: 'invalid_land_data'
     };
   }
-  
-  // Step 4: Run Decision Graph
-  try {
-    const advisory = runDecisionGraphSync(decisionInput);
-    
-    // Step 5: Format response
-    const chatResponse = formatAdvisoryForChat(advisory, language);
-    chatResponse.executionTimeMs = Date.now() - startTime;
-    
-    console.log(`🧠 [Decision Brain] Answered in ${chatResponse.executionTimeMs}ms with ${advisory.rules_applied.length} rules, 0 AI tokens`);
-    
-    return {
-      handled: true,
-      response: chatResponse,
-      fallbackToAI: false
-    };
-    
-  } catch (error) {
-    console.error('[Decision Brain] Execution error:', error);
-    return {
-      handled: false,
-      fallbackToAI: true,
-      reason: 'execution_error'
-    };
-  }
-}
-
-/**
- * Get Decision Brain status for debugging
- */
-export function getDecisionBrainStatus(): {
-  available: boolean;
-  version: string;
-  rulesLoaded: boolean;
-} {
-  return {
-    available: true,
-    version: '1.0.0',
-    rulesLoaded: true
-  };
-}
   
   // Step 4: Run Decision Graph
   try {
