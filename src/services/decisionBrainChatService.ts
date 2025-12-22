@@ -1359,6 +1359,11 @@ export async function tryDecisionBrainWithAIRefinement(
         tenantId,
         mode: 'refinement', // Special mode for quick refinement
         maxTokens: 200
+      },
+      headers: {
+        'x-tenant-id': tenantId,
+        'x-farmer-id': farmerId,
+        'Content-Type': 'application/json'
       }
     });
     
