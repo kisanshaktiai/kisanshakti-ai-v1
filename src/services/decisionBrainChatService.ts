@@ -460,8 +460,16 @@ export function landContextToDecisionInput(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ADVISORY TO CHAT RESPONSE FORMATTER
+// ADVISORY TO CHAT RESPONSE FORMATTER - NEW STRUCTURED FORMAT
 // ═══════════════════════════════════════════════════════════════════════════
+
+import type { 
+  LandContextDisplay, 
+  ActionItem, 
+  BlockedAction, 
+  ConfidenceInfo,
+  DecisionBrainResponse 
+} from '@/components/chat/DecisionBrainCards';
 
 interface ChatResponse {
   response: string;
@@ -478,6 +486,8 @@ interface ChatResponse {
     }>;
     language: string;
   };
+  // ✅ NEW: Structured Decision Brain response
+  decisionBrainResponse?: DecisionBrainResponse;
   source: 'decision_brain' | 'ai';
   advisory?: UnifiedAdvisory;
   executionTimeMs: number;
@@ -690,108 +700,299 @@ function getActionCategory(action: Action): string {
 }
 
 /**
- * Format UnifiedAdvisory to chat-friendly response
+ * Format UnifiedAdvisory to NEW structured chat response
+ * ✅ Includes: Land context, primary/secondary actions, blocked actions, confidence
  */
 export function formatAdvisoryForChat(
   advisory: UnifiedAdvisory,
-  language: string = 'en'
+  language: string = 'en',
+  landContext?: LandContext
 ): ChatResponse {
   const t = TRANSLATIONS[language] || TRANSLATIONS.en;
-  const riskDesc = getRiskDescription(advisory.risk_level);
   
-  let responseText = '';
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BUILD LAND CONTEXT DISPLAY
+  // ═══════════════════════════════════════════════════════════════════════════
+  let landContextDisplay: LandContextDisplay | undefined;
+  
+  if (landContext) {
+    landContextDisplay = {
+      cropName: landContext.crop_name || landContext.current_crop || 'Unknown',
+      cropGroup: landContext.crop_group || 'Unknown',
+      growthStage: advisory.rules_applied.find(r => r.includes('STAGE'))?.replace(/.*_STAGE_/, '') || 'Growing',
+      landArea: landContext.area_hectares 
+        ? `${landContext.area_hectares.toFixed(1)} ha` 
+        : landContext.area_acres 
+          ? `${landContext.area_acres.toFixed(1)} acre` 
+          : undefined,
+      soilStatus: landContext.soil_data ? {
+        nitrogen: landContext.soil_data.n && landContext.soil_data.n < 50 ? 'LOW' : 'ADEQUATE',
+        phosphorus: landContext.soil_data.p && landContext.soil_data.p < 25 ? 'LOW' : 'ADEQUATE',
+        potassium: landContext.soil_data.k && landContext.soil_data.k < 30 ? 'LOW' : 'ADEQUATE'
+      } : undefined,
+      ndviState: advisory.causes.includes(Cause.OPTIMAL_GROWTH) ? 'HEALTHY' 
+        : advisory.causes.some(c => c.toString().includes('STRESS')) ? 'MODERATE_STRESS' 
+        : 'UNKNOWN',
+      ndviTrend: landContext.ndvi_data?.trend && landContext.ndvi_data.trend < -0.05 ? 'DECLINING'
+        : landContext.ndvi_data?.trend && landContext.ndvi_data.trend > 0.05 ? 'IMPROVING'
+        : 'STABLE',
+      weather: landContext.weather_data ? {
+        temperature: landContext.weather_data.temperature || 28,
+        humidity: landContext.weather_data.humidity || 60,
+        rainExpected: landContext.weather_data.rain_expected || false
+      } : undefined,
+      farmingMode: landContext.farming_mode || 'INTEGRATED'
+    };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CATEGORIZE ACTIONS INTO PRIMARY/SECONDARY
+  // ═══════════════════════════════════════════════════════════════════════════
+  const primaryActions: ActionItem[] = [];
+  const secondaryActions: ActionItem[] = [];
+  
+  for (const action of advisory.actions) {
+    const actionItem: ActionItem = {
+      action: formatAction(action.action, language),
+      reason: getActionReason(action.action, advisory.causes, language),
+      timing: formatUrgency(action.urgency, language),
+      ruleSources: [action.scientific_source || 'ICAR'],
+      priority: action.priority
+    };
+    
+    // Priority 1-3 = Primary (do NOW), 4+ = Secondary (do NEXT)
+    if (action.priority <= 3) {
+      primaryActions.push(actionItem);
+    } else {
+      secondaryActions.push(actionItem);
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DETERMINE BLOCKED ACTIONS (What NOT to do)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const blockedActions: BlockedAction[] = [];
+  
+  // Check for weather-based blocks
+  if (landContext?.weather_data?.rain_expected) {
+    blockedActions.push({
+      action: formatAction(Action.APPLY_INSECTICIDE, language),
+      whyNot: language === 'hi' ? 'बारिश की संभावना - स्प्रे धुल जाएगा' 
+        : language === 'mr' ? 'पावसाची शक्यता - फवारणी वाहून जाईल'
+        : 'Rain expected - spray will wash off',
+      blockedByRules: ['CONF_WEATHER_001']
+    });
+  }
+  
+  // Check for stage-based blocks (e.g., no spray during flowering)
+  if (advisory.causes.some(c => c.toString().includes('FLOWERING') || c.toString().includes('MATURITY'))) {
+    blockedActions.push({
+      action: language === 'hi' ? 'रासायनिक स्प्रे' : language === 'mr' ? 'रासायनिक फवारणी' : 'Chemical spray',
+      whyNot: language === 'hi' ? 'फूल/पकने की अवस्था में नुकसान हो सकता है'
+        : language === 'mr' ? 'फुलोरा/पिकण्याच्या अवस्थेत नुकसान होऊ शकते'
+        : 'Can damage crop during flowering/maturity stage',
+      blockedByRules: ['CONF_STAGE_002']
+    });
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BUILD CONFIDENCE INFO
+  // ═══════════════════════════════════════════════════════════════════════════
+  const confidenceExplanations: string[] = [];
+  
+  if (landContext?.ndvi_data?.value) confidenceExplanations.push(language === 'hi' ? 'हाल का NDVI डेटा उपलब्ध' : language === 'mr' ? 'अलीकडील NDVI डेटा उपलब्ध' : 'Recent NDVI data available');
+  if (landContext?.weather_data) confidenceExplanations.push(language === 'hi' ? 'मौसम पूर्वानुमान विश्वसनीय' : language === 'mr' ? 'हवामान अंदाज विश्वसनीय' : 'Weather forecast reliable');
+  if (landContext?.soil_data) confidenceExplanations.push(language === 'hi' ? 'मिट्टी परीक्षण उपलब्ध' : language === 'mr' ? 'माती चाचणी उपलब्ध' : 'Soil test available');
+  if (confidenceExplanations.length === 0) {
+    confidenceExplanations.push(language === 'hi' ? 'सामान्य दिशानिर्देशों पर आधारित' : language === 'mr' ? 'सामान्य मार्गदर्शक तत्त्वांवर आधारित' : 'Based on general guidelines');
+  }
+  
+  const confidenceInfo: ConfidenceInfo = {
+    riskLevel: advisory.risk_level as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
+    confidence: advisory.confidence,
+    explanations: confidenceExplanations,
+    rulesApplied: advisory.rules_applied.length
+  };
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BUILD FARMER-FRIENDLY MESSAGE
+  // ═══════════════════════════════════════════════════════════════════════════
+  let farmerMessage = '';
+  const cropName = landContextDisplay?.cropName || 'your crop';
+  const area = landContextDisplay?.landArea || '';
+  
+  if (language === 'hi') {
+    farmerMessage = `आपके ${area ? area + ' ' : ''}${cropName} के लिए सलाह:\n\n`;
+    if (primaryActions.length > 0) {
+      farmerMessage += primaryActions.map(a => `• ${a.action}`).join('\n');
+    } else {
+      farmerMessage += t.noActionNeeded;
+    }
+    farmerMessage += `\n\nविश्वसनीयता: ${Math.round(advisory.confidence * 100)}%\nस्रोत: ICAR + FAO दिशानिर्देश`;
+  } else if (language === 'mr') {
+    farmerMessage = `तुमच्या ${area ? area + ' ' : ''}${cropName} साठी सल्ला:\n\n`;
+    if (primaryActions.length > 0) {
+      farmerMessage += primaryActions.map(a => `• ${a.action}`).join('\n');
+    } else {
+      farmerMessage += t.noActionNeeded;
+    }
+    farmerMessage += `\n\nविश्वासार्हता: ${Math.round(advisory.confidence * 100)}%\nस्रोत: ICAR + FAO मार्गदर्शक तत्त्वे`;
+  } else {
+    farmerMessage = `Advice for your ${area ? area + ' ' : ''}${cropName}:\n\n`;
+    if (primaryActions.length > 0) {
+      farmerMessage += primaryActions.map(a => `• ${a.action}`).join('\n');
+    } else {
+      farmerMessage += t.noActionNeeded;
+    }
+    farmerMessage += `\n\nConfidence: ${Math.round(advisory.confidence * 100)}%\nSource: ICAR + FAO guidelines`;
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BUILD DECISION BRAIN RESPONSE
+  // ═══════════════════════════════════════════════════════════════════════════
+  const decisionBrainResponse: DecisionBrainResponse = {
+    landContext: landContextDisplay,
+    primaryActions,
+    secondaryActions,
+    blockedActions,
+    confidence: confidenceInfo,
+    farmerMessage,
+    language
+  };
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ALSO BUILD LEGACY CARDS FOR BACKWARDS COMPATIBILITY
+  // ═══════════════════════════════════════════════════════════════════════════
   const cards: ChatResponse['structuredResponse']['cards'] = [];
   
-  // Add greeting
-  responseText += `🌾 **${t.greeting}**\n\n`;
-  
-  // Add risk-based greeting
-  if (advisory.risk_level === RiskLevel.CRITICAL) {
-    responseText += `⚠️ ${t.riskCritical}\n\n`;
-  } else if (advisory.risk_level === RiskLevel.HIGH) {
-    responseText += `🔴 ${t.riskHigh}\n\n`;
-  } else if (advisory.risk_level === RiskLevel.MEDIUM) {
-    responseText += `🟡 ${t.riskMedium}\n\n`;
-  } else {
-    responseText += `🟢 ${t.riskLow}\n\n`;
-  }
-  
-  // Add causes if any
-  if (advisory.causes.length > 0) {
-    responseText += `📊 **${t.causesTitle}:**\n`;
-    for (const cause of advisory.causes.slice(0, 3)) {
-      responseText += `• ${formatCause(cause, language)}\n`;
-    }
-    responseText += '\n';
-  }
-  
-  // Add actions
-  if (advisory.actions.length > 0) {
-    responseText += `✅ **${t.actionsTitle}:**\n\n`;
+  for (let i = 0; i < Math.min(advisory.actions.length, 5); i++) {
+    const action = advisory.actions[i];
+    const actionText = formatAction(action.action, language);
+    const urgencyText = action.urgency.replace(/_/g, ' ');
     
-    for (let i = 0; i < Math.min(advisory.actions.length, 5); i++) {
-      const action = advisory.actions[i];
-      const actionText = formatAction(action.action, language);
-      const urgencyText = action.urgency.replace(/_/g, ' ');
-      
-      responseText += `${i + 1}. **${actionText}**\n`;
-      responseText += `   ⏰ ${urgencyText}\n`;
-      if (action.scientific_source) {
-        responseText += `   📚 ${action.scientific_source}\n`;
-      }
-      responseText += '\n';
-      
-      // Create card for structured response
-      const category = getActionCategory(action.action);
-      let cardType: 'organic' | 'fertilizer' | 'pesticide' | 'warning' | 'success' | 'info' | 'hormone' | 'irrigation' = 'info';
-      let cardIcon = 'info';
-      let cardColor = '#3B82F6';
-      
-      if (category === 'irrigation') {
-        cardType = 'irrigation';
-        cardIcon = 'droplet';
-        cardColor = '#0EA5E9';
-      } else if (category === 'nutrient') {
-        cardType = 'fertilizer';
-        cardIcon = 'leaf';
-        cardColor = '#22C55E';
-      } else if (category === 'pest') {
-        cardType = 'pesticide';
-        cardIcon = 'bug';
-        cardColor = '#EF4444';
-      } else if (category === 'disease') {
-        cardType = 'warning';
-        cardIcon = 'alert-triangle';
-        cardColor = '#F59E0B';
-      }
-      
-      cards.push({
-        id: `action-${i}`,
-        type: cardType,
-        title: actionText,
-        content: `${urgencyText} | ${action.scientific_source || 'ICAR Guidelines'}`,
-        color: cardColor,
-        gradient: [cardColor, cardColor + '80'],
-        icon: cardIcon,
-        priority: action.priority
-      });
+    const category = getActionCategory(action.action);
+    let cardType: 'organic' | 'fertilizer' | 'pesticide' | 'warning' | 'success' | 'info' | 'hormone' | 'irrigation' = 'info';
+    let cardIcon = 'info';
+    let cardColor = '#3B82F6';
+    
+    if (category === 'irrigation') {
+      cardType = 'irrigation';
+      cardIcon = 'droplet';
+      cardColor = '#0EA5E9';
+    } else if (category === 'nutrient') {
+      cardType = 'fertilizer';
+      cardIcon = 'leaf';
+      cardColor = '#22C55E';
+    } else if (category === 'pest') {
+      cardType = 'pesticide';
+      cardIcon = 'bug';
+      cardColor = '#EF4444';
+    } else if (category === 'disease') {
+      cardType = 'warning';
+      cardIcon = 'alert-triangle';
+      cardColor = '#F59E0B';
     }
-  } else {
-    responseText += `✅ ${t.noActionNeeded}\n\n`;
+    
+    cards.push({
+      id: `action-${i}`,
+      type: cardType,
+      title: actionText,
+      content: `${urgencyText} | ${action.scientific_source || 'ICAR Guidelines'}`,
+      color: cardColor,
+      gradient: [cardColor, cardColor + '80'],
+      icon: cardIcon,
+      priority: action.priority
+    });
   }
-  
-  // Add scientific basis and source
-  responseText += `\n---\n📚 ${t.scientificBasis}\n`;
-  responseText += `${t.confidence}: ${Math.round(advisory.confidence * 100)}% | ${advisory.rules_applied.length} ${t.rulesApplied}\n`;
-  responseText += `\n_${t.source}_`;
   
   return {
-    response: responseText,
+    response: farmerMessage,
     structuredResponse: cards.length > 0 ? { cards, language } : undefined,
+    decisionBrainResponse,
     source: 'decision_brain',
     advisory,
-    executionTimeMs: 0 // Will be set by caller
+    executionTimeMs: 0
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPER FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function getActionReason(action: Action, causes: Cause[], language: string): string {
+  // Map common causes to action reasons
+  const causeReasons: Record<string, Record<string, string>> = {
+    en: {
+      WATER_STRESS: 'Low soil moisture detected',
+      NITROGEN_DEFICIENCY: 'Low nitrogen levels in soil',
+      PHOSPHORUS_DEFICIENCY: 'Phosphorus deficiency detected',
+      POTASSIUM_DEFICIENCY: 'Low potassium levels',
+      HEAT_STRESS: 'High temperature stress on crop',
+      PEST_RISK: 'Pest activity risk detected',
+      DISEASE_RISK: 'Disease conditions present',
+      OPTIMAL_GROWTH: 'Crop is growing well'
+    },
+    hi: {
+      WATER_STRESS: 'मिट्टी में नमी कम है',
+      NITROGEN_DEFICIENCY: 'नाइट्रोजन की कमी पाई गई',
+      PHOSPHORUS_DEFICIENCY: 'फॉस्फोरस की कमी है',
+      POTASSIUM_DEFICIENCY: 'पोटाश कम है',
+      HEAT_STRESS: 'गर्मी का तनाव',
+      PEST_RISK: 'कीट का खतरा',
+      DISEASE_RISK: 'रोग की संभावना',
+      OPTIMAL_GROWTH: 'फसल अच्छी है'
+    },
+    mr: {
+      WATER_STRESS: 'मातीत ओलावा कमी आहे',
+      NITROGEN_DEFICIENCY: 'नायट्रोजनची कमतरता आढळली',
+      PHOSPHORUS_DEFICIENCY: 'स्फुरदाची कमतरता',
+      POTASSIUM_DEFICIENCY: 'पालाश कमी आहे',
+      HEAT_STRESS: 'उष्णतेचा ताण',
+      PEST_RISK: 'किडीचा धोका',
+      DISEASE_RISK: 'रोगाची शक्यता',
+      OPTIMAL_GROWTH: 'पीक चांगले आहे'
+    }
+  };
+  
+  const reasons = causeReasons[language] || causeReasons.en;
+  
+  for (const cause of causes) {
+    const causeStr = cause.toString();
+    for (const [key, reason] of Object.entries(reasons)) {
+      if (causeStr.includes(key)) return reason;
+    }
+  }
+  
+  return reasons.OPTIMAL_GROWTH;
+}
+
+function formatUrgency(urgency: string, language: string): string {
+  const urgencyMap: Record<string, Record<string, string>> = {
+    en: {
+      WITHIN_24_HOURS: 'Within 24 hours',
+      WITHIN_3_DAYS: 'Within 3 days',
+      WITHIN_1_WEEK: 'Within 1 week',
+      FLEXIBLE: 'Flexible timing',
+      IMMEDIATE: 'Immediately'
+    },
+    hi: {
+      WITHIN_24_HOURS: '24 घंटे के भीतर',
+      WITHIN_3_DAYS: '3 दिन के भीतर',
+      WITHIN_1_WEEK: '1 सप्ताह में',
+      FLEXIBLE: 'लचीला समय',
+      IMMEDIATE: 'तुरंत'
+    },
+    mr: {
+      WITHIN_24_HOURS: '24 तासांत',
+      WITHIN_3_DAYS: '3 दिवसांत',
+      WITHIN_1_WEEK: '1 आठवड्यात',
+      FLEXIBLE: 'लवचिक वेळ',
+      IMMEDIATE: 'ताबडतोब'
+    }
+  };
+  
+  const map = urgencyMap[language] || urgencyMap.en;
+  return map[urgency] || urgency.replace(/_/g, ' ').toLowerCase();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -874,8 +1075,8 @@ export function tryDecisionBrain(
       rules_applied: advisory.rules_applied.length
     });
     
-    // Step 5: Format response
-    const chatResponse = formatAdvisoryForChat(advisory, language);
+    // Step 5: Format response with land context
+    const chatResponse = formatAdvisoryForChat(advisory, language, landContext);
     chatResponse.executionTimeMs = Date.now() - startTime;
     
     console.log(`\n════════════════════════════════════════════════════════════════`);

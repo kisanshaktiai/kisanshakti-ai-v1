@@ -11,6 +11,7 @@ import { EnhancedSpeakerButton } from './EnhancedSpeakerButton';
 import { RecommendationCards, type VisionAnalysisResult } from './RecommendationCards';
 import { DiagnosisOnlyCard } from './DiagnosisOnlyCard';
 import { SuggestionTypeSelector, type SuggestionType } from './SuggestionTypeSelector';
+import { DecisionBrainCards, type DecisionBrainResponse } from './DecisionBrainCards';
 
 interface Message {
   id: string;
@@ -43,6 +44,8 @@ interface Message {
     }>;
     language: string;
   };
+  // ✅ NEW: Decision Brain structured response
+  decisionBrainResponse?: DecisionBrainResponse;
   analytics?: {
     responseTime?: number;
     tokensUsed?: {
@@ -184,6 +187,7 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
   // Check if this is an analysis response with full details
   const hasAnalysisResult = !isUser && message.analysisResult;
   const hasStructuredCards = !isUser && message.structuredResponse?.cards?.length > 0;
+  const hasDecisionBrainResponse = !isUser && message.decisionBrainResponse;
   
   // ✅ Check if this is a targeted solution (user already selected suggestion type)
   const isTargetedSolution = message.messageType === 'targeted_solution' && message.suggestionType;
@@ -335,9 +339,27 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
                 </span>
               </div>
             </>
+          ) : hasDecisionBrainResponse ? (
+            <>
+              <DecisionBrainCards response={message.decisionBrainResponse!} />
+              {/* Timestamp */}
+              <div className="flex items-center justify-between text-xs mt-2 opacity-60 text-muted-foreground px-3 pb-2.5">
+                <span>
+                  {new Date(message.timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </span>
+                {message.analytics?.responseTime && (
+                  <span className="flex items-center gap-1 text-success">
+                    ⚡ {message.analytics.responseTime}ms
+                  </span>
+                )}
+              </div>
+            </>
           ) : hasStructuredCards ? (
             <>
-              <div className="space-y-2">
+              <div className="space-y-2 p-3">
                 {message.structuredResponse!.cards.map((card, index) => (
                   <ColorCodedCard key={card.id} card={card} index={index} />
                 ))}

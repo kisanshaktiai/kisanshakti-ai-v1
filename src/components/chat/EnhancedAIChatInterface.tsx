@@ -1310,6 +1310,7 @@ export function EnhancedAIChatInterface() {
           timestamp: new Date(),
           structured: parseStructuredResponse(brainResult.response.response),
           structuredResponse: brainResult.response.structuredResponse,
+          decisionBrainResponse: brainResult.response.decisionBrainResponse,
           analytics: {
             responseTime: brainResult.response.executionTimeMs,
             tokensUsed: { prompt: 0, completion: 0, total: 0 },
