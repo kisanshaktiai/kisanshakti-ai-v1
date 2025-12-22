@@ -28,6 +28,7 @@ import { ResponseSectionCard } from './ResponseSectionCard';
 import { ModernChatUI } from './ModernChatUI';
 import { WorldClassCamera } from './WorldClassCamera';
 import { VisionAnalysisCard, type VisionAnalysisResult } from './VisionAnalysisCard';
+import { type DecisionBrainResponse } from './DecisionBrainCards';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
@@ -76,6 +77,8 @@ interface Message {
     }>;
     language: string;
   };
+  // ✅ NEW: Decision Brain structured response
+  decisionBrainResponse?: DecisionBrainResponse;
   feedback?: 'like' | 'dislike' | null;
   isCopied?: boolean;
   analytics?: {
