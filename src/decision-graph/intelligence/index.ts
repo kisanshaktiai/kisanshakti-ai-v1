@@ -3,11 +3,11 @@
  * INTELLIGENCE LAYERS - CENTRAL EXPORT
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Exports all intelligence modules for use in decision graph.
+ * Production-grade intelligence modules for decision graph.
  */
 
-// Weed Intelligence
+// Weed Intelligence - with validation & resistance logic
 export * from './weed-intelligence';
 
-// Organic Intelligence
+// Organic Intelligence - with conflict rules & honest assessments
 export * from './organic-intelligence';
