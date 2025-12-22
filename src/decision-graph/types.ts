@@ -238,6 +238,8 @@ export enum Cause {
   NUTRIENT_LOCKOUT_ALKALINE = 'NUTRIENT_LOCKOUT_ALKALINE',
   EXCESS_NITROGEN_LODGING = 'EXCESS_NITROGEN_LODGING',
   EXCESS_NITROGEN_DISEASE = 'EXCESS_NITROGEN_DISEASE',
+  EXCESS_NITROGEN = 'EXCESS_NITROGEN',
+  MICRONUTRIENT_DEFICIENCY = 'MICRONUTRIENT_DEFICIENCY',
 
   // ─────────────────────────────────────────────────────────────────────────
   // WATER STRESS CAUSES (10)
@@ -266,7 +268,7 @@ export enum Cause {
   TEMPERATURE_FLUCTUATION = 'TEMPERATURE_FLUCTUATION',
 
   // ─────────────────────────────────────────────────────────────────────────
-  // DISEASE RISK CAUSES (15)
+  // DISEASE RISK CAUSES (20)
   // ─────────────────────────────────────────────────────────────────────────
   RICE_BLAST_RISK = 'RICE_BLAST_RISK',
   RICE_BACTERIAL_BLIGHT_RISK = 'RICE_BACTERIAL_BLIGHT_RISK',
@@ -283,9 +285,13 @@ export enum Cause {
   POWDERY_MILDEW_RISK = 'POWDERY_MILDEW_RISK',
   DOWNY_MILDEW_RISK = 'DOWNY_MILDEW_RISK',
   RED_ROT_SUGARCANE_RISK = 'RED_ROT_SUGARCANE_RISK',
+  BACTERIAL_WILT_RISK = 'BACTERIAL_WILT_RISK',
+  VIRAL_DISEASE_RISK = 'VIRAL_DISEASE_RISK',
+  FUNGAL_DISEASE_RISK = 'FUNGAL_DISEASE_RISK',
+  RUST_RISK = 'RUST_RISK',
 
   // ─────────────────────────────────────────────────────────────────────────
-  // PEST RISK CAUSES (12)
+  // PEST RISK CAUSES (18)
   // ─────────────────────────────────────────────────────────────────────────
   BOLLWORM_RISK = 'BOLLWORM_RISK',
   APHID_RISK = 'APHID_RISK',
@@ -299,6 +305,10 @@ export enum Cause {
   POD_BORER_RISK = 'POD_BORER_RISK',
   CUTWORM_RISK = 'CUTWORM_RISK',
   TERMITE_RISK = 'TERMITE_RISK',
+  MEALYBUG_RISK = 'MEALYBUG_RISK',
+  FRUIT_FLY_RISK = 'FRUIT_FLY_RISK',
+  ROOT_GRUB_RISK = 'ROOT_GRUB_RISK',
+  PEST_GENERAL_RISK = 'PEST_GENERAL_RISK',
 
   // ─────────────────────────────────────────────────────────────────────────
   // WEED CAUSES (6)

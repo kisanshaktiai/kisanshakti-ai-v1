@@ -103,7 +103,7 @@ export const SUGARCANE_RULES: CauseRule[] = [
     stage_applicable: [CropStage.VEGETATIVE],
     conditions: (input) =>
       input.crop_code === 'sugarcane' &&
-      input.soil_states.moisture === SoilMoistureState.ADEQUATE &&
+      input.soil_states.moisture === SoilMoistureState.OPTIMAL &&
       input.ndvi_state === NDVIState.HIGH_STRESS,
     cause: Cause.ROOT_GRUB_RISK,
     priority: 8,
@@ -349,7 +349,7 @@ export const SUGARCANE_RULES: CauseRule[] = [
     conditions: (input) =>
       input.crop_code === 'sugarcane' &&
       input.crop_stage === CropStage.MATURITY &&
-      input.soil_states.moisture === SoilMoistureState.ADEQUATE,
+      input.soil_states.moisture === SoilMoistureState.OPTIMAL,
     cause: Cause.OPTIMAL_GROWTH,
     priority: 5,
     scientific_source: 'ICAR-SBI',
