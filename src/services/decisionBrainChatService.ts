@@ -447,6 +447,12 @@ export function landContextToDecisionInput(
     inferredNdvi = 0.2 + (land.vision_context.health_score / 100) * 0.6;
   }
   
+  // ✅ FIX: Calculate data age for accurate confidence scoring
+  // Since we don't have timestamps in the interface, use presence-based estimation
+  const soilTestDays = land.soil_data?.n !== undefined ? 30 : undefined; // Assume 30 days if we have soil data
+  const ndviDataHours = land.ndvi_data?.value !== undefined ? 24 : undefined; // Assume 24 hours if we have NDVI
+  const weatherForecastHours = land.weather_data?.temperature !== undefined ? 6 : undefined; // Assume 6 hours if we have weather
+  
   // Build raw farm data for the fact extractor with sensible defaults
   const rawFarmData = {
     farmerId: farmerId,
@@ -457,20 +463,20 @@ export function landContextToDecisionInput(
     farmingMode: land.farming_mode,
     
     // Soil data with defaults
-    soilN: land.soil_data?.n ?? 80,  // Default adequate N
-    soilP: land.soil_data?.p ?? 40,  // Default adequate P
-    soilK: land.soil_data?.k ?? 40,  // Default adequate K
-    soilPH: land.soil_data?.ph ?? 7.0,  // Default neutral pH
-    soilMoisture: land.soil_data?.moisture ?? 50,  // Default moderate moisture
+    soilN: land.soil_data?.n ?? 80,
+    soilP: land.soil_data?.p ?? 40,
+    soilK: land.soil_data?.k ?? 40,
+    soilPH: land.soil_data?.ph ?? 7.0,
+    soilMoisture: land.soil_data?.moisture ?? 50,
     soilOrganicCarbon: land.soil_data?.organic_carbon,
     
     // NDVI data (may be inferred from vision analysis)
     ndviValue: inferredNdvi,
-    ndviTrend: land.ndvi_data?.trend ?? 0,  // Default stable trend
+    ndviTrend: land.ndvi_data?.trend ?? 0,
     
     // Weather data with defaults
-    temperature: land.weather_data?.temperature ?? 28,  // Default moderate temp
-    humidity: land.weather_data?.humidity ?? 60,  // Default moderate humidity
+    temperature: land.weather_data?.temperature ?? 28,
+    humidity: land.weather_data?.humidity ?? 60,
     rainExpected: land.weather_data?.rain_expected ?? false,
     windSpeed: land.weather_data?.wind_speed ?? 10,
     
@@ -486,7 +492,12 @@ export function landContextToDecisionInput(
     
     // ✅ Vision-detected issues (will be used for pest/disease rules)
     detectedDiseases: land.vision_context?.detected_diseases || [],
-    detectedPests: land.vision_context?.detected_pests || []
+    detectedPests: land.vision_context?.detected_pests || [],
+    
+    // ✅ FIX: Data age for accurate confidence calculation
+    soilTestDays,
+    ndviDataHours,
+    weatherForecastHours
   };
   
   console.log(`📊 [Decision Brain] Raw farm data:`, {
@@ -901,37 +912,126 @@ export function formatAdvisoryForChat(
   };
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // BUILD FARMER-FRIENDLY MESSAGE
+  // BUILD FARMER-FRIENDLY MESSAGE: FACTS → WHY → WHAT TO DO
   // ═══════════════════════════════════════════════════════════════════════════
-  let farmerMessage = '';
   const cropName = landContextDisplay?.cropName || 'your crop';
   const area = landContextDisplay?.landArea || '';
   
+  // Build FACTS section (Land, Soil, NDVI, Weather data)
+  let factsSection = '';
+  let whySection = '';
+  let whatSection = '';
+  
   if (language === 'hi') {
-    farmerMessage = `आपके ${area ? area + ' ' : ''}${cropName} के लिए सलाह:\n\n`;
-    if (primaryActions.length > 0) {
-      farmerMessage += primaryActions.map(a => `• ${a.action}`).join('\n');
-    } else {
-      farmerMessage += t.noActionNeeded;
+    // 📊 FACTS (तथ्य)
+    factsSection = `📊 **तथ्य (आपकी जमीन का डेटा):**\n`;
+    factsSection += `🌾 फसल: ${cropName}${area ? ` | क्षेत्र: ${area}` : ''}\n`;
+    if (landContextDisplay?.growthStage) factsSection += `📅 अवस्था: ${landContextDisplay.growthStage}${landContextDisplay.daysAfterSowing ? ` (${landContextDisplay.daysAfterSowing} दिन)` : ''}\n`;
+    if (landContextDisplay?.soilStatus) {
+      factsSection += `🌍 मिट्टी: N=${landContextDisplay.soilStatus.nitrogen}, P=${landContextDisplay.soilStatus.phosphorus}, K=${landContextDisplay.soilStatus.potassium}`;
+      if (landContextDisplay.soilStatus.ph) factsSection += `, pH=${landContextDisplay.soilStatus.ph}`;
+      factsSection += '\n';
     }
-    farmerMessage += `\n\nविश्वसनीयता: ${Math.round(advisory.confidence * 100)}%\nस्रोत: ICAR + FAO दिशानिर्देश`;
+    if (landContextDisplay?.ndviValue !== undefined) {
+      factsSection += `🛰️ NDVI: ${(landContextDisplay.ndviValue * 100).toFixed(0)}% (${landContextDisplay.ndviState || 'जाँच करें'})`;
+      if (landContextDisplay.ndviTrend) factsSection += ` ${landContextDisplay.ndviTrend === 'IMPROVING' ? '📈' : landContextDisplay.ndviTrend === 'DECLINING' ? '📉' : '➡️'}`;
+      factsSection += '\n';
+    }
+    if (landContextDisplay?.weather) {
+      factsSection += `🌤️ मौसम: ${landContextDisplay.weather.temperature}°C, नमी ${landContextDisplay.weather.humidity}%`;
+      if (landContextDisplay.weather.rainExpected) factsSection += ' 🌧️ बारिश संभव';
+      factsSection += '\n';
+    }
+    
+    // 🔍 WHY (क्यों)
+    if (advisory.causes.length > 0) {
+      whySection = `\n🔍 **क्यों (समस्याएं पाई गईं):**\n`;
+      whySection += advisory.causes.slice(0, 3).map(c => `⚠️ ${formatCause(c, language)}`).join('\n') + '\n';
+    }
+    
+    // ✅ WHAT TO DO (क्या करें)
+    whatSection = `\n✅ **क्या करें:**\n`;
+    if (primaryActions.length > 0) {
+      whatSection += primaryActions.map(a => `• ${a.action}${a.timing ? ` (${a.timing})` : ''}`).join('\n');
+    } else {
+      whatSection += t.noActionNeeded;
+    }
+    whatSection += `\n\n📊 विश्वसनीयता: ${Math.round(advisory.confidence * 100)}% | 📚 ICAR + FAO`;
+    
   } else if (language === 'mr') {
-    farmerMessage = `तुमच्या ${area ? area + ' ' : ''}${cropName} साठी सल्ला:\n\n`;
-    if (primaryActions.length > 0) {
-      farmerMessage += primaryActions.map(a => `• ${a.action}`).join('\n');
-    } else {
-      farmerMessage += t.noActionNeeded;
+    // 📊 FACTS (तथ्ये)
+    factsSection = `📊 **तथ्ये (तुमच्या जमिनीचा डेटा):**\n`;
+    factsSection += `🌾 पीक: ${cropName}${area ? ` | क्षेत्र: ${area}` : ''}\n`;
+    if (landContextDisplay?.growthStage) factsSection += `📅 अवस्था: ${landContextDisplay.growthStage}${landContextDisplay.daysAfterSowing ? ` (${landContextDisplay.daysAfterSowing} दिवस)` : ''}\n`;
+    if (landContextDisplay?.soilStatus) {
+      factsSection += `🌍 माती: N=${landContextDisplay.soilStatus.nitrogen}, P=${landContextDisplay.soilStatus.phosphorus}, K=${landContextDisplay.soilStatus.potassium}`;
+      if (landContextDisplay.soilStatus.ph) factsSection += `, pH=${landContextDisplay.soilStatus.ph}`;
+      factsSection += '\n';
     }
-    farmerMessage += `\n\nविश्वासार्हता: ${Math.round(advisory.confidence * 100)}%\nस्रोत: ICAR + FAO मार्गदर्शक तत्त्वे`;
+    if (landContextDisplay?.ndviValue !== undefined) {
+      factsSection += `🛰️ NDVI: ${(landContextDisplay.ndviValue * 100).toFixed(0)}% (${landContextDisplay.ndviState || 'तपासा'})`;
+      if (landContextDisplay.ndviTrend) factsSection += ` ${landContextDisplay.ndviTrend === 'IMPROVING' ? '📈' : landContextDisplay.ndviTrend === 'DECLINING' ? '📉' : '➡️'}`;
+      factsSection += '\n';
+    }
+    if (landContextDisplay?.weather) {
+      factsSection += `🌤️ हवामान: ${landContextDisplay.weather.temperature}°C, आर्द्रता ${landContextDisplay.weather.humidity}%`;
+      if (landContextDisplay.weather.rainExpected) factsSection += ' 🌧️ पाऊस शक्य';
+      factsSection += '\n';
+    }
+    
+    // 🔍 WHY (का)
+    if (advisory.causes.length > 0) {
+      whySection = `\n🔍 **का (समस्या आढळल्या):**\n`;
+      whySection += advisory.causes.slice(0, 3).map(c => `⚠️ ${formatCause(c, language)}`).join('\n') + '\n';
+    }
+    
+    // ✅ WHAT TO DO (काय करावे)
+    whatSection = `\n✅ **काय करावे:**\n`;
+    if (primaryActions.length > 0) {
+      whatSection += primaryActions.map(a => `• ${a.action}${a.timing ? ` (${a.timing})` : ''}`).join('\n');
+    } else {
+      whatSection += t.noActionNeeded;
+    }
+    whatSection += `\n\n📊 विश्वासार्हता: ${Math.round(advisory.confidence * 100)}% | 📚 ICAR + FAO`;
+    
   } else {
-    farmerMessage = `Advice for your ${area ? area + ' ' : ''}${cropName}:\n\n`;
-    if (primaryActions.length > 0) {
-      farmerMessage += primaryActions.map(a => `• ${a.action}`).join('\n');
-    } else {
-      farmerMessage += t.noActionNeeded;
+    // 📊 FACTS
+    factsSection = `📊 **FACTS (Your Land Data):**\n`;
+    factsSection += `🌾 Crop: ${cropName}${area ? ` | Area: ${area}` : ''}\n`;
+    if (landContextDisplay?.growthStage) factsSection += `📅 Stage: ${landContextDisplay.growthStage}${landContextDisplay.daysAfterSowing ? ` (Day ${landContextDisplay.daysAfterSowing})` : ''}\n`;
+    if (landContextDisplay?.soilStatus) {
+      factsSection += `🌍 Soil: N=${landContextDisplay.soilStatus.nitrogen}, P=${landContextDisplay.soilStatus.phosphorus}, K=${landContextDisplay.soilStatus.potassium}`;
+      if (landContextDisplay.soilStatus.ph) factsSection += `, pH=${landContextDisplay.soilStatus.ph}`;
+      factsSection += '\n';
     }
-    farmerMessage += `\n\nConfidence: ${Math.round(advisory.confidence * 100)}%\nSource: ICAR + FAO guidelines`;
+    if (landContextDisplay?.ndviValue !== undefined) {
+      factsSection += `🛰️ NDVI: ${(landContextDisplay.ndviValue * 100).toFixed(0)}% (${landContextDisplay.ndviState || 'Check'})`;
+      if (landContextDisplay.ndviTrend) factsSection += ` ${landContextDisplay.ndviTrend === 'IMPROVING' ? '📈' : landContextDisplay.ndviTrend === 'DECLINING' ? '📉' : '➡️'}`;
+      factsSection += '\n';
+    }
+    if (landContextDisplay?.weather) {
+      factsSection += `🌤️ Weather: ${landContextDisplay.weather.temperature}°C, Humidity ${landContextDisplay.weather.humidity}%`;
+      if (landContextDisplay.weather.rainExpected) factsSection += ' 🌧️ Rain expected';
+      factsSection += '\n';
+    }
+    
+    // 🔍 WHY
+    if (advisory.causes.length > 0) {
+      whySection = `\n🔍 **WHY (Issues Detected):**\n`;
+      whySection += advisory.causes.slice(0, 3).map(c => `⚠️ ${formatCause(c, language)}`).join('\n') + '\n';
+    }
+    
+    // ✅ WHAT TO DO
+    whatSection = `\n✅ **WHAT TO DO:**\n`;
+    if (primaryActions.length > 0) {
+      whatSection += primaryActions.map(a => `• ${a.action}${a.timing ? ` (${a.timing})` : ''}`).join('\n');
+    } else {
+      whatSection += t.noActionNeeded;
+    }
+    whatSection += `\n\n📊 Confidence: ${Math.round(advisory.confidence * 100)}% | 📚 ICAR + FAO`;
   }
+  
+  const farmerMessage = factsSection + whySection + whatSection + `\n\n---\n🧠 *${t.source}*`;
   
   // ═══════════════════════════════════════════════════════════════════════════
   // BUILD DECISION BRAIN RESPONSE
@@ -1404,32 +1504,82 @@ function formatNoActionResponse(
   
   const intentLabel = intentLabels[intentResult.intent]?.[language] || intentLabels[intentResult.intent]?.en || 'advice';
   const cropName = landContext?.crop_name || landContext?.current_crop || 'crop';
+  const areaAcres = landContext?.area_acres || (landContext?.area_hectares ? landContext.area_hectares * 2.47105 : undefined);
+  const areaGuntas = areaAcres ? Math.round(areaAcres * 40) : undefined;
+  const area = areaGuntas ? `${areaGuntas} गुंठा` : '';
   
-  // Build message based on language
+  // Build message based on language - FACTS → WHY → WHAT format
   let farmerMessage: string;
   let noActionMessage: string;
   
   if (language === 'hi') {
     noActionMessage = filteredResult.noActionReason || `${intentLabel} की अभी जरूरत नहीं है।`;
-    farmerMessage = `🌾 **आपके ${cropName} के लिए:**\n\n` +
-      `✅ ${noActionMessage}\n\n` +
-      `📋 ${filteredResult.noActionExplanation || 'फसल की स्थिति अच्छी है। नियमित निगरानी जारी रखें।'}\n\n` +
-      `---\n` +
-      `🧠 *निर्णय मस्तिष्क (0 AI टोकन, तुरंत)*`;
+    
+    // 📊 FACTS
+    let factsSection = `📊 **तथ्य (आपकी जमीन का डेटा):**\n`;
+    factsSection += `🌾 फसल: ${cropName}${area ? ` | क्षेत्र: ${area}` : ''}\n`;
+    if (landContext?.ndvi_data?.value !== undefined) {
+      const ndviState = landContext.ndvi_data.value > 0.6 ? 'स्वस्थ' : landContext.ndvi_data.value > 0.4 ? 'ठीक' : 'ध्यान दें';
+      factsSection += `🛰️ NDVI: ${(landContext.ndvi_data.value * 100).toFixed(0)}% (${ndviState})\n`;
+    }
+    if (landContext?.weather_data) {
+      factsSection += `🌤️ मौसम: ${landContext.weather_data.temperature || 28}°C\n`;
+    }
+    
+    // 🔍 WHY
+    const whySection = `\n🔍 **क्यों:**\n✅ ${noActionMessage}\n`;
+    
+    // ✅ WHAT TO DO
+    const whatSection = `\n✅ **क्या करें:**\n📋 ${filteredResult.noActionExplanation || 'नियमित निगरानी जारी रखें।'}\n`;
+    
+    farmerMessage = factsSection + whySection + whatSection + 
+      `\n📊 विश्वसनीयता: ${Math.round(fullAdvisory.confidence * 100)}%\n---\n🧠 *निर्णय मस्तिष्क (0 AI टोकन, तुरंत)*`;
+      
   } else if (language === 'mr') {
     noActionMessage = filteredResult.noActionReason || `${intentLabel} ची आत्ता गरज नाही।`;
-    farmerMessage = `🌾 **तुमच्या ${cropName} साठी:**\n\n` +
-      `✅ ${noActionMessage}\n\n` +
-      `📋 ${filteredResult.noActionExplanation || 'पिकाची स्थिती चांगली आहे। नियमित निरीक्षण सुरू ठेवा.'}\n\n` +
-      `---\n` +
-      `🧠 *निर्णय मेंदू (0 AI टोकन, त्वरित)*`;
+    
+    // 📊 FACTS
+    let factsSection = `📊 **तथ्ये (तुमच्या जमिनीचा डेटा):**\n`;
+    factsSection += `🌾 पीक: ${cropName}${area ? ` | क्षेत्र: ${area}` : ''}\n`;
+    if (landContext?.ndvi_data?.value !== undefined) {
+      const ndviState = landContext.ndvi_data.value > 0.6 ? 'निरोगी' : landContext.ndvi_data.value > 0.4 ? 'ठीक' : 'लक्ष द्या';
+      factsSection += `🛰️ NDVI: ${(landContext.ndvi_data.value * 100).toFixed(0)}% (${ndviState})\n`;
+    }
+    if (landContext?.weather_data) {
+      factsSection += `🌤️ हवामान: ${landContext.weather_data.temperature || 28}°C\n`;
+    }
+    
+    // 🔍 WHY
+    const whySection = `\n🔍 **का:**\n✅ ${noActionMessage}\n`;
+    
+    // ✅ WHAT TO DO
+    const whatSection = `\n✅ **काय करावे:**\n📋 ${filteredResult.noActionExplanation || 'नियमित निरीक्षण सुरू ठेवा.'}\n`;
+    
+    farmerMessage = factsSection + whySection + whatSection + 
+      `\n📊 विश्वासार्हता: ${Math.round(fullAdvisory.confidence * 100)}%\n---\n🧠 *निर्णय मेंदू (0 AI टोकन, त्वरित)*`;
+      
   } else {
     noActionMessage = filteredResult.noActionReason || `No ${intentLabel} action required at this time.`;
-    farmerMessage = `🌾 **For your ${cropName}:**\n\n` +
-      `✅ ${noActionMessage}\n\n` +
-      `📋 ${filteredResult.noActionExplanation || 'Crop condition is good. Continue regular monitoring.'}\n\n` +
-      `---\n` +
-      `🧠 *Decision Brain (0 AI tokens, instant)*`;
+    
+    // 📊 FACTS
+    let factsSection = `📊 **FACTS (Your Land Data):**\n`;
+    factsSection += `🌾 Crop: ${cropName}${area ? ` | Area: ${area}` : ''}\n`;
+    if (landContext?.ndvi_data?.value !== undefined) {
+      const ndviState = landContext.ndvi_data.value > 0.6 ? 'Healthy' : landContext.ndvi_data.value > 0.4 ? 'OK' : 'Attention needed';
+      factsSection += `🛰️ NDVI: ${(landContext.ndvi_data.value * 100).toFixed(0)}% (${ndviState})\n`;
+    }
+    if (landContext?.weather_data) {
+      factsSection += `🌤️ Weather: ${landContext.weather_data.temperature || 28}°C\n`;
+    }
+    
+    // 🔍 WHY
+    const whySection = `\n🔍 **WHY:**\n✅ ${noActionMessage}\n`;
+    
+    // ✅ WHAT TO DO
+    const whatSection = `\n✅ **WHAT TO DO:**\n📋 ${filteredResult.noActionExplanation || 'Continue regular monitoring.'}\n`;
+    
+    farmerMessage = factsSection + whySection + whatSection + 
+      `\n📊 Confidence: ${Math.round(fullAdvisory.confidence * 100)}%\n---\n🧠 *Decision Brain (0 AI tokens, instant)*`;
   }
   
   // Build structured response with "no action" card
