@@ -1659,29 +1659,51 @@ export async function tryDecisionBrainWithAIRefinement(
   console.log(`🤖 [Hybrid] Enhancing symbolic brain output with AI for farmer-friendly language...`);
   
   try {
-    // ✅ STEP 4: Build hybrid enhancement prompt with FULL symbolic context
+    // ✅ STEP 4: Validate advisory exists before building prompt
+    if (!brainResult.response.advisory) {
+      console.warn(`⚠️ [Hybrid] No advisory in brain result - skipping AI enhancement`);
+      return { ...brainResult, source: 'symbolic_only' };
+    }
+    
+    // ✅ STEP 5: Build hybrid enhancement prompt with FULL symbolic context
     const enhancementPrompt = buildHybridEnhancementPrompt(
-      brainResult.response.advisory!,
+      brainResult.response.advisory,
       query,
       language
     );
     
+    // ✅ STEP 6: Validate prompt is not empty
+    if (!enhancementPrompt || enhancementPrompt.length < 10) {
+      console.warn(`⚠️ [Hybrid] Invalid enhancement prompt - skipping AI enhancement`);
+      return { ...brainResult, source: 'symbolic_only' };
+    }
+    
+    // ✅ FIX: Build request body separately to avoid serialization issues
+    const requestBody = {
+      messages: [{ role: 'user', content: enhancementPrompt }],
+      language,
+      metadata: {
+        farmerId,
+        tenantId,
+        mode: 'hybrid_enhancement',
+        // ✅ FIX: Simplified context to avoid large payload issues
+        symbolicContext: {
+          risk_level: brainResult.response.advisory?.risk_level,
+          causes: brainResult.response.advisory?.causes?.map(c => c.toString()) || [],
+          action_count: brainResult.response.advisory?.actions?.length || 0
+        },
+        maxTokens: 300
+      }
+    };
+    
+    console.log(`🤖 [Hybrid] Sending AI enhancement request:`, {
+      promptLength: enhancementPrompt.length,
+      hasMessages: requestBody.messages.length > 0
+    });
+    
     // Call AI for enhancement (NOT replacement)
     const { data: aiData, error: aiError } = await supabaseClient.functions.invoke('ai-agriculture-chat', {
-      body: {
-        messages: [{ role: 'user', content: enhancementPrompt }],
-        language,
-        metadata: {
-          farmerId,
-          tenantId,
-          mode: 'hybrid_enhancement', // ✅ NEW: Hybrid mode marker
-          symbolicContext: {
-            advisory: brainResult.response.advisory,
-            decisionBrainResponse: brainResult.response.decisionBrainResponse
-          },
-          maxTokens: 300
-        }
-      },
+      body: requestBody,
       headers: {
         'x-tenant-id': tenantId,
         'x-farmer-id': farmerId,

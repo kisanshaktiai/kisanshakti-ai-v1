@@ -806,6 +806,19 @@ serve(async (req) => {
     if (metadata?.mode === 'hybrid_enhancement') {
       console.log('🤖+🧠 [Hybrid Mode] AI enhancement for Decision Brain output');
       
+      // ✅ FIX: Validate messages array is not empty
+      if (!messages || messages.length === 0) {
+        console.error('❌ [Hybrid Mode] No messages provided for enhancement');
+        return new Response(
+          JSON.stringify({ 
+            error: 'No messages for enhancement',
+            details: 'Hybrid enhancement mode requires at least one message',
+            timestamp: new Date().toISOString()
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        );
+      }
+      
       const symbolicContext = metadata.symbolicContext;
       const maxTokens = metadata.maxTokens || 300;
       
