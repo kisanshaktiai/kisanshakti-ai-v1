@@ -19,10 +19,16 @@ import {
   CropGroup
 } from './types';
 
-// Import crop group rules (will be created in Phase 2)
-// import { CEREALS_RULES } from './crop-group-rules/cereals';
-// import { PULSES_RULES } from './crop-group-rules/pulses';
-// etc.
+// Import crop group rules
+import { CEREALS_RULES } from './crop-group-rules/cereals';
+import { PULSES_RULES } from './crop-group-rules/pulses';
+import { OILSEEDS_RULES } from './crop-group-rules/oilseeds';
+import { FIBER_RULES } from './crop-group-rules/fiber';
+import SUGARCANE_RULES from './crop-group-rules/sugarcane';
+import { VEGETABLES_RULES } from './crop-group-rules/vegetables';
+import { FRUITS_RULES } from './crop-group-rules/fruits';
+import { SPICES_RULES } from './crop-group-rules/spices';
+import { FODDER_RULES } from './crop-group-rules/fodder';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GLOBAL FALLBACK RULES - Apply to all crops
@@ -537,18 +543,18 @@ export const GLOBAL_RULES: CauseRule[] = [
 
 /**
  * Crop group to rules mapping
- * This will be populated with imported rules from crop-group-rules/*.ts
+ * Populated with imported rules from crop-group-rules/*.ts
  */
 const CROP_GROUP_RULES: Record<CropGroup, CauseRule[]> = {
-  [CropGroup.CEREALS]: [],    // Will be imported from cereals.ts
-  [CropGroup.PULSES]: [],     // Will be imported from pulses.ts
-  [CropGroup.OILSEEDS]: [],   // Will be imported from oilseeds.ts
-  [CropGroup.FIBER]: [],      // Will be imported from fiber.ts
-  [CropGroup.SUGARCANE]: [],  // Will be imported from sugarcane.ts
-  [CropGroup.VEGETABLES]: [], // Will be imported from vegetables.ts
-  [CropGroup.FRUITS]: [],     // Will be imported from fruits.ts
-  [CropGroup.SPICES]: [],     // Will be imported from spices.ts
-  [CropGroup.FODDER]: []      // Will be imported from fodder.ts
+  [CropGroup.CEREALS]: CEREALS_RULES,
+  [CropGroup.PULSES]: PULSES_RULES,
+  [CropGroup.OILSEEDS]: OILSEEDS_RULES,
+  [CropGroup.FIBER]: FIBER_RULES,
+  [CropGroup.SUGARCANE]: SUGARCANE_RULES,
+  [CropGroup.VEGETABLES]: VEGETABLES_RULES,
+  [CropGroup.FRUITS]: FRUITS_RULES,
+  [CropGroup.SPICES]: SPICES_RULES,
+  [CropGroup.FODDER]: FODDER_RULES
 };
 
 /**
