@@ -213,10 +213,7 @@ export class SyncManager {
           await this.cache.cacheRulesForCropGroup(group, []);
           console.log(`[SyncManager] Marked ${group} as cached`);
         } catch (error) {
-        } catch (error) {
           const msg = `Failed to cache ${group}: ${error instanceof Error ? error.message : 'Unknown'}`;
-          errors.push(msg);
-          console.error(`[SyncManager] ${msg}`);
           errors.push(msg);
           console.error(`[SyncManager] ${msg}`);
         }

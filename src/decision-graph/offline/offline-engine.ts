@@ -154,7 +154,7 @@ export class OfflineDecisionEngine {
         action: Action.MONITOR_CLOSELY,
         priority: 5,
         reason: Cause.COMPOUND_STRESS,
-        urgency: ActionUrgency.WITHIN_3_DAYS,
+        urgency: ActionUrgency.WITHIN_3DAYS,
         justification_key: 'system_offline_monitoring',
         rule_id: 'OFFLINE_DEGRADED',
         scientific_source: 'System'
