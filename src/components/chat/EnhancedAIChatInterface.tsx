@@ -21,6 +21,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { landsApi } from '@/services/landsApi';
 import { localDB } from '@/services/localDB';
+import { tryDecisionBrain, LandContext as DecisionLandContext } from '@/services/decisionBrainChatService';
 import { LandContextCard } from './LandContextCard';
 import { GeneralChatWelcomeCard } from './GeneralChatWelcomeCard';
 import { ResponseSectionCard } from './ResponseSectionCard';
@@ -1128,23 +1129,74 @@ export function EnhancedAIChatInterface() {
       // ✅ Session already created by getCurrentSessionId() - no need to duplicate
       console.log('♻️ Using session for message:', sessionId);
       
-      // ✅ Let edge function handle ALL message saves (prevents duplicates)
+      // ═══════════════════════════════════════════════════════════════════════
+      // 🧠 DECISION BRAIN FIRST - Try deterministic engine before AI
+      // ═══════════════════════════════════════════════════════════════════════
+      const landContextForBrain: DecisionLandContext | null = land ? {
+        id: land.id,
+        name: land.name,
+        crop_name: land.crop_name,
+        crop_code: land.crop_code || land.crop_name?.toLowerCase(),
+        area_hectares: land.area_hectares,
+        farming_mode: land.farming_mode,
+        irrigation_type: land.irrigation_type,
+        sowing_date: land.sowing_date,
+        soil_data: land.soil_data,
+        ndvi_data: land.ndvi_data,
+        weather_data: land.weather_data,
+        location: land.location
+      } : null;
       
-      // 🤖 Call Land-Specific AI Agent
-      // Each land has its own AI agent that:
-      // 1. Uses land-specific context (crop, soil, area, NDVI)
-      // 2. Generates quick replies based on land data
-      // 3. Stores conversation data for training the land's model
+      const brainResult = tryDecisionBrain(finalMessage, landContextForBrain, language, farmerId, tenantId);
+      
+      if (brainResult.handled && brainResult.response) {
+        // 🧠 Decision Brain answered! (0 AI tokens, <100ms)
+        console.log(`🧠 [Decision Brain] Answered in ${brainResult.response.executionTimeMs}ms - 0 AI tokens used`);
+        
+        const aiMessageId = crypto.randomUUID();
+        const aiMessage: Message = {
+          id: aiMessageId,
+          role: 'assistant',
+          content: brainResult.response.response,
+          timestamp: new Date(),
+          structured: parseStructuredResponse(brainResult.response.response),
+          structuredResponse: brainResult.response.structuredResponse,
+          analytics: {
+            responseTime: brainResult.response.executionTimeMs,
+            tokensUsed: { prompt: 0, completion: 0, total: 0 },
+            queryComplexity: 'decision_brain'
+          }
+        };
+        
+        setMessages(prev => ({
+          ...prev,
+          [activeTab]: [...(prev[activeTab] || []), aiMessage]
+        }));
+        
+        // Generate follow-up questions based on advisory
+        if (brainResult.response.advisory?.actions?.length) {
+          const followUps = brainResult.response.advisory.actions.slice(0, 3).map(a => 
+            language === 'hi' ? `${a.action.replace(/_/g, ' ')} के बारे में बताएं` :
+            language === 'mr' ? `${a.action.replace(/_/g, ' ')} बद्दल सांगा` :
+            `Tell me more about ${a.action.replace(/_/g, ' ').toLowerCase()}`
+          );
+          setDynamicQuickReplies(prev => ({ ...prev, [activeTab]: followUps }));
+        }
+        
+        setIsLoading(false);
+        setLoadingMessage('');
+        return; // Exit early - no AI needed!
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // 🤖 AI FALLBACK - Decision Brain couldn't answer, use AI
+      // ═══════════════════════════════════════════════════════════════════════
+      console.log(`🤖 [AI Fallback] Reason: ${brainResult.reason || 'unknown'}`);
       console.log(`🌾 Invoking AI Agent for Land: ${land?.name || 'General Chat'}`);
-      console.log(`📊 Session ID: ${sessionId}`);
-      console.log(`🗂️ Training data collected per land in: ai_chat_messages table`);
-      
-      console.log('🤖 Sending AI request with language:', language);
       
       // Get session token from localStorage
       const sessionToken = localStorage.getItem('app_session_token') || '';
       
-      // CRITICAL: Pass tenant and farmer IDs as headers (required by edge function)
       // ✅ Send conversation history (last 8 messages) for context
       const conversationHistory = (messages[activeTab] || []).slice(-8).map(m => ({ 
         role: m.role, 
@@ -1156,12 +1208,14 @@ export function EnhancedAIChatInterface() {
           messages: [...conversationHistory, { role: 'user', content: finalMessage }],
           sessionId,
           landId,
-          language: language, // Pass user's selected language
+          language: language,
           metadata: {
             tenantId,
             farmerId,
             language: language,
-            landContext: land
+            landContext: land,
+            decisionBrainFallback: true,
+            fallbackReason: brainResult.reason
           }
         },
         headers: {
