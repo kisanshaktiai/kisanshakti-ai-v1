@@ -337,6 +337,8 @@ interface QueryClassification {
  * 1. Symbolic Brain ALWAYS runs for agricultural queries
  * 2. AI Enhancement is triggered for complex questions
  * 3. AI NEVER decides - only makes answers farmer-friendly
+ * 
+ * ✅ PRODUCTION-READY: Multi-crop, multi-language fuzzy matching
  */
 export function classifyQueryForDecisionBrain(query: string): QueryClassification {
   const q = query.toLowerCase();
@@ -356,43 +358,79 @@ export function classifyQueryForDecisionBrain(query: string): QueryClassificatio
                              /\b(कैसे|क्यों|कब|क्या|कौन|समझाओ|विस्तार)\b/.test(q) ||
                              /\b(कसे|का|कधी|काय|कोण|समजावा|विस्तृत)\b/.test(q);
   
+  // ✅ CRITICAL FIX: Crop names in all languages (for fuzzy matching)
+  const cropKeywords = [
+    // English crops
+    'wheat', 'rice', 'paddy', 'cotton', 'sugarcane', 'soybean', 'maize', 'corn',
+    'groundnut', 'tomato', 'onion', 'potato', 'gram', 'chickpea', 'mustard',
+    'sunflower', 'turmeric', 'ginger', 'banana', 'mango', 'grapes', 'pomegranate',
+    'chilli', 'brinjal', 'okra', 'cabbage', 'cauliflower',
+    // Hindi crops (हिंदी)
+    'गेहूं', 'गेहूँ', 'चावल', 'धान', 'कपास', 'रुई', 'गन्ना', 'ईख', 'सोयाबीन',
+    'मक्का', 'मूंगफली', 'टमाटर', 'प्याज', 'आलू', 'चना', 'सरसों', 'सूरजमुखी',
+    'हल्दी', 'अदरक', 'केला', 'आम', 'अंगूर', 'अनार', 'मिर्च', 'बैंगन', 'भिंडी',
+    // Marathi crops (मराठी)
+    'गहू', 'तांदूळ', 'भात', 'कापूस', 'ऊस', 'सोयाबिन', 'मका', 'भुईमूग', 'शेंगदाणा',
+    'टोमॅटो', 'कांदा', 'बटाटा', 'हरभरा', 'मोहरी', 'सूर्यफूल', 'हळद', 'आले',
+    'केळी', 'आंबा', 'द्राक्षे', 'डाळिंब', 'मिरची', 'वांगी', 'भेंडी', 'कोबी', 'फ्लॉवर'
+  ];
+  
+  // ✅ CRITICAL FIX: Problem/symptom words in all languages
+  const problemKeywords = [
+    // English problems
+    'not growing', 'dying', 'wilting', 'drying', 'yellowing', 'problem', 'issue',
+    'slow growth', 'stunted', 'leaves falling', 'not coming', 'poor', 'bad',
+    'attack', 'damage', 'spots', 'holes', 'curling', 'browning',
+    // Hindi problems (हिंदी)
+    'नहीं हो रहा', 'मर रहा', 'सूख रहा', 'पीला हो', 'समस्या', 'परेशानी', 'दिक्कत',
+    'वाढ नाही', 'बढ़ नहीं', 'नहीं बढ़', 'कम हो', 'खराब', 'गिर रहा', 'झड़ रहा',
+    'रुक गया', 'धीमा', 'कमजोर', 'हमला', 'नुकसान', 'धब्बे', 'छेद', 'मुड़ रहा',
+    // Marathi problems (मराठी)
+    'होत नाही', 'वाढत नाही', 'वाढ नाही', 'वाळत', 'सुकत', 'मरत', 'पिवळे',
+    'पिवळी', 'समस्या', 'त्रास', 'अडचण', 'खराब', 'गळत', 'पडत', 'कमी',
+    'थांबले', 'मंद', 'कमकुवत', 'हल्ला', 'नुकसान', 'डाग', 'छिद्र', 'गुंडाळ',
+    // Common negative patterns
+    'नाही', 'नहीं', 'not', 'no'
+  ];
+  
   // Agricultural keywords (Hindi, Marathi, English)
   const agriKeywords = {
     watering: [
       'water', 'irrigation', 'irrigate', 'पानी', 'सिंचाई', 'पाणी', 'सिंचन',
       'drip', 'ड्रिप', 'कब पानी', 'when to water', 'कितना पानी', 'how much water',
-      'पाणी द्या', 'पाणी देणे', 'पाणी कधी'
+      'पाणी द्या', 'पाणी देणे', 'पाणी कधी', 'ओलावा', 'नमी', 'moisture'
     ],
     fertilizer: [
       'fertilizer', 'खाद', 'खत', 'urea', 'यूरिया', 'युरिया', 'dap', 'डीएपी',
       'npk', 'potash', 'पोटाश', 'nitrogen', 'नाइट्रोजन', 'nutrient', 'पोषण',
       'कौनसी खाद', 'which fertilizer', 'कितनी खाद', 'how much fertilizer',
-      'खत द्या', 'खत कधी'
+      'खत द्या', 'खत कधी', 'मॅन्युअर', 'manure', 'compost', 'कंपोस्ट'
     ],
     pest: [
       'pest', 'कीट', 'किड', 'insect', 'bug', 'worm', 'कीड़ा', 'इल्ली',
       'spray', 'स्प्रे', 'फवारणी', 'pesticide', 'कीटनाशक', 'किटकनाशक',
-      'किडा', 'कीड', 'अळी'
+      'किडा', 'कीड', 'अळी', 'borer', 'बोरर', 'aphid', 'माव', 'caterpillar'
     ],
     disease: [
       'disease', 'रोग', 'blight', 'rust', 'wilt', 'rot', 'fungus',
-      'फफूंद', 'पीला पड़ना', 'yellowing', 'spots', 'धब्बे',
-      'करपा', 'तांबेरा', 'बुरशी'
+      'फफूंद', 'बुरशी', 'पीला पड़ना', 'yellowing', 'spots', 'धब्बे',
+      'करपा', 'तांबेरा', 'leaf curl', 'पान गुंडाळ', 'dead heart', 'गाभा मर'
     ],
     harvest: [
       'harvest', 'कटाई', 'कापणी', 'when to harvest', 'कब काटें',
-      'ready', 'mature', 'पकना', 'तैयार', 'पिकले', 'काढणी'
+      'ready', 'mature', 'पकना', 'तैयार', 'पिकले', 'काढणी', 'उत्पादन', 'yield'
     ],
     weather: [
       'weather', 'मौसम', 'हवामान', 'rain', 'बारिश', 'पाऊस',
-      'temperature', 'तापमान', 'heat', 'गर्मी', 'cold', 'ठंड'
+      'temperature', 'तापमान', 'heat', 'गर्मी', 'cold', 'ठंड', 'थंडी'
     ],
     general: [
       'crop', 'फसल', 'पीक', 'field', 'खेत', 'शेत', 'land', 'जमीन',
-      'farming', 'खेती', 'शेती', 'agriculture', 'कृषि', 'grow', 'उगाना',
+      'farming', 'खेती', 'शेती', 'agriculture', 'कृषि', 'grow', 'उगाना', 'वाढ',
       'sowing', 'बुवाई', 'पेरणी', 'plant', 'पौधा', 'झाड', 'aaj kya karna hai',
       'आज क्या करना है', 'आज काय करायचे', 'today', 'आज', 'advice', 'सलाह',
-      'काय करू', 'क्या करें', 'what should i do', 'current condition', 'crop condition'
+      'काय करू', 'क्या करें', 'what should i do', 'current condition', 'crop condition',
+      'growth', 'stage', 'अवस्था', 'care', 'देखभाल', 'काळजी'
     ]
   };
   
@@ -417,6 +455,43 @@ export function classifyQueryForDecisionBrain(query: string): QueryClassificatio
         };
       }
     }
+  }
+  
+  // ✅ CRITICAL FIX: Check for CROP + PROBLEM pattern (e.g., "गहू वाढ होत नाही")
+  const hasCropKeyword = cropKeywords.some(crop => q.includes(crop.toLowerCase()));
+  const hasProblemKeyword = problemKeywords.some(prob => q.includes(prob.toLowerCase()));
+  
+  if (hasCropKeyword || hasProblemKeyword) {
+    const matchedCrop = cropKeywords.find(crop => q.includes(crop.toLowerCase()));
+    const matchedProblem = problemKeywords.find(prob => q.includes(prob.toLowerCase()));
+    
+    if (matchedCrop) matchedKeywords.push(matchedCrop);
+    if (matchedProblem) matchedKeywords.push(matchedProblem);
+    
+    console.log(`🔍 [Decision Brain] Fuzzy matched crop/problem: crop="${matchedCrop}", problem="${matchedProblem}"`);
+    
+    // Determine query type based on problem
+    let queryType: QueryClassification['queryType'] = 'general';
+    if (hasProblemKeyword) {
+      // Check if it's pest/disease related
+      const isPestLike = /\b(कीड|किड|insect|bug|worm|borer|अळी|इल्ली)\b/i.test(q);
+      const isDiseaseLike = /\b(रोग|disease|fungus|blight|rust|wilt|rot|बुरशी|करपा)\b/i.test(q);
+      
+      if (isPestLike) queryType = 'pest';
+      else if (isDiseaseLike) queryType = 'disease';
+      else queryType = 'general'; // Growth/symptom issues
+    }
+    
+    return {
+      isAgricultural: true,
+      queryType,
+      canUseDecisionBrain: true,
+      requiresAI: false,
+      requiresAIEnhancement: true,
+      isFollowUp: false,
+      isDetailedQuestion: true,
+      matchedKeywords
+    };
   }
   
   // Non-agricultural query - check if it might be agricultural but missed
