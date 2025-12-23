@@ -1836,6 +1836,7 @@ export type Database = {
           metadata: Json | null
           min_supported_version: string | null
           release_notes: string | null
+          update_policy: string | null
           version: string
         }
         Insert: {
@@ -1853,6 +1854,7 @@ export type Database = {
           metadata?: Json | null
           min_supported_version?: string | null
           release_notes?: string | null
+          update_policy?: string | null
           version: string
         }
         Update: {
@@ -1870,6 +1872,7 @@ export type Database = {
           metadata?: Json | null
           min_supported_version?: string | null
           release_notes?: string | null
+          update_policy?: string | null
           version?: string
         }
         Relationships: []

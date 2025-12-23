@@ -41,13 +41,29 @@ const CONFIDENCE_WEIGHTS = {
  * @returns Overall confidence (0-1)
  */
 export function calculateOverallConfidence(dataConfidence: DataConfidence): number {
+  // Count how many data sources are available (non-zero)
+  const availableSources = [
+    dataConfidence.soil > 0,
+    dataConfidence.ndvi > 0,
+    dataConfidence.weather > 0
+  ].filter(Boolean).length;
+  
+  // If we have sowing date + crop info (always available), that's minimum 40% confidence
+  // Each data source adds confidence on top of that
+  const MINIMUM_BASE_CONFIDENCE = 0.40; // We know crop + sowing date + DAS
+  
+  // Calculate weighted contribution from available data
   const weighted = 
     dataConfidence.soil * CONFIDENCE_WEIGHTS.soil +
     dataConfidence.ndvi * CONFIDENCE_WEIGHTS.ndvi +
     dataConfidence.weather * CONFIDENCE_WEIGHTS.weather;
+  
+  // Floor: Even with no sensor data, rule-based advice from crop stage + DAS is ~40% reliable
+  // Max: With all data sources fresh, we get 40% base + 60% from data = 100%
+  const totalConfidence = MINIMUM_BASE_CONFIDENCE + (weighted * 0.6);
 
-  // Round to 2 decimal places
-  return Math.round(weighted * 100) / 100;
+  // Round to 2 decimal places, clamp to 0-1
+  return Math.min(1.0, Math.max(0.40, Math.round(totalConfidence * 100) / 100));
 }
 
 /**

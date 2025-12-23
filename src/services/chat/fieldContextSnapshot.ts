@@ -158,7 +158,8 @@ export function calculateDataCertainty(snapshot: FieldContextSnapshot): DataCert
 function calculateFreshness(
   source: 'soil' | 'ndvi' | 'weather',
   timestamp?: Date | string,
-  hasData: boolean = true
+  hasData: boolean = true,
+  language: string = 'en'
 ): DataFreshnessInfo {
   const now = new Date();
   let lastUpdated: Date | undefined;
@@ -175,21 +176,63 @@ function calculateFreshness(
   let ageDescription = '';
   let certaintyContribution: DataCertaintyLevel = 'HIGH';
   
+  // Localized text maps
+  const labels = {
+    en: {
+      noSoilData: 'No soil test data',
+      soilDaysOld: (d: number) => `Soil test ${d} days old`,
+      recentSoilTest: 'Recent soil test',
+      noNdviData: 'No NDVI data',
+      ndviDaysOld: (d: number) => `NDVI ${d} days old`,
+      ndviHoursOld: (h: number) => `NDVI ${h} hours ago`,
+      recentNdvi: 'Recent NDVI',
+      noWeatherData: 'No weather data',
+      weatherHoursOld: (h: number) => `Weather ${h} hours old`,
+      currentWeather: 'Current weather',
+    },
+    hi: {
+      noSoilData: 'मिट्टी परीक्षण डेटा नहीं',
+      soilDaysOld: (d: number) => `मिट्टी परीक्षण ${d} दिन पुराना`,
+      recentSoilTest: 'हाल का मिट्टी परीक्षण',
+      noNdviData: 'उपग्रह डेटा नहीं',
+      ndviDaysOld: (d: number) => `उपग्रह ${d} दिन पुराना`,
+      ndviHoursOld: (h: number) => `उपग्रह ${h} घंटे पहले`,
+      recentNdvi: 'हाल का उपग्रह डेटा',
+      noWeatherData: 'मौसम डेटा नहीं',
+      weatherHoursOld: (h: number) => `मौसम ${h} घंटे पुराना`,
+      currentWeather: 'वर्तमान मौसम',
+    },
+    mr: {
+      noSoilData: 'माती परीक्षण माहिती नाही',
+      soilDaysOld: (d: number) => `माती परीक्षण ${d} दिवस जुने`,
+      recentSoilTest: 'अलीकडील माती परीक्षण',
+      noNdviData: 'उपग्रह माहिती नाही',
+      ndviDaysOld: (d: number) => `उपग्रह ${d} दिवस जुने`,
+      ndviHoursOld: (h: number) => `उपग्रह ${h} तासांपूर्वी`,
+      recentNdvi: 'अलीकडील उपग्रह माहिती',
+      noWeatherData: 'हवामान माहिती नाही',
+      weatherHoursOld: (h: number) => `हवामान ${h} तास जुने`,
+      currentWeather: 'सध्याचे हवामान',
+    },
+  };
+  
+  const lang = labels[language as keyof typeof labels] || labels.en;
+  
   switch (source) {
     case 'soil':
       // Soil data is considered baseline, stale after 180 days
       isStale = !hasData || ageDays > 180;
       if (!hasData) {
-        ageDescription = 'No soil test data';
+        ageDescription = lang.noSoilData;
         certaintyContribution = 'LOW';
       } else if (ageDays > 180) {
-        ageDescription = `Soil test ${Math.round(ageDays)} days old`;
+        ageDescription = lang.soilDaysOld(Math.round(ageDays));
         certaintyContribution = 'MEDIUM';
       } else if (ageDays > 90) {
-        ageDescription = `Soil test ${Math.round(ageDays)} days ago`;
+        ageDescription = lang.soilDaysOld(Math.round(ageDays));
         certaintyContribution = 'MEDIUM';
       } else {
-        ageDescription = 'Recent soil test';
+        ageDescription = lang.recentSoilTest;
         certaintyContribution = 'HIGH';
       }
       break;
@@ -198,16 +241,16 @@ function calculateFreshness(
       // NDVI updates every 5 days, stale after 72 hours
       isStale = !hasData || ageHours > 72;
       if (!hasData) {
-        ageDescription = 'No NDVI data';
+        ageDescription = lang.noNdviData;
         certaintyContribution = 'LOW';
       } else if (ageHours > 72) {
-        ageDescription = `NDVI ${Math.round(ageHours / 24)} days old`;
+        ageDescription = lang.ndviDaysOld(Math.round(ageHours / 24));
         certaintyContribution = 'MEDIUM';
       } else if (ageHours > 24) {
-        ageDescription = `NDVI ${Math.round(ageHours)} hours ago`;
+        ageDescription = lang.ndviHoursOld(Math.round(ageHours));
         certaintyContribution = 'MEDIUM';
       } else {
-        ageDescription = 'Recent NDVI';
+        ageDescription = lang.recentNdvi;
         certaintyContribution = 'HIGH';
       }
       break;
@@ -216,16 +259,16 @@ function calculateFreshness(
       // Weather is most critical, stale after 6 hours
       isStale = !hasData || ageHours > 6;
       if (!hasData) {
-        ageDescription = 'No weather data';
+        ageDescription = lang.noWeatherData;
         certaintyContribution = 'LOW';
       } else if (ageHours > 6) {
-        ageDescription = `Weather ${Math.round(ageHours)} hours old`;
+        ageDescription = lang.weatherHoursOld(Math.round(ageHours));
         certaintyContribution = 'LOW'; // Weather staleness is critical
       } else if (ageHours > 2) {
-        ageDescription = `Weather ${Math.round(ageHours)} hours ago`;
+        ageDescription = lang.weatherHoursOld(Math.round(ageHours));
         certaintyContribution = 'MEDIUM';
       } else {
-        ageDescription = 'Current weather';
+        ageDescription = lang.currentWeather;
         certaintyContribution = 'HIGH';
       }
       break;
@@ -255,7 +298,8 @@ export function buildFieldContextSnapshot(
   cropStage: CropStage,
   daysAfterSowing: number,
   landId?: string,
-  landName?: string
+  landName?: string,
+  language: string = 'en'
 ): FieldContextSnapshot {
   const now = new Date();
   
@@ -273,23 +317,26 @@ export function buildFieldContextSnapshot(
   const areaAcres = areaHectares / 0.404686;
   const areaGunta = areaAcres * 40; // 1 acre = 40 gunta
   
-  // Calculate freshness for each data source
+  // Calculate freshness for each data source (with language for localized descriptions)
   const soilFreshness = calculateFreshness(
     'soil',
     landContext.soil_data?.test_date,
-    landContext.soil_data?.n !== undefined
+    landContext.soil_data?.n !== undefined,
+    language
   );
   
   const ndviFreshness = calculateFreshness(
     'ndvi',
     landContext.ndvi_data?.timestamp,
-    landContext.ndvi_data?.value !== undefined
+    landContext.ndvi_data?.value !== undefined,
+    language
   );
   
   const weatherFreshness = calculateFreshness(
     'weather',
     landContext.weather_data?.timestamp,
-    landContext.weather_data?.temperature !== undefined
+    landContext.weather_data?.temperature !== undefined,
+    language
   );
   
   // Calculate NDVI age in hours
