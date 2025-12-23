@@ -837,36 +837,69 @@ serve(async (req) => {
       const symbolicContext = metadata.symbolicContext;
       const maxTokens = metadata.maxTokens || 300;
       
-      // Call AI to refine the language only - NOT to change recommendations
-      const aiGatewayUrl = 'https://ai.gateway.lovable.dev/v1/chat/completions';
-      const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+      // PRODUCTION: Use Gemini API directly (no Lovable AI Gateway)
+      const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
+      const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
       
-      const enhancementResponse = await fetch(aiGatewayUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${lovableApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'google/gemini-2.5-flash',
-          messages: messages,
-          max_tokens: maxTokens,
-          temperature: 0.7
-        })
-      });
+      let aiResponse: Response;
       
-      if (!enhancementResponse.ok) {
-        console.error('❌ [Hybrid Mode] AI enhancement failed:', await enhancementResponse.text());
+      if (geminiApiKey && geminiApiKey.trim() !== '') {
+        // Use Gemini API directly
+        console.log('🤖 [Hybrid Mode] Using Gemini API for enhancement');
+        aiResponse = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${geminiApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gemini-2.5-flash',
+            messages: messages,
+            max_tokens: maxTokens,
+            temperature: 0.7
+          })
+        });
+      } else if (openaiApiKey && openaiApiKey.trim() !== '') {
+        // Fallback to OpenAI API
+        console.log('🤖 [Hybrid Mode] Using OpenAI API for enhancement');
+        aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openaiApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: messages,
+            max_tokens: maxTokens,
+            temperature: 0.7
+          })
+        });
+      } else {
+        console.error('❌ [Hybrid Mode] No AI API keys configured');
+        return new Response(
+          JSON.stringify({ 
+            error: 'No AI API keys configured',
+            response: symbolicContext?.advisory ? 'Decision Brain recommendations available but AI enhancement not configured.' : null
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+        );
+      }
+      
+      if (!aiResponse.ok) {
+        const errorText = await aiResponse.text();
+        console.error('❌ [Hybrid Mode] AI enhancement failed:', errorText);
         return new Response(
           JSON.stringify({ 
             error: 'AI enhancement failed',
+            details: errorText,
             response: symbolicContext?.advisory ? 'Decision Brain recommendations available but AI enhancement failed.' : null
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
-      const enhancementData = await enhancementResponse.json();
+      const enhancementData = await aiResponse.json();
       const refinedResponse = enhancementData.choices?.[0]?.message?.content || '';
       
       console.log('✅ [Hybrid Mode] AI enhancement successful - language refined');
