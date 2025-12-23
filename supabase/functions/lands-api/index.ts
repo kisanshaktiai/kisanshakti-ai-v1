@@ -381,6 +381,26 @@ serve(async (req) => {
         delete body.farmer_id;
         delete body.created_at;
 
+        // ✅ CRITICAL: Sanitize date fields - convert empty strings to null
+        const dateFields = [
+          'cultivation_date', 'planting_date', 'harvest_date', 
+          'last_harvest_date', 'last_sowing_date', 'expected_harvest_date',
+          'last_soil_test_date', 'last_ndvi_calculation', 'gps_recorded_at'
+        ];
+        
+        dateFields.forEach(field => {
+          if (body[field] === '' || body[field] === undefined) {
+            body[field] = null;
+          }
+        });
+
+        // Remove undefined values
+        Object.keys(body).forEach(key => {
+          if (body[key] === undefined) {
+            delete body[key];
+          }
+        });
+
         const updateData = {
           ...body,
           updated_at: new Date().toISOString()
