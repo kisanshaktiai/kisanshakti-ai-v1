@@ -142,10 +142,10 @@ const CAUSE_ELIMINATION_RULES: CauseEliminationRule[] = [
   {
     causePatterns: ['FROST', 'COLD_DAMAGE'],
     eliminateWhen: (fs) => {
-      const temp = fs.weather?.temperature;
+      const temp = fs.weatherConditions?.temperature;
       return temp !== undefined && temp > 10;
     },
-    reason: (fs) => `Temperature is ${fs.weather?.temperature}°C - no frost risk`,
+    reason: (fs) => `Temperature is ${fs.weatherConditions?.temperature}°C - no frost risk`,
     fieldDataUsed: 'weather_temperature'
   },
   
@@ -153,10 +153,10 @@ const CAUSE_ELIMINATION_RULES: CauseEliminationRule[] = [
   {
     causePatterns: ['HEAT_STRESS', 'HEAT_DAMAGE'],
     eliminateWhen: (fs) => {
-      const temp = fs.weather?.temperature;
+      const temp = fs.weatherConditions?.temperature;
       return temp !== undefined && temp < 35;
     },
-    reason: (fs) => `Temperature is ${fs.weather?.temperature}°C - no heat stress risk`,
+    reason: (fs) => `Temperature is ${fs.weatherConditions?.temperature}°C - no heat stress risk`,
     fieldDataUsed: 'weather_temperature'
   }
 ];

@@ -19,7 +19,8 @@
  * - decisionBrainChatService for final decision
  */
 
-import { PhotoRequest, DiagnosticDecision, PossibleCause } from './diagnosticModeController';
+import { PhotoRequest, DiagnosticDecision } from './diagnosticModeController';
+import { PossibleCause } from './symptomPatternRecognizer';
 import { Cause } from '@/decision-graph';
 
 // ═══════════════════════════════════════════════════════════════════════════
