@@ -154,73 +154,77 @@ export function LandContextSummaryCard({ context, language }: LandContextCardPro
     if (state.includes('STRESS') || state.includes('MODERATE')) return 'bg-warning/20 text-warning';
     return 'bg-destructive/20 text-destructive';
   };
+  
+  // Get localized area display
+  const getAreaDisplay = () => {
+    if (context.landAreaGunta) {
+      const unit = language === 'en' ? 'gunta' : 'गुंठा';
+      return `${context.landAreaGunta} ${unit}`;
+    }
+    if (context.landAreaAcre) {
+      const unit = language === 'en' ? 'acre' : language === 'hi' ? 'एकड़' : 'एकर';
+      return `${context.landAreaAcre.toFixed(2)} ${unit}`;
+    }
+    return context.landArea;
+  };
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-gradient-to-r from-primary/5 to-primary/10 rounded-lg p-3 border border-primary/20"
+      className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent rounded-xl p-3 border border-primary/20 overflow-hidden"
     >
-      <div className="flex items-center gap-2 mb-2">
-        <MapPin className="h-4 w-4 text-primary" />
-        <span className="font-semibold text-sm text-foreground">{labels.landContext}</span>
+      <div className="flex items-center gap-2 mb-3">
+        <div className="p-1.5 rounded-lg bg-primary/20 shrink-0">
+          <MapPin className="h-4 w-4 text-primary" />
+        </div>
+        <span className="font-semibold text-sm text-foreground truncate">{labels.landContext}</span>
       </div>
       
       <div className="grid grid-cols-2 gap-2 text-xs">
         {/* Crop Info */}
-        <div className="flex items-center gap-1.5">
-          <Wheat className="h-3 w-3 text-muted-foreground" />
-          <span className="text-muted-foreground">{labels.crop}:</span>
-          <span className="font-medium">{context.cropName}</span>
+        <div className="flex items-center gap-1.5 bg-background/50 rounded-lg px-2 py-1.5 min-w-0">
+          <Wheat className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+          <span className="font-medium truncate">{context.cropName}</span>
         </div>
         
         {/* Stage */}
-        <div className="flex items-center gap-1.5">
-          <Sprout className="h-3 w-3 text-muted-foreground" />
-          <span className="text-muted-foreground">{labels.stage}:</span>
-          <span className="font-medium">{context.growthStage}</span>
+        <div className="flex items-center gap-1.5 bg-background/50 rounded-lg px-2 py-1.5 min-w-0">
+          <Sprout className="h-3.5 w-3.5 text-green-600 shrink-0" />
+          <span className="font-medium truncate">{context.growthStage}</span>
         </div>
         
         {/* Area - Show in Gunta or Acre */}
         {(context.landAreaGunta || context.landAreaAcre || context.landArea) && (
-          <div className="flex items-center gap-1.5">
-            <MapPin className="h-3 w-3 text-muted-foreground" />
-            <span className="text-muted-foreground">{labels.area}:</span>
-            <span className="font-medium">
-              {context.landAreaGunta 
-                ? `${context.landAreaGunta} गुंठा` 
-                : context.landAreaAcre 
-                  ? `${context.landAreaAcre.toFixed(2)} एकर`
-                  : context.landArea}
-            </span>
+          <div className="flex items-center gap-1.5 bg-background/50 rounded-lg px-2 py-1.5 min-w-0">
+            <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className="truncate">{getAreaDisplay()}</span>
           </div>
         )}
         
         {/* NDVI Health */}
         {context.ndviState && (
-          <div className="flex items-center gap-1.5">
-            <Gauge className="h-3 w-3 text-muted-foreground" />
-            <span className="text-muted-foreground">{labels.ndvi}:</span>
-            <Badge variant="secondary" className={cn("text-xs py-0", getNdviColor(context.ndviState))}>
-              {context.ndviState.replace(/_/g, ' ')}
-              {context.ndviTrend === 'DECLINING' && <TrendingDown className="h-3 w-3 ml-1" />}
-              {context.ndviTrend === 'IMPROVING' && <TrendingUp className="h-3 w-3 ml-1" />}
+          <div className="flex items-center gap-1.5 bg-background/50 rounded-lg px-2 py-1.5 min-w-0">
+            <Gauge className="h-3.5 w-3.5 text-green-500 shrink-0" />
+            <Badge variant="secondary" className={cn("text-xs py-0 truncate", getNdviColor(context.ndviState))}>
+              {context.ndviValue ? `${Math.round(context.ndviValue * 100)}%` : context.ndviState.replace(/_/g, ' ')}
+              {context.ndviTrend === 'DECLINING' && <TrendingDown className="h-3 w-3 ml-1 shrink-0" />}
+              {context.ndviTrend === 'IMPROVING' && <TrendingUp className="h-3 w-3 ml-1 shrink-0" />}
             </Badge>
           </div>
         )}
         
         {/* Weather */}
         {context.weather && (
-          <div className="flex items-center gap-1.5 col-span-2">
-            <Thermometer className="h-3 w-3 text-muted-foreground" />
+          <div className="flex items-center gap-1.5 col-span-2 bg-background/50 rounded-lg px-2 py-1.5">
+            <Thermometer className="h-3.5 w-3.5 text-orange-500 shrink-0" />
             <span className="font-medium">{context.weather.temperature}°C</span>
-            <span className="text-muted-foreground">|</span>
+            <span className="text-muted-foreground">•</span>
             <span className="font-medium">{context.weather.humidity}%</span>
             {context.weather.rainExpected && (
               <>
-                <span className="text-muted-foreground">|</span>
-                <CloudRain className="h-3 w-3 text-info" />
-                <span className="text-info font-medium">Rain</span>
+                <span className="text-muted-foreground">•</span>
+                <CloudRain className="h-3.5 w-3.5 text-blue-500 shrink-0" />
               </>
             )}
           </div>
@@ -422,7 +426,7 @@ export function DecisionBrainCards({ response }: DecisionBrainCardsProps) {
   const labels = getLabels(response.language);
   
   return (
-    <div className="space-y-3 p-3">
+    <div className="w-full max-w-full overflow-hidden space-y-3 p-3">
       {/* Land Context */}
       {response.landContext && (
         <LandContextSummaryCard context={response.landContext} language={response.language} />
@@ -433,7 +437,7 @@ export function DecisionBrainCards({ response }: DecisionBrainCardsProps) {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="text-sm text-foreground leading-relaxed bg-card/50 rounded-lg p-3 border border-border/30"
+          className="text-sm text-foreground leading-relaxed bg-card/50 rounded-xl p-3 border border-border/30 break-words"
         >
           {response.farmerMessage}
         </motion.div>
