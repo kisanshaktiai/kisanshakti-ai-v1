@@ -253,8 +253,9 @@ interface CropStageDurations {
 }
 
 const CROP_STAGE_DURATIONS: Record<string, CropStageDurations> = {
-  // Sugarcane (long duration crop)
-  'sugarcane': { germination: 30, vegetative: 150, reproductive: 270, maturity: 330 },
+  // Sugarcane (long duration crop) - Germination ~21 days, then Tillering starts
+  // 21-90 days = Tillering (vegetative), 90-180 = Grand Growth, 180-270 = Maturation
+  'sugarcane': { germination: 21, vegetative: 120, reproductive: 240, maturity: 330 },
   
   // Cereals
   'wheat': { germination: 15, vegetative: 60, reproductive: 90, maturity: 120 },
@@ -1136,9 +1137,17 @@ export function formatAdvisoryForChat(
     confidenceExplanations.push(language === 'hi' ? 'सामान्य दिशानिर्देशों पर आधारित' : language === 'mr' ? 'सामान्य मार्गदर्शक तत्त्वांवर आधारित' : 'Based on general guidelines');
   }
   
+  // ✅ FIX: Ensure confidence is displayed as percentage (0-100) with minimum 40%
+  // advisory.confidence comes as 0-1 from the engine, convert to percentage
+  const rawConfidence = typeof advisory.confidence === 'number' ? advisory.confidence : 0;
+  // If confidence is already 0-100 (>1), use as-is; otherwise convert from 0-1
+  const confidenceAsPercent = rawConfidence > 1 ? rawConfidence : rawConfidence * 100;
+  // Ensure minimum 40% when we have crop + stage data
+  const finalConfidence = Math.max(40, Math.round(confidenceAsPercent));
+  
   const confidenceInfo: ConfidenceInfo = {
     riskLevel: advisory.risk_level as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
-    confidence: advisory.confidence,
+    confidence: finalConfidence, // ✅ Now always 0-100 with minimum 40%
     explanations: confidenceExplanations,
     rulesApplied: advisory.rules_applied.length
   };
@@ -1188,7 +1197,7 @@ export function formatAdvisoryForChat(
     } else {
       whatSection += t.noActionNeeded;
     }
-    whatSection += `\n\n📊 विश्वसनीयता: ${Math.round(advisory.confidence * 100)}% | 📚 ICAR + FAO`;
+    whatSection += `\n\n📊 विश्वसनीयता: ${finalConfidence}% | 📚 ICAR + FAO`;
     
   } else if (language === 'mr') {
     // 📊 FACTS (तथ्ये) - No markdown ** for plain text display
@@ -1224,7 +1233,7 @@ export function formatAdvisoryForChat(
     } else {
       whatSection += t.noActionNeeded;
     }
-    whatSection += `\n\n📊 विश्वासार्हता: ${Math.round(advisory.confidence * 100)}% | 📚 ICAR + FAO`;
+    whatSection += `\n\n📊 विश्वासार्हता: ${finalConfidence}% | 📚 ICAR + FAO`;
     
   } else {
     // 📊 FACTS - No markdown ** for plain text display
@@ -1260,7 +1269,7 @@ export function formatAdvisoryForChat(
     } else {
       whatSection += t.noActionNeeded;
     }
-    whatSection += `\n\n📊 Confidence: ${Math.round(advisory.confidence * 100)}% | 📚 ICAR + FAO`;
+    whatSection += `\n\n📊 Confidence: ${finalConfidence}% | 📚 ICAR + FAO`;
   }
   
   const farmerMessage = factsSection + whySection + whatSection + `\n\n---\n🧠 *${t.source}*`;

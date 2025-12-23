@@ -130,7 +130,7 @@ function buildFieldUnderstanding(snapshot: FieldContextSnapshot, language: strin
     ? `${Math.round(areaGunta)} गुंठा` 
     : `${areaAcres.toFixed(2)} एकर`;
   
-  const stageText = formatStage(growthStage, language);
+  const stageText = formatStage(growthStage, language, cropName);
   
   if (language === 'mr') {
     return `तुमचा ${cropName} सध्या ${stageText} (${daysAfterSowing} दिवस) आहे।`;
@@ -456,9 +456,40 @@ function assembleMessage(
 // HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
-function formatStage(stage: any, language: string): string {
+function formatStage(stage: any, language: string, cropName?: string): string {
   const stageStr = stage?.toString() || 'VEGETATIVE';
+  const crop = (cropName || '').toLowerCase();
   
+  // Sugarcane-specific stage names (agronomically accurate)
+  if (crop.includes('sugarcane') || crop.includes('ऊस') || crop.includes('गन्ना')) {
+    const sugarcaneStageMap: Record<string, Record<string, string>> = {
+      mr: {
+        GERMINATION: 'उगवण अवस्थेत',
+        VEGETATIVE: 'फुटवे येण्याची अवस्था (Tillering)', // Tillering in Marathi
+        REPRODUCTIVE: 'मोठी वाढ अवस्था (Grand Growth)',
+        MATURITY: 'पक्व अवस्थेत',
+        HARVEST: 'कापणीसाठी तयार'
+      },
+      hi: {
+        GERMINATION: 'अंकुरण अवस्था',
+        VEGETATIVE: 'कल्ले फूटने की अवस्था (Tillering)', // Tillering in Hindi
+        REPRODUCTIVE: 'बड़ी वृद्धि अवस्था (Grand Growth)',
+        MATURITY: 'परिपक्व अवस्था',
+        HARVEST: 'कटाई के लिए तैयार'
+      },
+      en: {
+        GERMINATION: 'germination stage',
+        VEGETATIVE: 'tillering stage',
+        REPRODUCTIVE: 'grand growth stage',
+        MATURITY: 'maturity stage',
+        HARVEST: 'harvest ready'
+      }
+    };
+    const map = sugarcaneStageMap[language] || sugarcaneStageMap.en;
+    return map[stageStr] || stageStr.toLowerCase().replace(/_/g, ' ');
+  }
+  
+  // Default stage map for other crops
   const stageMap: Record<string, Record<string, string>> = {
     mr: {
       GERMINATION: 'उगवण अवस्थेत',
