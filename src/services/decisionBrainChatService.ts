@@ -55,6 +55,15 @@ import {
   type IntentFilteredAdvisory
 } from '@/services/chat/farmerIntentService';
 
+// ✅ NEW: Import Safety Layers
+import {
+  runAllSafetyFilters,
+  translateBlockedReason,
+  type SafetyFilterResult,
+  type DataTimestamps,
+  type FarmerProfile
+} from '@/services/chat/safetyLayers';
+
 // Re-export for external use
 export { inferFarmerIntent, type FarmerIntent, type IntentInferenceResult };
 
@@ -348,16 +357,20 @@ export interface LandContext {
     ph?: number;
     organic_carbon?: number;
     moisture?: number;
+    test_date?: string;      // ✅ NEW: Soil test timestamp for freshness
   };
   ndvi_data?: {
     value?: number;
     trend?: number;
+    timestamp?: string;      // ✅ NEW: NDVI data timestamp for freshness
   };
   weather_data?: {
     temperature?: number;
     humidity?: number;
     rain_expected?: boolean;
+    rain_expected_hours?: number; // ✅ NEW: Hours until rain expected
     wind_speed?: number;
+    timestamp?: string;      // ✅ NEW: Weather data timestamp for freshness
   };
   location?: {
     state?: string;
@@ -372,6 +385,17 @@ export interface LandContext {
     detected_pests?: string[];
     health_score?: number;
     confidence?: number;
+  };
+  // ✅ NEW: Farmer profile for economic filtering
+  farmer_profile?: {
+    landholding_class: 'MARGINAL' | 'SMALL' | 'MEDIUM' | 'LARGE';
+    budget_level?: 'LOW' | 'MEDIUM' | 'HIGH';
+    subsidy_eligible?: boolean;
+  };
+  // ✅ NEW: Season context for calendar guards
+  season_context?: {
+    season: 'KHARIF' | 'RABI' | 'ZAID';
+    monsoon_phase?: 'PRE' | 'ACTIVE' | 'WITHDRAWAL';
   };
 }
 
@@ -1390,19 +1414,78 @@ export function tryDecisionBrain(
     });
     
     // ═══════════════════════════════════════════════════════════════════════════
+    // STAGE 3.5: SAFETY LAYERS (NEW - Pre-intent filtering safety checks)
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    console.log(`🛡️ [Decision Brain] Running Safety Layers...`);
+    
+    // Build data timestamps from land context
+    const dataTimestamps: DataTimestamps = {
+      ndviTimestamp: landContext.ndvi_data?.timestamp,
+      soilTestTimestamp: landContext.soil_data?.test_date,
+      weatherTimestamp: landContext.weather_data?.timestamp
+    };
+    
+    // Run all safety filters
+    const safetyResult = runAllSafetyFilters({
+      advisory: fullAdvisory,
+      cropStage: decisionInput.crop_stage,
+      weather: landContext.weather_data ? {
+        temperature: landContext.weather_data.temperature,
+        windSpeed: landContext.weather_data.wind_speed,
+        rainExpectedHours: landContext.weather_data.rain_expected_hours,
+        humidity: landContext.weather_data.humidity
+      } : undefined,
+      visionConfidence: landContext.vision_context?.confidence,
+      farmerProfile: landContext.farmer_profile,
+      dataTimestamps,
+      ruleCompleteness: 0.85 // Default rule completeness for most crops
+    });
+    
+    console.log(`🛡️ [Decision Brain] Safety Layers Complete:`, {
+      allowedActions: safetyResult.allowedActions.length,
+      blockedActions: safetyResult.blockedActions.length,
+      secondaryActions: safetyResult.secondaryActions.length,
+      originalConfidence: Math.round(fullAdvisory.confidence * 100),
+      adjustedConfidence: Math.round(safetyResult.adjustedConfidence * 100),
+      warnings: safetyResult.warnings.length
+    });
+    
+    // Create safety-filtered advisory
+    const safetyFilteredAdvisory: UnifiedAdvisory = {
+      ...fullAdvisory,
+      actions: safetyResult.allowedActions,
+      confidence: safetyResult.adjustedConfidence,
+      // Add blocked actions info to reasoning trace
+      reasoning_trace: [
+        ...(fullAdvisory.reasoning_trace || []),
+        ...safetyResult.safetyLog.map(log => `[Safety] ${log}`),
+        ...safetyResult.warnings.map(w => `[Warning] ${w}`)
+      ]
+    };
+    
+    // ═══════════════════════════════════════════════════════════════════════════
     // STAGE 4: INTENT-BASED ACTION FILTERING (CRITICAL FIX)
     // ═══════════════════════════════════════════════════════════════════════════
     
     console.log(`🔍 [Decision Brain] Filtering actions for intent: ${intentResult.intent}...`);
     
-    const filteredResult = filterActionsByIntent(fullAdvisory, intentResult, language);
+    // Use safety-filtered advisory for intent filtering
+    const filteredResult = filterActionsByIntent(safetyFilteredAdvisory, intentResult, language);
+    
+    // Add blocked actions from safety layers to the filtered result
+    const allBlockedActions = [
+      ...filteredResult.filteredOutActions,
+      ...safetyResult.blockedActions.map(b => b.action)
+    ];
     
     console.log(`✂️ [Decision Brain] Intent Filtering Result:`, {
       intent: intentResult.intent,
       actionsReturned: filteredResult.filteredActions.length,
-      actionsFilteredOut: filteredResult.filteredOutActions.length,
+      actionsFilteredOut: allBlockedActions.length,
       hasRelevantActions: filteredResult.hasRelevantActions,
-      noActionReason: filteredResult.noActionReason
+      noActionReason: filteredResult.noActionReason,
+      safetyBlocked: safetyResult.blockedActions.length
     });
     
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1419,10 +1502,31 @@ export function tryDecisionBrain(
       chatResponse = formatNoActionResponse(
         intentResult,
         filteredResult,
-        fullAdvisory,
+        safetyFilteredAdvisory, // Use safety-filtered advisory
         language,
         landContext
       );
+    }
+    
+    // Add safety warnings to the response
+    if (safetyResult.warnings.length > 0 && chatResponse.decisionBrainResponse) {
+      const warningMessages = safetyResult.warnings.slice(0, 3).map(w => `⚠️ ${w}`).join('\n');
+      chatResponse.decisionBrainResponse.farmerMessage = 
+        chatResponse.decisionBrainResponse.farmerMessage + `\n\n${warningMessages}`;
+    }
+    
+    // Add blocked actions from safety layers
+    if (safetyResult.blockedActions.length > 0 && chatResponse.decisionBrainResponse) {
+      const translatedBlockedActions: BlockedAction[] = safetyResult.blockedActions.map(b => ({
+        action: b.action.toString().replace(/_/g, ' ').toLowerCase(),
+        whyNot: translateBlockedReason(b.reasonKey, language),
+        blockedByRules: [b.category]
+      }));
+      
+      chatResponse.decisionBrainResponse.blockedActions = [
+        ...(chatResponse.decisionBrainResponse.blockedActions || []),
+        ...translatedBlockedActions
+      ];
     }
     
     chatResponse.executionTimeMs = Date.now() - startTime;
@@ -1445,11 +1549,13 @@ export function tryDecisionBrain(
     );
     
     console.log(`\n════════════════════════════════════════════════════════════════`);
-    console.log(`✅ [DECISION BRAIN] SUCCESS - Intent-Aware Response!`);
+    console.log(`✅ [DECISION BRAIN] SUCCESS - Intent-Aware Response with Safety!`);
     console.log(`⏱️ Execution time: ${chatResponse.executionTimeMs}ms`);
     console.log(`🎯 Intent: ${intentResult.intent} (${Math.round(intentResult.confidence * 100)}%)`);
     console.log(`📏 Actions for this intent: ${filteredResult.filteredActions.length}`);
-    console.log(`🚫 Actions filtered out: ${filteredResult.filteredOutActions.length}`);
+    console.log(`🚫 Actions filtered out: ${allBlockedActions.length}`);
+    console.log(`🛡️ Safety blocked: ${safetyResult.blockedActions.length}`);
+    console.log(`📊 Adjusted confidence: ${Math.round(safetyResult.adjustedConfidence * 100)}%`);
     console.log(`💰 AI tokens used: 0`);
     console.log(`════════════════════════════════════════════════════════════════\n`);
     
