@@ -1699,7 +1699,8 @@ export function tryDecisionBrain(
     calculatedCropStage,  // ✅ Calculated, not hardcoded!
     daysAfterSowing,
     landContext.id,       // ✅ Land ID for isolation
-    landContext.name      // ✅ Land name for display
+    landContext.name,     // ✅ Land name for display
+    language              // ✅ Pass language for localized freshness descriptions
   );
   
   // ═══════════════════════════════════════════════════════════════════════════
