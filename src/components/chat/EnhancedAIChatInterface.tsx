@@ -1345,7 +1345,13 @@ export function EnhancedAIChatInterface() {
         landName: land?.name,
         currentCrop: landContextForBrain?.crop_name,
         previousCrop: landContextForBrain?.previous_crop,
-        hasLocation: !!landContextForBrain?.location
+        hasLocation: !!landContextForBrain?.location,
+        // ✅ CRITICAL: Log soil/NDVI data availability for debugging confidence issues
+        hasSoilData: !!landContextForBrain?.soil_data,
+        soilN: landContextForBrain?.soil_data?.n,
+        soilPH: landContextForBrain?.soil_data?.ph,
+        hasNdviData: !!landContextForBrain?.ndvi_data,
+        ndviValue: landContextForBrain?.ndvi_data?.value
       });
       
       // ✅ CORE RULE: Only use Decision Brain for LAND-SPECIFIC chats
