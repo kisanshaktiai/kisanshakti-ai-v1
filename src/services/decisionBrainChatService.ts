@@ -1583,8 +1583,7 @@ export function tryDecisionBrain(
     const chatResponse: ChatResponse = {
       response: diagnosticResponse.message,
       executionTimeMs: Date.now() - startTime,
-      rulesApplied: ['DIAGNOSTIC_MODE_ACTIVE'],
-      sources: ['ICAR', 'FAO'],
+      source: 'decision_brain',
       decisionBrainResponse: {
         language,
         landContext: landContext ? {
