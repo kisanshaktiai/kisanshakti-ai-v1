@@ -31,10 +31,10 @@ export const AI_MODELS = {
   },
 } as const;
 
-// API endpoints
+// API endpoints - PRODUCTION: Only use Gemini & OpenAI directly, NO Lovable AI Gateway
 export const AI_ENDPOINTS = {
   openai: "https://api.openai.com/v1/chat/completions",
-  google: "https://ai.gateway.lovable.dev/v1/chat/completions",
+  google: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", // Use Gemini directly
   gemini: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
 } as const;
 
@@ -84,32 +84,25 @@ export function getAPIEndpoint(provider: AIProvider): string {
 
 /**
  * Get the API key for the specified provider
- * PRODUCTION: All keys come from Supabase secrets - never hardcoded
- * Priority: GEMINI_API_KEY > OPENAI_API_KEY > LOVABLE_API_KEY
+ * PRODUCTION: Only Gemini & OpenAI - NO Lovable AI Gateway
+ * Priority: GEMINI_API_KEY > OPENAI_API_KEY
  */
 export function getAPIKey(provider: AIProvider): string {
-  if (provider === "gemini") {
-    const geminiKey = Deno.env.get("GEMINI_API_KEY");
-    if (geminiKey && geminiKey.trim() !== "") {
-      console.log("✅ [AIConfig] Using GEMINI_API_KEY from Supabase secrets");
-      return geminiKey;
-    }
-    console.warn("⚠️ [AIConfig] GEMINI_API_KEY not found, falling back to OpenAI");
-    return validateOpenAIKey();
+  // Try Gemini first (preferred for agriculture)
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  if (geminiKey && geminiKey.trim() !== "") {
+    console.log("✅ [AIConfig] Using GEMINI_API_KEY from Supabase secrets");
+    return geminiKey;
   }
   
-  if (provider === "openai") {
-    return validateOpenAIKey();
+  // Fallback to OpenAI
+  const openaiKey = Deno.env.get("OPENAI_API_KEY");
+  if (openaiKey && openaiKey.trim() !== "") {
+    console.log("✅ [AIConfig] Using OPENAI_API_KEY from Supabase secrets");
+    return openaiKey;
   }
   
-  // Google/Lovable AI Gateway 
-  const key = Deno.env.get("LOVABLE_API_KEY");
-  if (!key || key.trim() === "") {
-    console.warn("⚠️ [AIConfig] LOVABLE_API_KEY not found, falling back to OpenAI");
-    return validateOpenAIKey();
-  }
-  console.log("✅ [AIConfig] Using LOVABLE_API_KEY for Google provider");
-  return key;
+  throw new Error("No AI API keys configured. Please add GEMINI_API_KEY or OPENAI_API_KEY in Supabase secrets.");
 }
 
 /**
@@ -133,12 +126,10 @@ export function hasGeminiKey(): boolean {
 }
 
 /**
- * Check if any AI API key is configured
+ * Check if any AI API key is configured (Gemini or OpenAI only)
  */
 export function hasAnyAIKey(): boolean {
-  return hasGeminiKey() || 
-         !!(Deno.env.get("OPENAI_API_KEY")?.trim()) || 
-         !!(Deno.env.get("LOVABLE_API_KEY")?.trim());
+  return hasGeminiKey() || !!(Deno.env.get("OPENAI_API_KEY")?.trim());
 }
 
 /**
@@ -182,9 +173,7 @@ export function getBestScheduleProvider(): { provider: AIProvider; model: string
     return { provider: "openai", model: AI_MODELS.openai.default };
   }
   
-  // Last resort: Lovable AI Gateway
-  console.log("🔄 [AIConfig] Using Lovable AI Gateway for schedule generation");
-  return { provider: "google", model: AI_MODELS.google.default };
+  throw new Error("No AI API keys configured. Please add GEMINI_API_KEY or OPENAI_API_KEY in Supabase secrets.");
 }
 
 /**
