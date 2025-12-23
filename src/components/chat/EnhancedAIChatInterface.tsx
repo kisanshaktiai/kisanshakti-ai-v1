@@ -30,6 +30,8 @@ import { WorldClassCamera } from './WorldClassCamera';
 import { VisionAnalysisCard, type VisionAnalysisResult } from './VisionAnalysisCard';
 import { DecisionBrainCards, type DecisionBrainResponse } from './DecisionBrainCards';
 import { DiagnosticResponseCard } from './DiagnosticResponseCard';
+import { CropRecommendationCard } from './CropRecommendationCard';
+import type { CropSelectionResult } from '@/decision-graph/crop-selection-rules';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
@@ -109,6 +111,8 @@ interface Message {
   };
   feedback?: 'like' | 'dislike' | null;
   isCopied?: boolean;
+  // ✅ NEW: Crop selection/recommendation result
+  cropRecommendationResult?: CropSelectionResult;
   analytics?: {
     responseTime?: number;
     tokensUsed?: {
@@ -2370,8 +2374,21 @@ export function EnhancedAIChatInterface() {
                         currentQuestionIndex={0}
                       />
                     </motion.div>
+                  ) : message.cropRecommendationResult && message.role === 'assistant' ? (
+                    /* Priority 2: CropRecommendationCard for crop selection queries */
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mb-4"
+                    >
+                      <CropRecommendationCard 
+                        result={message.cropRecommendationResult} 
+                        language={language}
+                        onTakeSoilPhoto={() => setShowCamera(true)}
+                      />
+                    </motion.div>
                   ) : message.decisionBrainResponse && message.role === 'assistant' ? (
-                    /* Priority 2: DecisionBrainCards for structured brain responses */
+                    /* Priority 3: DecisionBrainCards for structured brain responses */
                     <motion.div
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}

@@ -90,6 +90,14 @@ import {
   type StructuredResponse
 } from '@/services/chat/structuredResponseBuilder';
 
+// ✅ NEW: Import Crop Selection Rules Engine
+import {
+  getCropRecommendations,
+  formatCropRecommendationsForFarmer,
+  type CropSelectionInput,
+  type CropSelectionResult
+} from '@/decision-graph/crop-selection-rules';
+
 // ✅ NEW: Import Diagnosis-First Modules (Production-Ready Pipeline)
 import {
   determineDiagnosticMode,
@@ -794,6 +802,8 @@ interface ChatResponse {
   };
   // ✅ NEW: Structured Decision Brain response
   decisionBrainResponse?: DecisionBrainResponse;
+  // ✅ NEW: Crop selection result for "which crop" queries
+  cropSelectionResult?: CropSelectionResult;
   source: 'decision_brain' | 'ai';
   advisory?: UnifiedAdvisory;
   executionTimeMs: number;
@@ -1540,6 +1550,8 @@ export interface DecisionBrainResult {
   // ✅ NEW: Intent tracking for debugging and training
   inferredIntent?: FarmerIntent;
   intentConfidence?: number;
+  // ✅ NEW: Crop selection result for "which crop" queries
+  cropSelectionResult?: CropSelectionResult;
 }
 
 /**
@@ -1686,6 +1698,108 @@ export function tryDecisionBrain(
   
   // Check basic agricultural classification (still needed for non-agri queries)
   const classification = classifyQueryForDecisionBrain(query);
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ✅ STAGE 2.4: CROP SELECTION QUERY HANDLER (NEW)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Handle "which crop to plant" queries separately using crop selection engine
+  
+  if (classification.queryType === 'crop_selection') {
+    console.log(`🌱 [Decision Brain] Crop Selection Query Detected → Using Crop Selection Engine`);
+    
+    try {
+      // Build crop selection input from land context
+      const cropSelectionInput: CropSelectionInput = {
+        previous_crop: landContext.previous_crop || landContext.crop_name || landContext.current_crop,
+        soil_n: landContext.soil_data?.n !== undefined 
+          ? (landContext.soil_data.n < 50 ? SoilNState.LOW_N : landContext.soil_data.n > 100 ? SoilNState.HIGH_N : SoilNState.ADEQUATE_N)
+          : undefined,
+        soil_ph: landContext.soil_data?.ph !== undefined
+          ? (landContext.soil_data.ph < 6.0 ? SoilPHState.ACIDIC : landContext.soil_data.ph > 7.5 ? SoilPHState.ALKALINE : SoilPHState.NEUTRAL)
+          : undefined,
+        soil_moisture: landContext.soil_data?.moisture !== undefined
+          ? (landContext.soil_data.moisture < 30 ? SoilMoistureState.DRY : landContext.soil_data.moisture > 70 ? SoilMoistureState.WATERLOGGED : SoilMoistureState.OPTIMAL)
+          : undefined,
+        irrigation_source: landContext.irrigation_type as any,
+        land_area_acres: landContext.area_acres || (landContext.area_hectares ? landContext.area_hectares * 2.47105 : undefined),
+        current_month: new Date().getMonth() + 1,
+        state: landContext.location?.state,
+        district: landContext.location?.district,
+        language
+      };
+      
+      console.log(`📊 [Crop Selection] Input:`, {
+        previous_crop: cropSelectionInput.previous_crop,
+        soil_n: cropSelectionInput.soil_n,
+        soil_ph: cropSelectionInput.soil_ph,
+        irrigation: cropSelectionInput.irrigation_source,
+        area_acres: cropSelectionInput.land_area_acres,
+        month: cropSelectionInput.current_month
+      });
+      
+      // Get crop recommendations
+      const cropResult = getCropRecommendations(cropSelectionInput);
+      
+      console.log(`✅ [Crop Selection] Result:`, {
+        recommendations: cropResult.recommendations.length,
+        top_crop: cropResult.recommendations[0]?.crop_name,
+        confidence: cropResult.confidence,
+        rules_applied: cropResult.rules_applied.length
+      });
+      
+      // Format message for farmer
+      const farmerMessage = formatCropRecommendationsForFarmer(cropResult, language);
+      
+      // Build chat response with crop selection result
+      const chatResponse: ChatResponse = {
+        response: farmerMessage,
+        executionTimeMs: Date.now() - startTime,
+        source: 'decision_brain',
+        cropSelectionResult: cropResult, // ✅ NEW: Include crop selection result
+        decisionBrainResponse: {
+          language,
+          landContext: {
+            cropName: landContext.previous_crop || landContext.current_crop || 'N/A',
+            cropGroup: 'SELECTION',
+            growthStage: language === 'mr' ? 'पीक निवड' : language === 'hi' ? 'फसल चुनाव' : 'Crop Selection',
+            landArea: landContext.area_acres 
+              ? `${Math.round(landContext.area_acres * 40)} गुंठा` 
+              : undefined,
+            farmingMode: landContext.farming_mode || 'INTEGRATED'
+          },
+          farmerMessage,
+          primaryActions: [],
+          secondaryActions: [],
+          blockedActions: [],
+          confidence: {
+            riskLevel: 'LOW',
+            confidence: cropResult.confidence,
+            explanations: cropResult.rules_applied,
+            rulesApplied: cropResult.rules_applied.length
+          }
+        }
+      };
+      
+      console.log(`\n════════════════════════════════════════════════════════════════`);
+      console.log(`🌱 [DECISION BRAIN] CROP SELECTION COMPLETE`);
+      console.log(`⏱️ Execution time: ${chatResponse.executionTimeMs}ms`);
+      console.log(`📊 Recommendations: ${cropResult.recommendations.length}`);
+      console.log(`🌾 Top crop: ${cropResult.recommendations[0]?.crop_name || 'None'}`);
+      console.log(`════════════════════════════════════════════════════════════════\n`);
+      
+      return {
+        handled: true,
+        response: chatResponse,
+        fallbackToAI: false,
+        inferredIntent: intentResult.intent,
+        intentConfidence: intentResult.confidence,
+        cropSelectionResult: cropResult // ✅ NEW: Return crop selection result
+      };
+    } catch (cropSelectionError) {
+      console.error(`❌ [Crop Selection] Error:`, cropSelectionError);
+      // Fall through to normal processing
+    }
+  }
   
   // If not agricultural at all, fall back to AI
   if (!classification.isAgricultural && intentResult.intent === 'GENERAL' && intentResult.confidence < 0.2) {
