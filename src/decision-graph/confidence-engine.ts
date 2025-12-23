@@ -16,7 +16,8 @@ import {
   Cause,
   RiskLevel,
   DataConfidence,
-  NDVIState
+  NDVIState,
+  CauseRule
 } from './types';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -98,6 +99,35 @@ export function adjustConfidenceForCauses(
   }
 
   return Math.round(adjusted * 100) / 100;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RULE CONFIDENCE ADJUSTMENT (STEP 6)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Adjust confidence based on rule-level confidence scores
+ * Rules with lower certainty should reduce overall advisory confidence
+ * 
+ * @param baseConfidence - Base confidence from data sources
+ * @param appliedRules - Rules that fired
+ * @returns Adjusted confidence (0-1)
+ */
+export function adjustConfidenceForRuleStrength(
+  baseConfidence: number,
+  appliedRules: CauseRule[]
+): number {
+  if (appliedRules.length === 0) {
+    return baseConfidence;
+  }
+
+  // Calculate average rule confidence (default 0.8 for rules without explicit confidence)
+  const avgRuleConfidence = appliedRules
+    .map(r => r.cause_confidence ?? 0.8)
+    .reduce((a, b) => a + b, 0) / appliedRules.length;
+
+  // Apply rule confidence as a modifier
+  return Math.round(baseConfidence * avgRuleConfidence * 100) / 100;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -329,5 +359,6 @@ export {
   CONFIDENCE_WEIGHTS,
   CRITICAL_CAUSES,
   HIGH_RISK_CAUSES,
-  MEDIUM_RISK_CAUSES
+  MEDIUM_RISK_CAUSES,
+  adjustConfidenceForRuleStrength
 };
