@@ -33,6 +33,10 @@ export interface DataFreshnessInfo {
 }
 
 export interface FieldContextSnapshot {
+  // Land Identity (CRITICAL for multi-land chat isolation)
+  landId: string;
+  landName: string;
+  
   // Crop & Growth Stage
   cropName: string;
   cropCode: string;
@@ -249,7 +253,9 @@ function calculateFreshness(
 export function buildFieldContextSnapshot(
   landContext: LandContext,
   cropStage: CropStage,
-  daysAfterSowing: number
+  daysAfterSowing: number,
+  landId?: string,
+  landName?: string
 ): FieldContextSnapshot {
   const now = new Date();
   
@@ -325,6 +331,11 @@ export function buildFieldContextSnapshot(
   
   // Build the snapshot
   const snapshot: FieldContextSnapshot = {
+    // Land Identity
+    landId: landId || landContext.id || 'unknown',
+    landName: landName || landContext.name || 'Unknown Land',
+    
+    // Crop Info
     cropName: landContext.crop_name || landContext.current_crop || 'Unknown',
     cropCode: landContext.crop_code || '',
     cropGroup: landContext.crop_group || '',

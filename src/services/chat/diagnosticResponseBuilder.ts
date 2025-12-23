@@ -131,23 +131,47 @@ function buildDataSection(
 ): string {
   let section = '';
   
-  const headers = {
-    mr: '📊 तुमच्या शेताची माहिती:',
-    hi: '📊 आपके खेत की जानकारी:',
-    en: '📊 Your Field Data:'
+  // ✅ NEW: Add land identity header (CRITICAL for multi-land chat)
+  const landHeaders = {
+    mr: '📍 तुमचा शेत',
+    hi: '📍 आपका खेत',
+    en: '📍 Your Field'
   };
   
-  section = headers[lang] + '\n';
+  // Show land name prominently
+  if (fieldSnapshot.landName && fieldSnapshot.landName !== 'Unknown Land') {
+    section += `${landHeaders[lang]}: **${fieldSnapshot.landName}**\n\n`;
+  }
   
-  // Crop info
+  const headers = {
+    mr: '📊 शेताची माहिती:',
+    hi: '📊 खेत की जानकारी:',
+    en: '📊 Field Data:'
+  };
+  
+  section += headers[lang] + '\n';
+  
+  // Crop info with growth stage
   const cropLabels = { mr: 'पीक', hi: 'फसल', en: 'Crop' };
-  const daysLabels = { mr: 'दिवस वयाचे', hi: 'दिन पुराना', en: 'days old' };
-  section += `• ${cropLabels[lang]}: ${fieldSnapshot.cropName || 'Unknown'} (${fieldSnapshot.daysAfterSowing} ${daysLabels[lang]})\n`;
+  const daysLabels = { mr: 'दिवस', hi: 'दिन', en: 'days' };
+  const stageLabels = { 
+    mr: { GERMINATION: 'उगवण', VEGETATIVE: 'वाढ', REPRODUCTIVE: 'फुलोरा', MATURITY: 'पक्वता', HARVEST: 'कापणी' },
+    hi: { GERMINATION: 'अंकुरण', VEGETATIVE: 'वृद्धि', REPRODUCTIVE: 'फूलन', MATURITY: 'परिपक्वता', HARVEST: 'कटाई' },
+    en: { GERMINATION: 'Germination', VEGETATIVE: 'Vegetative', REPRODUCTIVE: 'Reproductive', MATURITY: 'Maturity', HARVEST: 'Harvest' }
+  };
   
-  // Area
-  if (fieldSnapshot.areaAcres) {
+  const stageKey = fieldSnapshot.growthStage?.toString() || 'VEGETATIVE';
+  const stageDisplay = stageLabels[lang][stageKey as keyof typeof stageLabels['mr']] || stageKey;
+  
+  section += `• ${cropLabels[lang]}: ${fieldSnapshot.cropName || 'Unknown'} (${fieldSnapshot.daysAfterSowing} ${daysLabels[lang]} - ${stageDisplay})\n`;
+  
+  // Area - use gunta for small farms
+  if (fieldSnapshot.areaGunta) {
     const areaLabels = { mr: 'क्षेत्र', hi: 'क्षेत्र', en: 'Area' };
-    section += `• ${areaLabels[lang]}: ${fieldSnapshot.areaAcres.toFixed(2)} ${lang === 'en' ? 'acres' : 'एकर'}\n`;
+    const areaDisplay = fieldSnapshot.areaGunta <= 40 
+      ? `${Math.round(fieldSnapshot.areaGunta)} ${lang === 'en' ? 'gunta' : 'गुंठा'}`
+      : `${fieldSnapshot.areaAcres.toFixed(2)} ${lang === 'en' ? 'acres' : 'एकर'}`;
+    section += `• ${areaLabels[lang]}: ${areaDisplay}\n`;
   }
   
   // Soil moisture
@@ -158,7 +182,7 @@ function buildDataSection(
   
   // NDVI
   if (fieldSnapshot.ndviStatus?.value !== undefined) {
-    const ndviLabels = { mr: 'NDVI (पिक आरोग्य)', hi: 'NDVI (फसल स्वास्थ्य)', en: 'NDVI (Crop Health)' };
+    const ndviLabels = { mr: 'पिक आरोग्य (NDVI)', hi: 'फसल स्वास्थ्य (NDVI)', en: 'Crop Health (NDVI)' };
     const ndviValue = (fieldSnapshot.ndviStatus.value * 100).toFixed(0);
     section += `• ${ndviLabels[lang]}: ${ndviValue}%\n`;
   }
