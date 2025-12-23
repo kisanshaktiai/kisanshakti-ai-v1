@@ -64,8 +64,17 @@ import {
   type FarmerProfile
 } from '@/services/chat/safetyLayers';
 
+// ✅ NEW: Import Symptom Pattern Recognizer (Multi-Cause Analysis)
+import {
+  analyzeSymptoms,
+  extractCausesFromSymptoms,
+  type SymptomAnalysis,
+  type PossibleCause
+} from '@/services/chat/symptomPatternRecognizer';
+
 // Re-export for external use
 export { inferFarmerIntent, type FarmerIntent, type IntentInferenceResult };
+export { analyzeSymptoms, type SymptomAnalysis, type PossibleCause };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CROP NAME TO CODE MAPPING (Multi-language support)
@@ -670,7 +679,10 @@ function formatCause(cause: Cause, language: string): string {
       [Cause.RICE_BLAST_RISK]: "Rice blast disease risk",
       [Cause.WHEAT_RUST_RISK]: "Wheat rust risk",
       [Cause.OPTIMAL_GROWTH]: "Optimal growth conditions",
-      [Cause.HARVEST_READY]: "Crop ready for harvest"
+      [Cause.HARVEST_READY]: "Crop ready for harvest",
+      // Sugarcane borer causes
+      [Cause.SHOOT_BORER_RISK]: "Early Shoot Borer (Chilo infuscatellus) - dead heart in young cane",
+      [Cause.STEM_BORER_RISK]: "Top Borer (Scirpophaga excerptalis) - dead heart and bunchy top"
     },
     hi: {
       [Cause.WATER_STRESS_CRITICAL]: "गंभीर पानी की कमी - तुरंत सिंचाई करें",
@@ -687,7 +699,10 @@ function formatCause(cause: Cause, language: string): string {
       [Cause.RICE_BLAST_RISK]: "धान का ब्लास्ट रोग",
       [Cause.WHEAT_RUST_RISK]: "गेहूं में रस्ट रोग",
       [Cause.OPTIMAL_GROWTH]: "उत्तम वृद्धि की स्थिति",
-      [Cause.HARVEST_READY]: "कटाई के लिए तैयार"
+      [Cause.HARVEST_READY]: "कटाई के लिए तैयार",
+      // Sugarcane borer causes
+      [Cause.SHOOT_BORER_RISK]: "अगेती छेदक (शूट बोरर) - गभा सूखना",
+      [Cause.STEM_BORER_RISK]: "शीर्ष छेदक (टॉप बोरर) - गभा सूखना और झाड़ीदार शीर्ष"
     },
     mr: {
       [Cause.WATER_STRESS_CRITICAL]: "गंभीर पाण्याची कमतरता - ताबडतोब पाणी द्या",
@@ -704,7 +719,10 @@ function formatCause(cause: Cause, language: string): string {
       [Cause.RICE_BLAST_RISK]: "भाताचा करपा रोग",
       [Cause.WHEAT_RUST_RISK]: "गहू तांबेरा रोग",
       [Cause.OPTIMAL_GROWTH]: "उत्तम वाढीची परिस्थिती",
-      [Cause.HARVEST_READY]: "कापणीसाठी तयार"
+      [Cause.HARVEST_READY]: "कापणीसाठी तयार",
+      // Sugarcane borer causes
+      [Cause.SHOOT_BORER_RISK]: "खोड पोखरणारी अळी (Early Shoot Borer) - मधली सुरळी वाळते",
+      [Cause.STEM_BORER_RISK]: "शेंडा पोखरणारी अळी (Top Borer) - गाभा वाळतो आणि झुडूपासारखा शेंडा"
     }
   };
   
@@ -1356,17 +1374,89 @@ export function tryDecisionBrain(
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
+  // STAGE 1.5: SYMPTOM PATTERN RECOGNITION (NEW - Multi-Cause Analysis)
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // Get crop code for symptom analysis context
+  const cropCode = landContext.crop_code || landContext.current_crop || landContext.crop_name;
+  
+  // Calculate days after sowing for symptom context
+  let daysAfterSowing = 60; // Default
+  if (landContext.sowing_date || landContext.cultivation_date) {
+    const sowingDate = new Date(landContext.sowing_date || landContext.cultivation_date!);
+    daysAfterSowing = Math.floor((Date.now() - sowingDate.getTime()) / (1000 * 60 * 60 * 24));
+  }
+  
+  // Analyze symptoms in the farmer's query
+  const symptomAnalysis = analyzeSymptoms(query, {
+    cropCode: cropCode || undefined,
+    daysAfterSowing,
+    soilMoisture: landContext.soil_data?.moisture,
+    hasVisualConfirmation: !!landContext.vision_context
+  });
+  
+  if (symptomAnalysis.detected_symptoms.length > 0) {
+    console.log(`🔬 [Decision Brain] Symptom Analysis:`, {
+      detected: symptomAnalysis.detected_symptoms.map(s => s.symptom_name),
+      possible_causes: symptomAnalysis.possible_causes.map(c => ({
+        cause: c.cause_name,
+        probability: Math.round(c.probability * 100) + '%'
+      })),
+      primary_cause: symptomAnalysis.primary_cause?.cause_name,
+      needs_disambiguation: symptomAnalysis.needs_disambiguation,
+      confidence: Math.round(symptomAnalysis.confidence * 100) + '%'
+    });
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
   // STAGE 2: INTENT INFERENCE (Symbolic + Tolerant, Offline-capable)
   // ═══════════════════════════════════════════════════════════════════════════
   
   const intentResult = inferFarmerIntent(query, language);
+  
+  // Boost intent confidence if symptom matches
+  if (symptomAnalysis.detected_symptoms.length > 0) {
+    // Map symptom primary cause to intent
+    const primaryCause = symptomAnalysis.primary_cause?.cause;
+    if (primaryCause) {
+      // Water stress symptoms → boost WATER intent
+      if (primaryCause.toString().includes('WATER_STRESS')) {
+        if (intentResult.intent !== 'WATER') {
+          intentResult.secondaryIntent = intentResult.intent;
+          intentResult.intent = 'WATER';
+        }
+        intentResult.confidence = Math.min(1, intentResult.confidence + 0.2);
+      }
+      // Pest symptoms → boost PEST intent
+      if (primaryCause.toString().includes('BORER') || 
+          primaryCause.toString().includes('PEST') ||
+          primaryCause.toString().includes('RISK')) {
+        if (intentResult.intent !== 'PEST') {
+          intentResult.secondaryIntent = intentResult.intent;
+          intentResult.intent = 'PEST';
+        }
+        intentResult.confidence = Math.min(1, intentResult.confidence + 0.2);
+      }
+      // Disease symptoms → boost DISEASE intent
+      if (primaryCause.toString().includes('DISEASE') || 
+          primaryCause.toString().includes('DEFICIENCY')) {
+        if (intentResult.intent !== 'DISEASE' && intentResult.intent !== 'NUTRIENT') {
+          intentResult.secondaryIntent = intentResult.intent;
+          // Deficiency is nutrient, disease is disease
+          intentResult.intent = primaryCause.toString().includes('DEFICIENCY') ? 'NUTRIENT' : 'DISEASE';
+        }
+        intentResult.confidence = Math.min(1, intentResult.confidence + 0.2);
+      }
+    }
+  }
   
   console.log(`🎯 [Decision Brain] Intent Inference:`, {
     intent: intentResult.intent,
     confidence: Math.round(intentResult.confidence * 100) + '%',
     keywords: intentResult.matchedKeywords,
     secondaryIntent: intentResult.secondaryIntent,
-    isAmbiguous: intentResult.isAmbiguous
+    isAmbiguous: intentResult.isAmbiguous,
+    symptomBoosted: symptomAnalysis.detected_symptoms.length > 0
   });
   
   // Check basic agricultural classification (still needed for non-agri queries)
@@ -1385,7 +1475,7 @@ export function tryDecisionBrain(
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // STAGE 3: RUN FULL DECISION GRAPH (UNCHANGED)
+  // STAGE 3: RUN FULL DECISION GRAPH (with Symptom-Inferred Causes)
   // ═══════════════════════════════════════════════════════════════════════════
   
   const decisionInput = landContextToDecisionInput(landContext, farmerId, tenantId);
@@ -1400,21 +1490,66 @@ export function tryDecisionBrain(
     };
   }
   
+  // Inject symptom-inferred causes into decision input for better rule matching
+  const symptomInferredCauses = extractCausesFromSymptoms(symptomAnalysis);
+  if (symptomInferredCauses.length > 0) {
+    console.log(`💉 [Decision Brain] Injecting symptom-inferred causes:`, symptomInferredCauses);
+    // These will be added to the causes found by the decision graph
+  }
+  
   try {
-    console.log(`🔄 [Decision Brain] Running Full Decision Graph (UNCHANGED)...`);
+    console.log(`🔄 [Decision Brain] Running Full Decision Graph...`);
     
     // Run the COMPLETE decision graph - no filtering at this stage
     const fullAdvisory = runDecisionGraphSync(decisionInput);
     
-    console.log(`📊 [Decision Brain] Full Advisory (before intent filtering):`, {
+    // ═══════════════════════════════════════════════════════════════════════════
+    // STAGE 3.5: MERGE SYMPTOM-INFERRED CAUSES (NEW)
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    // Merge symptom-inferred causes with decision graph causes
+    if (symptomInferredCauses.length > 0) {
+      for (const cause of symptomInferredCauses) {
+        if (!fullAdvisory.causes.includes(cause)) {
+          fullAdvisory.causes.push(cause);
+          fullAdvisory.reasoning_trace = [
+            ...(fullAdvisory.reasoning_trace || []),
+            `[Symptom Analysis] Inferred ${cause} from farmer's symptom description`
+          ];
+        }
+      }
+      
+      // Add symptom analysis info to reasoning trace
+      if (symptomAnalysis.primary_cause) {
+        fullAdvisory.reasoning_trace = [
+          ...(fullAdvisory.reasoning_trace || []),
+          `[Symptom Analysis] Primary cause: ${symptomAnalysis.primary_cause.cause_name} (${Math.round(symptomAnalysis.primary_cause.probability * 100)}% probability)`,
+          `[Symptom Analysis] Scientific basis: ${symptomAnalysis.primary_cause.scientific_basis}`
+        ];
+        
+        // Add differentiating factors
+        if (symptomAnalysis.possible_causes.length > 1) {
+          fullAdvisory.reasoning_trace.push(
+            `[Symptom Analysis] Alternative causes: ${symptomAnalysis.possible_causes.slice(1, 3).map(c => `${c.cause_name} (${Math.round(c.probability * 100)}%)`).join(', ')}`
+          );
+        }
+      }
+      
+      // Boost confidence if symptom matches align with decision graph
+      const symptomBoost = symptomAnalysis.confidence * 0.15; // Up to 15% boost
+      fullAdvisory.confidence = Math.min(0.95, fullAdvisory.confidence + symptomBoost);
+    }
+    
+    console.log(`📊 [Decision Brain] Full Advisory (after symptom merge):`, {
       risk_level: fullAdvisory.risk_level,
       causes_count: fullAdvisory.causes.length,
       actions_count: fullAdvisory.actions.length,
-      rules_applied: fullAdvisory.rules_applied.length
+      rules_applied: fullAdvisory.rules_applied.length,
+      symptom_causes_added: symptomInferredCauses.length
     });
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // STAGE 3.5: SAFETY LAYERS (NEW - Pre-intent filtering safety checks)
+    // STAGE 3.6: SAFETY LAYERS (Pre-intent filtering safety checks)
     // ═══════════════════════════════════════════════════════════════════════════
     
     console.log(`🛡️ [Decision Brain] Running Safety Layers...`);
