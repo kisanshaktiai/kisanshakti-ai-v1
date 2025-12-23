@@ -1474,14 +1474,22 @@ export function EnhancedAIChatInterface() {
           }
         });
         
-        // Generate follow-up questions based on advisory
-        if (brainResult.response.advisory?.actions?.length) {
-          const followUps = brainResult.response.advisory.actions.slice(0, 3).map(a => 
-            language === 'hi' ? `${a.action.replace(/_/g, ' ')} के बारे में बताएं` :
-            language === 'mr' ? `${a.action.replace(/_/g, ' ')} बद्दल सांगा` :
-            `Tell me more about ${a.action.replace(/_/g, ' ').toLowerCase()}`
-          );
-          setDynamicQuickReplies(prev => ({ ...prev, [activeTab]: followUps }));
+        // ✅ CRITICAL FIX: Generate CONTEXT-AWARE follow-ups based on response content
+        // Not generic action names - analyze what was actually discussed
+        const { generateContextAwareFollowups } = await import('@/services/chat/contextAwareFollowups');
+        const contextFollowUps = generateContextAwareFollowups(
+          brainResult.response.response,
+          brainResult.response.advisory,
+          language,
+          landContextForBrain
+        );
+        
+        if (contextFollowUps.length > 0) {
+          console.log('💡 [Decision Brain] Context-aware follow-ups:', contextFollowUps.map(q => q.text));
+          setDynamicQuickReplies(prev => ({ 
+            ...prev, 
+            [activeTab]: contextFollowUps.map(q => q.text) 
+          }));
         }
         
         setIsLoading(false);
