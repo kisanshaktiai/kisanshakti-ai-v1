@@ -90,9 +90,33 @@ import {
   type StructuredResponse
 } from '@/services/chat/structuredResponseBuilder';
 
+// ✅ NEW: Import Diagnosis-First Modules (Production-Ready Pipeline)
+import {
+  determineDiagnosticMode,
+  type DiagnosticDecision,
+  DiagnosticMode
+} from '@/services/chat/diagnosticModeController';
+
+import {
+  buildDiagnosticResponse,
+  type DiagnosticResponse
+} from '@/services/chat/diagnosticResponseBuilder';
+
+import {
+  applyAbsoluteRulesGuard,
+  canRecommendChemicals,
+  canRecommendFertilizers,
+  type RuleViolation,
+  type GuardedAdvisory
+} from '@/services/chat/absoluteRulesGuard';
+
 // Re-export for external use
-export { inferFarmerIntent, type FarmerIntent, type IntentInferenceResult };
-export { analyzeSymptoms, type SymptomAnalysis, type PossibleCause };
+export { inferFarmerIntent };
+export type { FarmerIntent, IntentInferenceResult };
+export { analyzeSymptoms };
+export type { SymptomAnalysis, PossibleCause };
+export { determineDiagnosticMode };
+export type { DiagnosticMode, DiagnosticDecision };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CROP NAME TO CODE MAPPING (Multi-language support)
@@ -1507,8 +1531,111 @@ export function tryDecisionBrain(
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // STAGE 3: RUN FULL DECISION GRAPH (with Symptom-Inferred Causes)
+  // STAGE 2.5: BUILD FIELD CONTEXT SNAPSHOT (Required for Diagnostic Mode)
   // ═══════════════════════════════════════════════════════════════════════════
+  
+  const fieldSnapshot = buildFieldContextSnapshot(
+    landContext,
+    CropStage.VEGETATIVE, // Default, will be refined later
+    daysAfterSowing
+  );
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ✅ STAGE 2.6: DIAGNOSTIC MODE DETERMINATION (NEW - CRITICAL!)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // This is the core of the "Diagnosis-First" execution model.
+  // Before running Decision Graph, we check if:
+  // - Multiple causes remain → DIAGNOSTIC mode (ask questions)
+  // - Confidence too low → PHOTO_REQUIRED mode (request photo)
+  // - Single confirmed cause → ACTION mode (run Decision Graph)
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  const diagnosticDecision = determineDiagnosticMode(symptomAnalysis, fieldSnapshot);
+  
+  console.log(`🔬 [Decision Brain] Diagnostic Mode Determination:`, {
+    mode: diagnosticDecision.mode,
+    remainingCauses: diagnosticDecision.remainingCauses.length,
+    eliminatedCauses: diagnosticDecision.eliminatedCauses.length,
+    primaryCause: diagnosticDecision.primaryCause?.cause_name,
+    canRecommendChemicals: diagnosticDecision.canRecommendChemicals,
+    canRecommendFertilizers: diagnosticDecision.canRecommendFertilizers,
+    confidence: Math.round(diagnosticDecision.confidence * 100) + '%'
+  });
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STAGE 2.7: HANDLE DIAGNOSTIC OR PHOTO_REQUIRED MODE
+  // ═══════════════════════════════════════════════════════════════════════════
+  // If we're in diagnostic mode, return early with diagnostic response.
+  // Do NOT run Decision Graph or recommend chemicals in this mode!
+  
+  if (diagnosticDecision.mode === 'DIAGNOSTIC' || diagnosticDecision.mode === 'PHOTO_REQUIRED') {
+    console.log(`📋 [Decision Brain] Entering ${diagnosticDecision.mode} mode - no chemicals/actions`);
+    
+    // Build diagnostic response using the new builder
+    const diagnosticResponse = buildDiagnosticResponse(
+      diagnosticDecision,
+      symptomAnalysis,
+      fieldSnapshot,
+      language
+    );
+    
+    // Create chat response for diagnostic mode
+    const chatResponse: ChatResponse = {
+      response: diagnosticResponse.message,
+      executionTimeMs: Date.now() - startTime,
+      rulesApplied: ['DIAGNOSTIC_MODE_ACTIVE'],
+      sources: ['ICAR', 'FAO'],
+      decisionBrainResponse: {
+        language,
+        landContext: landContext ? {
+          cropName: landContext.crop_name || landContext.current_crop || 'Unknown',
+          cropGroup: landContext.crop_group || getCropGroup(landContext.crop_code || '') || 'Unknown',
+          growthStage: fieldSnapshot.growthStage.toString(),
+          landArea: landContext.area_acres ? `${Math.round(landContext.area_acres * 40)} गुंठा` : undefined,
+          farmingMode: landContext.farming_mode || 'INTEGRATED'
+        } : undefined,
+        farmerMessage: diagnosticResponse.message,
+        primaryActions: [],
+        secondaryActions: [],
+        blockedActions: [{
+          action: language === 'mr' ? 'किटकनाशक/खत' : language === 'hi' ? 'कीटनाशक/खाद' : 'Pesticides/Fertilizers',
+          whyNot: language === 'mr' ? 'निदान निश्चित होईपर्यंत थांबा' : language === 'hi' ? 'निदान की पुष्टि होने तक रुकें' : 'Wait until diagnosis is confirmed',
+          blockedByRules: ['DIAGNOSTIC_MODE_NO_CHEMICALS']
+        }],
+        confidence: {
+          riskLevel: diagnosticDecision.remainingCauses.length > 2 ? 'HIGH' : 'MEDIUM',
+          confidence: diagnosticDecision.confidence,
+          explanations: diagnosticDecision.reasoning,
+          rulesApplied: 1
+        }
+      }
+    };
+    
+    console.log(`\n════════════════════════════════════════════════════════════════`);
+    console.log(`📋 [DECISION BRAIN] DIAGNOSTIC MODE - No Action Given`);
+    console.log(`⏱️ Execution time: ${chatResponse.executionTimeMs}ms`);
+    console.log(`🔍 Mode: ${diagnosticDecision.mode}`);
+    console.log(`📊 Remaining causes: ${diagnosticDecision.remainingCauses.length}`);
+    console.log(`❓ Questions: ${diagnosticDecision.disambiguationQuestions.length}`);
+    console.log(`📷 Photo requested: ${diagnosticDecision.photoRequest ? 'Yes' : 'No'}`);
+    console.log(`════════════════════════════════════════════════════════════════\n`);
+    
+    return {
+      handled: true,
+      response: chatResponse,
+      fallbackToAI: false,
+      inferredIntent: intentResult.intent,
+      intentConfidence: intentResult.confidence
+    };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STAGE 3: RUN FULL DECISION GRAPH (Only in ACTION mode!)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // We only reach here if diagnosticDecision.mode === 'ACTION'
+  // This means we have a single confirmed cause and can proceed.
+  
+  console.log(`✅ [Decision Brain] ACTION mode confirmed - proceeding to Decision Graph`);
   
   const decisionInput = landContextToDecisionInput(landContext, farmerId, tenantId);
   if (!decisionInput) {
