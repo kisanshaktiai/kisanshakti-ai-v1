@@ -24,6 +24,7 @@ import {
   SoilMoistureState,
   SoilZincState,
   SoilOCState,
+  SoilTexture,
   SoilStates,
   NDVIState,
   NDVITrend,
@@ -243,6 +244,116 @@ export function extractSoilOCState(ocPct: number): SoilOCState {
   return SoilOCState.MEDIUM_OC;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SOIL TEXTURE EXTRACTION (STEP 2)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Extract soil texture from sand and clay percentages
+ * Based on USDA Soil Texture Triangle / ICAR classification
+ * 
+ * Texture affects:
+ * - Fertilizer retention (sandy = low, clay = high)
+ * - Irrigation frequency (sandy = frequent, clay = less frequent)
+ * - N/K split recommendations (sandy = more splits)
+ * 
+ * @param sandPct - Sand percentage (0-100)
+ * @param clayPct - Clay percentage (0-100)
+ * @returns SoilTexture symbol
+ */
+export function extractSoilTexture(sandPct: number, clayPct: number): SoilTexture {
+  // Simplified USDA texture triangle classification
+  // Full triangle has 12 classes; we use 5 for practical field use
+  
+  // Sandy: >85% sand
+  if (sandPct >= 85) {
+    return SoilTexture.SANDY;
+  }
+  
+  // Clay: >40% clay
+  if (clayPct >= 40) {
+    return SoilTexture.CLAY;
+  }
+  
+  // Clay loam: 25-40% clay
+  if (clayPct >= 25 && clayPct < 40) {
+    return SoilTexture.CLAY_LOAM;
+  }
+  
+  // Sandy loam: 70-85% sand
+  if (sandPct >= 70 && sandPct < 85) {
+    return SoilTexture.SANDY_LOAM;
+  }
+  
+  // Loamy: balanced texture (default for most soils)
+  return SoilTexture.LOAMY;
+}
+
+/**
+ * Get fertilizer efficiency modifier based on soil texture
+ * 
+ * Sandy soils have low nutrient retention, requiring:
+ * - More frequent, smaller fertilizer applications
+ * - Higher total amounts (due to leaching)
+ * 
+ * Clay soils have high nutrient retention, allowing:
+ * - Less frequent applications
+ * - Risk of nutrient lockup in dry conditions
+ * 
+ * @param texture - Soil texture
+ * @returns Efficiency modifier (1.0 = standard, <1.0 = reduce, >1.0 = increase)
+ */
+export function getSoilTextureEfficiencyModifier(texture: SoilTexture): {
+  n_modifier: number;
+  p_modifier: number;
+  k_modifier: number;
+  irrigation_frequency_modifier: number;
+  split_application_recommended: boolean;
+} {
+  switch (texture) {
+    case SoilTexture.SANDY:
+      return {
+        n_modifier: 1.25,      // 25% more N needed due to leaching
+        p_modifier: 1.10,      // 10% more P
+        k_modifier: 1.30,      // 30% more K (highly mobile)
+        irrigation_frequency_modifier: 1.5,  // 50% more frequent irrigation
+        split_application_recommended: true  // Must split applications
+      };
+    case SoilTexture.SANDY_LOAM:
+      return {
+        n_modifier: 1.10,
+        p_modifier: 1.05,
+        k_modifier: 1.15,
+        irrigation_frequency_modifier: 1.2,
+        split_application_recommended: true
+      };
+    case SoilTexture.LOAMY:
+      return {
+        n_modifier: 1.0,       // Standard recommendations
+        p_modifier: 1.0,
+        k_modifier: 1.0,
+        irrigation_frequency_modifier: 1.0,
+        split_application_recommended: false
+      };
+    case SoilTexture.CLAY_LOAM:
+      return {
+        n_modifier: 0.95,      // Slightly less needed
+        p_modifier: 1.0,
+        k_modifier: 0.95,
+        irrigation_frequency_modifier: 0.8,
+        split_application_recommended: false
+      };
+    case SoilTexture.CLAY:
+      return {
+        n_modifier: 0.90,      // 10% less N (better retention)
+        p_modifier: 1.0,       // P fixation - standard amount
+        k_modifier: 0.85,      // 15% less K (high retention)
+        irrigation_frequency_modifier: 0.6,
+        split_application_recommended: false
+      };
+  }
+}
+
 /**
  * Extract complete soil states from raw soil data
  * 
@@ -259,6 +370,8 @@ export function extractSoilStates(
     moisture?: number;
     zinc?: number;
     organicCarbon?: number;
+    sandPct?: number;
+    clayPct?: number;
   },
   cropCode: string
 ): SoilStates {
@@ -275,6 +388,10 @@ export function extractSoilStates(
       : undefined,
     organic_carbon: soilData.organicCarbon !== undefined 
       ? extractSoilOCState(soilData.organicCarbon) 
+      : undefined,
+    // STEP 2: Add soil texture extraction
+    texture: (soilData.sandPct !== undefined && soilData.clayPct !== undefined)
+      ? extractSoilTexture(soilData.sandPct, soilData.clayPct)
       : undefined
   };
 }

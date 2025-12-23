@@ -66,6 +66,19 @@ export enum SoilOCState {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// SOIL TEXTURE - For fertilizer adjustments (STEP 2)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Soil texture classification based on USDA/ICAR standards */
+export enum SoilTexture {
+  SANDY = 'SANDY',           // >85% sand, rapid drainage, low nutrient retention
+  SANDY_LOAM = 'SANDY_LOAM', // 70-85% sand, good drainage
+  LOAMY = 'LOAMY',           // Balanced texture, ideal for most crops
+  CLAY_LOAM = 'CLAY_LOAM',   // 25-40% clay, moderate drainage
+  CLAY = 'CLAY'              // >40% clay, slow drainage, high nutrient retention
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // NDVI STATE SYMBOLS - Based on NASA/ESA/ICAR standards
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -466,6 +479,8 @@ export interface SoilStates {
   moisture: SoilMoistureState;
   zinc?: SoilZincState;
   organic_carbon?: SoilOCState;
+  /** Soil texture - affects fertilizer efficiency (STEP 2) */
+  texture?: SoilTexture;
 }
 
 /** Data confidence levels (0-1) */
@@ -475,10 +490,62 @@ export interface DataConfidence {
   weather: number; // Weather forecast confidence
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// DATA TIMESTAMPS - For freshness validation (STEP 3)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Timestamps for data freshness validation */
+export interface DataTimestamps {
+  ndvi_timestamp?: string;        // ISO date - NDVI data collection time
+  soil_test_timestamp?: string;   // ISO date - Soil test date
+  weather_timestamp?: string;     // ISO date - Weather data fetch time
+}
+
+/** Data freshness thresholds (hours) */
+export const DATA_FRESHNESS_THRESHOLDS = {
+  NDVI_MAX_AGE_HOURS: 72,         // 3 days
+  SOIL_MAX_AGE_DAYS: 180,         // 6 months
+  WEATHER_MAX_AGE_HOURS: 6        // 6 hours
+} as const;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KNOWLEDGE LAYER CLASSIFICATION (STEP 1)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Knowledge layer for rule classification */
+export type KnowledgeLayer = 
+  | 'ICAR_BASELINE'           // Legally defensible ICAR recommendations
+  | 'GLOBAL_ENHANCEMENT'      // FAO/NASA/CGIAR enhancements (clearly labeled)
+  | 'ADVANCED_OPTIMIZATION';  // Research-backed yield optimization
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ECONOMIC TIER CLASSIFICATION (STEP 8)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Economic tier for cost-aware filtering */
+export type EconomicTier = 
+  | 'FREE'          // No cost (monitoring, timing advice)
+  | 'LOW_COST'      // < ₹500/acre
+  | 'MEDIUM_COST'   // ₹500-2000/acre
+  | 'HIGH_COST';    // > ₹2000/acre
+
+/** Farmer landholding class for economic filtering */
+export type LandholdingClass = 
+  | 'MARGINAL'      // < 1 hectare
+  | 'SMALL'         // 1-2 hectares  
+  | 'MEDIUM'        // 2-10 hectares
+  | 'LARGE';        // > 10 hectares
+
 /** Farmer behavior profile for priority adjustment */
 export interface FarmerProfile {
   risk_tolerance: 'conservative' | 'moderate' | 'aggressive';
   cost_sensitivity: 'high' | 'medium' | 'low';
+  /** Landholding class for economic filtering (STEP 8) */
+  landholding_class?: LandholdingClass;
+  /** Budget level for action filtering */
+  budget_level?: 'LOW' | 'MEDIUM' | 'HIGH';
+  /** Subsidy eligibility flag */
+  subsidy_eligible?: boolean;
 }
 
 /**
@@ -517,9 +584,15 @@ export interface DecisionInput {
   weather_forecast_3day: WeatherState[]; // Next 3 days
 
   // ─────────────────────────────────────────────────────────────────────────
-  // DATA CONFIDENCE
+  // DATA CONFIDENCE & FRESHNESS (STEPS 3, 5)
   // ─────────────────────────────────────────────────────────────────────────
   data_confidence: DataConfidence;
+  
+  /** Data timestamps for freshness validation (STEP 3) */
+  data_timestamps?: DataTimestamps;
+  
+  /** Weather forecast confidence 0-1 (STEP 5) */
+  weather_forecast_confidence?: number;
 
   // ─────────────────────────────────────────────────────────────────────────
   // REGIONAL CONTEXT (Optional)
@@ -693,6 +766,51 @@ export interface CauseRule {
   scientific_source: string;          // 'ICAR-IARI', 'FAO', etc.
   scientific_basis: string;           // Explanation for audit
   icar_package?: string;              // Specific ICAR package reference
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RULE METADATA (STEP 1)
+  // ─────────────────────────────────────────────────────────────────────────
+  metadata?: {
+    /** Rule version for tracking changes */
+    version: string;
+    /** Creation date ISO string */
+    created_at: string;
+    /** Rule author/source */
+    author: string;
+    /** Knowledge layer classification */
+    knowledge_layer: KnowledgeLayer;
+    /** Whether this rule is deprecated */
+    deprecated?: boolean;
+    /** Reason for deprecation */
+    deprecation_reason?: string;
+    /** ID of replacement rule if deprecated */
+    replacement_rule_id?: string;
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // VARIETY FILTER (STEP 4)
+  // ─────────────────────────────────────────────────────────────────────────
+  /** Variety-specific rule filtering */
+  variety_filter?: {
+    /** Only apply to these varieties */
+    include?: string[];
+    /** Exclude these varieties (e.g., heat-tolerant varieties skip heat rules) */
+    exclude?: string[];
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RULE CONFIDENCE (STEP 6)
+  // ─────────────────────────────────────────────────────────────────────────
+  /** How confident is this rule when it fires (0-1)? Defaults to 0.8 */
+  cause_confidence?: number;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ECONOMIC METADATA (STEP 8)
+  // ─────────────────────────────────────────────────────────────────────────
+  /** Economic tier for cost-aware filtering */
+  economic_tier?: EconomicTier;
+  /** Estimated cost in INR per acre */
+  estimated_cost_inr?: number;
 }
 
 /**

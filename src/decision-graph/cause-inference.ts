@@ -584,7 +584,9 @@ export function loadCropGroupRules(cropGroup: CropGroup): CauseRule[] {
 export function filterRulesForCrop(
   rules: CauseRule[],
   cropCode: string,
-  stage: CropStage
+  stage: CropStage,
+  cropVariety?: string,
+  economicFilter?: 'MARGINAL' | 'SMALL' | 'MEDIUM' | 'LARGE'
 ): CauseRule[] {
   const normalizedCropCode = cropCode.toLowerCase();
 
@@ -599,16 +601,37 @@ export function filterRulesForCrop(
       const ruleCropCode = rule.crop_code.toLowerCase();
       
       // Exact match
-      if (ruleCropCode === normalizedCropCode) {
-        return true;
-      }
-      
-      // Group-wide rule (e.g., 'all_cereals')
-      if (ruleCropCode.startsWith('all_')) {
-        return true;
+      if (ruleCropCode !== normalizedCropCode && !ruleCropCode.startsWith('all_')) {
+        return false;
       }
 
-      return false;
+      // STEP 1: Skip deprecated rules
+      if (rule.metadata?.deprecated) {
+        return false;
+      }
+
+      // STEP 4: Variety filter
+      if (rule.variety_filter && cropVariety) {
+        const normalizedVariety = cropVariety.toLowerCase();
+        if (rule.variety_filter.include && 
+            !rule.variety_filter.include.some(v => v.toLowerCase() === normalizedVariety)) {
+          return false;
+        }
+        if (rule.variety_filter.exclude && 
+            rule.variety_filter.exclude.some(v => v.toLowerCase() === normalizedVariety)) {
+          return false;
+        }
+      }
+
+      // STEP 8: Economic filter - skip high-cost rules for marginal farmers
+      if (economicFilter && rule.economic_tier) {
+        if ((economicFilter === 'MARGINAL' || economicFilter === 'SMALL') && 
+            rule.economic_tier === 'HIGH_COST') {
+          return false;
+        }
+      }
+
+      return true;
     })
     .sort((a, b) => {
       // Specific crop rules first
