@@ -72,6 +72,24 @@ import {
   type PossibleCause
 } from '@/services/chat/symptomPatternRecognizer';
 
+// ✅ NEW: Import Field Context Snapshot Builder
+import {
+  buildFieldContextSnapshot,
+  type FieldContextSnapshot
+} from '@/services/chat/fieldContextSnapshot';
+
+// ✅ NEW: Import Farmer Message Classifier
+import {
+  classifyFarmerMessage,
+  type MessageClassification
+} from '@/services/chat/farmerMessageClassifier';
+
+// ✅ NEW: Import Structured Response Builder
+import {
+  buildStructuredResponse,
+  type StructuredResponse
+} from '@/services/chat/structuredResponseBuilder';
+
 // Re-export for external use
 export { inferFarmerIntent, type FarmerIntent, type IntentInferenceResult };
 export { analyzeSymptoms, type SymptomAnalysis, type PossibleCause };
@@ -1374,7 +1392,21 @@ export function tryDecisionBrain(
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // STAGE 1.5: SYMPTOM PATTERN RECOGNITION (NEW - Multi-Cause Analysis)
+  // STAGE 1.3: FARMER MESSAGE CLASSIFICATION (NEW - 6-Category Intent)
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  const messageClassification = classifyFarmerMessage(query);
+  
+  console.log(`📝 [Decision Brain] Message Classification:`, {
+    intent: messageClassification.intent,
+    language: messageClassification.language,
+    confidence: Math.round(messageClassification.confidence * 100) + '%',
+    subIntent: messageClassification.subIntent,
+    responseStyle: messageClassification.responseStyle
+  });
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STAGE 1.5: SYMPTOM PATTERN RECOGNITION (Multi-Cause Analysis)
   // ═══════════════════════════════════════════════════════════════════════════
   
   // Get crop code for symptom analysis context
@@ -1625,14 +1657,53 @@ export function tryDecisionBrain(
     });
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // FORMAT RESPONSE (with "no action needed" handling)
+    // STAGE 4.5: BUILD FIELD CONTEXT SNAPSHOT (NEW - For Structured Responses)
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    const fieldSnapshot = buildFieldContextSnapshot(
+      landContext,
+      decisionInput.crop_stage,
+      daysAfterSowing
+    );
+    
+    console.log(`📊 [Decision Brain] Field Context Snapshot:`, {
+      certainty: fieldSnapshot.dataFreshness.overallCertainty,
+      daysAfterSowing: fieldSnapshot.daysAfterSowing,
+      soilFresh: !fieldSnapshot.dataFreshness.soil.isStale,
+      ndviFresh: !fieldSnapshot.dataFreshness.ndvi.isStale,
+      weatherFresh: !fieldSnapshot.dataFreshness.weather.isStale
+    });
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FORMAT RESPONSE (with Structured 5-Part Response)
     // ═══════════════════════════════════════════════════════════════════════════
     
     let chatResponse: ChatResponse;
     
     if (filteredResult.hasRelevantActions) {
-      // Normal case: we have relevant actions for this intent
+      // Build structured 5-part response for production-ready output
+      const structuredResponse = buildStructuredResponse(
+        fieldSnapshot,
+        filteredResult.advisory,
+        messageClassification,
+        language
+      );
+      
+      console.log(`📝 [Decision Brain] Structured Response Built:`, {
+        hasAction: !!structuredResponse.bestActionNow,
+        timeWindow: structuredResponse.timeWindow,
+        confidence: structuredResponse.confidenceDisclosure
+      });
+      
+      // Use the structured farmer message as the primary response
       chatResponse = formatAdvisoryForChat(filteredResult.advisory, language, landContext);
+      
+      // Replace the farmer message with the structured one for cleaner output
+      if (chatResponse.decisionBrainResponse) {
+        chatResponse.decisionBrainResponse.farmerMessage = structuredResponse.farmerMessage;
+      }
+      chatResponse.response = structuredResponse.farmerMessage;
+      
     } else {
       // CRITICAL: No action needed for this intent - generate safe response
       chatResponse = formatNoActionResponse(
