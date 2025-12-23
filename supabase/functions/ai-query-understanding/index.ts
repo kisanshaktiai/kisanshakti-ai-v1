@@ -6,15 +6,12 @@
  * 
  * Key principle: AI understands → Symbolic Brain decides actions
  * 
- * This handles:
- * - Local dialect words for crops, pests, diseases, weeds
- * - Regional variations in symptom descriptions
- * - Mixed language queries
- * - Ambiguous farmer language
+ * Uses: Google Gemini API (GEMINI_API_KEY from Supabase secrets)
+ * Fallback: OpenAI API (OPENAI_API_KEY)
  */
 
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -77,7 +74,7 @@ interface QueryUnderstandingResponse {
       canonical_code: string;
       confidence: number;
     }>;
-    normalized_query: string; // Same language, but standardized
+    normalized_query: string;
     needs_clarification: boolean;
     clarification_question?: string;
   };
@@ -177,10 +174,12 @@ serve(async (req) => {
     }
 
     // Step 2: Use AI for understanding (when local patterns aren't enough)
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    // Try Gemini API first (primary), fallback to OpenAI
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     
-    if (!LOVABLE_API_KEY) {
-      console.warn('⚠️ [AI-Understanding] No LOVABLE_API_KEY, using local match only');
+    if (!GEMINI_API_KEY && !OPENAI_API_KEY) {
+      console.warn('⚠️ [AI-Understanding] No API keys configured, using local match only');
       return new Response(JSON.stringify({
         success: true,
         understanding: localMatch,
@@ -195,74 +194,146 @@ serve(async (req) => {
     const systemPrompt = buildUnderstandingSystemPrompt(language, landCropCode);
     const userPrompt = buildUnderstandingUserPrompt(text, language, landCropCode, state, district);
 
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
+    let aiResponse: Response;
+    let useGemini = !!GEMINI_API_KEY;
+
+    if (useGemini) {
+      // Use Google Gemini API
+      console.log('🤖 [AI-Understanding] Using Gemini API');
+      
+      const geminiPayload = {
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }]
+          }
         ],
-        tools: [{
-          type: 'function',
-          function: {
-            name: 'extract_query_understanding',
-            description: 'Extract structured understanding from farmer query',
-            parameters: {
-              type: 'object',
-              properties: {
-                canonical_intent: {
-                  type: 'string',
-                  enum: [
-                    'WATER_MANAGEMENT', 'NUTRIENT_MANAGEMENT', 'PEST_ISSUE',
-                    'DISEASE_ISSUE', 'WEED_ISSUE', 'GROWTH_PROBLEM',
-                    'HARVEST_TIMING', 'STATUS_CHECK', 'MARKET_PRICE',
-                    'WEATHER_QUERY', 'GENERAL_QUERY'
-                  ],
-                },
-                confidence: { type: 'number', minimum: 0, maximum: 1 },
-                crop_code: { type: 'string', nullable: true },
-                symptom_id: {
-                  type: 'string',
-                  enum: [
-                    'LEAF_YELLOWING', 'LEAF_SPOTS', 'LEAF_CURLING', 'WILTING',
-                    'STUNTED_GROWTH', 'ROOT_DAMAGE', 'FRUIT_DAMAGE', 'STEM_DAMAGE',
-                    'PEST_VISIBLE', 'FUNGAL_GROWTH'
-                  ],
-                  nullable: true,
-                },
-                pest_code: { type: 'string', nullable: true },
-                disease_code: { type: 'string', nullable: true },
-                weed_code: { type: 'string', nullable: true },
-                growth_stage: { type: 'string', nullable: true },
-                urgency: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
-                local_terms: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      term: { type: 'string' },
-                      canonical_type: { type: 'string', enum: ['crop', 'pest', 'disease', 'weed', 'symptom'] },
-                      canonical_code: { type: 'string' },
-                      confidence: { type: 'number' },
-                    },
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 1024,
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: 'object',
+            properties: {
+              canonical_intent: {
+                type: 'string',
+                enum: [
+                  'WATER_MANAGEMENT', 'NUTRIENT_MANAGEMENT', 'PEST_ISSUE',
+                  'DISEASE_ISSUE', 'WEED_ISSUE', 'GROWTH_PROBLEM',
+                  'HARVEST_TIMING', 'STATUS_CHECK', 'MARKET_PRICE',
+                  'WEATHER_QUERY', 'GENERAL_QUERY'
+                ],
+              },
+              confidence: { type: 'number' },
+              crop_code: { type: 'string' },
+              symptom_id: { type: 'string' },
+              pest_code: { type: 'string' },
+              disease_code: { type: 'string' },
+              weed_code: { type: 'string' },
+              growth_stage: { type: 'string' },
+              urgency: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+              local_terms: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    term: { type: 'string' },
+                    canonical_type: { type: 'string' },
+                    canonical_code: { type: 'string' },
+                    confidence: { type: 'number' },
                   },
                 },
-                normalized_query: { type: 'string' },
-                needs_clarification: { type: 'boolean' },
-                clarification_question: { type: 'string', nullable: true },
               },
-              required: ['canonical_intent', 'confidence', 'urgency', 'normalized_query'],
+              normalized_query: { type: 'string' },
+              needs_clarification: { type: 'boolean' },
+              clarification_question: { type: 'string' },
             },
+            required: ['canonical_intent', 'confidence', 'urgency', 'normalized_query'],
           },
-        }],
-        tool_choice: { type: 'function', function: { name: 'extract_query_understanding' } },
-      }),
-    });
+        },
+      };
+
+      aiResponse = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(geminiPayload),
+        }
+      );
+    } else {
+      // Fallback to OpenAI API
+      console.log('🤖 [AI-Understanding] Using OpenAI API');
+      
+      aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          tools: [{
+            type: 'function',
+            function: {
+              name: 'extract_query_understanding',
+              description: 'Extract structured understanding from farmer query',
+              parameters: {
+                type: 'object',
+                properties: {
+                  canonical_intent: {
+                    type: 'string',
+                    enum: [
+                      'WATER_MANAGEMENT', 'NUTRIENT_MANAGEMENT', 'PEST_ISSUE',
+                      'DISEASE_ISSUE', 'WEED_ISSUE', 'GROWTH_PROBLEM',
+                      'HARVEST_TIMING', 'STATUS_CHECK', 'MARKET_PRICE',
+                      'WEATHER_QUERY', 'GENERAL_QUERY'
+                    ],
+                  },
+                  confidence: { type: 'number', minimum: 0, maximum: 1 },
+                  crop_code: { type: 'string', nullable: true },
+                  symptom_id: {
+                    type: 'string',
+                    enum: [
+                      'LEAF_YELLOWING', 'LEAF_SPOTS', 'LEAF_CURLING', 'WILTING',
+                      'STUNTED_GROWTH', 'ROOT_DAMAGE', 'FRUIT_DAMAGE', 'STEM_DAMAGE',
+                      'PEST_VISIBLE', 'FUNGAL_GROWTH'
+                    ],
+                    nullable: true,
+                  },
+                  pest_code: { type: 'string', nullable: true },
+                  disease_code: { type: 'string', nullable: true },
+                  weed_code: { type: 'string', nullable: true },
+                  growth_stage: { type: 'string', nullable: true },
+                  urgency: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                  local_terms: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        term: { type: 'string' },
+                        canonical_type: { type: 'string', enum: ['crop', 'pest', 'disease', 'weed', 'symptom'] },
+                        canonical_code: { type: 'string' },
+                        confidence: { type: 'number' },
+                      },
+                    },
+                  },
+                  normalized_query: { type: 'string' },
+                  needs_clarification: { type: 'boolean' },
+                  clarification_question: { type: 'string', nullable: true },
+                },
+                required: ['canonical_intent', 'confidence', 'urgency', 'normalized_query'],
+              },
+            },
+          }],
+          tool_choice: { type: 'function', function: { name: 'extract_query_understanding' } },
+        }),
+      });
+    }
 
     if (!aiResponse.ok) {
       console.error('❌ [AI-Understanding] AI API error:', aiResponse.status);
@@ -278,10 +349,36 @@ serve(async (req) => {
     }
 
     const aiData = await aiResponse.json();
-    const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
     
-    if (!toolCall) {
-      console.warn('⚠️ [AI-Understanding] No tool call in response');
+    // Parse response based on which API was used
+    let aiUnderstanding: any = null;
+    
+    if (useGemini) {
+      // Gemini returns structured JSON directly in candidates[0].content.parts[0].text
+      const geminiText = aiData.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (geminiText) {
+        try {
+          aiUnderstanding = JSON.parse(geminiText);
+          console.log('✅ [AI-Understanding] Gemini extracted:', aiUnderstanding);
+        } catch (parseError) {
+          console.error('❌ [AI-Understanding] Failed to parse Gemini response:', parseError);
+        }
+      }
+    } else {
+      // OpenAI uses tool_calls
+      const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
+      if (toolCall?.function?.arguments) {
+        try {
+          aiUnderstanding = JSON.parse(toolCall.function.arguments);
+          console.log('✅ [AI-Understanding] OpenAI extracted:', aiUnderstanding);
+        } catch (parseError) {
+          console.error('❌ [AI-Understanding] Failed to parse OpenAI response:', parseError);
+        }
+      }
+    }
+    
+    if (!aiUnderstanding) {
+      console.warn('⚠️ [AI-Understanding] No valid AI response, using local match');
       return new Response(JSON.stringify({
         success: true,
         understanding: localMatch,
@@ -291,9 +388,6 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-
-    const aiUnderstanding = JSON.parse(toolCall.function.arguments);
-    console.log('✅ [AI-Understanding] AI extracted:', aiUnderstanding);
 
     // Merge AI understanding with local match (prefer AI for ambiguous cases)
     const finalUnderstanding = {
