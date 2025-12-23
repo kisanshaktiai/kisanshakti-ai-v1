@@ -74,30 +74,61 @@ class NetworkStatusService {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), 8000); // Increased timeout
 
-      // Use Supabase REST API health check (not precached by service worker)
-      const response = await fetch(`${SUPABASE_CONFIG.URL}/rest/v1/`, {
-        method: 'HEAD',
-        mode: 'no-cors', // Avoid CORS issues
-        cache: 'no-store',
-        signal: controller.signal,
-      });
+      // Use multiple fallback endpoints for reliability
+      const endpoints = [
+        // Primary: Simple favicon/asset check (faster, no CORS issues)
+        { url: '/manifest.json', method: 'HEAD' as const },
+        // Fallback: Supabase health
+        { url: `${SUPABASE_CONFIG.URL}/rest/v1/`, method: 'HEAD' as const, mode: 'cors' as const }
+      ];
+
+      let success = false;
+      
+      for (const endpoint of endpoints) {
+        try {
+          const response = await fetch(endpoint.url, {
+            method: endpoint.method,
+            cache: 'no-store',
+            signal: controller.signal,
+            ...(endpoint.mode && { mode: endpoint.mode })
+          });
+          
+          // Any response (including errors) means we're online
+          // For no-cors requests, response.type is 'opaque' but that's still online
+          success = true;
+          break;
+        } catch (endpointError) {
+          // Try next endpoint
+          console.log(`[Network] Endpoint ${endpoint.url} failed, trying next...`);
+          continue;
+        }
+      }
 
       clearTimeout(timeoutId);
       
-      // Success - reset failure count and mark online
-      this.failureCount = 0;
-      this.setOnline(true);
-      console.log('✅ [Network] Connectivity verified');
+      if (success) {
+        // Success - reset failure count and mark online
+        this.failureCount = 0;
+        this.setOnline(true);
+        console.log('✅ [Network] Connectivity verified');
+      } else {
+        throw new Error('All endpoints failed');
+      }
     } catch (error) {
       this.failureCount++;
       console.warn(`⚠️ [Network] Connectivity check failed (${this.failureCount}/${this.FAILURE_THRESHOLD})`);
 
-      // Only mark offline after multiple consecutive failures
-      if (this.failureCount >= this.FAILURE_THRESHOLD) {
+      // Only mark offline after multiple consecutive failures AND browser says we're offline
+      if (this.failureCount >= this.FAILURE_THRESHOLD && !navigator.onLine) {
         console.error('❌ [Network] Marking as offline after multiple failures');
         this.setOnline(false);
+      } else if (this.failureCount >= this.FAILURE_THRESHOLD) {
+        // Browser says online but Supabase checks failing - keep online but log warning
+        console.warn('⚠️ [Network] Supabase connectivity issues, but browser reports online');
+        // Don't mark offline if browser says we're online - Supabase might just be slow
+        this.failureCount = 0; // Reset to prevent false offline state
       } else {
         // Retry quickly instead of marking offline immediately
         setTimeout(() => this.verifyConnectivity(), this.RETRY_DELAY);
