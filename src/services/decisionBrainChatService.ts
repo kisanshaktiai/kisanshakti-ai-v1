@@ -322,12 +322,13 @@ export function calculateCropStageFromDAS(daysAfterSowing: number, cropCode?: st
 
 interface QueryClassification {
   isAgricultural: boolean;
-  queryType: 'watering' | 'fertilizer' | 'pest' | 'disease' | 'harvest' | 'weather' | 'general' | 'non_agri';
+  queryType: 'watering' | 'fertilizer' | 'pest' | 'disease' | 'harvest' | 'weather' | 'general' | 'crop_selection' | 'non_agri';
   canUseDecisionBrain: boolean;
   requiresAI: boolean;
   requiresAIEnhancement: boolean; // ✅ NEW: AI enhances but doesn't decide
   isFollowUp: boolean;           // ✅ NEW: Track follow-up questions
   isDetailedQuestion: boolean;   // ✅ NEW: Questions needing explanation
+  needsPhotoForSoil?: boolean;   // ✅ NEW: Crop selection may need soil photo
   matchedKeywords: string[];
 }
 
@@ -432,6 +433,17 @@ export function classifyQueryForDecisionBrain(query: string): QueryClassificatio
       'आज क्या करना है', 'आज काय करायचे', 'today', 'आज', 'advice', 'सलाह',
       'काय करू', 'क्या करें', 'what should i do', 'current condition', 'crop condition',
       'growth', 'stage', 'अवस्था', 'care', 'देखभाल', 'काळजी'
+    ],
+    // ✅ NEW: Crop Selection / Rotation queries
+    crop_selection: [
+      'which crop', 'what to plant', 'crop selection', 'best crop', 'next crop',
+      'what should i grow', 'what to grow', 'crop rotation', 'after harvest',
+      'कौनसी फसल', 'क्या बोएं', 'फसल चुनाव', 'अगली फसल', 'क्या उगाएं',
+      'कोणते पीक', 'कोणता पीक', 'पीक निवड', 'पुढचे पीक', 'काय पेरावे',
+      'पीक घेवू', 'कोणते पीक घेऊ', 'काय लावू', 'काय लावावे', 'पेरणी करू',
+      'कोणती फसल', 'फसल लगाएं', 'बोना चाहिए', 'उगाना चाहिए',
+      'ya shetata', 'या शेतात', 'konte pik', 'konata pik', 'kay perave',
+      'suitable crop', 'recommend crop', 'crop suggest', 'next season'
     ]
   };
   
