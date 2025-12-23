@@ -374,9 +374,10 @@ export function ConfidenceIndicator({ confidence, language }: ConfidenceIndicato
     }
   };
   
+  // FIXED: confidence.confidence is already 0-100 (not 0-1), so don't multiply again!
   const getConfidenceColor = (conf: number) => {
-    if (conf >= 0.8) return 'text-success';
-    if (conf >= 0.6) return 'text-warning';
+    if (conf >= 80) return 'text-success';
+    if (conf >= 60) return 'text-warning';
     return 'text-destructive';
   };
 
@@ -392,7 +393,7 @@ export function ConfidenceIndicator({ confidence, language }: ConfidenceIndicato
           <Shield className="h-4 w-4 text-primary" />
           <span className="text-xs font-medium">{labels.confidence}:</span>
           <span className={cn("text-sm font-bold", getConfidenceColor(confidence.confidence))}>
-            {Math.round(confidence.confidence * 100)}%
+            {Math.min(100, Math.max(0, Math.round(confidence.confidence)))}%
           </span>
         </div>
         <Badge className={cn("text-xs", getRiskColor(confidence.riskLevel))}>

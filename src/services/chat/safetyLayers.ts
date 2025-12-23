@@ -417,10 +417,12 @@ export interface ConfidenceFactors {
 
 /**
  * Calculate honest confidence considering all factors
+ * ✅ FIX: Returns localized warnings based on language parameter
  */
 export function calculateHonestConfidence(
   baseConfidence: number,
-  factors: ConfidenceFactors
+  factors: ConfidenceFactors,
+  language: string = 'en'
 ): {
   adjustedConfidence: number;
   confidenceWarnings: string[];
@@ -429,44 +431,87 @@ export function calculateHonestConfidence(
   let penalty = 0;
   const confidenceWarnings: string[] = [];
   
+  // Localized warning messages
+  const warnings: Record<string, Record<string, string>> = {
+    weatherStale: {
+      en: 'Weather data is stale - spray timing may be uncertain',
+      hi: 'मौसम डेटा पुराना है - स्प्रे का समय अनिश्चित हो सकता है',
+      mr: 'हवामान डेटा जुना आहे - फवारणीची वेळ अनिश्चित असू शकते'
+    },
+    ndviStale: {
+      en: 'NDVI data is old - crop health assessment may be outdated',
+      hi: 'NDVI डेटा पुराना है - फसल स्वास्थ्य आकलन पुराना हो सकता है',
+      mr: 'NDVI डेटा जुना आहे - पीक आरोग्य मूल्यांकन जुने असू शकते'
+    },
+    soilStale: {
+      en: 'Soil test is old - nutrient recommendations are approximate',
+      hi: 'मिट्टी परीक्षण पुराना है - पोषक तत्व अनुशंसाएं अनुमानित हैं',
+      mr: 'माती चाचणी जुनी आहे - पोषक तत्व शिफारसी अंदाजे आहेत'
+    },
+    visionLow: {
+      en: 'Image analysis has lower confidence - verify conditions in field',
+      hi: 'छवि विश्लेषण में कम विश्वास - खेत में स्थिति की पुष्टि करें',
+      mr: 'प्रतिमा विश्लेषणात कमी विश्वास - शेतात स्थिती तपासा'
+    },
+    weatherUncertain: {
+      en: 'Weather forecast is uncertain - monitor conditions before action',
+      hi: 'मौसम पूर्वानुमान अनिश्चित - कार्रवाई से पहले स्थिति देखें',
+      mr: 'हवामान अंदाज अनिश्चित - कृती करण्यापूर्वी परिस्थिती पहा'
+    },
+    limitedData: {
+      en: 'Limited regional data for this crop - recommendations are general',
+      hi: 'इस फसल के लिए सीमित क्षेत्रीय डेटा - अनुशंसाएं सामान्य हैं',
+      mr: 'या पिकासाठी मर्यादित प्रादेशिक डेटा - शिफारसी सामान्य आहेत'
+    },
+    partialData: {
+      en: 'This advice is based on partial data – confirm in field',
+      hi: 'यह सलाह आंशिक डेटा पर आधारित है - खेत में पुष्टि करें',
+      mr: 'हा सल्ला अंशिक डेटावर आधारित आहे - शेतात पुष्टी करा'
+    }
+  };
+  
+  const getWarning = (key: string): string => {
+    return warnings[key]?.[language] || warnings[key]?.en || key;
+  };
+  
   // Data freshness penalty
   const freshnessPenalty = calculateFreshnessPenalty(factors.dataFreshness);
   if (freshnessPenalty > 0) {
     penalty += freshnessPenalty;
     if (factors.dataFreshness.weatherStale) {
-      confidenceWarnings.push('Weather data is stale - spray timing may be uncertain');
+      confidenceWarnings.push(getWarning('weatherStale'));
     }
     if (factors.dataFreshness.ndviStale) {
-      confidenceWarnings.push('NDVI data is old - crop health assessment may be outdated');
+      confidenceWarnings.push(getWarning('ndviStale'));
     }
     if (factors.dataFreshness.soilStale) {
-      confidenceWarnings.push('Soil test is old - nutrient recommendations are approximate');
+      confidenceWarnings.push(getWarning('soilStale'));
     }
   }
   
   // Vision confidence penalty
   if (factors.visionConfidence !== undefined && factors.visionConfidence < 0.8) {
     penalty += (1 - factors.visionConfidence) * 0.2; // Up to 20% penalty
-    confidenceWarnings.push('Image analysis has lower confidence - verify conditions in field');
+    confidenceWarnings.push(getWarning('visionLow'));
   }
   
   // Weather certainty penalty
   if (factors.weatherCertainty !== undefined && factors.weatherCertainty < 0.7) {
     penalty += (1 - factors.weatherCertainty) * 0.15; // Up to 15% penalty
-    confidenceWarnings.push('Weather forecast is uncertain - monitor conditions before action');
+    confidenceWarnings.push(getWarning('weatherUncertain'));
   }
   
   // Rule completeness penalty
   if (factors.ruleCompleteness < 0.7) {
     penalty += (1 - factors.ruleCompleteness) * 0.1; // Up to 10% penalty
-    confidenceWarnings.push('Limited regional data for this crop - recommendations are general');
+    confidenceWarnings.push(getWarning('limitedData'));
   }
   
   const adjustedConfidence = Math.max(0.3, baseConfidence - penalty);
   const isPartialData = adjustedConfidence < 0.6;
   
   if (isPartialData) {
-    confidenceWarnings.push('This advice is based on partial data – confirm in field');
+    confidenceWarnings.push(getWarning('partialData'));
   }
   
   return { adjustedConfidence, confidenceWarnings, isPartialData };
@@ -553,6 +598,7 @@ export interface SafetyFilterInput {
   farmerProfile?: FarmerProfile;
   dataTimestamps?: DataTimestamps;
   ruleCompleteness?: number;
+  language?: string; // ✅ NEW: For localized warnings
 }
 
 /**
@@ -676,12 +722,12 @@ export function runAllSafetyFilters(input: SafetyFilterInput): SafetyFilterResul
     }
   }
   
-  // 7. Calculate Honest Confidence
+  // 7. Calculate Honest Confidence with language-aware warnings
   const honestConfidence = calculateHonestConfidence(adjustedConfidence, {
     dataFreshness: freshnessFlags,
     visionConfidence: input.visionConfidence,
     ruleCompleteness: input.ruleCompleteness || 0.8
-  });
+  }, input.language || 'en');
   
   warnings.push(...honestConfidence.confidenceWarnings);
   

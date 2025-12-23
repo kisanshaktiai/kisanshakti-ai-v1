@@ -965,8 +965,8 @@ export function formatAdvisoryForChat(
   let whatSection = '';
   
   if (language === 'hi') {
-    // 📊 FACTS (तथ्य)
-    factsSection = `📊 **तथ्य (आपकी जमीन का डेटा):**\n`;
+    // 📊 FACTS (तथ्य) - No markdown ** for plain text display
+    factsSection = `📊 तथ्य (आपकी जमीन का डेटा):\n`;
     factsSection += `🌾 फसल: ${cropName}${area ? ` | क्षेत्र: ${area}` : ''}\n`;
     if (landContextDisplay?.growthStage) factsSection += `📅 अवस्था: ${landContextDisplay.growthStage}${landContextDisplay.daysAfterSowing ? ` (${landContextDisplay.daysAfterSowing} दिन)` : ''}\n`;
     if (landContextDisplay?.soilStatus) {
@@ -987,12 +987,12 @@ export function formatAdvisoryForChat(
     
     // 🔍 WHY (क्यों)
     if (advisory.causes.length > 0) {
-      whySection = `\n🔍 **क्यों (समस्याएं पाई गईं):**\n`;
+      whySection = `\n🔍 क्यों (समस्याएं पाई गईं):\n`;
       whySection += advisory.causes.slice(0, 3).map(c => `⚠️ ${formatCause(c, language)}`).join('\n') + '\n';
     }
     
     // ✅ WHAT TO DO (क्या करें)
-    whatSection = `\n✅ **क्या करें:**\n`;
+    whatSection = `\n✅ क्या करें:\n`;
     if (primaryActions.length > 0) {
       whatSection += primaryActions.map(a => `• ${a.action}${a.timing ? ` (${a.timing})` : ''}`).join('\n');
     } else {
@@ -1001,8 +1001,8 @@ export function formatAdvisoryForChat(
     whatSection += `\n\n📊 विश्वसनीयता: ${Math.round(advisory.confidence * 100)}% | 📚 ICAR + FAO`;
     
   } else if (language === 'mr') {
-    // 📊 FACTS (तथ्ये)
-    factsSection = `📊 **तथ्ये (तुमच्या जमिनीचा डेटा):**\n`;
+    // 📊 FACTS (तथ्ये) - No markdown ** for plain text display
+    factsSection = `📊 तथ्ये (तुमच्या जमिनीचा डेटा):\n`;
     factsSection += `🌾 पीक: ${cropName}${area ? ` | क्षेत्र: ${area}` : ''}\n`;
     if (landContextDisplay?.growthStage) factsSection += `📅 अवस्था: ${landContextDisplay.growthStage}${landContextDisplay.daysAfterSowing ? ` (${landContextDisplay.daysAfterSowing} दिवस)` : ''}\n`;
     if (landContextDisplay?.soilStatus) {
@@ -1023,12 +1023,12 @@ export function formatAdvisoryForChat(
     
     // 🔍 WHY (का)
     if (advisory.causes.length > 0) {
-      whySection = `\n🔍 **का (समस्या आढळल्या):**\n`;
+      whySection = `\n🔍 का (समस्या आढळल्या):\n`;
       whySection += advisory.causes.slice(0, 3).map(c => `⚠️ ${formatCause(c, language)}`).join('\n') + '\n';
     }
     
     // ✅ WHAT TO DO (काय करावे)
-    whatSection = `\n✅ **काय करावे:**\n`;
+    whatSection = `\n✅ काय करावे:\n`;
     if (primaryActions.length > 0) {
       whatSection += primaryActions.map(a => `• ${a.action}${a.timing ? ` (${a.timing})` : ''}`).join('\n');
     } else {
@@ -1037,8 +1037,8 @@ export function formatAdvisoryForChat(
     whatSection += `\n\n📊 विश्वासार्हता: ${Math.round(advisory.confidence * 100)}% | 📚 ICAR + FAO`;
     
   } else {
-    // 📊 FACTS
-    factsSection = `📊 **FACTS (Your Land Data):**\n`;
+    // 📊 FACTS - No markdown ** for plain text display
+    factsSection = `📊 FACTS (Your Land Data):\n`;
     factsSection += `🌾 Crop: ${cropName}${area ? ` | Area: ${area}` : ''}\n`;
     if (landContextDisplay?.growthStage) factsSection += `📅 Stage: ${landContextDisplay.growthStage}${landContextDisplay.daysAfterSowing ? ` (Day ${landContextDisplay.daysAfterSowing})` : ''}\n`;
     if (landContextDisplay?.soilStatus) {
@@ -1059,12 +1059,12 @@ export function formatAdvisoryForChat(
     
     // 🔍 WHY
     if (advisory.causes.length > 0) {
-      whySection = `\n🔍 **WHY (Issues Detected):**\n`;
+      whySection = `\n🔍 WHY (Issues Detected):\n`;
       whySection += advisory.causes.slice(0, 3).map(c => `⚠️ ${formatCause(c, language)}`).join('\n') + '\n';
     }
     
     // ✅ WHAT TO DO
-    whatSection = `\n✅ **WHAT TO DO:**\n`;
+    whatSection = `\n✅ WHAT TO DO:\n`;
     if (primaryActions.length > 0) {
       whatSection += primaryActions.map(a => `• ${a.action}${a.timing ? ` (${a.timing})` : ''}`).join('\n');
     } else {
@@ -1561,7 +1561,7 @@ export function tryDecisionBrain(
       weatherTimestamp: landContext.weather_data?.timestamp
     };
     
-    // Run all safety filters
+    // Run all safety filters with language for localized warnings
     const safetyResult = runAllSafetyFilters({
       advisory: fullAdvisory,
       cropStage: decisionInput.crop_stage,
@@ -1574,7 +1574,8 @@ export function tryDecisionBrain(
       visionConfidence: landContext.vision_context?.confidence,
       farmerProfile: landContext.farmer_profile,
       dataTimestamps,
-      ruleCompleteness: 0.85 // Default rule completeness for most crops
+      ruleCompleteness: 0.85, // Default rule completeness for most crops
+      language // ✅ Pass language for localized warning messages
     });
     
     console.log(`🛡️ [Decision Brain] Safety Layers Complete:`, {
@@ -1756,8 +1757,8 @@ function formatNoActionResponse(
   if (language === 'hi') {
     noActionMessage = filteredResult.noActionReason || `${intentLabel} की अभी जरूरत नहीं है।`;
     
-    // 📊 FACTS
-    let factsSection = `📊 **तथ्य (आपकी जमीन का डेटा):**\n`;
+    // 📊 FACTS - No markdown for plain text display
+    let factsSection = `📊 तथ्य (आपकी जमीन का डेटा):\n`;
     factsSection += `🌾 फसल: ${cropName}${area ? ` | क्षेत्र: ${area}` : ''}\n`;
     if (landContext?.ndvi_data?.value !== undefined) {
       const ndviState = landContext.ndvi_data.value > 0.6 ? 'स्वस्थ' : landContext.ndvi_data.value > 0.4 ? 'ठीक' : 'ध्यान दें';
@@ -1767,20 +1768,17 @@ function formatNoActionResponse(
       factsSection += `🌤️ मौसम: ${landContext.weather_data.temperature || 28}°C\n`;
     }
     
-    // 🔍 WHY
-    const whySection = `\n🔍 **क्यों:**\n✅ ${noActionMessage}\n`;
-    
-    // ✅ WHAT TO DO
-    const whatSection = `\n✅ **क्या करें:**\n📋 ${filteredResult.noActionExplanation || 'नियमित निगरानी जारी रखें।'}\n`;
+    const whySection = `\n🔍 क्यों:\n✅ ${noActionMessage}\n`;
+    const whatSection = `\n✅ क्या करें:\n📋 ${filteredResult.noActionExplanation || 'नियमित निगरानी जारी रखें।'}\n`;
     
     farmerMessage = factsSection + whySection + whatSection + 
-      `\n📊 विश्वसनीयता: ${Math.round(fullAdvisory.confidence * 100)}%\n---\n🧠 *निर्णय मस्तिष्क (0 AI टोकन, तुरंत)*`;
+      `\n📊 विश्वसनीयता: ${Math.round(fullAdvisory.confidence * 100)}%\n---\n🧠 निर्णय मस्तिष्क (0 AI टोकन, तुरंत)`;
       
   } else if (language === 'mr') {
     noActionMessage = filteredResult.noActionReason || `${intentLabel} ची आत्ता गरज नाही।`;
     
-    // 📊 FACTS
-    let factsSection = `📊 **तथ्ये (तुमच्या जमिनीचा डेटा):**\n`;
+    // 📊 FACTS - No markdown for plain text display
+    let factsSection = `📊 तथ्ये (तुमच्या जमिनीचा डेटा):\n`;
     factsSection += `🌾 पीक: ${cropName}${area ? ` | क्षेत्र: ${area}` : ''}\n`;
     if (landContext?.ndvi_data?.value !== undefined) {
       const ndviState = landContext.ndvi_data.value > 0.6 ? 'निरोगी' : landContext.ndvi_data.value > 0.4 ? 'ठीक' : 'लक्ष द्या';
@@ -1790,20 +1788,17 @@ function formatNoActionResponse(
       factsSection += `🌤️ हवामान: ${landContext.weather_data.temperature || 28}°C\n`;
     }
     
-    // 🔍 WHY
-    const whySection = `\n🔍 **का:**\n✅ ${noActionMessage}\n`;
-    
-    // ✅ WHAT TO DO
-    const whatSection = `\n✅ **काय करावे:**\n📋 ${filteredResult.noActionExplanation || 'नियमित निरीक्षण सुरू ठेवा.'}\n`;
+    const whySection = `\n🔍 का:\n✅ ${noActionMessage}\n`;
+    const whatSection = `\n✅ काय करावे:\n📋 ${filteredResult.noActionExplanation || 'नियमित निरीक्षण सुरू ठेवा.'}\n`;
     
     farmerMessage = factsSection + whySection + whatSection + 
-      `\n📊 विश्वासार्हता: ${Math.round(fullAdvisory.confidence * 100)}%\n---\n🧠 *निर्णय मेंदू (0 AI टोकन, त्वरित)*`;
+      `\n📊 विश्वासार्हता: ${Math.round(fullAdvisory.confidence * 100)}%\n---\n🧠 निर्णय मेंदू (0 AI टोकन, त्वरित)`;
       
   } else {
     noActionMessage = filteredResult.noActionReason || `No ${intentLabel} action required at this time.`;
     
-    // 📊 FACTS
-    let factsSection = `📊 **FACTS (Your Land Data):**\n`;
+    // 📊 FACTS - No markdown for plain text display
+    let factsSection = `📊 FACTS (Your Land Data):\n`;
     factsSection += `🌾 Crop: ${cropName}${area ? ` | Area: ${area}` : ''}\n`;
     if (landContext?.ndvi_data?.value !== undefined) {
       const ndviState = landContext.ndvi_data.value > 0.6 ? 'Healthy' : landContext.ndvi_data.value > 0.4 ? 'OK' : 'Attention needed';
@@ -1813,14 +1808,11 @@ function formatNoActionResponse(
       factsSection += `🌤️ Weather: ${landContext.weather_data.temperature || 28}°C\n`;
     }
     
-    // 🔍 WHY
-    const whySection = `\n🔍 **WHY:**\n✅ ${noActionMessage}\n`;
-    
-    // ✅ WHAT TO DO
-    const whatSection = `\n✅ **WHAT TO DO:**\n📋 ${filteredResult.noActionExplanation || 'Continue regular monitoring.'}\n`;
+    const whySection = `\n🔍 WHY:\n✅ ${noActionMessage}\n`;
+    const whatSection = `\n✅ WHAT TO DO:\n📋 ${filteredResult.noActionExplanation || 'Continue regular monitoring.'}\n`;
     
     farmerMessage = factsSection + whySection + whatSection + 
-      `\n📊 Confidence: ${Math.round(fullAdvisory.confidence * 100)}%\n---\n🧠 *Decision Brain (0 AI tokens, instant)*`;
+      `\n📊 Confidence: ${Math.round(fullAdvisory.confidence * 100)}%\n---\n🧠 Decision Brain (0 AI tokens, instant)`;
   }
   
   // Build structured response with "no action" card
