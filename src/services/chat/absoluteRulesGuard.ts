@@ -16,10 +16,10 @@
  * Based on Israeli, Dutch, and Brazilian advisory system safety standards.
  */
 
-import { Action, Cause, CropStage } from '@/decision-graph';
+import { Action, Cause, CropStage, ActionUrgency } from '@/decision-graph';
 import { DiagnosticDecision, DiagnosticMode } from './diagnosticModeController';
 import { FieldContextSnapshot, DataCertaintyLevel } from './fieldContextSnapshot';
-import { UnifiedAdvisory } from '@/decision-graph';
+import { UnifiedAdvisory, PrioritizedAction } from '@/decision-graph';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -49,7 +49,8 @@ export interface GuardedAdvisory {
 const CHEMICAL_ACTIONS: Action[] = [
   Action.APPLY_INSECTICIDE,
   Action.APPLY_FUNGICIDE,
-  Action.APPLY_HERBICIDE,
+  Action.HERBICIDE_PRE_EMERGENCE,
+  Action.HERBICIDE_POST_EMERGENCE,
 ];
 
 const FERTILIZER_ACTIONS: Action[] = [
@@ -193,9 +194,11 @@ const ABSOLUTE_RULES: AbsoluteRule[] = [
         safeActions.push({
           action: Action.MONITOR_CLOSELY,
           priority: 1,
-          urgency: 'MEDIUM',
-          scientific_source: 'Safety Protocol',
-          notes: 'Data certainty too low for aggressive actions'
+          reason: Cause.COMPOUND_STRESS,
+          rule_id: 'SAFETY_PROTOCOL',
+          justification_key: 'action.monitor.safety_protocol',
+          urgency: ActionUrgency.WITHIN_3DAYS,
+          scientific_source: 'Safety Protocol'
         });
       }
       
@@ -225,9 +228,11 @@ const ABSOLUTE_RULES: AbsoluteRule[] = [
         actions: [{
           action: Action.MONITOR_CLOSELY,
           priority: 1,
-          urgency: 'LOW',
-          scientific_source: 'Diagnostic Protocol',
-          notes: 'Photo required for accurate diagnosis'
+          reason: Cause.COMPOUND_STRESS,
+          rule_id: 'DIAGNOSTIC_PROTOCOL',
+          justification_key: 'action.monitor.photo_required',
+          urgency: ActionUrgency.WITHIN_24H,
+          scientific_source: 'Diagnostic Protocol'
         }],
         reasoning_trace: [
           ...(advisory.reasoning_trace || []),
@@ -271,7 +276,7 @@ const ABSOLUTE_RULES: AbsoluteRule[] = [
     name: 'Stage-Based Restrictions',
     severity: 'HIGH',
     check: (ctx) => {
-      return ctx.cropStage === CropStage.FLOWERING || 
+      return ctx.cropStage === CropStage.REPRODUCTIVE || 
              ctx.cropStage === CropStage.MATURITY;
     },
     correction: (ctx, advisory) => {
@@ -435,8 +440,8 @@ export function canRecommendChemicals(
   // Rule 4: Need at least MEDIUM data certainty
   if (fieldSnapshot.dataFreshness.overallCertainty === 'LOW') return false;
   
-  // Rule 7: Not during flowering/maturity
-  if (cropStage === CropStage.FLOWERING || cropStage === CropStage.MATURITY) return false;
+  // Rule 7: Not during reproductive/maturity stages
+  if (cropStage === CropStage.REPRODUCTIVE || cropStage === CropStage.MATURITY) return false;
   
   return true;
 }

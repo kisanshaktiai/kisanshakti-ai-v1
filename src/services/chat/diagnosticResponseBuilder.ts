@@ -157,16 +157,16 @@ function buildDataSection(
   }
   
   // NDVI
-  if (fieldSnapshot.ndviStatus?.current !== undefined) {
+  if (fieldSnapshot.ndviStatus?.value !== undefined) {
     const ndviLabels = { mr: 'NDVI (पिक आरोग्य)', hi: 'NDVI (फसल स्वास्थ्य)', en: 'NDVI (Crop Health)' };
-    const ndviValue = (fieldSnapshot.ndviStatus.current * 100).toFixed(0);
+    const ndviValue = (fieldSnapshot.ndviStatus.value * 100).toFixed(0);
     section += `• ${ndviLabels[lang]}: ${ndviValue}%\n`;
   }
   
   // Weather
-  if (fieldSnapshot.weather?.temperature !== undefined) {
+  if (fieldSnapshot.weatherConditions?.temperature !== undefined) {
     const weatherLabels = { mr: 'हवामान', hi: 'मौसम', en: 'Weather' };
-    section += `• ${weatherLabels[lang]}: ${fieldSnapshot.weather.temperature}°C\n`;
+    section += `• ${weatherLabels[lang]}: ${fieldSnapshot.weatherConditions.temperature}°C\n`;
   }
   
   return section;
