@@ -57,6 +57,10 @@ export interface PhotoRequest {
 
 export interface DiagnosticDecision {
   mode: DiagnosticMode;
+  // Land Identity (for multi-land chat isolation)
+  landId: string;
+  landName: string;
+  cropName: string;
   remainingCauses: PossibleCause[];
   eliminatedCauses: EliminatedCause[];
   primaryCause: PossibleCause | null;
@@ -643,6 +647,10 @@ export function determineDiagnosticMode(
   
   return {
     mode,
+    // Land Identity
+    landId: fieldSnapshot.landId,
+    landName: fieldSnapshot.landName,
+    cropName: fieldSnapshot.cropName,
     remainingCauses,
     eliminatedCauses,
     primaryCause: remainingCauses[0] || null,

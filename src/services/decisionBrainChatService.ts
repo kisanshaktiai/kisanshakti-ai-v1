@@ -242,6 +242,79 @@ function normalizeCropName(cropName: string | undefined): string | null {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CROP STAGE CALCULATOR - Determines growth stage from days after sowing
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface CropStageDurations {
+  germination: number;   // Days 0 - germination
+  vegetative: number;    // Days germination - vegetative
+  reproductive: number;  // Days vegetative - reproductive
+  maturity: number;      // Days reproductive - maturity
+}
+
+const CROP_STAGE_DURATIONS: Record<string, CropStageDurations> = {
+  // Sugarcane (long duration crop)
+  'sugarcane': { germination: 30, vegetative: 150, reproductive: 270, maturity: 330 },
+  
+  // Cereals
+  'wheat': { germination: 15, vegetative: 60, reproductive: 90, maturity: 120 },
+  'rice': { germination: 20, vegetative: 55, reproductive: 90, maturity: 130 },
+  'maize': { germination: 12, vegetative: 50, reproductive: 80, maturity: 100 },
+  
+  // Pulses
+  'gram': { germination: 10, vegetative: 45, reproductive: 75, maturity: 100 },
+  'soybean': { germination: 12, vegetative: 50, reproductive: 80, maturity: 110 },
+  
+  // Oilseeds
+  'groundnut': { germination: 15, vegetative: 45, reproductive: 85, maturity: 115 },
+  'sunflower': { germination: 12, vegetative: 45, reproductive: 70, maturity: 95 },
+  'mustard': { germination: 10, vegetative: 45, reproductive: 75, maturity: 110 },
+  
+  // Cotton
+  'cotton': { germination: 15, vegetative: 60, reproductive: 100, maturity: 160 },
+  
+  // Vegetables
+  'tomato': { germination: 10, vegetative: 40, reproductive: 70, maturity: 100 },
+  'onion': { germination: 12, vegetative: 50, reproductive: 90, maturity: 120 },
+  'potato': { germination: 15, vegetative: 45, reproductive: 75, maturity: 100 },
+  'brinjal': { germination: 12, vegetative: 45, reproductive: 80, maturity: 120 },
+  'okra': { germination: 8, vegetative: 35, reproductive: 55, maturity: 75 },
+  'chilli': { germination: 15, vegetative: 55, reproductive: 90, maturity: 130 },
+  
+  // Fruits
+  'banana': { germination: 30, vegetative: 180, reproductive: 270, maturity: 360 },
+  
+  // Default for unknown crops
+  'default': { germination: 15, vegetative: 50, reproductive: 80, maturity: 110 }
+};
+
+/**
+ * Calculate the current crop stage from days after sowing
+ * 
+ * @param daysAfterSowing - Number of days since sowing
+ * @param cropCode - Crop code to get specific stage durations
+ * @returns The calculated CropStage
+ */
+export function calculateCropStageFromDAS(daysAfterSowing: number, cropCode?: string): CropStage {
+  // Get crop-specific durations or default
+  const normalizedCrop = cropCode?.toLowerCase() || 'default';
+  const durations = CROP_STAGE_DURATIONS[normalizedCrop] || CROP_STAGE_DURATIONS['default'];
+  
+  // Determine stage based on days
+  if (daysAfterSowing <= durations.germination) {
+    return CropStage.GERMINATION;
+  } else if (daysAfterSowing <= durations.vegetative) {
+    return CropStage.VEGETATIVE;
+  } else if (daysAfterSowing <= durations.reproductive) {
+    return CropStage.REPRODUCTIVE;
+  } else if (daysAfterSowing <= durations.maturity) {
+    return CropStage.MATURITY;
+  } else {
+    return CropStage.HARVEST;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // QUERY CLASSIFICATION - HYBRID APPROACH (Symbolic Brain + Neural Enhancement)
 // ═══════════════════════════════════════════════════════════════════════════
 // 🎯 2030-READY PRINCIPLE: Every answer comes from symbolic logic. AI only refines language.
@@ -1534,10 +1607,24 @@ export function tryDecisionBrain(
   // STAGE 2.5: BUILD FIELD CONTEXT SNAPSHOT (Required for Diagnostic Mode)
   // ═══════════════════════════════════════════════════════════════════════════
   
+  // ✅ Calculate crop stage BEFORE building snapshot (not hardcoded!)
+  const calculatedCropStage = calculateCropStageFromDAS(daysAfterSowing, cropCode || undefined);
+  
+  console.log(`📊 [Decision Brain] Crop Stage Calculation:`, {
+    cropCode: cropCode || 'unknown',
+    daysAfterSowing,
+    calculatedStage: calculatedCropStage,
+    landId: landContext.id,
+    landName: landContext.name
+  });
+  
+  // ✅ Pass land identity to snapshot for multi-land isolation
   const fieldSnapshot = buildFieldContextSnapshot(
     landContext,
-    CropStage.VEGETATIVE, // Default, will be refined later
-    daysAfterSowing
+    calculatedCropStage,  // ✅ Calculated, not hardcoded!
+    daysAfterSowing,
+    landContext.id,       // ✅ Land ID for isolation
+    landContext.name      // ✅ Land name for display
   );
   
   // ═══════════════════════════════════════════════════════════════════════════
