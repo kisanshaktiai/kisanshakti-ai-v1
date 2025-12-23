@@ -442,7 +442,103 @@ const SYMPTOM_PATTERNS: SymptomPattern[] = [
         ]
       }
     ],
-    crop_codes: ['wheat', 'rice', 'sugarcane', 'groundnut', 'soybean', 'cotton']
+    crop_codes: ['wheat', 'rice', 'sugarcane', 'groundnut', 'soybean', 'cotton', 'maize', 'tomato', 'onion', 'potato', 'gram', 'mustard', 'chilli', 'brinjal']
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // STUNTED GROWTH / NOT GROWING
+  // ═══════════════════════════════════════════════════════════════════════
+  {
+    id: 'STUNTED_GROWTH',
+    name: {
+      en: 'Stunted Growth / Not Growing',
+      hi: 'विकास रुक गया / बढ़ नहीं रहा',
+      mr: 'वाढ थांबली / वाढत नाही'
+    },
+    patterns: {
+      en: [
+        'not growing', 'stunted', 'slow growth', 'poor growth', 'no growth',
+        'not developing', 'small plants', 'dwarf', 'weak plants'
+      ],
+      hi: [
+        'बढ़ नहीं', 'वाढ नहीं', 'विकास नहीं', 'छोटा रह गया', 'कमजोर',
+        'धीमा विकास', 'नहीं हो रहा', 'रुक गया', 'पौधे छोटे'
+      ],
+      mr: [
+        'वाढत नाही', 'वाढ नाही', 'वाढ थांबली', 'होत नाही', 'लहान राहिले',
+        'कमकुवत', 'मंद वाढ', 'थांबले', 'झाडे लहान'
+      ]
+    },
+    possible_causes: [
+      {
+        cause: Cause.NITROGEN_DEFICIENCY_CRITICAL,
+        cause_name: 'Nitrogen Deficiency',
+        base_probability: 0.40,
+        scientific_source: 'ICAR Soil Fertility Guidelines',
+        stage_applicable: [CropStage.GERMINATION, CropStage.VEGETATIVE],
+        differentiating_signs: [
+          'Lower leaves yellow first',
+          'Overall pale green color',
+          'Thin and weak stems',
+          'Reduced tillering in cereals'
+        ],
+        follow_up_check: [
+          'खालची पाने पिवळी आहेत का?',
+          'संपूर्ण झाड फिके हिरवे दिसते का?'
+        ]
+      },
+      {
+        cause: Cause.PHOSPHORUS_DEFICIENCY,
+        cause_name: 'Phosphorus Deficiency',
+        base_probability: 0.30,
+        scientific_source: 'ICAR Phosphorus Management',
+        stage_applicable: [CropStage.GERMINATION, CropStage.VEGETATIVE],
+        differentiating_signs: [
+          'Purple/red discoloration on leaves',
+          'Dark green older leaves',
+          'Poor root development',
+          'Delayed maturity'
+        ],
+        follow_up_check: [
+          'पानांवर जांभळा/लाल रंग दिसतो का?',
+          'मुळे कमकुवत आहेत का?'
+        ]
+      },
+      {
+        cause: Cause.ROOT_ROT_RISK,
+        cause_name: 'Root Damage / Rot',
+        base_probability: 0.20,
+        scientific_source: 'ICAR Plant Pathology',
+        soil_moisture_condition: 'wet',
+        differentiating_signs: [
+          'Plant pulls out easily',
+          'Roots brown/black and rotten',
+          'Waterlogged soil conditions',
+          'Foul smell from roots'
+        ],
+        follow_up_check: [
+          'झाड सहज उपटते का?',
+          'मुळे काळी/तपकिरी आहेत का?'
+        ]
+      },
+      {
+        cause: Cause.PEST_GENERAL_RISK,
+        cause_name: 'Nematode Damage',
+        base_probability: 0.10,
+        scientific_source: 'ICAR Nematology',
+        differentiating_signs: [
+          'Galls/knots on roots',
+          'Patchy stunting in field',
+          'Root system looks knotty',
+          'Problem recurs yearly'
+        ],
+        follow_up_check: [
+          'मुळांवर गाठी दिसतात का?',
+          'ही समस्या दर वर्षी येते का?'
+        ]
+      }
+    ],
+    crop_codes: ['wheat', 'rice', 'maize', 'sugarcane', 'cotton', 'soybean', 'gram', 'groundnut', 'tomato', 'onion', 'potato', 'chilli', 'brinjal']
   },
 
   // ═══════════════════════════════════════════════════════════════════════

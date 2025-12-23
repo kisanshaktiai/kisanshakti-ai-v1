@@ -28,7 +28,8 @@ import { ResponseSectionCard } from './ResponseSectionCard';
 import { ModernChatUI } from './ModernChatUI';
 import { WorldClassCamera } from './WorldClassCamera';
 import { VisionAnalysisCard, type VisionAnalysisResult } from './VisionAnalysisCard';
-import { type DecisionBrainResponse } from './DecisionBrainCards';
+import { DecisionBrainCards, type DecisionBrainResponse } from './DecisionBrainCards';
+import { DiagnosticResponseCard } from './DiagnosticResponseCard';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
@@ -79,6 +80,33 @@ interface Message {
   };
   // ✅ NEW: Decision Brain structured response
   decisionBrainResponse?: DecisionBrainResponse;
+  // ✅ NEW: Diagnostic mode response
+  diagnosticData?: {
+    landName?: string;
+    cropName?: string;
+    daysAfterSowing?: number;
+    growthStage?: string;
+    areaDisplay?: string;
+    soilMoisture?: number;
+    ndviValue?: number;
+    temperature?: number;
+    symptomDetected?: string;
+    rankedCauses: Array<{
+      cause_name: string;
+      probability: number;
+      differentiating_factors: string[];
+    }>;
+    eliminatedCauses?: Array<{ causeName: string; eliminationReason: string }>;
+    disambiguationQuestions: Array<{
+      question: string;
+      yesIndicates: string;
+      noIndicates: string;
+    }>;
+    photoRequired?: boolean;
+    photoInstructions?: string[];
+    confidence: number;
+    mode: 'DIAGNOSTIC' | 'ACTION' | 'PHOTO_REQUIRED';
+  };
   feedback?: 'like' | 'dislike' | null;
   isCopied?: boolean;
   analytics?: {
@@ -2312,16 +2340,50 @@ export function EnhancedAIChatInterface() {
 
               {/* Messages for this date */}
               {group.messages.map((message) => (
-                <ModernChatUI
-                  key={message.id}
-                  message={message}
-                  onCopy={handleCopy}
-                  onLike={handleLike}
-                  onShare={handleShare}
-                  onPlay={handlePlayMessage}
-                  onSuggestionSelect={handleSuggestionSelect}
-                  isLoadingSuggestion={isLoadingSuggestion}
-                />
+                <React.Fragment key={message.id}>
+                  {/* Priority 1: DiagnosticResponseCard for DIAGNOSTIC mode */}
+                  {message.diagnosticData && message.role === 'assistant' ? (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mb-4"
+                    >
+                      <DiagnosticResponseCard
+                        data={message.diagnosticData}
+                        language={language}
+                        onQuestionAnswer={(question, answer) => {
+                          // Handle diagnostic answer - send as new message
+                          const answerText = answer === 'yes' 
+                            ? (language === 'hi' ? 'हां' : language === 'mr' ? 'होय' : 'Yes')
+                            : (language === 'hi' ? 'नहीं' : language === 'mr' ? 'नाही' : 'No');
+                          sendMessage(`${answerText} - ${question}`);
+                        }}
+                        onTakePhoto={() => setShowCamera(true)}
+                        currentQuestionIndex={0}
+                      />
+                    </motion.div>
+                  ) : message.decisionBrainResponse && message.role === 'assistant' ? (
+                    /* Priority 2: DecisionBrainCards for structured brain responses */
+                    <motion.div
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mb-4"
+                    >
+                      <DecisionBrainCards response={message.decisionBrainResponse} />
+                    </motion.div>
+                  ) : (
+                    /* Default: ModernChatUI for regular messages */
+                    <ModernChatUI
+                      message={message}
+                      onCopy={handleCopy}
+                      onLike={handleLike}
+                      onShare={handleShare}
+                      onPlay={handlePlayMessage}
+                      onSuggestionSelect={handleSuggestionSelect}
+                      isLoadingSuggestion={isLoadingSuggestion}
+                    />
+                  )}
+                </React.Fragment>
               ))}
             </div>
           ))}
