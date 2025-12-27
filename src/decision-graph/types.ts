@@ -516,7 +516,15 @@ export enum Cause {
   MRL_EXCEEDANCE_RISK = 'MRL_EXCEEDANCE_RISK',                     // P1 - Maximum residue limit violation
   APPLICATOR_SAFETY_RISK = 'APPLICATOR_SAFETY_RISK',               // P1 - PPE/safety concerns
   HIGH_TOXICITY_CHEMICAL = 'HIGH_TOXICITY_CHEMICAL',               // P1 - WHO Class IA/IB chemical
+  HIGH_TOXICITY_CHEMICAL_RISK = 'HIGH_TOXICITY_CHEMICAL_RISK',     // P1 - WHO Class IA/IB risk assessment
   POLLINATOR_PROTECTION_NEEDED = 'POLLINATOR_PROTECTION_NEEDED',   // P1 - Bee/pollinator protection
+  POLLINATOR_RISK_FLOWERING = 'POLLINATOR_RISK_FLOWERING',         // P1 - Neonicotinoid during flowering
+  PPE_REQUIRED_NOT_AVAILABLE = 'PPE_REQUIRED_NOT_AVAILABLE',       // P1 - PPE mandatory but not available
+  POISONING_SYMPTOMS_DETECTED = 'POISONING_SYMPTOMS_DETECTED',     // P0 - Applicator poisoning symptoms
+  CHEMICAL_INCOMPATIBILITY = 'CHEMICAL_INCOMPATIBILITY',           // P2 - Incompatible chemical mixing
+  TEMPERATURE_PHYTOTOXICITY_RISK = 'TEMPERATURE_PHYTOTOXICITY_RISK', // P2 - High temp phytotoxicity
+  BEE_ACTIVITY_HOURS_SPRAY = 'BEE_ACTIVITY_HOURS_SPRAY',           // P3 - Spraying during bee activity
+  FUMIGANT_SAFETY_VIOLATION = 'FUMIGANT_SAFETY_VIOLATION',         // P0 - Fumigant safety protocol violated
 
   // ─────────────────────────────────────────────────────────────────────────
   // WEATHER SAFETY CAUSES (P2 Priority)
@@ -569,7 +577,47 @@ export enum Cause {
   // ─────────────────────────────────────────────────────────────────────────
   SOIL_PH_CORRECTION_NEEDED = 'SOIL_PH_CORRECTION_NEEDED',         // pH out of optimal range
   ORGANIC_MATTER_LOW = 'ORGANIC_MATTER_LOW',                       // Organic carbon < 1%
-  SOIL_HEALTH_DEGRADATION = 'SOIL_HEALTH_DEGRADATION'              // Multiple soil health issues
+  SOIL_HEALTH_DEGRADATION = 'SOIL_HEALTH_DEGRADATION',             // Multiple soil health issues
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // DISEASE/PEST OUTBREAK CAUSES (P0-P4)
+  // ─────────────────────────────────────────────────────────────────────────
+  DISEASE_SEVERITY_THRESHOLD_EXCEEDED = 'DISEASE_SEVERITY_THRESHOLD_EXCEEDED', // Disease above action threshold
+  PEST_OUTBREAK_DETECTED = 'PEST_OUTBREAK_DETECTED',               // Rapid pest population increase
+  DISEASE_OUTBREAK_DETECTED = 'DISEASE_OUTBREAK_DETECTED',         // Disease epidemic conditions
+  LOCUST_SWARM_EMERGENCY = 'LOCUST_SWARM_EMERGENCY',               // Locust invasion detected
+  ARMYWORM_INVASION = 'ARMYWORM_INVASION',                         // Fall armyworm outbreak
+  DROUGHT_EMERGENCY = 'DROUGHT_EMERGENCY',                         // Severe drought conditions
+  FLOOD_EMERGENCY = 'FLOOD_EMERGENCY',                             // Flood damage conditions
+  HAIL_DAMAGE_EMERGENCY = 'HAIL_DAMAGE_EMERGENCY',                 // Hail storm damage
+  FROST_DAMAGE_EMERGENCY = 'FROST_DAMAGE_EMERGENCY',               // Frost damage to crop
+  HEAT_WAVE_EMERGENCY = 'HEAT_WAVE_EMERGENCY',                     // Extreme heat event
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ECONOMIC CAUSES (P4-P6)
+  // ─────────────────────────────────────────────────────────────────────────
+  TREATMENT_UNAFFORDABLE = 'TREATMENT_UNAFFORDABLE',               // Cost > farmer affordability
+  BELOW_ETL_MONITOR = 'BELOW_ETL_MONITOR',                         // Below threshold, monitor only
+  CRITICAL_STAGE_THRESHOLD_ADJUSTED = 'CRITICAL_STAGE_THRESHOLD_ADJUSTED', // Threshold adjusted for stage
+  WILT_ZERO_TOLERANCE = 'WILT_ZERO_TOLERANCE',                     // Wilt diseases require zero tolerance
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RESISTANCE MANAGEMENT CAUSES
+  // ─────────────────────────────────────────────────────────────────────────
+  CONSECUTIVE_MOA_DETECTED = 'CONSECUTIVE_MOA_DETECTED',           // Same MOA used consecutively
+  RESISTANCE_CONFIRMED = 'RESISTANCE_CONFIRMED',                   // Lab-confirmed resistance
+  REGIONAL_RESISTANCE_ALERT = 'REGIONAL_RESISTANCE_ALERT',         // Regional resistance report
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PHI/HARVEST CAUSES
+  // ─────────────────────────────────────────────────────────────────────────
+  PHI_SAFE = 'PHI_SAFE',                                           // Within safe PHI window
+  PHI_UNSAFE = 'PHI_UNSAFE',                                       // PHI violation if applied
+  EXPORT_MRL_STRICTER = 'EXPORT_MRL_STRICTER',                     // Export requires stricter MRL
+  ORGANIC_CERTIFICATION_BLOCK = 'ORGANIC_CERTIFICATION_BLOCK',     // Would violate organic cert
+  MOISTURE_HIGH_STORAGE_RISK = 'MOISTURE_HIGH_STORAGE_RISK',       // Grain moisture too high
+  MATURITY_NOT_REACHED = 'MATURITY_NOT_REACHED',                   // Crop not mature yet
+  OVER_MATURE_QUALITY_LOSS = 'OVER_MATURE_QUALITY_LOSS'            // Delayed harvest causing loss
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -871,6 +919,48 @@ export interface DecisionInput {
   // FARMER PROFILE (Optional - affects priority only)
   // ─────────────────────────────────────────────────────────────────────────
   farmer_profile?: FarmerProfile;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // WEATHER RAW DATA (For safety rules)
+  // ─────────────────────────────────────────────────────────────────────────
+  weather?: {
+    temperature?: number;
+    humidity?: number;
+    wind_speed?: number;
+    rain_probability?: number;
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // METADATA (For safety/chemical rules - extensible context)
+  // ─────────────────────────────────────────────────────────────────────────
+  metadata?: {
+    requestedChemical?: string;
+    chemicalToxicityClass?: string;
+    chemicalsToMix?: string[];
+    chemicalType?: string;
+    applicatorHasPPE?: boolean;
+    hasApplicatorLicense?: boolean;
+    applicatorSymptoms?: string[];
+    pestDensity?: number;
+    pestType?: string;
+    larvaeCount?: number;
+    diseaseSeverity?: number;
+    fruitDamagePercent?: number;
+    deadHeartsPercent?: number;
+    whiteEarsPercent?: number;
+    aphidCount?: number;
+    hoppersPerHill?: number;
+    daysToHarvest?: number;
+    lastChemicalApplied?: string;
+    lastChemicalMOA?: string;
+    consecutiveSameMOA?: number;
+    isBtCrop?: boolean;
+    refugeAreaPercent?: number;
+    isFumigant?: boolean;
+    hasEnclosedArea?: boolean;
+    hasFumigantLicense?: boolean;
+    [key: string]: unknown; // Allow additional properties
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -993,7 +1083,14 @@ export type RuleCategory =
   | 'pest' 
   | 'weed' 
   | 'healthy' 
-  | 'critical';
+  | 'critical'
+  | 'emergency'     // P0 level - life threatening, immediate stop
+  | 'regulatory'    // P1 level - legal/compliance requirements
+  | 'safety'        // P1-P2 level - chemical/environmental safety
+  | 'economic'      // P4 level - economic threshold rules
+  | 'ipm'           // P5 level - IPM preference rules
+  | 'harvest'       // Harvest timing and quality rules
+  | 'resistance';   // Resistance management rules
 
 /**
  * CauseRule - Individual rule definition
