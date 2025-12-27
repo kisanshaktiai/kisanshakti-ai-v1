@@ -716,7 +716,32 @@ export function getActionDescription(action: Action): {
     [Action.EMERGENCY_SPRAY]: { label: 'Emergency Spray', labelKey: 'action.emergency_spray', category: 'emergency' },
     [Action.SALVAGE_HARVEST]: { label: 'Salvage Harvest', labelKey: 'action.salvage_harvest', category: 'emergency' },
     [Action.INSURANCE_CLAIM]: { label: 'File Insurance Claim', labelKey: 'action.insurance_claim', category: 'emergency' },
-    [Action.CROP_DESTRUCTION]: { label: 'Crop Destruction', labelKey: 'action.crop_destruction', category: 'emergency' }
+    [Action.CROP_DESTRUCTION]: { label: 'Crop Destruction', labelKey: 'action.crop_destruction', category: 'emergency' },
+    // Safety & Regulatory
+    [Action.BLOCK_BANNED_CHEMICAL]: { label: 'Block Banned Chemical', labelKey: 'action.block_banned', category: 'safety' },
+    [Action.REQUIRE_PPE]: { label: 'Require PPE', labelKey: 'action.require_ppe', category: 'safety' },
+    [Action.REQUIRE_LICENSED_APPLICATOR]: { label: 'Require Licensed Applicator', labelKey: 'action.require_license', category: 'safety' },
+    [Action.NOTIFY_BEEKEEPERS]: { label: 'Notify Beekeepers', labelKey: 'action.notify_beekeepers', category: 'safety' },
+    [Action.EVENING_APPLICATION_ONLY]: { label: 'Evening Application Only', labelKey: 'action.evening_only', category: 'safety' },
+    // IPM & Resistance
+    [Action.ROTATE_INSECTICIDE_MOA]: { label: 'Rotate Insecticide MOA', labelKey: 'action.rotate_insecticide', category: 'ipm' },
+    [Action.ROTATE_FUNGICIDE_MOA]: { label: 'Rotate Fungicide MOA', labelKey: 'action.rotate_fungicide', category: 'ipm' },
+    [Action.ESTABLISH_BT_REFUGE]: { label: 'Establish Bt Refuge', labelKey: 'action.bt_refuge', category: 'ipm' },
+    [Action.RELEASE_TRICHOGRAMMA]: { label: 'Release Trichogramma', labelKey: 'action.release_trichogramma', category: 'ipm' },
+    [Action.RELEASE_NPV]: { label: 'Release NPV', labelKey: 'action.release_npv', category: 'ipm' },
+    [Action.RELEASE_LADYBIRD]: { label: 'Release Ladybird Beetles', labelKey: 'action.release_ladybird', category: 'ipm' },
+    [Action.APPLY_BEAUVERIA]: { label: 'Apply Beauveria', labelKey: 'action.apply_beauveria', category: 'ipm' },
+    // Harvest & Post-Harvest
+    [Action.HARVEST_IMMEDIATELY]: { label: 'Harvest Immediately', labelKey: 'action.harvest_now', category: 'harvest' },
+    [Action.DELAY_HARVEST]: { label: 'Delay Harvest', labelKey: 'action.delay_harvest', category: 'harvest' },
+    [Action.RAPID_COOLING]: { label: 'Rapid Cooling', labelKey: 'action.rapid_cooling', category: 'harvest' },
+    [Action.PROPER_DRYING]: { label: 'Proper Drying', labelKey: 'action.proper_drying', category: 'harvest' },
+    [Action.GRADING_FOR_EXPORT]: { label: 'Grade for Export', labelKey: 'action.grade_export', category: 'harvest' },
+    // Soil Health
+    [Action.APPLY_LIME_ACIDIC_SOIL]: { label: 'Apply Lime for Acidic Soil', labelKey: 'action.apply_lime_acidic', category: 'soil' },
+    [Action.APPLY_SULFUR_ALKALINE]: { label: 'Apply Sulfur for Alkaline Soil', labelKey: 'action.apply_sulfur', category: 'soil' },
+    [Action.GREEN_MANURING]: { label: 'Green Manuring', labelKey: 'action.green_manure', category: 'soil' },
+    [Action.ADD_VERMICOMPOST]: { label: 'Add Vermicompost', labelKey: 'action.add_vermicompost', category: 'soil' }
   };
 
   return descriptions[action] || { label: action, labelKey: `action.${action.toLowerCase()}`, category: 'unknown' };
