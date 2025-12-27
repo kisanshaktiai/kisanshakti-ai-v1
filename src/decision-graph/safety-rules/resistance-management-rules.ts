@@ -36,12 +36,12 @@ export interface InsecticideMOA {
 }
 
 export const INSECTICIDE_MOA_GROUPS: InsecticideMOA[] = [
-  { group: InsecticideGroup.CARBAMATES, iracCode: '1A', mode: 'Acetylcholinesterase inhibitor', examples: ['Carbaryl'], resistanceRisk: 'HIGH', maxApplicationsPerSeason: 2 },
-  { group: InsecticideGroup.ORGANOPHOSPHATES, iracCode: '1B', mode: 'Acetylcholinesterase inhibitor', examples: ['Chlorpyrifos', 'Malathion'], resistanceRisk: 'HIGH', maxApplicationsPerSeason: 2 },
-  { group: InsecticideGroup.PYRETHROIDS, iracCode: '3A', mode: 'Sodium channel modulator', examples: ['Cypermethrin', 'Deltamethrin'], resistanceRisk: 'VERY_HIGH', maxApplicationsPerSeason: 2 },
-  { group: InsecticideGroup.NEONICOTINOIDS, iracCode: '4A', mode: 'Nicotinic acetylcholine receptor agonist', examples: ['Imidacloprid', 'Thiamethoxam'], resistanceRisk: 'HIGH', maxApplicationsPerSeason: 2 },
-  { group: InsecticideGroup.SPINOSYNS, iracCode: '5', mode: 'Nicotinic acetylcholine receptor allosteric modulator', examples: ['Spinosad'], resistanceRisk: 'MEDIUM', maxApplicationsPerSeason: 3 },
-  { group: InsecticideGroup.DIAMIDES, iracCode: '28', mode: 'Ryanodine receptor modulator', examples: ['Chlorantraniliprole'], resistanceRisk: 'MEDIUM', maxApplicationsPerSeason: 2 },
+  { group: InsecticideGroup.GROUP_1_CARBAMATES, iracCode: '1A', mode: 'Acetylcholinesterase inhibitor', examples: ['Carbaryl'], resistanceRisk: 'HIGH', maxApplicationsPerSeason: 2 },
+  { group: InsecticideGroup.GROUP_2_ORGANOPHOSPHATES, iracCode: '1B', mode: 'Acetylcholinesterase inhibitor', examples: ['Chlorpyrifos', 'Malathion'], resistanceRisk: 'HIGH', maxApplicationsPerSeason: 2 },
+  { group: InsecticideGroup.GROUP_3_PYRETHROIDS, iracCode: '3A', mode: 'Sodium channel modulator', examples: ['Cypermethrin', 'Deltamethrin'], resistanceRisk: 'VERY_HIGH', maxApplicationsPerSeason: 2 },
+  { group: InsecticideGroup.GROUP_4_NEONICOTINOIDS, iracCode: '4A', mode: 'Nicotinic acetylcholine receptor agonist', examples: ['Imidacloprid', 'Thiamethoxam'], resistanceRisk: 'HIGH', maxApplicationsPerSeason: 2 },
+  { group: InsecticideGroup.GROUP_5_SPINOSYNS, iracCode: '5', mode: 'Nicotinic acetylcholine receptor allosteric modulator', examples: ['Spinosad'], resistanceRisk: 'MEDIUM', maxApplicationsPerSeason: 3 },
+  { group: InsecticideGroup.GROUP_28_DIAMIDES, iracCode: '28', mode: 'Ryanodine receptor modulator', examples: ['Chlorantraniliprole'], resistanceRisk: 'MEDIUM', maxApplicationsPerSeason: 2 },
 ];
 
 export const RESISTANCE_MANAGEMENT_RULES: CauseRule[] = [

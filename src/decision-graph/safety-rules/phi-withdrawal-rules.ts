@@ -91,7 +91,7 @@ export const PHI_WITHDRAWAL_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [],
     conditions: (input: DecisionInput): boolean => {
-      const isOrganic = input.farming_mode === FarmingMode.ORGANIC;
+      const isOrganic = input.farming_mode === FarmingMode.ORGANIC_ONLY;
       const syntheticRequested = bool(input.metadata?.syntheticChemicalRequested);
       return isOrganic && syntheticRequested;
     },
