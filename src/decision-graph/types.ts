@@ -1,15 +1,24 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * AGRICULTURE DECISION BRAIN - TYPE SYSTEM
+ * AGRICULTURE DECISION BRAIN - TYPE SYSTEM v2.0
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * All symbolic enums and interfaces for the deterministic decision engine.
+ * Comprehensive symbolic enums and interfaces for the deterministic decision engine.
  * This is the single source of truth for all type definitions.
  * 
  * CRITICAL: All logic operates on these symbols ONLY - NO raw values
  * 
- * Version: 1.0.0
- * Standards: ICAR, FAO, NASA, ESA
+ * Version: 2.0.0
+ * Standards: ICAR, FAO, NASA, ESA, WHO, CIB&RC
+ * 
+ * PRIORITY HIERARCHY (P0-P6):
+ * P0 - Emergency Override (Absolute) - Banned chemicals, Poisoning risk
+ * P1 - Regulatory Compliance - MRL violations, Legal restrictions
+ * P2 - Weather & Environmental Safety - Rain forecast, Temperature extremes
+ * P3 - Crop Stage Requirements - Flowering restrictions, Pre-harvest
+ * P4 - Economic Threshold - Unviable interventions
+ * P5 - IPM Preference - Prefer biological over chemical
+ * P6 - Optimization - Best timing, method selection
  */
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -197,6 +206,149 @@ export enum CropGroup {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PRIORITY HIERARCHY - P0-P6 System
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Priority level hierarchy - P0 is highest (emergency), P6 is lowest (optimization) */
+export enum PriorityLevel {
+  P0_EMERGENCY = 0,          // Emergency Override (Absolute) - Banned chemicals, Poisoning risk
+  P1_REGULATORY = 1,         // Regulatory Compliance - MRL violations, Legal restrictions
+  P2_WEATHER_SAFETY = 2,     // Weather & Environmental Safety - Rain forecast, Temperature extremes
+  P3_CROP_STAGE = 3,         // Crop Stage Requirements - Flowering restrictions, Pre-harvest
+  P4_ECONOMIC = 4,           // Economic Threshold - Unviable interventions
+  P5_IPM = 5,                // IPM Preference - Prefer biological over chemical
+  P6_OPTIMIZATION = 6        // Optimization - Best timing, method selection
+}
+
+/** Map P0-P6 to numeric priority (10 = highest urgency) */
+export const PRIORITY_LEVEL_TO_NUMERIC: Record<PriorityLevel, number> = {
+  [PriorityLevel.P0_EMERGENCY]: 10,
+  [PriorityLevel.P1_REGULATORY]: 9,
+  [PriorityLevel.P2_WEATHER_SAFETY]: 8,
+  [PriorityLevel.P3_CROP_STAGE]: 7,
+  [PriorityLevel.P4_ECONOMIC]: 6,
+  [PriorityLevel.P5_IPM]: 5,
+  [PriorityLevel.P6_OPTIMIZATION]: 4
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PEST LIFE STAGE SYMBOLS - Critical for targeted control
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Pest life stage for targeted intervention */
+export enum PestLifeStage {
+  EGG = 'EGG',                       // Egg stage - parasitoid release effective
+  EARLY_LARVA = 'EARLY_LARVA',       // L1-L2 - Bt spray or NPV effective
+  LATE_LARVA = 'LATE_LARVA',         // L3+ - Bored into plant, control ineffective
+  PUPA = 'PUPA',                     // Pupal stage
+  ADULT = 'ADULT',                   // Adult stage - trapping/mating disruption
+  UNKNOWN = 'UNKNOWN'                // Requires identification
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DISEASE SEVERITY INDEX - For threshold assessment
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Disease Severity Index (DSI) based on affected leaf area */
+export enum DiseaseSeverityIndex {
+  NONE = 'NONE',                     // 0 - No disease
+  TRACE = 'TRACE',                   // 1-10% leaf area affected
+  MILD = 'MILD',                     // 11-25% leaf area affected
+  MODERATE = 'MODERATE',             // 26-50% leaf area affected
+  SEVERE = 'SEVERE',                 // 51-75% leaf area affected
+  CRITICAL = 'CRITICAL'              // >75% leaf area affected
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WHO TOXICITY CLASSIFICATION - Chemical safety
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** WHO Pesticide Hazard Classification */
+export enum WHOToxicityClass {
+  CLASS_IA = 'CLASS_IA',             // Extremely Hazardous - LD50 < 5 mg/kg - DO NOT RECOMMEND
+  CLASS_IB = 'CLASS_IB',             // Highly Hazardous - LD50 5-50 mg/kg - Avoid
+  CLASS_II = 'CLASS_II',             // Moderately Hazardous - LD50 50-500 mg/kg - Caution
+  CLASS_III = 'CLASS_III',           // Slightly Hazardous - LD50 500-2000 mg/kg - Standard precautions
+  CLASS_U = 'CLASS_U'                // Unlikely Hazardous - LD50 > 2000 mg/kg - Minimal risk
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// IPM LEVEL CLASSIFICATION - Intervention ladder
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** IPM intervention level (0 = prevention, 6 = emergency broad spectrum) */
+export enum IPMLevel {
+  LEVEL_0_PREVENTION = 0,            // Crop rotation, resistant varieties, sanitation
+  LEVEL_1_CULTURAL = 1,              // Hand picking, removal, water/nutrient management - ₹0-500/acre
+  LEVEL_2_MECHANICAL = 2,            // Sticky traps, pheromone traps, light traps - ₹500-2000/acre
+  LEVEL_3_BIOLOGICAL = 3,            // Predators, parasitoids, pathogens - ₹1000-3000/acre
+  LEVEL_4_BOTANICAL = 4,             // Neem oil, pongamia, garlic extract - ₹800-2000/acre
+  LEVEL_5_SELECTIVE_CHEMICAL = 5,    // Target-specific chemicals - ₹1500-3000/acre
+  LEVEL_6_BROAD_SPECTRUM = 6         // Emergency only, expert approval mandatory
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INSECTICIDE/FUNGICIDE GROUPS - Resistance management
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** IRAC Insecticide Mode of Action Groups */
+export enum InsecticideGroup {
+  GROUP_1_CARBAMATES = 'GROUP_1_CARBAMATES',           // Carbaryl, Carbofuran
+  GROUP_2_ORGANOPHOSPHATES = 'GROUP_2_ORGANOPHOSPHATES', // Chlorpyrifos, Malathion
+  GROUP_3_PYRETHROIDS = 'GROUP_3_PYRETHROIDS',         // Cypermethrin, Deltamethrin
+  GROUP_4_NEONICOTINOIDS = 'GROUP_4_NEONICOTINOIDS',   // Imidacloprid, Thiamethoxam
+  GROUP_5_SPINOSYNS = 'GROUP_5_SPINOSYNS',             // Spinosad, Spinetoram
+  GROUP_6_AVERMECTINS = 'GROUP_6_AVERMECTINS',         // Abamectin, Emamectin benzoate
+  GROUP_11_BT = 'GROUP_11_BT',                         // Bacillus thuringiensis
+  GROUP_BOTANICAL = 'GROUP_BOTANICAL',                 // Neem, botanicals
+  GROUP_UNKNOWN = 'GROUP_UNKNOWN'
+}
+
+/** FRAC Fungicide Mode of Action Groups */
+export enum FungicideGroup {
+  GROUP_M_MULTISITE = 'GROUP_M_MULTISITE',             // Mancozeb, Chlorothalonil, Copper - VERY LOW resistance risk
+  GROUP_3_DMI_TRIAZOLES = 'GROUP_3_DMI_TRIAZOLES',     // Propiconazole, Tebuconazole - MEDIUM resistance risk
+  GROUP_7_SDHI = 'GROUP_7_SDHI',                       // Boscalid, Fluxapyroxad - MEDIUM-HIGH resistance risk
+  GROUP_11_STROBILURINS = 'GROUP_11_STROBILURINS',     // Azoxystrobin, Pyraclostrobin - HIGH resistance risk
+  GROUP_BIOLOGICAL = 'GROUP_BIOLOGICAL',               // Trichoderma, Pseudomonas
+  GROUP_UNKNOWN = 'GROUP_UNKNOWN'
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SEASONAL CLASSIFICATION - India crop seasons
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Indian crop seasons */
+export enum Season {
+  KHARIF = 'KHARIF',                 // June-October, monsoon dependent, high humidity
+  RABI = 'RABI',                     // October-March, irrigation dependent, cool temperatures
+  ZAID = 'ZAID'                      // March-June, hot and dry, summer crops
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AGRO-CLIMATIC ZONES - India regional classification
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** India Agro-Climatic Zones */
+export enum AgroClimaticZone {
+  ZONE_1_WESTERN_HIMALAYAS = 'ZONE_1_WESTERN_HIMALAYAS',     // Cold, high altitude
+  ZONE_2_EASTERN_HIMALAYAS = 'ZONE_2_EASTERN_HIMALAYAS',     // High rainfall, hilly
+  ZONE_3_LOWER_GANGETIC = 'ZONE_3_LOWER_GANGETIC',           // Rice-jute zone
+  ZONE_4_MIDDLE_GANGETIC = 'ZONE_4_MIDDLE_GANGETIC',         // Rice-wheat zone
+  ZONE_5_UPPER_GANGETIC = 'ZONE_5_UPPER_GANGETIC',           // Wheat zone
+  ZONE_6_TRANS_GANGETIC = 'ZONE_6_TRANS_GANGETIC',           // Punjab-Haryana
+  ZONE_7_EASTERN_PLATEAU = 'ZONE_7_EASTERN_PLATEAU',         // Red-laterite soils
+  ZONE_8_CENTRAL_PLATEAU = 'ZONE_8_CENTRAL_PLATEAU',         // Semi-arid, black soils
+  ZONE_9_WESTERN_PLATEAU = 'ZONE_9_WESTERN_PLATEAU',         // Cotton-soybean zone
+  ZONE_10_SOUTHERN_PLATEAU = 'ZONE_10_SOUTHERN_PLATEAU',     // Deccan plateau
+  ZONE_11_EAST_COAST = 'ZONE_11_EAST_COAST',                 // Rice-coastal
+  ZONE_12_WEST_COAST = 'ZONE_12_WEST_COAST',                 // High rainfall, humid
+  ZONE_13_GUJARAT_PLAINS = 'ZONE_13_GUJARAT_PLAINS',         // Cotton-groundnut
+  ZONE_14_WESTERN_DRY = 'ZONE_14_WESTERN_DRY',               // Arid zone
+  ZONE_15_ISLANDS = 'ZONE_15_ISLANDS'                        // Andaman & Nicobar, Lakshadweep
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // FARMING MODE SYMBOLS
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -344,7 +496,7 @@ export enum Cause {
   EXCELLENT_ESTABLISHMENT = 'EXCELLENT_ESTABLISHMENT',
 
   // ─────────────────────────────────────────────────────────────────────────
-  // CRITICAL / EMERGENCY CAUSES (8)
+  // CRITICAL / EMERGENCY CAUSES (P0 Priority)
   // ─────────────────────────────────────────────────────────────────────────
   CROP_FAILURE_IMMINENT = 'CROP_FAILURE_IMMINENT',
   COMPOUND_STRESS = 'COMPOUND_STRESS',
@@ -353,7 +505,71 @@ export enum Cause {
   FORCED_MATURITY_RISK = 'FORCED_MATURITY_RISK',
   EPIDEMIC_RISK = 'EPIDEMIC_RISK',
   TOTAL_CROP_LOSS_RISK = 'TOTAL_CROP_LOSS_RISK',
-  SALVAGE_HARVEST_NEEDED = 'SALVAGE_HARVEST_NEEDED'
+  SALVAGE_HARVEST_NEEDED = 'SALVAGE_HARVEST_NEEDED',
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CHEMICAL SAFETY / REGULATORY CAUSES (P0-P1 Priority)
+  // ─────────────────────────────────────────────────────────────────────────
+  BANNED_CHEMICAL_ATTEMPTED = 'BANNED_CHEMICAL_ATTEMPTED',         // P0 - Absolute block
+  RESTRICTED_CHEMICAL_NO_LICENSE = 'RESTRICTED_CHEMICAL_NO_LICENSE', // P1 - Requires licensed applicator
+  PHI_VIOLATION_RISK = 'PHI_VIOLATION_RISK',                       // P1 - Pre-harvest interval not met
+  MRL_EXCEEDANCE_RISK = 'MRL_EXCEEDANCE_RISK',                     // P1 - Maximum residue limit violation
+  APPLICATOR_SAFETY_RISK = 'APPLICATOR_SAFETY_RISK',               // P1 - PPE/safety concerns
+  HIGH_TOXICITY_CHEMICAL = 'HIGH_TOXICITY_CHEMICAL',               // P1 - WHO Class IA/IB chemical
+  POLLINATOR_PROTECTION_NEEDED = 'POLLINATOR_PROTECTION_NEEDED',   // P1 - Bee/pollinator protection
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // WEATHER SAFETY CAUSES (P2 Priority)
+  // ─────────────────────────────────────────────────────────────────────────
+  RAIN_FORECAST_SPRAY_BLOCK = 'RAIN_FORECAST_SPRAY_BLOCK',         // Rain within 6h - contact pesticides
+  HIGH_WIND_SPRAY_BLOCK = 'HIGH_WIND_SPRAY_BLOCK',                 // Wind > 15 km/h - spray drift risk
+  HIGH_TEMP_SPRAY_BLOCK = 'HIGH_TEMP_SPRAY_BLOCK',                 // Temp > 35°C - evaporation/phytotoxicity
+  SULFUR_TEMP_BLOCK = 'SULFUR_TEMP_BLOCK',                         // Temp > 32°C - sulfur phytotoxicity
+  OIL_SPRAY_TEMP_BLOCK = 'OIL_SPRAY_TEMP_BLOCK',                   // Temp > 30°C - oil spray leaf burn
+  LOW_TEMP_EFFICACY_REDUCED = 'LOW_TEMP_EFFICACY_REDUCED',         // Temp < 15°C - reduced pesticide efficacy
+  HAILSTORM_DAMAGE = 'HAILSTORM_DAMAGE',                           // Physical injury requiring response
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ECONOMIC THRESHOLD CAUSES (P4 Priority)
+  // ─────────────────────────────────────────────────────────────────────────
+  ECONOMIC_THRESHOLD_EXCEEDED = 'ECONOMIC_THRESHOLD_EXCEEDED',     // Pest/disease above ETL
+  ECONOMIC_THRESHOLD_NOT_MET = 'ECONOMIC_THRESHOLD_NOT_MET',       // Below threshold - monitor only
+  TREATMENT_NOT_ECONOMICAL = 'TREATMENT_NOT_ECONOMICAL',           // B/C ratio < 1
+  TREATMENT_MARGINAL_BENEFIT = 'TREATMENT_MARGINAL_BENEFIT',       // B/C ratio 1-1.5
+  FARMER_AFFORDABILITY_CONCERN = 'FARMER_AFFORDABILITY_CONCERN',   // Cost > 15% of crop value
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // IPM / RESISTANCE MANAGEMENT CAUSES (P5 Priority)
+  // ─────────────────────────────────────────────────────────────────────────
+  IPM_BIOLOGICAL_PREFERRED = 'IPM_BIOLOGICAL_PREFERRED',           // Biological control more appropriate
+  IPM_CULTURAL_SUFFICIENT = 'IPM_CULTURAL_SUFFICIENT',             // Cultural control can handle
+  RESISTANCE_RISK_HIGH = 'RESISTANCE_RISK_HIGH',                   // Same MOA used consecutively
+  MOA_ROTATION_NEEDED = 'MOA_ROTATION_NEEDED',                     // Switch to different insecticide group
+  FUNGICIDE_ROTATION_NEEDED = 'FUNGICIDE_ROTATION_NEEDED',         // Switch to different fungicide group
+  BT_REFUGE_MISSING = 'BT_REFUGE_MISSING',                         // Bt cotton without refuge area
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CROP STAGE CAUSES (P3 Priority)
+  // ─────────────────────────────────────────────────────────────────────────
+  FLOWERING_SPRAY_RESTRICTION = 'FLOWERING_SPRAY_RESTRICTION',     // Flowering stage - limited chemicals
+  PRE_HARVEST_RESTRICTION = 'PRE_HARVEST_RESTRICTION',             // Close to harvest - PHI concerns
+  SEEDLING_VULNERABILITY = 'SEEDLING_VULNERABILITY',               // Seedling stage protection needed
+  CRITICAL_GROWTH_STAGE = 'CRITICAL_GROWTH_STAGE',                 // Critical nutrient/water stage
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // HARVEST & QUALITY CAUSES (P3-P6 Priority)
+  // ─────────────────────────────────────────────────────────────────────────
+  MATURITY_INDICATORS_MET = 'MATURITY_INDICATORS_MET',             // Crop ready for harvest
+  EARLY_HARVEST_RECOMMENDED = 'EARLY_HARVEST_RECOMMENDED',         // Weather/pest forces early harvest
+  QUALITY_DEGRADATION_RISK = 'QUALITY_DEGRADATION_RISK',           // Post-maturity quality loss risk
+  EXPORT_GRADE_REQUIREMENTS = 'EXPORT_GRADE_REQUIREMENTS',         // Stricter MRL/quality for export
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SOIL HEALTH CAUSES
+  // ─────────────────────────────────────────────────────────────────────────
+  SOIL_PH_CORRECTION_NEEDED = 'SOIL_PH_CORRECTION_NEEDED',         // pH out of optimal range
+  ORGANIC_MATTER_LOW = 'ORGANIC_MATTER_LOW',                       // Organic carbon < 1%
+  SOIL_HEALTH_DEGRADATION = 'SOIL_HEALTH_DEGRADATION'              // Multiple soil health issues
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -442,7 +658,44 @@ export enum Action {
   EMERGENCY_SPRAY = 'EMERGENCY_SPRAY',
   SALVAGE_HARVEST = 'SALVAGE_HARVEST',
   INSURANCE_CLAIM = 'INSURANCE_CLAIM',
-  CROP_DESTRUCTION = 'CROP_DESTRUCTION'
+  CROP_DESTRUCTION = 'CROP_DESTRUCTION',
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SAFETY & REGULATORY ACTIONS
+  // ─────────────────────────────────────────────────────────────────────────
+  BLOCK_BANNED_CHEMICAL = 'BLOCK_BANNED_CHEMICAL',       // Absolute block on banned pesticides
+  REQUIRE_PPE = 'REQUIRE_PPE',                           // Mandate personal protective equipment
+  REQUIRE_LICENSED_APPLICATOR = 'REQUIRE_LICENSED_APPLICATOR', // Restricted chemical handling
+  NOTIFY_BEEKEEPERS = 'NOTIFY_BEEKEEPERS',               // Pollinator protection notification
+  EVENING_APPLICATION_ONLY = 'EVENING_APPLICATION_ONLY', // Apply after bees inactive
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // IPM & RESISTANCE MANAGEMENT ACTIONS
+  // ─────────────────────────────────────────────────────────────────────────
+  ROTATE_INSECTICIDE_MOA = 'ROTATE_INSECTICIDE_MOA',     // Switch to different insecticide group
+  ROTATE_FUNGICIDE_MOA = 'ROTATE_FUNGICIDE_MOA',         // Switch to different fungicide group
+  ESTABLISH_BT_REFUGE = 'ESTABLISH_BT_REFUGE',           // Create non-Bt refuge area
+  RELEASE_TRICHOGRAMMA = 'RELEASE_TRICHOGRAMMA',         // Egg parasitoid release
+  RELEASE_NPV = 'RELEASE_NPV',                           // Nuclear polyhedrosis virus
+  RELEASE_LADYBIRD = 'RELEASE_LADYBIRD',                 // Ladybird beetle for aphids
+  APPLY_BEAUVERIA = 'APPLY_BEAUVERIA',                   // Beauveria bassiana for beetles
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // HARVEST & POST-HARVEST ACTIONS
+  // ─────────────────────────────────────────────────────────────────────────
+  HARVEST_IMMEDIATELY = 'HARVEST_IMMEDIATELY',           // Optimal maturity reached
+  DELAY_HARVEST = 'DELAY_HARVEST',                       // Maturity not reached
+  RAPID_COOLING = 'RAPID_COOLING',                       // Post-harvest cooling
+  PROPER_DRYING = 'PROPER_DRYING',                       // Grain drying to safe moisture
+  GRADING_FOR_EXPORT = 'GRADING_FOR_EXPORT',             // Export quality sorting
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SOIL HEALTH ACTIONS
+  // ─────────────────────────────────────────────────────────────────────────
+  APPLY_LIME_ACIDIC_SOIL = 'APPLY_LIME_ACIDIC_SOIL',     // pH correction for acidic soil
+  APPLY_SULFUR_ALKALINE = 'APPLY_SULFUR_ALKALINE',       // pH correction for alkaline soil
+  GREEN_MANURING = 'GREEN_MANURING',                     // Incorporate green manure crop
+  ADD_VERMICOMPOST = 'ADD_VERMICOMPOST'                  // Add organic matter
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
