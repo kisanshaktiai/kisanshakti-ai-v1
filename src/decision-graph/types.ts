@@ -300,6 +300,7 @@ export enum InsecticideGroup {
   GROUP_5_SPINOSYNS = 'GROUP_5_SPINOSYNS',             // Spinosad, Spinetoram
   GROUP_6_AVERMECTINS = 'GROUP_6_AVERMECTINS',         // Abamectin, Emamectin benzoate
   GROUP_11_BT = 'GROUP_11_BT',                         // Bacillus thuringiensis
+  GROUP_28_DIAMIDES = 'GROUP_28_DIAMIDES',             // Chlorantraniliprole, Cyantraniliprole
   GROUP_BOTANICAL = 'GROUP_BOTANICAL',                 // Neem, botanicals
   GROUP_UNKNOWN = 'GROUP_UNKNOWN'
 }
