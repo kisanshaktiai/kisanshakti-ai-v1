@@ -590,8 +590,14 @@ export enum Cause {
   DROUGHT_EMERGENCY = 'DROUGHT_EMERGENCY',                         // Severe drought conditions
   FLOOD_EMERGENCY = 'FLOOD_EMERGENCY',                             // Flood damage conditions
   HAIL_DAMAGE_EMERGENCY = 'HAIL_DAMAGE_EMERGENCY',                 // Hail storm damage
+  HAILSTORM_EMERGENCY = 'HAILSTORM_EMERGENCY',                     // Hailstorm event
   FROST_DAMAGE_EMERGENCY = 'FROST_DAMAGE_EMERGENCY',               // Frost damage to crop
+  FROST_EMERGENCY = 'FROST_EMERGENCY',                             // Frost event
   HEAT_WAVE_EMERGENCY = 'HEAT_WAVE_EMERGENCY',                     // Extreme heat event
+  CYCLONE_EMERGENCY = 'CYCLONE_EMERGENCY',                         // Cyclone/hurricane event
+  EMERGENCY_CHEMICAL_AUTHORIZED = 'EMERGENCY_CHEMICAL_AUTHORIZED', // Emergency chemical use approved
+  SALVAGE_HARVEST_RECOMMENDED = 'SALVAGE_HARVEST_RECOMMENDED',     // Salvage harvest recommended
+  INSURANCE_CLAIM_ELIGIBLE = 'INSURANCE_CLAIM_ELIGIBLE',           // Eligible for crop insurance claim
 
   // ─────────────────────────────────────────────────────────────────────────
   // ECONOMIC CAUSES (P4-P6)
@@ -617,7 +623,35 @@ export enum Cause {
   ORGANIC_CERTIFICATION_BLOCK = 'ORGANIC_CERTIFICATION_BLOCK',     // Would violate organic cert
   MOISTURE_HIGH_STORAGE_RISK = 'MOISTURE_HIGH_STORAGE_RISK',       // Grain moisture too high
   MATURITY_NOT_REACHED = 'MATURITY_NOT_REACHED',                   // Crop not mature yet
-  OVER_MATURE_QUALITY_LOSS = 'OVER_MATURE_QUALITY_LOSS'            // Delayed harvest causing loss
+  OVER_MATURE_QUALITY_LOSS = 'OVER_MATURE_QUALITY_LOSS',           // Delayed harvest causing loss
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // HARVEST QUALITY CAUSES (P3-P6)
+  // ─────────────────────────────────────────────────────────────────────────
+  CROP_APPROACHING_MATURITY = 'CROP_APPROACHING_MATURITY',         // Crop near maturity
+  OPTIMAL_HARVEST_WINDOW = 'OPTIMAL_HARVEST_WINDOW',               // Optimal time to harvest
+  EARLY_HARVEST_ADVISED_RAIN = 'EARLY_HARVEST_ADVISED_RAIN',       // Early harvest due to rain forecast
+  DELAYED_HARVEST_QUALITY_LOSS = 'DELAYED_HARVEST_QUALITY_LOSS',   // Quality loss from delayed harvest
+  GRAIN_MOISTURE_SUBOPTIMAL = 'GRAIN_MOISTURE_SUBOPTIMAL',         // Grain moisture not optimal
+  SUBOPTIMAL_HARVEST_TIME = 'SUBOPTIMAL_HARVEST_TIME',             // Not optimal time of day for harvest
+  EXPORT_QUALITY_NOT_MET = 'EXPORT_QUALITY_NOT_MET',               // Export quality standards not met
+  POST_HARVEST_HANDLING_NEEDED = 'POST_HARVEST_HANDLING_NEEDED',   // Post-harvest handling required
+  GRAIN_DRYING_REQUIRED = 'GRAIN_DRYING_REQUIRED',                 // Grain needs drying
+  STORAGE_PEST_PREVENTION_NEEDED = 'STORAGE_PEST_PREVENTION_NEEDED', // Storage pest prevention needed
+  SUGARCANE_BRIX_LOW = 'SUGARCANE_BRIX_LOW',                       // Sugarcane brix too low
+  FRUIT_NOT_MATURE_SG_TEST = 'FRUIT_NOT_MATURE_SG_TEST',           // Fruit not mature per specific gravity test
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // PHI WITHDRAWAL CAUSES (P1)
+  // ─────────────────────────────────────────────────────────────────────────
+  EXPORT_PHI_VIOLATION_RISK = 'EXPORT_PHI_VIOLATION_RISK',         // Export PHI violation risk
+  SHORTER_PHI_ALTERNATIVE_AVAILABLE = 'SHORTER_PHI_ALTERNATIVE_AVAILABLE', // Shorter PHI alternative exists
+  ORGANIC_CERTIFICATION_VIOLATION = 'ORGANIC_CERTIFICATION_VIOLATION', // Organic certification violation
+  CUMULATIVE_RESIDUE_RISK = 'CUMULATIVE_RESIDUE_RISK',             // Cumulative residue risk
+  NON_CHEMICAL_ONLY_NEAR_HARVEST = 'NON_CHEMICAL_ONLY_NEAR_HARVEST', // Non-chemical only near harvest
+  BIOPESTICIDE_RECOMMENDED_NEAR_HARVEST = 'BIOPESTICIDE_RECOMMENDED_NEAR_HARVEST', // Biopesticide recommended
+  RESIDUE_TESTING_RECOMMENDED = 'RESIDUE_TESTING_RECOMMENDED',     // Residue testing recommended
+  EU_MRL_STRICTER = 'EU_MRL_STRICTER'                              // EU MRL stricter than domestic
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
