@@ -4,7 +4,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Production-grade AI agents for agricultural advisory system.
- * Agents: NLU, Visual Intelligence, Context Manager, Diagnostic Flow
+ * Agents: NLU, Visual Intelligence, Context Manager, Diagnostic Flow, Rule Engine
  */
 
 // Agent 1: Natural Language Understanding
@@ -42,3 +42,9 @@ export * from './rule-module-resolver.ts';
 export * from './diagnostic-flow-controller.ts';
 export { DiagnosticFlowController } from './diagnostic-flow-controller.ts';
 export { resolveRuleModules, buildNLUOutputWithRuleMapping } from './rule-module-resolver.ts';
+
+// Agent 3: Rule Engine Executor & Decision Synthesizer
+export * from './rule-engine-types.ts';
+export * from './economic-calculator.ts';
+export * from './conflict-resolver.ts';
+export { RuleEngineExecutor, ruleEngineExecutor, RULE_ENGINE_VERSION } from './rule-engine-executor.ts';
