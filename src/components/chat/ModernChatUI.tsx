@@ -25,7 +25,7 @@ interface Message {
   imageUrl?: string;
   imageUrls?: string[];
   videoUrl?: string;
-  messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response' | 'suggestion_selector' | 'targeted_solution';
+  messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response' | 'suggestion_selector' | 'targeted_solution' | 'orchestrator';
   // Full analysis result for detailed cards
   analysisResult?: VisionAnalysisResult;
   // For targeted solutions
