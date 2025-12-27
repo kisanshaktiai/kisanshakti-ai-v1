@@ -30,6 +30,9 @@ import { FRUITS_RULES } from './crop-group-rules/fruits';
 import { SPICES_RULES } from './crop-group-rules/spices';
 import { FODDER_RULES } from './crop-group-rules/fodder';
 
+// Import safety rules
+import { getAllSafetyRules } from './safety-rules';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // GLOBAL FALLBACK RULES - Apply to all crops
 // ═══════════════════════════════════════════════════════════════════════════
@@ -684,8 +687,9 @@ export function inferCauses(
   const executionTrace: RuleExecutionResult[] = [];
   const matchedCauses: Map<Cause, { priority: number; rule_id: string }> = new Map();
 
-  // Combine all applicable rules
+  // Combine all applicable rules (safety rules first for priority)
   const allRules = [
+    ...getAllSafetyRules(),
     ...additionalRules,
     ...GLOBAL_RULES
   ];
