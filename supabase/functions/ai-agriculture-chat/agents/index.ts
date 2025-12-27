@@ -56,3 +56,7 @@ export { CommunicationGenerator, communicationGenerator, COMMUNICATION_VERSION }
 // Multi-Modal Fusion Engine
 export * from './multimodal-fusion-types.ts';
 export { MultiModalFusionEngine, multiModalFusion, MULTIMODAL_FUSION_VERSION } from './multimodal-fusion.ts';
+
+// Agent 5: Feedback Learning & Improvement Engine
+export * from './feedback-learning-types.ts';
+export { FeedbackLearningEngine, feedbackLearning } from './feedback-learning.ts';
