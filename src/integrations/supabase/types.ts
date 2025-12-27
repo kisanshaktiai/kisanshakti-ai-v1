@@ -9267,6 +9267,7 @@ export type Database = {
           marketplace_enabled: boolean | null
           mgrs_tile_id: string | null
           name: string
+          ndvi_geotiff_url: string | null
           ndvi_status: string | null
           ndvi_tested: boolean | null
           ndvi_thumbnail_url: string | null
@@ -9339,6 +9340,7 @@ export type Database = {
           marketplace_enabled?: boolean | null
           mgrs_tile_id?: string | null
           name: string
+          ndvi_geotiff_url?: string | null
           ndvi_status?: string | null
           ndvi_tested?: boolean | null
           ndvi_thumbnail_url?: string | null
@@ -9411,6 +9413,7 @@ export type Database = {
           marketplace_enabled?: boolean | null
           mgrs_tile_id?: string | null
           name?: string
+          ndvi_geotiff_url?: string | null
           ndvi_status?: string | null
           ndvi_tested?: boolean | null
           ndvi_thumbnail_url?: string | null
