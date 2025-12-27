@@ -52,3 +52,7 @@ export { RuleEngineExecutor, ruleEngineExecutor, RULE_ENGINE_VERSION } from './r
 // Agent 4: Farmer Communication Generator (Multilingual)
 export * from './communication-types.ts';
 export { CommunicationGenerator, communicationGenerator, COMMUNICATION_VERSION } from './communication-generator.ts';
+
+// Multi-Modal Fusion Engine
+export * from './multimodal-fusion-types.ts';
+export { MultiModalFusionEngine, multiModalFusion, MULTIMODAL_FUSION_VERSION } from './multimodal-fusion.ts';
