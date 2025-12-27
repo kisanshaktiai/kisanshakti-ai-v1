@@ -167,7 +167,7 @@ export class AIAgentOrchestrator {
       agentsUsed.push('NLU');
       if (visualOutput) agentsUsed.push('Visual');
       
-      console.log('   ✅ NLU processed:', nluOutput?.intent?.primary_intent || 'GENERAL_QUERY');
+      console.log('   ✅ NLU processed:', nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY');
       if (visualOutput) {
         console.log('   ✅ Photo analyzed:', visualOutput.detections?.pests?.length || 0, 'detections');
       }
@@ -190,16 +190,16 @@ export class AIAgentOrchestrator {
         timestamp: new Date().toISOString(),
         text_understanding: {
           farmer_message: farmerMessage,
-          language: nluOutput.language_detected,
-          intent: nluOutput.intent.primary_intent,
+          language: nluOutput.language_analysis?.detected_language || 'en',
+          intent: nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY',
           entities: {
-            crop_code: nluOutput.entities.crop?.code,
-            pest_code: nluOutput.entities.pest?.code,
-            disease_code: nluOutput.entities.disease?.code,
-            symptom_codes: nluOutput.entities.symptoms?.map(s => s.code)
+            crop_code: nluOutput.crop_identification?.crop_code,
+            pest_code: nluOutput.entities_extracted?.pest_mentioned?.canonical,
+            disease_code: nluOutput.entities_extracted?.disease_mentioned?.canonical,
+            symptom_codes: nluOutput.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || []
           },
-          confidence: nluOutput.confidence_score,
-          ambiguities: nluOutput.ambiguities || []
+          confidence: nluOutput.understanding_quality?.overall_confidence || 0.5,
+          ambiguities: nluOutput.clarification_strategy?.questions_to_ask?.map(q => q.question_text_en) || []
         },
         visual_analysis: visualOutput ? {
           image_id: options.photoUrl || '',
@@ -454,14 +454,14 @@ export class AIAgentOrchestrator {
   }
   
   /**
-   * Process NLU
+   * Process NLU (now async for AI-powered understanding)
    */
   private async processNLU(
     message: string,
     sessionId: string,
     language?: string
   ): Promise<NLUOutput> {
-    return processNLUAgent({
+    return await processNLUAgent({
       raw_input: message,
       conversation_context: {
         previous_turns: [],
@@ -512,14 +512,14 @@ export class AIAgentOrchestrator {
         input_type: 'TEXT',
         timestamp: new Date().toISOString(),
         nlu_output: nluOutput ? {
-          primary_intent: nluOutput.intent?.primary_intent || 'GENERAL_QUERY',
-          crop_code: nluOutput.entities?.crop?.code,
-          symptoms: nluOutput.entities?.symptoms?.map(s => s.code) || [],
-          pest_hypothesis: nluOutput.entities?.pest?.code,
-          disease_hypothesis: nluOutput.entities?.disease?.code,
-          urgency_level: (nluOutput.intent?.urgency_level as 'HIGH' | 'MEDIUM' | 'LOW') || 'MEDIUM',
-          emotional_state: (nluOutput.intent?.emotional_state as any) || 'NEUTRAL',
-          confidence: nluOutput.confidence_score || 0.5
+          primary_intent: nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY',
+          crop_code: nluOutput.crop_identification?.crop_code,
+          symptoms: nluOutput.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [],
+          pest_hypothesis: nluOutput.entities_extracted?.pest_mentioned?.canonical,
+          disease_hypothesis: nluOutput.entities_extracted?.disease_mentioned?.canonical,
+          urgency_level: (nluOutput.intent_classification?.urgency_level as 'HIGH' | 'MEDIUM' | 'LOW') || 'MEDIUM',
+          emotional_state: (nluOutput.intent_classification?.emotional_state as any) || 'NEUTRAL',
+          confidence: nluOutput.understanding_quality?.overall_confidence || 0.5
         } : {
           primary_intent: 'GENERAL_QUERY',
           symptoms: [],
