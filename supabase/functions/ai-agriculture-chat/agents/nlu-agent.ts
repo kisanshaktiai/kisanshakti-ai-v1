@@ -1,13 +1,13 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * AGENT 1: NATURAL LANGUAGE UNDERSTANDING (NLU) - PRODUCTION v3.0
+ * AGENT 1: NATURAL LANGUAGE UNDERSTANDING (NLU) - PRODUCTION v4.0 (AI-Powered)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Processes farmer input in Marathi, Hindi, and English including:
- * - Regional dialects and colloquialisms
- * - Mixed-language (code-switching) sentences
- * - Agricultural terminology in local languages
- * - Voice-to-text transcriptions with errors
+ * AI-ENHANCED NLU using Gemini API for semantic understanding + pattern matching:
+ * - Uses Gemini Flash for deep semantic analysis
+ * - Extracts structured intent, entities, and meaning
+ * - Falls back to pattern matching if AI unavailable
+ * - Processes Marathi, Hindi, and English with code-switching
  */
 
 import {
@@ -36,7 +36,101 @@ import {
   getAllSymptomTerms,
 } from './agricultural-vocabulary.ts';
 
-const NLU_VERSION = '3.0.1';
+const NLU_VERSION = '4.0.0';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AI-POWERED SEMANTIC UNDERSTANDING (Gemini/OpenAI)
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface AIUnderstandingResult {
+  language: 'mr' | 'hi' | 'en';
+  intent: PrimaryIntent;
+  intent_confidence: number;
+  crop?: { name: string; code: string };
+  pest?: { name: string; code: string };
+  disease?: { name: string; code: string };
+  symptoms: string[];
+  urgency: 'HIGH' | 'MEDIUM' | 'LOW';
+  emotional_state: 'PANIC' | 'STRESSED' | 'NEUTRAL' | 'CONFIDENT';
+  extracted_context: string;
+}
+
+async function callAIForUnderstanding(message: string): Promise<AIUnderstandingResult | null> {
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  
+  if (!LOVABLE_API_KEY) {
+    console.log('⚠️ [NLU] LOVABLE_API_KEY not set, falling back to pattern matching');
+    return null;
+  }
+  
+  const systemPrompt = `You are an expert Agricultural NLU Agent for Indian farmers. 
+Analyze the farmer's message (in Marathi, Hindi, or English) and extract structured information.
+
+OUTPUT FORMAT (JSON only, no markdown):
+{
+  "language": "mr" | "hi" | "en",
+  "intent": "PEST_PROBLEM" | "DISEASE_PROBLEM" | "NUTRIENT_ISSUE" | "WATER_ISSUE" | "WEATHER_QUERY" | "MARKET_QUERY" | "GENERAL_QUERY" | "EMERGENCY" | "GREETING",
+  "intent_confidence": 0.0-1.0,
+  "crop": { "name": "local_name", "code": "CROP_CODE" } or null,
+  "pest": { "name": "local_name", "code": "PEST_CODE" } or null,
+  "disease": { "name": "local_name", "code": "DISEASE_CODE" } or null,
+  "symptoms": ["symptom1", "symptom2"],
+  "urgency": "HIGH" | "MEDIUM" | "LOW",
+  "emotional_state": "PANIC" | "STRESSED" | "NEUTRAL" | "CONFIDENT",
+  "extracted_context": "brief summary of farmer's issue"
+}
+
+CROP CODES: COTTON, SOYBEAN, TOMATO, ONION, CHILLI, SUGARCANE, WHEAT, RICE, MAIZE, GROUNDNUT
+PEST CODES: WHITEFLY, APHID, BOLLWORM, MEALYBUG, THRIPS, JASSID, ARMYWORM, STEMBORR, FRUITBORER
+DISEASE CODES: LEAF_CURL, POWDERY_MILDEW, DOWNY_MILDEW, WILT, ROOT_ROT, BACTERIAL_BLIGHT, RUST, ANTHRACNOSE
+
+Be precise. Detect urgency from words like "dying", "emergency", "urgent".`;
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Analyze this farmer message: "${message}"` }
+        ],
+        max_tokens: 500
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('❌ [NLU] AI API error:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    
+    if (!content) {
+      console.error('❌ [NLU] Empty AI response');
+      return null;
+    }
+
+    // Parse JSON from response (handle markdown code blocks)
+    let jsonStr = content.trim();
+    if (jsonStr.startsWith('```')) {
+      jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+    }
+    
+    const result = JSON.parse(jsonStr) as AIUnderstandingResult;
+    console.log('✅ [NLU] AI understanding complete:', result.intent, result.intent_confidence);
+    return result;
+    
+  } catch (error) {
+    console.error('❌ [NLU] AI call failed:', error);
+    return null;
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STEP 1: LANGUAGE DETECTION & NORMALIZATION
@@ -357,10 +451,10 @@ function buildClarificationStrategy(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MAIN NLU AGENT FUNCTION
+// MAIN NLU AGENT FUNCTION (AI-ENHANCED)
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function processNLUAgent(input: Partial<NLUAgentInput> & { raw_input: string }): NLUAgentOutput {
+export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_input: string }): Promise<NLUAgentOutput> {
   const startTime = Date.now();
   
   // Ensure conversation_context exists with defaults
@@ -369,30 +463,84 @@ export function processNLUAgent(input: Partial<NLUAgentInput> & { raw_input: str
     session_state: 'NEW' as const
   };
   
-  // Step 1: Language Detection
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 0: Try AI-Powered Understanding First (Gemini)
+  // ═══════════════════════════════════════════════════════════════════════════
+  let aiResult: AIUnderstandingResult | null = null;
+  try {
+    aiResult = await callAIForUnderstanding(input.raw_input);
+  } catch (err) {
+    console.warn('⚠️ [NLU] AI understanding failed, using pattern matching:', err);
+  }
+  
+  // Step 1: Language Detection (use AI result if available)
   const languageResult = detectLanguage(input.raw_input);
+  if (aiResult?.language) {
+    languageResult.primary_language = aiResult.language;
+    languageResult.confidence = Math.max(languageResult.confidence, 0.9);
+  }
   
-  // Step 2: Intent Classification (with null-safe context)
-  const intentResult = classifyIntent(input.raw_input, conversationContext);
+  // Step 2: Intent Classification (prefer AI result)
+  let intentResult = classifyIntent(input.raw_input, conversationContext);
+  if (aiResult?.intent && aiResult.intent_confidence > 0.6) {
+    intentResult = {
+      primary: aiResult.intent,
+      primary_confidence: aiResult.intent_confidence,
+      secondary: intentResult.secondary,
+      detected_patterns: intentResult.detected_patterns
+    };
+  }
   
-  // Step 3: Entity Extraction
+  // Step 3: Entity Extraction (merge AI + pattern results)
   const entityResult = extractEntities(input.raw_input);
+  if (aiResult?.crop && !entityResult.crops.length) {
+    entityResult.crops.push({
+      canonical: aiResult.crop.code,
+      localTerm: aiResult.crop.name,
+      confidence: 0.9
+    });
+  }
+  if (aiResult?.pest && !entityResult.pests.length) {
+    entityResult.pests.push({
+      canonical: aiResult.pest.code,
+      localTerm: aiResult.pest.name,
+      confidence: 0.85
+    });
+  }
+  if (aiResult?.disease && !entityResult.diseases.length) {
+    entityResult.diseases.push({
+      canonical: aiResult.disease.code,
+      localTerm: aiResult.disease.name,
+      confidence: 0.85
+    });
+  }
   
-  // Step 4: Urgency Assessment
+  // Step 4: Urgency Assessment (use AI if available)
   const urgencyResult = assessUrgency(input.raw_input);
+  if (aiResult?.urgency) {
+    urgencyResult.level = aiResult.urgency;
+    urgencyResult.emotional_state = aiResult.emotional_state;
+    urgencyResult.requires_immediate_response = aiResult.urgency === 'HIGH' || aiResult.emotional_state === 'PANIC';
+  }
   
   // Step 5: Build Clarification Strategy
   const clarificationQuestions = buildClarificationStrategy(entityResult, intentResult, input);
   
-  // Calculate overall confidence
-  const overallConfidence = (
+  // Calculate overall confidence (boost if AI was used)
+  let overallConfidence = (
     languageResult.confidence * 0.2 +
     intentResult.primary_confidence * 0.4 +
     (entityResult.crops.length > 0 ? 0.2 : 0) +
     (entityResult.symptoms.length > 0 ? 0.2 : 0)
   );
   
+  // AI boost - higher confidence when AI successfully analyzed
+  if (aiResult && aiResult.intent_confidence > 0.7) {
+    overallConfidence = Math.min(0.95, overallConfidence + 0.15);
+  }
+  
   const processingTime = Date.now() - startTime;
+  console.log(`⚡ [NLU] Processed in ${processingTime}ms, AI used: ${!!aiResult}, confidence: ${(overallConfidence * 100).toFixed(1)}%`);
   
   return {
     understanding_metadata: {

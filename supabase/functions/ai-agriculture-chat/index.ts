@@ -226,6 +226,62 @@ serve(async (req) => {
     console.log('✅ [Orchestrator] Response type:', orchestratorResponse.type);
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 3: STORE MESSAGES FOR TRAINING & ANALYSIS
+    // ═══════════════════════════════════════════════════════════════════════════
+    const responseTime = Date.now() - startTime;
+    
+    // Store user message
+    try {
+      await supabase.from('ai_chat_messages').insert({
+        session_id: currentSessionId,
+        tenant_id: finalTenantId,
+        farmer_id: finalFarmerId,
+        role: 'user',
+        content: userMessageContent,
+        language: detectedLanguage,
+        message_type: imageUrl ? 'image_analysis' : 'text',
+        image_urls: imageUrl ? [imageUrl] : null,
+        is_training_candidate: true,
+        inferred_intent: orchestratorResponse.metadata?.agents_used?.includes('NLU') ? 'PROCESSED' : null,
+        conversation_turn_number: messages.length,
+        metadata: {
+          source: 'orchestrator_v1',
+          has_image: !!imageUrl,
+          land_id: landId
+        }
+      });
+      
+      // Store assistant response
+      const responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
+      await supabase.from('ai_chat_messages').insert({
+        session_id: currentSessionId,
+        tenant_id: finalTenantId,
+        farmer_id: finalFarmerId,
+        role: 'assistant',
+        content: responseContent,
+        language: detectedLanguage,
+        message_type: 'orchestrator',
+        response_time_ms: responseTime,
+        decision_brain_source: true,
+        is_training_candidate: true,
+        conversation_turn_number: messages.length + 1,
+        metadata: {
+          orchestrator_type: orchestratorResponse.type,
+          confidence: orchestratorResponse.metadata?.confidence,
+          safety_status: orchestratorResponse.metadata?.safety_status,
+          rules_applied: orchestratorResponse.metadata?.rules_applied,
+          agents_used: orchestratorResponse.metadata?.agents_used,
+          decision_id: orchestratorResponse.decision_id
+        }
+      });
+      
+      console.log('💾 [Storage] Messages saved for training');
+    } catch (storageError) {
+      console.warn('⚠️ [Storage] Failed to save messages:', storageError);
+      // Continue - don't fail the request for storage issues
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // TRANSFORM ORCHESTRATOR RESPONSE TO LEGACY FORMAT
     // ═══════════════════════════════════════════════════════════════════════════
     const responsePayload = transformOrchestratorResponse(
@@ -265,6 +321,34 @@ serve(async (req) => {
 // ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
+
+function getResponseContent(response: OrchestratorResponse, language: string): string {
+  switch (response.type) {
+    case 'DECISION_PROVIDED':
+      const comm = response.communication;
+      return language === 'mr' ? (comm?.message_text?.mr || comm?.message_text?.en || '') :
+             language === 'hi' ? (comm?.message_text?.hi || comm?.message_text?.en || '') :
+             (comm?.message_text?.en || '');
+    case 'CLARIFICATION_QUESTION':
+      return language === 'mr' ? (response.question?.text_mr || '') :
+             language === 'hi' ? (response.question?.text_hi || '') :
+             (response.question?.text_en || '');
+    case 'PHOTO_REQUEST':
+      return language === 'mr' ? (response.photo_instructions?.text_mr || '') :
+             language === 'hi' ? (response.photo_instructions?.text_hi || '') :
+             (response.photo_instructions?.text_en || '');
+    case 'SAFETY_BLOCKED':
+      return language === 'mr' ? (response.blocked_reason?.reason_mr || '') :
+             language === 'hi' ? (response.blocked_reason?.reason_hi || '') :
+             (response.blocked_reason?.reason_en || '');
+    case 'ESCALATION_REQUIRED':
+      return language === 'mr' ? (response.escalation?.message_mr || '') :
+             language === 'hi' ? (response.escalation?.message_hi || '') :
+             (response.escalation?.message_en || '');
+    default:
+      return 'Response generated';
+  }
+}
 
 function detectLanguage(text: string, fallback: string): string {
   const hasDevanagari = /[\u0900-\u097F]/.test(text);
