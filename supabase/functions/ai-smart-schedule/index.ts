@@ -4393,6 +4393,100 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
       console.log(`✅ [DB] Inserted ${insertedTasks?.length || 0} tasks`);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🔗 CRITICAL: SYNC CROP TO LANDS TABLE
+    // This ensures lands.current_crop matches the schedule's crop
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('🔄 [Sync] Updating lands table with schedule crop...');
+    
+    // 1. Move current crop to previous_crop (for rotation tracking)
+    const { data: landBeforeUpdate } = await supabase
+      .from("lands")
+      .select("current_crop, current_crop_id")
+      .eq("id", landId)
+      .single();
+    
+    // 2. Update lands table with new crop info
+    const { error: landUpdateError } = await supabase
+      .from("lands")
+      .update({
+        current_crop: cropName,
+        // If previous crop exists, move it to previous_crop
+        previous_crop: landBeforeUpdate?.current_crop || null,
+        previous_crop_id: landBeforeUpdate?.current_crop_id || null,
+        last_harvest_date: landBeforeUpdate?.current_crop ? new Date().toISOString().split("T")[0] : null,
+        planting_date: sowingDate,
+        expected_harvest_date: harvestDateStr,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", landId);
+    
+    if (landUpdateError) {
+      console.error("⚠️ Land sync warning:", landUpdateError.message);
+    } else {
+      console.log(`✅ [Sync] Land ${landId} updated: current_crop = "${cropName}"`);
+    }
+    
+    // 3. Insert/Update land_crops entry for multi-crop tracking
+    const { error: landCropsError } = await supabase
+      .from("land_crops")
+      .upsert({
+        land_id: landId,
+        tenant_id: tenantId,
+        farmer_id: farmerId,
+        crop_name: cropName,
+        crop_name_local: translatedCropName,
+        crop_variety: cropVariety || null,
+        crop_type: 'major', // Main crop from schedule
+        sowing_date: sowingDate,
+        expected_harvest_date: harvestDateStr,
+        area_percentage: 100,
+        area_acres: landAreaAcres,
+        schedule_id: savedSchedule.id,
+        is_active: true,
+        status: 'growing',
+        farming_type: farmingType,
+        metadata: {
+          schedule_crop_name: cropName,
+          translated_name: translatedCropName,
+          generated_at: new Date().toISOString()
+        }
+      }, {
+        onConflict: 'land_id,crop_type,is_active',
+        ignoreDuplicates: false
+      });
+    
+    if (landCropsError) {
+      // Try insert if upsert fails (no conflict columns might exist yet)
+      const { error: insertError } = await supabase
+        .from("land_crops")
+        .insert({
+          land_id: landId,
+          tenant_id: tenantId,
+          farmer_id: farmerId,
+          crop_name: cropName,
+          crop_name_local: translatedCropName,
+          crop_variety: cropVariety || null,
+          crop_type: 'major',
+          sowing_date: sowingDate,
+          expected_harvest_date: harvestDateStr,
+          area_percentage: 100,
+          area_acres: landAreaAcres,
+          schedule_id: savedSchedule.id,
+          is_active: true,
+          status: 'growing',
+          farming_type: farmingType,
+        });
+      
+      if (insertError) {
+        console.warn("⚠️ land_crops insert warning:", insertError.message);
+      } else {
+        console.log(`✅ [Sync] land_crops entry created for major crop "${cropName}"`);
+      }
+    } else {
+      console.log(`✅ [Sync] land_crops entry updated for major crop "${cropName}"`);
+    }
+
     const executionTime = Date.now() - startTime;
     console.log(`✅ Schedule complete in ${executionTime}ms`);
 

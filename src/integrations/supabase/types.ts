@@ -9163,6 +9163,124 @@ export type Database = {
           },
         ]
       }
+      land_crops: {
+        Row: {
+          actual_harvest_date: string | null
+          area_acres: number | null
+          area_percentage: number | null
+          created_at: string | null
+          crop_id: string | null
+          crop_name: string
+          crop_name_local: string | null
+          crop_type: string
+          crop_variety: string | null
+          expected_harvest_date: string | null
+          farmer_id: string
+          farming_type: string | null
+          id: string
+          is_active: boolean | null
+          land_id: string
+          metadata: Json | null
+          notes: string | null
+          schedule_id: string | null
+          sowing_date: string | null
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          actual_harvest_date?: string | null
+          area_acres?: number | null
+          area_percentage?: number | null
+          created_at?: string | null
+          crop_id?: string | null
+          crop_name: string
+          crop_name_local?: string | null
+          crop_type?: string
+          crop_variety?: string | null
+          expected_harvest_date?: string | null
+          farmer_id: string
+          farming_type?: string | null
+          id?: string
+          is_active?: boolean | null
+          land_id: string
+          metadata?: Json | null
+          notes?: string | null
+          schedule_id?: string | null
+          sowing_date?: string | null
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          actual_harvest_date?: string | null
+          area_acres?: number | null
+          area_percentage?: number | null
+          created_at?: string | null
+          crop_id?: string | null
+          crop_name?: string
+          crop_name_local?: string | null
+          crop_type?: string
+          crop_variety?: string | null
+          expected_harvest_date?: string | null
+          farmer_id?: string
+          farming_type?: string | null
+          id?: string
+          is_active?: boolean | null
+          land_id?: string
+          metadata?: Json | null
+          notes?: string | null
+          schedule_id?: string | null
+          sowing_date?: string | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "land_crops_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_crops_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "land_crops_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "land_crops_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "land_crops_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "land_crops_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "crop_schedules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       land_tile_intersections: {
         Row: {
           created_at: string | null
