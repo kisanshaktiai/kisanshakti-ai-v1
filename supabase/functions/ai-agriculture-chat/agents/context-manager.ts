@@ -407,13 +407,14 @@ function analyzeFarmerBehavior(
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function processContextManager(
-  input: ContextManagerInput,
-  existingSession: FullSessionData | null,
+  input: Partial<ContextManagerInput> & { farmer_id: string },
+  existingSession: FullSessionData | null = null,
   allActiveSessions: SessionContext[] = []
 ): ContextManagerOutput {
   const startTime = Date.now();
   const isPhotoUpload = input.input_type === 'PHOTO';
-  const isUrgent = input.nlu_output.urgency_level === 'HIGH';
+  // Null-safe access to nlu_output.urgency_level
+  const isUrgent = input.nlu_output?.urgency_level === 'HIGH';
   
   // 1. Determine session type and get/create session
   let sessionType: 'NEW' | 'CONTINUING' | 'RESUMED' = 'NEW';

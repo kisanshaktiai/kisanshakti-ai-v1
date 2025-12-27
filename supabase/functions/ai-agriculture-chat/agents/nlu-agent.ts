@@ -147,7 +147,7 @@ const INTENT_PATTERNS: Record<PrimaryIntent, RegExp[]> = {
   CLARIFICATION_RESPONSE: []
 };
 
-function classifyIntent(text: string, context: NLUAgentInput['conversation_context']): IntentDetectionResult {
+function classifyIntent(text: string, context?: NLUAgentInput['conversation_context']): IntentDetectionResult {
   const results: { intent: PrimaryIntent; confidence: number; patterns: string[] }[] = [];
   
   for (const [intent, patterns] of Object.entries(INTENT_PATTERNS)) {
@@ -181,8 +181,9 @@ function classifyIntent(text: string, context: NLUAgentInput['conversation_conte
     };
   }
   
-  // Check if this is a follow-up response
-  if (context.session_state === 'CLARIFICATION' && results[0].confidence < 0.7) {
+  // Check if this is a follow-up response (with null safety)
+  const sessionState = context?.session_state;
+  if (sessionState === 'CLARIFICATION' && results[0].confidence < 0.7) {
     return {
       primary: 'CLARIFICATION_RESPONSE',
       primary_confidence: 0.8,
@@ -359,14 +360,20 @@ function buildClarificationStrategy(
 // MAIN NLU AGENT FUNCTION
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function processNLUAgent(input: NLUAgentInput): NLUAgentOutput {
+export function processNLUAgent(input: Partial<NLUAgentInput> & { raw_input: string }): NLUAgentOutput {
   const startTime = Date.now();
+  
+  // Ensure conversation_context exists with defaults
+  const conversationContext = input.conversation_context || {
+    previous_turns: [],
+    session_state: 'NEW' as const
+  };
   
   // Step 1: Language Detection
   const languageResult = detectLanguage(input.raw_input);
   
-  // Step 2: Intent Classification
-  const intentResult = classifyIntent(input.raw_input, input.conversation_context);
+  // Step 2: Intent Classification (with null-safe context)
+  const intentResult = classifyIntent(input.raw_input, conversationContext);
   
   // Step 3: Entity Extraction
   const entityResult = extractEntities(input.raw_input);
@@ -450,7 +457,7 @@ export function processNLUAgent(input: NLUAgentInput): NLUAgentOutput {
       } : undefined
     },
     context_integration: {
-      is_follow_up: input.conversation_context.session_state !== 'NEW',
+      is_follow_up: conversationContext?.session_state !== 'NEW',
       context_from_land: !!input.land_context
     },
     understanding_quality: {
