@@ -32,7 +32,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    console.log('[app-version] Fetching current app version');
+    // Parse app_key from query params with default fallback
+    const url = new URL(req.url);
+    const appKey = url.searchParams.get('app_key') || 'farmer_app';
+    
+    console.log('[app-version] Fetching current app version for:', appKey);
 
     // Create Supabase client
     const supabaseClient = createClient(
@@ -45,11 +49,11 @@ Deno.serve(async (req) => {
       }
     );
 
-    // Fetch current version for farmer_app only
+    // Fetch current version for the specified app_key (defaults to farmer_app)
     const { data: versions, error } = await supabaseClient
       .from('app_versions')
       .select('*')
-      .eq('app_key', 'farmer_app')
+      .eq('app_key', appKey)
       .eq('is_current', true)
       .order('deployed_at', { ascending: false, nullsFirst: false })
       .limit(1);
