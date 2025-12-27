@@ -180,22 +180,19 @@ export function EnhancedAIChatInterface() {
     language: language
   });
   
-  const scrollToBottom = useCallback(() => {
-    if (isUserScrollingRef.current || isAutoScrollingRef.current) return;
+  const scrollToBottom = useCallback((force = false) => {
+    if (!force && isUserScrollingRef.current) return;
     
-    isAutoScrollingRef.current = true;
+    const container = scrollAreaRef.current;
+    if (!container) return;
     
-    setTimeout(() => {
-      if (scrollAreaRef.current) {
-        scrollAreaRef.current.scrollTo({
-          top: scrollAreaRef.current.scrollHeight,
-          behavior: 'smooth'
-        });
-      }
-      setTimeout(() => {
-        isAutoScrollingRef.current = false;
-      }, 300);
-    }, 100);
+    // Use requestAnimationFrame for smoother scrolling
+    requestAnimationFrame(() => {
+      container.scrollTo({
+        top: container.scrollHeight,
+        behavior: force ? 'auto' : 'smooth'
+      });
+    });
   }, []);
 
   const handleRefresh = useCallback(async () => {
@@ -222,9 +219,12 @@ export function EnhancedAIChatInterface() {
     }
   }, [transcript]);
 
+  // Auto-scroll to bottom when messages change or tab changes
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, activeTab]);
+    // Force scroll to bottom when messages are added
+    const timer = setTimeout(() => scrollToBottom(true), 100);
+    return () => clearTimeout(timer);
+  }, [messages, activeTab, scrollToBottom]);
 
   useEffect(() => {
     if (!sessionStartTime[activeTab] && messages[activeTab]?.length > 0) {
@@ -1219,7 +1219,7 @@ export function EnhancedAIChatInterface() {
   const quickReplies = dynamicQuickReplies[activeTab] || [];
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="fixed inset-0 flex flex-col bg-gradient-to-b from-background via-background to-muted/20">
       {/* Camera Modal */}
       {showCamera && (
         <WorldClassCamera
@@ -1239,8 +1239,10 @@ export function EnhancedAIChatInterface() {
         />
       )}
 
-      {/* Header */}
-      <div className="flex-shrink-0 border-b border-border/50 bg-card/50 backdrop-blur-xl">
+      {/* ═══════════════════════════════════════════════════════════════════════════
+          FIXED HEADER - Modern 2030 Glassmorphism Design
+          ═══════════════════════════════════════════════════════════════════════════ */}
+      <header className="sticky top-0 z-50 flex-shrink-0 border-b border-border/30 bg-card/70 backdrop-blur-2xl shadow-sm">
         <div className="flex items-center justify-between p-3">
           <div className="flex items-center gap-2">
             <Button
@@ -1348,12 +1350,14 @@ export function EnhancedAIChatInterface() {
             </TabsList>
           </div>
         </Tabs>
-      </div>
+      </header>
 
-      {/* Messages Area */}
-      <div 
+      {/* ═══════════════════════════════════════════════════════════════════════════
+          SCROLLABLE MESSAGES AREA
+          ═══════════════════════════════════════════════════════════════════════════ */}
+      <main 
         ref={scrollAreaRef}
-        className="flex-1 overflow-y-auto p-4 space-y-4"
+        className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-4 scroll-smooth"
       >
         {/* Loading History */}
         {isLoadingHistory && (
@@ -1428,11 +1432,13 @@ export function EnhancedAIChatInterface() {
             language={language}
           />
         )}
-      </div>
+      </main>
 
-      {/* Quick Replies */}
+      {/* ═══════════════════════════════════════════════════════════════════════════
+          QUICK REPLIES - Floating suggestions
+          ═══════════════════════════════════════════════════════════════════════════ */}
       {quickReplies.length > 0 && !isLoading && (
-        <div className="flex-shrink-0 px-4 pb-2">
+        <div className="flex-shrink-0 px-4 pb-2 bg-gradient-to-t from-background to-transparent">
           <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
             {quickReplies.slice(0, 4).map((reply, index) => (
               <Button
@@ -1440,7 +1446,7 @@ export function EnhancedAIChatInterface() {
                 variant="outline"
                 size="sm"
                 onClick={() => sendMessage(reply)}
-                className="flex-shrink-0 text-xs h-8 whitespace-nowrap"
+                className="flex-shrink-0 text-xs h-8 whitespace-nowrap bg-card/80 backdrop-blur-sm border-border/50 hover:bg-primary/10 hover:border-primary/30 transition-all"
               >
                 {reply}
               </Button>
@@ -1449,8 +1455,10 @@ export function EnhancedAIChatInterface() {
         </div>
       )}
 
-      {/* Input Area */}
-      <div className="flex-shrink-0 border-t border-border/50 bg-card/50 backdrop-blur-xl p-3">
+      {/* ═══════════════════════════════════════════════════════════════════════════
+          FIXED INPUT AREA - Modern 2030 Glassmorphism Design
+          ═══════════════════════════════════════════════════════════════════════════ */}
+      <footer className="sticky bottom-0 z-50 flex-shrink-0 border-t border-border/30 bg-card/70 backdrop-blur-2xl p-3 pb-safe">
         {/* Attached Files Preview */}
         {attachedFiles.length > 0 && (
           <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
@@ -1556,7 +1564,7 @@ export function EnhancedAIChatInterface() {
             )}
           </Button>
         </div>
-      </div>
+      </footer>
     </div>
   );
 }

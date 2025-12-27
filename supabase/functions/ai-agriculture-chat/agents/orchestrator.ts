@@ -103,8 +103,7 @@ export interface OrchestratorResponse {
 export class AIAgentOrchestrator {
   private supabase: ReturnType<typeof createClient>;
   
-  // Agent instances
-  private diagnosticController: DiagnosticFlowController;
+  // Agent instances (stateless - created per-request for DiagnosticController)
   private fusionEngine: MultiModalFusionEngine;
   private ruleEngine: RuleEngineExecutor;
   private communicationGenerator: CommunicationGenerator;
@@ -117,13 +116,19 @@ export class AIAgentOrchestrator {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
     
-    // Initialize agents
-    this.diagnosticController = new DiagnosticFlowController();
+    // Initialize stateless agents
     this.fusionEngine = new MultiModalFusionEngine();
     this.ruleEngine = new RuleEngineExecutor();
     this.communicationGenerator = new CommunicationGenerator();
     this.feedbackEngine = new FeedbackLearningEngine();
     this.safetyGuardian = new SafetyGuardian();
+  }
+  
+  /**
+   * Create a per-request DiagnosticFlowController
+   */
+  private createDiagnosticController(sessionId: string, farmerId: string, landId?: string): DiagnosticFlowController {
+    return new DiagnosticFlowController(sessionId, farmerId, landId);
   }
   
   /**
@@ -229,12 +234,20 @@ export class AIAgentOrchestrator {
       // ========================================
       console.log('\n🧠 PHASE 3: Managing Diagnostic Flow...');
       
-      const diagnosticState = await this.diagnosticController.manage({
-        session_id: sessionId,
-        fused_intelligence: fusedIntelligence,
-        context_state: contextState,
-        farmer_input: farmerMessage
-      });
+      // Create per-request diagnostic controller with required parameters
+      const diagnosticController = this.createDiagnosticController(sessionId, farmerId, options.landId);
+      
+      // Build NLU output with rule mapping for diagnostic controller
+      const nluWithRuleMapping = this.buildNLUOutputWithRuleMapping(nluOutput, fusedIntelligence);
+      
+      // Process through diagnostic flow
+      const diagnosticResponse = await diagnosticController.processNLUOutput(nluWithRuleMapping);
+      const diagnosticState = {
+        mode: this.mapDiagnosticAction(diagnosticResponse.action),
+        next_question: diagnosticResponse.questions?.[0]?.question_id,
+        hypotheses: diagnosticResponse.evaluation_result ? [{ confidence: 0.7 }] : [],
+        session_state: diagnosticResponse.session_state
+      };
       
       agentsUsed.push('Diagnostic');
       console.log('   ✅ Diagnostic mode:', diagnosticState.mode);
@@ -835,6 +848,53 @@ export class AIAgentOrchestrator {
     }
   }
   
+  /**
+   * Build NLU output with rule mapping for diagnostic controller
+   */
+  private buildNLUOutputWithRuleMapping(nluOutput: NLUOutput, fused: FusedIntelligence): any {
+    return {
+      intent: nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY',
+      language: nluOutput.language_analysis?.detected_language || 'mr',
+      entities: {
+        crop_code: fused.unified_context?.crop?.name || nluOutput.crop_identification?.crop_code,
+        crop_stage: fused.unified_context?.crop?.growth_stage,
+        pest_code: nluOutput.entities_extracted?.pest_mentioned?.canonical,
+        disease_code: nluOutput.entities_extracted?.disease_mentioned?.canonical,
+        affected_area_percent: 20,
+        severity: nluOutput.intent_classification?.urgency_level || 'MODERATE'
+      },
+      clarification_needed: nluOutput.clarification_strategy?.needs_clarification || false,
+      questions: (nluOutput.clarification_strategy?.questions_to_ask || []).map((q: string, i: number) => ({
+        question_id: `q_${i}`,
+        question: q,
+        priority: 'MEDIUM' as const
+      })),
+      contextNeeded: {
+        photo_required: nluOutput.symptom_extraction?.visual_symptoms?.length > 0 && 
+                       !nluOutput.entities_extracted?.disease_mentioned?.canonical
+      },
+      safety_alerts: {
+        emergency_detected: false,
+        banned_substance_mentioned: false
+      },
+      requiredRuleModules: []
+    };
+  }
+  
+  /**
+   * Map diagnostic action to mode
+   */
+  private mapDiagnosticAction(action: string): string {
+    switch (action) {
+      case 'ASK_CLARIFICATION': return 'GATHERING_INFO';
+      case 'REQUEST_PHOTO': return 'WAITING_FOR_PHOTO';
+      case 'RECOMMEND': return 'READY_TO_RECOMMEND';
+      case 'BLOCK': return 'BLOCKED';
+      case 'ESCALATE': return 'ESCALATED';
+      default: return 'READY_TO_RECOMMEND';
+    }
+  }
+
   /**
    * Handle orchestration errors
    */
