@@ -6617,6 +6617,91 @@ export type Database = {
           },
         ]
       }
+      expert_escalations: {
+        Row: {
+          context_data: Json | null
+          created_at: string | null
+          decision_id: string | null
+          escalation_level: string | null
+          escalation_reasons: string[] | null
+          expert_assigned: string | null
+          expert_response: string | null
+          expert_type: string | null
+          farmer_id: string | null
+          farmer_notified: boolean | null
+          id: string
+          resolved_at: string | null
+          response_time_minutes: number | null
+          session_id: string | null
+          status: string | null
+          tenant_id: string | null
+          updated_at: string | null
+          urgency: string | null
+        }
+        Insert: {
+          context_data?: Json | null
+          created_at?: string | null
+          decision_id?: string | null
+          escalation_level?: string | null
+          escalation_reasons?: string[] | null
+          expert_assigned?: string | null
+          expert_response?: string | null
+          expert_type?: string | null
+          farmer_id?: string | null
+          farmer_notified?: boolean | null
+          id?: string
+          resolved_at?: string | null
+          response_time_minutes?: number | null
+          session_id?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          urgency?: string | null
+        }
+        Update: {
+          context_data?: Json | null
+          created_at?: string | null
+          decision_id?: string | null
+          escalation_level?: string | null
+          escalation_reasons?: string[] | null
+          expert_assigned?: string | null
+          expert_response?: string | null
+          expert_type?: string | null
+          farmer_id?: string | null
+          farmer_notified?: boolean | null
+          id?: string
+          resolved_at?: string | null
+          response_time_minutes?: number | null
+          session_id?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          urgency?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expert_escalations_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "expert_escalations_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "expert_escalations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       farmer_achievements: {
         Row: {
           achievement_id: string
@@ -10115,6 +10200,71 @@ export type Database = {
           },
         ]
       }
+      learning_suggestions: {
+        Row: {
+          category: string | null
+          confidence_score: number | null
+          created_at: string | null
+          description: string
+          evidence_count: number | null
+          id: string
+          implementation_notes: string | null
+          priority: string | null
+          recommendation: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string | null
+          suggestion_type: string | null
+          supporting_data: Json | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          confidence_score?: number | null
+          created_at?: string | null
+          description: string
+          evidence_count?: number | null
+          id?: string
+          implementation_notes?: string | null
+          priority?: string | null
+          recommendation?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string | null
+          suggestion_type?: string | null
+          supporting_data?: Json | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          confidence_score?: number | null
+          created_at?: string | null
+          description?: string
+          evidence_count?: number | null
+          id?: string
+          implementation_notes?: string | null
+          priority?: string | null
+          recommendation?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string | null
+          suggestion_type?: string | null
+          supporting_data?: Json | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "learning_suggestions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       localization_settings: {
         Row: {
           created_at: string | null
@@ -12431,6 +12581,65 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "onboarding_workflows_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orchestrator_metrics: {
+        Row: {
+          agent_performance: Json | null
+          created_at: string | null
+          error_message: string | null
+          error_type: string | null
+          escalation_triggered: boolean | null
+          final_confidence: number | null
+          id: string
+          phase_timings: Json | null
+          rules_applied_count: number | null
+          safety_status: string | null
+          session_id: string | null
+          success: boolean | null
+          tenant_id: string | null
+          total_processing_time_ms: number | null
+        }
+        Insert: {
+          agent_performance?: Json | null
+          created_at?: string | null
+          error_message?: string | null
+          error_type?: string | null
+          escalation_triggered?: boolean | null
+          final_confidence?: number | null
+          id?: string
+          phase_timings?: Json | null
+          rules_applied_count?: number | null
+          safety_status?: string | null
+          session_id?: string | null
+          success?: boolean | null
+          tenant_id?: string | null
+          total_processing_time_ms?: number | null
+        }
+        Update: {
+          agent_performance?: Json | null
+          created_at?: string | null
+          error_message?: string | null
+          error_type?: string | null
+          escalation_triggered?: boolean | null
+          final_confidence?: number | null
+          id?: string
+          phase_timings?: Json | null
+          rules_applied_count?: number | null
+          safety_status?: string | null
+          session_id?: string | null
+          success?: boolean | null
+          tenant_id?: string | null
+          total_processing_time_ms?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orchestrator_metrics_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -15270,6 +15479,156 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "resource_utilization_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rule_performance: {
+        Row: {
+          avg_economic_accuracy: number | null
+          avg_farmer_satisfaction: number | null
+          created_at: string | null
+          failed_outcomes: number | null
+          id: string
+          last_fired_at: string | null
+          partial_outcomes: number | null
+          rule_file: string | null
+          rule_id: string
+          success_rate: number | null
+          success_rate_trend: string | null
+          successful_outcomes: number | null
+          tenant_id: string | null
+          times_blocked: number | null
+          times_fired: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          avg_economic_accuracy?: number | null
+          avg_farmer_satisfaction?: number | null
+          created_at?: string | null
+          failed_outcomes?: number | null
+          id?: string
+          last_fired_at?: string | null
+          partial_outcomes?: number | null
+          rule_file?: string | null
+          rule_id: string
+          success_rate?: number | null
+          success_rate_trend?: string | null
+          successful_outcomes?: number | null
+          tenant_id?: string | null
+          times_blocked?: number | null
+          times_fired?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          avg_economic_accuracy?: number | null
+          avg_farmer_satisfaction?: number | null
+          created_at?: string | null
+          failed_outcomes?: number | null
+          id?: string
+          last_fired_at?: string | null
+          partial_outcomes?: number | null
+          rule_file?: string | null
+          rule_id?: string
+          success_rate?: number | null
+          success_rate_trend?: string | null
+          successful_outcomes?: number | null
+          tenant_id?: string | null
+          times_blocked?: number | null
+          times_fired?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rule_performance_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      safety_verifications: {
+        Row: {
+          banned_substance_violations: Json | null
+          created_at: string | null
+          decision_id: string | null
+          environmental_concerns: Json | null
+          escalation_reason: string | null
+          escalation_triggered: boolean | null
+          escalation_type: string | null
+          expert_assigned: string | null
+          expert_response_sla_hours: number | null
+          farmer_id: string | null
+          food_safety_violations: Json | null
+          human_safety_issues: Json | null
+          id: string
+          overall_status: string | null
+          regulatory_issues: Json | null
+          session_id: string | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          banned_substance_violations?: Json | null
+          created_at?: string | null
+          decision_id?: string | null
+          environmental_concerns?: Json | null
+          escalation_reason?: string | null
+          escalation_triggered?: boolean | null
+          escalation_type?: string | null
+          expert_assigned?: string | null
+          expert_response_sla_hours?: number | null
+          farmer_id?: string | null
+          food_safety_violations?: Json | null
+          human_safety_issues?: Json | null
+          id?: string
+          overall_status?: string | null
+          regulatory_issues?: Json | null
+          session_id?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          banned_substance_violations?: Json | null
+          created_at?: string | null
+          decision_id?: string | null
+          environmental_concerns?: Json | null
+          escalation_reason?: string | null
+          escalation_triggered?: boolean | null
+          escalation_type?: string | null
+          expert_assigned?: string | null
+          expert_response_sla_hours?: number | null
+          farmer_id?: string | null
+          food_safety_violations?: Json | null
+          human_safety_issues?: Json | null
+          id?: string
+          overall_status?: string | null
+          regulatory_issues?: Json | null
+          session_id?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "safety_verifications_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "safety_verifications_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "safety_verifications_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -19783,6 +20142,168 @@ export type Database = {
           },
           {
             foreignKeyName: "transactions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      treatment_outcomes: {
+        Row: {
+          application_date: string | null
+          benefit_actual_inr: number | null
+          benefit_predicted_inr: number | null
+          cost_actual_inr: number | null
+          cost_predicted_inr: number | null
+          created_at: string | null
+          day_14_check: Json | null
+          day_3_check: Json | null
+          day_7_check: Json | null
+          decision_id: string | null
+          deviations: string[] | null
+          efficacy_predicted_percent: number | null
+          expert_diagnosis_correct: boolean | null
+          expert_notes: string | null
+          expert_review_date: string | null
+          expert_reviewed: boolean | null
+          expert_treatment_appropriate: boolean | null
+          farmer_id: string | null
+          farmer_implemented: boolean | null
+          farmer_satisfaction: number | null
+          farmer_would_recommend: boolean | null
+          final_outcome: string | null
+          followed_instructions: boolean | null
+          id: string
+          land_id: string | null
+          predicted_pest_disease: string | null
+          prediction_confidence: number | null
+          session_id: string | null
+          tenant_id: string | null
+          treatment_applied: string | null
+          treatment_recommended: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          application_date?: string | null
+          benefit_actual_inr?: number | null
+          benefit_predicted_inr?: number | null
+          cost_actual_inr?: number | null
+          cost_predicted_inr?: number | null
+          created_at?: string | null
+          day_14_check?: Json | null
+          day_3_check?: Json | null
+          day_7_check?: Json | null
+          decision_id?: string | null
+          deviations?: string[] | null
+          efficacy_predicted_percent?: number | null
+          expert_diagnosis_correct?: boolean | null
+          expert_notes?: string | null
+          expert_review_date?: string | null
+          expert_reviewed?: boolean | null
+          expert_treatment_appropriate?: boolean | null
+          farmer_id?: string | null
+          farmer_implemented?: boolean | null
+          farmer_satisfaction?: number | null
+          farmer_would_recommend?: boolean | null
+          final_outcome?: string | null
+          followed_instructions?: boolean | null
+          id?: string
+          land_id?: string | null
+          predicted_pest_disease?: string | null
+          prediction_confidence?: number | null
+          session_id?: string | null
+          tenant_id?: string | null
+          treatment_applied?: string | null
+          treatment_recommended?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          application_date?: string | null
+          benefit_actual_inr?: number | null
+          benefit_predicted_inr?: number | null
+          cost_actual_inr?: number | null
+          cost_predicted_inr?: number | null
+          created_at?: string | null
+          day_14_check?: Json | null
+          day_3_check?: Json | null
+          day_7_check?: Json | null
+          decision_id?: string | null
+          deviations?: string[] | null
+          efficacy_predicted_percent?: number | null
+          expert_diagnosis_correct?: boolean | null
+          expert_notes?: string | null
+          expert_review_date?: string | null
+          expert_reviewed?: boolean | null
+          expert_treatment_appropriate?: boolean | null
+          farmer_id?: string | null
+          farmer_implemented?: boolean | null
+          farmer_satisfaction?: number | null
+          farmer_would_recommend?: boolean | null
+          final_outcome?: string | null
+          followed_instructions?: boolean | null
+          id?: string
+          land_id?: string | null
+          predicted_pest_disease?: string | null
+          prediction_confidence?: number | null
+          session_id?: string | null
+          tenant_id?: string | null
+          treatment_applied?: string | null
+          treatment_recommended?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "treatment_outcomes_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treatment_outcomes_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "treatment_outcomes_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "treatment_outcomes_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "treatment_outcomes_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "treatment_outcomes_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "treatment_outcomes_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "treatment_outcomes_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
