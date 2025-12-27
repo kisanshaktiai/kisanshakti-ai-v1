@@ -12,9 +12,37 @@
 import { 
   CauseRule, 
   Cause, 
+  CropStage,
+  CropGroup,
+  PRIORITY_LEVEL_TO_NUMERIC,
   PriorityLevel,
   DecisionInput 
 } from '../types';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TYPE-SAFE METADATA HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Safely extract a number from metadata */
+function num(value: unknown, defaultValue: number = 0): number {
+  if (typeof value === 'number' && !isNaN(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value);
+    return isNaN(parsed) ? defaultValue : parsed;
+  }
+  return defaultValue;
+}
+
+/** Safely extract a string from metadata */
+function str(value: unknown, defaultValue: string = ''): string {
+  if (typeof value === 'string') return value;
+  return defaultValue;
+}
+
+/** Safely extract a boolean from metadata */
+function bool(value: unknown): boolean {
+  return value === true || value === 'true';
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CROP MATURITY INDICATORS
@@ -31,92 +59,61 @@ export interface MaturityIndicator {
 export const MATURITY_INDICATORS: MaturityIndicator[] = [
   {
     crop: 'cotton',
-    visualIndicators: [
-      'Boll bursting (60-70% bolls open)',
-      'Fiber turning from cream to white',
-    ],
+    visualIndicators: ['Boll bursting (60-70% bolls open)', 'Fiber turning from cream to white'],
     harvestWindow: '3-4 pickings over 4-6 weeks',
     optimalTime: 'Early morning after dew dries',
   },
   {
     crop: 'tomato',
-    visualIndicators: [
-      'Color change from green to breaker stage',
-      'For market: 50-75% red',
-      'For long distance: Breaker to turning stage',
-    ],
+    visualIndicators: ['Color change from green to breaker stage', 'For market: 50-75% red', 'For long distance: Breaker to turning stage'],
     physicalTests: [{ parameter: 'Firmness', optimalValue: 'Slight give on pressing' }],
     harvestWindow: 'Every 3-5 days',
     optimalTime: 'Early morning (4-8 AM) for maximum turgidity',
   },
   {
     crop: 'rice',
-    visualIndicators: [
-      '80-85% grains in panicle hard',
-      'Straw turns yellow',
-    ],
+    visualIndicators: ['80-85% grains in panicle hard', 'Straw turns yellow'],
     physicalTests: [{ parameter: 'Moisture content', optimalValue: '20-25%' }],
     harvestWindow: '7-10 days from full maturity',
     optimalTime: 'After morning dew dries',
   },
   {
     crop: 'wheat',
-    visualIndicators: [
-      'Grain hard on biting',
-      'Straw yellow to golden',
-    ],
+    visualIndicators: ['Grain hard on biting', 'Straw yellow to golden'],
     physicalTests: [{ parameter: 'Moisture content', optimalValue: '20-22%' }],
     harvestWindow: '5-7 days from maturity',
     optimalTime: 'Late morning (10 AM - 2 PM)',
   },
   {
     crop: 'maize',
-    visualIndicators: [
-      'Husk drying and brown',
-      'Black layer formation at grain base',
-      'Milk line disappeared',
-    ],
+    visualIndicators: ['Husk drying and brown', 'Black layer formation at grain base', 'Milk line disappeared'],
     physicalTests: [{ parameter: 'Moisture content', optimalValue: '20-25%' }],
     harvestWindow: '7-10 days',
     optimalTime: 'Dry weather conditions',
   },
   {
     crop: 'sugarcane',
-    visualIndicators: [
-      'Leaves yellowing from bottom',
-      'Metallic sound on tapping cane',
-      'High brix reading (18-20%)',
-    ],
+    visualIndicators: ['Leaves yellowing from bottom', 'Metallic sound on tapping cane', 'High brix reading (18-20%)'],
     physicalTests: [{ parameter: 'Brix', optimalValue: '18-20%' }],
     harvestWindow: '15-20 days from peak maturity',
     optimalTime: 'After 12 months age, cool weather preferred',
   },
   {
     crop: 'potato',
-    visualIndicators: [
-      'Vines dying back',
-      'Skin firmly set (doesn\'t peel easily)',
-    ],
+    visualIndicators: ['Vines dying back', "Skin firmly set (doesn't peel easily)"],
     physicalTests: [{ parameter: 'Specific gravity', optimalValue: '>1.080' }],
     harvestWindow: '2-3 weeks after vine death',
     optimalTime: 'Dry soil conditions',
   },
   {
     crop: 'onion',
-    visualIndicators: [
-      '50-75% neck fall',
-      'Leaves yellowing and drying',
-    ],
+    visualIndicators: ['50-75% neck fall', 'Leaves yellowing and drying'],
     harvestWindow: '7-10 days after neck fall',
     optimalTime: 'Dry weather, morning hours',
   },
   {
     crop: 'mango',
-    visualIndicators: [
-      'Shoulder development (fuller shape)',
-      'Color change (variety specific)',
-      'Specific gravity <1.0 (floats in water)',
-    ],
+    visualIndicators: ['Shoulder development (fuller shape)', 'Color change (variety specific)', 'Specific gravity <1.0 (floats in water)'],
     physicalTests: [{ parameter: 'Specific gravity', optimalValue: '<1.0' }],
     harvestWindow: 'Variety specific (110-150 days from flowering)',
     optimalTime: 'Morning, with 1cm stalk attached',
@@ -179,245 +176,221 @@ export const HARVEST_TIME_OF_DAY = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const HARVEST_QUALITY_RULES: CauseRule[] = [
-  // ─────────────────────────────────────────────────────────────────────────
   // CROP APPROACHING MATURITY
-  // ─────────────────────────────────────────────────────────────────────────
   {
     rule_id: 'HARVEST_001',
     category: 'harvest',
     crop_code: 'all',
-    stage_applicable: ['maturity', 'late_maturity'],
-    conditions: (input: DecisionInput) => {
-      const maturityPercent = input.metadata?.maturityPercent || 0;
+    stage_applicable: [CropStage.MATURITY],
+    conditions: (input: DecisionInput): boolean => {
+      const maturityPercent = num(input.metadata?.maturityPercent);
       return maturityPercent >= 80 && maturityPercent < 100;
     },
     cause: Cause.CROP_APPROACHING_MATURITY,
-    priority: PriorityLevel.P3,
+    priority: PRIORITY_LEVEL_TO_NUMERIC[PriorityLevel.P3_CROP_STAGE],
     scientific_source: 'ICAR Harvest Guidelines',
     scientific_basis: 'At 80%+ maturity, prepare for harvest within 3-5 days. Check weather forecast and arrange labor/machinery.',
     icar_package: 'Crop Maturity Assessment Manual',
   },
 
-  // ─────────────────────────────────────────────────────────────────────────
   // OPTIMAL HARVEST WINDOW
-  // ─────────────────────────────────────────────────────────────────────────
   {
     rule_id: 'HARVEST_002',
     category: 'harvest',
     crop_code: 'all',
-    stage_applicable: ['maturity'],
-    conditions: (input: DecisionInput) => {
-      const maturityPercent = input.metadata?.maturityPercent || 0;
-      const weatherStable = !input.metadata?.rainForecast7days;
+    stage_applicable: [CropStage.MATURITY],
+    conditions: (input: DecisionInput): boolean => {
+      const maturityPercent = num(input.metadata?.maturityPercent);
+      const weatherStable = !bool(input.metadata?.rainForecast7days);
       return maturityPercent >= 90 && weatherStable;
     },
     cause: Cause.OPTIMAL_HARVEST_WINDOW,
-    priority: PriorityLevel.P3,
+    priority: PRIORITY_LEVEL_TO_NUMERIC[PriorityLevel.P3_CROP_STAGE],
     scientific_source: 'Harvest Timing Optimization',
     scientific_basis: 'Maturity ≥90% with stable weather = optimal harvest window. Harvest within 3-5 days for maximum yield and quality.',
     icar_package: 'ICAR Post-Harvest Management',
   },
 
-  // ─────────────────────────────────────────────────────────────────────────
   // RAIN FORECAST - EARLY HARVEST ADVISORY
-  // ─────────────────────────────────────────────────────────────────────────
   {
     rule_id: 'HARVEST_003',
     category: 'harvest',
     crop_code: 'all',
-    stage_applicable: ['maturity', 'late_maturity'],
-    conditions: (input: DecisionInput) => {
-      const maturityPercent = input.metadata?.maturityPercent || 0;
-      const rainForecast = input.metadata?.rainForecast7days;
+    stage_applicable: [CropStage.MATURITY],
+    conditions: (input: DecisionInput): boolean => {
+      const maturityPercent = num(input.metadata?.maturityPercent);
+      const rainForecast = bool(input.metadata?.rainForecast7days);
       return maturityPercent >= 85 && rainForecast;
     },
     cause: Cause.EARLY_HARVEST_ADVISED_RAIN,
-    priority: PriorityLevel.P2,
+    priority: PRIORITY_LEVEL_TO_NUMERIC[PriorityLevel.P2_WEATHER_SAFETY],
     scientific_source: 'Weather-Based Harvest Advisory',
     scientific_basis: 'Rain forecast with mature crop = harvest immediately. Rain delays harvest, causes lodging, disease, quality loss.',
     icar_package: 'Weather-Responsive Agriculture',
   },
 
-  // ─────────────────────────────────────────────────────────────────────────
   // DELAYED HARVEST WARNING
-  // ─────────────────────────────────────────────────────────────────────────
   {
     rule_id: 'HARVEST_004',
     category: 'harvest',
     crop_code: 'all',
-    stage_applicable: ['late_maturity'],
-    conditions: (input: DecisionInput) => {
-      const maturityPercent = input.metadata?.maturityPercent || 0;
-      const daysOverMature = input.metadata?.daysOverMature || 0;
+    stage_applicable: [CropStage.HARVEST],
+    conditions: (input: DecisionInput): boolean => {
+      const maturityPercent = num(input.metadata?.maturityPercent);
+      const daysOverMature = num(input.metadata?.daysOverMature);
       return maturityPercent >= 100 && daysOverMature >= 7;
     },
     cause: Cause.DELAYED_HARVEST_QUALITY_LOSS,
-    priority: PriorityLevel.P2,
+    priority: PRIORITY_LEVEL_TO_NUMERIC[PriorityLevel.P2_WEATHER_SAFETY],
     scientific_source: 'Post-Maturity Quality Studies',
     scientific_basis: 'Delayed harvest >7 days after full maturity causes shattering, lodging, pest/disease buildup, quality deterioration.',
     icar_package: 'Harvest Loss Prevention',
   },
 
-  // ─────────────────────────────────────────────────────────────────────────
   // GRAIN MOISTURE CONTENT CHECK
-  // ─────────────────────────────────────────────────────────────────────────
   {
     rule_id: 'HARVEST_005',
     category: 'harvest',
     crop_code: 'all',
-    stage_applicable: ['maturity'],
-    conditions: (input: DecisionInput) => {
-      const moistureContent = input.metadata?.grainMoisturePercent || 0;
-      const cropType = input.crop_group;
-      const isGrain = ['cereals', 'pulses', 'oilseeds'].includes(cropType);
+    stage_applicable: [CropStage.MATURITY],
+    conditions: (input: DecisionInput): boolean => {
+      const moistureContent = num(input.metadata?.grainMoisturePercent);
+      const cropGroup = input.crop_group;
+      const isGrain = [CropGroup.CEREALS, CropGroup.PULSES, CropGroup.OILSEEDS].includes(cropGroup);
       return isGrain && (moistureContent < 18 || moistureContent > 25);
     },
     cause: Cause.GRAIN_MOISTURE_SUBOPTIMAL,
-    priority: PriorityLevel.P3,
+    priority: PRIORITY_LEVEL_TO_NUMERIC[PriorityLevel.P3_CROP_STAGE],
     scientific_source: 'Grain Quality Standards',
     scientific_basis: 'Optimal harvest moisture 20-25%. Too low = shattering loss. Too high = storage problems, fungal growth.',
     icar_package: 'FCI Grain Quality Parameters',
   },
 
-  // ─────────────────────────────────────────────────────────────────────────
   // VEGETABLE HARVEST TIME ADVISORY
-  // ─────────────────────────────────────────────────────────────────────────
   {
     rule_id: 'HARVEST_006',
     category: 'harvest',
     crop_code: 'all',
-    stage_applicable: ['maturity', 'fruiting'],
-    conditions: (input: DecisionInput) => {
+    stage_applicable: [CropStage.MATURITY, CropStage.REPRODUCTIVE],
+    conditions: (input: DecisionInput): boolean => {
       const cropGroup = input.crop_group;
       const currentHour = new Date().getHours();
-      const isVegetable = cropGroup === 'vegetables';
+      const isVegetable = cropGroup === CropGroup.VEGETABLES;
       const notEarlyMorning = currentHour >= 8;
-      return isVegetable && notEarlyMorning && input.metadata?.harvestPlanned;
+      return isVegetable && notEarlyMorning && bool(input.metadata?.harvestPlanned);
     },
     cause: Cause.SUBOPTIMAL_HARVEST_TIME,
-    priority: PriorityLevel.P6,
+    priority: PRIORITY_LEVEL_TO_NUMERIC[PriorityLevel.P6_OPTIMIZATION],
     scientific_source: 'Post-Harvest Handling Guidelines',
     scientific_basis: 'Vegetables should be harvested early morning (4-8 AM) for maximum turgidity, coolest temperature, longest shelf life.',
     icar_package: 'FAO Post-Harvest Vegetable Handling',
   },
 
-  // ─────────────────────────────────────────────────────────────────────────
   // EXPORT QUALITY REQUIREMENTS
-  // ─────────────────────────────────────────────────────────────────────────
   {
     rule_id: 'HARVEST_007',
-    category: 'quality',
+    category: 'harvest',
     crop_code: 'all',
     stage_applicable: [],
-    conditions: (input: DecisionInput) => {
-      const isExportGrade = input.metadata?.targetMarket === 'export';
-      const defects = input.metadata?.qualityDefectPercent || 0;
+    conditions: (input: DecisionInput): boolean => {
+      const isExportGrade = str(input.metadata?.targetMarket) === 'export';
+      const defects = num(input.metadata?.qualityDefectPercent);
       return isExportGrade && defects > 2;
     },
     cause: Cause.EXPORT_QUALITY_NOT_MET,
-    priority: PriorityLevel.P3,
+    priority: PRIORITY_LEVEL_TO_NUMERIC[PriorityLevel.P3_CROP_STAGE],
     scientific_source: 'Export Quality Standards',
     scientific_basis: 'Export grade requires <2% defects. Higher defects = rejection or price penalty. Sort carefully and maintain cold chain.',
     icar_package: 'APEDA Export Quality Guidelines',
   },
 
-  // ─────────────────────────────────────────────────────────────────────────
   // POST-HARVEST HANDLING ADVISORY
-  // ─────────────────────────────────────────────────────────────────────────
   {
     rule_id: 'HARVEST_008',
-    category: 'quality',
+    category: 'harvest',
     crop_code: 'all',
     stage_applicable: [],
-    conditions: (input: DecisionInput) => {
-      const cropHarvested = input.metadata?.recentlyHarvested;
-      const noPreCooling = !input.metadata?.preCoolingDone;
-      const isPerishable = ['vegetables', 'fruits'].includes(input.crop_group);
+    conditions: (input: DecisionInput): boolean => {
+      const cropHarvested = bool(input.metadata?.recentlyHarvested);
+      const noPreCooling = !bool(input.metadata?.preCoolingDone);
+      const isPerishable = [CropGroup.VEGETABLES, CropGroup.FRUITS].includes(input.crop_group);
       return cropHarvested && noPreCooling && isPerishable;
     },
     cause: Cause.POST_HARVEST_HANDLING_NEEDED,
-    priority: PriorityLevel.P3,
+    priority: PRIORITY_LEVEL_TO_NUMERIC[PriorityLevel.P3_CROP_STAGE],
     scientific_source: 'FAO Post-Harvest Management',
     scientific_basis: 'Perishables require pre-cooling within 2 hours of harvest. Field heat removal extends shelf life by 50-100%.',
     icar_package: 'Cold Chain Management',
   },
 
-  // ─────────────────────────────────────────────────────────────────────────
   // GRAIN DRYING REQUIRED
-  // ─────────────────────────────────────────────────────────────────────────
   {
     rule_id: 'HARVEST_009',
-    category: 'quality',
+    category: 'harvest',
     crop_code: 'all',
     stage_applicable: [],
-    conditions: (input: DecisionInput) => {
-      const moistureContent = input.metadata?.grainMoisturePercent || 0;
-      const isGrain = ['cereals', 'pulses', 'oilseeds'].includes(input.crop_group);
+    conditions: (input: DecisionInput): boolean => {
+      const moistureContent = num(input.metadata?.grainMoisturePercent);
+      const isGrain = [CropGroup.CEREALS, CropGroup.PULSES, CropGroup.OILSEEDS].includes(input.crop_group);
       return isGrain && moistureContent > 14;
     },
     cause: Cause.GRAIN_DRYING_REQUIRED,
-    priority: PriorityLevel.P3,
+    priority: PRIORITY_LEVEL_TO_NUMERIC[PriorityLevel.P3_CROP_STAGE],
     scientific_source: 'Safe Grain Storage Guidelines',
     scientific_basis: 'Safe storage moisture <14% for grains. Higher moisture causes fungal growth, heating, quality loss. Sun dry or use dryers.',
     icar_package: 'ICAR Grain Storage Manual',
   },
 
-  // ─────────────────────────────────────────────────────────────────────────
   // STORAGE PEST PREVENTION
-  // ─────────────────────────────────────────────────────────────────────────
   {
     rule_id: 'HARVEST_010',
-    category: 'quality',
+    category: 'harvest',
     crop_code: 'all',
     stage_applicable: [],
-    conditions: (input: DecisionInput) => {
-      const storagePlanned = input.metadata?.storagePlanned;
-      const noTreatment = !input.metadata?.storageTreatmentDone;
-      const isGrain = ['cereals', 'pulses'].includes(input.crop_group);
+    conditions: (input: DecisionInput): boolean => {
+      const storagePlanned = bool(input.metadata?.storagePlanned);
+      const noTreatment = !bool(input.metadata?.storageTreatmentDone);
+      const isGrain = [CropGroup.CEREALS, CropGroup.PULSES].includes(input.crop_group);
       return storagePlanned && noTreatment && isGrain;
     },
     cause: Cause.STORAGE_PEST_PREVENTION_NEEDED,
-    priority: PriorityLevel.P3,
+    priority: PRIORITY_LEVEL_TO_NUMERIC[PriorityLevel.P3_CROP_STAGE],
     scientific_source: 'Stored Grain Pest Management',
     scientific_basis: 'Stored grain pests (weevil, borer) cause 10-30% loss. Treat with approved storage pesticides or hermetic storage.',
     icar_package: 'ICAR Stored Grain Pest Control',
   },
 
-  // ─────────────────────────────────────────────────────────────────────────
   // BRIX/SUGAR CONTENT CHECK (SUGARCANE)
-  // ─────────────────────────────────────────────────────────────────────────
   {
     rule_id: 'HARVEST_011',
     category: 'harvest',
     crop_code: 'sugarcane',
-    stage_applicable: ['maturity'],
-    conditions: (input: DecisionInput) => {
-      const brix = input.metadata?.brixReading || 0;
+    stage_applicable: [CropStage.MATURITY],
+    conditions: (input: DecisionInput): boolean => {
+      const brix = num(input.metadata?.brixReading);
       return brix < 18;
     },
     cause: Cause.SUGARCANE_BRIX_LOW,
-    priority: PriorityLevel.P3,
+    priority: PRIORITY_LEVEL_TO_NUMERIC[PriorityLevel.P3_CROP_STAGE],
     scientific_source: 'Sugar Mill Quality Standards',
     scientific_basis: 'Sugarcane optimal brix 18-20%. Below 18% = immature cane, lower recovery, price penalty from mill.',
     icar_package: 'ICAR-SBI Sugarcane Harvest Guide',
   },
 
-  // ─────────────────────────────────────────────────────────────────────────
   // FRUIT SPECIFIC GRAVITY TEST
-  // ─────────────────────────────────────────────────────────────────────────
   {
     rule_id: 'HARVEST_012',
     category: 'harvest',
     crop_code: 'all',
-    stage_applicable: ['maturity'],
-    conditions: (input: DecisionInput) => {
-      const isFruit = input.crop_group === 'fruits';
-      const specificGravity = input.metadata?.specificGravity || 1.0;
+    stage_applicable: [CropStage.MATURITY],
+    conditions: (input: DecisionInput): boolean => {
+      const isFruit = input.crop_group === CropGroup.FRUITS;
+      const specificGravity = num(input.metadata?.specificGravity, 1.0);
       // Mango floats (SG < 1.0) when mature
       return isFruit && input.crop_code === 'mango' && specificGravity >= 1.0;
     },
     cause: Cause.FRUIT_NOT_MATURE_SG_TEST,
-    priority: PriorityLevel.P3,
+    priority: PRIORITY_LEVEL_TO_NUMERIC[PriorityLevel.P3_CROP_STAGE],
     scientific_source: 'Fruit Maturity Testing',
     scientific_basis: 'Mango specific gravity <1.0 (floats in water) indicates maturity. Harvesting immature fruit = poor quality, no ripening.',
     icar_package: 'Mango Maturity Assessment',
@@ -428,16 +401,10 @@ export const HARVEST_QUALITY_RULES: CauseRule[] = [
 // HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Get maturity indicators for a crop
- */
 export function getMaturityIndicators(cropCode: string): MaturityIndicator | undefined {
   return MATURITY_INDICATORS.find(m => m.crop.toLowerCase() === cropCode.toLowerCase());
 }
 
-/**
- * Get optimal harvest time of day for crop type
- */
 export function getOptimalHarvestTime(cropGroup: string): { optimal: string; reason: string } {
   const groups: Record<string, keyof typeof HARVEST_TIME_OF_DAY> = {
     vegetables: 'vegetables',
@@ -452,9 +419,6 @@ export function getOptimalHarvestTime(cropGroup: string): { optimal: string; rea
   return HARVEST_TIME_OF_DAY[key];
 }
 
-/**
- * Calculate days to optimal harvest
- */
 export function calculateDaysToHarvest(
   maturityPercent: number,
   dailyMaturityRate: number = 3
@@ -464,9 +428,6 @@ export function calculateDaysToHarvest(
   return Math.ceil(remaining / dailyMaturityRate);
 }
 
-/**
- * Get harvest decision based on conditions
- */
 export function getHarvestDecision(
   maturityPercent: number,
   rainForecast: boolean,
