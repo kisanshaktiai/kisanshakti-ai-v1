@@ -48,3 +48,7 @@ export * from './rule-engine-types.ts';
 export * from './economic-calculator.ts';
 export * from './conflict-resolver.ts';
 export { RuleEngineExecutor, ruleEngineExecutor, RULE_ENGINE_VERSION } from './rule-engine-executor.ts';
+
+// Agent 4: Farmer Communication Generator (Multilingual)
+export * from './communication-types.ts';
+export { CommunicationGenerator, communicationGenerator, COMMUNICATION_VERSION } from './communication-generator.ts';
