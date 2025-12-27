@@ -4,7 +4,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Production-grade AI agents for agricultural advisory system.
- * Total Agents: 12 (Agents 1, 1B & 2A implemented, 9 more to follow)
+ * Agents: NLU, Visual Intelligence, Context Manager, Diagnostic Flow
  */
 
 // Agent 1: Natural Language Understanding
@@ -26,3 +26,19 @@ export {
   getNextQuestion,
   detectContextSwitch 
 } from './context-manager.ts';
+
+// Agent 2B: Intelligent Diagnostic Flow Controller
+export * from './hypothesis-types.ts';
+export * from './diagnostic-questions-bank.ts';
+export { 
+  DIAGNOSTIC_QUESTIONS_BANK,
+  getQuestionsForHypothesis,
+  getDifferentiatingQuestions 
+} from './diagnostic-questions-bank.ts';
+
+// Rule Module Integration (Maps NLU to decision-graph rules)
+export * from './rule-module-types.ts';
+export * from './rule-module-resolver.ts';
+export * from './diagnostic-flow-controller.ts';
+export { DiagnosticFlowController } from './diagnostic-flow-controller.ts';
+export { resolveRuleModules, buildNLUOutputWithRuleMapping } from './rule-module-resolver.ts';
