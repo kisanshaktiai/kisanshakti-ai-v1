@@ -1308,12 +1308,25 @@ export function EnhancedAIChatInterface() {
       console.log('♻️ Using session for message:', sessionId);
       
       // ═══════════════════════════════════════════════════════════════════════
-      // 🧠 DECISION BRAIN FIRST (LAND-SPECIFIC ONLY)
-      // General Chat → Direct AI (no symbolic brain)
-      // Land-Specific → Symbolic Brain (FACTS→SYMBOLS→CAUSES→ACTIONS) + AI refinement
+      // 🧠 DECISION BRAIN vs 🤖 ORCHESTRATOR ROUTING
+      // - Safety-Critical Queries (pesticides, chemicals) → Full 9-Agent Orchestrator
+      // - Simple Land Queries → Frontend Decision Brain (fast, offline-capable)
+      // - General Chat → Direct AI (no symbolic brain)
       // ═══════════════════════════════════════════════════════════════════════
       
       const isLandSpecificChat = activeTab !== 'general' && land !== null;
+      
+      // ✅ Import and use safety query classifier
+      const { classifyQueryForRouting, checkForBannedSubstances } = await import('@/services/chat/safetyQueryClassifier');
+      const queryClassification = classifyQueryForRouting(finalMessage);
+      const bannedCheck = checkForBannedSubstances(finalMessage);
+      
+      console.log('🔍 [Query Classification]', {
+        requiresOrchestrator: queryClassification.requiresOrchestrator,
+        isSafetyCritical: queryClassification.isSafetyCritical,
+        category: queryClassification.category,
+        bannedSubstances: bannedCheck.hasBanned ? bannedCheck.substances : 'none'
+      });
       
       // ✅ CRITICAL FIX: Build land context with previous crop for rotation-aware recommendations
       const landContextForBrain: DecisionLandContext | null = land ? {
@@ -1354,11 +1367,51 @@ export function EnhancedAIChatInterface() {
         ndviValue: landContextForBrain?.ndvi_data?.value
       });
       
-      // ✅ CORE RULE: Only use Decision Brain for LAND-SPECIFIC chats
+      // ✅ ROUTING DECISION:
+      // 1. Safety-critical queries → Always use orchestrator (for safety verification)
+      // 2. Banned substances → Immediately block with warning
+      // 3. Land-specific simple queries → Decision Brain first
+      // 4. General chat → Direct AI
+      
+      // Handle banned substances immediately
+      if (bannedCheck.hasBanned) {
+        const aiMessageId = crypto.randomUUID();
+        const warningMessage = language === 'hi' 
+          ? `⚠️ चेतावनी: आपने प्रतिबंधित रसायन (${bannedCheck.substances.join(', ')}) का उल्लेख किया है। भारत में इनका उपयोग प्रतिबंधित है। कृपया सुरक्षित विकल्पों के लिए पूछें।`
+          : language === 'mr'
+          ? `⚠️ सावधान: तुम्ही प्रतिबंधित रसायन (${bannedCheck.substances.join(', ')}) चा उल्लेख केला आहे। भारतात याचा वापर बंदी आहे. कृपया सुरक्षित पर्यायांसाठी विचारा.`
+          : `⚠️ Warning: You mentioned banned substance(s): ${bannedCheck.substances.join(', ')}. These are prohibited in India. Please ask for safer alternatives.`;
+        
+        const aiMessage: Message = {
+          id: aiMessageId,
+          role: 'assistant',
+          content: warningMessage,
+          timestamp: new Date(),
+        };
+        
+        setMessages(prev => ({
+          ...prev,
+          [activeTab]: [...(prev[activeTab] || []), aiMessage]
+        }));
+        
+        setIsLoading(false);
+        setLoadingMessage('');
+        return;
+      }
+      
       let brainResult: any = { handled: false, fallbackToAI: true, reason: 'general_chat' };
       
-      if (isLandSpecificChat) {
-        // ✅ LAND-SPECIFIC: Use symbolic brain (FACTS→SYMBOLS→CAUSES→ACTIONS) + AI refinement
+      // ✅ ROUTING LOGIC:
+      // - Safety-critical queries → Skip Decision Brain, use full Orchestrator
+      // - Land-specific simple queries → Try Decision Brain first
+      // - General chat → Direct AI
+      
+      if (queryClassification.requiresOrchestrator) {
+        // 🛡️ SAFETY-CRITICAL: Force orchestrator route (skip Decision Brain)
+        console.log('🛡️ [Safety] Routing to full 9-Agent Orchestrator for safety verification');
+        brainResult = { handled: false, fallbackToAI: true, reason: 'safety_critical_query' };
+      } else if (isLandSpecificChat && !queryClassification.isSafetyCritical) {
+        // ✅ LAND-SPECIFIC SIMPLE: Use symbolic brain (FACTS→SYMBOLS→CAUSES→ACTIONS) + AI refinement
         brainResult = await tryDecisionBrainWithAIRefinement(
           finalMessage, landContextForBrain, language, farmerId, tenantId, supabase
         );
@@ -1508,10 +1561,12 @@ export function EnhancedAIChatInterface() {
       }
       
       // ═══════════════════════════════════════════════════════════════════════
-      // 🤖 AI FALLBACK - Decision Brain couldn't answer, use AI
+      // 🤖 9-AGENT ORCHESTRATOR - Full AI Pipeline with Safety Verification
+      // Routes to: NLU → Visual → Context → Diagnostic → Fusion → Rules → Safety → Communication
       // ═══════════════════════════════════════════════════════════════════════
-      console.log(`🤖 [AI Fallback] Reason: ${brainResult.reason || 'unknown'}`);
-      console.log(`🌾 Invoking AI Agent for Land: ${land?.name || 'General Chat'}`);
+      const isSafetyRoute = queryClassification.requiresOrchestrator;
+      console.log(`🤖 [Orchestrator] Reason: ${brainResult.reason || 'unknown'}${isSafetyRoute ? ' (SAFETY-CRITICAL)' : ''}`);
+      console.log(`🌾 Invoking 9-Agent Orchestrator for Land: ${land?.name || 'General Chat'}`);
       
       // Get session token from localStorage
       const sessionToken = localStorage.getItem('app_session_token') || '';
@@ -1532,9 +1587,15 @@ export function EnhancedAIChatInterface() {
             tenantId,
             farmerId,
             language: language,
-            landContext: landContextForBrain, // ✅ keep payload small to avoid request truncation
-            decisionBrainFallback: true,
-            fallbackReason: brainResult.reason
+            landContext: landContextForBrain,
+            decisionBrainFallback: !isSafetyRoute,
+            fallbackReason: brainResult.reason,
+            // ✅ NEW: Pass query classification for orchestrator routing
+            queryClassification: {
+              isSafetyCritical: queryClassification.isSafetyCritical,
+              category: queryClassification.category,
+              detectedKeywords: queryClassification.detectedKeywords.slice(0, 5) // Limit size
+            }
           }
         },
         headers: {

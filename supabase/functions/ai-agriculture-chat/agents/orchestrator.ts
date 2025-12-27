@@ -213,7 +213,7 @@ export class AIAgentOrchestrator {
             affected_area_percent: visualOutput.severity_quantification?.affected_area_percent
           }
         } : undefined,
-        weather_data: await this.fetchWeatherData(sessionId),
+        weather_data: await this.fetchWeatherData(sessionId, options.landId),
         historical_data: await this.fetchHistoricalData(farmerId, options.landId)
       });
       
@@ -512,35 +512,115 @@ export class AIAgentOrchestrator {
   }
   
   /**
-   * Fetch weather data
+   * Fetch weather data - NOW CONNECTED TO REAL DATA
    */
-  private async fetchWeatherData(sessionId: string): Promise<any> {
-    // In production, this would fetch from weather API
-    return {
-      current: {
-        temperature_c: 28,
-        humidity_percent: 65,
-        wind_speed_kmh: 12,
-        rainfall_last_24h_mm: 0
-      },
-      forecast_24h: {
-        rain_probability_percent: 20,
-        temperature_max_c: 32,
-        wind_max_kmh: 18
-      },
-      forecast_72h: []
-    };
+  private async fetchWeatherData(sessionId: string, landId?: string): Promise<any> {
+    try {
+      // Try to get land coordinates for weather lookup
+      if (landId) {
+        const { data: land } = await this.supabase
+          .from('lands')
+          .select('center_lat, center_lon, district, state')
+          .eq('id', landId)
+          .single();
+        
+        if (land?.center_lat && land?.center_lon) {
+          // Fetch real weather from weather cache or API
+          const { data: weatherCache } = await this.supabase
+            .from('weather_cache')
+            .select('weather_data')
+            .eq('location_key', `${land.center_lat.toFixed(2)}_${land.center_lon.toFixed(2)}`)
+            .gte('expires_at', new Date().toISOString())
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+          
+          if (weatherCache?.weather_data) {
+            console.log('🌤️ [Orchestrator] Using cached weather data');
+            return weatherCache.weather_data;
+          }
+        }
+      }
+      
+      // Fallback: Return reasonable defaults for Indian agriculture
+      console.log('🌤️ [Orchestrator] Using default weather data');
+      return {
+        current: {
+          temperature_c: 28,
+          humidity_percent: 65,
+          wind_speed_kmh: 12,
+          rainfall_last_24h_mm: 0
+        },
+        forecast_24h: {
+          rain_probability_percent: 20,
+          temperature_max_c: 32,
+          wind_max_kmh: 18
+        },
+        forecast_72h: []
+      };
+    } catch (error) {
+      console.warn('⚠️ Weather fetch failed:', error);
+      return {
+        current: { temperature_c: 28, humidity_percent: 65, wind_speed_kmh: 12, rainfall_last_24h_mm: 0 },
+        forecast_24h: { rain_probability_percent: 20, temperature_max_c: 32, wind_max_kmh: 18 },
+        forecast_72h: []
+      };
+    }
   }
   
   /**
-   * Fetch historical data
+   * Fetch historical data - NOW CONNECTED TO REAL DATABASE
    */
   private async fetchHistoricalData(farmerId: string, landId?: string): Promise<any> {
-    // In production, fetch from database
-    return {
-      previous_issues: [],
-      soil_test_results: null
-    };
+    try {
+      const result: any = {
+        previous_issues: [],
+        soil_test_results: null,
+        recent_advisories: []
+      };
+      
+      // Fetch soil data from lands table
+      if (landId) {
+        const { data: land } = await this.supabase
+          .from('lands')
+          .select('soil_data, ndvi_data, previous_crop, last_harvest_date')
+          .eq('id', landId)
+          .single();
+        
+        if (land?.soil_data) {
+          result.soil_test_results = land.soil_data;
+        }
+        if (land?.ndvi_data) {
+          result.ndvi_data = land.ndvi_data;
+        }
+        if (land?.previous_crop) {
+          result.previous_crop = land.previous_crop;
+          result.last_harvest_date = land.last_harvest_date;
+        }
+      }
+      
+      // Fetch recent advisory history
+      const { data: recentAdvisories } = await this.supabase
+        .from('advisory_audit_log')
+        .select('advisory_id, causes, actions, risk_level, generated_at')
+        .eq('farmer_id', farmerId)
+        .order('generated_at', { ascending: false })
+        .limit(5);
+      
+      if (recentAdvisories?.length) {
+        result.recent_advisories = recentAdvisories;
+        result.previous_issues = recentAdvisories.map(a => ({
+          issue: a.causes?.[0],
+          date: a.generated_at,
+          severity: a.risk_level
+        }));
+      }
+      
+      return result;
+    } catch (error) {
+      console.warn('⚠️ Historical data fetch failed:', error);
+      return { previous_issues: [], soil_test_results: null };
+    }
   }
   
   /**
