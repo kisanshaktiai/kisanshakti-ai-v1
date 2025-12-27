@@ -150,32 +150,35 @@ export class AIAgentOrchestrator {
     
     try {
       // ========================================
-      // PHASE 1: INPUT PROCESSING (Parallel)
+      // PHASE 1A: NLU + VISUAL PROCESSING (Parallel)
       // ========================================
       console.log('\n📥 PHASE 1: Processing Inputs...');
       
-      const [nluOutput, visualOutput, contextState] = await Promise.all([
+      const [nluOutput, visualOutput] = await Promise.all([
         // Agent 1: Process farmer's text message
         this.processNLU(farmerMessage, sessionId, options.language),
         
         // Agent 1B: Analyze photo (if provided)
         options.photoUrl 
           ? this.processVisual(options.photoUrl, farmerMessage)
-          : Promise.resolve(null),
-        
-        // Agent 2A: Load/update conversation context
-        this.loadContext(sessionId, farmerId, tenantId, farmerMessage)
+          : Promise.resolve(null)
       ]);
       
       agentsUsed.push('NLU');
       if (visualOutput) agentsUsed.push('Visual');
-      agentsUsed.push('Context');
       
-      console.log('   ✅ NLU processed:', nluOutput.intent.primary_intent);
-      console.log('   ✅ Context loaded:', contextState.current_state);
+      console.log('   ✅ NLU processed:', nluOutput?.intent?.primary_intent || 'GENERAL_QUERY');
       if (visualOutput) {
         console.log('   ✅ Photo analyzed:', visualOutput.detections?.pests?.length || 0, 'detections');
       }
+      
+      // ========================================
+      // PHASE 1B: CONTEXT LOADING (with NLU output)
+      // ========================================
+      const contextState = await this.loadContext(sessionId, farmerId, tenantId, farmerMessage, nluOutput);
+      agentsUsed.push('Context');
+      
+      console.log('   ✅ Context loaded:', contextState?.current_state || 'INITIAL_QUERY');
       
       // ========================================
       // PHASE 2: MULTI-MODAL FUSION
@@ -460,8 +463,16 @@ export class AIAgentOrchestrator {
   ): Promise<NLUOutput> {
     return processNLUAgent({
       raw_input: message,
-      session_id: sessionId,
-      preferred_language: language as any
+      conversation_context: {
+        previous_turns: [],
+        session_state: 'NEW'
+      },
+      input_metadata: {
+        language_detected: (language as 'mr' | 'hi' | 'en') || 'en',
+        input_method: 'TEXT',
+        timestamp: new Date().toISOString(),
+        session_id: sessionId
+      }
     });
   }
   
@@ -490,15 +501,33 @@ export class AIAgentOrchestrator {
     sessionId: string,
     farmerId: string,
     tenantId: string,
-    message: string
+    message: string,
+    nluOutput?: NLUOutput
   ): Promise<ContextState> {
     try {
       return await processContextManager({
-        session_id: sessionId,
         farmer_id: farmerId,
-        tenant_id: tenantId,
-        new_input: message
-      });
+        land_id: undefined,
+        current_input: message,
+        input_type: 'TEXT',
+        timestamp: new Date().toISOString(),
+        nlu_output: nluOutput ? {
+          primary_intent: nluOutput.intent?.primary_intent || 'GENERAL_QUERY',
+          crop_code: nluOutput.entities?.crop?.code,
+          symptoms: nluOutput.entities?.symptoms?.map(s => s.code) || [],
+          pest_hypothesis: nluOutput.entities?.pest?.code,
+          disease_hypothesis: nluOutput.entities?.disease?.code,
+          urgency_level: (nluOutput.intent?.urgency_level as 'HIGH' | 'MEDIUM' | 'LOW') || 'MEDIUM',
+          emotional_state: (nluOutput.intent?.emotional_state as any) || 'NEUTRAL',
+          confidence: nluOutput.confidence_score || 0.5
+        } : {
+          primary_intent: 'GENERAL_QUERY',
+          symptoms: [],
+          urgency_level: 'MEDIUM',
+          emotional_state: 'NEUTRAL',
+          confidence: 0.5
+        }
+      }, null, []);
     } catch (error) {
       console.error('Context loading failed:', error);
       // Return minimal context
