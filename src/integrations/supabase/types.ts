@@ -11853,6 +11853,7 @@ export type Database = {
           image_url: string | null
           land_id: string
           max_ndvi: number | null
+          mcari_value: number | null
           mean_ndvi: number | null
           median_ndvi: number | null
           metadata: Json | null
@@ -11890,6 +11891,7 @@ export type Database = {
           image_url?: string | null
           land_id: string
           max_ndvi?: number | null
+          mcari_value?: number | null
           mean_ndvi?: number | null
           median_ndvi?: number | null
           metadata?: Json | null
@@ -11927,6 +11929,7 @@ export type Database = {
           image_url?: string | null
           land_id?: string
           max_ndvi?: number | null
+          mcari_value?: number | null
           mean_ndvi?: number | null
           median_ndvi?: number | null
           metadata?: Json | null
