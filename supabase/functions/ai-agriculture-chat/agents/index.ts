@@ -60,3 +60,11 @@ export { MultiModalFusionEngine, multiModalFusion, MULTIMODAL_FUSION_VERSION } f
 // Agent 5: Feedback Learning & Improvement Engine
 export * from './feedback-learning-types.ts';
 export { FeedbackLearningEngine, feedbackLearning } from './feedback-learning.ts';
+
+// Agent 6: Safety Guardian & Escalation Manager
+export * from './safety-guardian-types.ts';
+export { SafetyGuardian, safetyGuardian, SAFETY_GUARDIAN_VERSION } from './safety-guardian.ts';
+
+// Master Orchestrator (Coordinates all agents)
+export { AIAgentOrchestrator, orchestrator, ORCHESTRATOR_VERSION } from './orchestrator.ts';
+export type { OrchestratorResponse, OrchestratorResponseType } from './orchestrator.ts';
