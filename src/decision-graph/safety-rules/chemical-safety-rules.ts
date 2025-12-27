@@ -14,6 +14,7 @@ import {
   Cause, 
   PriorityLevel,
   WHOToxicityClass,
+  CropStage,
   DecisionInput 
 } from '../types';
 
@@ -134,7 +135,7 @@ export const CHEMICAL_SAFETY_RULES: CauseRule[] = [
       );
     },
     cause: Cause.BANNED_CHEMICAL_ATTEMPTED,
-    priority: PriorityLevel.P0,
+    priority: PriorityLevel.P0_EMERGENCY,
     scientific_source: 'GOI CIB&RC (Central Insecticide Board & Registration Committee)',
     scientific_basis: 'Banned pesticides pose severe risks to human health, beneficial organisms, and environment. Legal penalties for use.',
     icar_package: 'Gazette notifications 2018-2023',
@@ -155,7 +156,7 @@ export const CHEMICAL_SAFETY_RULES: CauseRule[] = [
       ) && !input.metadata?.hasApplicatorLicense;
     },
     cause: Cause.RESTRICTED_CHEMICAL_NO_LICENSE,
-    priority: PriorityLevel.P1,
+    priority: PriorityLevel.P1_REGULATORY,
     scientific_source: 'CIB&RC Regulations',
     scientific_basis: 'Restricted chemicals require trained/licensed applicators to minimize poisoning risk and ensure proper handling.',
     icar_package: 'Pesticide Applicator Certification Programme',
@@ -175,7 +176,7 @@ export const CHEMICAL_SAFETY_RULES: CauseRule[] = [
              toxicityClass === WHOToxicityClass.CLASS_IB;
     },
     cause: Cause.HIGH_TOXICITY_CHEMICAL_RISK,
-    priority: PriorityLevel.P1,
+    priority: PriorityLevel.P1_REGULATORY,
     scientific_source: 'WHO Pesticide Hazard Classification 2019',
     scientific_basis: 'Class IA/IB pesticides have extreme acute toxicity. Should only be used when no alternatives exist, with full PPE and expert supervision.',
     icar_package: 'ICAR Safe Pesticide Usage Guidelines',
@@ -195,7 +196,7 @@ export const CHEMICAL_SAFETY_RULES: CauseRule[] = [
       return toxicityClass === WHOToxicityClass.CLASS_II && !hasPPE;
     },
     cause: Cause.PPE_REQUIRED_NOT_AVAILABLE,
-    priority: PriorityLevel.P1,
+    priority: PriorityLevel.P1_REGULATORY,
     scientific_source: 'ILO Safety Guidelines, EPA WPS',
     scientific_basis: 'Class II chemicals require PPE to prevent dermal and inhalation exposure. Application without PPE leads to acute and chronic health effects.',
     icar_package: 'ICAR Safe Pesticide Usage Guidelines',
@@ -210,13 +211,14 @@ export const CHEMICAL_SAFETY_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [],
     conditions: (input: DecisionInput) => {
-      return input.metadata?.applicatorSymptoms?.includes('nausea') ||
-             input.metadata?.applicatorSymptoms?.includes('dizziness') ||
-             input.metadata?.applicatorSymptoms?.includes('sweating') ||
-             input.metadata?.applicatorSymptoms?.includes('pupil_constriction');
+      const symptoms = input.metadata?.applicatorSymptoms || [];
+      return symptoms.includes('nausea') ||
+             symptoms.includes('dizziness') ||
+             symptoms.includes('sweating') ||
+             symptoms.includes('pupil_constriction');
     },
     cause: Cause.POISONING_SYMPTOMS_DETECTED,
-    priority: PriorityLevel.P0,
+    priority: PriorityLevel.P0_EMERGENCY,
     scientific_source: 'WHO Pesticide Poisoning First Aid',
     scientific_basis: 'Organophosphate/carbamate poisoning symptoms require immediate medical attention. Atropine is the antidote for OP/carbamate poisoning.',
     icar_package: 'National Poison Control Guidelines',
@@ -229,16 +231,16 @@ export const CHEMICAL_SAFETY_RULES: CauseRule[] = [
     rule_id: 'SAFETY_006',
     category: 'regulatory',
     crop_code: 'all',
-    stage_applicable: ['flowering'],
+    stage_applicable: [CropStage.REPRODUCTIVE],
     conditions: (input: DecisionInput) => {
-      const isFlowering = input.crop_stage === 'flowering';
+      const isFlowering = input.crop_stage === CropStage.REPRODUCTIVE;
       const chemical = input.metadata?.requestedChemical?.toLowerCase() || '';
       const isNeonicotinoid = ['imidacloprid', 'thiamethoxam', 'clothianidin', 'acetamiprid']
         .some(n => chemical.includes(n));
       return isFlowering && isNeonicotinoid;
     },
     cause: Cause.POLLINATOR_RISK_FLOWERING,
-    priority: PriorityLevel.P1,
+    priority: PriorityLevel.P1_REGULATORY,
     scientific_source: 'EU Pollinator Protection Directive, ICAR-NBAIR',
     scientific_basis: 'Neonicotinoids are highly toxic to bees. Application during flowering causes direct bee mortality and colony collapse.',
     icar_package: 'ICAR-NBAIR Bee Protection Guidelines 2022',
@@ -264,7 +266,7 @@ export const CHEMICAL_SAFETY_RULES: CauseRule[] = [
       return (hasCopper && hasOil) || (hasSulfur && hasCaptan);
     },
     cause: Cause.CHEMICAL_INCOMPATIBILITY,
-    priority: PriorityLevel.P2,
+    priority: PriorityLevel.P2_WEATHER_SAFETY,
     scientific_source: 'Pesticide Compatibility Guidelines',
     scientific_basis: 'Copper + Oil causes phytotoxicity. Sulfur + Captan causes severe phytotoxicity. Never mix incompatible chemicals.',
     icar_package: 'ICAR Pesticide Application Manual',
@@ -284,7 +286,7 @@ export const CHEMICAL_SAFETY_RULES: CauseRule[] = [
       return chemical.includes('sulfur') && temp > 32;
     },
     cause: Cause.TEMPERATURE_PHYTOTOXICITY_RISK,
-    priority: PriorityLevel.P2,
+    priority: PriorityLevel.P2_WEATHER_SAFETY,
     scientific_source: 'Phytotoxicity Guidelines',
     scientific_basis: 'Sulfur causes severe phytotoxicity above 32°C. Leaf burn and crop damage result from high-temperature application.',
     icar_package: 'ICAR Package of Practices',
@@ -297,9 +299,9 @@ export const CHEMICAL_SAFETY_RULES: CauseRule[] = [
     rule_id: 'SAFETY_009',
     category: 'regulatory',
     crop_code: 'all',
-    stage_applicable: ['flowering'],
+    stage_applicable: [CropStage.REPRODUCTIVE],
     conditions: (input: DecisionInput) => {
-      const isFlowering = input.crop_stage === 'flowering';
+      const isFlowering = input.crop_stage === CropStage.REPRODUCTIVE;
       const currentHour = new Date().getHours();
       const isDayTime = currentHour >= 6 && currentHour <= 18;
       const isInsecticide = input.metadata?.chemicalType === 'insecticide';
@@ -307,14 +309,14 @@ export const CHEMICAL_SAFETY_RULES: CauseRule[] = [
       return isFlowering && isDayTime && isInsecticide;
     },
     cause: Cause.BEE_ACTIVITY_HOURS_SPRAY,
-    priority: PriorityLevel.P3,
-    scientific_source: 'ICAR-NBAIR Pollinator Guidelines',
-    scientific_basis: 'Bee activity concentrated 6 AM - 6 PM. Evening application (after 6 PM) protects pollinators while maintaining pest control efficacy.',
-    icar_package: 'ICAR-NBAIR Bee Protection Guidelines 2022',
+    priority: PriorityLevel.P3_CROP_STAGE,
+    scientific_source: 'ICAR Pollinator Protection Guidelines',
+    scientific_basis: 'Bees are most active 6AM-6PM. Insecticide application during these hours during flowering causes direct bee mortality.',
+    icar_package: 'ICAR-NBAIR Pollinator Guidelines 2022',
   },
 
   // ─────────────────────────────────────────────────────────────────────────
-  // FUMIGANT SAFETY
+  // FUMIGANT SAFETY PROTOCOLS
   // ─────────────────────────────────────────────────────────────────────────
   {
     rule_id: 'SAFETY_010',
@@ -322,74 +324,18 @@ export const CHEMICAL_SAFETY_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [],
     conditions: (input: DecisionInput) => {
-      const chemical = input.metadata?.requestedChemical?.toLowerCase() || '';
-      const isFumigant = chemical.includes('aluminum phosphide') || 
-                         chemical.includes('methyl bromide');
-      const hasTraining = input.metadata?.hasFumigantTraining;
+      const isFumigant = input.metadata?.isFumigant;
+      const hasEnclosedArea = input.metadata?.hasEnclosedArea;
+      const hasLicense = input.metadata?.hasFumigantLicense;
       
-      return isFumigant && !hasTraining;
+      return Boolean(isFumigant && (!hasEnclosedArea || !hasLicense));
     },
     cause: Cause.FUMIGANT_SAFETY_VIOLATION,
-    priority: PriorityLevel.P0,
-    scientific_source: 'Fumigant Safety Regulations',
-    scientific_basis: 'Fumigants release toxic gases (phosphine, methyl bromide). Improper use has caused multiple farmer deaths. Licensed applicators only.',
-    icar_package: 'Central Insecticide Rules - Fumigant Provisions',
+    priority: PriorityLevel.P0_EMERGENCY,
+    scientific_source: 'CIB&RC Fumigation Regulations',
+    scientific_basis: 'Fumigants like aluminum phosphide are extremely toxic. Require enclosed area and licensed applicator. Non-compliance can be fatal.',
+    icar_package: 'ICAR Storage Pest Management Guidelines',
   },
 ];
-
-// ═══════════════════════════════════════════════════════════════════════════
-// HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Check if a chemical is banned in India
- */
-export function isChemicalBanned(chemicalName: string): boolean {
-  return BANNED_CHEMICALS.some(c => 
-    chemicalName.toLowerCase().includes(c.name.toLowerCase())
-  );
-}
-
-/**
- * Check if a chemical is restricted
- */
-export function isChemicalRestricted(chemicalName: string): boolean {
-  return RESTRICTED_CHEMICALS.some(c => 
-    chemicalName.toLowerCase().includes(c.name.toLowerCase())
-  );
-}
-
-/**
- * Get banned chemical info
- */
-export function getBannedChemicalInfo(chemicalName: string): typeof BANNED_CHEMICALS[0] | undefined {
-  return BANNED_CHEMICALS.find(c => 
-    chemicalName.toLowerCase().includes(c.name.toLowerCase())
-  );
-}
-
-/**
- * Get PPE requirements for WHO class
- */
-export function getPPERequirements(toxicityClass: WHOToxicityClass): string[] {
-  const rule = WHO_CLASSIFICATION_RULES.find(r => r.class === toxicityClass);
-  return rule?.ppeRequired || ['Basic protection recommended'];
-}
-
-/**
- * Get legal alternatives for banned chemical
- */
-export function getLegalAlternatives(bannedChemical: string): string[] {
-  const alternatives: Record<string, string[]> = {
-    'monocrotophos': ['Imidacloprid (selective)', 'Spinosad', 'Bt formulations'],
-    'endosulfan': ['Cypermethrin (restricted)', 'Neem-based products', 'Chlorantraniliprole'],
-    'carbofuran': ['Fipronil (restricted)', 'Chlorpyrifos (restricted)', 'Nematode-resistant varieties'],
-    'phorate': ['Imidacloprid seed treatment', 'Thiamethoxam', 'Neem cake'],
-    'methyl parathion': ['Cypermethrin', 'Lambda-cyhalothrin', 'Spinosad'],
-  };
-  
-  const key = bannedChemical.toLowerCase();
-  return alternatives[key] || ['Consult local agricultural officer for approved alternatives'];
-}
 
 export default CHEMICAL_SAFETY_RULES;
