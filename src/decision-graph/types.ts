@@ -1119,13 +1119,16 @@ export type RuleCategory =
   | 'weed' 
   | 'healthy' 
   | 'critical'
-  | 'emergency'     // P0 level - life threatening, immediate stop
-  | 'regulatory'    // P1 level - legal/compliance requirements
-  | 'safety'        // P1-P2 level - chemical/environmental safety
-  | 'economic'      // P4 level - economic threshold rules
-  | 'ipm'           // P5 level - IPM preference rules
-  | 'harvest'       // Harvest timing and quality rules
-  | 'resistance';   // Resistance management rules
+  | 'emergency'        // P0 level - life threatening, immediate stop
+  | 'regulatory'       // P1 level - legal/compliance requirements
+  | 'safety'           // P1-P2 level - chemical/environmental safety
+  | 'economic'         // P4 level - economic threshold rules
+  | 'ipm'              // P5 level - IPM preference rules
+  | 'harvest'          // Harvest timing and quality rules
+  | 'resistance'       // Resistance management rules
+  | 'seasonal'         // Season-specific rules (Kharif/Rabi/Zaid)
+  | 'regional'         // Agro-climatic zone specific rules
+  | 'weather_safety';  // Weather-action coupling rules
 
 /**
  * CauseRule - Individual rule definition
