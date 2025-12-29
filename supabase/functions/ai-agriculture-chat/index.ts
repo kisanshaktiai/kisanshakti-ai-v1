@@ -523,11 +523,29 @@ function transformOrchestratorResponse(
       };
 
     case 'CLARIFICATION_QUESTION':
-      // System needs more info
+      // System needs more info - CRITICAL FIX: Handle both object and string formats
       const question = response.question;
-      const questionText = language === 'mr' ? question?.text_mr :
-                          language === 'hi' ? question?.text_hi :
-                          question?.text_en || 'Please provide more details.';
+      let questionText = '';
+      
+      // Handle the case where question might be a string (question_id) instead of object
+      if (typeof question === 'string') {
+        // Fallback message when only question_id is provided
+        questionText = language === 'mr' ? 'कृपया अधिक माहिती द्या. तुमच्या प्रश्नाबद्दल मला अधिक तपशील सांगा.' :
+                       language === 'hi' ? 'कृपया अधिक जानकारी दें। अपने प्रश्न के बारे में मुझे अधिक विवरण बताएं।' :
+                       'Please provide more details. Tell me more about your question.';
+      } else {
+        // Normal case: question is an object with text fields
+        questionText = language === 'mr' ? (question?.text_mr || '') :
+                       language === 'hi' ? (question?.text_hi || '') :
+                       (question?.text_en || 'Please provide more details.');
+      }
+      
+      // Ensure we always have some response text
+      if (!questionText) {
+        questionText = language === 'mr' ? 'कृपया अधिक माहिती द्या.' :
+                       language === 'hi' ? 'कृपया अधिक जानकारी दें।' :
+                       'Please provide more details.';
+      }
       
       return {
         response: questionText,
@@ -536,10 +554,12 @@ function transformOrchestratorResponse(
         responseTime: responseTime,
         metadata: {
           type: 'clarification',
-          question_id: question?.question_id,
-          options: question?.options
+          question_id: typeof question === 'string' ? question : question?.question_id,
+          options: typeof question === 'object' ? question?.options : undefined
         },
-        quickReplies: question?.options?.map((o: any) => o.label) || [],
+        quickReplies: (typeof question === 'object' && question?.options) 
+          ? question.options.map((o: any) => o.label) 
+          : getDefaultQuickReplies(language),
         source: 'orchestrator_v1'
       };
 

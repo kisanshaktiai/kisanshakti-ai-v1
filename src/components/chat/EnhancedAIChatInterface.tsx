@@ -910,10 +910,17 @@ export function EnhancedAIChatInterface() {
         throw new Error(error.message || 'AI request failed');
       }
       
-      if (!data || !data.response) {
-        console.error('❌ Invalid orchestrator response:', data);
+      // CRITICAL FIX: Handle both response and empty response cases gracefully
+      if (!data) {
+        console.error('❌ No data from orchestrator');
         throw new Error('Invalid response from AI');
       }
+      
+      // Allow responses even if response field is empty - use fallback
+      const responseText = data.response || 
+        (language === 'mr' ? 'माझ्याकडे या क्षणी पूर्ण माहिती नाही. कृपया अधिक तपशील द्या.' :
+         language === 'hi' ? 'मेरे पास इस समय पूरी जानकारी नहीं है। कृपया अधिक विवरण दें।' :
+         'I need more information to help you. Please provide more details.');
       
       console.log('✅ [Orchestrator] Response received:', data.metadata?.type || 'DECISION_PROVIDED');
       
@@ -937,12 +944,12 @@ export function EnhancedAIChatInterface() {
         metadata: { source: 'orchestrator_v2' }
       });
       
-      // Create AI response message
+      // Create AI response message - use responseText which has fallback
       const aiMessageId = crypto.randomUUID();
       const aiMessage: Message = {
         id: aiMessageId,
         role: 'assistant',
-        content: data.response || t('chat.errorOccurred'),
+        content: responseText,
         timestamp: new Date(),
         messageType: 'orchestrator',
         orchestratorType: data.metadata?.type || 'DECISION_PROVIDED',
@@ -964,13 +971,13 @@ export function EnhancedAIChatInterface() {
         tenant_id: tenant?.id,
         farmer_id: user?.id,
         role: 'assistant',
-        content: data.response,
+        content: responseText,
         status: 'sent',
         language,
         message_type: 'orchestrator',
         ai_model: 'orchestrator_v2',
         response_time_ms: data.responseTime,
-        word_count: data.response.split(/\s+/).length,
+        word_count: responseText.split(/\s+/).length,
         land_context: landContext ? {
           land_id: landContext.land_id,
           crop_name: landContext.crop_name
