@@ -217,8 +217,10 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
     !isTargetedSolution &&
     !isCropMismatch;
   
-  // ✅ Check if content is a placeholder that should be hidden
-  const isPlaceholderContent = message.content.includes('[📷') || 
+  // ✅ FIXED: Only hide placeholder for USER messages, not assistant responses
+  // Assistant responses should ALWAYS be shown even if they contain these strings
+  const isPlaceholderContent = isUser && (
+    message.content.includes('[📷') || 
     message.content.includes('[🎥') || 
     message.content === 'Analysis complete' ||
     message.content.includes('uploaded for analysis') ||
@@ -227,7 +229,12 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
     message.content.includes('वीडियो विश्लेषण') ||
     message.content.includes('फोटो विश्लेषणासाठी') ||
     message.content.includes('Photo for analysis') ||
-    message.content.includes('Video for analysis');
+    message.content.includes('Video for analysis')
+  );
+  
+  // ✅ NEW: Check if assistant response is empty/error - show fallback
+  const isEmptyAssistantResponse = !isUser && (!message.content || message.content.trim().length < 10) && 
+    !hasAnalysisResult && !hasStructuredCards && !hasDecisionBrainResponse;
   
   return (
     <motion.div

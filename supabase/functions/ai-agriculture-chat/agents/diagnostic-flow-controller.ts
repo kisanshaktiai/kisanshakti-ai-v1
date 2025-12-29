@@ -297,25 +297,45 @@ export class DiagnosticFlowController {
     moduleRef: RuleModuleReference,
     context: RuleEvaluationContext
   ): Promise<Partial<RuleEvaluationResult>> {
-    // In the actual implementation, this would dynamically load
-    // and evaluate TypeScript rule modules
+    // CRITICAL FIX: Use the decision-graph-bridge for actual rule evaluation
+    const { evaluateDecisionGraph } = await import('./decision-graph-bridge.ts');
     
-    // For now, we return a placeholder that will be filled
-    // by the frontend DiagnosticController component
+    console.log(`🔬 [DiagnosticFlow] Evaluating module: ${moduleRef.moduleFile}`);
     
-    this.session.loaded_modules.push({
-      reference: moduleRef,
-      loaded: true
-    });
-    
-    return {
-      blocked: false,
-      recommendations: [],
-      warnings: [],
-      requirements: [],
-      ipm_level_suggested: undefined,
-      economic_threshold_exceeded: undefined
-    };
+    try {
+      const result = await evaluateDecisionGraph(context, this.session.session_id);
+      
+      this.session.loaded_modules.push({
+        reference: moduleRef,
+        loaded: true
+      });
+      
+      console.log(`   ✅ Module ${moduleRef.moduleFile}: ${result.recommendations.length} recommendations`);
+      
+      return {
+        blocked: result.blocked,
+        blockingRule: result.blockingRule,
+        recommendations: result.recommendations,
+        warnings: result.warnings,
+        requirements: result.requirements,
+        ipm_level_suggested: result.ipm_level_suggested,
+        economic_threshold_exceeded: result.economic_threshold_exceeded
+      };
+    } catch (error) {
+      console.error(`   ❌ Module ${moduleRef.moduleFile} evaluation failed:`, error);
+      this.session.loaded_modules.push({
+        reference: moduleRef,
+        loaded: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      
+      return {
+        blocked: false,
+        recommendations: [],
+        warnings: [],
+        requirements: []
+      };
+    }
   }
   
   // ═══════════════════════════════════════════════════════════════════════
