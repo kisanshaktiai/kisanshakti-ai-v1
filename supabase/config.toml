@@ -13,7 +13,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.ai-agriculture-chat]
-verify_jwt = true
+verify_jwt = false
 
 [functions.ai-crop-scan]
 verify_jwt = true
