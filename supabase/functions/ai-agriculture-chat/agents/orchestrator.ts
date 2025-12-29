@@ -272,9 +272,18 @@ export class AIAgentOrchestrator {
       
       // Process through diagnostic flow
       const diagnosticResponse = await diagnosticController.processNLUOutput(nluWithRuleMapping);
+      
+      // Extract the first question with full details for clarification
+      const firstQuestion = diagnosticResponse.questions?.[0];
       const diagnosticState = {
         mode: this.mapDiagnosticAction(diagnosticResponse.action),
-        next_question: diagnosticResponse.questions?.[0]?.question_id,
+        next_question: firstQuestion ? {
+          question_id: firstQuestion.question_id,
+          text_mr: firstQuestion.question_text_mr || 'अधिक माहिती द्या',
+          text_hi: firstQuestion.question_text_hi || 'अधिक जानकारी दें',
+          text_en: firstQuestion.question_text_en || 'Please provide more details',
+          options: firstQuestion.options
+        } : null,
         hypotheses: diagnosticResponse.evaluation_result ? [{ confidence: 0.7 }] : [],
         session_state: diagnosticResponse.session_state
       };
@@ -282,7 +291,7 @@ export class AIAgentOrchestrator {
       agentsUsed.push('Diagnostic');
       console.log('   ✅ Diagnostic mode:', diagnosticState.mode);
       
-      // Check if we need more information
+      // Check if we need more information - CRITICAL FIX: Ensure question has text
       if (diagnosticState.mode === 'GATHERING_INFO' && diagnosticState.next_question) {
         return {
           type: 'CLARIFICATION_QUESTION',
