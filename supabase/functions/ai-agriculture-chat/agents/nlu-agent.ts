@@ -56,10 +56,12 @@ interface AIUnderstandingResult {
 }
 
 async function callAIForUnderstanding(message: string): Promise<AIUnderstandingResult | null> {
-  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  // Try Gemini API first, then OpenAI as fallback
+  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+  const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
   
-  if (!LOVABLE_API_KEY) {
-    console.log('⚠️ [NLU] LOVABLE_API_KEY not set, falling back to pattern matching');
+  if (!GEMINI_API_KEY && !OPENAI_API_KEY) {
+    console.log('⚠️ [NLU] No AI API keys configured, falling back to pattern matching');
     return null;
   }
   
@@ -81,51 +83,86 @@ OUTPUT FORMAT (JSON only, no markdown):
 }
 
 CROP CODES: COTTON, SOYBEAN, TOMATO, ONION, CHILLI, SUGARCANE, WHEAT, RICE, MAIZE, GROUNDNUT
-PEST CODES: WHITEFLY, APHID, BOLLWORM, MEALYBUG, THRIPS, JASSID, ARMYWORM, STEMBORR, FRUITBORER
+PEST CODES: WHITEFLY, APHID, BOLLWORM, MEALYBUG, THRIPS, JASSID, ARMYWORM, STEMBORER, FRUITBORER
 DISEASE CODES: LEAF_CURL, POWDERY_MILDEW, DOWNY_MILDEW, WILT, ROOT_ROT, BACTERIAL_BLIGHT, RUST, ANTHRACNOSE
 
 Be precise. Detect urgency from words like "dying", "emergency", "urgent".`;
 
   try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Analyze this farmer message: "${message}"` }
-        ],
-        max_tokens: 500
-      }),
-    });
+    // Try Gemini first
+    if (GEMINI_API_KEY) {
+      console.log('🔄 [NLU] Using Gemini API for understanding...');
+      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GEMINI_API_KEY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: `${systemPrompt}\n\nAnalyze this farmer message: "${message}"`
+            }]
+          }],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 500
+          }
+        }),
+      });
 
-    if (!response.ok) {
-      console.error('❌ [NLU] AI API error:', response.status);
-      return null;
+      if (response.ok) {
+        const data = await response.json();
+        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (content) {
+          let jsonStr = content.trim();
+          if (jsonStr.startsWith('```')) {
+            jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+          }
+          const result = JSON.parse(jsonStr) as AIUnderstandingResult;
+          console.log('✅ [NLU] Gemini understanding complete:', result.intent, result.intent_confidence);
+          return result;
+        }
+      } else {
+        console.warn('⚠️ [NLU] Gemini API error:', response.status);
+      }
     }
+    
+    // Fallback to OpenAI
+    if (OPENAI_API_KEY) {
+      console.log('🔄 [NLU] Falling back to OpenAI API...');
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Analyze this farmer message: "${message}"` }
+          ],
+          max_tokens: 500,
+          temperature: 0.1
+        }),
+      });
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    
-    if (!content) {
-      console.error('❌ [NLU] Empty AI response');
-      return null;
+      if (response.ok) {
+        const data = await response.json();
+        const content = data.choices?.[0]?.message?.content;
+        if (content) {
+          let jsonStr = content.trim();
+          if (jsonStr.startsWith('```')) {
+            jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+          }
+          const result = JSON.parse(jsonStr) as AIUnderstandingResult;
+          console.log('✅ [NLU] OpenAI understanding complete:', result.intent, result.intent_confidence);
+          return result;
+        }
+      } else {
+        console.error('❌ [NLU] OpenAI API error:', response.status);
+      }
     }
-
-    // Parse JSON from response (handle markdown code blocks)
-    let jsonStr = content.trim();
-    if (jsonStr.startsWith('```')) {
-      jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
-    }
     
-    const result = JSON.parse(jsonStr) as AIUnderstandingResult;
-    console.log('✅ [NLU] AI understanding complete:', result.intent, result.intent_confidence);
-    return result;
-    
+    return null;
   } catch (error) {
     console.error('❌ [NLU] AI call failed:', error);
     return null;

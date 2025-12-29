@@ -67,13 +67,21 @@ interface ModernChatUIProps {
   isLoadingSuggestion?: boolean;
 }
 
-// User bubble color variations
-const USER_BUBBLE_GRADIENTS = [
-  'from-primary via-primary-hover to-primary-glow',
-  'from-[hsl(var(--chat-user-1))] via-[hsl(var(--chat-user-1-mid))] to-[hsl(var(--chat-user-1-end))]',
-  'from-[hsl(var(--chat-user-2))] via-[hsl(var(--chat-user-2-mid))] to-[hsl(var(--chat-user-2-end))]',
-  'from-[hsl(var(--chat-user-3))] via-[hsl(var(--chat-user-3-mid))] to-[hsl(var(--chat-user-3-end))]',
-];
+// Modern 2030-ready User bubble styling with glassmorphism
+const USER_BUBBLE_STYLES = {
+  gradients: [
+    'from-primary via-primary/90 to-primary-hover',
+    'from-emerald-600 via-emerald-500 to-teal-500',
+    'from-blue-600 via-indigo-500 to-violet-500',
+    'from-orange-500 via-amber-500 to-yellow-500',
+  ],
+  glow: [
+    'shadow-[0_8px_32px_-8px_hsl(var(--primary)/0.4)]',
+    'shadow-[0_8px_32px_-8px_rgba(16,185,129,0.4)]',
+    'shadow-[0_8px_32px_-8px_rgba(99,102,241,0.4)]',
+    'shadow-[0_8px_32px_-8px_rgba(245,158,11,0.4)]',
+  ]
+};
 
 // ✅ Helper to check if URL is a valid storage URL (not base64)
 const isValidStorageUrl = (url: string | undefined): boolean => {
@@ -104,12 +112,15 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
   const isUser = message.role === 'user';
   const currentLanguage = i18n.language || 'hi';
   
-  // Get consistent gradient based on message id hash
-  const userGradient = useMemo(() => {
-    if (!isUser) return '';
+  // Get consistent gradient and glow based on message id hash
+  const userStyleIndex = useMemo(() => {
+    if (!isUser) return 0;
     const hash = message.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return USER_BUBBLE_GRADIENTS[hash % USER_BUBBLE_GRADIENTS.length];
+    return hash % USER_BUBBLE_STYLES.gradients.length;
   }, [message.id, isUser]);
+  
+  const userGradient = USER_BUBBLE_STYLES.gradients[userStyleIndex];
+  const userGlow = USER_BUBBLE_STYLES.glow[userStyleIndex];
   
   // ✅ FIXED: Get first valid image URL - check all possible sources
   const displayImageUrl = useMemo(() => {
@@ -249,19 +260,37 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
         isUser && "flex flex-col items-end"
       )}>
         <motion.div
-          whileHover={{ scale: 1.01 }}
+          whileHover={{ scale: 1.02, y: -2 }}
+          whileTap={{ scale: 0.98 }}
           transition={{ type: "spring", stiffness: 400, damping: 25 }}
           className={cn(
-            "relative rounded-2xl backdrop-blur-xl",
+            "relative backdrop-blur-xl",
             "transition-all duration-300",
             isUser
-              ? `bg-gradient-to-br ${userGradient} rounded-tr-sm text-primary-foreground shadow-lg px-4 py-3`
-              : "bg-card/80 border border-border/50 rounded-tl-sm shadow-chat-ai p-0 overflow-hidden"
+              ? cn(
+                  // Modern 2030 glassmorphism user bubble
+                  "rounded-[20px] rounded-tr-[6px]",
+                  "bg-gradient-to-br", userGradient,
+                  "text-white",
+                  "border border-white/20",
+                  userGlow,
+                  "px-4 py-3",
+                  // Inner glow effect
+                  "before:absolute before:inset-0 before:rounded-[20px] before:rounded-tr-[6px]",
+                  "before:bg-gradient-to-t before:from-white/0 before:via-white/10 before:to-white/20",
+                  "before:pointer-events-none"
+                )
+              : "bg-card/90 border border-border/40 rounded-[20px] rounded-tl-[6px] shadow-chat-ai p-0 overflow-hidden"
           )}
         >
+          {/* User bubble inner highlight */}
+          {isUser && (
+            <div className="absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-white/15 to-transparent rounded-t-[20px] pointer-events-none" />
+          )}
+          
           {/* AI Shimmer Effect */}
           {!isUser && (
-            <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+            <div className="absolute inset-0 rounded-[20px] overflow-hidden pointer-events-none">
               <div className="absolute top-0 -left-full h-full w-1/2 bg-gradient-to-r from-transparent via-white/5 to-transparent skew-x-12 animate-[shimmer_3s_infinite]" />
             </div>
           )}
