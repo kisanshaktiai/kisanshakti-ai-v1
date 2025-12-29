@@ -219,6 +219,12 @@ export class RuleEngineExecutor {
   private evaluateRulesForModule(ref: RuleModuleReference, input: RuleExecutionInput): RuleResult[] {
     const results: RuleResult[] = [];
     
+    // CRITICAL GAP 2 FIX: First evaluate using Symbolic Rules Bridge (300+ ICAR rules)
+    const symbolicResults = this.evaluateSymbolicRules(ref, input);
+    results.push(...symbolicResults);
+    console.log(`   📋 Symbolic Bridge: ${symbolicResults.length} rules matched for ${ref.moduleFile}`);
+    
+    // Then add module-specific hardcoded rules for any gaps
     switch (ref.moduleFile) {
       case 'chemical-safety-rules':
         results.push(...this.evaluateChemicalSafetyRules(input));
@@ -249,7 +255,89 @@ export class RuleEngineExecutor {
         results.push(...this.evaluateGenericRules(ref, input));
     }
     
-    return results;
+    // Deduplicate by rule_id, keeping first occurrence
+    const seen = new Set<string>();
+    return results.filter(r => {
+      if (seen.has(r.rule_id)) return false;
+      seen.add(r.rule_id);
+      return true;
+    });
+  }
+  
+  /**
+   * CRITICAL GAP 2 FIX: Evaluate rules using Symbolic Rules Bridge
+   * This connects the 300+ ICAR rules to the rule engine
+   */
+  private evaluateSymbolicRules(ref: RuleModuleReference, input: RuleExecutionInput): RuleResult[] {
+    // Build search keywords from input context
+    const keywords: string[] = [];
+    
+    // Add pest/disease codes
+    if (input.pest_disease_state.pest_code) {
+      keywords.push(input.pest_disease_state.pest_code.toLowerCase());
+    }
+    if (input.pest_disease_state.disease_code) {
+      keywords.push(input.pest_disease_state.disease_code.toLowerCase());
+    }
+    
+    // Add crop code
+    if (input.farmer_context.crop_code) {
+      keywords.push(input.farmer_context.crop_code.toLowerCase());
+    }
+    
+    // Add severity
+    if (input.pest_disease_state.severity) {
+      keywords.push(input.pest_disease_state.severity.toLowerCase());
+    }
+    
+    // Add weather conditions
+    if (input.environmental_context.current_weather.rain_in_last_24h) {
+      keywords.push('rain');
+    }
+    if (input.environmental_context.current_weather.temperature_c > 35) {
+      keywords.push('high temp', 'hot');
+    }
+    if (input.environmental_context.current_weather.wind_speed_kmh > 15) {
+      keywords.push('high wind', 'windy');
+    }
+    
+    // Add crop stage
+    if (input.farmer_context.crop_stage) {
+      keywords.push(input.farmer_context.crop_stage.toLowerCase());
+      if (input.farmer_context.crop_stage === 'FLOWERING') {
+        keywords.push('flowering', 'फुलावर', 'फूल');
+      }
+    }
+    
+    // Add from previous treatments if any banned chemicals
+    for (const treatment of input.farmer_constraints.previous_treatments || []) {
+      if (treatment.chemical_name) {
+        keywords.push(treatment.chemical_name.toLowerCase());
+      }
+    }
+    
+    // Map module category to symbolic rule category
+    const categoryMapping: Record<string, string> = {
+      'chemical-safety-rules': 'safety',
+      'emergency-rules': 'emergency',
+      'phi-withdrawal-rules': 'regulatory',
+      'weather-action-rules': 'weather_safety',
+      'economic-threshold-rules': 'economic',
+      'ipm-rules': 'ipm',
+      'resistance-management-rules': 'resistance',
+      'harvest-quality-rules': 'harvest',
+      'disease-management-rules': 'disease',
+      'nutrient-rules': 'nutrient',
+      'water-rules': 'water'
+    };
+    
+    const targetCategory = categoryMapping[ref.moduleFile] || ref.category;
+    
+    // Use the symbolic rules bridge to find matching rules
+    const matchedRules = matchRulesByKeywords(keywords, targetCategory);
+    
+    // Convert to RuleResult format
+    return matchedRules.map(rule => convertToRuleResult(rule, input));
   }
   
   private evaluateChemicalSafetyRules(input: RuleExecutionInput): RuleResult[] {

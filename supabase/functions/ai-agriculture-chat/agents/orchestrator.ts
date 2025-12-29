@@ -25,6 +25,10 @@ import type { FusedIntelligence } from './multimodal-fusion-types.ts';
 import type { DecisionOutput, RuleExecutionInput } from './rule-engine-types.ts';
 import type { FarmerCommunication, FarmerProfile } from './communication-types.ts';
 import type { SafetyVerificationResult } from './safety-guardian-types.ts';
+import type { NLUIntent, ExtractedEntities, SafetyAlerts } from './rule-module-types.ts';
+
+// Import rule resolver for NLU-to-Rules mapping (CRITICAL GAP 1 FIX)
+import { resolveRuleModules, determineContextRequirements, generateRuleRequiredQuestions } from './rule-module-resolver.ts';
 
 export const ORCHESTRATOR_VERSION = '1.0.0';
 
@@ -156,21 +160,35 @@ export class AIAgentOrchestrator {
     try {
       // ========================================
       // PHASE 1A: NLU + VISUAL PROCESSING (Parallel)
+      // GAP 6 FIX: Added error boundaries around each agent
       // ========================================
       console.log('\n📥 PHASE 1: Processing Inputs...');
       
-      const [nluOutput, visualOutput] = await Promise.all([
-        // Agent 1: Process farmer's text message
-        this.processNLU(farmerMessage, sessionId, options.language),
-        
-        // Agent 1B: Analyze photo (if provided)
-        options.photoUrl 
-          ? this.processVisual(options.photoUrl, farmerMessage)
-          : Promise.resolve(null)
-      ]);
+      // Agent 1: Process farmer's text message - with error boundary
+      let nluOutput: NLUOutput | null = null;
+      try {
+        nluOutput = await this.processNLU(farmerMessage, sessionId, options.language);
+        agentsUsed.push('NLU');
+        console.log('   ✅ NLU processed:', nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY');
+      } catch (nluError) {
+        console.error('   ❌ NLU Agent failed, using fallback:', nluError);
+        nluOutput = this.createFallbackNLUOutput(farmerMessage, options.language);
+        agentsUsed.push('NLU_FALLBACK');
+      }
       
-      agentsUsed.push('NLU');
-      if (visualOutput) agentsUsed.push('Visual');
+      // Agent 1B: Analyze photo (if provided) - with error boundary
+      let visualOutput: VisualAnalysisOutput | null = null;
+      if (options.photoUrl) {
+        try {
+          visualOutput = await this.processVisual(options.photoUrl, farmerMessage);
+          agentsUsed.push('Visual');
+          console.log('   ✅ Photo analyzed:', visualOutput?.detections?.pests?.length || 0, 'detections');
+        } catch (visualError) {
+          console.error('   ❌ Visual Agent failed, continuing without image analysis:', visualError);
+          agentsUsed.push('Visual_FALLBACK');
+          // Continue without visual - not critical
+        }
+      }
       
       console.log('   ✅ NLU processed:', nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY');
       if (visualOutput) {
@@ -178,56 +196,68 @@ export class AIAgentOrchestrator {
       }
       
       // ========================================
-      // PHASE 1B: CONTEXT LOADING (with NLU output)
+      // PHASE 1B: CONTEXT LOADING (with NLU output) - with error boundary
       // ========================================
-      const contextState = await this.loadContext(sessionId, farmerId, tenantId, farmerMessage, nluOutput);
-      agentsUsed.push('Context');
-      
-      console.log('   ✅ Context loaded:', contextState?.current_state || 'INITIAL_QUERY');
+      let contextState: ContextState | null = null;
+      try {
+        contextState = await this.loadContext(sessionId, farmerId, tenantId, farmerMessage, nluOutput!);
+        agentsUsed.push('Context');
+        console.log('   ✅ Context loaded:', contextState?.current_state || 'INITIAL_QUERY');
+      } catch (contextError) {
+        console.error('   ❌ Context Manager failed, using default context:', contextError);
+        contextState = this.createFallbackContext(sessionId, farmerId);
+        agentsUsed.push('Context_FALLBACK');
+      }
       
       // ========================================
-      // PHASE 2: MULTI-MODAL FUSION
+      // PHASE 2: MULTI-MODAL FUSION - with error boundary
       // ========================================
       console.log('\n🔗 PHASE 2: Fusing Multi-Modal Data...');
       
-      const fusedIntelligence = await this.fusionEngine.fuse({
-        session_id: sessionId,
-        timestamp: new Date().toISOString(),
-        text_understanding: {
-          farmer_message: farmerMessage,
-          language: nluOutput.language_analysis?.detected_language || 'en',
-          intent: nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY',
-          entities: {
-            crop_code: nluOutput.crop_identification?.crop_code,
-            pest_code: nluOutput.entities_extracted?.pest_mentioned?.canonical,
-            disease_code: nluOutput.entities_extracted?.disease_mentioned?.canonical,
-            symptom_codes: nluOutput.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || []
+      let fusedIntelligence: FusedIntelligence;
+      try {
+        fusedIntelligence = await this.fusionEngine.fuse({
+          session_id: sessionId,
+          timestamp: new Date().toISOString(),
+          text_understanding: {
+            farmer_message: farmerMessage,
+            language: nluOutput!.language_analysis?.detected_language || 'en',
+            intent: nluOutput!.intent_classification?.primary_intent || 'GENERAL_QUERY',
+            entities: {
+              crop_code: nluOutput!.crop_identification?.crop_code,
+              pest_code: nluOutput!.entities_extracted?.pest_mentioned?.canonical,
+              disease_code: nluOutput!.entities_extracted?.disease_mentioned?.canonical,
+              symptom_codes: nluOutput!.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || []
+            },
+            confidence: nluOutput!.understanding_quality?.overall_confidence || 0.5,
+            ambiguities: nluOutput!.clarification_strategy?.questions_to_ask?.map((q: any) => q.question_text_en) || []
           },
-          confidence: nluOutput.understanding_quality?.overall_confidence || 0.5,
-          ambiguities: nluOutput.clarification_strategy?.questions_to_ask?.map(q => q.question_text_en) || []
-        },
-        visual_analysis: visualOutput ? {
-          image_id: options.photoUrl || '',
-          quality_score: visualOutput.quality_assessment?.overall_quality || 0.7,
-          detections: {
-            pests: visualOutput.detections?.pests,
-            diseases: visualOutput.detections?.diseases,
-            symptoms: visualOutput.detections?.symptoms,
-            beneficial_insects: visualOutput.detections?.beneficial_insects
-          },
-          severity_quantification: {
-            pest_density: visualOutput.severity_quantification?.pest_density,
-            disease_severity_index: visualOutput.severity_quantification?.disease_severity_index,
-            affected_area_percent: visualOutput.severity_quantification?.affected_area_percent
-          }
-        } : undefined,
-        weather_data: await this.fetchWeatherData(sessionId, options.landId),
-        historical_data: await this.fetchHistoricalData(farmerId, options.landId)
-      });
-      
-      agentsUsed.push('Fusion');
-      console.log('   ✅ Data fused, confidence:', 
-        (fusedIntelligence.fusion_summary.overall_confidence * 100).toFixed(1) + '%');
+          visual_analysis: visualOutput ? {
+            image_id: options.photoUrl || '',
+            quality_score: visualOutput.quality_assessment?.overall_quality || 0.7,
+            detections: {
+              pests: visualOutput.detections?.pests,
+              diseases: visualOutput.detections?.diseases,
+              symptoms: visualOutput.detections?.symptoms,
+              beneficial_insects: visualOutput.detections?.beneficial_insects
+            },
+            severity_quantification: {
+              pest_density: visualOutput.severity_quantification?.pest_density,
+              disease_severity_index: visualOutput.severity_quantification?.disease_severity_index,
+              affected_area_percent: visualOutput.severity_quantification?.affected_area_percent
+            }
+          } : undefined,
+          weather_data: await this.fetchWeatherData(sessionId, options.landId),
+          historical_data: await this.fetchHistoricalData(farmerId, options.landId)
+        });
+        agentsUsed.push('Fusion');
+        console.log('   ✅ Data fused, confidence:', 
+          (fusedIntelligence.fusion_summary.overall_confidence * 100).toFixed(1) + '%');
+      } catch (fusionError) {
+        console.error('   ❌ Fusion Engine failed, using fallback:', fusionError);
+        fusedIntelligence = this.createFallbackFusedIntelligence(sessionId, farmerMessage, nluOutput!);
+        agentsUsed.push('Fusion_FALLBACK');
+      }
       
       // ========================================
       // PHASE 3: DIAGNOSTIC FLOW MANAGEMENT
@@ -850,35 +880,131 @@ export class AIAgentOrchestrator {
   
   /**
    * Build NLU output with rule mapping for diagnostic controller
+   * CRITICAL GAP 1 FIX: Now properly calls resolveRuleModules() to populate requiredRuleModules
    */
   private buildNLUOutputWithRuleMapping(nluOutput: NLUOutput, fused: FusedIntelligence): any {
-    return {
-      intent: nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY',
-      language: nluOutput.language_analysis?.detected_language || 'mr',
-      entities: {
-        crop_code: fused.unified_context?.crop?.name || nluOutput.crop_identification?.crop_code,
-        crop_stage: fused.unified_context?.crop?.growth_stage,
-        pest_code: nluOutput.entities_extracted?.pest_mentioned?.canonical,
-        disease_code: nluOutput.entities_extracted?.disease_mentioned?.canonical,
-        affected_area_percent: 20,
-        severity: nluOutput.intent_classification?.urgency_level || 'MODERATE'
-      },
-      clarification_needed: nluOutput.clarification_strategy?.needs_clarification || false,
-      questions: (nluOutput.clarification_strategy?.questions_to_ask || []).map((q: string, i: number) => ({
-        question_id: `q_${i}`,
-        question: q,
-        priority: 'MEDIUM' as const
-      })),
-      contextNeeded: {
-        photo_required: nluOutput.symptom_extraction?.visual_symptoms?.length > 0 && 
-                       !nluOutput.entities_extracted?.disease_mentioned?.canonical
-      },
-      safety_alerts: {
-        emergency_detected: false,
-        banned_substance_mentioned: false
-      },
-      requiredRuleModules: []
+    // Extract intent for rule resolution
+    const intent = (nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY') as NLUIntent;
+    
+    // Build extracted entities from NLU output + fused intelligence
+    const entities: ExtractedEntities = {
+      crop_code: fused.unified_context?.crop?.name || nluOutput.crop_identification?.crop_code,
+      crop_stage: fused.unified_context?.crop?.growth_stage as any,
+      pest_code: nluOutput.entities_extracted?.pest_mentioned?.canonical,
+      disease_code: nluOutput.entities_extracted?.disease_mentioned?.canonical,
+      affected_area_percent: fused.visual_analysis?.severity_quantification?.affected_area_percent || 20,
+      product_mentioned: nluOutput.entities_extracted?.product_mentioned?.raw_text,
+      symptom_codes: nluOutput.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [],
+      region_code: fused.historical_data?.region_code,
+      severity: (nluOutput.intent_classification?.urgency_level || 'MODERATE') as any,
+      treatment_history: undefined // Could be populated from context
     };
+    
+    // Build safety alerts from NLU output
+    const safetyAlerts: SafetyAlerts = {
+      emergency_detected: nluOutput.safety_signals?.emergency_indicators?.length > 0 || false,
+      banned_substance_mentioned: nluOutput.safety_signals?.banned_chemicals_mentioned?.length > 0 || false,
+      high_toxicity_product: nluOutput.safety_signals?.high_toxicity_warning || false,
+      phi_concern: nluOutput.safety_signals?.harvest_imminent || false,
+      pollinator_risk: false,
+      weather_spray_block: false
+    };
+    
+    // CRITICAL FIX: Call resolveRuleModules to get required rule modules
+    const requiredRuleModules = resolveRuleModules(intent, entities, safetyAlerts);
+    console.log(`📋 Resolved ${requiredRuleModules.length} rule modules for intent: ${intent}`);
+    
+    // Determine what additional context is needed
+    const contextNeeded = determineContextRequirements(intent, entities, requiredRuleModules);
+    
+    // Generate clarification questions if needed
+    const ruleQuestions = generateRuleRequiredQuestions(intent, entities, requiredRuleModules);
+    
+    // Calculate understanding confidence
+    const understanding_confidence = nluOutput.understanding_quality?.overall_confidence || 0.5;
+    const clarity_score = nluOutput.understanding_quality?.entity_coverage || 0.5;
+    
+    return {
+      intent,
+      language: nluOutput.language_analysis?.detected_language || 'mr',
+      entities,
+      clarification_needed: nluOutput.clarification_strategy?.needs_clarification || 
+                           ruleQuestions.length > 0,
+      questions: ruleQuestions.length > 0 ? ruleQuestions : 
+        (nluOutput.clarification_strategy?.questions_to_ask || []).map((q: any, i: number) => ({
+          question_id: `q_${i}`,
+          question_text_mr: q.question_text_mr || q,
+          question_text_hi: q.question_text_hi || q,
+          question_text_en: q.question_text_en || q,
+          priority: 'MEDIUM' as const
+        })),
+      contextNeeded: {
+        photo_required: contextNeeded.photo_required,
+        weather_data_required: contextNeeded.weather_data_required,
+        soil_data_required: contextNeeded.soil_data_required,
+        crop_stage_required: contextNeeded.crop_stage_required
+      },
+      safety_alerts: safetyAlerts,
+      // CRITICAL: This was always empty - now properly populated
+      requiredRuleModules,
+      // Additional fields for diagnostic flow
+      understanding_confidence,
+      clarity_score
+    };
+  }
+  
+  /**
+   * Create fallback NLU output when NLU agent fails (Gap 6 fix)
+   */
+  private createFallbackNLUOutput(message: string, language?: 'mr' | 'hi' | 'en'): NLUOutput {
+    console.log('   📋 Creating fallback NLU output for message:', message.substring(0, 30));
+    return {
+      language_analysis: {
+        detected_language: language || 'mr',
+        confidence: 0.5,
+        script: 'DEVANAGARI',
+        has_code_mixing: false
+      },
+      intent_classification: {
+        primary_intent: 'GENERAL_QUERY',
+        secondary_intent: undefined,
+        urgency_level: 'MEDIUM',
+        confidence: 0.3
+      },
+      crop_identification: undefined,
+      entities_extracted: {
+        pest_mentioned: undefined,
+        disease_mentioned: undefined,
+        product_mentioned: undefined,
+        quantity_mentioned: undefined,
+        time_mentioned: undefined
+      },
+      symptom_extraction: {
+        visual_symptoms: [],
+        non_visual_symptoms: [],
+        symptom_confidence: 0.3
+      },
+      safety_signals: {
+        emergency_indicators: [],
+        banned_chemicals_mentioned: [],
+        high_toxicity_warning: false,
+        harvest_imminent: false
+      },
+      understanding_quality: {
+        overall_confidence: 0.3,
+        entity_coverage: 0.2,
+        needs_clarification: true,
+        clarity_issues: ['NLU processing failed - using fallback']
+      },
+      clarification_strategy: {
+        needs_clarification: true,
+        questions_to_ask: [{
+          question_text_mr: 'कृपया तुमची समस्या पुन्हा सांगा',
+          question_text_hi: 'कृपया अपनी समस्या फिर से बताएं',
+          question_text_en: 'Please describe your problem again'
+        }]
+      }
+    } as NLUOutput;
   }
   
   /**
@@ -893,6 +1019,53 @@ export class AIAgentOrchestrator {
       case 'ESCALATE': return 'ESCALATED';
       default: return 'READY_TO_RECOMMEND';
     }
+  }
+  
+  /**
+   * Create fallback context when Context Manager fails (Gap 6 fix)
+   */
+  private createFallbackContext(sessionId: string, farmerId: string): ContextState {
+    console.log('   📋 Creating fallback context');
+    return {
+      session_id: sessionId,
+      farmer_id: farmerId,
+      current_state: 'INITIAL_QUERY',
+      conversation_turns: 0,
+      crop_context: undefined,
+      questions_asked: 0,
+      treatment_history: [],
+      last_updated: new Date().toISOString()
+    } as ContextState;
+  }
+  
+  /**
+   * Create fallback fused intelligence when Fusion Engine fails (Gap 6 fix)
+   */
+  private createFallbackFusedIntelligence(sessionId: string, message: string, nluOutput: NLUOutput): FusedIntelligence {
+    console.log('   📋 Creating fallback fused intelligence');
+    return {
+      session_id: sessionId,
+      timestamp: new Date().toISOString(),
+      text_understanding: {
+        farmer_message: message,
+        language: nluOutput.language_analysis?.detected_language || 'mr',
+        intent: nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY',
+        entities: {},
+        confidence: 0.3,
+        ambiguities: ['Fusion failed - using fallback']
+      },
+      unified_context: {
+        crop: undefined,
+        problem: undefined,
+        environment: undefined
+      },
+      fusion_summary: {
+        overall_confidence: 0.3,
+        data_sources_used: ['text_fallback'],
+        gaps_identified: ['visual', 'weather', 'historical'],
+        recommendations_for_improvement: ['Please provide more details']
+      }
+    } as FusedIntelligence;
   }
 
   /**
