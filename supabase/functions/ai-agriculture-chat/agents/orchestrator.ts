@@ -197,12 +197,16 @@ export class AIAgentOrchestrator {
       
       // ========================================
       // PHASE 1B: CONTEXT LOADING (with NLU output) - with error boundary
+      // CRITICAL FIX: Now passes landId to loadContext
       // ========================================
       let contextState: ContextState | null = null;
       try {
-        contextState = await this.loadContext(sessionId, farmerId, tenantId, farmerMessage, nluOutput!);
+        contextState = await this.loadContext(sessionId, farmerId, tenantId, farmerMessage, nluOutput!, options.landId);
         agentsUsed.push('Context');
         console.log('   ✅ Context loaded:', contextState?.current_state || 'INITIAL_QUERY');
+        if (options.landId) {
+          console.log('   📍 Land context included for:', options.landId);
+        }
       } catch (contextError) {
         console.error('   ❌ Context Manager failed, using default context:', contextError);
         contextState = this.createFallbackContext(sessionId, farmerId);
@@ -547,25 +551,35 @@ export class AIAgentOrchestrator {
   }
   
   /**
-   * Load conversation context
+   * Load conversation context with comprehensive land data
+   * CRITICAL FIX: Now passes landId and fetches soil/NDVI/crop schedule data
    */
   private async loadContext(
     sessionId: string,
     farmerId: string,
     tenantId: string,
     message: string,
-    nluOutput?: NLUOutput
+    nluOutput?: NLUOutput,
+    landId?: string
   ): Promise<ContextState> {
     try {
+      // CRITICAL FIX: Fetch comprehensive land context if landId provided
+      let landContext: any = null;
+      if (landId) {
+        landContext = await this.fetchComprehensiveLandContext(landId, farmerId);
+        console.log('📍 [Orchestrator] Loaded land context:', landContext ? 'SUCCESS' : 'EMPTY');
+      }
+      
       return await processContextManager({
         farmer_id: farmerId,
-        land_id: undefined,
+        land_id: landId, // CRITICAL FIX: Now passing landId instead of undefined
         current_input: message,
         input_type: 'TEXT',
         timestamp: new Date().toISOString(),
+        land_context: landContext, // NEW: Pass comprehensive land context
         nlu_output: nluOutput ? {
           primary_intent: nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY',
-          crop_code: nluOutput.crop_identification?.crop_code,
+          crop_code: nluOutput.crop_identification?.crop_code || landContext?.current_crop,
           symptoms: nluOutput.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [],
           pest_hypothesis: nluOutput.entities_extracted?.pest_mentioned?.canonical,
           disease_hypothesis: nluOutput.entities_extracted?.disease_mentioned?.canonical,
@@ -574,6 +588,7 @@ export class AIAgentOrchestrator {
           confidence: nluOutput.understanding_quality?.overall_confidence || 0.5
         } : {
           primary_intent: 'GENERAL_QUERY',
+          crop_code: landContext?.current_crop,
           symptoms: [],
           urgency_level: 'MEDIUM',
           emotional_state: 'NEUTRAL',
@@ -590,6 +605,155 @@ export class AIAgentOrchestrator {
         questions_asked: 0
       } as ContextState;
     }
+  }
+  
+  /**
+   * CRITICAL FIX: Fetch comprehensive land context including soil, NDVI, and crop schedule
+   */
+  private async fetchComprehensiveLandContext(landId: string, farmerId: string): Promise<any> {
+    try {
+      // Fetch land details
+      const { data: land, error: landError } = await this.supabase
+        .from('lands')
+        .select('*')
+        .eq('id', landId)
+        .single();
+      
+      if (landError || !land) {
+        console.warn('⚠️ [Orchestrator] Failed to fetch land:', landError);
+        return null;
+      }
+      
+      // Fetch latest soil health data
+      const { data: soilHealth } = await this.supabase
+        .from('soil_health')
+        .select('*')
+        .eq('land_id', landId)
+        .order('test_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      // Fetch latest NDVI data
+      const { data: ndviData } = await this.supabase
+        .from('ndvi_data')
+        .select('*')
+        .eq('land_id', landId)
+        .order('captured_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      // Fetch active crop schedule
+      const { data: cropSchedule } = await this.supabase
+        .from('crop_schedules')
+        .select('*')
+        .eq('land_id', landId)
+        .eq('is_active', true)
+        .order('sowing_date', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      // Calculate days since sowing if crop schedule exists
+      let daysSinceSowing = null;
+      let growthStage = null;
+      if (cropSchedule?.sowing_date) {
+        const sowingDate = new Date(cropSchedule.sowing_date);
+        const today = new Date();
+        daysSinceSowing = Math.floor((today.getTime() - sowingDate.getTime()) / (1000 * 60 * 60 * 24));
+        growthStage = this.calculateGrowthStage(daysSinceSowing, cropSchedule.crop_name);
+      }
+      
+      const context = {
+        land_id: landId,
+        land_name: land.name,
+        area_acres: land.area_acres,
+        soil_type: land.soil_type,
+        irrigation_type: land.irrigation_type,
+        current_crop: cropSchedule?.crop_name || land.current_crop,
+        crop_variety: cropSchedule?.variety || land.crop_variety,
+        sowing_date: cropSchedule?.sowing_date,
+        days_since_sowing: daysSinceSowing,
+        growth_stage: growthStage,
+        expected_harvest_date: cropSchedule?.expected_harvest_date,
+        district: land.district,
+        state: land.state,
+        center_lat: land.center_lat,
+        center_lon: land.center_lon,
+        
+        // Soil health data
+        soil_health: soilHealth ? {
+          nitrogen: soilHealth.nitrogen,
+          phosphorus: soilHealth.phosphorus,
+          potassium: soilHealth.potassium,
+          ph: soilHealth.ph,
+          organic_carbon: soilHealth.organic_carbon,
+          test_date: soilHealth.test_date
+        } : null,
+        
+        // NDVI data
+        ndvi: ndviData ? {
+          value: ndviData.ndvi_value,
+          health_status: this.getNDVIHealthStatus(ndviData.ndvi_value),
+          captured_at: ndviData.captured_at
+        } : null,
+        
+        // Crop schedule data
+        crop_schedule: cropSchedule ? {
+          schedule_id: cropSchedule.id,
+          crop_name: cropSchedule.crop_name,
+          variety: cropSchedule.variety,
+          sowing_date: cropSchedule.sowing_date,
+          expected_harvest_date: cropSchedule.expected_harvest_date,
+          tasks: cropSchedule.tasks
+        } : null
+      };
+      
+      console.log('📊 [Orchestrator] Land context built:', {
+        land_name: context.land_name,
+        current_crop: context.current_crop,
+        days_since_sowing: context.days_since_sowing,
+        growth_stage: context.growth_stage,
+        has_soil_health: !!context.soil_health,
+        has_ndvi: !!context.ndvi
+      });
+      
+      return context;
+    } catch (error) {
+      console.error('⚠️ [Orchestrator] Failed to fetch comprehensive land context:', error);
+      return null;
+    }
+  }
+  
+  /**
+   * Calculate growth stage based on days since sowing
+   */
+  private calculateGrowthStage(daysSinceSowing: number, cropName?: string): string {
+    // Crop-specific durations (approximate)
+    const cropDurations: Record<string, number> = {
+      'cotton': 180, 'soybean': 100, 'rice': 120, 'wheat': 120,
+      'maize': 90, 'tomato': 90, 'onion': 120, 'potato': 90,
+      'sugarcane': 365, 'groundnut': 110, 'tur': 150
+    };
+    
+    const totalDays = cropDurations[cropName?.toLowerCase() || ''] || 120;
+    const percentComplete = (daysSinceSowing / totalDays) * 100;
+    
+    if (percentComplete < 15) return 'GERMINATION';
+    if (percentComplete < 30) return 'SEEDLING';
+    if (percentComplete < 50) return 'VEGETATIVE';
+    if (percentComplete < 70) return 'FLOWERING';
+    if (percentComplete < 90) return 'FRUITING';
+    return 'MATURITY';
+  }
+  
+  /**
+   * Get NDVI health status
+   */
+  private getNDVIHealthStatus(ndviValue: number): string {
+    if (ndviValue >= 0.6) return 'excellent';
+    if (ndviValue >= 0.4) return 'healthy';
+    if (ndviValue >= 0.25) return 'moderate';
+    if (ndviValue >= 0.15) return 'stressed';
+    return 'poor';
   }
   
   /**
@@ -650,21 +814,23 @@ export class AIAgentOrchestrator {
   }
   
   /**
-   * Fetch historical data - NOW CONNECTED TO REAL DATABASE
+   * Fetch historical data - ENHANCED: Now queries dedicated soil_health and ndvi_data tables
    */
   private async fetchHistoricalData(farmerId: string, landId?: string): Promise<any> {
     try {
       const result: any = {
         previous_issues: [],
         soil_test_results: null,
+        ndvi_data: null,
+        crop_schedule: null,
         recent_advisories: []
       };
       
-      // Fetch soil data from lands table
       if (landId) {
+        // Fetch land basic data
         const { data: land } = await this.supabase
           .from('lands')
-          .select('soil_data, ndvi_data, previous_crop, last_harvest_date')
+          .select('soil_data, ndvi_data, previous_crop, last_harvest_date, current_crop, soil_type')
           .eq('id', landId)
           .single();
         
@@ -677,6 +843,70 @@ export class AIAgentOrchestrator {
         if (land?.previous_crop) {
           result.previous_crop = land.previous_crop;
           result.last_harvest_date = land.last_harvest_date;
+        }
+        if (land?.current_crop) {
+          result.current_crop = land.current_crop;
+        }
+        if (land?.soil_type) {
+          result.soil_type = land.soil_type;
+        }
+        
+        // ENHANCED: Fetch from dedicated soil_health table for more accurate data
+        const { data: soilHealth } = await this.supabase
+          .from('soil_health')
+          .select('nitrogen, phosphorus, potassium, ph, organic_carbon, test_date')
+          .eq('land_id', landId)
+          .order('test_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (soilHealth) {
+          result.soil_test_results = {
+            ...result.soil_test_results,
+            nitrogen: soilHealth.nitrogen,
+            phosphorus: soilHealth.phosphorus,
+            potassium: soilHealth.potassium,
+            ph: soilHealth.ph,
+            organic_carbon: soilHealth.organic_carbon,
+            test_date: soilHealth.test_date
+          };
+        }
+        
+        // ENHANCED: Fetch from dedicated ndvi_data table
+        const { data: ndviRecord } = await this.supabase
+          .from('ndvi_data')
+          .select('ndvi_value, captured_at, health_status')
+          .eq('land_id', landId)
+          .order('captured_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (ndviRecord) {
+          result.ndvi_data = {
+            value: ndviRecord.ndvi_value,
+            captured_at: ndviRecord.captured_at,
+            health_status: ndviRecord.health_status
+          };
+        }
+        
+        // ENHANCED: Fetch active crop schedule
+        const { data: cropSchedule } = await this.supabase
+          .from('crop_schedules')
+          .select('crop_name, variety, sowing_date, expected_harvest_date, is_active')
+          .eq('land_id', landId)
+          .eq('is_active', true)
+          .order('sowing_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (cropSchedule) {
+          result.crop_schedule = cropSchedule;
+          // Calculate days since sowing
+          if (cropSchedule.sowing_date) {
+            const sowingDate = new Date(cropSchedule.sowing_date);
+            const today = new Date();
+            result.days_since_sowing = Math.floor((today.getTime() - sowingDate.getTime()) / (1000 * 60 * 60 * 24));
+          }
         }
       }
       

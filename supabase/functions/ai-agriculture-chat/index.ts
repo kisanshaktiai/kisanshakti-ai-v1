@@ -149,35 +149,59 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // SESSION MANAGEMENT
+    // SESSION MANAGEMENT - CRITICAL FIX: Prevent duplicate sessions
     // ═══════════════════════════════════════════════════════════════════════════
     let currentSessionId = sessionId;
     
     if (!currentSessionId) {
-      // Create new session
-      const { data: newSession, error: sessionError } = await supabase
+      // CRITICAL FIX: First try to find existing active session for this land
+      let existingSessionQuery = supabase
         .from('ai_chat_sessions')
-        .insert({
-          tenant_id: finalTenantId,
-          farmer_id: finalFarmerId,
-          land_id: landId || null,
-          session_type: landId ? 'land_specific' : 'general',
-          is_active: true,
-          metadata: { language, source: 'orchestrator_v1' }
-        })
         .select('id')
-        .single();
-
-      if (sessionError || !newSession) {
-        console.error('Failed to create session:', sessionError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to create chat session' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        .eq('farmer_id', finalFarmerId)
+        .eq('tenant_id', finalTenantId)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      
+      if (landId) {
+        existingSessionQuery = existingSessionQuery.eq('land_id', landId);
+      } else {
+        existingSessionQuery = existingSessionQuery.is('land_id', null);
       }
       
-      currentSessionId = newSession.id;
-      console.log('📝 New session created:', currentSessionId);
+      const { data: existingSession } = await existingSessionQuery.maybeSingle();
+      
+      if (existingSession) {
+        // Reuse existing session instead of creating duplicate
+        currentSessionId = existingSession.id;
+        console.log('📝 Reusing existing session:', currentSessionId);
+      } else {
+        // Create new session only if none exists
+        const { data: newSession, error: sessionError } = await supabase
+          .from('ai_chat_sessions')
+          .insert({
+            tenant_id: finalTenantId,
+            farmer_id: finalFarmerId,
+            land_id: landId || null,
+            session_type: landId ? 'land_specific' : 'general',
+            is_active: true,
+            metadata: { language, source: 'orchestrator_v1' }
+          })
+          .select('id')
+          .single();
+
+        if (sessionError || !newSession) {
+          console.error('Failed to create session:', sessionError);
+          return new Response(
+            JSON.stringify({ error: 'Failed to create chat session' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        currentSessionId = newSession.id;
+        console.log('📝 New session created:', currentSessionId);
+      }
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
