@@ -224,7 +224,20 @@ export class DiagnosticFlowController {
     this.session.status = 'EVALUATING_RULES';
     
     const nlu = this.session.nlu_output;
-    const context = this.session.context;
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: Build evaluation context from NLU BEFORE rule evaluation
+    // This was missing - causing context to be empty and all rules to fail
+    // ═══════════════════════════════════════════════════════════════════════════
+    const context = await this.buildEvaluationContext({});
+    
+    console.log('📋 [DiagnosticFlow] Built evaluation context:', {
+      crop_code: context.crop_code,
+      pest_code: context.pest_code,
+      disease_code: context.disease_code,
+      severity: context.severity,
+      crop_stage: context.crop_stage
+    });
     
     const result: RuleEvaluationResult = {
       blocked: false,

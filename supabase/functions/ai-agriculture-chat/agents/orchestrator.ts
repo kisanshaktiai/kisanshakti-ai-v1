@@ -363,7 +363,8 @@ export class AIAgentOrchestrator {
         fusedIntelligence,
         diagnosticState,
         contextState,
-        { farmerId, landId: options.landId, traceId }  // PHASE A: Pass trace_id
+        { farmerId, landId: options.landId, traceId },
+        nluWithRuleMapping  // CRITICAL FIX: Pass NLU entities to rule engine
       );
       
       const decisionOutput = await this.ruleEngine.execute(ruleEngineInput);
@@ -1041,22 +1042,46 @@ export class AIAgentOrchestrator {
     fused: FusedIntelligence,
     diagnostic: DiagnosticState,
     context: ContextState,
-    ids: { farmerId: string; landId?: string }
+    ids: { farmerId: string; landId?: string; traceId?: string },
+    nluMapping?: any  // CRITICAL FIX: Accept NLU mapping with entities
   ): RuleExecutionInput {
+    // CRITICAL FIX: Extract pest/disease from NLU entities FIRST (most reliable source)
+    const nluEntities = nluMapping?.entities || {};
+    const pestCode = nluEntities.pest_code || 
+                     fused.unified_context?.problem?.primary_cause ||
+                     fused.unified_context?.problem?.identified_issue;
+    const diseaseCode = nluEntities.disease_code ||
+                        fused.unified_context?.problem?.disease_code;
+    const cropCode = nluEntities.crop_code ||
+                     fused.unified_context?.crop?.code || 
+                     context.crop_context?.code || 
+                     context.land_context?.current_crop || 
+                     'UNKNOWN';
+    const severity = nluEntities.severity ||
+                     fused.unified_context?.problem?.severity ||
+                     'MODERATE';
+    
+    console.log(`   [${ids.traceId}] 📊 Rule Engine Input building:`, {
+      crop_code: cropCode,
+      pest_code: pestCode,
+      disease_code: diseaseCode,
+      severity: severity,
+      source: nluEntities.pest_code ? 'NLU' : 'FUSION'
+    });
+    
     return {
       session_id: fused.session_id,
+      farmer_id: ids.farmerId,
+      land_id: ids.landId,
+      trace_id: ids.traceId,
       confirmed_hypotheses: diagnostic.hypotheses || [],
       rule_modules_required: diagnostic.rule_modules_required || [],
       
       farmer_context: {
-        // CRITICAL FIX: Use multiple fallback sources for crop_code
-        crop_code: fused.unified_context?.crop?.code || 
-                   context.crop_context?.code || 
-                   context.land_context?.current_crop || 
-                   (context as any).current_crop ||
-                   'UNKNOWN',
+        crop_code: cropCode,
         crop_variety: context.crop_context?.variety || context.land_context?.crop_variety,
-        crop_stage: (fused.unified_context?.crop?.stage || 
+        crop_stage: (nluEntities.crop_stage ||
+                    fused.unified_context?.crop?.stage || 
                     context.crop_context?.stage || 
                     context.land_context?.growth_stage || 
                     'VEGETATIVE') as any,
@@ -1090,15 +1115,18 @@ export class AIAgentOrchestrator {
       },
       
       pest_disease_state: {
-        pest_code: fused.unified_context?.problem?.primary_cause,
-        affected_area_percent: fused.unified_context?.problem?.affected_area_percent || 20,
-        severity: (fused.unified_context?.problem?.severity || 'MODERATE') as any
+        pest_code: pestCode,
+        disease_code: diseaseCode,
+        affected_area_percent: nluEntities.affected_area_percent ||
+                               fused.unified_context?.problem?.affected_area_percent || 20,
+        severity: severity as any,
+        infestation_level_percent: nluEntities.affected_area_percent || 20
       },
       
       farmer_constraints: {
         budget_available_inr: 5000,
         previous_treatments: context.treatment_history || [],
-        urgency_level: fused.unified_context?.problem?.severity === 'CRITICAL' ? 'CRITICAL' : 'MEDIUM'
+        urgency_level: severity === 'CRITICAL' ? 'CRITICAL' : 'MEDIUM'
       }
     };
   }
