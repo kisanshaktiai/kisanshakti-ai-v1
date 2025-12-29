@@ -483,6 +483,38 @@ export class AIAgentOrchestrator {
       console.log('   ✅ Decision saved');
       
       // ========================================
+      // PHASE 7B: FEEDBACK LEARNING INTEGRATION
+      // CRITICAL FIX: Connect Feedback Learning Engine
+      // ========================================
+      console.log('\n🧠 PHASE 7B: Recording for Feedback Learning...');
+      try {
+        // Record the decision outcome for learning
+        await this.feedbackEngine.recordOutcome({
+          decision_id: decisionOutput.decision_id,
+          session_id: sessionId,
+          farmer_id: farmerId,
+          land_id: options.landId,
+          tenant_id: tenantId,
+          crop_code: fusedIntelligence.unified_context?.crop?.code || 'UNKNOWN',
+          crop_stage: fusedIntelligence.unified_context?.crop?.stage || 'UNKNOWN',
+          region_code: fusedIntelligence.unified_context?.location?.district || 'UNKNOWN',
+          season: this.getCurrentSeason(),
+          original_decision: {
+            pest_disease_diagnosed: fusedIntelligence.unified_context?.problem?.identified_issue || '',
+            confidence_at_diagnosis: diagnosticState.hypotheses?.[0]?.confidence || 0.7,
+            treatment_recommended: decisionOutput.primary_decision?.product_details?.product_name || '',
+            cost_predicted_inr: decisionOutput.economic_assessment?.cost_inr || 0,
+            benefit_predicted_inr: decisionOutput.economic_assessment?.benefit_inr || 0,
+            efficacy_predicted_percent: decisionOutput.primary_decision?.expected_efficacy_percent || 80
+          }
+        });
+        agentsUsed.push('FeedbackLearning');
+        console.log('   ✅ Decision recorded for learning');
+      } catch (feedbackError) {
+        console.warn('   ⚠️ Feedback recording failed (non-blocking):', feedbackError);
+      }
+      
+      // ========================================
       // PHASE 8: RETURN TO FARMER
       // ========================================
       const processingTime = Date.now() - startTime;
@@ -507,6 +539,16 @@ export class AIAgentOrchestrator {
       console.error('❌ Orchestrator: Error in flow:', error);
       return this.handleOrchestrationError(error as Error, sessionId, farmerMessage, agentsUsed, startTime);
     }
+  }
+  
+  /**
+   * Get current agricultural season based on date
+   */
+  private getCurrentSeason(): string {
+    const month = new Date().getMonth() + 1;
+    if (month >= 6 && month <= 9) return 'KHARIF';
+    if (month >= 10 && month <= 2) return 'RABI';
+    return 'ZAID';
   }
   
   /**

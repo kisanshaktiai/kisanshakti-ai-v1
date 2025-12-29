@@ -316,12 +316,37 @@ serve(async (req) => {
     );
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // UPDATE SESSION ACTIVITY
+    // UPDATE SESSION ACTIVITY AND PERSIST CONTEXT STATE
+    // CRITICAL FIX: Persist accumulated knowledge to session metadata
     // ═══════════════════════════════════════════════════════════════════════════
-    await supabase
-      .from('ai_chat_sessions')
-      .update({ updated_at: new Date().toISOString() })
-      .eq('id', currentSessionId);
+    try {
+      await supabase
+        .from('ai_chat_sessions')
+        .update({ 
+          updated_at: new Date().toISOString(),
+          metadata: {
+            language,
+            source: 'orchestrator_v1',
+            last_response_type: orchestratorResponse.type,
+            agents_used: orchestratorResponse.metadata?.agents_used,
+            confidence: orchestratorResponse.metadata?.confidence,
+            rules_applied: orchestratorResponse.metadata?.rules_applied,
+            decision_id: orchestratorResponse.decision_id,
+            // Persist conversation state for continuity
+            conversation_state: {
+              turn_count: messages.length + 1,
+              has_photo: !!imageUrl,
+              last_intent: orchestratorResponse.type,
+              safety_status: orchestratorResponse.metadata?.safety_status
+            }
+          }
+        })
+        .eq('id', currentSessionId);
+      
+      console.log('💾 [Session] State persisted to database');
+    } catch (sessionUpdateError) {
+      console.warn('⚠️ [Session] Failed to update session:', sessionUpdateError);
+    }
 
     return new Response(
       JSON.stringify(responsePayload),
