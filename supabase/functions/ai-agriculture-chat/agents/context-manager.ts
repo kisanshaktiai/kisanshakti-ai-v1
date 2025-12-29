@@ -407,7 +407,7 @@ function analyzeFarmerBehavior(
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function processContextManager(
-  input: Partial<ContextManagerInput> & { farmer_id: string },
+  input: Partial<ContextManagerInput> & { farmer_id: string; land_context?: any },
   existingSession: FullSessionData | null = null,
   allActiveSessions: SessionContext[] = []
 ): ContextManagerOutput {
@@ -415,6 +415,9 @@ export function processContextManager(
   const isPhotoUpload = input.input_type === 'PHOTO';
   // Null-safe access to nlu_output.urgency_level
   const isUrgent = input.nlu_output?.urgency_level === 'HIGH';
+  
+  // CRITICAL FIX: Extract land context for pre-populating confirmed facts
+  const landContext = input.land_context;
   
   // 1. Determine session type and get/create session
   let sessionType: 'NEW' | 'CONTINUING' | 'RESUMED' = 'NEW';
@@ -465,6 +468,55 @@ export function processContextManager(
       questions_asked: [],
       questions_remaining: QUESTION_BANK.map(q => q.id)
     };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Pre-populate confirmed facts from land context
+  // This prevents redundant questions about crop, area, soil, etc.
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (landContext) {
+    console.log('📊 [ContextManager] Pre-populating facts from land context');
+    
+    // Pre-populate crop info
+    if (landContext.current_crop) {
+      accumulatedKnowledge.confirmed_facts.crop = landContext.current_crop;
+      // Mark crop question as already answered
+      accumulatedKnowledge.questions_asked.push('Q1_CROP');
+      accumulatedKnowledge.questions_remaining = accumulatedKnowledge.questions_remaining.filter(q => q !== 'Q1_CROP');
+    }
+    
+    // Pre-populate area
+    if (landContext.area_acres) {
+      (accumulatedKnowledge.confirmed_facts as any).area_acres = landContext.area_acres;
+    }
+    
+    // Pre-populate soil type
+    if (landContext.soil_type) {
+      (accumulatedKnowledge.confirmed_facts as any).soil_type = landContext.soil_type;
+    }
+    
+    // Pre-populate growth stage
+    if (landContext.growth_stage) {
+      (accumulatedKnowledge.confirmed_facts as any).growth_stage = landContext.growth_stage;
+      (accumulatedKnowledge.confirmed_facts as any).days_after_sowing = landContext.days_since_sowing;
+    }
+    
+    // Pre-populate soil health (NPK)
+    if (landContext.soil_health) {
+      (accumulatedKnowledge.confirmed_facts as any).soil_npk = {
+        nitrogen: landContext.soil_health.nitrogen,
+        phosphorus: landContext.soil_health.phosphorus,
+        potassium: landContext.soil_health.potassium
+      };
+    }
+    
+    // Pre-populate NDVI
+    if (landContext.ndvi) {
+      (accumulatedKnowledge.confirmed_facts as any).ndvi = landContext.ndvi.value;
+      (accumulatedKnowledge.confirmed_facts as any).health_status = landContext.ndvi.health_status;
+    }
+    
+    console.log('✅ [ContextManager] Pre-populated facts:', Object.keys(accumulatedKnowledge.confirmed_facts));
   }
   
   // 2. Detect context switch
