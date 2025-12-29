@@ -137,21 +137,9 @@ export const SYMBOLIC_RULES_REGISTRY: SymbolicRule[] = [
     response_en: '🚨 EMERGENCY! Go to doctor immediately. Poisoning symptoms detected.',
     action_type: 'BLOCK'
   },
-  {
-    rule_id: 'SAFETY_006',
-    category: 'regulatory',
-    crop_code: 'all',
-    priority: 'P1_REGULATORY',
-    cause: 'POLLINATOR_RISK_FLOWERING',
-    scientific_source: 'EU Pollinator Protection Directive, ICAR-NBAIR',
-    scientific_basis: 'Neonicotinoids are highly toxic to bees. Application during flowering causes bee mortality.',
-    trigger_keywords: ['imidacloprid', 'thiamethoxam', 'clothianidin', 'acetamiprid', 'neonicotinoid', 'flowering', 'फुलावर', 'फूल', 'मधमाशी', 'मधुमक्खी', 'bee'],
-    response_mr: '🐝 फुलोऱ्यावर नियोनिकोटिनॉइड वापरू नका. मधमाशांना धोका.',
-    response_hi: '🐝 फूल आने पर नियोनिकोटिनॉइड का उपयोग न करें। मधुमक्खियों को खतरा।',
-    response_en: '🐝 Do not use neonicotinoids during flowering. Bee mortality risk.',
-    alternatives: ['Use Spinosad', 'Apply Bacillus thuringiensis', 'Spray early morning or late evening'],
-    action_type: 'BLOCK'
-  },
+  // SAFETY_006: REMOVED from keyword matching - requires compound condition (neonic + flowering)
+  // This rule is now evaluated programmatically in evaluateChemicalSafetyRules() to prevent false positives
+  // when user mentions "flowering" alone without mentioning neonicotinoid chemicals
   {
     rule_id: 'SAFETY_007',
     category: 'safety',
@@ -1279,6 +1267,321 @@ export const SYMBOLIC_RULES_REGISTRY: SymbolicRule[] = [
     response_en: '☁️ Cotton picking! Pick when bolls fully open. After dew evaporates.',
     action_type: 'RECOMMEND'
   },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CROP-GROUP RULES - From src/decision-graph/crop-group-rules/
+  // These are keyword-triggered versions of condition-based rules
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // WHEAT RULES
+  {
+    rule_id: 'CROP_WHEAT_WATER_CRI',
+    category: 'water',
+    crop_code: 'wheat',
+    priority: 'P3_CROP_STAGE',
+    cause: 'WATER_STRESS_WHEAT_CRI',
+    scientific_source: 'ICAR-IARI Wheat Package 2024',
+    scientific_basis: 'Crown Root Initiation (21-25 DAS) is the most critical irrigation for wheat. Missing CRI irrigation reduces yield by 40-50%.',
+    trigger_keywords: ['wheat', 'गहू', 'गेहूं', 'cri', 'crown root', 'irrigation', 'पाणी', 'सिंचाई'],
+    response_mr: '💧 गव्हात CRI (21-25 दिवस) सिंचन अत्यंत महत्त्वाचे. याशिवाय 40-50% उत्पादन घटते.',
+    response_hi: '💧 गेहूं में CRI (21-25 दिन) सिंचाई अत्यंत महत्वपूर्ण। इसके बिना 40-50% उपज कम।',
+    response_en: '💧 Wheat CRI irrigation (21-25 DAS) is critical. Missing it reduces yield by 40-50%.',
+    action_type: 'RECOMMEND'
+  },
+  {
+    rule_id: 'CROP_WHEAT_RUST',
+    category: 'disease',
+    crop_code: 'wheat',
+    priority: 'P3_CROP_STAGE',
+    cause: 'WHEAT_RUST_RISK',
+    scientific_source: 'ICAR-IARI Disease Management',
+    scientific_basis: 'Yellow rust (Puccinia striiformis) requires 10-15°C with dew. ICAR threshold: 5% severity for spray.',
+    trigger_keywords: ['wheat rust', 'yellow rust', 'गव्हावरील गंज', 'गेहूं का गेरुआ', 'puccinia', 'तांबेरा'],
+    response_mr: '🟡 गव्हावर गंज! 5% पेक्षा जास्त असल्यास प्रोपिकोनाझोल फवारा.',
+    response_hi: '🟡 गेहूं पर गेरुआ! 5% से अधिक होने पर प्रोपिकोनाज़ोल का स्प्रे करें।',
+    response_en: '🟡 Wheat rust detected! Spray Propiconazole if >5% severity.',
+    alternatives: ['Propiconazole 25% EC @ 1ml/L', 'Tebuconazole 25% WG @ 1g/L'],
+    action_type: 'RECOMMEND'
+  },
+  {
+    rule_id: 'CROP_WHEAT_APHID',
+    category: 'pest',
+    crop_code: 'wheat',
+    priority: 'P4_ECONOMIC',
+    cause: 'APHID_RISK',
+    scientific_source: 'ICAR-IARI IPM',
+    scientific_basis: 'Wheat aphid (Sitobion avenae) attacks ears during warm dry weather. ETL: 10 aphids/ear or 25 aphids/tiller.',
+    trigger_keywords: ['wheat aphid', 'गव्हावरील माव्या', 'गेहूं का मावा', 'aphid', 'mavya'],
+    response_mr: '🐜 गव्हावर माव्या! 10 माव्या/कणसात असल्यास इमिडाक्लोप्रिड फवारा.',
+    response_hi: '🐜 गेहूं पर माहू! 10 माहू/बाली में होने पर इमिडाक्लोप्रिड स्प्रे करें।',
+    response_en: '🐜 Wheat aphid! Spray Imidacloprid if >10 aphids/ear.',
+    action_type: 'RECOMMEND'
+  },
+  
+  // RICE RULES
+  {
+    rule_id: 'CROP_RICE_BLAST',
+    category: 'disease',
+    crop_code: 'rice',
+    priority: 'P3_CROP_STAGE',
+    cause: 'RICE_BLAST_RISK',
+    scientific_source: 'ICAR-CRRI Disease Management',
+    scientific_basis: 'Rice blast (Pyricularia oryzae) is favored by high N, humidity, and 20-25°C temperature.',
+    trigger_keywords: ['rice blast', 'भात करपा', 'धान का ब्लास्ट', 'pyricularia', 'करपा', 'blast'],
+    response_mr: '🍚 भातावर करपा! ट्रायसायक्लाझोल फवारा. N खत कमी करा.',
+    response_hi: '🍚 धान पर ब्लास्ट! ट्राइसाइक्लाज़ोल स्प्रे करें। N खाद कम करें।',
+    response_en: '🍚 Rice blast! Spray Tricyclazole. Reduce N fertilizer.',
+    alternatives: ['Tricyclazole 75% WP @ 0.6g/L', 'Isoprothiolane 40% EC @ 1.5ml/L'],
+    action_type: 'RECOMMEND'
+  },
+  {
+    rule_id: 'CROP_RICE_BPH',
+    category: 'pest',
+    crop_code: 'rice',
+    priority: 'P3_CROP_STAGE',
+    cause: 'BROWN_PLANTHOPPER_RISK',
+    scientific_source: 'ICAR-CRRI IPM',
+    scientific_basis: 'BPH (Nilaparvata lugens) causes hopper burn. ETL: 5-10 hoppers/hill at tillering.',
+    trigger_keywords: ['brown planthopper', 'bph', 'तपकिरी तुडतुडे', 'भूरा फुदका', 'hopper burn', 'planthopper'],
+    response_mr: '🦗 तपकिरी तुडतुडे! 5-10 प्रति झाड असल्यास बुप्रोफेझिन फवारा.',
+    response_hi: '🦗 भूरा फुदका! 5-10 प्रति पौधा होने पर बुप्रोफेज़िन स्प्रे करें।',
+    response_en: '🦗 BPH! Spray Buprofezin if 5-10 hoppers/hill.',
+    alternatives: ['Buprofezin 25% SC @ 1.6ml/L', 'Pymetrozine 50% WG @ 0.3g/L'],
+    action_type: 'RECOMMEND'
+  },
+  
+  // COTTON RULES
+  {
+    rule_id: 'CROP_COTTON_BOLLWORM',
+    category: 'pest',
+    crop_code: 'cotton',
+    priority: 'P3_CROP_STAGE',
+    cause: 'BOLLWORM_INFESTATION',
+    scientific_source: 'ICAR-CICR Cotton IPM',
+    scientific_basis: 'American bollworm (Helicoverpa armigera) causes major yield loss. ETL: 1 larva/plant at square formation.',
+    trigger_keywords: ['bollworm', 'बोंडअळी', 'टिंडा कीट', 'helicoverpa', 'कापूस अळी', 'कपास इल्ली'],
+    response_mr: '🐛 बोंडअळी! 1 अळी/झाड असल्यास एमामेक्टिन बेंजोएट फवारा.',
+    response_hi: '🐛 टिंडा कीट! 1 इल्ली/पौधा होने पर एमामेक्टिन बेंजोएट स्प्रे करें।',
+    response_en: '🐛 Bollworm! Spray Emamectin Benzoate if 1 larva/plant.',
+    alternatives: ['Emamectin Benzoate 5% SG @ 0.4g/L', 'Spinosad 45% SC @ 0.3ml/L'],
+    action_type: 'RECOMMEND'
+  },
+  {
+    rule_id: 'CROP_COTTON_WHITEFLY',
+    category: 'pest',
+    crop_code: 'cotton',
+    priority: 'P4_ECONOMIC',
+    cause: 'WHITEFLY_INFESTATION',
+    scientific_source: 'ICAR-CICR Cotton IPM',
+    scientific_basis: 'Cotton whitefly (Bemisia tabaci) causes leaf curl virus transmission. ETL: 5-10 adults/leaf.',
+    trigger_keywords: ['whitefly', 'पांढरी माशी', 'सफेद मक्खी', 'bemisia', 'leaf curl'],
+    response_mr: '🪰 पांढरी माशी! 5-10 प्रति पान असल्यास पायरीप्रॉक्सीफेन फवारा.',
+    response_hi: '🪰 सफेद मक्खी! 5-10 प्रति पत्ता होने पर पायरीप्रॉक्सीफेन स्प्रे करें।',
+    response_en: '🪰 Whitefly! Spray Pyriproxyfen if 5-10 adults/leaf.',
+    alternatives: ['Pyriproxyfen 10% EC @ 1ml/L', 'Spiromesifen 22.9% SC @ 0.5ml/L'],
+    action_type: 'RECOMMEND'
+  },
+  
+  // SOYBEAN RULES
+  {
+    rule_id: 'CROP_SOYBEAN_RUST',
+    category: 'disease',
+    crop_code: 'soybean',
+    priority: 'P3_CROP_STAGE',
+    cause: 'SOYBEAN_RUST_RISK',
+    scientific_source: 'ICAR-IISR Soybean Package',
+    scientific_basis: 'Asian soybean rust (Phakopsora pachyrhizi) spreads rapidly in humid conditions.',
+    trigger_keywords: ['soybean rust', 'सोयाबीन गंज', 'सोयाबीन का गेरुआ', 'phakopsora', 'soya rust'],
+    response_mr: '🫘 सोयाबीनवर गंज! प्रोपिकोनाझोल + ट्रायफ्लॉक्सिस्ट्रोबिन फवारा.',
+    response_hi: '🫘 सोयाबीन पर गेरुआ! प्रोपिकोनाज़ोल + ट्राइफ्लोक्सीस्ट्रोबिन स्प्रे करें।',
+    response_en: '🫘 Soybean rust! Spray Propiconazole + Trifloxystrobin.',
+    alternatives: ['Propiconazole 25% EC @ 1ml/L', 'Trifloxystrobin + Tebuconazole @ 0.75g/L'],
+    action_type: 'RECOMMEND'
+  },
+  {
+    rule_id: 'CROP_SOYBEAN_GIRDLE_BEETLE',
+    category: 'pest',
+    crop_code: 'soybean',
+    priority: 'P3_CROP_STAGE',
+    cause: 'GIRDLE_BEETLE_INFESTATION',
+    scientific_source: 'ICAR-IISR Soybean IPM',
+    scientific_basis: 'Girdle beetle (Oberea brevis) girdles stems causing major yield loss.',
+    trigger_keywords: ['girdle beetle', 'खोडकिड', 'गर्डल बीटल', 'oberea', 'stem borer'],
+    response_mr: '🪲 खोडकिड! ट्रायझोफॉस फवारा. प्रभावित भाग काढून टाका.',
+    response_hi: '🪲 गर्डल बीटल! ट्राइज़ोफॉस स्प्रे करें। प्रभावित भाग निकालें।',
+    response_en: '🪲 Girdle beetle! Spray Triazophos. Remove affected parts.',
+    alternatives: ['Triazophos 40% EC @ 1.5ml/L', 'Profenofos 50% EC @ 2ml/L'],
+    action_type: 'RECOMMEND'
+  },
+  
+  // SUGARCANE RULES
+  {
+    rule_id: 'CROP_SUGARCANE_BORER',
+    category: 'pest',
+    crop_code: 'sugarcane',
+    priority: 'P3_CROP_STAGE',
+    cause: 'TOP_BORER_INFESTATION',
+    scientific_source: 'ICAR-SBI Sugarcane Package',
+    scientific_basis: 'Top borer (Scirpophaga excerptalis) causes dead heart. ETL: 5% dead hearts.',
+    trigger_keywords: ['top borer', 'ऊसातील अळी', 'गन्ने का टॉप बोरर', 'dead heart', 'scirpophaga'],
+    response_mr: '🪱 ऊसातील अळी! 5% मृत टोके असल्यास कार्बोफ्युरॉन ग्रॅन्युल्स द्या.',
+    response_hi: '🪱 गन्ने में टॉप बोरर! 5% मृत शीर्ष होने पर कार्बोफ्यूरॉन ग्रेन्यूल्स दें।',
+    response_en: '🪱 Sugarcane top borer! Apply Carbofuran granules if 5% dead hearts.',
+    alternatives: ['Carbofuran 3G @ 20kg/ha', 'Chlorantraniliprole 0.4G @ 10kg/ha'],
+    action_type: 'RECOMMEND'
+  },
+  {
+    rule_id: 'CROP_SUGARCANE_REDROT',
+    category: 'disease',
+    crop_code: 'sugarcane',
+    priority: 'P3_CROP_STAGE',
+    cause: 'RED_ROT_RISK',
+    scientific_source: 'ICAR-SBI Disease Management',
+    scientific_basis: 'Red rot (Colletotrichum falcatum) spreads through infected setts and soil.',
+    trigger_keywords: ['red rot', 'लाल कुज', 'लाल सड़न', 'colletotrichum', 'sugarcane disease', 'ऊस रोग'],
+    response_mr: '🔴 ऊसात लाल कुज! रोगग्रस्त ऊस काढून जाळा. निरोगी बियाणे वापरा.',
+    response_hi: '🔴 गन्ने में लाल सड़न! रोगग्रस्त गन्ने निकालकर जलाएं। स्वस्थ बीज उपयोग करें।',
+    response_en: '🔴 Sugarcane red rot! Remove and burn infected canes. Use healthy setts.',
+    action_type: 'RECOMMEND'
+  },
+  
+  // TOMATO RULES
+  {
+    rule_id: 'CROP_TOMATO_LATE_BLIGHT',
+    category: 'disease',
+    crop_code: 'tomato',
+    priority: 'P3_CROP_STAGE',
+    cause: 'LATE_BLIGHT_RISK',
+    scientific_source: 'ICAR-IIHR Vegetable IPM',
+    scientific_basis: 'Late blight (Phytophthora infestans) spreads rapidly in cool humid weather.',
+    trigger_keywords: ['late blight', 'टोमॅटो करपा', 'टमाटर का झुलसा', 'phytophthora', 'tomato disease'],
+    response_mr: '🍅 टोमॅटोवर करपा! मेटालॅक्सिल + मॅन्कोझेब फवारा.',
+    response_hi: '🍅 टमाटर पर झुलसा! मेटालैक्सिल + मैंकोज़ेब स्प्रे करें।',
+    response_en: '🍅 Tomato late blight! Spray Metalaxyl + Mancozeb.',
+    alternatives: ['Metalaxyl 8% + Mancozeb 64% WP @ 2.5g/L', 'Cymoxanil 8% + Mancozeb 64% WP @ 2g/L'],
+    action_type: 'RECOMMEND'
+  },
+  {
+    rule_id: 'CROP_TOMATO_FRUIT_BORER',
+    category: 'pest',
+    crop_code: 'tomato',
+    priority: 'P4_ECONOMIC',
+    cause: 'TOMATO_FRUIT_BORER',
+    scientific_source: 'ICAR-IIHR Vegetable IPM',
+    scientific_basis: 'Tomato fruit borer (Helicoverpa armigera) damages fruits. ETL: 2 larvae/plant.',
+    trigger_keywords: ['tomato borer', 'टोमॅटो अळी', 'टमाटर की इल्ली', 'fruit borer', 'helicoverpa'],
+    response_mr: '🐛 टोमॅटोवर अळी! स्पिनोसॅड किंवा बॅसिलस थुरिंजिएंसिस फवारा.',
+    response_hi: '🐛 टमाटर पर इल्ली! स्पिनोसैड या बैसिलस थुरिंजिएंसिस स्प्रे करें।',
+    response_en: '🐛 Tomato fruit borer! Spray Spinosad or Bacillus thuringiensis.',
+    alternatives: ['Spinosad 45% SC @ 0.3ml/L', 'Bt @ 1g/L'],
+    action_type: 'RECOMMEND'
+  },
+  
+  // ONION RULES
+  {
+    rule_id: 'CROP_ONION_THRIPS',
+    category: 'pest',
+    crop_code: 'onion',
+    priority: 'P3_CROP_STAGE',
+    cause: 'THRIPS_INFESTATION',
+    scientific_source: 'ICAR-DOGR Onion IPM',
+    scientific_basis: 'Onion thrips (Thrips tabaci) cause silvery patches. ETL: 25-30 thrips/plant.',
+    trigger_keywords: ['onion thrips', 'कांदा तुडतुडे', 'प्याज थ्रिप्स', 'thrips', 'silvery leaves'],
+    response_mr: '🧅 कांद्यावर तुडतुडे! फिप्रोनिल किंवा स्पिनोसॅड फवारा.',
+    response_hi: '🧅 प्याज पर थ्रिप्स! फिप्रोनिल या स्पिनोसैड स्प्रे करें।',
+    response_en: '🧅 Onion thrips! Spray Fipronil or Spinosad.',
+    alternatives: ['Fipronil 5% SC @ 2ml/L', 'Spinosad 45% SC @ 0.3ml/L'],
+    action_type: 'RECOMMEND'
+  },
+  {
+    rule_id: 'CROP_ONION_PURPLE_BLOTCH',
+    category: 'disease',
+    crop_code: 'onion',
+    priority: 'P3_CROP_STAGE',
+    cause: 'PURPLE_BLOTCH_RISK',
+    scientific_source: 'ICAR-DOGR Disease Management',
+    scientific_basis: 'Purple blotch (Alternaria porri) causes purple lesions on leaves.',
+    trigger_keywords: ['purple blotch', 'जांभळा डाग', 'बैंगनी धब्बा', 'alternaria', 'onion disease'],
+    response_mr: '🟣 कांद्यावर जांभळा डाग! मॅन्कोझेब + कार्बेन्डाझिम फवारा.',
+    response_hi: '🟣 प्याज पर बैंगनी धब्बा! मैंकोज़ेब + कार्बेन्डाज़िम स्प्रे करें।',
+    response_en: '🟣 Onion purple blotch! Spray Mancozeb + Carbendazim.',
+    alternatives: ['Mancozeb 75% WP @ 2.5g/L', 'Carbendazim 50% WP @ 1g/L'],
+    action_type: 'RECOMMEND'
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GENERAL FALLBACK RULES - For common agricultural questions
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    rule_id: 'GENERAL_PEST_ADVICE',
+    category: 'pest',
+    crop_code: 'all',
+    priority: 'P5_IPM',
+    cause: 'GENERAL_PEST_MANAGEMENT',
+    scientific_source: 'ICAR IPM Guidelines',
+    scientific_basis: 'Integrated Pest Management follows cultural, biological, and chemical control in sequence.',
+    trigger_keywords: ['pest', 'insect', 'कीड', 'कीट', 'bug', 'किड्या', 'कीड़ा', 'attack', 'infestation'],
+    response_mr: '🔍 कीड समस्या? प्रथम ओळख करा, नंतर IPM पद्धती वापरा. गंभीर असल्यास रासायनिक नियंत्रण.',
+    response_hi: '🔍 कीट समस्या? पहले पहचान करें, फिर IPM विधि अपनाएं। गंभीर होने पर रासायनिक नियंत्रण।',
+    response_en: '🔍 Pest problem? First identify the pest, then follow IPM approach. Chemical control if severe.',
+    action_type: 'RECOMMEND'
+  },
+  {
+    rule_id: 'GENERAL_DISEASE_ADVICE',
+    category: 'disease',
+    crop_code: 'all',
+    priority: 'P5_IPM',
+    cause: 'GENERAL_DISEASE_MANAGEMENT',
+    scientific_source: 'ICAR Disease Management Guidelines',
+    scientific_basis: 'Early detection and preventive measures are key to disease management.',
+    trigger_keywords: ['disease', 'रोग', 'बीमारी', 'fungus', 'बुरशी', 'फफूंद', 'rot', 'wilt', 'blight', 'spot'],
+    response_mr: '🔬 रोग समस्या? लक्षणे ओळखा. निरोगी बियाणे वापरा. आवश्यक असल्यास बुरशीनाशक फवारा.',
+    response_hi: '🔬 रोग समस्या? लक्षण पहचानें। स्वस्थ बीज उपयोग करें। आवश्यक होने पर फफूंदनाशक स्प्रे करें।',
+    response_en: '🔬 Disease problem? Identify symptoms. Use healthy seeds. Spray fungicide if needed.',
+    action_type: 'RECOMMEND'
+  },
+  {
+    rule_id: 'GENERAL_NUTRIENT_ADVICE',
+    category: 'nutrient',
+    crop_code: 'all',
+    priority: 'P5_IPM',
+    cause: 'GENERAL_NUTRIENT_MANAGEMENT',
+    scientific_source: 'ICAR Soil and Nutrient Management',
+    scientific_basis: 'Balanced nutrition based on soil test ensures optimal crop growth.',
+    trigger_keywords: ['fertilizer', 'खत', 'खाद', 'nutrient', 'npk', 'urea', 'dap', 'पोषण', 'yellow leaves', 'पिवळी पाने'],
+    response_mr: '🌱 खत व्यवस्थापन? माती परीक्षण करा. शिफारशीनुसार NPK द्या.',
+    response_hi: '🌱 खाद प्रबंधन? मृदा परीक्षण करें। सिफारिश के अनुसार NPK दें।',
+    response_en: '🌱 Nutrient management? Get soil tested. Apply NPK as per recommendation.',
+    action_type: 'RECOMMEND'
+  },
+  {
+    rule_id: 'GENERAL_WATER_ADVICE',
+    category: 'water',
+    crop_code: 'all',
+    priority: 'P5_IPM',
+    cause: 'GENERAL_WATER_MANAGEMENT',
+    scientific_source: 'ICAR Irrigation Management',
+    scientific_basis: 'Irrigation scheduling based on crop stage and soil moisture is critical.',
+    trigger_keywords: ['water', 'irrigation', 'पाणी', 'सिंचाई', 'dry', 'सुकणे', 'सूखना', 'wilting', 'मुरझाना'],
+    response_mr: '💧 पाणी व्यवस्थापन? पिकाच्या अवस्थेनुसार सिंचन करा. अति पाणी टाळा.',
+    response_hi: '💧 जल प्रबंधन? फसल की अवस्था के अनुसार सिंचाई करें। अधिक पानी से बचें।',
+    response_en: '💧 Water management? Irrigate based on crop stage. Avoid overwatering.',
+    action_type: 'RECOMMEND'
+  },
+  {
+    rule_id: 'GENERAL_WEED_ADVICE',
+    category: 'weed',
+    crop_code: 'all',
+    priority: 'P5_IPM',
+    cause: 'GENERAL_WEED_MANAGEMENT',
+    scientific_source: 'ICAR Weed Management Guidelines',
+    scientific_basis: 'Critical weed competition period varies by crop. Early weeding essential.',
+    trigger_keywords: ['weed', 'तण', 'खरपतवार', 'grass', 'गवत', 'घास', 'weeding', 'herbicide'],
+    response_mr: '🌿 तण नियंत्रण? पहिल्या 30-45 दिवसात तण काढा. आवश्यक असल्यास तणनाशक वापरा.',
+    response_hi: '🌿 खरपतवार नियंत्रण? पहले 30-45 दिनों में निराई करें। आवश्यक होने पर शाकनाशी उपयोग करें।',
+    response_en: '🌿 Weed control? Weed within first 30-45 days. Use herbicide if needed.',
+    action_type: 'RECOMMEND'
+  }
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
