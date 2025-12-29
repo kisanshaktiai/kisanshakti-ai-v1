@@ -147,15 +147,17 @@ export class AIAgentOrchestrator {
       photoUrl?: string;
       language?: 'mr' | 'hi' | 'en';
       landId?: string;
+      traceId?: string;  // PHASE A: Accept trace_id for observability
     } = {}
   ): Promise<OrchestratorResponse> {
     
     const startTime = Date.now();
     const agentsUsed: string[] = [];
+    const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
     
-    console.log('🚀 Orchestrator: Starting full diagnostic flow...');
-    console.log(`   Session: ${sessionId}`);
-    console.log(`   Message: ${farmerMessage.substring(0, 50)}...`);
+    console.log(`\n🚀 [${traceId}] Orchestrator: Starting full diagnostic flow...`);
+    console.log(`   [${traceId}] Session: ${sessionId}`);
+    console.log(`   [${traceId}] Message: ${farmerMessage.substring(0, 50)}...`);
     
     try {
       // ========================================
@@ -353,15 +355,15 @@ export class AIAgentOrchestrator {
       }
       
       // ========================================
-      // PHASE 4: RULE ENGINE EXECUTION
+      // PHASE 4: RULE ENGINE EXECUTION WITH DECISION GRAPH BRIDGE
       // ========================================
-      console.log('\n⚙️ PHASE 4: Executing Rule Engine...');
+      console.log(`\n⚙️ [${traceId}] PHASE 4: Executing Rule Engine with Decision Graph Bridge...`);
       
       const ruleEngineInput = this.buildRuleEngineInput(
         fusedIntelligence,
         diagnosticState,
         contextState,
-        { farmerId, landId: options.landId }
+        { farmerId, landId: options.landId, traceId }  // PHASE A: Pass trace_id
       );
       
       const decisionOutput = await this.ruleEngine.execute(ruleEngineInput);
