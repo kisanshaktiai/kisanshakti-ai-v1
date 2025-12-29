@@ -54,30 +54,65 @@ export class RuleEngineExecutor {
    */
   async execute(input: RuleExecutionInput): Promise<DecisionOutput> {
     const startTime = Date.now();
-    console.log('🔧 Rule Engine Executor: Starting execution...');
+    console.log('═══════════════════════════════════════════════════════════════');
+    console.log('🔧 RULE ENGINE EXECUTOR: Starting execution...');
+    console.log('═══════════════════════════════════════════════════════════════');
     console.log(`   Session: ${input.session_id}`);
     console.log(`   Crop: ${input.farmer_context.crop_code}`);
     console.log(`   Pest/Disease: ${input.pest_disease_state.pest_code || input.pest_disease_state.disease_code || 'None specified'}`);
+    console.log(`   Severity: ${input.pest_disease_state.severity || 'UNKNOWN'}`);
+    console.log(`   Total rules in registry: ${getTotalRuleCount()}`);
+    
+    // Log rule count by category
+    const categoryStats = getRuleCountByCategory();
+    console.log('   📊 Rules by category:', JSON.stringify(categoryStats));
     
     try {
       // STEP 1: Load required rule modules
       const ruleModules = await this.loadRuleModules(input.rule_modules_required);
-      console.log(`   Loaded ${ruleModules.length} rule modules`);
+      console.log(`   ✅ Loaded ${ruleModules.length} rule modules`);
       
-      // STEP 2: Execute rules in priority order
+      // STEP 2: Execute rules in priority order with enhanced logging
+      console.log('\n📋 STEP 2: Executing rules in priority order...');
       const decisions = await this.executeRulesInPriorityOrder(ruleModules, input);
+      
+      // Enhanced logging for rule execution results
+      const totalRulesMatched = Object.values(decisions).reduce((sum, arr) => sum + arr.length, 0);
+      console.log(`\n   📊 RULE EXECUTION SUMMARY:`);
+      console.log(`   ├─ P0 Emergency rules matched: ${decisions.P0_emergency.length}`);
+      console.log(`   ├─ P1 Regulatory rules matched: ${decisions.P1_regulatory.length}`);
+      console.log(`   ├─ P2 Weather Safety rules matched: ${decisions.P2_weather_safety.length}`);
+      console.log(`   ├─ P3 Crop Stage rules matched: ${decisions.P3_crop_stage.length}`);
+      console.log(`   ├─ P4 Economic rules matched: ${decisions.P4_economic.length}`);
+      console.log(`   ├─ P5 IPM rules matched: ${decisions.P5_ipm.length}`);
+      console.log(`   └─ P6 Optimization rules matched: ${decisions.P6_optimization.length}`);
+      console.log(`   ════════════════════════════════════════`);
+      console.log(`   TOTAL RULES MATCHED: ${totalRulesMatched}`);
+      
+      // Log specific rule IDs that matched
+      if (totalRulesMatched > 0) {
+        console.log('\n   📋 Matched rule IDs:');
+        Object.entries(decisions).forEach(([priority, rules]) => {
+          if (rules.length > 0) {
+            console.log(`   ${priority}: ${rules.map(r => r.rule_id).join(', ')}`);
+          }
+        });
+      }
       
       // STEP 3: Check for blocking conditions
       const blockingDecision = this.checkForBlocks(decisions);
       if (blockingDecision) {
+        console.log(`   🛑 BLOCKED by rule: ${blockingDecision.rule_id}`);
         return this.formatBlockedDecision(blockingDecision, decisions, input, startTime);
       }
       
       // STEP 4: Resolve conflicts and select best action
+      console.log('\n⚖️ STEP 4: Resolving conflicts...');
       const resolvedDecision = resolveConflicts(decisions);
       
       // STEP 5: Handle weather delays
       if (resolvedDecision.status === 'WEATHER_DELAYED') {
+        console.log('   ⏰ Weather delay detected');
         return this.formatWeatherDelayedDecision(resolvedDecision, decisions, input, startTime);
       }
       
@@ -97,9 +132,12 @@ export class RuleEngineExecutor {
         startTime
       );
       
-      console.log('✅ Rule Engine Executor: Decision generated successfully');
+      console.log('\n═══════════════════════════════════════════════════════════════');
+      console.log('✅ RULE ENGINE EXECUTOR: Decision generated successfully');
+      console.log('═══════════════════════════════════════════════════════════════');
       console.log(`   Status: ${output.status}`);
       console.log(`   Action: ${output.primary_decision.action_type}`);
+      console.log(`   Rules Applied: ${output.rules_applied?.length || totalRulesMatched}`);
       console.log(`   Execution time: ${Date.now() - startTime}ms`);
       
       return output;

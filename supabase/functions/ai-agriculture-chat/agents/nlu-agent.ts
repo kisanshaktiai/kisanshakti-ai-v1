@@ -55,6 +55,61 @@ interface AIUnderstandingResult {
   extracted_context: string;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// RETRY UTILITY WITH EXPONENTIAL BACKOFF
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<Response> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      
+      // Handle rate limiting (429)
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After');
+        const delay = retryAfter ? parseInt(retryAfter) * 1000 : baseDelay * Math.pow(2, attempt);
+        console.warn(`⚠️ [NLU] Rate limited (429), retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
+        await sleep(delay);
+        continue;
+      }
+      
+      // Handle server errors with retry
+      if (response.status >= 500 && attempt < maxRetries) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        console.warn(`⚠️ [NLU] Server error (${response.status}), retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
+        await sleep(delay);
+        continue;
+      }
+      
+      return response;
+    } catch (error) {
+      lastError = error as Error;
+      if (attempt < maxRetries) {
+        const delay = baseDelay * Math.pow(2, attempt);
+        console.warn(`⚠️ [NLU] Network error, retrying in ${delay}ms (attempt ${attempt}/${maxRetries}):`, error);
+        await sleep(delay);
+      }
+    }
+  }
+  
+  throw lastError || new Error('Max retries exceeded');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AI-POWERED SEMANTIC UNDERSTANDING (Gemini/OpenAI) WITH RETRY
+// ═══════════════════════════════════════════════════════════════════════════
+
 async function callAIForUnderstanding(message: string): Promise<AIUnderstandingResult | null> {
   // Try Gemini API first, then OpenAI as fallback
   const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
@@ -88,78 +143,108 @@ DISEASE CODES: LEAF_CURL, POWDERY_MILDEW, DOWNY_MILDEW, WILT, ROOT_ROT, BACTERIA
 
 Be precise. Detect urgency from words like "dying", "emergency", "urgent".`;
 
+  let geminiError: string | null = null;
+  let openaiError: string | null = null;
+
   try {
-    // Try Gemini first
+    // Try Gemini first with retry logic
     if (GEMINI_API_KEY) {
       console.log('🔄 [NLU] Using Gemini API for understanding...');
-      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GEMINI_API_KEY, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: `${systemPrompt}\n\nAnalyze this farmer message: "${message}"`
-            }]
-          }],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 500
-          }
-        }),
-      });
+      try {
+        const response = await fetchWithRetry(
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GEMINI_API_KEY,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{
+                parts: [{
+                  text: `${systemPrompt}\n\nAnalyze this farmer message: "${message}"`
+                }]
+              }],
+              generationConfig: {
+                temperature: 0.1,
+                maxOutputTokens: 500
+              }
+            }),
+          },
+          3, // maxRetries
+          1000 // baseDelay
+        );
 
-      if (response.ok) {
-        const data = await response.json();
-        const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (content) {
-          let jsonStr = content.trim();
-          if (jsonStr.startsWith('```')) {
-            jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+        if (response.ok) {
+          const data = await response.json();
+          const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (content) {
+            let jsonStr = content.trim();
+            if (jsonStr.startsWith('```')) {
+              jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+            }
+            const result = JSON.parse(jsonStr) as AIUnderstandingResult;
+            console.log('✅ [NLU] Gemini understanding complete:', result.intent, result.intent_confidence);
+            return result;
           }
-          const result = JSON.parse(jsonStr) as AIUnderstandingResult;
-          console.log('✅ [NLU] Gemini understanding complete:', result.intent, result.intent_confidence);
-          return result;
+        } else {
+          geminiError = `Status ${response.status}`;
+          console.warn('⚠️ [NLU] Gemini API error after retries:', response.status);
         }
-      } else {
-        console.warn('⚠️ [NLU] Gemini API error:', response.status);
+      } catch (error) {
+        geminiError = String(error);
+        console.warn('⚠️ [NLU] Gemini API failed after retries:', error);
       }
     }
     
-    // Fallback to OpenAI
+    // Fallback to OpenAI with retry logic
     if (OPENAI_API_KEY) {
       console.log('🔄 [NLU] Falling back to OpenAI API...');
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${OPENAI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Analyze this farmer message: "${message}"` }
-          ],
-          max_tokens: 500,
-          temperature: 0.1
-        }),
-      });
+      try {
+        const response = await fetchWithRetry(
+          'https://api.openai.com/v1/chat/completions',
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${OPENAI_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `Analyze this farmer message: "${message}"` }
+              ],
+              max_tokens: 500,
+              temperature: 0.1
+            }),
+          },
+          3, // maxRetries
+          1000 // baseDelay
+        );
 
-      if (response.ok) {
-        const data = await response.json();
-        const content = data.choices?.[0]?.message?.content;
-        if (content) {
-          let jsonStr = content.trim();
-          if (jsonStr.startsWith('```')) {
-            jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+        if (response.ok) {
+          const data = await response.json();
+          const content = data.choices?.[0]?.message?.content;
+          if (content) {
+            let jsonStr = content.trim();
+            if (jsonStr.startsWith('```')) {
+              jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+            }
+            const result = JSON.parse(jsonStr) as AIUnderstandingResult;
+            console.log('✅ [NLU] OpenAI understanding complete:', result.intent, result.intent_confidence);
+            return result;
           }
-          const result = JSON.parse(jsonStr) as AIUnderstandingResult;
-          console.log('✅ [NLU] OpenAI understanding complete:', result.intent, result.intent_confidence);
-          return result;
+        } else {
+          openaiError = `Status ${response.status}`;
+          console.error('❌ [NLU] OpenAI API error after retries:', response.status);
         }
-      } else {
-        console.error('❌ [NLU] OpenAI API error:', response.status);
+      } catch (error) {
+        openaiError = String(error);
+        console.error('❌ [NLU] OpenAI API failed after retries:', error);
       }
+    }
+    
+    // Log combined errors if both failed
+    if (geminiError || openaiError) {
+      console.error('❌ [NLU] All AI APIs failed:', { geminiError, openaiError });
     }
     
     return null;

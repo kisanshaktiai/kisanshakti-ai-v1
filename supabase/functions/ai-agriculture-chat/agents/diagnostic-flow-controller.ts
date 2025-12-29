@@ -93,26 +93,69 @@ export class DiagnosticFlowController {
     this.session.nlu_output = nluOutput;
     this.session.status = 'GATHERING_CONTEXT';
     
+    console.log('🔍 [DiagnosticFlow] Processing NLU output:', {
+      intent: nluOutput.intent,
+      confidence: nluOutput.overall_confidence,
+      hasCrop: !!nluOutput.entities?.crop_code,
+      hasPestOrDisease: !!(nluOutput.entities?.pest_code || nluOutput.entities?.disease_code)
+    });
+    
     // Check for immediate safety concerns
     if (nluOutput.safety_alerts.emergency_detected) {
+      console.log('🚨 [DiagnosticFlow] Emergency detected!');
       return this.handleEmergency(nluOutput);
     }
     
     if (nluOutput.safety_alerts.banned_substance_mentioned) {
+      console.log('⛔ [DiagnosticFlow] Banned substance detected!');
       return this.handleBannedSubstance(nluOutput);
     }
     
-    // Check if clarification is needed before proceeding
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: Proceed to decision when we have sufficient context
+    // Skip clarification for high-confidence queries with essential entities
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    const hasEssentialEntities = !!(
+      nluOutput.entities?.crop_code &&
+      (nluOutput.entities?.pest_code || nluOutput.entities?.disease_code || nluOutput.entities?.symptom_codes?.length)
+    );
+    
+    const highConfidence = nluOutput.overall_confidence >= 0.6;
+    const canProceedDirectly = hasEssentialEntities && highConfidence;
+    
+    console.log('📊 [DiagnosticFlow] Decision check:', {
+      hasEssentialEntities,
+      highConfidence,
+      canProceedDirectly,
+      confidence: nluOutput.overall_confidence
+    });
+    
+    // If we have essential context, proceed directly to rule evaluation
+    if (canProceedDirectly) {
+      console.log('✅ [DiagnosticFlow] Sufficient context - proceeding to rule evaluation');
+      return await this.evaluateRules();
+    }
+    
+    // Only ask for clarification if we genuinely need it AND have high-priority questions
     if (nluOutput.clarification_needed && nluOutput.questions.length > 0) {
       const highPriorityQuestions = nluOutput.questions.filter(q => q.priority === 'HIGH');
       
-      if (highPriorityQuestions.length > 0) {
+      // Only block for critical missing info (not crop since we may have from context)
+      const criticalMissingQuestions = highPriorityQuestions.filter(q => 
+        !nluOutput.entities?.crop_code && q.question_id?.includes('CROP') ||
+        q.priority === 'CRITICAL'
+      );
+      
+      if (criticalMissingQuestions.length > 0 && !hasEssentialEntities) {
         this.session.status = 'AWAITING_CLARIFICATION';
-        this.session.pending_questions = highPriorityQuestions.map(q => q.question_id);
+        this.session.pending_questions = criticalMissingQuestions.map(q => q.question_id);
+        
+        console.log('❓ [DiagnosticFlow] Asking clarification:', criticalMissingQuestions.length, 'questions');
         
         return {
           action: 'ASK_CLARIFICATION',
-          questions: highPriorityQuestions,
+          questions: criticalMissingQuestions,
           message_mr: 'कृपया खालील माहिती द्या:',
           message_hi: 'कृपया निम्नलिखित जानकारी दें:',
           message_en: 'Please provide the following information:',
@@ -121,9 +164,11 @@ export class DiagnosticFlowController {
       }
     }
     
-    // Check if photo is needed
-    if (nluOutput.contextNeeded.photo_required) {
+    // Check if photo is needed - only if severity is high or unknown
+    if (nluOutput.contextNeeded.photo_required && !hasEssentialEntities) {
       this.session.status = 'AWAITING_PHOTO';
+      
+      console.log('📷 [DiagnosticFlow] Requesting photo');
       
       return {
         action: 'REQUEST_PHOTO',
@@ -136,6 +181,7 @@ export class DiagnosticFlowController {
     }
     
     // Proceed to rule evaluation
+    console.log('➡️ [DiagnosticFlow] Proceeding to rule evaluation');
     return await this.evaluateRules();
   }
   
