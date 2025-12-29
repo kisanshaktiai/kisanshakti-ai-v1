@@ -425,6 +425,34 @@ export class RuleEngineExecutor {
       }
     }
     
+    // SAFETY_006 FIX: Check neonicotinoid + flowering COMPOUND condition
+    // This rule was removed from keyword matching because it was triggering on "flowering" alone
+    const neonicotinoids = ['IMIDACLOPRID', 'THIAMETHOXAM', 'CLOTHIANIDIN', 'ACETAMIPRID'];
+    const isFloweringStage = input.farmer_context.crop_stage === 'FLOWERING' || 
+                             input.farmer_context.crop_stage === 'REPRODUCTIVE';
+    
+    // Check if any treatment mentions neonicotinoid AND crop is flowering
+    for (const treatment of previousTreatments) {
+      if (treatment.chemical_name && 
+          neonicotinoids.some(nc => treatment.chemical_name!.toUpperCase().includes(nc)) &&
+          isFloweringStage) {
+        results.push({
+          rule_id: 'SAFETY_006',
+          priority: 'P1_REGULATORY',
+          action: 'BLOCK',
+          cause: 'POLLINATOR_RISK_FLOWERING',
+          reason: '🐝 Do not use neonicotinoids during flowering. High risk to bees.',
+          reason_mr: '🐝 फुलोऱ्यावर नियोनिकोटिनॉइड वापरू नका. मधमाशांना धोका.',
+          reason_hi: '🐝 फूल आने पर नियोनिकोटिनॉइड का उपयोग न करें। मधुमक्खियों को खतरा।',
+          alternatives: ['Use Spinosad', 'Apply Bacillus thuringiensis', 'Spray early morning before 6 AM'],
+          confidence: 1.0,
+          scientific_source: 'EU Pollinator Protection Directive, ICAR-NBAIR',
+          scientific_basis: 'Neonicotinoids are highly toxic to bees. Application during flowering causes bee mortality.'
+        });
+        break; // Only add once
+      }
+    }
+    
     // Check organic certification
     if (input.farmer_context.certification === 'ORGANIC') {
       results.push({
