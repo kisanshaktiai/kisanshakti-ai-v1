@@ -67,19 +67,25 @@ interface ModernChatUIProps {
   isLoadingSuggestion?: boolean;
 }
 
-// Modern 2030-ready User bubble styling with glassmorphism
+// Modern 2030-ready User bubble styling with glassmorphism - Using semantic tokens
 const USER_BUBBLE_STYLES = {
+  // Using semantic color tokens from design system
   gradients: [
-    'from-primary via-primary/90 to-primary-hover',
-    'from-emerald-600 via-emerald-500 to-teal-500',
-    'from-blue-600 via-indigo-500 to-violet-500',
-    'from-orange-500 via-amber-500 to-yellow-500',
+    'from-primary via-primary/90 to-primary/80',
+    'from-success via-success/90 to-success/80',
+    'from-info via-info/90 to-info/80',
+    'from-warning via-warning/90 to-warning/80',
   ],
   glow: [
-    'shadow-[0_8px_32px_-8px_hsl(var(--primary)/0.4)]',
-    'shadow-[0_8px_32px_-8px_rgba(16,185,129,0.4)]',
-    'shadow-[0_8px_32px_-8px_rgba(99,102,241,0.4)]',
-    'shadow-[0_8px_32px_-8px_rgba(245,158,11,0.4)]',
+    'shadow-[0_8px_32px_-8px_hsl(var(--primary)/0.5)]',
+    'shadow-[0_8px_32px_-8px_hsl(var(--success)/0.5)]',
+    'shadow-[0_8px_32px_-8px_hsl(var(--info)/0.5)]',
+    'shadow-[0_8px_32px_-8px_hsl(var(--warning)/0.5)]',
+  ],
+  // Background overlays for glassmorphism
+  overlay: [
+    'bg-gradient-to-br from-white/20 via-white/10 to-transparent',
+    'bg-gradient-to-br from-white/25 via-white/15 to-transparent',
   ]
 };
 
@@ -260,32 +266,46 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
         isUser && "flex flex-col items-end"
       )}>
         <motion.div
-          whileHover={{ scale: 1.02, y: -2 }}
-          whileTap={{ scale: 0.98 }}
+          whileHover={{ scale: 1.01, y: -1 }}
+          whileTap={{ scale: 0.99 }}
           transition={{ type: "spring", stiffness: 400, damping: 25 }}
           className={cn(
-            "relative backdrop-blur-xl",
+            "relative",
             "transition-all duration-300",
             isUser
               ? cn(
-                  // Modern 2030 glassmorphism user bubble
-                  "rounded-[20px] rounded-tr-[6px]",
+                  // Modern 2030 glassmorphism user bubble with semantic tokens
+                  "rounded-2xl rounded-tr-md",
                   "bg-gradient-to-br", userGradient,
-                  "text-white",
-                  "border border-white/20",
+                  "text-primary-foreground",
+                  // Glassmorphism border with semantic tokens
+                  "border border-primary-foreground/20",
+                  // Backdrop blur for glass effect
+                  "backdrop-blur-md",
                   userGlow,
                   "px-4 py-3",
-                  // Inner glow effect
-                  "before:absolute before:inset-0 before:rounded-[20px] before:rounded-tr-[6px]",
-                  "before:bg-gradient-to-t before:from-white/0 before:via-white/10 before:to-white/20",
-                  "before:pointer-events-none"
+                  // Modern glass shine overlay
+                  "before:absolute before:inset-0 before:rounded-2xl before:rounded-tr-md",
+                  "before:bg-gradient-to-t before:from-transparent before:via-primary-foreground/5 before:to-primary-foreground/15",
+                  "before:pointer-events-none",
+                  // Subtle inner shadow for depth
+                  "after:absolute after:inset-0 after:rounded-2xl after:rounded-tr-md",
+                  "after:shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)]",
+                  "after:pointer-events-none"
                 )
-              : "bg-card/90 border border-border/40 rounded-[20px] rounded-tl-[6px] shadow-chat-ai p-0 overflow-hidden"
+              : cn(
+                  // AI message bubble with semantic tokens
+                  "bg-card/95 backdrop-blur-sm",
+                  "border border-border/50",
+                  "rounded-2xl rounded-tl-md",
+                  "shadow-lg shadow-foreground/5",
+                  "p-0 overflow-hidden"
+                )
           )}
         >
-          {/* User bubble inner highlight */}
+          {/* User bubble glass highlight band */}
           {isUser && (
-            <div className="absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-white/15 to-transparent rounded-t-[20px] pointer-events-none" />
+            <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-primary-foreground/20 via-primary-foreground/5 to-transparent rounded-t-2xl pointer-events-none" />
           )}
           
           {/* AI Shimmer Effect */}

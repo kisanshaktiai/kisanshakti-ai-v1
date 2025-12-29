@@ -326,9 +326,8 @@ function getResponseContent(response: OrchestratorResponse, language: string): s
   switch (response.type) {
     case 'DECISION_PROVIDED':
       const comm = response.communication;
-      return language === 'mr' ? (comm?.message_text?.mr || comm?.message_text?.en || '') :
-             language === 'hi' ? (comm?.message_text?.hi || comm?.message_text?.en || '') :
-             (comm?.message_text?.en || '');
+      // Fix: Use flattenCommunicationToText to extract from FarmerCommunication structure
+      return flattenCommunicationToText(comm, language);
     case 'CLARIFICATION_QUESTION':
       return language === 'mr' ? (response.question?.text_mr || '') :
              language === 'hi' ? (response.question?.text_hi || '') :
@@ -348,6 +347,126 @@ function getResponseContent(response: OrchestratorResponse, language: string): s
     default:
       return 'Response generated';
   }
+}
+
+/**
+ * CRITICAL FIX: Flatten FarmerCommunication structure to readable text
+ * Handles the main_message.sections structure properly
+ */
+function flattenCommunicationToText(comm: any, language: string): string {
+  if (!comm) return '';
+  
+  const lang = language as 'mr' | 'hi' | 'en';
+  const parts: string[] = [];
+  
+  // Helper to get text from TrilingualText object
+  const getText = (obj: any): string => {
+    if (!obj) return '';
+    if (typeof obj === 'string') return obj;
+    return obj[lang] || obj.en || obj.hi || obj.mr || '';
+  };
+  
+  // 1. Greeting
+  if (comm.main_message?.greeting) {
+    parts.push(comm.main_message.greeting);
+  }
+  
+  // 2. Empathy line
+  if (comm.main_message?.empathy_line) {
+    parts.push(comm.main_message.empathy_line);
+  }
+  
+  // 3. Immediate Action (Layer 1)
+  const immediate = comm.main_message?.sections?.immediate_action;
+  if (immediate) {
+    const emoji = immediate.emoji || '📌';
+    const heading = getText(immediate.heading);
+    const summary = getText(immediate.action_summary);
+    const urgency = getText(immediate.urgency_indicator?.text);
+    
+    if (heading || summary) {
+      parts.push(`\n${emoji} ${heading || 'What to do now:'}`);
+      if (summary) parts.push(summary);
+      if (urgency) parts.push(`⏰ ${urgency}`);
+    }
+  }
+  
+  // 4. Application Instructions (Layer 2) - Simplified
+  const howTo = comm.main_message?.sections?.how_to;
+  if (howTo) {
+    const heading = getText(howTo.heading);
+    if (heading) parts.push(`\n🔧 ${heading}`);
+    
+    // Materials
+    if (howTo.materials_needed?.items?.length > 0) {
+      parts.push('🛒 Materials:');
+      howTo.materials_needed.items.forEach((item: any) => {
+        const name = getText(item.name);
+        if (name) parts.push(`• ${name} - ${item.quantity || ''}`);
+      });
+    }
+    
+    // Mixing steps
+    if (howTo.mixing_instructions?.steps) {
+      const steps = howTo.mixing_instructions.steps[lang] || howTo.mixing_instructions.steps.en || [];
+      if (steps.length > 0) {
+        parts.push('🧪 Mixing:');
+        steps.forEach((step: string, i: number) => parts.push(`${i + 1}. ${step}`));
+      }
+    }
+    
+    // Timing
+    if (howTo.timing?.best_time) {
+      parts.push(`⏰ Best time: ${getText(howTo.timing.best_time)}`);
+    }
+  }
+  
+  // 5. Warnings (Layer 4)
+  const warnings = comm.main_message?.sections?.warnings;
+  if (warnings?.blocked_actions?.length > 0) {
+    parts.push('\n⚠️ Do NOT:');
+    warnings.blocked_actions.forEach((w: any) => {
+      const action = getText(w.action);
+      if (action) parts.push(`${w.icon || '❌'} ${action}`);
+    });
+  }
+  
+  // 6. Economics (Layer 5)
+  const econ = comm.main_message?.sections?.economics;
+  if (econ?.net_benefit) {
+    const roi = getText(econ.net_benefit.roi_message);
+    if (roi) parts.push(`\n💰 ${roi}`);
+  }
+  
+  // 7. Follow-up (Layer 6)
+  const followUp = comm.main_message?.sections?.follow_up;
+  if (followUp?.schedule?.length > 0) {
+    parts.push('\n📅 Follow-up:');
+    followUp.schedule.slice(0, 2).forEach((item: any) => {
+      const check = getText(item.check);
+      if (check) parts.push(`Day ${item.day}: ${check}`);
+    });
+  }
+  
+  // 8. Closing
+  if (comm.main_message?.closing) {
+    parts.push(`\n${comm.main_message.closing}`);
+  }
+  
+  // If we got meaningful content, return it
+  if (parts.length > 2) {
+    return parts.join('\n').trim();
+  }
+  
+  // Fallback: try other structures
+  if (comm.main_message_mr && lang === 'mr') return comm.main_message_mr;
+  if (comm.main_message_hi && lang === 'hi') return comm.main_message_hi;
+  if (comm.main_message_en || comm.main_message) return comm.main_message_en || comm.main_message || '';
+  
+  // Last resort: notification body
+  if (comm.notification?.body) return comm.notification.body;
+  
+  return '';
 }
 
 function detectLanguage(text: string, fallback: string): string {
@@ -515,7 +634,11 @@ function transformOrchestratorResponse(
 function getLocalizedMessage(comm: any, language: string): string {
   if (!comm) return '';
   
-  // Try to get language-specific message
+  // Use the same flattening logic for consistency
+  const flattened = flattenCommunicationToText(comm, language);
+  if (flattened) return flattened;
+  
+  // Legacy fallback: Try to get language-specific message
   if (language === 'mr' && comm.main_message_mr) return comm.main_message_mr;
   if (language === 'hi' && comm.main_message_hi) return comm.main_message_hi;
   if (language === 'en' && comm.main_message_en) return comm.main_message_en;
