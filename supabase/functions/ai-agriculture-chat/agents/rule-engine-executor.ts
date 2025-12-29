@@ -311,39 +311,51 @@ export class RuleEngineExecutor {
     const keywords: string[] = [];
     
     // Add pest/disease codes
-    if (input.pest_disease_state.pest_code) {
+    if (input.pest_disease_state.pest_code && input.pest_disease_state.pest_code !== 'UNKNOWN') {
       keywords.push(input.pest_disease_state.pest_code.toLowerCase());
     }
-    if (input.pest_disease_state.disease_code) {
+    if (input.pest_disease_state.disease_code && input.pest_disease_state.disease_code !== 'UNKNOWN') {
       keywords.push(input.pest_disease_state.disease_code.toLowerCase());
     }
     
-    // Add crop code
-    if (input.farmer_context.crop_code) {
+    // Add crop code - CRITICAL: filter out UNKNOWN
+    if (input.farmer_context.crop_code && input.farmer_context.crop_code !== 'UNKNOWN') {
       keywords.push(input.farmer_context.crop_code.toLowerCase());
+      // Also add common variations
+      if (input.farmer_context.crop_code.toUpperCase() === 'SUGARCANE') {
+        keywords.push('sugarcane', 'ऊस', 'गन्ना', 'cane');
+      } else if (input.farmer_context.crop_code.toUpperCase() === 'COTTON') {
+        keywords.push('cotton', 'कापूस', 'कपास', 'kapas');
+      } else if (input.farmer_context.crop_code.toUpperCase() === 'SOYBEAN') {
+        keywords.push('soybean', 'soya', 'सोयाबीन');
+      }
     }
     
     // Add severity
-    if (input.pest_disease_state.severity) {
+    if (input.pest_disease_state.severity && input.pest_disease_state.severity !== 'UNKNOWN') {
       keywords.push(input.pest_disease_state.severity.toLowerCase());
     }
     
     // Add weather conditions
     if (input.environmental_context.current_weather.rain_in_last_24h) {
-      keywords.push('rain');
+      keywords.push('rain', 'पाऊस', 'बारिश');
     }
     if (input.environmental_context.current_weather.temperature_c > 35) {
-      keywords.push('high temp', 'hot');
+      keywords.push('high temp', 'hot', 'गरम');
     }
     if (input.environmental_context.current_weather.wind_speed_kmh > 15) {
-      keywords.push('high wind', 'windy');
+      keywords.push('high wind', 'windy', 'वारा');
     }
     
     // Add crop stage
-    if (input.farmer_context.crop_stage) {
+    if (input.farmer_context.crop_stage && input.farmer_context.crop_stage !== 'UNKNOWN') {
       keywords.push(input.farmer_context.crop_stage.toLowerCase());
       if (input.farmer_context.crop_stage === 'FLOWERING') {
         keywords.push('flowering', 'फुलावर', 'फूल');
+      } else if (input.farmer_context.crop_stage === 'VEGETATIVE') {
+        keywords.push('vegetative', 'वाढ', 'बढ़वार');
+      } else if (input.farmer_context.crop_stage === 'MATURITY') {
+        keywords.push('maturity', 'पक्व', 'पका');
       }
     }
     
@@ -353,6 +365,9 @@ export class RuleEngineExecutor {
         keywords.push(treatment.chemical_name.toLowerCase());
       }
     }
+    
+    // CRITICAL FIX: Log all keywords being used for matching
+    console.log(`   🔍 [SymbolicRules] Keywords for ${ref.moduleFile}: [${keywords.join(', ')}]`);
     
     // Map module category to symbolic rule category
     const categoryMapping: Record<string, string> = {
@@ -373,6 +388,13 @@ export class RuleEngineExecutor {
     
     // Use the symbolic rules bridge to find matching rules
     const matchedRules = matchRulesByKeywords(keywords, targetCategory);
+    
+    // CRITICAL FIX: Log matching results
+    if (matchedRules.length > 0) {
+      console.log(`   ✅ [SymbolicRules] Matched ${matchedRules.length} rules in ${targetCategory}:`, 
+        matchedRules.slice(0, 3).map(r => r.rule_id).join(', ') + 
+        (matchedRules.length > 3 ? `... +${matchedRules.length - 3} more` : ''));
+    }
     
     // Convert to RuleResult format
     return matchedRules.map(rule => convertToRuleResult(rule, input));
