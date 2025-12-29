@@ -575,17 +575,33 @@ export class MultiModalFusionEngine {
   ): UnifiedContext {
     
     // Build crop context
+    // CRITICAL FIX: Check multiple sources for crop code with proper fallback chain
     const cropStageGap = gaps.gaps_filled.find(g => g.gap_type === 'CROP_STAGE');
     const cropCode = input.text_understanding.entities.crop_code || 
-                     input.historical_data?.crop_code || 
+                     input.historical_data?.crop_code ||
+                     input.historical_data?.current_crop ||  // Fallback to current_crop field
+                     (input as any).historical_data?.crop_name ||  // Some contexts use crop_name
                      'UNKNOWN';
+    
+    // Log for debugging
+    if (cropCode !== 'UNKNOWN') {
+      console.log(`   🌾 [Fusion] Crop identified: ${cropCode}`);
+    }
     
     const crop: UnifiedContext['crop'] = {
       code: cropCode,
-      stage: cropStageGap?.inferred_value?.stage || 'UNKNOWN',
-      days_after_sowing: cropStageGap?.inferred_value?.days_after_sowing || 0,
-      confidence: cropStageGap?.confidence || 0.50,
-      source: cropStageGap ? 'INFERRED' : 'UNKNOWN'
+      name: input.historical_data?.current_crop || cropCode,
+      stage: cropStageGap?.inferred_value?.stage || 
+             input.historical_data?.growth_stage || 
+             'UNKNOWN',
+      growth_stage: cropStageGap?.inferred_value?.stage || 
+                   input.historical_data?.growth_stage,
+      days_after_sowing: cropStageGap?.inferred_value?.days_after_sowing || 
+                         input.historical_data?.days_since_sowing ||
+                         0,
+      confidence: cropCode !== 'UNKNOWN' ? 0.85 : (cropStageGap?.confidence || 0.50),
+      source: cropCode !== 'UNKNOWN' ? 'INFERRED_FROM_LAND_CONTEXT' : 
+              (cropStageGap ? 'INFERRED' : 'UNKNOWN')
     };
     
     // Build problem context

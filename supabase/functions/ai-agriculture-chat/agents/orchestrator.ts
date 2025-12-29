@@ -164,15 +164,27 @@ export class AIAgentOrchestrator {
       // ========================================
       console.log('\n📥 PHASE 1: Processing Inputs...');
       
+      // CRITICAL FIX: Fetch land context BEFORE NLU to provide crop/stage context
+      let landContext: any = null;
+      if (options.landId) {
+        landContext = await this.fetchComprehensiveLandContext(options.landId, farmerId);
+        console.log('📍 [Orchestrator] Pre-fetched land context:', landContext ? 'SUCCESS' : 'EMPTY');
+        if (landContext?.current_crop) {
+          console.log('   📊 Land crop:', landContext.current_crop, '| Stage:', landContext.growth_stage || 'UNKNOWN');
+        }
+      }
+      
       // Agent 1: Process farmer's text message - with error boundary
+      // CRITICAL FIX: Now passes landContext to NLU for crop/stage inference
       let nluOutput: NLUOutput | null = null;
       try {
-        nluOutput = await this.processNLU(farmerMessage, sessionId, options.language);
+        nluOutput = await this.processNLU(farmerMessage, sessionId, options.language, landContext);
         agentsUsed.push('NLU');
         console.log('   ✅ NLU processed:', nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY');
+        console.log('   📊 NLU crop:', nluOutput?.crop_identification?.crop_code || 'UNKNOWN');
       } catch (nluError) {
         console.error('   ❌ NLU Agent failed, using fallback:', nluError);
-        nluOutput = this.createFallbackNLUOutput(farmerMessage, options.language);
+        nluOutput = this.createFallbackNLUOutput(farmerMessage, options.language, landContext);
         agentsUsed.push('NLU_FALLBACK');
       }
       
@@ -553,11 +565,13 @@ export class AIAgentOrchestrator {
   
   /**
    * Process NLU (now async for AI-powered understanding)
+   * CRITICAL FIX: Now accepts landContext to pre-populate crop/stage for rule matching
    */
   private async processNLU(
     message: string,
     sessionId: string,
-    language?: string
+    language?: string,
+    landContext?: any
   ): Promise<NLUOutput> {
     return await processNLUAgent({
       raw_input: message,
@@ -570,8 +584,45 @@ export class AIAgentOrchestrator {
         input_method: 'TEXT',
         timestamp: new Date().toISOString(),
         session_id: sessionId
-      }
+      },
+      // CRITICAL FIX: Pass land context to NLU for crop/stage inference
+      land_context: landContext ? {
+        crop_code: this.normalizeCropCode(landContext.current_crop),
+        crop_stage: landContext.growth_stage,
+        land_id: landContext.land_id,
+        days_after_sowing: landContext.days_since_sowing
+      } : undefined
     });
+  }
+  
+  /**
+   * Normalize crop name to crop code
+   */
+  private normalizeCropCode(cropName?: string): string | undefined {
+    if (!cropName) return undefined;
+    const cropNameUpper = cropName.toUpperCase();
+    const cropMap: Record<string, string> = {
+      'SUGARCANE': 'SUGARCANE',
+      'COTTON': 'COTTON',
+      'SOYBEAN': 'SOYBEAN',
+      'SOYA': 'SOYBEAN',
+      'RICE': 'RICE',
+      'PADDY': 'RICE',
+      'WHEAT': 'WHEAT',
+      'MAIZE': 'MAIZE',
+      'CORN': 'MAIZE',
+      'TOMATO': 'TOMATO',
+      'ONION': 'ONION',
+      'CHILLI': 'CHILLI',
+      'CHILI': 'CHILLI',
+      'GROUNDNUT': 'GROUNDNUT',
+      'PEANUT': 'GROUNDNUT',
+      'TUR': 'TUR',
+      'PIGEON PEA': 'TUR',
+      'GRAM': 'GRAM',
+      'CHICKPEA': 'GRAM'
+    };
+    return cropMap[cropNameUpper] || cropNameUpper;
   }
   
   /**
@@ -991,11 +1042,23 @@ export class AIAgentOrchestrator {
       rule_modules_required: diagnostic.rule_modules_required || [],
       
       farmer_context: {
-        crop_code: fused.unified_context?.crop?.code || context.crop_context?.code || 'UNKNOWN',
-        crop_variety: context.crop_context?.variety,
-        crop_stage: (fused.unified_context?.crop?.stage || context.crop_context?.stage || 'VEGETATIVE') as any,
-        days_after_sowing: fused.unified_context?.crop?.days_after_sowing || 45,
-        land_size_acres: context.land_context?.size_acres || 1,
+        // CRITICAL FIX: Use multiple fallback sources for crop_code
+        crop_code: fused.unified_context?.crop?.code || 
+                   context.crop_context?.code || 
+                   context.land_context?.current_crop || 
+                   (context as any).current_crop ||
+                   'UNKNOWN',
+        crop_variety: context.crop_context?.variety || context.land_context?.crop_variety,
+        crop_stage: (fused.unified_context?.crop?.stage || 
+                    context.crop_context?.stage || 
+                    context.land_context?.growth_stage || 
+                    'VEGETATIVE') as any,
+        days_after_sowing: fused.unified_context?.crop?.days_after_sowing || 
+                           context.land_context?.days_since_sowing || 
+                           45,
+        land_size_acres: context.land_context?.size_acres || 
+                         context.land_context?.area_acres || 
+                         1,
         farming_mode: 'CONVENTIONAL'
       },
       
@@ -1168,9 +1231,23 @@ export class AIAgentOrchestrator {
     const intent = (nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY') as NLUIntent;
     
     // Build extracted entities from NLU output + fused intelligence
+    // CRITICAL FIX: Prioritize fused intelligence crop code, then NLU, then use as-is
+    const cropCodeFromFusion = fused.unified_context?.crop?.code;
+    const cropCodeFromNLU = nluOutput.crop_identification?.crop_code;
+    const finalCropCode = (cropCodeFromFusion && cropCodeFromFusion !== 'UNKNOWN') ? cropCodeFromFusion :
+                          (cropCodeFromNLU && cropCodeFromNLU !== 'UNKNOWN') ? cropCodeFromNLU :
+                          fused.unified_context?.crop?.name || // Fallback to crop name
+                          fused.historical_data?.current_crop || // Fallback to historical
+                          undefined;
+    
+    if (finalCropCode) {
+      console.log(`   🌾 [RuleMapping] Using crop code: ${finalCropCode}`);
+    }
+    
     const entities: ExtractedEntities = {
-      crop_code: fused.unified_context?.crop?.name || nluOutput.crop_identification?.crop_code,
-      crop_stage: fused.unified_context?.crop?.growth_stage as any,
+      crop_code: finalCropCode,
+      crop_stage: fused.unified_context?.crop?.growth_stage as any || 
+                  fused.unified_context?.crop?.stage as any,
       pest_code: nluOutput.entities_extracted?.pest_mentioned?.canonical,
       disease_code: nluOutput.entities_extracted?.disease_mentioned?.canonical,
       affected_area_percent: fused.visual_analysis?.severity_quantification?.affected_area_percent || 20,
@@ -1236,9 +1313,24 @@ export class AIAgentOrchestrator {
   
   /**
    * Create fallback NLU output when NLU agent fails (Gap 6 fix)
+   * CRITICAL FIX: Now accepts landContext to populate crop info even when NLU fails
    */
-  private createFallbackNLUOutput(message: string, language?: 'mr' | 'hi' | 'en'): NLUOutput {
+  private createFallbackNLUOutput(
+    message: string, 
+    language?: 'mr' | 'hi' | 'en',
+    landContext?: any
+  ): NLUOutput {
     console.log('   📋 Creating fallback NLU output for message:', message.substring(0, 30));
+    
+    // CRITICAL FIX: Use land context crop when NLU fails
+    const cropCode = landContext?.current_crop ? 
+      this.normalizeCropCode(landContext.current_crop) : undefined;
+    const cropStage = landContext?.growth_stage || 'VEGETATIVE';
+    
+    if (cropCode) {
+      console.log('   📊 Fallback using land context crop:', cropCode);
+    }
+    
     return {
       language_analysis: {
         detected_language: language || 'mr',
@@ -1252,7 +1344,12 @@ export class AIAgentOrchestrator {
         urgency_level: 'MEDIUM',
         confidence: 0.3
       },
-      crop_identification: undefined,
+      crop_identification: cropCode ? {
+        crop_code: cropCode,
+        local_name: landContext?.current_crop,
+        identification_source: 'INFERRED_FROM_CONTEXT',
+        confidence: 0.8
+      } : undefined,
       entities_extracted: {
         pest_mentioned: undefined,
         disease_mentioned: undefined,
@@ -1272,14 +1369,14 @@ export class AIAgentOrchestrator {
         harvest_imminent: false
       },
       understanding_quality: {
-        overall_confidence: 0.3,
-        entity_coverage: 0.2,
-        needs_clarification: true,
+        overall_confidence: cropCode ? 0.6 : 0.3,
+        entity_coverage: cropCode ? 0.5 : 0.2,
+        needs_clarification: !cropCode,
         clarity_issues: ['NLU processing failed - using fallback']
       },
       clarification_strategy: {
-        needs_clarification: true,
-        questions_to_ask: [{
+        needs_clarification: !cropCode,
+        questions_to_ask: cropCode ? [] : [{
           question_text_mr: 'कृपया तुमची समस्या पुन्हा सांगा',
           question_text_hi: 'कृपया अपनी समस्या फिर से बताएं',
           question_text_en: 'Please describe your problem again'
