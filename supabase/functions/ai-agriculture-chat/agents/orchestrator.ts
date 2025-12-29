@@ -291,6 +291,10 @@ export class AIAgentOrchestrator {
       
       // Extract the first question with full details for clarification
       const firstQuestion = diagnosticResponse.questions?.[0];
+
+      // CRITICAL FIX: Ensure the Rule Engine always receives the resolved rule modules.
+      // The DiagnosticFlowController keeps requiredRuleModules on the NLU mapping object,
+      // and does not echo them back in the response.
       const diagnosticState = {
         mode: this.mapDiagnosticAction(diagnosticResponse.action),
         next_question: firstQuestion ? {
@@ -301,6 +305,7 @@ export class AIAgentOrchestrator {
           options: firstQuestion.options
         } : null,
         hypotheses: diagnosticResponse.evaluation_result ? [{ confidence: 0.7 }] : [],
+        rule_modules_required: nluWithRuleMapping.requiredRuleModules || [],
         session_state: diagnosticResponse.session_state
       };
       
