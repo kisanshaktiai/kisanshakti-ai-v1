@@ -1094,38 +1094,73 @@ function normalizePriority(priority: PriorityLevel | number): RulePriority {
 }
 
 /**
- * Match rules based on keywords in user message
+ * Match rules based on keywords - FIXED: Supports both array and string input
+ * Uses fuzzy/partial matching for better rule coverage
  */
 export function matchRulesByKeywords(
-  userMessage: string,
-  cropCode?: string,
+  keywordsOrMessage: string | string[],
+  categoryOrCropCode?: string,
   language: string = 'en'
 ): SymbolicRule[] {
-  const messageLower = userMessage.toLowerCase();
+  // Normalize input to array of keywords
+  let keywords: string[];
+  let targetCategory: string | undefined;
+  let cropCode: string | undefined;
+  
+  if (Array.isArray(keywordsOrMessage)) {
+    // New API: keywords array + category
+    keywords = keywordsOrMessage.map(k => k.toLowerCase());
+    targetCategory = categoryOrCropCode;
+  } else {
+    // Legacy API: message string + cropCode
+    keywords = keywordsOrMessage.toLowerCase().split(/\s+/);
+    cropCode = categoryOrCropCode;
+  }
+  
+  const priorityOrder: Record<PriorityLevel, number> = {
+    'P0_EMERGENCY': 0,
+    'P1_REGULATORY': 1,
+    'P2_WEATHER_SAFETY': 2,
+    'P3_CROP_STAGE': 3,
+    'P4_ECONOMIC': 4,
+    'P5_IPM': 5,
+    'P6_OPTIMIZATION': 6
+  };
   
   return SYMBOLIC_RULES_REGISTRY.filter(rule => {
-    // Check crop code match
+    // Filter by category if specified
+    if (targetCategory && rule.category !== targetCategory) {
+      return false;
+    }
+    
+    // Filter by crop code if specified
     if (cropCode && rule.crop_code !== 'all' && rule.crop_code !== cropCode) {
       return false;
     }
     
-    // Check keyword match
-    if (!rule.trigger_keywords) return false;
+    // CRITICAL FIX: Use partial/fuzzy keyword matching
+    // Match if ANY keyword matches (not requiring ALL keywords)
+    if (!rule.trigger_keywords || rule.trigger_keywords.length === 0) {
+      // For rules without keywords, match by category
+      return !!targetCategory;
+    }
     
-    return rule.trigger_keywords.some(keyword => 
-      messageLower.includes(keyword.toLowerCase())
-    );
+    // Check for partial matches in any keyword
+    for (const keyword of keywords) {
+      if (keyword.length < 2) continue; // Skip very short keywords
+      
+      for (const triggerKw of rule.trigger_keywords) {
+        const triggerLower = triggerKw.toLowerCase();
+        // Partial match: either keyword contains trigger or trigger contains keyword
+        if (triggerLower.includes(keyword) || keyword.includes(triggerLower)) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
   }).sort((a, b) => {
     // Sort by priority (P0 first)
-    const priorityOrder: Record<PriorityLevel, number> = {
-      'P0_EMERGENCY': 0,
-      'P1_REGULATORY': 1,
-      'P2_WEATHER_SAFETY': 2,
-      'P3_CROP_STAGE': 3,
-      'P4_ECONOMIC': 4,
-      'P5_IPM': 5,
-      'P6_OPTIMIZATION': 6
-    };
     const aPriority = typeof a.priority === 'string' ? priorityOrder[a.priority] : a.priority;
     const bPriority = typeof b.priority === 'string' ? priorityOrder[b.priority] : b.priority;
     return aPriority - bPriority;
@@ -1134,11 +1169,17 @@ export function matchRulesByKeywords(
 
 /**
  * Convert SymbolicRule to RuleResult for rule engine
+ * FIXED: Accepts RuleExecutionInput for proper context extraction
  */
 export function convertToRuleResult(
   rule: SymbolicRule,
-  language: string = 'en'
+  inputOrLanguage: any
 ): RuleResult {
+  // Handle both legacy (language string) and new (input object) APIs
+  const language = typeof inputOrLanguage === 'string' 
+    ? inputOrLanguage 
+    : (inputOrLanguage?.language || 'en');
+  
   const getResponse = () => {
     switch (language) {
       case 'mr': return rule.response_mr || rule.response_en || rule.scientific_basis;
