@@ -43,6 +43,14 @@ export * from './diagnostic-flow-controller.ts';
 export { DiagnosticFlowController } from './diagnostic-flow-controller.ts';
 export { resolveRuleModules, buildNLUOutputWithRuleMapping } from './rule-module-resolver.ts';
 
+// Decision Graph Bridge (Connects symbolic rules to agent execution)
+export * from './decision-graph-bridge.ts';
+export { evaluateDecisionGraph } from './decision-graph-bridge.ts';
+
+// Type Mappers (Enum conversions and trace ID generation)
+export * from './type-mappers.ts';
+export { generateTraceId, mapPriorityToAgent, mapAgentPriorityToGraph } from './type-mappers.ts';
+
 // Agent 3: Rule Engine Executor & Decision Synthesizer
 export * from './rule-engine-types.ts';
 export * from './economic-calculator.ts';

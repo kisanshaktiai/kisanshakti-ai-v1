@@ -137,11 +137,22 @@ OUTPUT FORMAT (JSON only, no markdown):
   "extracted_context": "brief summary of farmer's issue"
 }
 
-CROP CODES: COTTON, SOYBEAN, TOMATO, ONION, CHILLI, SUGARCANE, WHEAT, RICE, MAIZE, GROUNDNUT
-PEST CODES: WHITEFLY, APHID, BOLLWORM, MEALYBUG, THRIPS, JASSID, ARMYWORM, STEMBORER, FRUITBORER
-DISEASE CODES: LEAF_CURL, POWDERY_MILDEW, DOWNY_MILDEW, WILT, ROOT_ROT, BACTERIAL_BLIGHT, RUST, ANTHRACNOSE
+CROP CODES: COTTON, SOYBEAN, TOMATO, ONION, CHILLI, SUGARCANE, WHEAT, RICE, MAIZE, GROUNDNUT, TUR, GRAM
+PEST CODES: WHITEFLY, APHID, BOLLWORM, MEALYBUG, THRIPS, JASSID, ARMYWORM, STEMBORER, FRUITBORER, SHOOTBORER, ROOTBORER
+DISEASE CODES: LEAF_CURL, POWDERY_MILDEW, DOWNY_MILDEW, WILT, ROOT_ROT, BACTERIAL_BLIGHT, RUST, ANTHRACNOSE, RED_ROT, SMUT
 
-Be precise. Detect urgency from words like "dying", "emergency", "urgent".`;
+SYMPTOM-TO-PEST/DISEASE MAPPING (use these to infer pest/disease from symptoms):
+- "dead heart" / "मधली सुरळी वाळली" / "सुखी सुरळी" → SHOOTBORER (sugarcane)
+- "white powder on leaves" / "पांढरी भुकटी" → POWDERY_MILDEW
+- "yellowing leaves" + "wilting" → WILT or NUTRIENT_ISSUE
+- "holes in bolls" / "बोंडातील छिद्र" → BOLLWORM (cotton)
+- "curled leaves" / "पाने वळलेली" → LEAF_CURL
+- "tiny white flies" / "पांढऱ्या माशा" → WHITEFLY
+- "sticky honeydew" / "चिकट पाणी" → APHID or WHITEFLY
+- "red/rust spots" / "तांबडे डाग" → RUST
+
+Be precise. Detect urgency from words like "dying", "emergency", "urgent", "मरतंय", "वाचवा", "ताबडतोब".
+IMPORTANT: Always try to identify specific pest/disease even from vague symptom descriptions.`;
 
   let geminiError: string | null = null;
   let openaiError: string | null = null;
@@ -573,6 +584,62 @@ function buildClarificationStrategy(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PHASE E: SYMPTOM-TO-ENTITY INFERENCE (Pattern-based fallback)
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface SymptomInference {
+  pest?: { canonical: string; localTerm: string; confidence: number };
+  disease?: { canonical: string; localTerm: string; confidence: number };
+}
+
+function inferPestDiseaseFromSymptoms(text: string, symptoms: VisualSymptom[]): SymptomInference {
+  const result: SymptomInference = {};
+  const lowerText = text.toLowerCase();
+  
+  // Sugarcane shoot borer patterns
+  if (/dead\s*heart|मधली\s*सुरळी|सुखी\s*सुरळी|मरलेली\s*सुरळी|गाभा\s*सुकला/.test(text)) {
+    result.pest = { canonical: 'SHOOTBORER', localTerm: 'शूट बोरर', confidence: 0.85 };
+  }
+  
+  // Whitefly patterns
+  if (/पांढऱ्या?\s*माश[ाी]|सफेद\s*मक्खी|white\s*fl(y|ies)/.test(text)) {
+    result.pest = { canonical: 'WHITEFLY', localTerm: 'पांढरी माशी', confidence: 0.9 };
+  }
+  
+  // Bollworm patterns
+  if (/बोंड\s*(अळी|किडा)|बोंडातील|boll\s*worm|bolls?\s*damaged/.test(text)) {
+    result.pest = { canonical: 'BOLLWORM', localTerm: 'बोंड अळी', confidence: 0.85 };
+  }
+  
+  // Aphid patterns
+  if (/मावा|माव[ाे]|aphid|चिकट\s*पाणी|honeydew/.test(text)) {
+    result.pest = { canonical: 'APHID', localTerm: 'मावा', confidence: 0.85 };
+  }
+  
+  // Powdery mildew patterns
+  if (/पांढरी?\s*भुकटी|सफेद\s*पाउडर|powdery\s*mildew|white\s*powder/.test(text)) {
+    result.disease = { canonical: 'POWDERY_MILDEW', localTerm: 'भुरी', confidence: 0.85 };
+  }
+  
+  // Rust patterns
+  if (/तांबेरा|रस्ट|rust|तांबड[ेा]\s*डाग|orange\s*spots/.test(text)) {
+    result.disease = { canonical: 'RUST', localTerm: 'तांबेरा', confidence: 0.85 };
+  }
+  
+  // Wilt patterns
+  if (/विल्ट|wilt|मरगळ|सुकणे|wilting|drooping/.test(text)) {
+    result.disease = { canonical: 'WILT', localTerm: 'मरगळ', confidence: 0.8 };
+  }
+  
+  // Leaf curl patterns
+  if (/पाने?\s*(वळ|curl)|leaf\s*curl|curled\s*leaves/.test(text)) {
+    result.disease = { canonical: 'LEAF_CURL', localTerm: 'पाने वळणे', confidence: 0.8 };
+  }
+  
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MAIN NLU AGENT FUNCTION (AI-ENHANCED)
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -635,6 +702,18 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
       localTerm: aiResult.disease.name,
       confidence: 0.85
     });
+  }
+  
+  // PHASE E: Enhanced symptom-to-entity resolution
+  // If no pest/disease detected but symptoms suggest specific issues, infer them
+  if (!entityResult.pests.length && !entityResult.diseases.length) {
+    const symptomBasedInference = inferPestDiseaseFromSymptoms(input.raw_input, entityResult.symptoms);
+    if (symptomBasedInference.pest) {
+      entityResult.pests.push(symptomBasedInference.pest);
+    }
+    if (symptomBasedInference.disease) {
+      entityResult.diseases.push(symptomBasedInference.disease);
+    }
   }
   
   // Step 4: Urgency Assessment (use AI if available)

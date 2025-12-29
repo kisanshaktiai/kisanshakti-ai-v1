@@ -41,6 +41,8 @@ import {
   getTotalRuleCount,
   getRuleCountByCategory
 } from './symbolic-rules-bridge.ts';
+// PHASE C: Import Decision Graph Bridge for deterministic rule execution
+import { evaluateDecisionGraph, type RuleEvaluationContext } from './decision-graph-bridge.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // RULE ENGINE EXECUTOR CLASS
@@ -54,14 +56,87 @@ export class RuleEngineExecutor {
    */
   async execute(input: RuleExecutionInput): Promise<DecisionOutput> {
     const startTime = Date.now();
+    const traceId = (input as any).trace_id || `rule_${Date.now().toString(36)}`;
+    
     console.log('═══════════════════════════════════════════════════════════════');
-    console.log('🔧 RULE ENGINE EXECUTOR: Starting execution...');
+    console.log(`🔧 [${traceId}] RULE ENGINE EXECUTOR: Starting execution...`);
     console.log('═══════════════════════════════════════════════════════════════');
-    console.log(`   Session: ${input.session_id}`);
-    console.log(`   Crop: ${input.farmer_context.crop_code}`);
-    console.log(`   Pest/Disease: ${input.pest_disease_state.pest_code || input.pest_disease_state.disease_code || 'None specified'}`);
-    console.log(`   Severity: ${input.pest_disease_state.severity || 'UNKNOWN'}`);
-    console.log(`   Total rules in registry: ${getTotalRuleCount()}`);
+    console.log(`   [${traceId}] Session: ${input.session_id}`);
+    console.log(`   [${traceId}] Crop: ${input.farmer_context.crop_code}`);
+    console.log(`   [${traceId}] Pest/Disease: ${input.pest_disease_state.pest_code || input.pest_disease_state.disease_code || 'None specified'}`);
+    console.log(`   [${traceId}] Severity: ${input.pest_disease_state.severity || 'UNKNOWN'}`);
+    console.log(`   [${traceId}] Total rules in registry: ${getTotalRuleCount()}`);
+    
+    // PHASE C: Execute Decision Graph Bridge FIRST for deterministic rules
+    let bridgeResults: RuleResult[] = [];
+    try {
+      const bridgeContext: RuleEvaluationContext = {
+        crop_code: input.farmer_context.crop_code,
+        crop_stage: input.farmer_context.crop_stage,
+        farming_mode: input.farmer_context.certification === 'ORGANIC' ? 'ORGANIC' : 'CONVENTIONAL',
+        pest_code: input.pest_disease_state.pest_code,
+        disease_code: input.pest_disease_state.disease_code,
+        pest_density: input.pest_disease_state.infestation_density,
+        disease_severity: input.pest_disease_state.severity === 'CRITICAL' ? 80 :
+                          input.pest_disease_state.severity === 'HIGH' ? 60 :
+                          input.pest_disease_state.severity === 'MODERATE' ? 40 : 20,
+        infestation_level: input.pest_disease_state.infestation_level_percent || 0,
+        soil_ph: input.field_conditions?.soil_ph,
+        soil_moisture_percent: input.field_conditions?.soil_moisture_percent,
+        current_weather: input.environmental_context.current_weather,
+        weather_forecast_24h: input.environmental_context.weather_forecast_24h,
+        land_id: input.land_id,
+        farmer_id: input.farmer_id,
+        days_to_harvest: input.farmer_context.days_to_harvest,
+        previous_treatments: input.farmer_constraints?.previous_treatments,
+        metadata: { trace_id: traceId }
+      };
+      
+      console.log(`   [${traceId}] 🌿 Executing Decision Graph Bridge...`);
+      const bridgeEvaluation = await evaluateDecisionGraph(bridgeContext);
+      
+      // Convert bridge recommendations to RuleResult format
+      if (bridgeEvaluation.recommendations?.length > 0) {
+        bridgeResults = bridgeEvaluation.recommendations.map(rec => ({
+          rule_id: rec.rule_id,
+          priority: rec.priority as RulePriority,
+          action: bridgeEvaluation.blocked ? 'BLOCK' : 'RECOMMEND',
+          cause: rec.recommendation_type || 'INTEGRATED_RECOMMENDATION',
+          reason: rec.recommendation_text_en,
+          reason_mr: rec.recommendation_text_mr,
+          reason_hi: rec.recommendation_text_hi,
+          recommendation: rec.products?.[0] ? {
+            product_name: rec.products[0].product_name,
+            product_type: 'INTEGRATED' as any,
+            dosage: rec.products[0].dosage,
+            application_method: rec.products[0].application_method as any,
+            ipm_level: 3,
+            efficacy_percent: 80,
+            cost_per_acre_inr: parseInt(rec.cost_estimate?.replace(/[^0-9]/g, '') || '0') || 0
+          } : undefined,
+          confidence: 0.85
+        }));
+        console.log(`   [${traceId}] ✅ Decision Graph Bridge: ${bridgeResults.length} recommendations`);
+      }
+      
+      // Check for safety blocks from bridge
+      if (bridgeEvaluation.blocked && bridgeEvaluation.blockingRule) {
+        console.log(`   [${traceId}] 🛑 BLOCKED by Decision Graph: ${bridgeEvaluation.blockingRule.rule_id}`);
+        bridgeResults.unshift({
+          rule_id: bridgeEvaluation.blockingRule.rule_id,
+          priority: bridgeEvaluation.blockingRule.priority as RulePriority,
+          action: 'BLOCK',
+          cause: 'SAFETY_VIOLATION',
+          reason: bridgeEvaluation.blockingRule.reason_en,
+          reason_mr: bridgeEvaluation.blockingRule.reason_mr,
+          reason_hi: bridgeEvaluation.blockingRule.reason_hi,
+          alternatives: bridgeEvaluation.blockingRule.alternatives,
+          confidence: 1.0
+        });
+      }
+    } catch (bridgeError) {
+      console.warn(`   [${traceId}] ⚠️ Decision Graph Bridge error (continuing with symbolic rules):`, bridgeError);
+    }
     
     // Log rule count by category
     const categoryStats = getRuleCountByCategory();
@@ -70,11 +145,21 @@ export class RuleEngineExecutor {
     try {
       // STEP 1: Load required rule modules
       const ruleModules = await this.loadRuleModules(input.rule_modules_required);
-      console.log(`   ✅ Loaded ${ruleModules.length} rule modules`);
+      console.log(`   [${traceId}] ✅ Loaded ${ruleModules.length} rule modules`);
       
       // STEP 2: Execute rules in priority order with enhanced logging
-      console.log('\n📋 STEP 2: Executing rules in priority order...');
+      console.log(`\n📋 [${traceId}] STEP 2: Executing rules in priority order...`);
       const decisions = await this.executeRulesInPriorityOrder(ruleModules, input);
+      
+      // PHASE C: Merge Decision Graph Bridge results into decisions
+      if (bridgeResults.length > 0) {
+        console.log(`   [${traceId}] 🔀 Merging ${bridgeResults.length} Decision Graph results...`);
+        for (const result of bridgeResults) {
+          const bucketKey = this.getPriorityBucket(result.priority);
+          // Add to front to prioritize bridge results
+          decisions[bucketKey].unshift(result);
+        }
+      }
       
       // Enhanced logging for rule execution results
       const totalRulesMatched = Object.values(decisions).reduce((sum, arr) => sum + arr.length, 0);

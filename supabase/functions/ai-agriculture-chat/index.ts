@@ -32,6 +32,13 @@ function getOrchestrator(): AIAgentOrchestrator {
   return orchestrator;
 }
 
+// Generate unique trace_id for request tracing
+function generateTraceId(): string {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substring(2, 8);
+  return `trace_${timestamp}_${random}`;
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -39,6 +46,10 @@ serve(async (req) => {
   }
 
   const startTime = Date.now();
+  const traceId = generateTraceId();
+  
+  console.log(`\n🔍 [${traceId}] ═══════════════════════════════════════════════════`);
+  console.log(`🔍 [${traceId}] REQUEST START`);
 
   try {
     // Parse request body
@@ -222,7 +233,7 @@ serve(async (req) => {
     // Detect language from message
     const detectedLanguage = detectLanguage(userMessageContent, language);
 
-    console.log('🚀 [Orchestrator] Processing message:', {
+    console.log(`🚀 [${traceId}] Processing message:`, {
       sessionId: currentSessionId,
       farmerId: finalFarmerId,
       language: detectedLanguage,
@@ -231,7 +242,7 @@ serve(async (req) => {
     });
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // CALL ORCHESTRATOR - THE NEW 9-AGENT FLOW
+    // CALL ORCHESTRATOR - THE NEW 9-AGENT FLOW WITH TRACE_ID
     // ═══════════════════════════════════════════════════════════════════════════
     const orch = getOrchestrator();
     
@@ -243,7 +254,8 @@ serve(async (req) => {
       {
         photoUrl: imageUrl,
         language: detectedLanguage as 'mr' | 'hi' | 'en',
-        landId: landId
+        landId: landId,
+        traceId: traceId  // PHASE A: Pass trace_id for observability
       }
     );
 
@@ -295,7 +307,8 @@ serve(async (req) => {
           safety_status: orchestratorResponse.metadata?.safety_status,
           rules_applied: orchestratorResponse.metadata?.rules_applied,
           agents_used: orchestratorResponse.metadata?.agents_used,
-          decision_id: orchestratorResponse.decision_id
+          decision_id: orchestratorResponse.decision_id,
+          trace_id: traceId  // PHASE A: Include trace_id in stored metadata
         }
       });
       
@@ -354,13 +367,16 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('❌ [ai-agriculture-chat] Error:', error);
+    console.error(`❌ [${traceId}] ai-agriculture-chat Error:`, error);
     
+    // PHASE A: Include trace_id in error response for debugging
     return new Response(
       JSON.stringify({
         error: 'Internal server error',
         details: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        trace_id: traceId,
+        fallback_advice: 'कृपया पुन्हा प्रयत्न करा किंवा कृषी तज्ञांशी संपर्क साधा.'
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
