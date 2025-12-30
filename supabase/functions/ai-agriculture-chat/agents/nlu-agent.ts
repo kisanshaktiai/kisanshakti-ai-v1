@@ -328,9 +328,14 @@ const INTENT_PATTERNS: Record<PrimaryIntent, RegExp[]> = {
     /किडी|कीड़|माशी|मावा|इल्ली|अळी|pest|insect|bug|कीट/i,
     /किडी\s*(लाग|पड|आल|दिस)/i,
     /कीड़े?\s*(लग|दिख|आ)/i,
-    // CRITICAL: Sugarcane shoot borer / dead heart patterns
-    /मधली\s*सुरळी|सुखी\s*सुरळी|dead\s*heart|शूट\s*बोरर|गाभा\s*सुक/i,
-    /सुरळी\s*(वाळली|मरली|सुकली)/i
+    // CRITICAL: Sugarcane shoot borer / dead heart patterns (highest priority)
+    /मधली\s*सुरळी/i,
+    /सुरळी.*(वाळली|मरली|सुकली|वाळल|पूर्ण)/i,
+    /dead\s*heart|शूट\s*बोरर|गाभा\s*सुक/i,
+    /सुखी\s*सुरळी/i,
+    /ऊसाची.*सुरळी/i,
+    /डेड\s*हार्ट|deadheart/i,
+    /गाभा.*सुकला|सुक.*गाभा/i
   ],
   DISEASE_PROBLEM: [
     /रोग|बीमारी|disease|infection|बुरशी|फफूंद/i,
@@ -380,6 +385,10 @@ const INTENT_PATTERNS: Record<PrimaryIntent, RegExp[]> = {
 function classifyIntent(text: string, context?: NLUAgentInput['conversation_context']): IntentDetectionResult {
   const results: { intent: PrimaryIntent; confidence: number; patterns: string[] }[] = [];
   
+  // CRITICAL FIX: Pre-check for high-confidence pest/disease patterns that should override others
+  const isShootBorerPattern = /मधली\s*सुरळी|सुरळी.*(वाळली|मरली|सुकली|पूर्ण)|dead\s*heart|डेड\s*हार्ट|गाभा\s*सुक/i.test(text);
+  const isClearPestPattern = isShootBorerPattern || /बोअरर|किड.*पड|अळी.*लाग|pest\s+attack/i.test(text);
+  
   for (const [intent, patterns] of Object.entries(INTENT_PATTERNS)) {
     let matchCount = 0;
     const matchedPatterns: string[] = [];
@@ -392,15 +401,25 @@ function classifyIntent(text: string, context?: NLUAgentInput['conversation_cont
     }
     
     if (matchCount > 0) {
+      // CRITICAL FIX: Boost PEST_PROBLEM confidence when clear pest patterns detected
+      let confidence = Math.min(0.95, 0.5 + (matchCount * 0.15));
+      
+      if (intent === 'PEST_PROBLEM' && isClearPestPattern) {
+        confidence = Math.min(0.95, confidence + 0.2);
+        console.log(`🎯 [Intent] Boosted PEST_PROBLEM confidence for pattern: ${matchedPatterns[0]}`);
+      }
+      
       results.push({
         intent: intent as PrimaryIntent,
-        confidence: Math.min(0.95, 0.5 + (matchCount * 0.15)),
+        confidence,
         patterns: matchedPatterns
       });
     }
   }
   
   results.sort((a, b) => b.confidence - a.confidence);
+  
+  console.log(`📊 [Intent] Top results: ${results.slice(0, 2).map(r => `${r.intent}(${(r.confidence * 100).toFixed(0)}%)`).join(', ')}`);
   
   if (results.length === 0) {
     return {
@@ -445,16 +464,37 @@ function extractEntities(text: string): EntityExtractionResult {
   const diseases: { canonical: string; localTerm: string; confidence: number }[] = [];
   const symptoms: VisualSymptom[] = [];
   
-  const words = text.toLowerCase().split(/\s+/);
+  const lowerText = text.toLowerCase();
+  const words = lowerText.split(/\s+/);
   
+  // CRITICAL FIX: Check multi-word patterns FIRST before single word matching
+  // Sugarcane shoot borer patterns (multi-word, must be checked against full text)
+  if (/मधली\s*सुरळी|सुखी\s*सुरळी|dead\s*heart|deadheart|डेड\s*हार्ट/.test(text) ||
+      /सुरळी.*(वाळली|मरली|सुकली|पूर्ण)/.test(text) ||
+      /ऊसाची.*सुरळी/.test(text) ||
+      /गाभा\s*सुकला/.test(text)) {
+    pests.push({ canonical: 'SHOOT_BORER', localTerm: 'शूट बोरर / Dead Heart', confidence: 0.92 });
+    console.log('🎯 [EntityExtraction] Multi-word match: SHOOT_BORER');
+  }
+  
+  // Check multi-word pest terms from vocabulary against full text
+  for (const [term, code] of pestTerms.entries()) {
+    if (term.includes(' ') && lowerText.includes(term)) {
+      if (!pests.find(p => p.canonical === code)) {
+        pests.push({ canonical: code, localTerm: term, confidence: 0.88 });
+      }
+    }
+  }
+  
+  // Then check single words
   for (const word of words) {
-    if (cropTerms.has(word)) {
+    if (cropTerms.has(word) && !crops.find(c => c.canonical === cropTerms.get(word))) {
       crops.push({ canonical: cropTerms.get(word)!, localTerm: word, confidence: 0.9 });
     }
-    if (pestTerms.has(word)) {
+    if (pestTerms.has(word) && !pests.find(p => p.canonical === pestTerms.get(word))) {
       pests.push({ canonical: pestTerms.get(word)!, localTerm: word, confidence: 0.85 });
     }
-    if (diseaseTerms.has(word)) {
+    if (diseaseTerms.has(word) && !diseases.find(d => d.canonical === diseaseTerms.get(word))) {
       diseases.push({ canonical: diseaseTerms.get(word)!, localTerm: word, confidence: 0.85 });
     }
   }
@@ -599,9 +639,14 @@ function inferPestDiseaseFromSymptoms(text: string, symptoms: VisualSymptom[]): 
   const result: SymptomInference = {};
   const lowerText = text.toLowerCase();
   
-  // Sugarcane shoot borer patterns
-  if (/dead\s*heart|मधली\s*सुरळी|सुखी\s*सुरळी|मरलेली\s*सुरळी|गाभा\s*सुकला/.test(text)) {
-    result.pest = { canonical: 'SHOOTBORER', localTerm: 'शूट बोरर', confidence: 0.85 };
+  // CRITICAL: Sugarcane shoot borer patterns (MUST use SHOOT_BORER to match decision graph)
+  // Expanded patterns to catch more variations
+  if (/dead\s*heart|मधली\s*सुरळी|सुखी\s*सुरळी|मरलेली\s*सुरळी|गाभा\s*सुकला/.test(text) ||
+      /सुरळी.*(वाळली|मरली|सुकली|पूर्ण|वाळल)/.test(text) ||
+      /ऊसाची.*सुरळी/.test(text) ||
+      /डेड\s*हार्ट|deadheart/i.test(text)) {
+    result.pest = { canonical: 'SHOOT_BORER', localTerm: 'शूट बोरर / Dead Heart', confidence: 0.92 };
+    console.log('🎯 [NLU] Detected SHOOT_BORER from symptom pattern:', text.substring(0, 50));
   }
   
   // Whitefly patterns
@@ -713,6 +758,7 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
     const symptomBasedInference = inferPestDiseaseFromSymptoms(input.raw_input, entityResult.symptoms);
     if (symptomBasedInference.pest) {
       entityResult.pests.push(symptomBasedInference.pest);
+      console.log(`🎯 [NLU] Symptom inference added pest: ${symptomBasedInference.pest.canonical}`);
     }
     if (symptomBasedInference.disease) {
       entityResult.diseases.push(symptomBasedInference.disease);
