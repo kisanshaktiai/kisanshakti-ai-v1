@@ -251,20 +251,36 @@ export class AIAgentOrchestrator {
       
       // ========================================
       // PHASE 2: MULTI-MODAL FUSION - with error boundary
+      // CRITICAL FIX: Now includes FULL LAND CONTEXT (Context Contract)
       // ========================================
-      console.log('\n🔗 PHASE 2: Fusing Multi-Modal Data...');
+      console.log('\n🔗 PHASE 2: Fusing Multi-Modal Data with FULL Land Context...');
       
       let fusedIntelligence: FusedIntelligence;
       try {
+        // CONTEXT CONTRACT: Build comprehensive input for fusion engine
+        // Every modality MUST carry: crop, area, soil, NDVI data from landContext
+        
+        // Get crop code from landContext or NLU (prioritize landContext - ground truth)
+        const cropCodeFromContext = landContext?.current_crop ? 
+          this.normalizeCropCode(landContext.current_crop) : undefined;
+        const cropCodeFromNLU = nluOutput!.crop_identification?.crop_code;
+        const resolvedCropCode = cropCodeFromContext || cropCodeFromNLU;
+        
+        console.log(`   🌾 Context Contract: crop=${resolvedCropCode}, area=${landContext?.area_acres}ac`);
+        console.log(`   📊 Soil: N=${landContext?.soil_health?.nitrogen_kg_per_ha || 'N/A'}, NDVI=${landContext?.ndvi?.value || 'N/A'}`);
+        
         fusedIntelligence = await this.fusionEngine.fuse({
           session_id: sessionId,
           timestamp: new Date().toISOString(),
+          
+          // TEXT UNDERSTANDING with land context enrichment
           text_understanding: {
             farmer_message: farmerMessage,
             language: nluOutput!.language_analysis?.detected_language || 'en',
             intent: nluOutput!.intent_classification?.primary_intent || 'GENERAL_QUERY',
             entities: {
-              crop_code: nluOutput!.crop_identification?.crop_code,
+              // CONTEXT CONTRACT: Use landContext crop as ground truth
+              crop_code: resolvedCropCode,
               pest_code: nluOutput!.entities_extracted?.pest_mentioned?.canonical,
               disease_code: nluOutput!.entities_extracted?.disease_mentioned?.canonical,
               symptom_codes: nluOutput!.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || []
@@ -272,6 +288,8 @@ export class AIAgentOrchestrator {
             confidence: nluOutput!.understanding_quality?.overall_confidence || 0.5,
             ambiguities: nluOutput!.clarification_strategy?.questions_to_ask?.map((q: any) => q.question_text_en) || []
           },
+          
+          // VISUAL ANALYSIS with land context for comparison
           visual_analysis: visualOutput ? {
             image_id: options.photoUrl || '',
             quality_score: visualOutput.quality_assessment?.overall_quality || 0.7,
@@ -279,7 +297,10 @@ export class AIAgentOrchestrator {
               pests: visualOutput.detections?.pests,
               diseases: visualOutput.detections?.diseases,
               symptoms: visualOutput.detections?.symptoms,
-              beneficial_insects: visualOutput.detections?.beneficial_insects
+              beneficial_insects: visualOutput.detections?.beneficial_insects,
+              // CONTEXT CONTRACT: Include crop detected vs land context for validation
+              crop_identified: visualOutput.detections?.crop_identified || 
+                (resolvedCropCode ? { code: resolvedCropCode, confidence: 0.9 } : undefined)
             },
             severity_quantification: {
               pest_density: visualOutput.severity_quantification?.pest_density,
@@ -287,15 +308,66 @@ export class AIAgentOrchestrator {
               affected_area_percent: visualOutput.severity_quantification?.affected_area_percent
             }
           } : undefined,
+          
+          // SENSOR DATA from soil health (Context Contract)
+          sensor_data: landContext?.soil_health ? {
+            source: 'SOIL_TEST',
+            device_id: landContext.land_id,
+            readings: {
+              soil_moisture_percent: landContext.soil_health.soil_moisture_percent,
+              soil_ph: landContext.soil_health.ph,
+              soil_ec: landContext.soil_health.ec
+            },
+            last_updated: landContext.soil_health.tested_at || landContext.soil_health.test_date,
+            reliability: 'HIGH'
+          } : undefined,
+          
+          // WEATHER DATA
           weather_data: await this.fetchWeatherData(sessionId, options.landId),
-          historical_data: await this.fetchHistoricalData(farmerId, options.landId)
+          
+          // SATELLITE DATA with NDVI history (Context Contract)
+          satellite_data: landContext?.ndvi ? {
+            source: 'SENTINEL2',
+            ndvi: {
+              current: landContext.ndvi.value || landContext.ndvi.mean_ndvi || 0,
+              previous_week: landContext.ndvi_history?.[1]?.value || landContext.ndvi.value || 0,
+              previous_month: landContext.ndvi_history?.[landContext.ndvi_history.length - 1]?.value,
+              trend: landContext.ndvi.ndvi_trend || 'STABLE',
+              anomaly_detected: landContext.ndvi.trend_slope ? Math.abs(landContext.ndvi.trend_slope) > 0.05 : false
+            },
+            acquisition_date: landContext.ndvi.captured_at,
+            cloud_cover_percent: 100 - (landContext.ndvi.quality_score || 80)
+          } : undefined,
+          
+          // HISTORICAL DATA with full land context (Context Contract)
+          historical_data: {
+            sowing_date: landContext?.sowing_date || await this.fetchHistoricalData(farmerId, options.landId).then(h => h.sowing_date) || new Date().toISOString(),
+            crop_code: resolvedCropCode,
+            variety: landContext?.crop_variety,
+            current_crop: landContext?.current_crop,
+            region_code: landContext?.district,
+            area_acres: landContext?.area_acres,
+            growth_stage: landContext?.growth_stage,
+            days_since_sowing: landContext?.days_since_sowing,
+            previous_issues: [],
+            soil_test_results: landContext?.soil_health ? {
+              date: landContext.soil_health.test_date || landContext.soil_health.tested_at,
+              ph: landContext.soil_health.ph || 0,
+              organic_carbon_percent: landContext.soil_health.organic_carbon_percent || landContext.soil_health.organic_carbon || 0,
+              npk_levels: {
+                n: landContext.soil_health.nitrogen_kg_per_ha || landContext.soil_health.nitrogen || 0,
+                p: landContext.soil_health.phosphorus_kg_per_ha || landContext.soil_health.phosphorus || 0,
+                k: landContext.soil_health.potassium_kg_per_ha || landContext.soil_health.potassium || 0
+              }
+            } : undefined
+          }
         });
         agentsUsed.push('Fusion');
-        console.log('   ✅ Data fused, confidence:', 
+        console.log('   ✅ Data fused with Context Contract, confidence:', 
           (fusedIntelligence.fusion_summary.overall_confidence * 100).toFixed(1) + '%');
       } catch (fusionError) {
         console.error('   ❌ Fusion Engine failed, using fallback:', fusionError);
-        fusedIntelligence = this.createFallbackFusedIntelligence(sessionId, farmerMessage, nluOutput!);
+        fusedIntelligence = this.createFallbackFusedIntelligence(sessionId, farmerMessage, nluOutput!, landContext);
         agentsUsed.push('Fusion_FALLBACK');
       }
       
@@ -523,15 +595,18 @@ export class AIAgentOrchestrator {
       console.log('   ✅ Sections:', farmerCommunication.metadata?.sections_included?.join(', ') || 'all');
       
       // ========================================
-      // PHASE 7: SAVE & SCHEDULE FOLLOW-UPS
+      // PHASE 7: SAVE & SCHEDULE FOLLOW-UPS (NON-BLOCKING)
+      // CRITICAL FIX: Wrapped in try/catch to prevent blocking farmer response
       // ========================================
       console.log('\n💾 PHASE 7: Saving Decision & Scheduling Follow-ups...');
       
-      await this.saveDecisionFlow({
+      // NON-BLOCKING: Fire-and-forget with error logging
+      this.saveDecisionFlowNonBlocking({
         session_id: sessionId,
         farmer_id: farmerId,
         tenant_id: tenantId,
         land_id: options.landId,
+        trace_id: traceId,
         nlu_output: nluOutput,
         fused_intelligence: fusedIntelligence,
         diagnostic_state: diagnosticState,
@@ -540,7 +615,7 @@ export class AIAgentOrchestrator {
         farmer_communication: farmerCommunication
       });
       
-      console.log('   ✅ Decision saved');
+      console.log('   ✅ Decision save initiated (non-blocking)');
       
       // ========================================
       // PHASE 7B: FEEDBACK LEARNING INTEGRATION
@@ -753,49 +828,68 @@ export class AIAgentOrchestrator {
   }
   
   /**
-   * CRITICAL FIX: Fetch comprehensive land context including soil, NDVI, and crop schedule
+   * CRITICAL FIX: Fetch comprehensive land context including soil, NDVI history, and crop schedule
+   * Now includes NDVI full history for trend analysis and rule evaluation
    */
   private async fetchComprehensiveLandContext(landId: string, farmerId: string): Promise<any> {
     try {
-      // Fetch land details
-      const { data: land, error: landError } = await this.supabase
-        .from('lands')
-        .select('*')
-        .eq('id', landId)
-        .single();
+      // PARALLEL FETCHING: Fetch all data simultaneously for speed
+      const [landResult, soilResult, ndviLatestResult, ndviHistoryResult, cropScheduleResult] = await Promise.all([
+        // Fetch land details
+        this.supabase
+          .from('lands')
+          .select('*')
+          .eq('id', landId)
+          .single(),
+        
+        // Fetch latest soil health data
+        this.supabase
+          .from('soil_health')
+          .select('*')
+          .eq('land_id', landId)
+          .order('test_date', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        
+        // Fetch latest NDVI data
+        this.supabase
+          .from('ndvi_data')
+          .select('*')
+          .eq('land_id', landId)
+          .order('captured_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        
+        // CRITICAL FIX: Fetch NDVI HISTORY (last 30 days for trend analysis)
+        this.supabase
+          .from('ndvi_data')
+          .select('ndvi_value, mean_ndvi, captured_at, health_status, ndvi_trend, quality_score')
+          .eq('land_id', landId)
+          .gte('captured_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+          .order('captured_at', { ascending: false })
+          .limit(10),
+        
+        // Fetch active crop schedule
+        this.supabase
+          .from('crop_schedules')
+          .select('*')
+          .eq('land_id', landId)
+          .eq('is_active', true)
+          .order('sowing_date', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      ]);
+      
+      const { data: land, error: landError } = landResult;
+      const { data: soilHealth } = soilResult;
+      const { data: ndviData } = ndviLatestResult;
+      const { data: ndviHistory } = ndviHistoryResult;
+      const { data: cropSchedule } = cropScheduleResult;
       
       if (landError || !land) {
         console.warn('⚠️ [Orchestrator] Failed to fetch land:', landError);
         return null;
       }
-      
-      // Fetch latest soil health data
-      const { data: soilHealth } = await this.supabase
-        .from('soil_health')
-        .select('*')
-        .eq('land_id', landId)
-        .order('test_date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      // Fetch latest NDVI data
-      const { data: ndviData } = await this.supabase
-        .from('ndvi_data')
-        .select('*')
-        .eq('land_id', landId)
-        .order('captured_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      // Fetch active crop schedule
-      const { data: cropSchedule } = await this.supabase
-        .from('crop_schedules')
-        .select('*')
-        .eq('land_id', landId)
-        .eq('is_active', true)
-        .order('sowing_date', { ascending: false })
-        .limit(1)
-        .maybeSingle();
       
       // Calculate days since sowing if crop schedule exists
       let daysSinceSowing = null;
@@ -807,12 +901,16 @@ export class AIAgentOrchestrator {
         growthStage = this.calculateGrowthStage(daysSinceSowing, cropSchedule.crop_name);
       }
       
+      // CRITICAL FIX: Calculate NDVI trend from history
+      const ndviTrend = this.calculateNDVITrend(ndviHistory || []);
+      
       const context = {
         land_id: landId,
         land_name: land.name,
         area_acres: land.area_acres,
         soil_type: land.soil_type,
         irrigation_type: land.irrigation_type,
+        water_source: land.water_source,
         current_crop: cropSchedule?.crop_name || land.current_crop,
         crop_variety: cropSchedule?.variety || land.crop_variety,
         sowing_date: cropSchedule?.sowing_date,
@@ -821,25 +919,48 @@ export class AIAgentOrchestrator {
         expected_harvest_date: cropSchedule?.expected_harvest_date,
         district: land.district,
         state: land.state,
+        village: land.village,
         center_lat: land.center_lat,
         center_lon: land.center_lon,
         
-        // Soil health data
+        // Soil health data (FULL DATA for rule engine)
         soil_health: soilHealth ? {
           nitrogen: soilHealth.nitrogen,
+          nitrogen_kg_per_ha: soilHealth.nitrogen_kg_per_ha,
           phosphorus: soilHealth.phosphorus,
+          phosphorus_kg_per_ha: soilHealth.phosphorus_kg_per_ha,
           potassium: soilHealth.potassium,
+          potassium_kg_per_ha: soilHealth.potassium_kg_per_ha,
           ph: soilHealth.ph,
           organic_carbon: soilHealth.organic_carbon,
-          test_date: soilHealth.test_date
+          organic_carbon_percent: soilHealth.organic_carbon_percent,
+          soil_moisture_percent: soilHealth.soil_moisture_percent,
+          ec: soilHealth.ec,
+          test_date: soilHealth.test_date,
+          tested_at: soilHealth.tested_at || soilHealth.test_date
         } : null,
         
-        // NDVI data
+        // NDVI data with trend analysis (CRITICAL FOR DECISION BRAIN)
         ndvi: ndviData ? {
           value: ndviData.ndvi_value,
-          health_status: this.getNDVIHealthStatus(ndviData.ndvi_value),
+          mean_ndvi: ndviData.mean_ndvi,
+          min_ndvi: ndviData.min_ndvi,
+          max_ndvi: ndviData.max_ndvi,
+          health_status: ndviData.health_status || this.getNDVIHealthStatus(ndviData.ndvi_value),
+          ndvi_trend: ndviData.ndvi_trend || ndviTrend.direction,
+          trend_slope: ndviTrend.slope,
+          trend_description: ndviTrend.description,
+          quality_score: ndviData.quality_score,
+          confidence_level: ndviData.confidence_level,
           captured_at: ndviData.captured_at
         } : null,
+        
+        // NDVI HISTORY for multi-signal intelligence
+        ndvi_history: (ndviHistory || []).map((h: any) => ({
+          value: h.ndvi_value || h.mean_ndvi,
+          captured_at: h.captured_at,
+          health_status: h.health_status
+        })),
         
         // Crop schedule data
         crop_schedule: cropSchedule ? {
@@ -852,13 +973,18 @@ export class AIAgentOrchestrator {
         } : null
       };
       
-      console.log('📊 [Orchestrator] Land context built:', {
+      console.log('📊 [Orchestrator] COMPREHENSIVE Land context built:', {
         land_name: context.land_name,
         current_crop: context.current_crop,
+        area_acres: context.area_acres,
         days_since_sowing: context.days_since_sowing,
         growth_stage: context.growth_stage,
         has_soil_health: !!context.soil_health,
-        has_ndvi: !!context.ndvi
+        soil_npk: context.soil_health ? `N:${context.soil_health.nitrogen_kg_per_ha} P:${context.soil_health.phosphorus_kg_per_ha} K:${context.soil_health.potassium_kg_per_ha}` : 'N/A',
+        has_ndvi: !!context.ndvi,
+        ndvi_value: context.ndvi?.value,
+        ndvi_trend: context.ndvi?.ndvi_trend,
+        ndvi_history_count: context.ndvi_history?.length || 0
       });
       
       return context;
@@ -866,6 +992,60 @@ export class AIAgentOrchestrator {
       console.error('⚠️ [Orchestrator] Failed to fetch comprehensive land context:', error);
       return null;
     }
+  }
+  
+  /**
+   * Calculate NDVI trend from historical data
+   */
+  private calculateNDVITrend(history: Array<{ ndvi_value?: number; mean_ndvi?: number; captured_at: string }>): {
+    direction: 'IMPROVING' | 'STABLE' | 'DECLINING';
+    slope: number;
+    description: string;
+  } {
+    if (!history || history.length < 2) {
+      return { direction: 'STABLE', slope: 0, description: 'पुरेसा डेटा नाही' };
+    }
+    
+    // Get values (prefer ndvi_value, fallback to mean_ndvi)
+    const values = history
+      .map(h => h.ndvi_value ?? h.mean_ndvi)
+      .filter((v): v is number => v !== null && v !== undefined);
+    
+    if (values.length < 2) {
+      return { direction: 'STABLE', slope: 0, description: 'पुरेसा डेटा नाही' };
+    }
+    
+    // Calculate simple linear regression slope
+    const n = values.length;
+    const xMean = (n - 1) / 2;
+    const yMean = values.reduce((a, b) => a + b, 0) / n;
+    
+    let numerator = 0;
+    let denominator = 0;
+    
+    for (let i = 0; i < n; i++) {
+      numerator += (i - xMean) * (values[i] - yMean);
+      denominator += (i - xMean) * (i - xMean);
+    }
+    
+    const slope = denominator !== 0 ? numerator / denominator : 0;
+    
+    // Determine direction based on slope (inverted because newest is first)
+    let direction: 'IMPROVING' | 'STABLE' | 'DECLINING';
+    let description: string;
+    
+    if (slope < -0.02) {
+      direction = 'IMPROVING';  // Slope is negative because array is newest-first
+      description = 'पिकाची आरोग्य सुधारत आहे ✓';
+    } else if (slope > 0.02) {
+      direction = 'DECLINING';  // Slope is positive because array is newest-first
+      description = 'पिकाची आरोग्य घटत आहे ⚠️';
+    } else {
+      direction = 'STABLE';
+      description = 'पिकाची आरोग्य स्थिर आहे';
+    }
+    
+    return { direction, slope: -slope, description };  // Negate slope for intuitive interpretation
   }
   
   /**
@@ -1272,57 +1452,106 @@ export class AIAgentOrchestrator {
   }
   
   /**
-   * Save complete decision flow
+   * Save complete decision flow - NON-BLOCKING with error tracing
+   * CRITICAL FIX: This method never throws - errors are logged to DB for debugging
    */
-  private async saveDecisionFlow(data: {
+  private saveDecisionFlowNonBlocking(data: {
     session_id: string;
     farmer_id: string;
     tenant_id: string;
     land_id?: string;
+    trace_id?: string;
     nlu_output: NLUOutput;
     fused_intelligence: FusedIntelligence;
     diagnostic_state: DiagnosticState;
     decision_output: DecisionOutput;
     safety_verification: SafetyVerificationResult;
     farmer_communication: FarmerCommunication;
-  }): Promise<void> {
+  }): void {
+    // Fire-and-forget async operation
+    (async () => {
+      const traceId = data.trace_id || `trace_${Date.now().toString(36)}`;
+      
+      try {
+        console.log(`   💾 [${traceId}] Saving decision flow...`);
+        
+        const { error: insertError } = await this.supabase.from('agricultural_decisions').insert({
+          decision_id: data.decision_output.decision_id,
+          session_id: data.session_id,
+          farmer_id: data.farmer_id,
+          tenant_id: data.tenant_id,
+          land_id: data.land_id,
+          
+          // Store complete flow data
+          nlu_output: data.nlu_output,
+          fused_intelligence: data.fused_intelligence,
+          diagnostic_state: data.diagnostic_state,
+          decision_output: data.decision_output,
+          safety_verification: {
+            status: data.safety_verification.safety_check?.overall_safety_status || 'UNKNOWN',
+            approved: data.safety_verification.approved ?? false
+          },
+          
+          // Indexed fields
+          status: data.decision_output.status,
+          action_type: data.decision_output.primary_decision?.action_type,
+          confidence: data.diagnostic_state.hypotheses?.[0]?.confidence,
+          
+          created_at: new Date().toISOString()
+        });
+        
+        if (insertError) {
+          throw insertError;
+        }
+        
+        console.log(`   ✅ [${traceId}] Decision flow saved successfully`);
+        
+        // Schedule follow-ups (also non-blocking)
+        if (data.decision_output.follow_up_schedule) {
+          this.scheduleFollowUps(
+            data.session_id,
+            data.decision_output.decision_id,
+            data.farmer_id,
+            data.decision_output.follow_up_schedule
+          ).catch(followUpError => {
+            console.error(`   ⚠️ [${traceId}] Follow-up scheduling failed:`, followUpError);
+          });
+        }
+      } catch (error) {
+        // Log error to database for debugging - NEVER throw
+        console.error(`   ❌ [${traceId}] Decision flow save FAILED:`, error);
+        
+        // Store error in system_errors table for debugging
+        this.logDecisionSaveError(traceId, data.session_id, data.farmer_id, error)
+          .catch(logErr => console.error(`   ❌ [${traceId}] Error logging also failed:`, logErr));
+      }
+    })();
+  }
+  
+  /**
+   * Log decision save errors for debugging
+   */
+  private async logDecisionSaveError(
+    traceId: string,
+    sessionId: string,
+    farmerId: string,
+    error: any
+  ): Promise<void> {
     try {
-      await this.supabase.from('agricultural_decisions').insert({
-        decision_id: data.decision_output.decision_id,
-        session_id: data.session_id,
-        farmer_id: data.farmer_id,
-        tenant_id: data.tenant_id,
-        land_id: data.land_id,
-        
-        // Store complete flow data
-        nlu_output: data.nlu_output,
-        fused_intelligence: data.fused_intelligence,
-        diagnostic_state: data.diagnostic_state,
-        decision_output: data.decision_output,
-        safety_verification: {
-          status: data.safety_verification.safety_check.overall_safety_status,
-          approved: data.safety_verification.approved
-        },
-        
-        // Indexed fields
-        status: data.decision_output.status,
-        action_type: data.decision_output.primary_decision?.action_type,
-        confidence: data.diagnostic_state.hypotheses?.[0]?.confidence,
-        
+      await this.supabase.from('system_errors').insert({
+        error_type: 'DECISION_SAVE_FAILED',
+        trace_id: traceId,
+        session_id: sessionId,
+        farmer_id: farmerId,
+        error_message: error?.message || String(error),
+        stack_trace: error?.stack,
+        error_code: error?.code,
         created_at: new Date().toISOString()
       });
-      
-      // Schedule follow-ups
-      if (data.decision_output.follow_up_schedule) {
-        await this.scheduleFollowUps(
-          data.session_id,
-          data.decision_output.decision_id,
-          data.farmer_id,
-          data.decision_output.follow_up_schedule
-        );
-      }
-    } catch (error) {
-      console.error('Failed to save decision flow:', error);
+      console.log(`   📝 [${traceId}] Error logged to system_errors table`);
+    } catch (logError) {
+      // Last resort: just log to console
+      console.error(`   🚨 [${traceId}] CRITICAL: Could not log error to DB:`, logError);
     }
   }
   
@@ -1561,30 +1790,103 @@ export class AIAgentOrchestrator {
   
   /**
    * Create fallback fused intelligence when Fusion Engine fails (Gap 6 fix)
+   * CRITICAL FIX: Now accepts landContext to populate crop/soil/NDVI even when fusion fails
    */
-  private createFallbackFusedIntelligence(sessionId: string, message: string, nluOutput: NLUOutput): FusedIntelligence {
-    console.log('   📋 Creating fallback fused intelligence');
+  private createFallbackFusedIntelligence(
+    sessionId: string, 
+    message: string, 
+    nluOutput: NLUOutput,
+    landContext?: any
+  ): FusedIntelligence {
+    console.log('   📋 Creating fallback fused intelligence with land context:', !!landContext);
+    
+    // CONTEXT CONTRACT: Extract crop from landContext as ground truth
+    const cropCode = landContext?.current_crop ? 
+      this.normalizeCropCode(landContext.current_crop) : 
+      nluOutput.crop_identification?.crop_code;
+    
     return {
       session_id: sessionId,
       timestamp: new Date().toISOString(),
+      fusion_id: `fallback_${Date.now().toString(36)}`,
       text_understanding: {
         farmer_message: message,
         language: nluOutput.language_analysis?.detected_language || 'mr',
         intent: nluOutput.intent_classification?.primary_intent || 'GENERAL_QUERY',
-        entities: {},
-        confidence: 0.3,
-        ambiguities: ['Fusion failed - using fallback']
+        entities: {
+          // CONTEXT CONTRACT: Include crop from land context
+          crop_code: cropCode
+        },
+        confidence: landContext ? 0.6 : 0.3,
+        ambiguities: ['Fusion failed - using fallback with land context']
       },
       unified_context: {
-        crop: undefined,
+        // CONTEXT CONTRACT: Populate crop from land context
+        crop: cropCode ? {
+          code: cropCode,
+          name: landContext?.current_crop,
+          stage: landContext?.growth_stage,
+          growth_stage: landContext?.growth_stage,
+          days_since_sowing: landContext?.days_since_sowing
+        } : undefined,
         problem: undefined,
-        environment: undefined
+        environment: undefined,
+        // CONTEXT CONTRACT: Include location
+        location: landContext?.district ? {
+          district: landContext.district,
+          state: landContext.state,
+          village: landContext.village
+        } : undefined
       },
+      // CONTEXT CONTRACT: Include historical data from land context
+      historical_data: landContext ? {
+        sowing_date: landContext.sowing_date || new Date().toISOString(),
+        crop_code: cropCode,
+        current_crop: landContext.current_crop,
+        area_acres: landContext.area_acres,
+        growth_stage: landContext.growth_stage,
+        days_since_sowing: landContext.days_since_sowing,
+        region_code: landContext.district,
+        previous_issues: [],
+        soil_test_results: landContext.soil_health ? {
+          date: landContext.soil_health.test_date,
+          ph: landContext.soil_health.ph || 0,
+          organic_carbon_percent: landContext.soil_health.organic_carbon_percent || 0,
+          npk_levels: {
+            n: landContext.soil_health.nitrogen_kg_per_ha || 0,
+            p: landContext.soil_health.phosphorus_kg_per_ha || 0,
+            k: landContext.soil_health.potassium_kg_per_ha || 0
+          }
+        } : undefined
+      } : undefined,
       fusion_summary: {
-        overall_confidence: 0.3,
-        data_sources_used: ['text_fallback'],
-        gaps_identified: ['visual', 'weather', 'historical'],
-        recommendations_for_improvement: ['Please provide more details']
+        overall_confidence: landContext ? 0.6 : 0.3,
+        modalities_present: landContext ? ['text', 'land_context'] : ['text'],
+        modalities_used: landContext ? ['text', 'land_context'] : ['text'],
+        data_sources_used: landContext ? ['text_fallback', 'land_context'] : ['text_fallback'],
+        gaps_identified: landContext ? ['visual', 'weather'] : ['visual', 'weather', 'historical'],
+        recommendations_for_improvement: landContext ? 
+          ['फोटो पाठवा अधिक अचूक निदानासाठी'] : 
+          ['Please provide more details']
+      },
+      validated_facts: [],
+      conflicts: [],
+      inferred_information: [],
+      data_quality: {
+        overall_quality: landContext ? 0.6 : 0.3,
+        reliability_score: landContext ? 0.7 : 0.3,
+        completeness_score: landContext ? 0.5 : 0.2,
+        freshness_score: landContext?.ndvi?.captured_at ? 0.7 : 0.3
+      },
+      recommendations: {
+        immediate_actions: [],
+        additional_data_needed: landContext ? ['photo'] : ['photo', 'crop_details']
+      },
+      processing_metadata: {
+        fusion_version: '1.0.0-fallback',
+        processing_time_ms: 0,
+        sources_processed: landContext ? 2 : 1,
+        algorithms_applied: ['FALLBACK']
       }
     } as FusedIntelligence;
   }

@@ -136,6 +136,11 @@ export interface HistoricalData {
   sowing_date: string;
   crop_code?: string;
   variety?: string;
+  current_crop?: string;           // CONTEXT CONTRACT: Land's current crop
+  region_code?: string;            // CONTEXT CONTRACT: District/region
+  area_acres?: number;             // CONTEXT CONTRACT: Land area
+  growth_stage?: string;           // CONTEXT CONTRACT: Calculated growth stage
+  days_since_sowing?: number;      // CONTEXT CONTRACT: Days since sowing
   previous_issues: Array<{
     date: string;
     issue_type: string;
