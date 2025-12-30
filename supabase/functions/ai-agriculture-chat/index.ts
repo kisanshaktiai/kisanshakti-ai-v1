@@ -699,22 +699,48 @@ function transformOrchestratorResponse(
 
     case 'SYSTEM_ERROR':
     default:
-      // Error case
-      const errorMessages: Record<string, string> = {
-        'en': '🙏 Sorry, I had trouble answering your question. Please try again.',
-        'hi': '🙏 क्षमा करें, मुझे आपके प्रश्न का उत्तर देने में समस्या हुई। कृपया पुनः प्रयास करें।',
-        'mr': '🙏 माफ करा, मला तुमच्या प्रश्नाचे उत्तर देण्यात अडचण आली. कृपया पुन्हा प्रयत्न करा.',
+      // CRITICAL FIX: Try to provide helpful response instead of error
+      // Use fallback advice from error response if available
+      const fallbackAdvice = response.error?.fallback_advice;
+      
+      // Build a helpful message instead of just "sorry"
+      const helpfulMessages: Record<string, string> = {
+        'mr': `🙏 तुमच्या प्रश्नावर काम करत आहे.
+
+${fallbackAdvice || 'कृपया तुमचा प्रश्न पुन्हा विचारा किंवा अधिक माहिती द्या.'}
+
+📋 मला मदत करा:
+• तुमचे पीक कोणते?
+• समस्या काय आहे?
+• फोटो पाठवू शकता का?`,
+        'hi': `🙏 आपके प्रश्न पर काम कर रहा हूं।
+
+${fallbackAdvice || 'कृपया अपना प्रश्न दोबारा पूछें या अधिक जानकारी दें।'}
+
+📋 मेरी मदद करें:
+• आपकी फसल कौन सी?
+• समस्या क्या है?
+• फोटो भेज सकते हैं?`,
+        'en': `🙏 Working on your question.
+
+${fallbackAdvice || 'Please ask your question again or provide more details.'}
+
+📋 Help me help you:
+• What is your crop?
+• What is the problem?
+• Can you send a photo?`
       };
       
       return {
-        response: errorMessages[language] || errorMessages['en'],
+        response: helpfulMessages[language] || helpfulMessages['en'],
         sessionId: sessionId,
         language: language,
         responseTime: responseTime,
         metadata: {
-          type: 'error',
+          type: 'clarification_needed',
           error: response.error?.message
         },
+        quickReplies: getDefaultQuickReplies(language),
         source: 'orchestrator_v1'
       };
   }
