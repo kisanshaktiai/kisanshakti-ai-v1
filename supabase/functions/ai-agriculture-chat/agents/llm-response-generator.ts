@@ -30,7 +30,8 @@ export interface LLMResponseInput {
       nitrogen_kg_per_ha?: number;
       phosphorus_kg_per_ha?: number;
       potassium_kg_per_ha?: number;
-      ph?: number;
+      ph?: number;       // Can accept either ph or ph_level
+      ph_level?: number; // Schema uses ph_level
       organic_carbon?: number;
     };
     ndvi?: {
@@ -219,25 +220,27 @@ export function generateContextDirectResponse(
   if (/माती|मातीची\s*आरोग्य|मृदा|soil|जमिनीची/i.test(farmer_message)) {
     if (land_context?.soil_health && land_context.soil_tested) {
       const soil = land_context.soil_health;
+      // CRITICAL FIX: Support both ph and ph_level field names
+      const phValue = soil.ph ?? soil.ph_level ?? 'N/A';
       const responses: Record<string, string> = {
         mr: `🧪 **मातीची आरोग्य स्थिती:**
-• नत्र (N): ${soil.nitrogen_kg_per_ha || 'N/A'} kg/ha
-• स्फुरद (P): ${soil.phosphorus_kg_per_ha || 'N/A'} kg/ha  
-• पालाश (K): ${soil.potassium_kg_per_ha || 'N/A'} kg/ha
-• pH: ${soil.ph || 'N/A'}
-• सेंद्रिय कर्ब: ${soil.organic_carbon || 'N/A'}%`,
+• नत्र (N): ${soil.nitrogen_kg_per_ha ?? 'N/A'} kg/ha
+• स्फुरद (P): ${soil.phosphorus_kg_per_ha ?? 'N/A'} kg/ha  
+• पालाश (K): ${soil.potassium_kg_per_ha ?? 'N/A'} kg/ha
+• pH: ${phValue}
+• सेंद्रिय कर्ब: ${soil.organic_carbon ?? 'N/A'}%`,
         hi: `🧪 **मिट्टी स्वास्थ्य स्थिति:**
-• नाइट्रोजन (N): ${soil.nitrogen_kg_per_ha || 'N/A'} kg/ha
-• फास्फोरस (P): ${soil.phosphorus_kg_per_ha || 'N/A'} kg/ha
-• पोटाश (K): ${soil.potassium_kg_per_ha || 'N/A'} kg/ha
-• pH: ${soil.ph || 'N/A'}
-• जैविक कार्बन: ${soil.organic_carbon || 'N/A'}%`,
+• नाइट्रोजन (N): ${soil.nitrogen_kg_per_ha ?? 'N/A'} kg/ha
+• फास्फोरस (P): ${soil.phosphorus_kg_per_ha ?? 'N/A'} kg/ha
+• पोटाश (K): ${soil.potassium_kg_per_ha ?? 'N/A'} kg/ha
+• pH: ${phValue}
+• जैविक कार्बन: ${soil.organic_carbon ?? 'N/A'}%`,
         en: `🧪 **Soil Health Status:**
-• Nitrogen (N): ${soil.nitrogen_kg_per_ha || 'N/A'} kg/ha
-• Phosphorus (P): ${soil.phosphorus_kg_per_ha || 'N/A'} kg/ha
-• Potassium (K): ${soil.potassium_kg_per_ha || 'N/A'} kg/ha
-• pH: ${soil.ph || 'N/A'}
-• Organic Carbon: ${soil.organic_carbon || 'N/A'}%`
+• Nitrogen (N): ${soil.nitrogen_kg_per_ha ?? 'N/A'} kg/ha
+• Phosphorus (P): ${soil.phosphorus_kg_per_ha ?? 'N/A'} kg/ha
+• Potassium (K): ${soil.potassium_kg_per_ha ?? 'N/A'} kg/ha
+• pH: ${phValue}
+• Organic Carbon: ${soil.organic_carbon ?? 'N/A'}%`
       };
       return {
         response_text: responses[language] || responses.en,

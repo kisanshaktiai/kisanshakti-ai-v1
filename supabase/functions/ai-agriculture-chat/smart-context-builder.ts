@@ -114,19 +114,17 @@ export function buildSmartContext(config: ContextConfig): string {
     parts.push(`pH: ${soil.ph_level}${phStatus}`);
   }
   
-  // Organic carbon
-  if (fields.includes('organic_carbon') && soil?.organic_carbon_percent) {
-    parts.push(`OC: ${soil.organic_carbon_percent}%`);
+  // Organic carbon - CRITICAL FIX: Schema uses 'organic_carbon' not 'organic_carbon_percent'
+  if (fields.includes('organic_carbon') && soil?.organic_carbon) {
+    parts.push(`OC: ${soil.organic_carbon}%`);
   }
   
-  // Soil moisture
-  if (fields.includes('soil_moisture') && soil?.soil_moisture_percent) {
-    parts.push(`💦 ${soil.soil_moisture_percent}%`);
-  }
+  // Soil moisture - Note: Schema does NOT have soil_moisture_percent, skip this check
+  // This field is computed from NDVI/satellite data, not stored in soil_health
   
-  // Soil test age
-  if (fields.includes('soil_test_age') && soil?.tested_at) {
-    const daysAgo = Math.floor((Date.now() - new Date(soil.tested_at).getTime()) / (1000 * 60 * 60 * 24));
+  // Soil test age - CRITICAL FIX: Schema uses 'test_date' not 'tested_at'
+  if (fields.includes('soil_test_age') && soil?.test_date) {
+    const daysAgo = Math.floor((Date.now() - new Date(soil.test_date).getTime()) / (1000 * 60 * 60 * 24));
     if (daysAgo > 180) parts.push(`⚠️ पुरानी मिट्टी जांच (${Math.floor(daysAgo/30)}महीने)`);
   }
   
