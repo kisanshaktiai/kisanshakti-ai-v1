@@ -1395,33 +1395,34 @@ export class AIAgentOrchestrator {
           
           if (weatherCache?.weather_data) {
             console.log('🌤️ [Orchestrator] Using cached weather data');
-            return weatherCache.weather_data;
+            return { ...weatherCache.weather_data, is_default: false };
           }
         }
       }
       
       // Fallback: Return reasonable defaults for Indian agriculture
+      // CRITICAL FIX: Mark as default so DataAudit shows correct status
       console.log('🌤️ [Orchestrator] Using default weather data');
       return {
+        is_default: true,
         current: {
-          temperature_c: 28,
-          humidity_percent: 65,
+          temperature: 28,
+          humidity: 65,
           wind_speed_kmh: 12,
-          rainfall_last_24h_mm: 0
+          precipitation: 0
         },
-        forecast_24h: {
-          rain_probability_percent: 20,
-          temperature_max_c: 32,
+        forecast: [{
+          precipitation_probability: 20,
+          temperature_max: 32,
           wind_max_kmh: 18
-        },
-        forecast_72h: []
+        }]
       };
     } catch (error) {
       console.warn('⚠️ Weather fetch failed:', error);
       return {
-        current: { temperature_c: 28, humidity_percent: 65, wind_speed_kmh: 12, rainfall_last_24h_mm: 0 },
-        forecast_24h: { rain_probability_percent: 20, temperature_max_c: 32, wind_max_kmh: 18 },
-        forecast_72h: []
+        is_default: true,
+        current: { temperature: 28, humidity: 65, wind_speed_kmh: 12, precipitation: 0 },
+        forecast: [{ precipitation_probability: 20, temperature_max: 32, wind_max_kmh: 18 }]
       };
     }
   }
