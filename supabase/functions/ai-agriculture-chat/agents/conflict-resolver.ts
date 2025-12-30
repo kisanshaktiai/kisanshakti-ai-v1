@@ -81,61 +81,21 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
   }
   
   // ─────────────────────────────────────────────────────────────────────────
-  // STEP 3: Check P2 Weather Safety - Delay ONLY for spray-type actions
-  // CRITICAL FIX: Weather delay should NOT block fertilizer, diagnosis, or general queries
-  // ─────────────────────────────────────────────────────────────────────────
-  const p2Delay = findDelayRule(decisions.P2_weather_safety);
-  
-  // Collect all viable spray-type recommendations from P3-P6
-  const sprayRecommendations = [
-    ...decisions.P3_crop_stage,
-    ...decisions.P4_economic,
-    ...decisions.P5_ipm,
-    ...decisions.P6_optimization
-  ].filter(r => r.action === 'RECOMMEND' && isSprayAction(r));
-  
-  // ONLY apply weather delay if there are actual spray recommendations
-  if (p2Delay && sprayRecommendations.length > 0) {
-    // Weather delay is not a hard block - add warning
-    warnings.push(`⏱️ Weather advisory: ${p2Delay.reason}`);
-    
-    // If delay is critical (>60% rain) AND we have spray actions, treat as delay status
-    if (p2Delay.action === 'DELAY') {
-      return {
-        status: 'WEATHER_DELAYED',
-        blocked_actions: [],
-        secondary_actions: [],
-        warnings,
-        blocking_rule: {
-          rule_id: p2Delay.rule_id,
-          priority: 'P2_WEATHER_SAFETY',
-          reason: p2Delay.reason,
-          alternatives: p2Delay.alternatives || ['Wait for weather clearance', 'Use protective cultural practices']
-        },
-        next_safe_window: p2Delay.next_safe_window
-      };
-    }
-  } else if (p2Delay) {
-    // No spray actions but weather delay exists - just add warning, don't block
-    warnings.push(`ℹ️ Weather note: ${p2Delay.reason} (does not affect current recommendation)`);
-  }
-  
-  // ─────────────────────────────────────────────────────────────────────────
-  // STEP 4: Collect blocked actions from P3
+  // STEP 3: Collect blocked actions from P3
   // ─────────────────────────────────────────────────────────────────────────
   decisions.P3_crop_stage
     .filter(r => r.action === 'BLOCK')
     .forEach(r => blocked_actions.push(createBlockedAction(r, 'P3_CROP_STAGE')));
   
   // ─────────────────────────────────────────────────────────────────────────
-  // STEP 5: Collect warnings from P3-P6
+  // STEP 4: Collect warnings from P3-P6
   // ─────────────────────────────────────────────────────────────────────────
   [...decisions.P3_crop_stage, ...decisions.P4_economic, ...decisions.P5_ipm, ...decisions.P6_optimization]
     .filter(r => r.action === 'WARN')
     .forEach(r => warnings.push(r.reason));
   
   // ─────────────────────────────────────────────────────────────────────────
-  // STEP 6: Collect viable recommendations from P3-P6
+  // STEP 5: Collect viable recommendations from P3-P6
   // ─────────────────────────────────────────────────────────────────────────
   const viableActions: RuleResult[] = [
     ...decisions.P3_crop_stage.filter(r => r.action === 'RECOMMEND'),
@@ -145,7 +105,7 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
   ];
   
   if (viableActions.length === 0) {
-    // No recommendations - suggest monitoring
+    // No recommendations - suggest monitoring (no weather delay for monitoring)
     return {
       status: 'SUCCESS',
       primary_decision: createMonitoringDecision(),
@@ -156,9 +116,83 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
   }
   
   // ─────────────────────────────────────────────────────────────────────────
-  // STEP 7: Select best action using IPM preference + economic viability
+  // STEP 6: SELECT BEST ACTION FIRST - then apply weather delay ONLY if it's spray
+  // CRITICAL FIX: This ensures non-spray actions (fertilizer, monitoring, cultural)
+  // are never blocked by weather when spray alternatives exist
   // ─────────────────────────────────────────────────────────────────────────
   const selectedAction = selectBestAction(viableActions);
+  const selectedIsSpray = isSprayAction(selectedAction);
+  
+  console.log(`🎯 [ConflictResolver] Selected action: ${selectedAction.cause}, isSpray: ${selectedIsSpray}`);
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // STEP 7: Check P2 Weather Safety - ONLY delay if selected action is spray-type
+  // ─────────────────────────────────────────────────────────────────────────
+  const p2Delay = findDelayRule(decisions.P2_weather_safety);
+  
+  if (p2Delay) {
+    if (selectedIsSpray) {
+      // The selected action IS a spray - check for non-spray alternatives
+      const nonSprayAlternatives = viableActions.filter(a => 
+        a.rule_id !== selectedAction.rule_id && !isSprayAction(a)
+      );
+      
+      if (nonSprayAlternatives.length > 0) {
+        // Non-spray alternatives exist - use the best one instead
+        const bestNonSpray = selectBestAction(nonSprayAlternatives);
+        console.log(`🔄 [ConflictResolver] Switching from spray to non-spray: ${bestNonSpray.cause}`);
+        
+        // Add spray postponement warning
+        warnings.push(`⏱️ ${p2Delay.reason} - फवारणी पुढे ढकला, सध्या इतर कृती करा`);
+        
+        // Convert remaining viable actions to secondary recommendations (including delayed spray)
+        viableActions
+          .filter(a => a.rule_id !== bestNonSpray.rule_id)
+          .slice(0, 2)
+          .forEach(a => {
+            const isDelayedSpray = isSprayAction(a);
+            secondary_actions.push({
+              action: a.recommendation?.product_name || a.cause,
+              reason: isDelayedSpray ? `${a.reason} (हवामान सुधारल्यावर)` : a.reason,
+              timing: isDelayedSpray ? 'After weather clears' : 'As alternative if primary is unavailable',
+              priority: isDelayedSpray ? 'LOW' : 'MEDIUM'
+            });
+          });
+        
+        return {
+          status: 'SUCCESS', // NOT WEATHER_DELAYED - we have non-spray action
+          primary_decision: convertToPrimaryDecision(bestNonSpray),
+          blocked_actions,
+          secondary_actions,
+          warnings
+        };
+      } else {
+        // No non-spray alternatives - must return WEATHER_DELAYED
+        warnings.push(`⏱️ Weather advisory: ${p2Delay.reason}`);
+        
+        return {
+          status: 'WEATHER_DELAYED',
+          blocked_actions: [],
+          secondary_actions: [],
+          warnings,
+          blocking_rule: {
+            rule_id: p2Delay.rule_id,
+            priority: 'P2_WEATHER_SAFETY',
+            reason: p2Delay.reason,
+            alternatives: p2Delay.alternatives || ['Wait for weather clearance', 'Use protective cultural practices']
+          },
+          next_safe_window: p2Delay.next_safe_window
+        };
+      }
+    } else {
+      // Selected action is NOT spray - just add weather note, don't delay
+      warnings.push(`ℹ️ Weather note: ${p2Delay.reason} (does not affect current recommendation)`);
+    }
+  }
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // STEP 8: No weather delay applies - return selected action as SUCCESS
+  // ─────────────────────────────────────────────────────────────────────────
   
   // Convert remaining viable actions to secondary recommendations
   viableActions

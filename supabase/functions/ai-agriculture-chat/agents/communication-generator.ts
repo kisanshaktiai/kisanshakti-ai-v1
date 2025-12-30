@@ -344,10 +344,12 @@ export class CommunicationGenerator {
     }
     
     if (decision.status === 'WEATHER_DELAYED') {
+      const weatherNote = extractWeatherConsiderations(decision) || '';
+      const delayReason = decision.blocking_rule?.reason || 'हवामानामुळे';
       return {
-        mr: 'पाऊस/हवामानामुळे प्रतीक्षा करा.',
-        hi: 'बारिश/मौसम के कारण प्रतीक्षा करें।',
-        en: 'Wait due to weather conditions.'
+        mr: `⏱️ फवारणी पुढे ढकला: ${delayReason}. हवामान सुधारल्यावर फवारणी करा. सध्या पिकाचे निरीक्षण सुरू ठेवा.`,
+        hi: `⏱️ छिड़काव टालें: ${delayReason}। मौसम साफ होने पर छिड़काव करें। अभी फसल की निगरानी जारी रखें।`,
+        en: `⏱️ Postpone spray: ${delayReason}. Spray when weather clears. Continue crop monitoring for now.`
       };
     }
     
