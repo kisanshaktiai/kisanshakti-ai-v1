@@ -325,7 +325,7 @@ export class CommunicationGenerator {
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // LAYER 2: HOW TO DO IT
+  // LAYER 2: HOW TO DO IT (v3.1 - Full Data Population)
   // ═══════════════════════════════════════════════════════════════════════════
   
   private generateHowTo(
@@ -333,23 +333,33 @@ export class CommunicationGenerator {
     lang: SupportedLanguage,
     literacy: string
   ): ApplicationInstructions {
+    // EXTRACT DATA using new extractors
+    const product = extractProductDetails(decision);
+    const economic = extractEconomicInfo(decision);
+    const safety = extractSafetyInfo(decision);
+    const mixingSteps = extractMixingInstructions(decision);
+    const applicationSteps = extractApplicationSteps(decision);
+    
+    // Handle no product scenario
+    if (!product || !product.name) {
+      return this.generateMonitoringInstructions(lang);
+    }
+    
+    // BUILD MATERIALS LIST with real data
+    const materials = this.buildPopulatedMaterialsList(product, economic);
+    
+    // BUILD MIXING INSTRUCTIONS with real data
+    const mixing = this.buildPopulatedMixingInstructions(product, mixingSteps, safety);
+    
+    // BUILD APPLICATION METHOD with real data
+    const application = this.buildPopulatedApplicationMethod(product, applicationSteps);
+    
+    // BUILD TIMING with real data
     const primary = decision.primary_decision;
-    const details = primary.application_details;
+    const timing = this.generateTimingInstructions(primary?.timing, primary?.application_details);
     
-    // Generate materials list
-    const materials = this.generateMaterialsList(details, decision.economic_assessment);
-    
-    // Generate mixing instructions
-    const mixing = this.generateMixingInstructions(details);
-    
-    // Generate application method
-    const application = this.generateApplicationMethod(details);
-    
-    // Generate timing
-    const timing = this.generateTimingInstructions(primary.timing, details);
-    
-    // Generate safety equipment
-    const safety = this.generateSafetyInstructions(details);
+    // BUILD SAFETY EQUIPMENT with real data
+    const safetyEquipment = this.buildPopulatedSafetyInstructions(safety);
     
     return {
       heading: SECTION_HEADINGS['HOW_TO'],
@@ -357,7 +367,296 @@ export class CommunicationGenerator {
       mixing_instructions: mixing,
       application_method: application,
       timing,
-      safety_equipment: safety
+      safety_equipment: safetyEquipment
+    };
+  }
+  
+  /**
+   * Generate instructions for monitoring-only scenarios
+   */
+  private generateMonitoringInstructions(lang: SupportedLanguage): ApplicationInstructions {
+    return {
+      heading: SECTION_HEADINGS['HOW_TO'],
+      materials_needed: {
+        items: [],
+        total_cost_inr: 0,
+        cost_per_acre_inr: 0
+      },
+      mixing_instructions: {
+        steps: {
+          mr: ['कोणतेही मिश्रण आवश्यक नाही'],
+          hi: ['कोई मिश्रण आवश्यक नहीं'],
+          en: ['No mixing required']
+        }
+      },
+      application_method: {
+        method: {
+          mr: 'नियमित निरीक्षण',
+          hi: 'नियमित निगरानी',
+          en: 'Regular monitoring'
+        },
+        coverage_tips: {
+          mr: ['दररोज पिकाची तपासणी करा', 'नवीन लक्षणे नोंदवा', 'फोटो काढा'],
+          hi: ['रोज फसल की जांच करें', 'नए लक्षण नोट करें', 'फोटो लें'],
+          en: ['Check crop daily', 'Note new symptoms', 'Take photos']
+        }
+      },
+      timing: {
+        best_time: {
+          mr: 'सकाळी आणि संध्याकाळी',
+          hi: 'सुबह और शाम',
+          en: 'Morning and evening'
+        },
+        duration_estimate: {
+          mr: '15-30 मिनिटे',
+          hi: '15-30 मिनट',
+          en: '15-30 minutes'
+        }
+      },
+      safety_equipment: {
+        required_ppe: {
+          mr: ['कोणतेही विशेष उपकरण नाही'],
+          hi: ['कोई विशेष उपकरण नहीं'],
+          en: ['No special equipment needed']
+        },
+        safety_tips: {
+          mr: [],
+          hi: [],
+          en: []
+        }
+      }
+    };
+  }
+  
+  /**
+   * Build materials list with extracted product data
+   */
+  private buildPopulatedMaterialsList(
+    product: ExtractedProductDetails,
+    economic: ExtractedEconomicInfo | null
+  ): ApplicationInstructions['materials_needed'] {
+    const items = [];
+    
+    // Main product with translations
+    const productMr = getProductName(product.name, 'mr');
+    const productHi = getProductName(product.name, 'hi');
+    
+    items.push({
+      name: {
+        mr: productMr,
+        hi: productHi,
+        en: product.name
+      },
+      quantity: product.dosage,
+      cost_inr: economic?.cost_inr || 0,
+      local_name: {
+        mr: productMr,
+        hi: productHi,
+        en: product.name
+      },
+      where_to_buy: {
+        mr: 'जवळच्या कृषी केंद्रावर',
+        hi: 'निकटतम कृषि केंद्र पर',
+        en: 'At nearest agri center'
+      }
+    });
+    
+    // Add water for spray methods
+    if (product.method === 'FOLIAR_SPRAY' || product.method?.includes('SPRAY')) {
+      items.push({
+        name: {
+          mr: 'स्वच्छ पाणी',
+          hi: 'साफ पानी',
+          en: 'Clean water'
+        },
+        quantity: product.water_volume || '200 लिटर/एकर',
+        cost_inr: 0
+      });
+      
+      // Add sticker/spreader
+      items.push({
+        name: {
+          mr: 'स्टिकर/स्प्रेडर',
+          hi: 'स्टिकर/स्प्रेडर',
+          en: 'Sticker/Spreader'
+        },
+        quantity: '50 ml/एकर',
+        cost_inr: 80
+      });
+    }
+    
+    return {
+      items,
+      total_cost_inr: economic?.cost_inr || 0,
+      cost_per_acre_inr: economic?.cost_inr || 0
+    };
+  }
+  
+  /**
+   * Build mixing instructions with extracted data
+   */
+  private buildPopulatedMixingInstructions(
+    product: ExtractedProductDetails,
+    mixingSteps: string[],
+    safety: ReturnType<typeof extractSafetyInfo>
+  ): ApplicationInstructions['mixing_instructions'] {
+    const productMr = getProductName(product.name, 'mr');
+    const productHi = getProductName(product.name, 'hi');
+    
+    // Translate mixing steps
+    const stepsMr = mixingSteps.map(step => this.translateMixingStep(step, product.name, productMr, 'mr'));
+    const stepsHi = mixingSteps.map(step => this.translateMixingStep(step, product.name, productHi, 'hi'));
+    
+    return {
+      steps: {
+        mr: stepsMr.length > 0 ? stepsMr : [
+          `स्प्रे टँकमध्ये अर्धे पाणी घाला`,
+          `${productMr} @ ${product.dosage} घाला`,
+          `चांगले मिक्स करा (5 मिनिटे)`,
+          `उरलेले पाणी भरा`,
+          `स्टिकर/स्प्रेडर घाला`
+        ],
+        hi: stepsHi.length > 0 ? stepsHi : [
+          `स्प्रे टैंक में आधा पानी डालें`,
+          `${productHi} @ ${product.dosage} डालें`,
+          `अच्छी तरह मिलाएं (5 मिनट)`,
+          `बाकी पानी भरें`,
+          `स्टिकर/स्प्रेडर डालें`
+        ],
+        en: mixingSteps.length > 0 ? mixingSteps : [
+          `Fill spray tank with half water`,
+          `Add ${product.name} @ ${product.dosage}`,
+          `Mix well for 5 minutes`,
+          `Fill remaining water`,
+          `Add sticker/spreader`
+        ]
+      },
+      caution: safety.warnings.length > 0 ? {
+        mr: `⚠️ ${safety.warnings[0]}`,
+        hi: `⚠️ ${safety.warnings[0]}`,
+        en: `⚠️ ${safety.warnings[0]}`
+      } : {
+        mr: '⚠️ मिश्रण तयार केल्यानंतर 2 तासांत वापरा',
+        hi: '⚠️ मिश्रण बनाने के 2 घंटे के भीतर उपयोग करें',
+        en: '⚠️ Use within 2 hours of mixing'
+      }
+    };
+  }
+  
+  private translateMixingStep(step: string, originalName: string, translatedName: string, lang: SupportedLanguage): string {
+    // Replace product name in step
+    let translated = step.replace(originalName, translatedName);
+    
+    // Simple translations for common terms
+    if (lang === 'mr') {
+      translated = translated
+        .replace(/Fill/gi, 'भरा')
+        .replace(/Add/gi, 'घाला')
+        .replace(/Mix/gi, 'मिक्स करा')
+        .replace(/water/gi, 'पाणी')
+        .replace(/tank/gi, 'टँक');
+    } else if (lang === 'hi') {
+      translated = translated
+        .replace(/Fill/gi, 'भरें')
+        .replace(/Add/gi, 'डालें')
+        .replace(/Mix/gi, 'मिलाएं')
+        .replace(/water/gi, 'पानी')
+        .replace(/tank/gi, 'टैंक');
+    }
+    
+    return translated;
+  }
+  
+  /**
+   * Build application method with extracted data
+   */
+  private buildPopulatedApplicationMethod(
+    product: ExtractedProductDetails,
+    applicationSteps: string[]
+  ): ApplicationInstructions['application_method'] {
+    const methodMr = getMethodTranslation(product.method, 'mr');
+    const methodHi = getMethodTranslation(product.method, 'hi');
+    const methodEn = getMethodTranslation(product.method, 'en');
+    
+    return {
+      method: {
+        mr: methodMr,
+        hi: methodHi,
+        en: methodEn
+      },
+      coverage_tips: {
+        mr: applicationSteps.length > 0 ? applicationSteps.map(s => this.translateApplicationStep(s, 'mr')) : [
+          'पानांच्या वरच्या आणि खालच्या दोन्ही बाजू फवारा',
+          'नवीन पाने आणि फुलांवर जास्त लक्ष द्या',
+          'एकसमान फवारणी करा - एक ठिकाणी जास्त नको',
+          'संपूर्ण झाड ओले होईल इतपत फवारा'
+        ],
+        hi: applicationSteps.length > 0 ? applicationSteps.map(s => this.translateApplicationStep(s, 'hi')) : [
+          'पत्तों के ऊपर और नीचे दोनों तरफ छिड़काव करें',
+          'नई पत्तियों और फूलों पर ज्यादा ध्यान दें',
+          'समान छिड़काव करें - एक जगह ज्यादा नहीं',
+          'पूरा पौधा गीला हो जाए इतना छिड़काव करें'
+        ],
+        en: applicationSteps.length > 0 ? applicationSteps : [
+          'Spray both upper and lower leaf surfaces',
+          'Focus on new leaves and flowers',
+          'Apply evenly - not too much in one spot',
+          'Spray until plant is thoroughly wet'
+        ]
+      }
+    };
+  }
+  
+  private translateApplicationStep(step: string, lang: SupportedLanguage): string {
+    // Basic translation for common application terms
+    if (lang === 'en') return step;
+    
+    // For now return as-is, proper translation would use AI or lookup table
+    return step;
+  }
+  
+  /**
+   * Build safety instructions with extracted data
+   */
+  private buildPopulatedSafetyInstructions(
+    safety: ReturnType<typeof extractSafetyInfo>
+  ): ApplicationInstructions['safety_equipment'] {
+    // Translate PPE items
+    const ppeMr = safety.ppe_required.map(ppe => getSafetyGearTranslation(ppe, 'mr'));
+    const ppeHi = safety.ppe_required.map(ppe => getSafetyGearTranslation(ppe, 'hi'));
+    const ppeEn = safety.ppe_required.map(ppe => getSafetyGearTranslation(ppe, 'en'));
+    
+    return {
+      required_ppe: {
+        mr: ppeMr.length > 0 ? ppeMr : ['हातमोजे घाला', 'मास्क लावा', 'पूर्ण बाह्यांचा शर्ट घाला'],
+        hi: ppeHi.length > 0 ? ppeHi : ['दस्ताने पहनें', 'मास्क लगाएं', 'पूरी बांह की शर्ट पहनें'],
+        en: ppeEn.length > 0 ? ppeEn : ['Wear gloves', 'Wear mask', 'Wear full-sleeved shirt']
+      },
+      safety_tips: {
+        mr: [
+          'फवारणीनंतर साबणाने हात धुवा',
+          'फवारणी करताना खाणे/पिणे नको',
+          'फवारणीनंतर कपडे बदला',
+          'मुलांना दूर ठेवा'
+        ],
+        hi: [
+          'छिड़काव के बाद साबुन से हाथ धोएं',
+          'छिड़काव करते समय खाना/पीना नहीं',
+          'छिड़काव के बाद कपड़े बदलें',
+          'बच्चों को दूर रखें'
+        ],
+        en: [
+          'Wash hands with soap after spraying',
+          'No eating/drinking while spraying',
+          'Change clothes after spraying',
+          'Keep children away'
+        ]
+      },
+      first_aid: {
+        mr: 'डोळ्यात गेल्यास स्वच्छ पाण्याने धुवा. त्वचेवर आल्यास साबणाने धुवा. समस्या असल्यास: ' + safety.emergency_contact,
+        hi: 'आंखों में जाने पर साफ पानी से धोएं। त्वचा पर लगने पर साबुन से धोएं। समस्या होने पर: ' + safety.emergency_contact,
+        en: 'If in eyes, rinse with clean water. If on skin, wash with soap. For problems: ' + safety.emergency_contact
+      }
     };
   }
   
@@ -569,51 +868,72 @@ export class CommunicationGenerator {
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // LAYER 3: RATIONALE
+  // LAYER 3: RATIONALE (v3.1 - Full Data Population)
   // ═══════════════════════════════════════════════════════════════════════════
   
   private generateRationale(decision: DecisionOutput, lang: SupportedLanguage): Rationale {
-    const scientific = decision.scientific_justification[0];
+    // EXTRACT DATA using new extractors
+    const cause = extractCauseInfo(decision);
+    const product = extractProductDetails(decision);
+    const scientific = extractScientificBasis(decision.rules_applied || []);
+    const alternatives = extractAlternatives(decision);
+    
     const primary = decision.primary_decision;
+    
+    // TRANSLATE CAUSE to farmer-friendly language
+    const causeMr = getCauseTranslation(cause.cause, 'mr');
+    const causeHi = getCauseTranslation(cause.cause, 'hi');
+    const causeEn = getCauseTranslation(cause.cause, 'en');
+    
+    // Get efficacy percentage
+    const efficacy = primary?.expected_outcomes?.efficacy_percent || cause.confidence * 100;
     
     return {
       heading: SECTION_HEADINGS['RATIONALE'],
       
       problem_assessment: {
         current_status: {
-          mr: `तुमच्या पिकावर ${primary.target.pest_code || primary.target.disease_code || 'समस्या'} आढळली`,
-          hi: `आपकी फसल पर ${primary.target.pest_code || primary.target.disease_code || 'समस्या'} पाई गई`,
-          en: `${primary.target.pest_code || primary.target.disease_code || 'Issue'} detected on your crop`
+          mr: `तुमच्या पिकावर आढळले: ${causeMr}`,
+          hi: `आपकी फसल पर पाया गया: ${causeHi}`,
+          en: `Detected on your crop: ${causeEn}`
         },
-        threshold_info: {
-          mr: 'आर्थिक थ्रेशोल्ड ओलांडली - कृती आवश्यक',
-          hi: 'आर्थिक सीमा पार हो गई - कार्रवाई आवश्यक',
-          en: 'Economic threshold exceeded - action required'
+        threshold_info: cause.severity === 'HIGH' || cause.severity === 'CRITICAL' ? {
+          mr: `⚠️ गंभीर स्थिती (${Math.round(cause.affected_area_percent)}% क्षेत्र प्रभावित) - तात्काळ कृती आवश्यक`,
+          hi: `⚠️ गंभीर स्थिति (${Math.round(cause.affected_area_percent)}% क्षेत्र प्रभावित) - तुरंत कार्रवाई आवश्यक`,
+          en: `⚠️ Serious condition (${Math.round(cause.affected_area_percent)}% area affected) - Immediate action required`
+        } : {
+          mr: 'आर्थिक थ्रेशोल्ड ओलांडली - कृती फायदेशीर',
+          hi: 'आर्थिक सीमा पार हो गई - कार्रवाई लाभदायक',
+          en: 'Economic threshold exceeded - Action beneficial'
         }
       },
       
       why_this_treatment: {
-        reasons: {
+        reasons: product ? {
           mr: [
-            `${primary.expected_outcomes.efficacy_percent}% प्रभावी`,
-            'सुरक्षित आणि मान्यताप्राप्त',
-            'किफायतशीर'
+            `${Math.round(efficacy)}% प्रभावी या समस्येवर`,
+            `${getProductName(product.name, 'mr')} - सुरक्षित आणि मान्यताप्राप्त`,
+            'किफायतशीर आणि सहज उपलब्ध'
           ],
           hi: [
-            `${primary.expected_outcomes.efficacy_percent}% प्रभावी`,
-            'सुरक्षित और मान्यता प्राप्त',
-            'किफायती'
+            `${Math.round(efficacy)}% प्रभावी इस समस्या पर`,
+            `${getProductName(product.name, 'hi')} - सुरक्षित और मान्यता प्राप्त`,
+            'किफायती और आसानी से उपलब्ध'
           ],
           en: [
-            `${primary.expected_outcomes.efficacy_percent}% effective`,
-            'Safe and approved',
-            'Cost-effective'
+            `${Math.round(efficacy)}% effective for this problem`,
+            `${product.name} - Safe and approved`,
+            'Cost-effective and readily available'
           ]
+        } : {
+          mr: ['नियमित निरीक्षण पुरेसे', 'सध्या कोणत्याही उपचाराची गरज नाही'],
+          hi: ['नियमित निगरानी पर्याप्त', 'अभी किसी उपचार की जरूरत नहीं'],
+          en: ['Regular monitoring sufficient', 'No treatment needed currently']
         },
         scientific_basis_simple: {
-          mr: scientific?.rationale || 'ICAR मान्यताप्राप्त पद्धत',
-          hi: scientific?.rationale || 'ICAR मान्यता प्राप्त विधि',
-          en: scientific?.rationale || 'ICAR approved method'
+          mr: scientific || 'ICAR मान्यताप्राप्त पद्धत',
+          hi: scientific || 'ICAR मान्यता प्राप्त विधि',
+          en: scientific || 'ICAR approved method'
         },
         advantages: {
           mr: ['प्रतिकार विकसित होत नाही', 'पर्यावरण मित्र', 'मधमाश्यांना सुरक्षित'],
@@ -624,34 +944,37 @@ export class CommunicationGenerator {
       
       expected_results: {
         timeline: {
-          mr: primary.expected_outcomes.time_to_visible_effect_days + ' दिवसांत परिणाम',
-          hi: primary.expected_outcomes.time_to_visible_effect_days + ' दिनों में परिणाम',
-          en: 'Results in ' + primary.expected_outcomes.time_to_visible_effect_days + ' days'
+          mr: `${primary?.expected_outcomes?.time_to_visible_effect_days || 7} दिवसांत परिणाम दिसेल`,
+          hi: `${primary?.expected_outcomes?.time_to_visible_effect_days || 7} दिनों में परिणाम दिखेगा`,
+          en: `Results visible in ${primary?.expected_outcomes?.time_to_visible_effect_days || 7} days`
         },
         success_indicators: {
-          mr: primary.expected_outcomes.success_indicators_mr || 
-            primary.expected_outcomes.success_indicators.slice(0, 3),
-          hi: primary.expected_outcomes.success_indicators_hi || 
-            primary.expected_outcomes.success_indicators.slice(0, 3),
-          en: primary.expected_outcomes.success_indicators.slice(0, 3)
+          mr: primary?.expected_outcomes?.success_indicators_mr || 
+            primary?.expected_outcomes?.success_indicators?.slice(0, 3) || 
+            ['समस्या कमी होणे', 'पाने हिरवी होणे', 'नवीन वाढ दिसणे'],
+          hi: primary?.expected_outcomes?.success_indicators_hi || 
+            primary?.expected_outcomes?.success_indicators?.slice(0, 3) ||
+            ['समस्या कम होना', 'पत्ते हरे होना', 'नई बढ़त दिखना'],
+          en: primary?.expected_outcomes?.success_indicators?.slice(0, 3) ||
+            ['Problem reducing', 'Leaves greening', 'New growth visible']
         },
         realistic_expectations: {
-          mr: '70-80% कमी अपेक्षित - 100% नाही',
-          hi: '70-80% कमी अपेक्षित - 100% नहीं',
-          en: '70-80% reduction expected - not 100%'
+          mr: `${Math.round(efficacy * 0.8)}-${Math.round(efficacy)}% कमी अपेक्षित - 100% नाही`,
+          hi: `${Math.round(efficacy * 0.8)}-${Math.round(efficacy)}% कमी अपेक्षित - 100% नहीं`,
+          en: `${Math.round(efficacy * 0.8)}-${Math.round(efficacy)}% reduction expected - not 100%`
         }
       },
       
-      comparison_to_alternatives: primary.ipm_level && primary.ipm_level <= 4 ? {
-        why_not_chemical: {
+      comparison_to_alternatives: alternatives.length > 0 ? {
+        why_not_chemical: primary?.ipm_level && primary.ipm_level <= 4 ? {
           mr: 'रासायनिक नंतर - जैविक प्रथम IPM तत्त्व आहे',
           hi: 'रासायनिक बाद में - जैविक पहले IPM सिद्धांत है',
           en: 'Chemical later - biological first is IPM principle'
-        },
+        } : undefined,
         why_this_is_best: {
-          mr: 'सर्वात योग्य पर्याय आर्थिक आणि पर्यावरणीय दृष्टीने',
-          hi: 'सबसे उपयुक्त विकल्प आर्थिक और पर्यावरण की दृष्टि से',
-          en: 'Best option economically and environmentally'
+          mr: `सर्वात योग्य पर्याय. ${alternatives.length} इतर पर्याय उपलब्ध.`,
+          hi: `सबसे उपयुक्त विकल्प। ${alternatives.length} अन्य विकल्प उपलब्ध।`,
+          en: `Best option selected. ${alternatives.length} alternatives available.`
         }
       } : undefined
     };
@@ -727,120 +1050,216 @@ export class CommunicationGenerator {
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // LAYER 5: ECONOMICS
+  // LAYER 5: ECONOMICS (v3.1 - Full Data Population)
   // ═══════════════════════════════════════════════════════════════════════════
   
-  private generateEconomics(economics: EconomicAssessment, lang: SupportedLanguage): EconomicSummary {
+  private generateEconomics(economics: EconomicAssessment | undefined, lang: SupportedLanguage): EconomicSummary {
+    // Handle missing economics data gracefully
+    if (!economics) {
+      return {
+        heading: SECTION_HEADINGS['ECONOMICS'],
+        treatment_cost: {
+          amount_inr: 0,
+          breakdown: {
+            mr: 'खर्च माहिती उपलब्ध नाही',
+            hi: 'लागत जानकारी उपलब्ध नहीं',
+            en: 'Cost information not available'
+          }
+        },
+        expected_benefit: {
+          loss_prevented_inr: 0,
+          explanation: {
+            mr: 'फायदा माहिती उपलब्ध नाही',
+            hi: 'लाभ जानकारी उपलब्ध नहीं',
+            en: 'Benefit information not available'
+          }
+        },
+        net_benefit: {
+          amount_inr: 0,
+          roi_message: {
+            mr: 'ROI माहिती उपलब्ध नाही',
+            hi: 'ROI जानकारी उपलब्ध नहीं',
+            en: 'ROI information not available'
+          }
+        },
+        affordability_message: {
+          mr: 'बजेट माहिती तपासा',
+          hi: 'बजट जानकारी जांचें',
+          en: 'Check budget information'
+        },
+        value_proposition: {
+          mr: '📊 आर्थिक माहिती उपलब्ध नाही',
+          hi: '📊 आर्थिक जानकारी उपलब्ध नहीं',
+          en: '📊 Economic information not available'
+        }
+      };
+    }
+    
+    // Extract economic info using the extractor
+    const economicInfo = extractEconomicInfo({ economic_assessment: economics } as DecisionOutput);
+    
+    const costPerAcre = economics.treatment_cost_per_acre_inr || economicInfo?.cost_inr || 0;
+    const totalCost = economics.treatment_cost_inr || costPerAcre;
+    const benefit = economics.expected_loss_prevented_inr || economicInfo?.benefit_inr || 0;
+    const netBenefit = economics.net_benefit_inr || (benefit - totalCost);
+    const bcr = economics.benefit_cost_ratio || economicInfo?.bcr || (totalCost > 0 ? benefit / totalCost : 0);
+    const canAfford = economics.affordability?.farmer_can_afford ?? economicInfo?.is_viable ?? true;
+    
     return {
       heading: SECTION_HEADINGS['ECONOMICS'],
       
       treatment_cost: {
-        amount_inr: economics.treatment_cost_inr,
+        amount_inr: totalCost,
         breakdown: {
-          mr: `₹${economics.treatment_cost_per_acre_inr}/एकर × जमीन = ₹${economics.treatment_cost_inr}`,
-          hi: `₹${economics.treatment_cost_per_acre_inr}/एकड़ × जमीन = ₹${economics.treatment_cost_inr}`,
-          en: `₹${economics.treatment_cost_per_acre_inr}/acre × land = ₹${economics.treatment_cost_inr}`
+          mr: `💰 खर्च: ₹${costPerAcre}/एकर = एकूण ₹${totalCost}`,
+          hi: `💰 लागत: ₹${costPerAcre}/एकड़ = कुल ₹${totalCost}`,
+          en: `💰 Cost: ₹${costPerAcre}/acre = Total ₹${totalCost}`
         }
       },
       
       expected_benefit: {
-        loss_prevented_inr: economics.expected_loss_prevented_inr,
+        loss_prevented_inr: benefit,
         explanation: {
-          mr: `उपचार न केल्यास ₹${economics.expected_loss_without_treatment_inr} नुकसान संभव`,
-          hi: `उपचार न करने पर ₹${economics.expected_loss_without_treatment_inr} नुकसान संभव`,
-          en: `Without treatment, ₹${economics.expected_loss_without_treatment_inr} loss possible`
+          mr: `📈 उपचाराने ₹${benefit} नुकसान टळेल`,
+          hi: `📈 उपचार से ₹${benefit} नुकसान टलेगा`,
+          en: `📈 Treatment will prevent ₹${benefit} loss`
         }
       },
       
       net_benefit: {
-        amount_inr: economics.net_benefit_inr,
+        amount_inr: netBenefit,
         roi_message: {
-          mr: `₹1 खर्च केल्यास ₹${economics.benefit_cost_ratio.toFixed(1)} परत`,
-          hi: `₹1 खर्च करने पर ₹${economics.benefit_cost_ratio.toFixed(1)} वापस`,
-          en: `₹1 spent returns ₹${economics.benefit_cost_ratio.toFixed(1)}`
+          mr: `💵 प्रत्येक ₹1 खर्चावर ₹${bcr.toFixed(1)} परतावा मिळेल`,
+          hi: `💵 हर ₹1 खर्च पर ₹${bcr.toFixed(1)} वापसी मिलेगी`,
+          en: `💵 Every ₹1 spent returns ₹${bcr.toFixed(1)}`
         }
       },
       
       affordability_message: {
-        mr: economics.affordability.farmer_can_afford 
+        mr: canAfford 
           ? '✅ तुमच्या बजेटमध्ये बसते' 
-          : '⚠️ बजेटपेक्षा जास्त - स्वस्त पर्याय पहा',
-        hi: economics.affordability.farmer_can_afford 
+          : '⚠️ बजेटपेक्षा जास्त - स्वस्त पर्याय विचारात घ्या',
+        hi: canAfford 
           ? '✅ आपके बजट में है' 
-          : '⚠️ बजट से ज्यादा - सस्ता विकल्प देखें',
-        en: economics.affordability.farmer_can_afford 
+          : '⚠️ बजट से ज्यादा - सस्ता विकल्प विचार करें',
+        en: canAfford 
           ? '✅ Within your budget' 
-          : '⚠️ Over budget - consider cheaper options'
+          : '⚠️ Over budget - consider cheaper alternatives'
       },
       
-      value_proposition: {
-        mr: economics.recommendation === 'STRONGLY_RECOMMENDED' 
-          ? '💪 हा उपचार अत्यंत शिफारसीय!' 
-          : economics.recommendation === 'RECOMMENDED'
-            ? '👍 शिफारसीय उपचार'
-            : '⚖️ विचार करा',
-        hi: economics.recommendation === 'STRONGLY_RECOMMENDED' 
-          ? '💪 यह उपचार अत्यधिक अनुशंसित!' 
-          : economics.recommendation === 'RECOMMENDED'
-            ? '👍 अनुशंसित उपचार'
-            : '⚖️ विचार करें',
-        en: economics.recommendation === 'STRONGLY_RECOMMENDED' 
-          ? '💪 Highly recommended!' 
-          : economics.recommendation === 'RECOMMENDED'
-            ? '👍 Recommended treatment'
-            : '⚖️ Consider carefully'
-      }
+      value_proposition: this.getValueProposition(bcr, economics.recommendation)
+    };
+  }
+  
+  private getValueProposition(bcr: number, recommendation?: string): TrilingualText {
+    if (bcr >= 3 || recommendation === 'STRONGLY_RECOMMENDED') {
+      return {
+        mr: '💪 अत्यंत शिफारसीय! उत्तम परतावा.',
+        hi: '💪 अत्यधिक अनुशंसित! बेहतरीन रिटर्न।',
+        en: '💪 Highly recommended! Excellent returns.'
+      };
+    }
+    if (bcr >= 1.5 || recommendation === 'RECOMMENDED') {
+      return {
+        mr: '👍 शिफारसीय - चांगला परतावा',
+        hi: '👍 अनुशंसित - अच्छा रिटर्न',
+        en: '👍 Recommended - Good returns'
+      };
+    }
+    if (bcr >= 1) {
+      return {
+        mr: '⚖️ ठीक आहे - परतावा खर्चाइतका',
+        hi: '⚖️ ठीक है - रिटर्न खर्च जितना',
+        en: '⚖️ Fair - Returns equal to cost'
+      };
+    }
+    return {
+      mr: '⚠️ कमी परतावा - पर्यायी उपाय विचारात घ्या',
+      hi: '⚠️ कम रिटर्न - वैकल्पिक उपाय विचार करें',
+      en: '⚠️ Low returns - Consider alternatives'
     };
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // LAYER 6: FOLLOW-UP
+  // LAYER 6: FOLLOW-UP (v3.1 - Full Data Population)
   // ═══════════════════════════════════════════════════════════════════════════
   
   private generateFollowUp(decision: DecisionOutput, lang: SupportedLanguage): FollowUpPlan {
+    // EXTRACT follow-up schedule using extractor
+    const extractedSchedule = extractFollowUpSchedule(decision);
+    const repeatInfo = extractRepeatApplicationInfo(decision);
+    
     const schedule = decision.follow_up_schedule;
     const items = [];
     
-    if (schedule.day_3) {
-      items.push({
-        day: 3,
-        check: {
-          mr: schedule.day_3.check_mr || schedule.day_3.check,
-          hi: schedule.day_3.check_hi || schedule.day_3.check,
-          en: schedule.day_3.check
-        },
-        method: {
-          mr: '10 पाने तपासा',
-          hi: '10 पत्ते जांचें',
-          en: 'Check 10 leaves'
-        },
-        success_criteria: {
-          mr: schedule.day_3.success_criteria_mr || schedule.day_3.success_criteria,
-          hi: schedule.day_3.success_criteria_hi || schedule.day_3.success_criteria,
-          en: schedule.day_3.success_criteria
-        }
-      });
-    }
+    // Day 3 check
+    items.push({
+      day: 3,
+      check: {
+        mr: extractedSchedule.day_3 || schedule?.day_3?.check_mr || 'किड्यांची संख्या तपासा',
+        hi: extractedSchedule.day_3 || schedule?.day_3?.check_hi || 'कीटों की संख्या जांचें',
+        en: extractedSchedule.day_3 || schedule?.day_3?.check || 'Check pest population'
+      },
+      method: {
+        mr: '10 पाने यादृच्छिक तपासा',
+        hi: '10 पत्ते रैंडम जांचें',
+        en: 'Check 10 random leaves'
+      },
+      success_criteria: {
+        mr: schedule?.day_3?.success_criteria_mr || '50% कमी दिसावी',
+        hi: schedule?.day_3?.success_criteria_hi || '50% कमी दिखनी चाहिए',
+        en: schedule?.day_3?.success_criteria || '50% reduction visible'
+      }
+    });
     
-    if (schedule.day_7) {
-      items.push({
-        day: 7,
-        check: {
-          mr: schedule.day_7.check_mr || schedule.day_7.check,
-          hi: schedule.day_7.check_hi || schedule.day_7.check,
-          en: schedule.day_7.check
-        },
-        method: {
-          mr: '20 पाने तपासा',
-          hi: '20 पत्ते जांचें',
-          en: 'Check 20 leaves'
-        },
-        success_criteria: {
-          mr: schedule.day_7.success_criteria_mr || schedule.day_7.success_criteria,
-          hi: schedule.day_7.success_criteria_hi || schedule.day_7.success_criteria,
-          en: schedule.day_7.success_criteria
-        }
-      });
+    // Day 7 check
+    items.push({
+      day: 7,
+      check: {
+        mr: extractedSchedule.day_7 || schedule?.day_7?.check_mr || 'उपचाराची प्रभावीता तपासा',
+        hi: extractedSchedule.day_7 || schedule?.day_7?.check_hi || 'उपचार की प्रभावशीलता जांचें',
+        en: extractedSchedule.day_7 || schedule?.day_7?.check || 'Assess treatment effectiveness'
+      },
+      method: {
+        mr: '20 पाने तपासा, फोटो काढा',
+        hi: '20 पत्ते जांचें, फोटो लें',
+        en: 'Check 20 leaves, take photos'
+      },
+      success_criteria: {
+        mr: schedule?.day_7?.success_criteria_mr || '70-80% कमी दिसावी',
+        hi: schedule?.day_7?.success_criteria_hi || '70-80% कमी दिखनी चाहिए',
+        en: schedule?.day_7?.success_criteria || '70-80% reduction visible'
+      }
+    });
+    
+    // Day 14 check
+    items.push({
+      day: 14,
+      check: {
+        mr: extractedSchedule.day_14 || 'अंतिम मूल्यांकन करा',
+        hi: extractedSchedule.day_14 || 'अंतिम मूल्यांकन करें',
+        en: extractedSchedule.day_14 || 'Final evaluation'
+      },
+      method: {
+        mr: 'संपूर्ण क्षेत्र तपासा',
+        hi: 'पूरा क्षेत्र जांचें',
+        en: 'Check entire area'
+      },
+      success_criteria: {
+        mr: 'समस्या नियंत्रणात असावी',
+        hi: 'समस्या नियंत्रण में होनी चाहिए',
+        en: 'Problem should be under control'
+      }
+    });
+    
+    // Build repeat application note if needed
+    let repeatNote: TrilingualText | undefined;
+    if (repeatInfo.may_need_repeat) {
+      repeatNote = {
+        mr: `📅 ${repeatInfo.interval_days} दिवसांनी पुन्हा फवारणी आवश्यक असू शकते`,
+        hi: `📅 ${repeatInfo.interval_days} दिनों बाद फिर से छिड़काव जरूरी हो सकता है`,
+        en: `📅 Repeat spray may be needed after ${repeatInfo.interval_days} days`
+      };
     }
     
     return {
@@ -848,24 +1267,25 @@ export class CommunicationGenerator {
       schedule: items,
       automated_followup: {
         system_will_ask: {
-          mr: 'मी 3 दिवसांनी तुम्हाला विचारेन',
-          hi: 'मैं 3 दिनों में आपसे पूछूंगा',
-          en: 'I will ask you after 3 days'
+          mr: '🔔 मी 3 दिवसांनी तुम्हाला स्वयंचलित विचारेन',
+          hi: '🔔 मैं 3 दिनों में आपसे स्वचालित पूछूंगा',
+          en: '🔔 I will automatically ask you after 3 days'
         },
         reminder_scheduled: true
       },
       if_not_working: {
         condition: {
-          mr: 'जर 5 दिवसांत फरक नसेल',
-          hi: 'अगर 5 दिनों में फर्क न हो',
-          en: 'If no improvement in 5 days'
+          mr: '⚠️ जर 7 दिवसांत 50% कमी नसेल',
+          hi: '⚠️ अगर 7 दिनों में 50% कमी न हो',
+          en: '⚠️ If no 50% reduction in 7 days'
         },
         next_action: {
-          mr: 'मला सांगा - आम्ही वेगळा पर्याय शोधू',
-          hi: 'मुझे बताएं - हम दूसरा विकल्प खोजेंगे',
-          en: 'Tell me - we will find another option'
+          mr: '📞 मला सांगा - आम्ही वेगळा पर्याय शोधू किंवा तज्ञांशी संपर्क करू',
+          hi: '📞 मुझे बताएं - हम दूसरा विकल्प खोजेंगे या विशेषज्ञ से संपर्क करेंगे',
+          en: '📞 Tell me - we will find another option or contact an expert'
         }
-      }
+      },
+      repeat_application_note: repeatNote
     };
   }
   
