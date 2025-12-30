@@ -318,6 +318,10 @@ export class AIAgentOrchestrator {
         
         const llmResponse = await generateLLMResponse(llmInput);
         
+        // Build data audit for LLM-direct path too
+        const weatherData = await this.fetchWeatherData(sessionId, options.landId);
+        const dataAudit = this.buildDataAudit(landContext, weatherData);
+        
         return {
           type: 'DECISION_PROVIDED',
           session_id: sessionId,
@@ -350,13 +354,15 @@ export class AIAgentOrchestrator {
               sections_included: ['main_message']
             }
           } as any,
+          dataAudit,  // NEW: Include data audit for debugging
           metadata: {
             confidence: llmResponse.confidence,
             safety_status: 'SAFE',
             rules_applied: 0,
             processing_time_ms: Date.now() - startTime,
             agents_used: agentsUsed,
-            template_type: 'LLM_DIRECT'
+            template_type: 'LLM_DIRECT',
+            trace_id: traceId
           }
         };
       }
@@ -801,12 +807,18 @@ export class AIAgentOrchestrator {
       }
       
       // ========================================
-      // PHASE 8: RETURN TO FARMER
+      // PHASE 8: BUILD DATA AUDIT & RETURN TO FARMER
       // ========================================
       const processingTime = Date.now() - startTime;
       console.log('\n✅ Orchestrator: Flow complete!');
       console.log(`   Template used: ${questionClassification.template_type}`);
       console.log(`   Total processing time: ${processingTime}ms\n`);
+      
+      // Build data audit for debugging - shows what data was found/missing
+      const weatherData = await this.fetchWeatherData(sessionId, options.landId);
+      const dataAudit = this.buildDataAudit(landContext, weatherData);
+      console.log(`   📊 Data Quality Score: ${dataAudit.summary.data_quality_score}%`);
+      console.log(`   📊 Available Sources: ${dataAudit.summary.available_sources}/${dataAudit.summary.total_data_sources}`);
       
       return {
         type: 'DECISION_PROVIDED',
@@ -814,6 +826,7 @@ export class AIAgentOrchestrator {
         decision_id: decisionOutput.decision_id,
         communication: farmerCommunication,
         question_classification: questionClassification,  // Include in response
+        dataAudit,  // NEW: Include data audit for debugging
         metadata: {
           confidence: diagnosticState.hypotheses?.[0]?.confidence || 0.7,
           safety_status: safetyVerification.safety_check.overall_safety_status,
@@ -821,7 +834,8 @@ export class AIAgentOrchestrator {
           processing_time_ms: processingTime,
           agents_used: agentsUsed,
           template_type: questionClassification.template_type,
-          sections_count: farmerCommunication.metadata?.sections_count || 0
+          sections_count: farmerCommunication.metadata?.sections_count || 0,
+          trace_id: traceId
         }
       };
       
