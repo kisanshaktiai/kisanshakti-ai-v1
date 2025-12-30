@@ -81,14 +81,25 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
   }
   
   // ─────────────────────────────────────────────────────────────────────────
-  // STEP 3: Check P2 Weather Safety - Delay if unsafe
+  // STEP 3: Check P2 Weather Safety - Delay ONLY for spray-type actions
+  // CRITICAL FIX: Weather delay should NOT block fertilizer, diagnosis, or general queries
   // ─────────────────────────────────────────────────────────────────────────
   const p2Delay = findDelayRule(decisions.P2_weather_safety);
-  if (p2Delay) {
-    // Weather delay is not a hard block - suggest waiting
+  
+  // Collect all viable spray-type recommendations from P3-P6
+  const sprayRecommendations = [
+    ...decisions.P3_crop_stage,
+    ...decisions.P4_economic,
+    ...decisions.P5_ipm,
+    ...decisions.P6_optimization
+  ].filter(r => r.action === 'RECOMMEND' && isSprayAction(r));
+  
+  // ONLY apply weather delay if there are actual spray recommendations
+  if (p2Delay && sprayRecommendations.length > 0) {
+    // Weather delay is not a hard block - add warning
     warnings.push(`⏱️ Weather advisory: ${p2Delay.reason}`);
     
-    // If delay is critical (>60% rain), treat as delay status
+    // If delay is critical (>60% rain) AND we have spray actions, treat as delay status
     if (p2Delay.action === 'DELAY') {
       return {
         status: 'WEATHER_DELAYED',
@@ -104,6 +115,9 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
         next_safe_window: p2Delay.next_safe_window
       };
     }
+  } else if (p2Delay) {
+    // No spray actions but weather delay exists - just add warning, don't block
+    warnings.push(`ℹ️ Weather note: ${p2Delay.reason} (does not affect current recommendation)`);
   }
   
   // ─────────────────────────────────────────────────────────────────────────
@@ -178,6 +192,24 @@ function findBlockingRule(rules: RuleResult[]): RuleResult | undefined {
 
 function findDelayRule(rules: RuleResult[]): RuleResult | undefined {
   return rules.find(r => r.action === 'DELAY');
+}
+
+/**
+ * CRITICAL FIX: Check if a rule result is for a spray-type action
+ * Weather delays should ONLY apply to spray actions, not fertilizer/monitoring/diagnosis
+ */
+function isSprayAction(rule: RuleResult): boolean {
+  const sprayTypes = ['CHEMICAL', 'BOTANICAL', 'BIOLOGICAL', 'BIOPESTICIDE'];
+  const sprayKeywords = ['spray', 'फवारणी', 'छिड़काव', 'foliar', 'pesticide', 'insecticide', 'fungicide'];
+  
+  // Check product type
+  if (rule.recommendation?.product_type && sprayTypes.includes(rule.recommendation.product_type)) {
+    return true;
+  }
+  
+  // Check action keywords in reason or recommendation
+  const textToCheck = `${rule.reason || ''} ${rule.recommendation?.product_name || ''} ${rule.cause || ''}`.toLowerCase();
+  return sprayKeywords.some(kw => textToCheck.includes(kw));
 }
 
 function createBlockedAction(rule: RuleResult, priority: string): BlockedAction {

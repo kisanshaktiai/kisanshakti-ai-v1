@@ -881,8 +881,9 @@ export class RuleEngineExecutor {
   
   private getRecommendedTreatment(input: RuleExecutionInput): RecommendationDetails {
     const pestCode = input.pest_disease_state.pest_code?.toUpperCase() || '';
+    const cropCode = input.farmer_context.crop_code?.toUpperCase() || '';
     
-    // Default recommendations by pest
+    // Default recommendations by pest (with crop-specific variants)
     const treatments: Record<string, RecommendationDetails> = {
       'APHID': {
         product_name: 'Imidacloprid 17.8% SL OR Neem Oil 1%',
@@ -910,6 +911,47 @@ export class RuleEngineExecutor {
         ipm_level: 4,
         efficacy_percent: 70,
         cost_per_acre_inr: 1200
+      },
+      // CRITICAL FIX: Add SHOOT_BORER for sugarcane dead heart
+      'SHOOT_BORER': {
+        product_name: cropCode === 'SUGARCANE' 
+          ? 'Chlorantraniliprole 18.5 SC + Trichogramma chilonis'
+          : 'Fipronil 5 SC',
+        product_type: 'CHEMICAL',
+        dosage: cropCode === 'SUGARCANE' 
+          ? '3 ml/10L water + 50,000 eggs/acre'
+          : '30 ml/10L (soil drench)',
+        application_method: 'FOLIAR_SPRAY',
+        ipm_level: 5,
+        efficacy_percent: 85,
+        cost_per_acre_inr: 2500
+      },
+      'STEM_BORER': {
+        product_name: 'Cartap Hydrochloride 50 SP OR Fipronil 5 SC',
+        product_type: 'CHEMICAL',
+        dosage: '20 g/10L water OR 30 ml/10L',
+        application_method: 'FOLIAR_SPRAY',
+        ipm_level: 5,
+        efficacy_percent: 80,
+        cost_per_acre_inr: 2000
+      },
+      'INTERNODE_BORER': {
+        product_name: 'Chlorantraniliprole 18.5 SC + Detrashing',
+        product_type: 'CHEMICAL',
+        dosage: '3 ml/10L water',
+        application_method: 'FOLIAR_SPRAY',
+        ipm_level: 5,
+        efficacy_percent: 85,
+        cost_per_acre_inr: 2200
+      },
+      'TOP_BORER': {
+        product_name: 'Cartap Hydrochloride 4G (Granules in leaf whorl)',
+        product_type: 'CHEMICAL',
+        dosage: '18-20 kg/acre',
+        application_method: 'SOIL_APPLICATION',
+        ipm_level: 5,
+        efficacy_percent: 80,
+        cost_per_acre_inr: 1800
       }
     };
     
