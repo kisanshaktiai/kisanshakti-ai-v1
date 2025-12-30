@@ -11,9 +11,10 @@ const corsHeaders = {
 
 // Type definitions
 interface WeatherRequest {
-  action: 'current' | 'forecast' | 'agricultural' | 'all' // NEW: 'all' for single combined call
-  lat: number
-  lon: number
+  action: 'current' | 'forecast' | 'agricultural' | 'all' | 'land' // NEW: 'land' for land-specific weather
+  lat?: number
+  lon?: number
+  landId?: string // NEW: Fetch weather for specific land by ID
   units?: 'metric' | 'imperial' | 'standard'
 }
 
@@ -565,7 +566,7 @@ async function fetchTomorrowIoForecast(
   return { forecast, hourly }
 }
 
-// Store weather data in cache
+// Store weather data in cache AND observation tables
 async function cacheWeatherData(
   supabase: any,
   locationKey: string,
@@ -574,34 +575,31 @@ async function cacheWeatherData(
   forecast?: DailyForecast[],
   hourly?: ForecastItem[],
   tenantId?: string,
-  farmerId?: string
+  farmerId?: string,
+  landId?: string // NEW: Store weather per land
 ) {
   try {
     const now = new Date()
     const expiresAt = new Date(now.getTime() + 60 * 60 * 1000) // 1 hour cache
     
     // 1. Store in weather_current (cache table)
-    // CRITICAL: Use correct column names and unit conversions
-    // Note: Removed icon_code and dew_point_celsius as they may not exist in schema
     const currentRecord: Record<string, any> = {
       location_key: locationKey,
       latitude: rounded.lat,
       longitude: rounded.lon,
       temperature_celsius: current.temp,
       feels_like_celsius: current.feels_like,
-      temp_min: current.temp_min,
-      temp_max: current.temp_max,
       humidity_percent: current.humidity,
       pressure_hpa: current.pressure,
-      wind_speed_kmh: current.wind_speed * 3.6, // Convert m/s to km/h
+      wind_speed_kmh: current.wind_speed * 3.6,
       wind_direction_degrees: current.wind_deg,
-      weather_description: current.description, // FIXED: Use correct column name
-      weather_main: current.main, // FIXED: Use correct column name
+      weather_description: current.description,
+      weather_main: current.main,
       cloud_cover_percent: current.clouds,
-      visibility_km: current.visibility / 1000, // Convert meters to km
+      visibility_km: current.visibility / 1000,
       uv_index: current.uv_index || 0,
-      rain_1h_mm: current.rain_1h || 0, // Store rainfall data
-      rain_24h_mm: (current.rain_3h || 0) * 8, // Estimate 24h from 3h
+      rain_1h_mm: current.rain_1h || 0,
+      rain_24h_mm: (current.rain_3h || 0) * 8,
       sunrise: current.sunrise ? new Date(current.sunrise * 1000).toISOString() : null,
       sunset: current.sunset ? new Date(current.sunset * 1000).toISOString() : null,
       observation_time: new Date(current.dt * 1000).toISOString(),
@@ -610,7 +608,9 @@ async function cacheWeatherData(
       created_at: now.toISOString()
     };
     
-    const { error: currentError } = await supabase.from('weather_current').upsert(currentRecord, { onConflict: 'location_key' })
+    // Delete old cache entry first, then insert new one
+    await supabase.from('weather_current').delete().eq('location_key', locationKey)
+    const { error: currentError } = await supabase.from('weather_current').insert(currentRecord)
     
     if (currentError) {
       console.error('❌ [Weather] Failed to cache current weather:', currentError)
@@ -622,93 +622,228 @@ async function cacheWeatherData(
       })
     }
     
-    // 2. Store forecasts with proper unique constraints
-    if (forecast && forecast.length > 0) {
-      const forecastRecords = forecast.map(day => {
-        const record: Record<string, any> = {
+    // 2. Store in weather_observations for historical tracking (NEW!)
+    if (tenantId) {
+      const observationRecord: Record<string, any> = {
+        tenant_id: tenantId,
+        farmer_id: farmerId || null,
+        land_id: landId || null,
+        observation_date: now.toISOString().split('T')[0],
+        observation_time: new Date(current.dt * 1000).toISOString(),
+        temperature_celsius: current.temp,
+        feels_like_celsius: current.feels_like,
+        humidity_percent: current.humidity,
+        rainfall_mm: current.rain_1h || 0,
+        wind_speed_kmh: current.wind_speed * 3.6,
+        wind_direction: getWindDirection(current.wind_deg),
+        weather_condition: current.main,
+        pressure_hpa: current.pressure,
+        visibility_km: current.visibility / 1000,
+        uv_index: current.uv_index || 0,
+        dew_point_celsius: current.dew_point || null,
+        cloud_coverage_percent: current.clouds,
+        metadata: {
+          provider: current.provider,
           location_key: locationKey,
-          latitude: rounded.lat,
-          longitude: rounded.lon,
-          forecast_time: new Date(day.dt * 1000).toISOString(),
-          forecast_type: 'daily' as const,
-          temperature_celsius: day.temp.day,
-          temperature_min_celsius: day.temp.min,
-          temperature_max_celsius: day.temp.max,
-          feels_like_celsius: day.temp.day,
-          humidity_percent: Math.round(day.humidity),
-          pressure_hpa: day.pressure || null,
-          wind_speed_kmh: day.wind_speed * 3.6, // FIXED: Convert m/s to km/h
-          wind_direction_degrees: day.wind_deg || null,
-          weather_description: day.weather[0]?.description || 'Unknown', // FIXED: column name
-          weather_main: day.weather[0]?.main || 'Unknown', // FIXED: column name
-          precipitation_probability: Math.round(day.pop * 100), // FIXED: column name
-          rain_amount_mm: day.rain || 0, // Store rainfall
-          uv_index: day.uv_index || 0,
-          moon_phase: day.moon_phase || 0,
-          data_source: current.provider || 'API'
-        };
-        return record;
-      });
+          icon: current.icon,
+          description: current.description
+        },
+        created_at: now.toISOString()
+      };
       
-      // Insert forecasts one by one to handle conflicts better
-      let successCount = 0
-      for (const record of forecastRecords) {
-        const { error: forecastError } = await supabase
-          .from('weather_forecasts')
-          .upsert(record, {
-            onConflict: 'location_key,forecast_time,forecast_type'
-          })
-        
-        if (!forecastError) {
-          successCount++
-        } else {
-          console.warn('⚠️ [Weather] Forecast upsert failed:', forecastError.message)
-        }
+      const { error: obsError } = await supabase.from('weather_observations').insert(observationRecord)
+      
+      if (obsError) {
+        console.warn('⚠️ [Weather] Failed to save observation:', obsError.message)
+      } else {
+        console.log(`💾 [Weather] ✅ Saved weather observation for ${tenantId}${landId ? ` land:${landId}` : ''}`)
       }
-      
-      console.log(`💾 [Weather] ✅ Cached ${successCount}/${forecast.length} daily forecasts`)
     }
     
-    // 3. Store hourly forecasts
-    if (hourly && hourly.length > 0) {
-      const hourlyRecords = hourly.map(hour => {
-        const record: Record<string, any> = {
-          location_key: locationKey,
-          latitude: rounded.lat,
-          longitude: rounded.lon,
-          forecast_time: new Date(hour.dt * 1000).toISOString(),
-          forecast_type: 'hourly' as const,
-          temperature_celsius: hour.temp,
-          feels_like_celsius: hour.feels_like,
-          humidity_percent: Math.round(hour.humidity),
-          wind_speed_kmh: hour.wind_speed * 3.6, // FIXED: Convert m/s to km/h
-          weather_description: hour.weather[0]?.description || 'Unknown', // FIXED: column name
-          weather_main: hour.weather[0]?.main || 'Unknown', // FIXED: column name
-          precipitation_probability: Math.round(hour.pop * 100), // FIXED: column name
-          uv_index: hour.uv_index || null,
-          data_source: current.provider || 'API'
-        };
-        return record;
-      });
+    // 3. Store forecasts - FIXED column names
+    if (forecast && forecast.length > 0) {
+      const forecastRecords = forecast.map(day => ({
+        location_key: locationKey,
+        latitude: rounded.lat,
+        longitude: rounded.lon,
+        forecast_time: new Date(day.dt * 1000).toISOString(),
+        forecast_type: 'daily' as const,
+        temperature_celsius: day.temp.day,
+        temperature_min_celsius: day.temp.min,
+        temperature_max_celsius: day.temp.max,
+        feels_like_celsius: day.temp.day,
+        humidity_percent: Math.round(day.humidity),
+        wind_speed_kmh: day.wind_speed * 3.6,
+        weather_description: day.weather[0]?.description || 'Unknown',
+        weather_main: day.weather[0]?.main || 'Unknown',
+        rain_probability_percent: Math.round(day.pop * 100),
+        rain_amount_mm: day.rain || 0,
+        uv_index: day.uv_index || 0,
+        data_source: current.provider || 'API',
+        created_at: now.toISOString()
+      }));
       
-      let successCount = 0
-      for (const record of hourlyRecords) {
-        const { error: hourlyError } = await supabase
-          .from('weather_forecasts')
-          .upsert(record, {
-            onConflict: 'location_key,forecast_time,forecast_type'
-          })
-        
-        if (!hourlyError) {
-          successCount++
-        }
+      // Delete old forecasts for this location then insert new
+      await supabase.from('weather_forecasts').delete().eq('location_key', locationKey).eq('forecast_type', 'daily')
+      
+      const { error: dailyInsertErr } = await supabase.from('weather_forecasts').insert(forecastRecords)
+      if (dailyInsertErr) {
+        console.warn('⚠️ [Weather] Daily forecast insert failed:', dailyInsertErr.message)
+      } else {
+        console.log(`💾 [Weather] ✅ Cached ${forecastRecords.length} daily forecasts`)
       }
-      
-      console.log(`💾 [Weather] ✅ Cached ${successCount}/${hourly.length} hourly forecasts`)
     }
+    
+    // 4. Store hourly forecasts
+    if (hourly && hourly.length > 0) {
+      const hourlyRecords = hourly.map(hour => ({
+        location_key: locationKey,
+        latitude: rounded.lat,
+        longitude: rounded.lon,
+        forecast_time: new Date(hour.dt * 1000).toISOString(),
+        forecast_type: 'hourly' as const,
+        temperature_celsius: hour.temp,
+        feels_like_celsius: hour.feels_like,
+        humidity_percent: Math.round(hour.humidity),
+        wind_speed_kmh: hour.wind_speed * 3.6,
+        weather_description: hour.weather[0]?.description || 'Unknown',
+        weather_main: hour.weather[0]?.main || 'Unknown',
+        rain_probability_percent: Math.round(hour.pop * 100),
+        uv_index: hour.uv_index || null,
+        data_source: current.provider || 'API',
+        created_at: now.toISOString()
+      }));
+      
+      await supabase.from('weather_forecasts').delete().eq('location_key', locationKey).eq('forecast_type', 'hourly')
+      const { error: hourlyInsertErr } = await supabase.from('weather_forecasts').insert(hourlyRecords)
+      if (hourlyInsertErr) {
+        console.warn('⚠️ [Weather] Hourly forecast insert failed:', hourlyInsertErr.message)
+      } else {
+        console.log(`💾 [Weather] ✅ Cached ${hourlyRecords.length} hourly forecasts`)
+      }
+    }
+    }
+    
+    // 5. Update weather_aggregates for the day (NEW!)
+    if (tenantId) {
+      await updateWeatherAggregate(supabase, tenantId, farmerId, landId, current, now)
+    }
+    
   } catch (error) {
     console.error('❌ [Weather] Cache storage error:', error)
   }
+}
+
+// Helper function to convert wind degrees to direction
+function getWindDirection(deg: number): string {
+  const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']
+  const index = Math.round(deg / 22.5) % 16
+  return directions[index]
+}
+
+// Update daily weather aggregates
+async function updateWeatherAggregate(
+  supabase: any,
+  tenantId: string,
+  farmerId?: string,
+  landId?: string,
+  current?: CurrentWeatherData,
+  now?: Date
+) {
+  if (!current || !now) return
+  
+  const today = now.toISOString().split('T')[0]
+  const hour = now.getHours()
+  
+  // Determine time period
+  let rainColumn = 'rain_mm_morning'
+  if (hour >= 12 && hour < 17) rainColumn = 'rain_mm_afternoon'
+  else if (hour >= 17 && hour < 21) rainColumn = 'rain_mm_evening'
+  else if (hour >= 21 || hour < 6) rainColumn = 'rain_mm_night'
+  
+  try {
+    // Check if aggregate exists for today
+    const { data: existing } = await supabase
+      .from('weather_aggregates')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('aggregate_date', today)
+      .eq('land_id', landId || null)
+      .maybeSingle()
+    
+    if (existing) {
+      // Update existing aggregate
+      const updates: Record<string, any> = {
+        updated_at: now.toISOString(),
+        rain_mm_total: (existing.rain_mm_total || 0) + (current.rain_1h || 0),
+        [rainColumn]: (existing[rainColumn] || 0) + (current.rain_1h || 0)
+      }
+      
+      // Update min/max temps
+      if (!existing.temp_min_celsius || current.temp < existing.temp_min_celsius) {
+        updates.temp_min_celsius = current.temp
+      }
+      if (!existing.temp_max_celsius || current.temp > existing.temp_max_celsius) {
+        updates.temp_max_celsius = current.temp
+      }
+      
+      // Running average
+      updates.temp_avg_celsius = ((existing.temp_avg_celsius || current.temp) + current.temp) / 2
+      updates.humidity_avg_percent = ((existing.humidity_avg_percent || current.humidity) + current.humidity) / 2
+      updates.wind_speed_avg_kmh = ((existing.wind_speed_avg_kmh || current.wind_speed * 3.6) + current.wind_speed * 3.6) / 2
+      
+      if (current.wind_speed * 3.6 > (existing.wind_speed_max_kmh || 0)) {
+        updates.wind_speed_max_kmh = current.wind_speed * 3.6
+      }
+      
+      // Risk calculations
+      updates.frost_risk = current.temp < 4
+      updates.heat_stress_risk = current.temp > 38
+      updates.disease_risk_level = calculateDiseaseRisk(current.humidity, current.temp)
+      
+      await supabase
+        .from('weather_aggregates')
+        .update(updates)
+        .eq('id', existing.id)
+      
+    } else {
+      // Create new aggregate
+      const newAggregate = {
+        tenant_id: tenantId,
+        farmer_id: farmerId || null,
+        land_id: landId || null,
+        aggregate_date: today,
+        rain_mm_total: current.rain_1h || 0,
+        [rainColumn]: current.rain_1h || 0,
+        temp_min_celsius: current.temp,
+        temp_max_celsius: current.temp,
+        temp_avg_celsius: current.temp,
+        humidity_avg_percent: current.humidity,
+        wind_speed_avg_kmh: current.wind_speed * 3.6,
+        wind_speed_max_kmh: current.wind_speed * 3.6,
+        frost_risk: current.temp < 4,
+        heat_stress_risk: current.temp > 38,
+        disease_risk_level: calculateDiseaseRisk(current.humidity, current.temp),
+        created_at: now.toISOString(),
+        updated_at: now.toISOString()
+      }
+      
+      await supabase.from('weather_aggregates').insert(newAggregate)
+    }
+    
+    console.log(`💾 [Weather] ✅ Updated daily aggregate for ${today}`)
+    
+  } catch (error) {
+    console.warn('⚠️ [Weather] Failed to update aggregate:', error)
+  }
+}
+
+// Calculate disease risk based on humidity and temperature
+function calculateDiseaseRisk(humidity: number, temp: number): string {
+  // High humidity + moderate temp = high disease risk
+  if (humidity > 85 && temp >= 20 && temp <= 30) return 'high'
+  if (humidity > 70 && temp >= 15 && temp <= 35) return 'medium'
+  return 'low'
 }
 
 // Main handler
@@ -771,16 +906,53 @@ serve(async (req: Request): Promise<Response> => {
     
     // Parse request
     const body = await req.json() as WeatherRequest
-    const { action, lat, lon, units = 'metric' } = body
+    let { action, lat, lon, landId, units = 'metric' } = body
+    
+    let landData: { id: string; name: string; farmer_id: string } | null = null
+    
+    // NEW: Handle land-based weather request
+    if (landId || action === 'land') {
+      if (!landId) {
+        throw new Error('landId is required for land-based weather request')
+      }
+      
+      console.log(`🌱 [Weather] Fetching weather for land: ${landId}`)
+      
+      // Get land coordinates from database
+      const { data: land, error: landError } = await supabase
+        .from('lands')
+        .select('id, name, center_lat, center_lon, farmer_id')
+        .eq('id', landId)
+        .maybeSingle()
+      
+      if (landError || !land) {
+        throw new Error(`Land not found: ${landId}`)
+      }
+      
+      if (!land.center_lat || !land.center_lon) {
+        throw new Error(`Land ${land.name} does not have coordinates set`)
+      }
+      
+      lat = parseFloat(land.center_lat)
+      lon = parseFloat(land.center_lon)
+      landData = { id: land.id, name: land.name, farmer_id: land.farmer_id }
+      
+      // For land action, fetch all weather data
+      if (action === 'land') {
+        action = 'all'
+      }
+      
+      console.log(`📍 [Weather] Land ${land.name} location: ${lat}, ${lon}`)
+    }
     
     if (!lat || !lon) {
-      throw new Error('Latitude and longitude are required')
+      throw new Error('Latitude and longitude are required (or provide landId)')
     }
     
     // Round coordinates for caching (~1km precision)
     const rounded = roundCoordinates(lat, lon)
     console.log(`📍 [Weather] Rounded location: ${rounded.key} (original: ${lat},${lon})`)
-    console.log(`🌤️ [Weather] Processing request for tenant ${tenant.id}:`, { action, location: rounded.key })
+    console.log(`🌤️ [Weather] Processing request for tenant ${tenant.id}:`, { action, location: rounded.key, landId: landData?.id })
     
     // STEP 1: Check cache first (cache-first strategy)
     const cached = await checkCache(supabase, rounded.key, action)
@@ -921,7 +1093,8 @@ serve(async (req: Request): Promise<Response> => {
           forecast, 
           hourly,
           tenant.id,
-          userId
+          userId || landData?.farmer_id,
+          landData?.id // NEW: Pass landId for weather_observations
         )
       }
       
@@ -980,8 +1153,16 @@ serve(async (req: Request): Promise<Response> => {
     const response: any = {
       tenant: { id: tenant.id, name: tenant.name },
       cached: false,
-      provider: dataProvider, // Include data source
+      provider: dataProvider,
       timestamp: new Date().toISOString()
+    }
+    
+    // Include land info if this was a land-based request
+    if (landData) {
+      response.land = {
+        id: landData.id,
+        name: landData.name
+      }
     }
     
     if (action === 'current') {
