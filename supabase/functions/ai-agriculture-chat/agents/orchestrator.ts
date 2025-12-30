@@ -1645,5 +1645,3 @@ export class AIAgentOrchestrator {
 }
 
 export const orchestrator = new AIAgentOrchestrator();
-
-export const orchestrator = new AIAgentOrchestrator();
