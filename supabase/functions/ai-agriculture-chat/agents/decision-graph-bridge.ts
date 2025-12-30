@@ -581,6 +581,22 @@ export async function evaluateDecisionGraph(
 // PEST IPM EVALUATION
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * CRITICAL FIX: Normalize code for matching (removes underscores, converts to uppercase)
+ */
+function normalizeForMatching(code: string): string {
+  return code.toUpperCase().replace(/[_\s-]+/g, '');
+}
+
+/**
+ * CRITICAL FIX: Check if two codes match (handles underscore/space variations)
+ */
+function codesMatch(code1: string, code2: string): boolean {
+  const norm1 = normalizeForMatching(code1);
+  const norm2 = normalizeForMatching(code2);
+  return norm1.includes(norm2) || norm2.includes(norm1) || norm1 === norm2;
+}
+
 function evaluatePestIPM(context: RuleEvaluationContext): EvaluatedRule[] {
   const rules: EvaluatedRule[] = [];
   
@@ -588,16 +604,21 @@ function evaluatePestIPM(context: RuleEvaluationContext): EvaluatedRule[] {
     return rules;
   }
   
-  const pestUpper = context.pest_code.toUpperCase();
-  const cropUpper = (context.crop_code || '').toUpperCase();
+  const pestNorm = normalizeForMatching(context.pest_code);
+  const cropNorm = normalizeForMatching(context.crop_code || '');
   const severity = context.severity || 'MODERATE';
+  
+  console.log(`   🐛 IPM matching: pest="${pestNorm}", crop="${cropNorm}"`);
   
   // Find matching IPM recommendations
   for (const ipm of IPM_DATABASE) {
-    const cropMatch = ipm.crop_codes.some(c => cropUpper.includes(c.toUpperCase()) || c.toUpperCase().includes(cropUpper));
-    const pestMatch = ipm.pest_codes.some(p => pestUpper.includes(p.toUpperCase()) || p.toUpperCase().includes(pestUpper));
+    // CRITICAL FIX: Use normalized matching for crop and pest codes
+    const cropMatch = ipm.crop_codes.some(c => codesMatch(cropNorm, c));
+    const pestMatch = ipm.pest_codes.some(p => codesMatch(pestNorm, p));
     
     if (!cropMatch || !pestMatch) continue;
+    
+    console.log(`   ✅ IPM match found: ${ipm.crop_codes[0]} + ${ipm.pest_codes[0]}, Level ${ipm.ipm_level}`);
     
     // Check severity threshold
     const severityOrder = { 'LOW': 1, 'MODERATE': 2, 'HIGH': 3, 'CRITICAL': 4 };
@@ -636,7 +657,7 @@ function evaluatePestIPM(context: RuleEvaluationContext): EvaluatedRule[] {
       }
       
       rules.push({
-        rule_id: `IPM_${cropUpper}_${pestUpper}_L${ipm.ipm_level}`,
+        rule_id: `IPM_${context.crop_code || 'CROP'}_${context.pest_code}_L${ipm.ipm_level}`,
         category: 'ipm',
         priority: ipm.ipm_level <= 2 ? 'P5_IPM' : (ipm.ipm_level <= 4 ? 'P4_ECONOMIC' : 'P3_CROP_STAGE'),
         fired: true,
@@ -665,15 +686,20 @@ function evaluateDiseaseManagement(context: RuleEvaluationContext): EvaluatedRul
     return rules;
   }
   
-  const diseaseUpper = context.disease_code.toUpperCase();
-  const cropUpper = (context.crop_code || '').toUpperCase();
+  const diseaseNorm = normalizeForMatching(context.disease_code);
+  const cropNorm = normalizeForMatching(context.crop_code || '');
   const severity = context.severity || 'MODERATE';
   
+  console.log(`   🦠 Disease matching: disease="${diseaseNorm}", crop="${cropNorm}"`);
+  
   for (const disease of DISEASE_DATABASE) {
-    const cropMatch = disease.crop_codes.some(c => cropUpper.includes(c.toUpperCase()));
-    const diseaseMatch = disease.disease_codes.some(d => diseaseUpper.includes(d.toUpperCase()) || d.toUpperCase().includes(diseaseUpper));
+    // CRITICAL FIX: Use normalized matching for crop and disease codes
+    const cropMatch = disease.crop_codes.some(c => codesMatch(cropNorm, c));
+    const diseaseMatch = disease.disease_codes.some(d => codesMatch(diseaseNorm, d));
     
     if (!cropMatch || !diseaseMatch) continue;
+    
+    console.log(`   ✅ Disease match found: ${disease.crop_codes[0]} + ${disease.disease_codes[0]}`);
     
     const severityOrder = { 'LOW': 10, 'MODERATE': 25, 'HIGH': 50, 'CRITICAL': 75 };
     const currentDSI = severityOrder[severity] || 25;
