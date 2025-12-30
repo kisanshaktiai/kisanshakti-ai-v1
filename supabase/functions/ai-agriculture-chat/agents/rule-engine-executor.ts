@@ -67,6 +67,16 @@ export class RuleEngineExecutor {
     console.log(`   [${traceId}] Severity: ${input.pest_disease_state.severity || 'UNKNOWN'}`);
     console.log(`   [${traceId}] Total rules in registry: ${getTotalRuleCount()}`);
     
+    // CRITICAL: Log field conditions with soil/NDVI data
+    console.log(`   [${traceId}] 🌾 Field Conditions (Soil + NDVI):`);
+    console.log(`      Soil N State: ${input.field_conditions?.soil_nitrogen_state || 'NOT_AVAILABLE'}`);
+    console.log(`      Soil P State: ${input.field_conditions?.soil_phosphorus_state || 'NOT_AVAILABLE'}`);
+    console.log(`      Soil K State: ${input.field_conditions?.soil_potassium_state || 'NOT_AVAILABLE'}`);
+    console.log(`      Soil pH: ${input.field_conditions?.soil_ph || 'NOT_AVAILABLE'}`);
+    console.log(`      NDVI: ${input.field_conditions?.ndvi?.toFixed(2) || 'NOT_AVAILABLE'} (${input.field_conditions?.ndvi_state || 'UNKNOWN'})`);
+    console.log(`      NDVI Trend: ${input.field_conditions?.ndvi_trend || 'NOT_AVAILABLE'}`);
+    console.log(`      Has Real Data: ${!!(input.field_conditions?.soil_nitrogen_state || input.field_conditions?.ndvi)}`);
+    
     // PHASE C: Execute Decision Graph Bridge FIRST for deterministic rules
     let bridgeResults: RuleResult[] = [];
     try {
@@ -81,12 +91,28 @@ export class RuleEngineExecutor {
                           input.pest_disease_state.severity === 'HIGH' ? 60 :
                           input.pest_disease_state.severity === 'MODERATE' ? 40 : 20,
         infestation_level: input.pest_disease_state.infestation_level_percent || 0,
+        
+        // CRITICAL FIX: Pass complete soil data to bridge
+        soil_type: input.field_conditions?.soil_type,
         soil_ph: input.field_conditions?.soil_ph,
+        soil_nitrogen_state: input.field_conditions?.soil_nitrogen_state,
+        soil_phosphorus_state: input.field_conditions?.soil_phosphorus_state,
+        soil_potassium_state: input.field_conditions?.soil_potassium_state,
+        soil_organic_carbon: input.field_conditions?.soil_organic_carbon,
         soil_moisture_percent: input.field_conditions?.soil_moisture_percent,
+        
+        // CRITICAL FIX: Pass NDVI data to bridge
+        ndvi_value: input.field_conditions?.ndvi,
+        ndvi_state: input.field_conditions?.ndvi_state,
+        ndvi_trend: input.field_conditions?.ndvi_trend,
+        
+        // Weather and context
         current_weather: input.environmental_context.current_weather,
         weather_forecast_24h: input.environmental_context.weather_forecast_24h,
         land_id: input.land_id,
         farmer_id: input.farmer_id,
+        days_after_sowing: input.farmer_context.days_after_sowing,
+        land_size_acres: input.farmer_context.land_size_acres,
         days_to_harvest: input.farmer_context.days_to_harvest,
         previous_treatments: input.farmer_constraints?.previous_treatments,
         metadata: { trace_id: traceId }

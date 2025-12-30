@@ -268,14 +268,19 @@ export interface RuleEvaluationContext {
   humidity_percent?: number;
   wind_speed_kmh?: number;
   
-  // From Soil Data
+  // From Soil Data (CRITICAL: Land-specific soil test data)
   soil_type?: string;
   soil_ph?: number;
-  soil_nitrogen_state?: string;
+  soil_organic_carbon?: number;
+  soil_nitrogen_state?: string;    // 'LOW' | 'ADEQUATE' | 'HIGH'
+  soil_phosphorus_state?: string;  // 'LOW' | 'ADEQUATE' | 'HIGH'
+  soil_potassium_state?: string;   // 'LOW' | 'ADEQUATE' | 'HIGH'
+  soil_moisture_percent?: number;
   
-  // From NDVI
-  ndvi_state?: string;
+  // From NDVI (CRITICAL: Satellite vegetation data)
   ndvi_value?: number;
+  ndvi_state?: string;  // 'EXCELLENT' | 'HEALTHY' | 'MODERATE_STRESS' | 'HIGH_STRESS' | 'CRITICAL'
+  ndvi_trend?: string;  // 'RISING' | 'STABLE' | 'DECLINING'
   
   // Treatment History
   last_chemical_used?: string;
