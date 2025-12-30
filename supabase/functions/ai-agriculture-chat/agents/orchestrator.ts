@@ -43,7 +43,11 @@ import {
 } from './type-mappers.ts';
 
 // Import soil/NDVI state calculator for land-specific recommendations
-import { calculateFieldStates, logStateCalculation } from './soil-ndvi-state-calculator.ts';
+import { 
+  calculateFieldStates, 
+  logStateCalculation, 
+  validateCropContext 
+} from './soil-ndvi-state-calculator.ts';
 
 export const ORCHESTRATOR_VERSION = '1.0.0';
 
@@ -1077,56 +1081,82 @@ export class AIAgentOrchestrator {
   
   /**
    * Build rule engine input from fused data
-   * CRITICAL FIX: Now uses type-mappers normalization for ALL codes
+   * ENHANCED: Uses land's current crop, crop-stage-specific NPK, and crop-specific NDVI thresholds
    */
   private buildRuleEngineInput(
     fused: FusedIntelligence,
     diagnostic: DiagnosticState,
     context: ContextState,
     ids: { farmerId: string; landId?: string; traceId?: string },
-    nluMapping?: any  // CRITICAL FIX: Accept NLU mapping with entities
+    nluMapping?: any
   ): RuleExecutionInput {
-    // CRITICAL FIX: Extract pest/disease from NLU entities FIRST (most reliable source)
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL: Extract current crop from land context (HIGHEST PRIORITY)
+    // The land's current_crop is the SOURCE OF TRUTH
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    const landCurrentCrop = context.land_context?.current_crop;
+    const landCropStage = context.land_context?.growth_stage;
+    
+    // Validate crop context for training data quality
+    const cropValidation = validateCropContext(landCurrentCrop, ids.landId);
+    if (!cropValidation.valid) {
+      console.warn(`⚠️ [${ids.traceId}] ${cropValidation.error}`);
+    }
+    if (cropValidation.warning) {
+      console.warn(`⚠️ [${ids.traceId}] ${cropValidation.warning}`);
+    }
+    
+    // Extract NLU entities
     const nluEntities = nluMapping?.entities || {};
     
-    // CRITICAL FIX: Get raw codes from multiple sources
-    const rawPestCode = nluEntities.pest_code || 
-                        fused.unified_context?.problem?.primary_cause ||
-                        fused.unified_context?.problem?.identified_issue ||
-                        undefined;
-    const rawDiseaseCode = nluEntities.disease_code ||
-                           fused.unified_context?.problem?.disease_code ||
-                           undefined;
-    const rawCropCode = nluEntities.crop_code ||
+    // CRITICAL: Prioritize land's current crop over NLU extraction
+    const rawCropCode = landCurrentCrop ||  // ALWAYS trust land's current crop
+                        nluEntities.crop_code ||
                         fused.unified_context?.crop?.code || 
                         context.crop_context?.code || 
-                        context.land_context?.current_crop || 
                         'UNKNOWN';
+    
+    const rawPestCode = nluEntities.pest_code || 
+                        fused.unified_context?.problem?.primary_cause ||
+                        fused.unified_context?.problem?.identified_issue;
+    const rawDiseaseCode = nluEntities.disease_code ||
+                           fused.unified_context?.problem?.disease_code;
     const rawSeverity = nluEntities.severity ||
                         fused.unified_context?.problem?.severity ||
                         'MODERATE';
-    const rawCropStage = nluEntities.crop_stage ||
+    const rawCropStage = landCropStage ||  // PRIORITIZE land's growth stage
+                         nluEntities.crop_stage ||
                          fused.unified_context?.crop?.stage || 
                          context.crop_context?.stage || 
-                         context.land_context?.growth_stage || 
                          'VEGETATIVE';
     
-    // CRITICAL FIX: Normalize ALL codes using type-mappers for consistent matching
+    // Normalize all codes
     const pestCode = normalizePestCode(rawPestCode);
     const diseaseCode = normalizeDiseaseCode(rawDiseaseCode);
     const cropCode = normalizeTypeCropCode(rawCropCode);
     const severity = normalizeSeverity(rawSeverity);
     const cropStage = normalizeCropStage(rawCropStage);
     
-    console.log(`   [${ids.traceId}] 📊 Rule Engine Input (NORMALIZED):`, {
-      raw: { crop: rawCropCode, pest: rawPestCode, disease: rawDiseaseCode, severity: rawSeverity },
-      normalized: { crop: cropCode, pest: pestCode, disease: diseaseCode, severity: severity, stage: cropStage },
-      source: nluEntities.pest_code ? 'NLU' : 'FUSION'
+    // Log crop source for training data quality
+    if (landCurrentCrop) {
+      console.log(`   [${ids.traceId}] 🌾 Using LAND CURRENT CROP: ${cropCode} (Stage: ${cropStage})`);
+    } else {
+      console.log(`   [${ids.traceId}] ⚠️ No land current crop - using NLU: ${cropCode}`);
+    }
+    
+    console.log(`   [${ids.traceId}] 📊 Rule Engine Input:`, {
+      raw: { crop: rawCropCode, pest: rawPestCode, disease: rawDiseaseCode },
+      normalized: { crop: cropCode, pest: pestCode, disease: diseaseCode, stage: cropStage },
+      source: landCurrentCrop ? 'LAND_CONTEXT' : (nluEntities.crop_code ? 'NLU' : 'FUSION')
     });
     
-    // CRITICAL FIX: Calculate field states from soil/NDVI data BEFORE return
-    const fieldStates = calculateFieldStates(context.land_context, cropCode);
-    logStateCalculation(cropCode, fieldStates);
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL: Calculate CROP + STAGE SPECIFIC field states
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    const fieldStates = calculateFieldStates(context.land_context, cropCode, cropStage);
+    logStateCalculation(cropCode, fieldStates, cropStage);
     
     return {
       session_id: fused.session_id,
@@ -1137,43 +1167,45 @@ export class AIAgentOrchestrator {
       rule_modules_required: diagnostic.rule_modules_required || [],
       
       farmer_context: {
-        crop_code: cropCode,
-        crop_variety: context.crop_context?.variety || context.land_context?.crop_variety,
+        crop_code: cropCode,  // MUST match land's current crop
+        crop_variety: context.land_context?.crop_variety || context.crop_context?.variety,
         crop_stage: cropStage as any,
         days_after_sowing: fused.unified_context?.crop?.days_after_sowing || 
                            context.land_context?.days_since_sowing || 
                            45,
-        land_size_acres: context.land_context?.size_acres || 
-                         context.land_context?.area_acres || 
+        land_size_acres: context.land_context?.area_acres || 
+                         context.land_context?.size_acres || 
                          1,
         farming_mode: 'CONVENTIONAL'
       },
       
-      // CRITICAL FIX: Complete field_conditions with REAL soil + NDVI data
+      // ENHANCED: Complete field_conditions with CROP + STAGE SPECIFIC data
       field_conditions: {
-        // Soil type (normalized)
         soil_type: fieldStates.soil_type as any,
         
-        // Soil nutrient states from soil_health table
+        // CROP + STAGE SPECIFIC nutrient states
         soil_nitrogen_state: fieldStates.soil_nitrogen_state,
         soil_phosphorus_state: fieldStates.soil_phosphorus_state,
         soil_potassium_state: fieldStates.soil_potassium_state,
         
-        // Soil properties from soil_health table
+        // Soil properties
         soil_ph: fieldStates.soil_ph,
         soil_organic_carbon: fieldStates.soil_organic_carbon,
         
-        // NDVI data from ndvi_data table
+        // CROP-SPECIFIC NDVI state
         ndvi: fieldStates.ndvi,
         ndvi_state: fieldStates.ndvi_state,
         ndvi_trend: fieldStates.ndvi_trend,
         
-        // Soil moisture (if available from sensors)
+        // Additional context
         soil_moisture_percent: fused.unified_context?.field_conditions?.soil_moisture?.value as number,
-        
-        // Irrigation tracking
         last_irrigation_date: context.land_context?.last_irrigation_date,
-        last_fertilizer_date: context.land_context?.last_fertilizer_date
+        last_fertilizer_date: context.land_context?.last_fertilizer_date,
+        
+        // Fertilizer dosage recommendations (if deficient)
+        nitrogen_dosage: fieldStates.nitrogen_dosage,
+        phosphorus_dosage: fieldStates.phosphorus_dosage,
+        potassium_dosage: fieldStates.potassium_dosage
       },
       
       environmental_context: {
