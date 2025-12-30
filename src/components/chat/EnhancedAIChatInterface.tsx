@@ -1226,7 +1226,7 @@ export function EnhancedAIChatInterface() {
   const quickReplies = dynamicQuickReplies[activeTab] || [];
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-gradient-to-b from-background via-background to-muted/20">
+    <div className="fixed inset-0 flex flex-col bg-gradient-to-br from-background via-background to-muted/30">
       {/* Camera Modal */}
       {showCamera && (
         <WorldClassCamera
@@ -1247,111 +1247,173 @@ export function EnhancedAIChatInterface() {
       )}
 
       {/* ═══════════════════════════════════════════════════════════════════════════
-          FIXED HEADER - Modern 2030 Glassmorphism Design
+          2030 FUTURISTIC HEADER - Ultra Modern Glassmorphism with Neural Glow
           ═══════════════════════════════════════════════════════════════════════════ */}
-      <header className="sticky top-0 z-50 flex-shrink-0 border-b border-border/30 bg-card/70 backdrop-blur-2xl shadow-sm">
-        <div className="flex items-center justify-between p-3">
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => navigate(-1)}
-              className="h-8 w-8"
+      <header className="sticky top-0 z-50 flex-shrink-0">
+        {/* Gradient overlay for header depth */}
+        <div className="absolute inset-0 bg-gradient-to-b from-card/95 via-card/90 to-card/80 backdrop-blur-2xl" />
+        <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-accent/5" />
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
+        
+        {/* Header content */}
+        <div className="relative flex items-center justify-between p-3 pt-safe">
+          <div className="flex items-center gap-3">
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div className="flex items-center gap-2">
-              <Avatar className="h-8 w-8 border-2 border-primary/20">
-                <AvatarFallback className="bg-gradient-to-br from-primary to-primary-hover text-primary-foreground text-xs">
-                  <Bot className="h-4 w-4" />
-                </AvatarFallback>
-              </Avatar>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate(-1)}
+                className="h-10 w-10 rounded-xl bg-muted/50 hover:bg-muted/80 backdrop-blur-sm border border-border/30"
+              >
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
+            </motion.div>
+            
+            <div className="flex items-center gap-3">
+              {/* AI Avatar with glow effect */}
+              <div className="relative">
+                <div className="absolute inset-0 bg-primary/30 rounded-full blur-md animate-pulse" />
+                <Avatar className="relative h-10 w-10 border-2 border-primary/40 shadow-lg ring-2 ring-primary/20">
+                  <AvatarFallback className="bg-gradient-to-br from-primary via-primary/90 to-accent text-primary-foreground">
+                    <Bot className="h-5 w-5" />
+                  </AvatarFallback>
+                </Avatar>
+                {/* Online indicator */}
+                <span className={cn(
+                  "absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-card",
+                  isOnline ? "bg-success animate-pulse" : "bg-warning"
+                )} />
+              </div>
+              
               <div>
-                <h1 className="text-sm font-semibold">
+                <h1 className="text-base font-bold bg-gradient-to-r from-foreground to-foreground/80 bg-clip-text">
                   {t('chat.title', 'Farm AI Assistant')}
                 </h1>
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                <div className="flex items-center gap-1.5">
                   {isOnline ? (
                     <>
-                      <Wifi className="h-3 w-3 text-success" />
-                      <span className="text-success">Online</span>
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-success"></span>
+                      </span>
+                      <span className="text-xs font-medium text-success">
+                        {t('common.online', 'Online')}
+                      </span>
                     </>
                   ) : (
                     <>
                       <WifiOff className="h-3 w-3 text-warning" />
-                      <span className="text-warning">Offline</span>
+                      <span className="text-xs font-medium text-warning">
+                        {t('common.offline', 'Offline')}
+                      </span>
                     </>
                   )}
-                </p>
+                </div>
               </div>
             </div>
           </div>
           
-          <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsSearchOpen(!isSearchOpen)}
-              className="h-8 w-8"
-            >
-              <Search className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className="h-8 w-8"
-            >
-              <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
-            </Button>
+          <div className="flex items-center gap-2">
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsSearchOpen(!isSearchOpen)}
+                className={cn(
+                  "h-10 w-10 rounded-xl backdrop-blur-sm border border-border/30 transition-all",
+                  isSearchOpen 
+                    ? "bg-primary/20 text-primary border-primary/30" 
+                    : "bg-muted/50 hover:bg-muted/80"
+                )}
+              >
+                <Search className="h-5 w-5" />
+              </Button>
+            </motion.div>
+            
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="h-10 w-10 rounded-xl bg-muted/50 hover:bg-muted/80 backdrop-blur-sm border border-border/30"
+              >
+                <RefreshCw className={cn("h-5 w-5", isRefreshing && "animate-spin text-primary")} />
+              </Button>
+            </motion.div>
           </div>
         </div>
 
-        {/* Search Bar */}
-        {isSearchOpen && (
-          <div className="px-3 pb-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={t('chat.searchMessages', 'Search messages...')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-9 h-9"
-              />
-              {searchQuery && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-                >
-                  <X className="h-3 w-3" />
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
+        {/* Animated Search Bar */}
+        <AnimatePresence>
+          {isSearchOpen && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="relative px-4 pb-3 overflow-hidden"
+            >
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-r from-primary/20 via-accent/20 to-primary/20 rounded-xl opacity-0 group-focus-within:opacity-100 blur-md transition-opacity" />
+                <div className="relative flex items-center">
+                  <Search className="absolute left-4 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder={t('chat.searchMessages', 'Search messages...')}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-11 pr-11 h-11 rounded-xl bg-muted/50 border-border/50 focus:border-primary/50 focus:ring-2 focus:ring-primary/20"
+                  />
+                  {searchQuery && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2 h-7 w-7 rounded-lg hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
-        {/* Land Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <div className="px-3 pb-2 overflow-x-auto scrollbar-hide">
-            <TabsList className="h-9 w-auto inline-flex bg-muted/50 p-1">
+        {/* Modern Land Tabs with Glass Effect */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="relative w-full">
+          <div className="px-4 pb-3 overflow-x-auto scrollbar-hide">
+            <TabsList className="h-11 w-auto inline-flex gap-2 bg-transparent p-0">
               <TabsTrigger 
                 value="general" 
-                className="text-xs px-3 h-7 data-[state=active]:bg-background"
+                className={cn(
+                  "text-sm px-4 h-10 rounded-xl font-medium transition-all border",
+                  "data-[state=inactive]:bg-muted/40 data-[state=inactive]:border-border/30 data-[state=inactive]:text-muted-foreground",
+                  "data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary data-[state=active]:to-primary/80",
+                  "data-[state=active]:text-primary-foreground data-[state=active]:border-primary/50",
+                  "data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20"
+                )}
               >
-                <MessageSquare className="h-3 w-3 mr-1.5" />
+                <MessageSquare className="h-4 w-4 mr-2" />
                 {t('chat.generalChat', 'General')}
               </TabsTrigger>
               {lands.slice(0, 5).map(land => (
                 <TabsTrigger 
                   key={land.id} 
                   value={land.id}
-                  className="text-xs px-3 h-7 data-[state=active]:bg-background"
+                  className={cn(
+                    "text-sm px-4 h-10 rounded-xl font-medium transition-all border whitespace-nowrap",
+                    "data-[state=inactive]:bg-muted/40 data-[state=inactive]:border-border/30 data-[state=inactive]:text-muted-foreground",
+                    "data-[state=active]:bg-gradient-to-br data-[state=active]:from-success data-[state=active]:to-success/80",
+                    "data-[state=active]:text-success-foreground data-[state=active]:border-success/50",
+                    "data-[state=active]:shadow-lg data-[state=active]:shadow-success/20"
+                  )}
                 >
-                  <Mountain className="h-3 w-3 mr-1.5" />
-                  {land.name?.substring(0, 12) || 'Land'}
+                  <Mountain className="h-4 w-4 mr-2" />
+                  {land.name?.substring(0, 10) || 'Land'}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -1360,216 +1422,351 @@ export function EnhancedAIChatInterface() {
       </header>
 
       {/* ═══════════════════════════════════════════════════════════════════════════
-          SCROLLABLE MESSAGES AREA
+          2030 FUTURISTIC MESSAGES AREA - Neural Chat Experience
           ═══════════════════════════════════════════════════════════════════════════ */}
       <main 
         ref={scrollAreaRef}
-        className="flex-1 overflow-y-auto overscroll-contain p-4 space-y-4 scroll-smooth"
+        className="flex-1 overflow-y-auto overscroll-contain scroll-smooth"
       >
-        {/* Loading History */}
-        {isLoadingHistory && (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        {/* Subtle gradient background pattern */}
+        <div className="relative min-h-full">
+          <div className="absolute inset-0 opacity-[0.02] pointer-events-none">
+            <div className="absolute inset-0" style={{
+              backgroundImage: `radial-gradient(circle at 25% 25%, hsl(var(--primary)) 1px, transparent 1px),
+                               radial-gradient(circle at 75% 75%, hsl(var(--accent)) 1px, transparent 1px)`,
+              backgroundSize: '48px 48px'
+            }} />
           </div>
-        )}
+          
+          <div className="relative px-4 py-6 space-y-4">
+            {/* Loading History - Modern Skeleton */}
+            {isLoadingHistory && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="flex flex-col items-center justify-center py-12 space-y-4"
+              >
+                <div className="relative">
+                  <div className="absolute inset-0 bg-primary/20 rounded-full blur-xl animate-pulse" />
+                  <div className="relative p-4 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 backdrop-blur-sm border border-primary/20">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground animate-pulse">
+                  {t('chat.loadingHistory', 'Loading your conversations...')}
+                </p>
+              </motion.div>
+            )}
 
-        {/* Welcome Card */}
-        {!isLoadingHistory && currentMessages.length === 0 && (
-          activeTab === 'general' ? (
-            <GeneralChatWelcomeCard />
-          ) : currentLand ? (
-            <LandContextCard land={currentLand} />
-          ) : null
-        )}
+            {/* Welcome Card - Enhanced */}
+            {!isLoadingHistory && currentMessages.length === 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.5, type: "spring", bounce: 0.3 }}
+              >
+                {activeTab === 'general' ? (
+                  <GeneralChatWelcomeCard />
+                ) : currentLand ? (
+                  <LandContextCard land={currentLand} />
+                ) : null}
+              </motion.div>
+            )}
 
-        {/* Messages */}
-        <AnimatePresence mode="popLayout">
-          {currentMessages
-            .filter(msg => 
-              !searchQuery || 
-              msg.content.toLowerCase().includes(searchQuery.toLowerCase())
-            )
-            .map((message) => (
-              <ModernChatUI
-                key={message.id}
-                message={{
-                  ...message,
-                  isCopied: copiedMessageId === message.id,
-                  isPlaying: playingMessageId === message.id
-                }}
-                onCopy={handleCopyMessage}
-                onLike={handleFeedback}
-                onShare={handleShare}
-                onPlay={handlePlayMessage}
-                onSuggestionSelect={handleSuggestionSelect}
-                isLoadingSuggestion={isLoadingSuggestion}
-              />
-            ))}
-        </AnimatePresence>
+            {/* Messages with enhanced animations */}
+            <AnimatePresence mode="popLayout">
+              {currentMessages
+                .filter(msg => 
+                  !searchQuery || 
+                  msg.content.toLowerCase().includes(searchQuery.toLowerCase())
+                )
+                .map((message, index) => (
+                  <ModernChatUI
+                    key={message.id}
+                    message={{
+                      ...message,
+                      isCopied: copiedMessageId === message.id,
+                      isPlaying: playingMessageId === message.id
+                    }}
+                    onCopy={handleCopyMessage}
+                    onLike={handleFeedback}
+                    onShare={handleShare}
+                    onPlay={handlePlayMessage}
+                    onSuggestionSelect={handleSuggestionSelect}
+                    isLoadingSuggestion={isLoadingSuggestion}
+                  />
+                ))}
+            </AnimatePresence>
 
-        {/* Loading Indicator */}
-        {isLoading && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-start gap-3"
-          >
-            <Avatar className="h-9 w-9 border-2 border-primary/20">
-              <AvatarFallback className="bg-gradient-to-br from-primary to-primary-hover text-primary-foreground">
-                <Bot className="h-5 w-5" />
-              </AvatarFallback>
-            </Avatar>
-            <Card className="bg-card/80 border-border/50 p-3">
-              <div className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                <span className="text-sm text-muted-foreground">
-                  {loadingMessage || t('chat.thinking', 'Thinking...')}
-                </span>
-              </div>
-            </Card>
-          </motion.div>
-        )}
+            {/* Enhanced Loading Indicator - Futuristic Design */}
+            {isLoading && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-start gap-3"
+              >
+                <div className="relative">
+                  <div className="absolute inset-0 bg-primary/30 rounded-full blur-md animate-pulse" />
+                  <Avatar className="relative h-10 w-10 border-2 border-primary/40 shadow-lg">
+                    <AvatarFallback className="bg-gradient-to-br from-primary via-primary/90 to-accent text-primary-foreground">
+                      <Bot className="h-5 w-5" />
+                    </AvatarFallback>
+                  </Avatar>
+                </div>
+                <motion.div 
+                  initial={{ scale: 0.9 }}
+                  animate={{ scale: 1 }}
+                  className="flex-1 max-w-[80%]"
+                >
+                  <Card className="bg-card/90 backdrop-blur-sm border-border/50 shadow-lg overflow-hidden">
+                    {/* Animated gradient bar */}
+                    <div className="h-1 bg-gradient-to-r from-primary via-accent to-primary bg-[length:200%_auto] animate-[gradient-x_2s_linear_infinite]" />
+                    <div className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex gap-1">
+                          {[0, 1, 2].map((i) => (
+                            <motion.div
+                              key={i}
+                              className="w-2 h-2 rounded-full bg-primary"
+                              animate={{
+                                scale: [1, 1.3, 1],
+                                opacity: [0.5, 1, 0.5]
+                              }}
+                              transition={{
+                                duration: 1,
+                                repeat: Infinity,
+                                delay: i * 0.2
+                              }}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-sm font-medium text-muted-foreground">
+                          {loadingMessage || t('chat.thinking', 'Analyzing your query...')}
+                        </span>
+                      </div>
+                    </div>
+                  </Card>
+                </motion.div>
+              </motion.div>
+            )}
 
-        {/* Vision Analysis Pending */}
-        {pendingVisionAnalysis && isAnalyzingImage && (
-          <VisionAnalysisCard
-            imageUrl={pendingVisionAnalysis.imageUrl}
-            isAnalyzing={true}
-            error={pendingVisionAnalysis.error}
-            language={language}
-          />
-        )}
+            {/* Vision Analysis Pending - Enhanced */}
+            {pendingVisionAnalysis && isAnalyzingImage && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3 }}
+              >
+                <VisionAnalysisCard
+                  imageUrl={pendingVisionAnalysis.imageUrl}
+                  isAnalyzing={true}
+                  error={pendingVisionAnalysis.error}
+                  language={language}
+                />
+              </motion.div>
+            )}
+            
+            {/* Bottom spacing for input area */}
+            <div className="h-4" />
+          </div>
+        </div>
       </main>
 
       {/* ═══════════════════════════════════════════════════════════════════════════
-          QUICK REPLIES - Floating suggestions
+          2030 QUICK REPLIES - Floating Neural Suggestions
           ═══════════════════════════════════════════════════════════════════════════ */}
-      {quickReplies.length > 0 && !isLoading && (
-        <div className="flex-shrink-0 px-4 pb-2 bg-gradient-to-t from-background to-transparent">
-          <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
-            {quickReplies.slice(0, 4).map((reply, index) => (
-              <Button
-                key={index}
-                variant="outline"
-                size="sm"
-                onClick={() => sendMessage(reply)}
-                className="flex-shrink-0 text-xs h-8 whitespace-nowrap bg-card/80 backdrop-blur-sm border-border/50 hover:bg-primary/10 hover:border-primary/30 transition-all"
-              >
-                {reply}
-              </Button>
-            ))}
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {quickReplies.length > 0 && !isLoading && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="flex-shrink-0 px-4 pb-3"
+          >
+            <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-1">
+              {quickReplies.slice(0, 4).map((reply, index) => (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => sendMessage(reply)}
+                    className="flex-shrink-0 text-xs h-9 px-4 whitespace-nowrap rounded-xl bg-card/80 backdrop-blur-sm border-border/50 hover:bg-primary/10 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/10 transition-all"
+                  >
+                    {reply}
+                  </Button>
+                </motion.div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ═══════════════════════════════════════════════════════════════════════════
-          FIXED INPUT AREA - Modern 2030 Glassmorphism Design
+          2030 FUTURISTIC INPUT AREA - Neural Glassmorphism Design
           ═══════════════════════════════════════════════════════════════════════════ */}
-      <footer className="sticky bottom-0 z-50 flex-shrink-0 border-t border-border/30 bg-card/70 backdrop-blur-2xl p-3 pb-safe">
-        {/* Attached Files Preview */}
-        {attachedFiles.length > 0 && (
-          <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
-            {attachedFiles.map((file, index) => (
-              <div key={index} className="relative flex-shrink-0">
-                <div className="h-16 w-16 rounded-lg overflow-hidden border border-border/50">
-                  {file.type.startsWith('image/') ? (
-                    <img
-                      src={URL.createObjectURL(file)}
-                      alt={file.name}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="h-full w-full flex items-center justify-center bg-muted">
-                      <Paperclip className="h-6 w-6 text-muted-foreground" />
-                    </div>
-                  )}
-                </div>
-                <Button
-                  variant="destructive"
-                  size="icon"
-                  className="absolute -top-1 -right-1 h-5 w-5 rounded-full"
-                  onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))}
+      <footer className="sticky bottom-0 z-50 flex-shrink-0">
+        {/* Gradient glow effect */}
+        <div className="absolute -top-8 left-0 right-0 h-8 bg-gradient-to-t from-background/80 to-transparent pointer-events-none" />
+        
+        {/* Main footer with glassmorphism */}
+        <div className="relative bg-card/80 backdrop-blur-2xl border-t border-border/30">
+          {/* Top glow line */}
+          <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
+          
+          <div className="px-4 py-3 pb-safe space-y-3">
+            {/* Attached Files Preview - Enhanced */}
+            <AnimatePresence>
+              {attachedFiles.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="flex gap-3 overflow-x-auto scrollbar-hide"
                 >
-                  <X className="h-3 w-3" />
-                </Button>
+                  {attachedFiles.map((file, index) => (
+                    <motion.div 
+                      key={index} 
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="relative flex-shrink-0 group"
+                    >
+                      <div className="h-20 w-20 rounded-xl overflow-hidden border-2 border-primary/30 shadow-lg ring-2 ring-primary/10">
+                        {file.type.startsWith('image/') ? (
+                          <img
+                            src={URL.createObjectURL(file)}
+                            alt={file.name}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center bg-muted">
+                            <Paperclip className="h-6 w-6 text-muted-foreground" />
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="icon"
+                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </motion.div>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Input Row */}
+            <div className="flex items-center gap-2">
+              {/* Action Buttons Group */}
+              <div className="flex items-center gap-1">
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setShowCamera(true)}
+                    className="h-11 w-11 rounded-xl bg-gradient-to-br from-accent/20 to-info/20 hover:from-accent/30 hover:to-info/30 border border-accent/30 text-accent-foreground transition-all"
+                  >
+                    <Camera className="h-5 w-5 text-accent" />
+                  </Button>
+                </motion.div>
+
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="h-11 w-11 rounded-xl bg-muted/50 hover:bg-muted/80 border border-border/30 transition-all"
+                  >
+                    <Paperclip className="h-5 w-5" />
+                  </Button>
+                </motion.div>
               </div>
-            ))}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  setAttachedFiles(prev => [...prev, ...files]);
+                  e.target.value = '';
+                }}
+              />
+
+              {/* Main Input Field - Enhanced */}
+              <div className="flex-1 relative group">
+                <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-accent/10 to-primary/10 rounded-xl opacity-0 group-focus-within:opacity-100 blur-sm transition-opacity" />
+                <Input
+                  ref={inputRef}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={t('chat.placeholder', 'Ask about your farm...')}
+                  className="relative h-11 rounded-xl bg-muted/50 border-border/50 focus:border-primary/50 focus:ring-2 focus:ring-primary/20 pr-4 transition-all"
+                  disabled={isLoading}
+                />
+              </div>
+
+              {/* Voice Button - Enhanced */}
+              <motion.div 
+                whileHover={{ scale: 1.05 }} 
+                whileTap={{ scale: 0.95 }}
+                animate={isListening ? { scale: [1, 1.1, 1] } : {}}
+                transition={isListening ? { repeat: Infinity, duration: 1 } : {}}
+              >
+                <Button
+                  variant={isListening ? "destructive" : "ghost"}
+                  size="icon"
+                  onClick={isListening ? stopListening : startListening}
+                  className={cn(
+                    "h-11 w-11 rounded-xl transition-all",
+                    isListening 
+                      ? "bg-destructive text-destructive-foreground shadow-lg shadow-destructive/30" 
+                      : "bg-muted/50 hover:bg-muted/80 border border-border/30"
+                  )}
+                >
+                  {isListening ? (
+                    <MicOff className="h-5 w-5" />
+                  ) : (
+                    <Mic className="h-5 w-5" />
+                  )}
+                </Button>
+              </motion.div>
+
+              {/* Send Button - Futuristic Design */}
+              <motion.div 
+                whileHover={{ scale: 1.05 }} 
+                whileTap={{ scale: 0.95 }}
+              >
+                <Button
+                  onClick={() => sendMessage()}
+                  disabled={isLoading || (!inputValue.trim() && attachedFiles.length === 0)}
+                  size="icon"
+                  className={cn(
+                    "h-11 w-11 rounded-xl transition-all shadow-lg",
+                    inputValue.trim() || attachedFiles.length > 0
+                      ? "bg-gradient-to-br from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-primary/30"
+                      : "bg-muted/50 border border-border/30"
+                  )}
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Send className="h-5 w-5" />
+                  )}
+                </Button>
+              </motion.div>
+            </div>
           </div>
-        )}
-
-        <div className="flex items-center gap-2">
-          {/* Camera Button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowCamera(true)}
-            className="h-10 w-10 flex-shrink-0"
-          >
-            <Camera className="h-5 w-5" />
-          </Button>
-
-          {/* File Attach Button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => fileInputRef.current?.click()}
-            className="h-10 w-10 flex-shrink-0"
-          >
-            <Paperclip className="h-5 w-5" />
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              const files = Array.from(e.target.files || []);
-              setAttachedFiles(prev => [...prev, ...files]);
-              e.target.value = '';
-            }}
-          />
-
-          {/* Input Field */}
-          <div className="flex-1 relative">
-            <Input
-              ref={inputRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={t('chat.placeholder', 'Ask about your farm...')}
-              className="pr-10 h-10"
-              disabled={isLoading}
-            />
-          </div>
-
-          {/* Voice Button */}
-          <Button
-            variant={isListening ? "destructive" : "ghost"}
-            size="icon"
-            onClick={isListening ? stopListening : startListening}
-            className="h-10 w-10 flex-shrink-0"
-          >
-            {isListening ? (
-              <MicOff className="h-5 w-5" />
-            ) : (
-              <Mic className="h-5 w-5" />
-            )}
-          </Button>
-
-          {/* Send Button */}
-          <Button
-            onClick={() => sendMessage()}
-            disabled={isLoading || (!inputValue.trim() && attachedFiles.length === 0)}
-            size="icon"
-            className="h-10 w-10 flex-shrink-0"
-          >
-            {isLoading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <Send className="h-5 w-5" />
-            )}
-          </Button>
         </div>
       </footer>
     </div>
