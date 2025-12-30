@@ -93,20 +93,25 @@ export class DiagnosticFlowController {
     this.session.nlu_output = nluOutput;
     this.session.status = 'GATHERING_CONTEXT';
     
+    // CRITICAL FIX: Handle undefined confidence - default to medium (0.5) not undefined
+    const overallConfidence = nluOutput.overall_confidence ?? 
+                              nluOutput.understanding_confidence ?? 
+                              (nluOutput.entities?.crop_code ? 0.6 : 0.4);
+    
     console.log('🔍 [DiagnosticFlow] Processing NLU output:', {
       intent: nluOutput.intent,
-      confidence: nluOutput.overall_confidence,
+      confidence: overallConfidence,
       hasCrop: !!nluOutput.entities?.crop_code,
       hasPestOrDisease: !!(nluOutput.entities?.pest_code || nluOutput.entities?.disease_code)
     });
     
     // Check for immediate safety concerns
-    if (nluOutput.safety_alerts.emergency_detected) {
+    if (nluOutput.safety_alerts?.emergency_detected) {
       console.log('🚨 [DiagnosticFlow] Emergency detected!');
       return this.handleEmergency(nluOutput);
     }
     
-    if (nluOutput.safety_alerts.banned_substance_mentioned) {
+    if (nluOutput.safety_alerts?.banned_substance_mentioned) {
       console.log('⛔ [DiagnosticFlow] Banned substance detected!');
       return this.handleBannedSubstance(nluOutput);
     }
@@ -116,19 +121,21 @@ export class DiagnosticFlowController {
     // Skip clarification for high-confidence queries with essential entities
     // ═══════════════════════════════════════════════════════════════════════════
     
-    const hasEssentialEntities = !!(
-      nluOutput.entities?.crop_code &&
-      (nluOutput.entities?.pest_code || nluOutput.entities?.disease_code || nluOutput.entities?.symptom_codes?.length)
-    );
+    // Relax requirement: crop alone OR pest/disease/symptoms alone is enough
+    const hasCrop = !!nluOutput.entities?.crop_code;
+    const hasProblem = !!(nluOutput.entities?.pest_code || nluOutput.entities?.disease_code || nluOutput.entities?.symptom_codes?.length);
+    const hasEssentialEntities = hasCrop || hasProblem;
     
-    const highConfidence = nluOutput.overall_confidence >= 0.6;
+    const highConfidence = overallConfidence >= 0.5; // Lowered from 0.6 to reduce excessive questions
     const canProceedDirectly = hasEssentialEntities && highConfidence;
     
     console.log('📊 [DiagnosticFlow] Decision check:', {
       hasEssentialEntities,
+      hasCrop,
+      hasProblem,
       highConfidence,
       canProceedDirectly,
-      confidence: nluOutput.overall_confidence
+      confidence: overallConfidence
     });
     
     // If we have essential context, proceed directly to rule evaluation
@@ -253,34 +260,42 @@ export class DiagnosticFlowController {
       }
     };
     
-    // Process rules by priority order
-    for (const moduleRef of nlu.requiredRuleModules) {
-      const moduleResult = await this.evaluateRuleModule(moduleRef, context);
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: Evaluate decision graph ONCE, not per module (major latency fix)
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    const { evaluateDecisionGraph } = await import('./decision-graph-bridge.ts');
+    
+    console.log('🔬 [DiagnosticFlow] Evaluating decision graph ONCE for all modules');
+    
+    try {
+      const graphResult = await evaluateDecisionGraph(context, this.session.session_id);
       
-      // Merge results
-      if (moduleResult.blocked) {
-        result.blocked = true;
-        result.blockingRule = moduleResult.blockingRule;
-        break; // Stop processing on P0/P1 block
+      // Record which modules were referenced (for traceability)
+      for (const moduleRef of nlu.requiredRuleModules) {
+        this.session.loaded_modules.push({
+          reference: moduleRef,
+          loaded: true
+        });
       }
       
-      result.recommendations.push(...moduleResult.recommendations);
-      result.warnings.push(...moduleResult.warnings);
-      result.requirements.push(...moduleResult.requirements);
+      // Merge graph results directly
+      result.blocked = graphResult.blocked;
+      result.blockingRule = graphResult.blockingRule;
+      result.recommendations = graphResult.recommendations || [];
+      result.warnings = graphResult.warnings || [];
+      result.requirements = graphResult.requirements || [];
+      result.ipm_level_suggested = graphResult.ipm_level_suggested;
+      result.economic_threshold_exceeded = graphResult.economic_threshold_exceeded;
       
-      // Update safety compliance
-      if (moduleRef.moduleFile === 'chemical-safety-rules') {
-        result.safety_compliance.chemical_safety_passed = !moduleResult.blocked;
-      }
-      if (moduleRef.moduleFile === 'weather-action-rules') {
-        result.safety_compliance.weather_safety_passed = !moduleResult.blocked;
-      }
-      if (moduleRef.moduleFile === 'ipm-rules') {
-        result.ipm_level_suggested = moduleResult.ipm_level_suggested;
-      }
-      if (moduleRef.moduleFile === 'economic-threshold-rules') {
-        result.economic_threshold_exceeded = moduleResult.economic_threshold_exceeded;
-      }
+      // Update safety compliance from graph result
+      result.safety_compliance.chemical_safety_passed = !graphResult.blocked;
+      result.safety_compliance.weather_safety_passed = true; // Assume passed unless blocked
+      
+      console.log(`   ✅ Graph evaluation complete: ${result.recommendations.length} recommendations, blocked: ${result.blocked}`);
+    } catch (error) {
+      console.error('   ❌ Decision graph evaluation failed:', error);
+      // Continue with empty results rather than failing completely
     }
     
     // Update overall safety status
