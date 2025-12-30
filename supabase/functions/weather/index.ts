@@ -717,11 +717,10 @@ async function cacheWeatherData(
       await supabase.from('weather_forecasts').delete().eq('location_key', locationKey).eq('forecast_type', 'hourly')
       const { error: hourlyInsertErr } = await supabase.from('weather_forecasts').insert(hourlyRecords)
       if (hourlyInsertErr) {
-        console.warn('⚠️ [Weather] Hourly forecast insert failed:', hourlyInsertErr.message)
+      console.warn('⚠️ [Weather] Hourly forecast insert failed:', hourlyInsertErr.message)
       } else {
         console.log(`💾 [Weather] ✅ Cached ${hourlyRecords.length} hourly forecasts`)
       }
-    }
     }
     
     // 5. Update weather_aggregates for the day (NEW!)
