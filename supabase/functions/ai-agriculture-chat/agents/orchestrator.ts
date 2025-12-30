@@ -1441,19 +1441,13 @@ export class AIAgentOrchestrator {
       };
       
       if (landId) {
-        // Fetch land basic data
+        // Fetch land basic data - CRITICAL FIX: Use only columns that exist in schema
         const { data: land } = await this.supabase
           .from('lands')
-          .select('soil_data, ndvi_data, previous_crop, last_harvest_date, current_crop, soil_type')
+          .select('previous_crop, last_harvest_date, current_crop, soil_type, crop_variety')
           .eq('id', landId)
           .single();
         
-        if (land?.soil_data) {
-          result.soil_test_results = land.soil_data;
-        }
-        if (land?.ndvi_data) {
-          result.ndvi_data = land.ndvi_data;
-        }
         if (land?.previous_crop) {
           result.previous_crop = land.previous_crop;
           result.last_harvest_date = land.last_harvest_date;
@@ -1465,10 +1459,11 @@ export class AIAgentOrchestrator {
           result.soil_type = land.soil_type;
         }
         
-        // ENHANCED: Fetch from dedicated soil_health table for more accurate data
+        // CRITICAL FIX: Use correct column names from soil_health schema
+        // Schema columns: nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, ph_level
         const { data: soilHealth } = await this.supabase
           .from('soil_health')
-          .select('nitrogen, phosphorus, potassium, ph, organic_carbon, test_date')
+          .select('nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, ph_level, organic_carbon, test_date')
           .eq('land_id', landId)
           .order('test_date', { ascending: false })
           .limit(1)
@@ -1476,37 +1471,43 @@ export class AIAgentOrchestrator {
         
         if (soilHealth) {
           result.soil_test_results = {
-            ...result.soil_test_results,
-            nitrogen: soilHealth.nitrogen,
-            phosphorus: soilHealth.phosphorus,
-            potassium: soilHealth.potassium,
-            ph: soilHealth.ph,
+            nitrogen: soilHealth.nitrogen_kg_per_ha,
+            nitrogen_kg_per_ha: soilHealth.nitrogen_kg_per_ha,
+            phosphorus: soilHealth.phosphorus_kg_per_ha,
+            phosphorus_kg_per_ha: soilHealth.phosphorus_kg_per_ha,
+            potassium: soilHealth.potassium_kg_per_ha,
+            potassium_kg_per_ha: soilHealth.potassium_kg_per_ha,
+            ph: soilHealth.ph_level,
+            ph_level: soilHealth.ph_level,
             organic_carbon: soilHealth.organic_carbon,
             test_date: soilHealth.test_date
           };
         }
         
-        // ENHANCED: Fetch from dedicated ndvi_data table
+        // CRITICAL FIX: Use 'date' column not 'captured_at', and no 'health_status' column
+        // Schema columns: ndvi_value, date, mean_ndvi
         const { data: ndviRecord } = await this.supabase
           .from('ndvi_data')
-          .select('ndvi_value, captured_at, health_status')
+          .select('ndvi_value, date, mean_ndvi')
           .eq('land_id', landId)
-          .order('captured_at', { ascending: false })
+          .order('date', { ascending: false })
           .limit(1)
           .maybeSingle();
         
         if (ndviRecord) {
           result.ndvi_data = {
-            value: ndviRecord.ndvi_value,
-            captured_at: ndviRecord.captured_at,
-            health_status: ndviRecord.health_status
+            value: ndviRecord.ndvi_value || ndviRecord.mean_ndvi,
+            captured_at: ndviRecord.date,
+            date: ndviRecord.date,
+            health_status: this.getNDVIHealthStatus(ndviRecord.ndvi_value || ndviRecord.mean_ndvi)
           };
         }
         
-        // ENHANCED: Fetch active crop schedule
+        // CRITICAL FIX: Use 'crop_variety' not 'variety'
+        // Schema columns: crop_name, crop_variety, sowing_date, expected_harvest_date, is_active
         const { data: cropSchedule } = await this.supabase
           .from('crop_schedules')
-          .select('crop_name, variety, sowing_date, expected_harvest_date, is_active')
+          .select('crop_name, crop_variety, sowing_date, expected_harvest_date, is_active')
           .eq('land_id', landId)
           .eq('is_active', true)
           .order('sowing_date', { ascending: false })
@@ -1514,7 +1515,10 @@ export class AIAgentOrchestrator {
           .maybeSingle();
         
         if (cropSchedule) {
-          result.crop_schedule = cropSchedule;
+          result.crop_schedule = {
+            ...cropSchedule,
+            variety: cropSchedule.crop_variety  // Map to expected field name
+          };
           // Calculate days since sowing
           if (cropSchedule.sowing_date) {
             const sowingDate = new Date(cropSchedule.sowing_date);
