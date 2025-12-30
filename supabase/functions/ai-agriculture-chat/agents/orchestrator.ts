@@ -42,6 +42,9 @@ import {
   normalizeCropStage 
 } from './type-mappers.ts';
 
+// Import soil/NDVI state calculator for land-specific recommendations
+import { calculateFieldStates, logStateCalculation } from './soil-ndvi-state-calculator.ts';
+
 export const ORCHESTRATOR_VERSION = '1.0.0';
 
 // Response types
@@ -1121,6 +1124,10 @@ export class AIAgentOrchestrator {
       source: nluEntities.pest_code ? 'NLU' : 'FUSION'
     });
     
+    // CRITICAL FIX: Calculate field states from soil/NDVI data BEFORE return
+    const fieldStates = calculateFieldStates(context.land_context, cropCode);
+    logStateCalculation(cropCode, fieldStates);
+    
     return {
       session_id: fused.session_id,
       farmer_id: ids.farmerId,
@@ -1142,10 +1149,31 @@ export class AIAgentOrchestrator {
         farming_mode: 'CONVENTIONAL'
       },
       
+      // CRITICAL FIX: Complete field_conditions with REAL soil + NDVI data
       field_conditions: {
-        soil_type: (context.land_context?.soil_type || 'BLACK') as any,
+        // Soil type (normalized)
+        soil_type: fieldStates.soil_type as any,
+        
+        // Soil nutrient states from soil_health table
+        soil_nitrogen_state: fieldStates.soil_nitrogen_state,
+        soil_phosphorus_state: fieldStates.soil_phosphorus_state,
+        soil_potassium_state: fieldStates.soil_potassium_state,
+        
+        // Soil properties from soil_health table
+        soil_ph: fieldStates.soil_ph,
+        soil_organic_carbon: fieldStates.soil_organic_carbon,
+        
+        // NDVI data from ndvi_data table
+        ndvi: fieldStates.ndvi,
+        ndvi_state: fieldStates.ndvi_state,
+        ndvi_trend: fieldStates.ndvi_trend,
+        
+        // Soil moisture (if available from sensors)
         soil_moisture_percent: fused.unified_context?.field_conditions?.soil_moisture?.value as number,
-        ndvi: context.land_context?.ndvi
+        
+        // Irrigation tracking
+        last_irrigation_date: context.land_context?.last_irrigation_date,
+        last_fertilizer_date: context.land_context?.last_fertilizer_date
       },
       
       environmental_context: {
