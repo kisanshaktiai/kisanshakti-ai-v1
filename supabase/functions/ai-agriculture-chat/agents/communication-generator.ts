@@ -218,56 +218,42 @@ export class CommunicationGenerator {
     lang: SupportedLanguage,
     tone: MessageTone
   ): ImmediateAction {
+    // EXTRACT DATA using new extractors
+    const product = extractProductDetails(decision);
+    const cause = extractCauseInfo(decision);
+    const weatherNote = extractWeatherConsiderations(decision);
     const primary = decision.primary_decision;
-    const urgency = this.mapUrgencyLevel(primary.urgency);
+    const urgency = this.mapUrgencyLevel(primary?.urgency || 'WITHIN_48H');
     
-    // Determine action summary based on action type
-    const actionSummary = this.getActionSummary(primary, decision);
+    // BUILD ACTION SUMMARY with real data
+    const actionSummary = this.buildPopulatedActionSummary(decision, product, cause);
     
-    // Add weather note if relevant
-    let weatherNote: TrilingualText | undefined;
-    if (decision.status === 'WEATHER_DELAYED' || 
-        decision.blocked_actions.some(b => b.blocked_by_rule.includes('WEATHER'))) {
-      weatherNote = this.getWeatherNote(decision);
-    }
+    // Determine emoji based on action type
+    const actionEmoji = this.getActionEmoji(decision.status, product);
     
     return {
-      emoji: decision.status === 'BLOCKED' ? '⚠️' : '📌',
+      emoji: actionEmoji,
       heading: SECTION_HEADINGS['IMMEDIATE_ACTION'],
       action_summary: actionSummary,
       urgency_indicator: {
-        text: URGENCY_INDICATORS[urgency] || URGENCY_INDICATORS['TODAY'],
+        text: getUrgencyTranslation(urgency) || URGENCY_INDICATORS['TODAY'],
         color: this.getUrgencyColor(urgency),
         urgency_level: urgency as any
       },
-      weather_note: weatherNote
+      weather_note: weatherNote ? {
+        mr: this.translateWeatherNote(weatherNote, 'mr'),
+        hi: this.translateWeatherNote(weatherNote, 'hi'),
+        en: weatherNote
+      } : undefined
     };
   }
   
-  private getActionSummary(primary: PrimaryDecision, decision: DecisionOutput): TrilingualText {
-    // CRITICAL FIX: Handle undefined, None, or empty product names gracefully
-    let productName = primary.application_details?.product_name;
-    
-    // Sanitize product name - don't show "None", "undefined", "null" or empty
-    if (!productName || 
-        productName === 'None' || 
-        productName === 'undefined' || 
-        productName === 'null' ||
-        productName.trim() === '') {
-      productName = undefined;
-    }
-    
-    const timing = primary.timing?.recommended_start 
-      ? new Date(primary.timing.recommended_start).toLocaleDateString('mr-IN')
-      : 'आज';
-    
-    if (primary.action_type === 'NO_ACTION' || primary.action_type === 'MONITOR_ONLY') {
-      return {
-        mr: 'सध्या कोणतीही कृती आवश्यक नाही. निरीक्षण सुरू ठेवा.',
-        hi: 'अभी कोई कार्रवाई आवश्यक नहीं। निगरानी जारी रखें।',
-        en: 'No action required at this time. Continue monitoring.'
-      };
-    }
+  private buildPopulatedActionSummary(
+    decision: DecisionOutput, 
+    product: ExtractedProductDetails | null,
+    cause: ExtractedCauseInfo
+  ): TrilingualText {
+    const primary = decision.primary_decision;
     
     if (decision.status === 'BLOCKED') {
       const blockedAction = decision.blocked_actions?.[0];
@@ -280,49 +266,65 @@ export class CommunicationGenerator {
     
     if (decision.status === 'WEATHER_DELAYED') {
       return {
-        mr: `पाऊस/हवामानामुळे प्रतीक्षा करा. पुढील सुरक्षित वेळ: ${timing}`,
-        hi: `बारिश/मौसम के कारण प्रतीक्षा करें। अगला सुरक्षित समय: ${timing}`,
-        en: `Wait due to weather. Next safe window: ${timing}`
+        mr: 'पाऊस/हवामानामुळे प्रतीक्षा करा.',
+        hi: 'बारिश/मौसम के कारण प्रतीक्षा करें।',
+        en: 'Wait due to weather conditions.'
       };
     }
     
-    // CRITICAL FIX: Provide meaningful message when no specific product identified
-    if (!productName) {
-      // Check if there's a recommendation from the decision
-      const hasRecommendation = decision.secondary_actions?.length > 0 || 
-                                decision.rules_applied?.length > 0;
-      
-      if (hasRecommendation) {
-        return {
-          mr: `${timing} पासून शिफारसीनुसार कृती करा.`,
-          hi: `${timing} से सिफारिश के अनुसार कार्रवाई करें।`,
-          en: `Take action as recommended from ${timing}.`
-        };
-      }
-      
-      // Fallback: Monitoring advice
+    if (primary?.action_type === 'NO_ACTION' || primary?.action_type === 'MONITOR_ONLY') {
       return {
-        mr: 'पिकाचे नियमित निरीक्षण सुरू ठेवा. लक्षणे वाढल्यास पुन्हा संपर्क करा.',
-        hi: 'फसल की नियमित निगरानी जारी रखें। लक्षण बढ़ने पर फिर से संपर्क करें।',
-        en: 'Continue regular crop monitoring. Contact again if symptoms increase.'
+        mr: 'सध्या कोणतीही कृती आवश्यक नाही. निरीक्षण सुरू ठेवा.',
+        hi: 'अभी कोई कार्रवाई आवश्यक नहीं। निगरानी जारी रखें।',
+        en: 'No action required at this time. Continue monitoring.'
       };
     }
     
-    // Standard recommendation with valid product
+    if (product && product.name && product.name !== 'Unknown product') {
+      const productMr = getProductName(product.name, 'mr');
+      const productHi = getProductName(product.name, 'hi');
+      const dosage = product.dosage || 'शिफारसीनुसार';
+      const methodMr = getMethodTranslation(product.method || 'FOLIAR_SPRAY', 'mr');
+      
+      return {
+        mr: `${productMr} @ ${dosage} - ${methodMr}`,
+        hi: `${productHi} @ ${dosage} - ${getMethodTranslation(product.method || 'FOLIAR_SPRAY', 'hi')}`,
+        en: `${product.name} @ ${dosage} - ${getMethodTranslation(product.method || 'FOLIAR_SPRAY', 'en')}`
+      };
+    }
+    
+    if (cause.cause && cause.cause !== 'UNKNOWN') {
+      return {
+        mr: `${getCauseTranslation(cause.cause, 'mr')} साठी तपासणी करा.`,
+        hi: `${getCauseTranslation(cause.cause, 'hi')} के लिए जांच करें।`,
+        en: `Inspect for ${getCauseTranslation(cause.cause, 'en')}.`
+      };
+    }
+    
     return {
-      mr: `${timing} सकाळी ${productName} फवारणी करा.`,
-      hi: `${timing} सुबह ${productName} का छिड़काव करें।`,
-      en: `Apply ${productName} spray on ${timing} morning.`
+      mr: 'पिकाचे निरीक्षण सुरू ठेवा.',
+      hi: 'फसल की निगरानी जारी रखें।',
+      en: 'Continue crop monitoring.'
     };
   }
   
-  private getWeatherNote(decision: DecisionOutput): TrilingualText {
-    return {
-      mr: '⛈️ पुढील 24 तासांत पाऊस शक्य - फवारणी टाळा',
-      hi: '⛈️ अगले 24 घंटों में बारिश संभव - छिड़काव टालें',
-      en: '⛈️ Rain possible in next 24 hours - avoid spraying'
-    };
+  private getActionEmoji(status: string, product: ExtractedProductDetails | null): string {
+    if (status === 'BLOCKED') return '⚠️';
+    if (status === 'WEATHER_DELAYED') return '⛈️';
+    if (!product) return '👀';
+    const method = product.method?.toUpperCase() || '';
+    if (method.includes('SPRAY')) return '💊';
+    if (method.includes('SOIL')) return '🌱';
+    return '📌';
   }
+  
+  private translateWeatherNote(note: string, lang: SupportedLanguage): string {
+    if (lang === 'en') return note;
+    if (lang === 'mr') return note.includes('rain') ? '⛈️ पावसामुळे फवारणी टाळा' : note;
+    return note.includes('rain') ? '⛈️ बारिश के कारण छिड़काव टालें' : note;
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
   
   // ═══════════════════════════════════════════════════════════════════════════
   // LAYER 2: HOW TO DO IT (v3.1 - Full Data Population)
