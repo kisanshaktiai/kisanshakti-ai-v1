@@ -721,10 +721,13 @@ export class AIAgentOrchestrator {
       console.log('\n📋 PHASE 6A: Classifying Question Type...');
       
       // Classify the question to determine which sections to show
+      // CRITICAL FIX: Pass decisionOutput for robust template selection
+      // This ensures rule-based decisions always get TREATMENT_FULL template
       const questionClassification = classifyQuestion(
         nluWithRuleMapping.intent_classification?.primary_intent || 'GENERAL_QUERY',
         nluWithRuleMapping,
-        contextState
+        contextState,
+        safetyVerification.modified_decision || decisionOutput  // Pass decision for robust classification
       );
       
       console.log(`   Template type: ${questionClassification.template_type}`);
@@ -1374,8 +1377,29 @@ export class AIAgentOrchestrator {
   
   /**
    * Fetch weather data - NOW CONNECTED TO REAL DATA
+   * CRITICAL FIX: Returns CANONICAL WeatherData format for MultiModalFusion
+   * Format: { current: { temperature_c, humidity_percent, wind_speed_kmh, rainfall_last_24h_mm },
+   *           forecast_24h: { rain_probability_percent, temperature_max_c, temperature_min_c, wind_max_kmh } }
    */
   private async fetchWeatherData(sessionId: string, landId?: string): Promise<any> {
+    // Canonical default weather data for Indian agriculture
+    const defaultWeather = {
+      is_default: true,
+      current: {
+        temperature_c: 28,
+        humidity_percent: 65,
+        wind_speed_kmh: 12,
+        rainfall_last_24h_mm: 0
+      },
+      forecast_24h: {
+        rain_probability_percent: 20,
+        temperature_max_c: 32,
+        temperature_min_c: 22,
+        wind_max_kmh: 18
+      },
+      forecast_72h: []
+    };
+    
     try {
       // Try to get land coordinates for weather lookup
       if (landId) {
@@ -1398,36 +1422,51 @@ export class AIAgentOrchestrator {
           
           if (weatherCache?.weather_data) {
             console.log('🌤️ [Orchestrator] Using cached weather data');
-            return { ...weatherCache.weather_data, is_default: false };
+            // NORMALIZE cache data to canonical format
+            const cached = weatherCache.weather_data;
+            return this.normalizeWeatherData(cached, false);
           }
         }
       }
       
-      // Fallback: Return reasonable defaults for Indian agriculture
-      // CRITICAL FIX: Mark as default so DataAudit shows correct status
+      // Fallback: Return reasonable defaults
       console.log('🌤️ [Orchestrator] Using default weather data');
-      return {
-        is_default: true,
-        current: {
-          temperature: 28,
-          humidity: 65,
-          wind_speed_kmh: 12,
-          precipitation: 0
-        },
-        forecast: [{
-          precipitation_probability: 20,
-          temperature_max: 32,
-          wind_max_kmh: 18
-        }]
-      };
+      return defaultWeather;
     } catch (error) {
       console.warn('⚠️ Weather fetch failed:', error);
-      return {
-        is_default: true,
-        current: { temperature: 28, humidity: 65, wind_speed_kmh: 12, precipitation: 0 },
-        forecast: [{ precipitation_probability: 20, temperature_max: 32, wind_max_kmh: 18 }]
-      };
+      return defaultWeather;
     }
+  }
+  
+  /**
+   * Normalize any weather data format to canonical format for MultiModalFusion
+   * Handles: weather_cache format, weather_current format, and already-canonical format
+   */
+  private normalizeWeatherData(raw: any, isDefault: boolean): any {
+    // If already in canonical format, return as-is
+    if (raw?.current?.temperature_c !== undefined && raw?.forecast_24h?.rain_probability_percent !== undefined) {
+      return { ...raw, is_default: isDefault };
+    }
+    
+    // Handle weather_cache format: { current: { temperature, humidity, ... }, forecast: [{ precipitation_probability, ... }] }
+    const forecast = raw?.forecast?.[0] || raw?.forecast_24h || {};
+    
+    return {
+      is_default: isDefault,
+      current: {
+        temperature_c: raw?.current?.temperature_c ?? raw?.current?.temperature ?? 28,
+        humidity_percent: raw?.current?.humidity_percent ?? raw?.current?.humidity ?? 65,
+        wind_speed_kmh: raw?.current?.wind_speed_kmh ?? raw?.current?.wind_speed ?? 12,
+        rainfall_last_24h_mm: raw?.current?.rainfall_last_24h_mm ?? raw?.current?.precipitation ?? 0
+      },
+      forecast_24h: {
+        rain_probability_percent: forecast?.rain_probability_percent ?? forecast?.precipitation_probability ?? 20,
+        temperature_max_c: forecast?.temperature_max_c ?? forecast?.temperature_max ?? 32,
+        temperature_min_c: forecast?.temperature_min_c ?? forecast?.temperature_min ?? 22,
+        wind_max_kmh: forecast?.wind_max_kmh ?? forecast?.wind_speed_max ?? 18
+      },
+      forecast_72h: raw?.forecast_72h || []
+    };
   }
   
   /**

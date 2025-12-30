@@ -40,11 +40,48 @@ export interface QuestionClassification {
 export function classifyQuestion(
   primaryIntent: string,
   nluOutput: any,
-  contextState: any
+  contextState: any,
+  decisionOutput?: any  // NEW: Accept decision output for robust classification
 ): QuestionClassification {
   
   console.log('📋 [QuestionClassifier] Classifying question...');
   console.log(`   Primary intent: ${primaryIntent}`);
+  
+  // ═════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Force TREATMENT_FULL if DecisionOutput has pest/disease target
+  // This ensures rule-based decisions always get detailed templates
+  // ═════════════════════════════════════════════════════════════════════════
+  if (decisionOutput) {
+    const hasPestTarget = decisionOutput.primary_decision?.target?.toLowerCase().includes('pest') ||
+                          decisionOutput.primary_decision?.pest_code ||
+                          decisionOutput.audit_trail?.pest_disease_detected;
+    const hasDiseaseTarget = decisionOutput.primary_decision?.target?.toLowerCase().includes('disease') ||
+                             decisionOutput.primary_decision?.disease_code ||
+                             decisionOutput.audit_trail?.disease_detected;
+    const hasChemicalAction = decisionOutput.primary_decision?.action_type === 'CHEMICAL_SPRAY' ||
+                              decisionOutput.primary_decision?.action_type === 'BIOPESTICIDE' ||
+                              decisionOutput.primary_decision?.action_type === 'BOTANICAL';
+    
+    if (hasPestTarget || hasDiseaseTarget || hasChemicalAction) {
+      console.log('   ✅ [OVERRIDE] Classified as TREATMENT_FULL from DecisionOutput');
+      return {
+        template_type: ResponseTemplateType.TREATMENT_FULL,
+        requires_sections: {
+          materials: true,
+          mixing: true,
+          application: true,
+          timing: true,
+          economics: true,
+          follow_up: true,
+          warnings: true,
+          rationale: true
+        },
+        response_style: 'detailed',
+        max_sections: 8,
+        priority_order: ['immediate_action', 'how_to', 'warnings', 'economics', 'follow_up', 'rationale']
+      };
+    }
+  }
   
   // ═════════════════════════════════════════════════════════════════════════
   // PATTERN 1: Pest/Disease Treatment with Products
@@ -54,9 +91,11 @@ export function classifyQuestion(
       primaryIntent === 'PEST_MANAGEMENT' ||
       primaryIntent === 'DISEASE_MANAGEMENT') {
     const hasPest = nluOutput.entities_extracted?.pest_mentioned || 
-                    nluOutput.symptom_extraction?.inferred_pest_codes?.length > 0;
+                    nluOutput.symptom_extraction?.inferred_pest_codes?.length > 0 ||
+                    nluOutput.entities?.pest_code;  // Support mapped NLU format
     const hasDisease = nluOutput.entities_extracted?.disease_mentioned ||
-                       nluOutput.symptom_extraction?.inferred_disease_codes?.length > 0;
+                       nluOutput.symptom_extraction?.inferred_disease_codes?.length > 0 ||
+                       nluOutput.entities?.disease_code;  // Support mapped NLU format
     
     if (hasPest || hasDisease) {
       console.log('   ✅ Classified as TREATMENT_FULL');
