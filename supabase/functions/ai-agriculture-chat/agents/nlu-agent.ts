@@ -36,6 +36,9 @@ import {
   getAllSymptomTerms,
 } from './agricultural-vocabulary.ts';
 
+// CRITICAL FIX: Import normalization for consistent pest codes
+import { normalizePestCode } from './type-mappers.ts';
+
 const NLU_VERSION = '4.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -66,27 +69,37 @@ async function sleep(ms: number): Promise<void> {
 async function fetchWithRetry(
   url: string,
   options: RequestInit,
-  maxRetries: number = 3,
-  baseDelay: number = 1000
+  maxRetries: number = 2,
+  baseDelay: number = 500,
+  timeoutMs: number = 5000  // CRITICAL FIX: Hard timeout to prevent 20s waits
 ): Promise<Response> {
   let lastError: Error | null = null;
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const response = await fetch(url, options);
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
       
       // Handle rate limiting (429)
       if (response.status === 429) {
         const retryAfter = response.headers.get('Retry-After');
-        const delay = retryAfter ? parseInt(retryAfter) * 1000 : baseDelay * Math.pow(2, attempt);
+        const delay = retryAfter ? Math.min(parseInt(retryAfter) * 1000, 2000) : baseDelay * attempt;
         console.warn(`⚠️ [NLU] Rate limited (429), retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
         await sleep(delay);
         continue;
       }
       
-      // Handle server errors with retry
+      // Handle server errors with retry (but quick)
       if (response.status >= 500 && attempt < maxRetries) {
-        const delay = baseDelay * Math.pow(2, attempt);
+        const delay = baseDelay * attempt;
         console.warn(`⚠️ [NLU] Server error (${response.status}), retrying in ${delay}ms (attempt ${attempt}/${maxRetries})`);
         await sleep(delay);
         continue;
@@ -95,8 +108,20 @@ async function fetchWithRetry(
       return response;
     } catch (error) {
       lastError = error as Error;
+      const errorName = (error as Error).name;
+      
+      // Quick fail on timeout or abort
+      if (errorName === 'AbortError' || errorName === 'TimeoutError') {
+        console.warn(`⚠️ [NLU] Request timed out after ${timeoutMs}ms (attempt ${attempt}/${maxRetries})`);
+        if (attempt < maxRetries) {
+          await sleep(baseDelay);
+          continue;
+        }
+        break;
+      }
+      
       if (attempt < maxRetries) {
-        const delay = baseDelay * Math.pow(2, attempt);
+        const delay = baseDelay * attempt;
         console.warn(`⚠️ [NLU] Network error, retrying in ${delay}ms (attempt ${attempt}/${maxRetries}):`, error);
         await sleep(delay);
       }
@@ -134,25 +159,29 @@ OUTPUT FORMAT (JSON only, no markdown):
   "symptoms": ["symptom1", "symptom2"],
   "urgency": "HIGH" | "MEDIUM" | "LOW",
   "emotional_state": "PANIC" | "STRESSED" | "NEUTRAL" | "CONFIDENT",
-  "extracted_context": "brief summary of farmer's issue"
+  "extracted_context": "brief summary of farmer's issue in same language as input"
 }
 
 CROP CODES: COTTON, SOYBEAN, TOMATO, ONION, CHILLI, SUGARCANE, WHEAT, RICE, MAIZE, GROUNDNUT, TUR, GRAM
-PEST CODES: WHITEFLY, APHID, BOLLWORM, MEALYBUG, THRIPS, JASSID, ARMYWORM, STEMBORER, FRUITBORER, SHOOTBORER, ROOTBORER
+PEST CODES (use EXACT codes with underscores): WHITEFLY, APHID, BOLLWORM, MEALYBUG, THRIPS, JASSID, ARMYWORM, STEM_BORER, FRUIT_BORER, SHOOT_BORER, ROOT_BORER
 DISEASE CODES: LEAF_CURL, POWDERY_MILDEW, DOWNY_MILDEW, WILT, ROOT_ROT, BACTERIAL_BLIGHT, RUST, ANTHRACNOSE, RED_ROT, SMUT
 
-SYMPTOM-TO-PEST/DISEASE MAPPING (use these to infer pest/disease from symptoms):
-- "dead heart" / "मधली सुरळी वाळली" / "सुखी सुरळी" → SHOOTBORER (sugarcane)
-- "white powder on leaves" / "पांढरी भुकटी" → POWDERY_MILDEW
-- "yellowing leaves" + "wilting" → WILT or NUTRIENT_ISSUE
-- "holes in bolls" / "बोंडातील छिद्र" → BOLLWORM (cotton)
-- "curled leaves" / "पाने वळलेली" → LEAF_CURL
-- "tiny white flies" / "पांढऱ्या माशा" → WHITEFLY
-- "sticky honeydew" / "चिकट पाणी" → APHID or WHITEFLY
-- "red/rust spots" / "तांबडे डाग" → RUST
+CRITICAL SYMPTOM-TO-PEST/DISEASE MAPPING (MUST use these exact codes):
+- "dead heart" / "मधली सुरळी वाळली" / "सुखी सुरळी" / "गाभा सुकला" → pest code: "SHOOT_BORER" (sugarcane)
+- "white powder on leaves" / "पांढरी भुकटी" → disease code: "POWDERY_MILDEW"
+- "yellowing leaves" + "wilting" → disease code: "WILT" or intent: "NUTRIENT_ISSUE"
+- "holes in bolls" / "बोंडातील छिद्र" → pest code: "BOLLWORM" (cotton)
+- "curled leaves" / "पाने वळलेली" → disease code: "LEAF_CURL"
+- "tiny white flies" / "पांढऱ्या माशा" → pest code: "WHITEFLY"
+- "sticky honeydew" / "चिकट पाणी" → pest code: "APHID" or "WHITEFLY"
+- "red/rust spots" / "तांबडे डाग" → disease code: "RUST"
+- "stem borer" / "खोडकिडा" → pest code: "STEM_BORER"
 
-Be precise. Detect urgency from words like "dying", "emergency", "urgent", "मरतंय", "वाचवा", "ताबडतोब".
-IMPORTANT: Always try to identify specific pest/disease even from vague symptom descriptions.`;
+IMPORTANT RULES:
+1. Detect urgency from words: "dying", "emergency", "urgent", "मरतंय", "वाचवा", "ताबडतोब"
+2. Always try to identify specific pest/disease even from vague symptom descriptions
+3. Use UNDERSCORE format for codes (SHOOT_BORER not SHOOTBORER)
+4. For sugarcane + dead heart symptoms, ALWAYS return pest.code = "SHOOT_BORER"`;
 
   let geminiError: string | null = null;
   let openaiError: string | null = null;
@@ -738,8 +767,11 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
     });
   }
   if (aiResult?.pest && !entityResult.pests.length) {
+    // CRITICAL FIX: Normalize pest code to use underscores (SHOOT_BORER not SHOOTBORER)
+    let pestCode = aiResult.pest.code.toUpperCase();
+    pestCode = normalizePestCode(pestCode);
     entityResult.pests.push({
-      canonical: aiResult.pest.code,
+      canonical: pestCode,
       localTerm: aiResult.pest.name,
       confidence: 0.85
     });

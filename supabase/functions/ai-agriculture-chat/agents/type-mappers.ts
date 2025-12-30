@@ -247,6 +247,29 @@ export function normalizeCropCode(cropName: string | undefined): string {
 export function normalizePestCode(pestName: string | undefined): string {
   if (!pestName) return 'UNKNOWN';
   
+  // CRITICAL FIX: First normalize format - convert all to uppercase with underscores
+  let pestNormalized = pestName.toUpperCase().trim().replace(/[\s-]+/g, '_');
+  
+  // CRITICAL FIX: Handle common NO-underscore variants to WITH-underscore
+  const noUnderscoreMap: Record<string, string> = {
+    'SHOOTBORER': 'SHOOT_BORER',
+    'STEMBORER': 'STEM_BORER',
+    'TOPBORER': 'TOP_BORER',
+    'ROOTBORER': 'ROOT_BORER',
+    'FRUITBORER': 'FRUIT_BORER',
+    'INTERNODEBORER': 'INTERNODE_BORER',
+    'PINKBOLLWORM': 'PINK_BOLLWORM',
+    'FALLARMYWORM': 'FALL_ARMYWORM',
+    'REDSPIDERMITE': 'RED_SPIDER_MITE',
+    'GIRDLEBEETLE': 'GIRDLE_BEETLE',
+    'STEMFLY': 'STEM_FLY',
+    'DEADHEART': 'SHOOT_BORER',  // Symptom → pest mapping
+  };
+  
+  if (noUnderscoreMap[pestNormalized]) {
+    return noUnderscoreMap[pestNormalized];
+  }
+  
   const pestLower = pestName.toLowerCase().trim();
   
   const pestMap: Record<string, string> = {
@@ -301,6 +324,7 @@ export function normalizePestCode(pestName: string | undefined): string {
     'शेंडा पोखरणारी अळी': 'SHOOT_BORER',
     'मधली सुरळी': 'SHOOT_BORER',
     'सुरळी वाळणे': 'SHOOT_BORER',
+    'गाभा सुकणे': 'SHOOT_BORER',
     // Hindi
     'सफ़ेद मक्खी': 'WHITEFLY',
     'मोयला': 'APHID',
@@ -325,7 +349,8 @@ export function normalizePestCode(pestName: string | undefined): string {
     }
   }
   
-  return pestName.toUpperCase().replace(/\s+/g, '_');
+  // Return normalized uppercase with underscores
+  return pestNormalized;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
