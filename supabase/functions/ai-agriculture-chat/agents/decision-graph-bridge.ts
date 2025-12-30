@@ -725,7 +725,7 @@ function evaluateDiseaseManagement(context: RuleEvaluationContext): EvaluatedRul
       }
       
       rules.push({
-        rule_id: `DISEASE_${cropUpper}_${diseaseUpper}`,
+        rule_id: `DISEASE_${cropNorm}_${diseaseNorm}`,
         category: 'disease',
         priority: 'P4_ECONOMIC',
         fired: true,
