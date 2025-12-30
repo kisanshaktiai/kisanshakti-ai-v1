@@ -208,8 +208,19 @@ export class CommunicationGenerator {
   }
   
   private getActionSummary(primary: PrimaryDecision, decision: DecisionOutput): TrilingualText {
-    const productName = primary.application_details.product_name;
-    const timing = primary.timing.recommended_start 
+    // CRITICAL FIX: Handle undefined, None, or empty product names gracefully
+    let productName = primary.application_details?.product_name;
+    
+    // Sanitize product name - don't show "None", "undefined", "null" or empty
+    if (!productName || 
+        productName === 'None' || 
+        productName === 'undefined' || 
+        productName === 'null' ||
+        productName.trim() === '') {
+      productName = undefined;
+    }
+    
+    const timing = primary.timing?.recommended_start 
       ? new Date(primary.timing.recommended_start).toLocaleDateString('mr-IN')
       : 'आज';
     
@@ -222,7 +233,7 @@ export class CommunicationGenerator {
     }
     
     if (decision.status === 'BLOCKED') {
-      const blockedAction = decision.blocked_actions[0];
+      const blockedAction = decision.blocked_actions?.[0];
       return {
         mr: `⚠️ थांबा: ${blockedAction?.reason || 'सुरक्षा कारणांमुळे'}`,
         hi: `⚠️ रुकें: ${blockedAction?.reason || 'सुरक्षा कारणों से'}`,
@@ -238,7 +249,29 @@ export class CommunicationGenerator {
       };
     }
     
-    // Standard recommendation
+    // CRITICAL FIX: Provide meaningful message when no specific product identified
+    if (!productName) {
+      // Check if there's a recommendation from the decision
+      const hasRecommendation = decision.secondary_actions?.length > 0 || 
+                                decision.rules_applied?.length > 0;
+      
+      if (hasRecommendation) {
+        return {
+          mr: `${timing} पासून शिफारसीनुसार कृती करा.`,
+          hi: `${timing} से सिफारिश के अनुसार कार्रवाई करें।`,
+          en: `Take action as recommended from ${timing}.`
+        };
+      }
+      
+      // Fallback: Monitoring advice
+      return {
+        mr: 'पिकाचे नियमित निरीक्षण सुरू ठेवा. लक्षणे वाढल्यास पुन्हा संपर्क करा.',
+        hi: 'फसल की नियमित निगरानी जारी रखें। लक्षण बढ़ने पर फिर से संपर्क करें।',
+        en: 'Continue regular crop monitoring. Contact again if symptoms increase.'
+      };
+    }
+    
+    // Standard recommendation with valid product
     return {
       mr: `${timing} सकाळी ${productName} फवारणी करा.`,
       hi: `${timing} सुबह ${productName} का छिड़काव करें।`,
@@ -294,16 +327,21 @@ export class CommunicationGenerator {
   private generateMaterialsList(details: any, economics: EconomicAssessment): ApplicationInstructions['materials_needed'] {
     const items = [];
     
-    // Main product
-    items.push({
-      name: {
-        mr: details.product_name,
-        hi: details.product_name,
-        en: details.product_name
-      },
-      quantity: details.quantity_per_acre,
-      cost_inr: economics.breakdown?.product_cost_inr || Math.round(economics.treatment_cost_per_acre_inr * 0.6)
-    });
+    // CRITICAL FIX: Sanitize product name before adding to materials list
+    const productName = this.sanitizeProductName(details?.product_name);
+    
+    // Main product - only add if valid product name exists
+    if (productName) {
+      items.push({
+        name: {
+          mr: productName,
+          hi: productName,
+          en: productName
+        },
+        quantity: details?.quantity_per_acre || 'प्रमाणानुसार',
+        cost_inr: economics?.breakdown?.product_cost_inr || Math.round((economics?.treatment_cost_per_acre_inr || 0) * 0.6)
+      });
+    }
     
     // Water
     items.push({
@@ -312,11 +350,11 @@ export class CommunicationGenerator {
         hi: 'पानी',
         en: 'Water'
       },
-      quantity: details.water_requirement || '200 लिटर/एकर'
+      quantity: details?.water_requirement || '200 लिटर/एकर'
     });
     
     // Sticker/spreader if applicable
-    if (details.product_type === 'BOTANICAL' || details.product_type === 'BIOLOGICAL') {
+    if (details?.product_type === 'BOTANICAL' || details?.product_type === 'BIOLOGICAL') {
       items.push({
         name: {
           mr: 'स्टिकर/स्प्रेडर',
@@ -330,28 +368,46 @@ export class CommunicationGenerator {
     
     return {
       items,
-      total_cost_inr: economics.treatment_cost_inr,
-      cost_per_acre_inr: economics.treatment_cost_per_acre_inr
+      total_cost_inr: economics?.treatment_cost_inr || 0,
+      cost_per_acre_inr: economics?.treatment_cost_per_acre_inr || 0
     };
   }
   
+  /**
+   * CRITICAL FIX: Sanitize product names to remove invalid values
+   */
+  private sanitizeProductName(name: any): string | null {
+    if (!name) return null;
+    const strName = String(name).trim();
+    if (strName === '' || 
+        strName.toLowerCase() === 'none' || 
+        strName.toLowerCase() === 'undefined' || 
+        strName.toLowerCase() === 'null') {
+      return null;
+    }
+    return strName;
+  }
+  
   private generateMixingInstructions(details: any): ApplicationInstructions['mixing_instructions'] {
+    // CRITICAL FIX: Sanitize product name in mixing instructions
+    const productName = this.sanitizeProductName(details?.product_name) || 'औषध';
+    
     return {
       steps: {
         mr: [
-          'अर्ध्या पाण्यात ' + details.product_name + ' घाला',
+          'अर्ध्या पाण्यात ' + productName + ' घाला',
           'स्टिकर मिक्स करा, नीट ढवळा',
           'उरलेले पाणी भरा',
           'स्प्रेयर स्वच्छ करा'
         ],
         hi: [
-          'आधे पानी में ' + details.product_name + ' डालें',
+          'आधे पानी में ' + productName + ' डालें',
           'स्टिकर मिलाएं, अच्छी तरह हिलाएं',
           'बाकी पानी भरें',
           'स्प्रेयर साफ करें'
         ],
         en: [
-          'Add ' + details.product_name + ' to half the water',
+          'Add ' + productName + ' to half the water',
           'Mix sticker, stir well',
           'Fill remaining water',
           'Clean the sprayer'

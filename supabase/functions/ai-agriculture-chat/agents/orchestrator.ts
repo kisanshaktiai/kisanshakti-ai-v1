@@ -30,6 +30,15 @@ import type { NLUIntent, ExtractedEntities, SafetyAlerts } from './rule-module-t
 // Import rule resolver for NLU-to-Rules mapping (CRITICAL GAP 1 FIX)
 import { resolveRuleModules, determineContextRequirements, generateRuleRequiredQuestions } from './rule-module-resolver.ts';
 
+// CRITICAL FIX: Import normalization functions from type-mappers for consistent code matching
+import { 
+  normalizeCropCode as normalizeTypeCropCode, 
+  normalizePestCode, 
+  normalizeDiseaseCode, 
+  normalizeSeverity,
+  normalizeCropStage 
+} from './type-mappers.ts';
+
 export const ORCHESTRATOR_VERSION = '1.0.0';
 
 // Response types
@@ -1037,6 +1046,7 @@ export class AIAgentOrchestrator {
   
   /**
    * Build rule engine input from fused data
+   * CRITICAL FIX: Now uses type-mappers normalization for ALL codes
    */
   private buildRuleEngineInput(
     fused: FusedIntelligence,
@@ -1047,25 +1057,39 @@ export class AIAgentOrchestrator {
   ): RuleExecutionInput {
     // CRITICAL FIX: Extract pest/disease from NLU entities FIRST (most reliable source)
     const nluEntities = nluMapping?.entities || {};
-    const pestCode = nluEntities.pest_code || 
-                     fused.unified_context?.problem?.primary_cause ||
-                     fused.unified_context?.problem?.identified_issue;
-    const diseaseCode = nluEntities.disease_code ||
-                        fused.unified_context?.problem?.disease_code;
-    const cropCode = nluEntities.crop_code ||
-                     fused.unified_context?.crop?.code || 
-                     context.crop_context?.code || 
-                     context.land_context?.current_crop || 
-                     'UNKNOWN';
-    const severity = nluEntities.severity ||
-                     fused.unified_context?.problem?.severity ||
-                     'MODERATE';
     
-    console.log(`   [${ids.traceId}] 📊 Rule Engine Input building:`, {
-      crop_code: cropCode,
-      pest_code: pestCode,
-      disease_code: diseaseCode,
-      severity: severity,
+    // CRITICAL FIX: Get raw codes from multiple sources
+    const rawPestCode = nluEntities.pest_code || 
+                        fused.unified_context?.problem?.primary_cause ||
+                        fused.unified_context?.problem?.identified_issue ||
+                        undefined;
+    const rawDiseaseCode = nluEntities.disease_code ||
+                           fused.unified_context?.problem?.disease_code ||
+                           undefined;
+    const rawCropCode = nluEntities.crop_code ||
+                        fused.unified_context?.crop?.code || 
+                        context.crop_context?.code || 
+                        context.land_context?.current_crop || 
+                        'UNKNOWN';
+    const rawSeverity = nluEntities.severity ||
+                        fused.unified_context?.problem?.severity ||
+                        'MODERATE';
+    const rawCropStage = nluEntities.crop_stage ||
+                         fused.unified_context?.crop?.stage || 
+                         context.crop_context?.stage || 
+                         context.land_context?.growth_stage || 
+                         'VEGETATIVE';
+    
+    // CRITICAL FIX: Normalize ALL codes using type-mappers for consistent matching
+    const pestCode = normalizePestCode(rawPestCode);
+    const diseaseCode = normalizeDiseaseCode(rawDiseaseCode);
+    const cropCode = normalizeTypeCropCode(rawCropCode);
+    const severity = normalizeSeverity(rawSeverity);
+    const cropStage = normalizeCropStage(rawCropStage);
+    
+    console.log(`   [${ids.traceId}] 📊 Rule Engine Input (NORMALIZED):`, {
+      raw: { crop: rawCropCode, pest: rawPestCode, disease: rawDiseaseCode, severity: rawSeverity },
+      normalized: { crop: cropCode, pest: pestCode, disease: diseaseCode, severity: severity, stage: cropStage },
       source: nluEntities.pest_code ? 'NLU' : 'FUSION'
     });
     
@@ -1080,11 +1104,7 @@ export class AIAgentOrchestrator {
       farmer_context: {
         crop_code: cropCode,
         crop_variety: context.crop_context?.variety || context.land_context?.crop_variety,
-        crop_stage: (nluEntities.crop_stage ||
-                    fused.unified_context?.crop?.stage || 
-                    context.crop_context?.stage || 
-                    context.land_context?.growth_stage || 
-                    'VEGETATIVE') as any,
+        crop_stage: cropStage as any,
         days_after_sowing: fused.unified_context?.crop?.days_after_sowing || 
                            context.land_context?.days_since_sowing || 
                            45,
@@ -1115,8 +1135,8 @@ export class AIAgentOrchestrator {
       },
       
       pest_disease_state: {
-        pest_code: pestCode,
-        disease_code: diseaseCode,
+        pest_code: pestCode !== 'UNKNOWN' ? pestCode : undefined,
+        disease_code: diseaseCode !== 'UNKNOWN' ? diseaseCode : undefined,
         affected_area_percent: nluEntities.affected_area_percent ||
                                fused.unified_context?.problem?.affected_area_percent || 20,
         severity: severity as any,
