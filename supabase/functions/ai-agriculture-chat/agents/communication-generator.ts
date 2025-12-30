@@ -1,10 +1,12 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * FARMER COMMUNICATION GENERATOR v3.0
+ * FARMER COMMUNICATION GENERATOR v3.1
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Translates complex technical decisions from the Rule Engine into clear,
  * actionable, culturally appropriate advice in Marathi, Hindi, and English.
+ * 
+ * v3.1 UPDATE: Full data extraction and translation integration
  */
 
 import type { DecisionOutput, EconomicAssessment, PrimaryDecision } from './rule-engine-types.ts';
@@ -36,6 +38,41 @@ import {
   SECTION_HEADINGS,
   EMOJI_DESCRIPTIONS
 } from './communication-types.ts';
+
+// NEW IMPORTS: Translation Dictionary and Data Extractors
+import {
+  CAUSE_TRANSLATIONS,
+  ACTION_TRANSLATIONS,
+  PRODUCT_TRANSLATIONS,
+  METHOD_TRANSLATIONS,
+  URGENCY_TRANSLATIONS,
+  SAFETY_GEAR_TRANSLATIONS,
+  translateText,
+  getProductName,
+  getCauseTranslation,
+  getActionTranslation,
+  getMethodTranslation,
+  getUrgencyTranslation,
+  getSafetyGearTranslation,
+  type SupportedLanguage as TranslationLanguage
+} from './communication-translation-dictionary.ts';
+
+import {
+  extractProductDetails,
+  extractCauseInfo,
+  extractEconomicInfo,
+  extractSafetyInfo,
+  extractMixingInstructions,
+  extractApplicationSteps,
+  extractWeatherConsiderations,
+  extractFollowUpSchedule,
+  extractScientificBasis,
+  extractAlternatives,
+  extractRepeatApplicationInfo,
+  type ExtractedProductDetails,
+  type ExtractedCauseInfo,
+  type ExtractedEconomicInfo
+} from './communication-data-extractors.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COMMUNICATION GENERATOR CLASS
