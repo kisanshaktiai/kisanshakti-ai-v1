@@ -266,6 +266,11 @@ serve(async (req) => {
     // ═══════════════════════════════════════════════════════════════════════════
     const responseTime = Date.now() - startTime;
     
+    // Extract actions from decision output for database storage
+    const { actions_returned, actions_filtered_out } = extractActionsFromDecisionOutput(orchestratorResponse);
+    
+    console.log(`💾 [Storage] Storing actions: returned=${actions_returned?.length || 0}, filtered=${actions_filtered_out?.length || 0}`);
+    
     // Store user message
     try {
       await supabase.from('ai_chat_messages').insert({
@@ -287,7 +292,7 @@ serve(async (req) => {
         }
       });
       
-      // Store assistant response
+      // Store assistant response with actions
       const responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
       await supabase.from('ai_chat_messages').insert({
         session_id: currentSessionId,
@@ -301,6 +306,9 @@ serve(async (req) => {
         decision_brain_source: true,
         is_training_candidate: true,
         conversation_turn_number: messages.length + 1,
+        // ✅ CRITICAL FIX: Store actions data
+        actions_returned: actions_returned,
+        actions_filtered_out: actions_filtered_out,
         metadata: {
           orchestrator_type: orchestratorResponse.type,
           confidence: orchestratorResponse.metadata?.confidence,
@@ -308,7 +316,9 @@ serve(async (req) => {
           rules_applied: orchestratorResponse.metadata?.rules_applied,
           agents_used: orchestratorResponse.metadata?.agents_used,
           decision_id: orchestratorResponse.decision_id,
-          trace_id: traceId  // PHASE A: Include trace_id in stored metadata
+          trace_id: traceId,
+          actions_returned_count: actions_returned?.length || 0,
+          actions_filtered_count: actions_filtered_out?.length || 0
         }
       });
       
@@ -386,6 +396,85 @@ serve(async (req) => {
 // ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Extract actions from orchestrator response for database storage
+ * Parses primary_decision, secondary_actions, and blocked_actions
+ */
+function extractActionsFromDecisionOutput(orchestratorResponse: OrchestratorResponse): {
+  actions_returned: any[] | null;
+  actions_filtered_out: any[] | null;
+} {
+  // Only extract actions when type is DECISION_PROVIDED
+  if (orchestratorResponse.type !== 'DECISION_PROVIDED') {
+    return { actions_returned: null, actions_filtered_out: null };
+  }
+
+  const decisionOutput = orchestratorResponse.decision_output;
+  
+  if (!decisionOutput) {
+    return { actions_returned: null, actions_filtered_out: null };
+  }
+
+  const actionsReturned: any[] = [];
+  
+  // Extract primary decision
+  if (decisionOutput.primary_decision) {
+    const primary = decisionOutput.primary_decision;
+    actionsReturned.push({
+      type: 'primary',
+      action_type: primary.action_type,
+      product_name: primary.application_details?.product_name,
+      dosage: primary.application_details?.concentration,
+      timing: primary.timing,
+      urgency: primary.urgency,
+      priority: primary.priority,
+      ipm_level: primary.ipm_level,
+      rule_id: primary.rule_id,
+      efficacy_percent: primary.expected_outcomes?.efficacy_percent,
+      target: {
+        pest_code: primary.target?.pest_code,
+        disease_code: primary.target?.disease_code,
+        nutrient_deficiency: primary.target?.nutrient_deficiency
+      }
+    });
+  }
+
+  // Extract secondary actions
+  if (decisionOutput.secondary_actions && decisionOutput.secondary_actions.length > 0) {
+    for (const secondary of decisionOutput.secondary_actions) {
+      actionsReturned.push({
+        type: 'secondary',
+        action: secondary.action,
+        reason: secondary.reason,
+        timing: secondary.timing,
+        priority: secondary.priority,
+        ipm_level: secondary.ipm_level,
+        rule_id: secondary.rule_id
+      });
+    }
+  }
+
+  // Extract blocked/filtered actions
+  const actionsFilteredOut: any[] = [];
+  
+  if (decisionOutput.blocked_actions && decisionOutput.blocked_actions.length > 0) {
+    for (const blocked of decisionOutput.blocked_actions) {
+      actionsFilteredOut.push({
+        action: blocked.action,
+        blocked_by_rule: blocked.blocked_by_rule,
+        reason: blocked.reason,
+        priority: blocked.priority,
+        alternatives: blocked.alternatives || []
+      });
+    }
+  }
+
+  return {
+    actions_returned: actionsReturned.length > 0 ? actionsReturned : null,
+    actions_filtered_out: actionsFilteredOut.length > 0 ? actionsFilteredOut : null
+  };
+}
 
 function getResponseContent(response: OrchestratorResponse, language: string): string {
   switch (response.type) {
