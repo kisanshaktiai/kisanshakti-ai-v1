@@ -52,12 +52,13 @@ export function classifyQuestion(
   // This ensures rule-based decisions always get detailed templates
   // ═════════════════════════════════════════════════════════════════════════
   if (decisionOutput) {
-    const hasPestTarget = decisionOutput.primary_decision?.target?.toLowerCase().includes('pest') ||
-                          decisionOutput.primary_decision?.pest_code ||
-                          decisionOutput.audit_trail?.pest_disease_detected;
-    const hasDiseaseTarget = decisionOutput.primary_decision?.target?.toLowerCase().includes('disease') ||
-                             decisionOutput.primary_decision?.disease_code ||
-                             decisionOutput.audit_trail?.disease_detected;
+    // Note: target is an object with pest_code, disease_code, nutrient_deficiency properties, not a string
+    const hasPestTarget = !!(decisionOutput.primary_decision?.target?.pest_code || 
+                             decisionOutput.primary_decision?.pest_code ||
+                             decisionOutput.audit_trail?.pest_disease_detected);
+    const hasDiseaseTarget = !!(decisionOutput.primary_decision?.target?.disease_code ||
+                                decisionOutput.primary_decision?.disease_code ||
+                                decisionOutput.audit_trail?.disease_detected);
     const hasChemicalAction = decisionOutput.primary_decision?.action_type === 'CHEMICAL_SPRAY' ||
                               decisionOutput.primary_decision?.action_type === 'BIOPESTICIDE' ||
                               decisionOutput.primary_decision?.action_type === 'BOTANICAL';
