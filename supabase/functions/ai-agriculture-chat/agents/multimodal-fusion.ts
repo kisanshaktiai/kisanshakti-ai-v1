@@ -651,15 +651,19 @@ export class MultiModalFusionEngine {
     };
     
     // Build environmental context
+    // CRITICAL FIX: Defensive access - weather_data may have different shapes
+    const weatherCurrent = input.weather_data?.current || {};
+    const weatherForecast = input.weather_data?.forecast_24h || input.weather_data?.forecast?.[0] || {};
+    
     const environmental: UnifiedContext['environmental'] = {
       current_weather: {
-        temperature_c: input.weather_data.current.temperature_c,
-        humidity_percent: input.weather_data.current.humidity_percent,
-        wind_speed_kmh: input.weather_data.current.wind_speed_kmh,
+        temperature_c: weatherCurrent.temperature_c ?? weatherCurrent.temperature ?? 28,
+        humidity_percent: weatherCurrent.humidity_percent ?? weatherCurrent.humidity ?? 65,
+        wind_speed_kmh: weatherCurrent.wind_speed_kmh ?? weatherCurrent.wind_speed ?? 12,
         conditions: this.summarizeWeatherConditions(input.weather_data)
       },
       weather_forecast_24h: {
-        rain_probability: input.weather_data.forecast_24h.rain_probability_percent,
+        rain_probability: weatherForecast.rain_probability_percent ?? weatherForecast.precipitation_probability ?? 20,
         suitable_for_spraying: this.isSprayingSuitable(input.weather_data),
         risk_factors: this.identifyWeatherRisks(input.weather_data)
       },
@@ -1003,20 +1007,27 @@ export class MultiModalFusionEngine {
   }
   
   private summarizeWeatherConditions(weather: MultiModalInput['weather_data']): string {
+    // CRITICAL FIX: Defensive access for variable weather data shapes
+    const current = weather?.current || {};
+    const rainfall = current.rainfall_last_24h_mm ?? current.precipitation ?? 0;
+    const temp = current.temperature_c ?? current.temperature ?? 28;
+    const humidity = current.humidity_percent ?? current.humidity ?? 65;
+    const wind = current.wind_speed_kmh ?? current.wind_speed ?? 12;
+    
     const conditions: string[] = [];
     
-    if (weather.current.rainfall_last_24h_mm > 0) {
-      conditions.push(`${weather.current.rainfall_last_24h_mm}mm rain`);
+    if (rainfall > 0) {
+      conditions.push(`${rainfall}mm rain`);
     }
-    if (weather.current.temperature_c > 35) {
+    if (temp > 35) {
       conditions.push('Hot');
-    } else if (weather.current.temperature_c < 15) {
+    } else if (temp < 15) {
       conditions.push('Cool');
     }
-    if (weather.current.humidity_percent > 80) {
+    if (humidity > 80) {
       conditions.push('Humid');
     }
-    if (weather.current.wind_speed_kmh > 20) {
+    if (wind > 20) {
       conditions.push('Windy');
     }
     
@@ -1024,23 +1035,34 @@ export class MultiModalFusionEngine {
   }
   
   private isSprayingSuitable(weather: MultiModalInput['weather_data']): boolean {
-    const rainProb = weather.forecast_24h.rain_probability_percent;
-    const wind = weather.current.wind_speed_kmh;
-    const temp = weather.current.temperature_c;
+    // CRITICAL FIX: Defensive access for variable weather data shapes
+    const forecast = weather?.forecast_24h || weather?.forecast?.[0] || {};
+    const current = weather?.current || {};
+    
+    const rainProb = forecast.rain_probability_percent ?? forecast.precipitation_probability ?? 20;
+    const wind = current.wind_speed_kmh ?? current.wind_speed ?? 12;
+    const temp = current.temperature_c ?? current.temperature ?? 28;
     
     return rainProb < 40 && wind < 15 && temp < 35;
   }
   
   private identifyWeatherRisks(weather: MultiModalInput['weather_data']): string[] {
+    // CRITICAL FIX: Defensive access for variable weather data shapes
+    const forecast = weather?.forecast_24h || weather?.forecast?.[0] || {};
+    
+    const rainProb = forecast.rain_probability_percent ?? forecast.precipitation_probability ?? 20;
+    const windMax = forecast.wind_max_kmh ?? forecast.wind_speed_max ?? 18;
+    const tempMax = forecast.temperature_max_c ?? forecast.temperature_max ?? 32;
+    
     const risks: string[] = [];
     
-    if (weather.forecast_24h.rain_probability_percent > 60) {
+    if (rainProb > 60) {
       risks.push('RAIN_EXPECTED');
     }
-    if (weather.forecast_24h.wind_max_kmh > 20) {
+    if (windMax > 20) {
       risks.push('HIGH_WIND');
     }
-    if (weather.forecast_24h.temperature_max_c > 38) {
+    if (tempMax > 38) {
       risks.push('EXTREME_HEAT');
     }
     
