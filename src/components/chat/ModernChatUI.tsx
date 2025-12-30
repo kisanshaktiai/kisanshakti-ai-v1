@@ -12,6 +12,7 @@ import { RecommendationCards, type VisionAnalysisResult } from './Recommendation
 import { DiagnosisOnlyCard } from './DiagnosisOnlyCard';
 import { SuggestionTypeSelector, type SuggestionType } from './SuggestionTypeSelector';
 import { DecisionBrainCards, type DecisionBrainResponse } from './DecisionBrainCards';
+import { DataAuditCards, type DataAudit } from './DataAuditCards';
 
 interface Message {
   id: string;
@@ -46,6 +47,8 @@ interface Message {
   };
   // ✅ NEW: Decision Brain structured response
   decisionBrainResponse?: DecisionBrainResponse;
+  // ✅ NEW: Data Audit for debugging
+  dataAudit?: DataAudit;
   analytics?: {
     responseTime?: number;
     tokensUsed?: {
@@ -205,6 +208,7 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
   const hasAnalysisResult = !isUser && message.analysisResult;
   const hasStructuredCards = !isUser && message.structuredResponse?.cards?.length > 0;
   const hasDecisionBrainResponse = !isUser && message.decisionBrainResponse;
+  const hasDataAudit = !isUser && message.dataAudit;
   
   // ✅ Check if this is a targeted solution (user already selected suggestion type)
   const isTargetedSolution = message.messageType === 'targeted_solution' && message.suggestionType;
@@ -540,6 +544,13 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
                   ) : (
                     formatAIResponse(message.content)
                   )}
+                </div>
+              )}
+              
+              {/* ✅ NEW: Data Audit Cards for debugging - shows what data was found/missing */}
+              {hasDataAudit && message.dataAudit && (
+                <div className="px-3 pb-2">
+                  <DataAuditCards audit={message.dataAudit} />
                 </div>
               )}
               

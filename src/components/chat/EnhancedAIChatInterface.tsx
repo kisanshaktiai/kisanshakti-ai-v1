@@ -76,6 +76,8 @@ interface Message {
     language: string;
   };
   decisionBrainResponse?: DecisionBrainResponse;
+  // ✅ NEW: Data Audit for debugging - shows what data was found/missing
+  dataAudit?: any;
   diagnosticData?: {
     landName?: string;
     cropName?: string;
@@ -953,6 +955,8 @@ export function EnhancedAIChatInterface() {
         timestamp: new Date(),
         messageType: 'orchestrator',
         orchestratorType: data.metadata?.type || 'DECISION_PROVIDED',
+        // ✅ NEW: Include data audit for debugging cards
+        dataAudit: data.dataAudit,
         analytics: {
           responseTime: data.responseTime,
           queryComplexity: 'orchestrator'

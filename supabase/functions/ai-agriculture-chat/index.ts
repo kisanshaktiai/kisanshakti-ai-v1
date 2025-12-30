@@ -579,13 +579,16 @@ function transformOrchestratorResponse(
         sessionId: sessionId,
         language: language,
         responseTime: responseTime,
+        // NEW: Include data audit for frontend debugging cards
+        dataAudit: response.dataAudit,
         metadata: {
           type: 'decision',
           confidence: response.metadata?.confidence,
           safety_status: response.metadata?.safety_status,
           rules_applied: response.metadata?.rules_applied,
           agents_used: response.metadata?.agents_used,
-          decision_id: response.decision_id
+          decision_id: response.decision_id,
+          trace_id: response.metadata?.trace_id
         },
         quickReplies: generateQuickRepliesFromCommunication(comm, language),
         source: 'orchestrator_v1'
