@@ -1517,24 +1517,36 @@ export class CommunicationGenerator {
   }
   
   private getFullTextForMetrics(mainMessage: any, lang: SupportedLanguage): string {
-    const sections = mainMessage.sections;
-    let fullText = mainMessage.greeting + ' ';
-    
-    if (mainMessage.empathy_line) {
-      fullText += mainMessage.empathy_line + ' ';
+    try {
+      const sections = mainMessage?.sections;
+      let fullText = (mainMessage?.greeting || '') + ' ';
+      
+      if (mainMessage?.empathy_line) {
+        fullText += mainMessage.empathy_line + ' ';
+      }
+      
+      // Safely access immediate_action
+      if (sections?.immediate_action?.action_summary?.[lang]) {
+        fullText += sections.immediate_action.action_summary[lang] + ' ';
+      }
+      
+      // CRITICAL FIX: Only access how_to if it exists
+      const howTo = sections?.how_to;
+      if (howTo?.mixing_instructions?.steps?.[lang]) {
+        fullText += howTo.mixing_instructions.steps[lang].join(' ') + ' ';
+      }
+      
+      // Safely access closing
+      if (mainMessage?.closing) {
+        fullText += mainMessage.closing;
+      }
+      
+      return fullText;
+    } catch (error) {
+      console.warn('⚠️ [CommunicationGenerator] getFullTextForMetrics error - using fallback:', error);
+      // Return minimal text to avoid crash
+      return mainMessage?.greeting || 'Advisory generated';
     }
-    
-    fullText += sections.immediate_action.action_summary[lang] + ' ';
-    
-    // Add other sections
-    const howTo = sections.how_to;
-    if (howTo.mixing_instructions?.steps?.[lang]) {
-      fullText += howTo.mixing_instructions.steps[lang].join(' ') + ' ';
-    }
-    
-    fullText += mainMessage.closing;
-    
-    return fullText;
   }
   
   private calculateComplexity(text: string): number {

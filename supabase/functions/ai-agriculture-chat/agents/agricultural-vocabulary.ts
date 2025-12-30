@@ -94,6 +94,17 @@ export const PEST_VOCABULARY: AgriculturalTerm[] = [
     }
   },
   {
+    canonical: 'SHOOT_BORER',
+    type: 'PEST',
+    scientific_name: 'Chilo infuscatellus',
+    terms: {
+      // CRITICAL: Sugarcane dead heart / shoot borer patterns
+      mr: ['शूट बोरर', 'मधली सुरळी', 'सुखी सुरळी', 'मधली सुरळी वाळली', 'मरलेली सुरळी', 'गाभा सुकला', 'डेड हार्ट', 'शेंडा पोखरणारी अळी', 'ऊस मधली सुरळी'],
+      hi: ['शूट बोरर', 'डेड हार्ट', 'मृत मध्य', 'बीच की पत्ती सूखी', 'गन्ने का खुदक'],
+      en: ['shoot borer', 'dead heart', 'early shoot borer', 'sugarcane borer', 'internode borer']
+    }
+  },
+  {
     canonical: 'MITES',
     type: 'PEST',
     scientific_name: 'Tetranychus urticae',
@@ -162,7 +173,9 @@ export const DISEASE_VOCABULARY: AgriculturalTerm[] = [
     canonical: 'WILT',
     type: 'DISEASE',
     terms: {
-      mr: ['सुरळी', 'मर', 'विल्ट', 'झाड मरणे'],
+      // CRITICAL FIX: Removed 'सुरळी' as it conflicts with SHOOT_BORER detection
+      // 'सुरळी' alone typically means dead heart in sugarcane, not wilt
+      mr: ['मर', 'विल्ट', 'झाड मरणे', 'पान कोमेजणे'],
       hi: ['म्लानि', 'विल्ट', 'मुरझाना', 'उकठा'],
       en: ['wilt', 'wilting', 'fusarium wilt', 'verticillium wilt']
     }

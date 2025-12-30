@@ -80,11 +80,14 @@ export function classifyQuestion(
   }
   
   // ═════════════════════════════════════════════════════════════════════════
-  // PATTERN 2: Irrigation/Water Management Query
+  // PATTERN 2: Irrigation/Water Management Query  
+  // CRITICAL FIX: Added WATER_ISSUE mapping (actual NLU intent name)
   // ═════════════════════════════════════════════════════════════════════════
   if (primaryIntent === 'IRRIGATION_QUERY' || 
       primaryIntent === 'WATER_MANAGEMENT' ||
       primaryIntent === 'WATER_SCHEDULE' ||
+      primaryIntent === 'WATER_ISSUE' ||              // NLU agent's actual intent
+      primaryIntent === 'IRRIGATION_PLANNING' ||
       nluOutput.symptom_extraction?.symptom_category === 'WATER_RELATED') {
     
     console.log('   ✅ Classified as IRRIGATION_PLAN');
@@ -108,11 +111,14 @@ export function classifyQuestion(
   
   // ═════════════════════════════════════════════════════════════════════════
   // PATTERN 3: Fertilizer Schedule Query
+  // CRITICAL FIX: Added NUTRIENT_ISSUE mapping (actual NLU intent name)
   // ═════════════════════════════════════════════════════════════════════════
   if (primaryIntent === 'FERTILIZER_QUERY' || 
       primaryIntent === 'NUTRIENT_MANAGEMENT' ||
       primaryIntent === 'FERTILIZER_SCHEDULE' ||
-      primaryIntent === 'NUTRIENT_DEFICIENCY') {
+      primaryIntent === 'NUTRIENT_DEFICIENCY' ||
+      primaryIntent === 'NUTRIENT_ISSUE' ||           // NLU agent's actual intent
+      primaryIntent === 'FERTILIZER_RECOMMENDATION') {
     
     console.log('   ✅ Classified as FERTILIZER_SCHEDULE');
     return {

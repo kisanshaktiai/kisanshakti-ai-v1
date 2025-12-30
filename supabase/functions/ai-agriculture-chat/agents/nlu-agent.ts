@@ -327,11 +327,14 @@ const INTENT_PATTERNS: Record<PrimaryIntent, RegExp[]> = {
   PEST_PROBLEM: [
     /किडी|कीड़|माशी|मावा|इल्ली|अळी|pest|insect|bug|कीट/i,
     /किडी\s*(लाग|पड|आल|दिस)/i,
-    /कीड़े?\s*(लग|दिख|आ)/i
+    /कीड़े?\s*(लग|दिख|आ)/i,
+    // CRITICAL: Sugarcane shoot borer / dead heart patterns
+    /मधली\s*सुरळी|सुखी\s*सुरळी|dead\s*heart|शूट\s*बोरर|गाभा\s*सुक/i,
+    /सुरळी\s*(वाळली|मरली|सुकली)/i
   ],
   DISEASE_PROBLEM: [
     /रोग|बीमारी|disease|infection|बुरशी|फफूंद/i,
-    /सुरळी|विल्ट|करपा|ब्लाइट|rust|तांबेरा/i,
+    /विल्ट|करपा|ब्लाइट|rust|तांबेरा/i,
     /पांढरा\s*पावडर|सफेद\s*पाउडर|mildew/i
   ],
   NUTRIENT_ISSUE: [

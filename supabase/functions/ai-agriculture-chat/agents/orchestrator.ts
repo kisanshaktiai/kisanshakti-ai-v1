@@ -1677,7 +1677,8 @@ export class AIAgentOrchestrator {
       safety_alerts: safetyAlerts,
       // CRITICAL: This was always empty - now properly populated
       requiredRuleModules,
-      // Additional fields for diagnostic flow
+      // CRITICAL FIX: Added overall_confidence that DiagnosticFlowController expects
+      overall_confidence: understanding_confidence,
       understanding_confidence,
       clarity_score
     };
