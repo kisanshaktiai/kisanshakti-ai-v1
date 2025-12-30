@@ -480,35 +480,50 @@ export function calculateFieldStates(
   const ndviData = landContext?.ndvi;
   const stage = cropStage || landContext?.growth_stage || 'VEGETATIVE';
   
+  // CRITICAL FIX: Support both old and new soil schema keys for backward compatibility
+  // New keys: nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, ph_level
+  // Old keys: nitrogen, phosphorus, potassium, ph
+  const nitrogen = soilHealth?.nitrogen_kg_per_ha ?? soilHealth?.nitrogen;
+  const phosphorus = soilHealth?.phosphorus_kg_per_ha ?? soilHealth?.phosphorus;
+  const potassium = soilHealth?.potassium_kg_per_ha ?? soilHealth?.potassium;
+  const ph = soilHealth?.ph_level ?? soilHealth?.ph;
+  const organicCarbon = soilHealth?.organic_carbon_percent ?? soilHealth?.organic_carbon;
+  
+  // CRITICAL FIX: Support both old and new NDVI schema keys
+  // New: ndvi_value, mean_ndvi; Old: value
+  const ndviValue = ndviData?.ndvi_value ?? ndviData?.mean_ndvi ?? ndviData?.value;
+  const ndviTrendValue = ndviData?.trend_slope ?? ndviData?.trend;
+  
   // Calculate nutrient states with stage awareness
-  const nState = calculateNitrogenState(soilHealth?.nitrogen, cropCode, stage);
-  const pState = calculatePhosphorusState(soilHealth?.phosphorus, cropCode);
-  const kState = calculatePotassiumState(soilHealth?.potassium, cropCode);
+  const nState = calculateNitrogenState(nitrogen, cropCode, stage);
+  const pState = calculatePhosphorusState(phosphorus, cropCode);
+  const kState = calculatePotassiumState(potassium, cropCode);
   
   // Calculate dosages if deficient
   const result: CalculatedFieldStates = {
     soil_nitrogen_state: nState,
     soil_phosphorus_state: pState,
     soil_potassium_state: kState,
-    soil_ph: soilHealth?.ph,
-    soil_organic_carbon: soilHealth?.organic_carbon,
+    soil_ph: ph,
+    soil_organic_carbon: organicCarbon,
     soil_type: normalizeSoilType(landContext?.soil_type),
-    ndvi: ndviData?.value,
-    ndvi_state: mapNDVIToState(ndviData?.value, cropCode),
-    ndvi_trend: calculateNDVITrend(ndviData?.trend, landContext?.ndvi_history),
-    has_soil_data: !!(soilHealth?.nitrogen || soilHealth?.phosphorus || soilHealth?.potassium),
-    has_ndvi_data: !!(ndviData?.value)
+    ndvi: ndviValue,
+    ndvi_state: mapNDVIToState(ndviValue, cropCode),
+    ndvi_trend: calculateNDVITrend(ndviTrendValue, landContext?.ndvi_history),
+    // CRITICAL FIX: Use normalized values for has_soil_data check
+    has_soil_data: !!(nitrogen !== undefined || phosphorus !== undefined || potassium !== undefined),
+    has_ndvi_data: !!(ndviValue !== undefined && ndviValue !== null)
   };
   
   // Add dosage recommendations for deficient nutrients
-  if (nState === 'LOW' && soilHealth?.nitrogen !== undefined) {
-    result.nitrogen_dosage = calculateFertilizerDosage(soilHealth.nitrogen, cropCode, stage, 'N');
+  if (nState === 'LOW' && nitrogen !== undefined) {
+    result.nitrogen_dosage = calculateFertilizerDosage(nitrogen, cropCode, stage, 'N');
   }
-  if (pState === 'LOW' && soilHealth?.phosphorus !== undefined) {
-    result.phosphorus_dosage = calculateFertilizerDosage(soilHealth.phosphorus, cropCode, stage, 'P');
+  if (pState === 'LOW' && phosphorus !== undefined) {
+    result.phosphorus_dosage = calculateFertilizerDosage(phosphorus, cropCode, stage, 'P');
   }
-  if (kState === 'LOW' && soilHealth?.potassium !== undefined) {
-    result.potassium_dosage = calculateFertilizerDosage(soilHealth.potassium, cropCode, stage, 'K');
+  if (kState === 'LOW' && potassium !== undefined) {
+    result.potassium_dosage = calculateFertilizerDosage(potassium, cropCode, stage, 'K');
   }
   
   return result;
