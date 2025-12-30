@@ -210,6 +210,14 @@ export class RuleEngineExecutor {
         });
       }
       
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CRITICAL FIX: Generate default decision when no rules match
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (totalRulesMatched === 0 && bridgeResults.length === 0) {
+        console.log(`   [${traceId}] ⚠️ NO RULES MATCHED - Generating default recommendation`);
+        return this.generateDefaultDecision(input, startTime);
+      }
+      
       // STEP 3: Check for blocking conditions
       const blockingDecision = this.checkForBlocks(decisions);
       if (blockingDecision) {
@@ -1039,6 +1047,275 @@ export class RuleEngineExecutor {
     };
   }
   
+  /**
+   * Generate DEFAULT decision when no rules match
+   * Uses crop+stage+soil context to provide useful recommendations
+   */
+  private generateDefaultDecision(
+    input: RuleExecutionInput,
+    startTime: number
+  ): DecisionOutput {
+    console.log('🌱 Generating default crop-stage recommendation (no rules matched)');
+    
+    const cropCode = input.farmer_context.crop_code?.toUpperCase() || 'UNKNOWN';
+    const cropStage = input.farmer_context.crop_stage?.toUpperCase() || 'VEGETATIVE';
+    
+    // Get crop-specific default recommendation based on soil/stage
+    const defaultAction = this.getCropStageDefaultAction(cropCode, cropStage, input);
+    
+    return {
+      decision_id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      session_id: input.session_id,
+      status: 'DEFAULT_RECOMMENDATION',
+      primary_decision: defaultAction,
+      secondary_actions: this.getSecondaryActionsForCrop(cropCode, cropStage),
+      blocked_actions: [],
+      economic_assessment: this.createDefaultEconomicAssessment(),
+      scientific_justification: [{
+        decision: `Default ${cropCode} ${cropStage} recommendation`,
+        rule_id: 'DEFAULT_CROP_STAGE',
+        rationale: 'No specific pest/disease rules matched. Providing general crop care advice based on growth stage and soil conditions.',
+        research_basis: 'ICAR crop management guidelines',
+        ipm_level: 4,
+        resistance_risk: 'VERY_LOW',
+        environmental_impact: 'MINIMAL'
+      }],
+      rules_applied: [{
+        rule_id: 'DEFAULT_CROP_STAGE',
+        rule_file: 'default-recommendations',
+        priority: 'P6_OPTIMIZATION',
+        result: 'RECOMMEND',
+        confidence: 0.7
+      }],
+      contingency_planning: this.generateContingencyPlan(input),
+      follow_up_schedule: this.generateFollowUpSchedule(input),
+      audit_trail: {
+        input_hash: this.hashInput(input),
+        rules_loaded: [],
+        rules_executed: 0,
+        rules_matched: 0,
+        rules_version: this.rulesVersion,
+        execution_time_ms: Date.now() - startTime,
+        determinism_verified: true,
+        explainability_score: 0.7,
+        engine_version: RULE_ENGINE_VERSION
+      },
+      confidence_metrics: {
+        rule_execution_confidence: 0.7,
+        input_data_quality: this.assessInputQuality(input),
+        weather_forecast_confidence: 0.8,
+        hypothesis_confidence: 0.6,
+        overall_decision_confidence: 0.65
+      },
+      farmer_messages: this.getDefaultFarmerMessages(cropCode, cropStage, input)
+    };
+  }
+  
+  /**
+   * Get crop+stage specific default action
+   */
+  private getCropStageDefaultAction(
+    cropCode: string,
+    cropStage: string,
+    input: RuleExecutionInput
+  ): PrimaryDecision {
+    // Check soil deficiencies first
+    const soilNState = input.field_conditions?.soil_nitrogen_state;
+    const soilPState = input.field_conditions?.soil_phosphorus_state;
+    const soilKState = input.field_conditions?.soil_potassium_state;
+    
+    // Fertilizer recommendation based on soil state
+    if (soilNState === 'LOW') {
+      return this.createFertilizerRecommendation('NITROGEN', cropCode, input);
+    }
+    if (soilPState === 'LOW') {
+      return this.createFertilizerRecommendation('PHOSPHORUS', cropCode, input);
+    }
+    if (soilKState === 'LOW') {
+      return this.createFertilizerRecommendation('POTASSIUM', cropCode, input);
+    }
+    
+    // Crop-stage specific default
+    const stageDefaults: Record<string, { action: string; product: string; dosage: string }> = {
+      'VEGETATIVE': {
+        action: 'APPLY_GROWTH_SUPPORT',
+        product: 'Urea + Micronutrient mixture',
+        dosage: '25 kg Urea + 2 kg micronutrients per acre'
+      },
+      'FLOWERING': {
+        action: 'APPLY_FLOWERING_SUPPORT',
+        product: 'DAP + Boron',
+        dosage: '20 kg DAP + 1 kg Boron per acre'
+      },
+      'FRUITING': {
+        action: 'APPLY_FRUITING_SUPPORT',
+        product: 'MOP (Potash)',
+        dosage: '25 kg MOP per acre'
+      },
+      'MATURITY': {
+        action: 'PREPARE_HARVEST',
+        product: 'None - Prepare for harvest',
+        dosage: 'No application needed'
+      }
+    };
+    
+    const defaultStage = stageDefaults[cropStage] || stageDefaults['VEGETATIVE'];
+    
+    return {
+      action_type: 'APPLY_FERTILIZER',
+      specific_action: defaultStage.action,
+      target: { crop_code: cropCode, crop_stage: cropStage },
+      urgency: 'WITHIN_7_DAYS',
+      timing: {
+        recommended_start: new Date().toISOString(),
+        recommended_end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        weather_dependency: true,
+        reason: `General ${cropStage.toLowerCase()} stage care for ${cropCode}`
+      },
+      application_details: {
+        product_name: defaultStage.product,
+        product_type: 'FERTILIZER',
+        concentration: defaultStage.dosage,
+        quantity_per_acre: defaultStage.dosage,
+        total_quantity: `${input.farmer_context.land_size_acres} acres × ${defaultStage.dosage}`,
+        water_requirement: 'Apply to moist soil',
+        application_method: 'SOIL_APPLICATION',
+        coverage_instructions: 'Apply uniformly around plant base'
+      },
+      expected_outcomes: {
+        efficacy_percent: 80,
+        time_to_visible_effect_days: '10-14',
+        success_indicators: ['Improved plant vigor', 'Healthy green color']
+      },
+      ipm_level: 6
+    };
+  }
+  
+  /**
+   * Create fertilizer recommendation based on deficiency
+   */
+  private createFertilizerRecommendation(
+    nutrientType: 'NITROGEN' | 'PHOSPHORUS' | 'POTASSIUM',
+    cropCode: string,
+    input: RuleExecutionInput
+  ): PrimaryDecision {
+    const fertilizerMap = {
+      'NITROGEN': { product: 'Urea (46% N)', dosage: '50 kg/acre', cost: 850 },
+      'PHOSPHORUS': { product: 'DAP (18-46-0)', dosage: '40 kg/acre', cost: 1200 },
+      'POTASSIUM': { product: 'MOP (60% K₂O)', dosage: '35 kg/acre', cost: 700 }
+    };
+    
+    const fert = fertilizerMap[nutrientType];
+    
+    return {
+      action_type: 'APPLY_FERTILIZER',
+      specific_action: `CORRECT_${nutrientType}_DEFICIENCY`,
+      target: { crop_code: cropCode, nutrient: nutrientType },
+      urgency: 'WITHIN_48H',
+      timing: {
+        recommended_start: new Date().toISOString(),
+        recommended_end: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+        weather_dependency: true,
+        reason: `Soil ${nutrientType.toLowerCase()} is LOW - correction needed`
+      },
+      application_details: {
+        product_name: fert.product,
+        product_type: 'FERTILIZER',
+        concentration: fert.dosage,
+        quantity_per_acre: fert.dosage,
+        total_quantity: `${fert.dosage} × ${input.farmer_context.land_size_acres} acres`,
+        water_requirement: 'Apply to moist soil, irrigate after application',
+        application_method: 'SOIL_APPLICATION',
+        coverage_instructions: 'Apply uniformly around plant base, avoid direct contact with stem'
+      },
+      expected_outcomes: {
+        efficacy_percent: 85,
+        time_to_visible_effect_days: '7-10',
+        success_indicators: ['Improved leaf color', 'Increased growth rate', 'Healthy new leaves']
+      },
+      ipm_level: 6
+    };
+  }
+  
+  /**
+   * Get secondary actions for crop
+   */
+  private getSecondaryActionsForCrop(cropCode: string, cropStage: string): any[] {
+    return [{
+      action_type: 'MONITOR',
+      description: 'Continue field monitoring',
+      description_mr: 'शेताचे निरीक्षण सुरू ठेवा',
+      description_hi: 'खेत की निगरानी जारी रखें',
+      timing: 'Every 3-5 days',
+      priority: 'MEDIUM'
+    }];
+  }
+  
+  /**
+   * Get default farmer messages
+   */
+  private getDefaultFarmerMessages(
+    cropCode: string,
+    cropStage: string,
+    input: RuleExecutionInput
+  ): FarmerMessages {
+    const soilNState = input.field_conditions?.soil_nitrogen_state;
+    const soilPState = input.field_conditions?.soil_phosphorus_state;
+    const soilKState = input.field_conditions?.soil_potassium_state;
+    
+    // Deficiency message
+    if (soilNState === 'LOW') {
+      return {
+        summary_mr: `मातीतील नायट्रोजन कमी आहे. युरिया 50 kg/एकर द्या. खर्च: ₹850/एकर`,
+        summary_hi: `मिट्टी में नाइट्रोजन कम है। यूरिया 50 kg/एकड़ दें। लागत: ₹850/एकड़`,
+        summary_en: `Soil nitrogen is LOW. Apply Urea 50 kg/acre. Cost: ₹850/acre`
+      };
+    }
+    if (soilPState === 'LOW') {
+      return {
+        summary_mr: `मातीतील फॉस्फरस कमी आहे. DAP 40 kg/एकर द्या. खर्च: ₹1200/एकर`,
+        summary_hi: `मिट्टी में फास्फोरस कम है। DAP 40 kg/एकड़ दें। लागत: ₹1200/एकड़`,
+        summary_en: `Soil phosphorus is LOW. Apply DAP 40 kg/acre. Cost: ₹1200/acre`
+      };
+    }
+    if (soilKState === 'LOW') {
+      return {
+        summary_mr: `मातीतील पोटॅशियम कमी आहे. MOP 35 kg/एकर द्या. खर्च: ₹700/एकर`,
+        summary_hi: `मिट्टी में पोटेशियम कम है। MOP 35 kg/एकड़ दें। लागत: ₹700/एकड़`,
+        summary_en: `Soil potassium is LOW. Apply MOP 35 kg/acre. Cost: ₹700/acre`
+      };
+    }
+    
+    // Generic stage-based message
+    const cropNameMr = this.getCropNameMr(cropCode);
+    const cropNameHi = this.getCropNameHi(cropCode);
+    
+    return {
+      summary_mr: `तुमचे ${cropNameMr} पीक ${cropStage} अवस्थेत आहे. सध्या सामान्य काळजी घ्या आणि निरीक्षण सुरू ठेवा.`,
+      summary_hi: `आपकी ${cropNameHi} फसल ${cropStage} अवस्था में है। सामान्य देखभाल करें और निगरानी जारी रखें।`,
+      summary_en: `Your ${cropCode} crop is in ${cropStage} stage. Continue regular care and monitoring.`
+    };
+  }
+  
+  private getCropNameMr(cropCode: string): string {
+    const names: Record<string, string> = {
+      'SUGARCANE': 'ऊस', 'COTTON': 'कापूस', 'RICE': 'भात', 'PADDY': 'भात',
+      'WHEAT': 'गहू', 'SOYBEAN': 'सोयाबीन', 'MAIZE': 'मका', 'TOMATO': 'टोमॅटो',
+      'ONION': 'कांदा', 'POTATO': 'बटाटा', 'CHILLI': 'मिरची', 'GROUNDNUT': 'भुईमूग'
+    };
+    return names[cropCode] || cropCode;
+  }
+  
+  private getCropNameHi(cropCode: string): string {
+    const names: Record<string, string> = {
+      'SUGARCANE': 'गन्ना', 'COTTON': 'कपास', 'RICE': 'धान', 'PADDY': 'धान',
+      'WHEAT': 'गेहूं', 'SOYBEAN': 'सोयाबीन', 'MAIZE': 'मक्का', 'TOMATO': 'टमाटर',
+      'ONION': 'प्याज', 'POTATO': 'आलू', 'CHILLI': 'मिर्च', 'GROUNDNUT': 'मूंगफली'
+    };
+    return names[cropCode] || cropCode;
+  }
+
   private generateFallbackDecision(
     input: RuleExecutionInput,
     error: Error,
