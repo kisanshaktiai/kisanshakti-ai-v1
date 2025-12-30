@@ -1010,6 +1010,8 @@ export interface SoilStates {
   organic_carbon?: SoilOCState;
   /** Soil texture - affects fertilizer efficiency (STEP 2) */
   texture?: SoilTexture;
+  /** Organic carbon (alias for backward compatibility) - used in biological rules */
+  oc?: SoilOCState;
 }
 
 /** Data confidence levels (0-1) */
@@ -1321,7 +1323,10 @@ export type RuleCategory =
   | 'resistance'       // Resistance management rules
   | 'seasonal'         // Season-specific rules (Kharif/Rabi/Zaid)
   | 'regional'         // Agro-climatic zone specific rules
-  | 'weather_safety';  // Weather-action coupling rules
+  | 'weather_safety'   // Weather-action coupling rules
+  | 'pgr_hormone'      // Plant Growth Regulator rules (GA3, NAA, Ethephon, etc.)
+  | 'precision_fertigation' // Israel/Netherlands precision fertigation rules
+  | 'biological';      // Microbiome and biological control rules
 
 /**
  * CauseRule - Individual rule definition
