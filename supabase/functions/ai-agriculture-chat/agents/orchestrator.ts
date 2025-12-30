@@ -610,12 +610,15 @@ export class AIAgentOrchestrator {
       // ========================================
       console.log(`\n⚙️ [${traceId}] PHASE 4: Executing Rule Engine with Decision Graph Bridge...`);
       
+      // CRITICAL FIX: Pass landContext directly to buildRuleEngineInput
+      // The contextState does NOT contain land_context, so we must pass it separately
       const ruleEngineInput = this.buildRuleEngineInput(
         fusedIntelligence,
         diagnosticState,
         contextState,
         { farmerId, landId: options.landId, traceId },
-        nluWithRuleMapping  // CRITICAL FIX: Pass NLU entities to rule engine
+        nluWithRuleMapping,
+        landContext  // CRITICAL FIX: Pass landContext directly
       );
       
       const decisionOutput = await this.ruleEngine.execute(ruleEngineInput);
@@ -1555,21 +1558,23 @@ export class AIAgentOrchestrator {
   /**
    * Build rule engine input from fused data
    * ENHANCED: Uses land's current crop, crop-stage-specific NPK, and crop-specific NDVI thresholds
+   * CRITICAL FIX: Now accepts landContext directly since ContextState doesn't contain it
    */
   private buildRuleEngineInput(
     fused: FusedIntelligence,
     diagnostic: DiagnosticState,
     context: ContextState,
     ids: { farmerId: string; landId?: string; traceId?: string },
-    nluMapping?: any
+    nluMapping?: any,
+    landContext?: any  // CRITICAL FIX: Accept landContext directly
   ): RuleExecutionInput {
     // ═══════════════════════════════════════════════════════════════════════════
-    // CRITICAL: Extract current crop from land context (HIGHEST PRIORITY)
-    // The land's current_crop is the SOURCE OF TRUTH
+    // CRITICAL FIX: Use landContext parameter directly (NOT context.land_context)
+    // The ContextState type does NOT include land_context - this was the root cause bug!
     // ═══════════════════════════════════════════════════════════════════════════
     
-    const landCurrentCrop = context.land_context?.current_crop;
-    const landCropStage = context.land_context?.growth_stage;
+    const landCurrentCrop = landContext?.current_crop;
+    const landCropStage = landContext?.growth_stage;
     
     // Validate crop context for training data quality
     const cropValidation = validateCropContext(landCurrentCrop, ids.landId);
@@ -1625,10 +1630,10 @@ export class AIAgentOrchestrator {
     });
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // CRITICAL: Calculate CROP + STAGE SPECIFIC field states
+    // CRITICAL FIX: Calculate CROP + STAGE SPECIFIC field states using landContext
     // ═══════════════════════════════════════════════════════════════════════════
     
-    const fieldStates = calculateFieldStates(context.land_context, cropCode, cropStage);
+    const fieldStates = calculateFieldStates(landContext, cropCode, cropStage);
     logStateCalculation(cropCode, fieldStates, cropStage);
     
     return {
@@ -1641,13 +1646,13 @@ export class AIAgentOrchestrator {
       
       farmer_context: {
         crop_code: cropCode,  // MUST match land's current crop
-        crop_variety: context.land_context?.crop_variety || context.crop_context?.variety,
+        crop_variety: landContext?.crop_variety || context.crop_context?.variety,
         crop_stage: cropStage as any,
         days_after_sowing: fused.unified_context?.crop?.days_after_sowing || 
-                           context.land_context?.days_since_sowing || 
+                           landContext?.days_since_sowing || 
                            45,
-        land_size_acres: context.land_context?.area_acres || 
-                         context.land_context?.size_acres || 
+        land_size_acres: landContext?.area_acres || 
+                         landContext?.size_acres || 
                          1,
         farming_mode: 'CONVENTIONAL'
       },
@@ -1672,8 +1677,8 @@ export class AIAgentOrchestrator {
         
         // Additional context
         soil_moisture_percent: fused.unified_context?.field_conditions?.soil_moisture?.value as number,
-        last_irrigation_date: context.land_context?.last_irrigation_date,
-        last_fertilizer_date: context.land_context?.last_fertilizer_date,
+        last_irrigation_date: landContext?.last_irrigation_date,
+        last_fertilizer_date: landContext?.last_fertilizer_date,
         
         // Fertilizer dosage recommendations (if deficient)
         nitrogen_dosage: fieldStates.nitrogen_dosage,
@@ -1692,7 +1697,7 @@ export class AIAgentOrchestrator {
           temperature_max_c: 32
         },
         season: (fused.unified_context?.environmental?.season || 'KHARIF') as any,
-        region_code: context.land_context?.region_code || 'MH'
+        region_code: landContext?.region_code || landContext?.district || 'MH'
       },
       
       pest_disease_state: {
