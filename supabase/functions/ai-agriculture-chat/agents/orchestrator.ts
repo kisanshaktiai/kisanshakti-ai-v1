@@ -1,6 +1,10 @@
 /**
  * Master AI Agent Orchestrator
  * Coordinates all 9 specialized agents for comprehensive agricultural advisory
+ * 
+ * v2.0 UPDATE: LLM-First Response System
+ * - Simple questions answered directly via LLM without rule engine
+ * - Rule engine only for pest/disease/treatment decisions
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -15,6 +19,14 @@ import { RuleEngineExecutor } from './rule-engine-executor.ts';
 import { CommunicationGenerator } from './communication-generator.ts';
 import { FeedbackLearningEngine } from './feedback-learning.ts';
 import { SafetyGuardian } from './safety-guardian.ts';
+
+// NEW: Import LLM Response Generator for direct answers
+import { 
+  canAnswerDirectly, 
+  requiresRuleEngine, 
+  generateLLMResponse,
+  type LLMResponseInput 
+} from './llm-response-generator.ts';
 
 // Import question classifier for adaptive templates
 import { classifyQuestion, type QuestionClassification } from './question-classifier.ts';
@@ -49,7 +61,7 @@ import {
   validateCropContext 
 } from './soil-ndvi-state-calculator.ts';
 
-export const ORCHESTRATOR_VERSION = '1.0.0';
+export const ORCHESTRATOR_VERSION = '2.0.0';
 
 // Response types
 export type OrchestratorResponseType = 
@@ -183,34 +195,107 @@ export class AIAgentOrchestrator {
     
     try {
       // ========================================
-      // PHASE 1A: NLU + VISUAL PROCESSING (Parallel)
-      // GAP 6 FIX: Added error boundaries around each agent
+      // PHASE 0: FETCH LAND CONTEXT FIRST
       // ========================================
-      console.log('\n📥 PHASE 1: Processing Inputs...');
-      
-      // CRITICAL FIX: Fetch land context BEFORE NLU to provide crop/stage context
       let landContext: any = null;
       if (options.landId) {
         landContext = await this.fetchComprehensiveLandContext(options.landId, farmerId);
         console.log('📍 [Orchestrator] Pre-fetched land context:', landContext ? 'SUCCESS' : 'EMPTY');
-        if (landContext?.current_crop) {
-          console.log('   📊 Land crop:', landContext.current_crop, '| Stage:', landContext.growth_stage || 'UNKNOWN');
-        }
       }
       
-      // Agent 1: Process farmer's text message - with error boundary
-      // CRITICAL FIX: Now passes landContext to NLU for crop/stage inference
+      // ========================================
+      // PHASE 1A: NLU PROCESSING
+      // ========================================
+      console.log('\n📥 PHASE 1: Processing Inputs...');
+      
       let nluOutput: NLUOutput | null = null;
       try {
         nluOutput = await this.processNLU(farmerMessage, sessionId, options.language, landContext);
         agentsUsed.push('NLU');
         console.log('   ✅ NLU processed:', nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY');
-        console.log('   📊 NLU crop:', nluOutput?.crop_identification?.crop_code || 'UNKNOWN');
       } catch (nluError) {
         console.error('   ❌ NLU Agent failed, using fallback:', nluError);
         nluOutput = this.createFallbackNLUOutput(farmerMessage, options.language, landContext);
         agentsUsed.push('NLU_FALLBACK');
       }
+      
+      // ========================================
+      // PHASE 1B: LLM-FIRST CHECK - Skip rule engine for simple questions
+      // ========================================
+      const detectedIntent = nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY';
+      const canDirectAnswer = canAnswerDirectly(detectedIntent, farmerMessage);
+      const needsRules = requiresRuleEngine(detectedIntent, farmerMessage);
+      
+      console.log(`   🔀 Routing decision: canDirectAnswer=${canDirectAnswer}, needsRules=${needsRules}`);
+      
+      // If question can be answered directly WITHOUT rule engine
+      if (canDirectAnswer && !needsRules && !options.photoUrl) {
+        console.log('   ⚡ Using LLM-FIRST path (skipping rule engine)');
+        agentsUsed.push('LLM_Direct');
+        
+        const llmInput: LLMResponseInput = {
+          farmer_message: farmerMessage,
+          language: (options.language || 'en') as 'mr' | 'hi' | 'en',
+          intent: detectedIntent,
+          land_context: landContext ? {
+            current_crop: landContext.current_crop,
+            crop_stage: landContext.growth_stage,
+            area_acres: landContext.area_acres,
+            soil_tested: landContext.soil_tested,
+            soil_health: landContext.soil_health,
+            ndvi: landContext.ndvi,
+            days_since_sowing: landContext.days_since_sowing,
+            village: landContext.village,
+            district: landContext.district
+          } : undefined
+        };
+        
+        const llmResponse = await generateLLMResponse(llmInput);
+        
+        return {
+          type: 'DECISION_PROVIDED',
+          session_id: sessionId,
+          communication: {
+            message_id: crypto.randomUUID(),
+            decision_id: `llm_${Date.now()}`,
+            session_id: sessionId,
+            farmer_id: farmerId,
+            language: options.language || 'en',
+            format: 'RICH_TEXT',
+            tone: 'PROFESSIONAL',
+            created_at: new Date().toISOString(),
+            main_message: {
+              full_text: {
+                mr: llmResponse.response_text,
+                hi: llmResponse.response_text,
+                en: llmResponse.response_text
+              }
+            },
+            quick_actions: llmResponse.suggested_followups?.map(f => ({
+              label: { mr: f, hi: f, en: f },
+              action: 'ASK_FOLLOWUP',
+              payload: { question: f }
+            })) || [],
+            metadata: {
+              word_count: llmResponse.response_text.split(/\s+/).length,
+              reading_time_seconds: Math.ceil(llmResponse.response_text.split(/\s+/).length / 3),
+              complexity_score: 0.3,
+              template_type: 'LLM_DIRECT',
+              sections_included: ['main_message']
+            }
+          } as any,
+          metadata: {
+            confidence: llmResponse.confidence,
+            safety_status: 'SAFE',
+            rules_applied: 0,
+            processing_time_ms: Date.now() - startTime,
+            agents_used: agentsUsed,
+            template_type: 'LLM_DIRECT'
+          }
+        };
+      }
+      
+      console.log('   📋 Using RULE ENGINE path for this question');
       
       // Agent 1B: Analyze photo (if provided) - with error boundary
       let visualOutput: VisualAnalysisOutput | null = null;
