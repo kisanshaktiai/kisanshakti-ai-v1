@@ -418,7 +418,7 @@ function getResponseContent(response: OrchestratorResponse, language: string): s
  * CRITICAL FIX: Flatten FarmerCommunication structure to readable text
  * Handles the main_message.sections structure properly
  */
-function flattenCommunicationToText(comm: any, language: string): string {
+function flattenCommunicationToText(comm: any, language: string, requires?: any): string {
   if (!comm) return '';
   
   const lang = language as 'mr' | 'hi' | 'en';
@@ -431,17 +431,17 @@ function flattenCommunicationToText(comm: any, language: string): string {
     return obj[lang] || obj.en || obj.hi || obj.mr || '';
   };
   
-  // 1. Greeting
+  // 1. Greeting (ALWAYS SHOW)
   if (comm.main_message?.greeting) {
     parts.push(comm.main_message.greeting);
   }
   
-  // 2. Empathy line
+  // 2. Empathy line (ALWAYS SHOW if present)
   if (comm.main_message?.empathy_line) {
     parts.push(comm.main_message.empathy_line);
   }
   
-  // 3. Immediate Action (Layer 1)
+  // 3. Immediate Action (ALWAYS SHOW)
   const immediate = comm.main_message?.sections?.immediate_action;
   if (immediate) {
     const emoji = immediate.emoji || '📌';
@@ -456,7 +456,7 @@ function flattenCommunicationToText(comm: any, language: string): string {
     }
   }
   
-  // 4. Application Instructions (Layer 2) - Simplified
+  // 4. Application Instructions (ONLY IF PRESENT - adaptive)
   const howTo = comm.main_message?.sections?.how_to;
   if (howTo) {
     const heading = getText(howTo.heading);
@@ -467,7 +467,7 @@ function flattenCommunicationToText(comm: any, language: string): string {
       parts.push('🛒 Materials:');
       howTo.materials_needed.items.forEach((item: any) => {
         const name = getText(item.name);
-        if (name) parts.push(`• ${name} - ${item.quantity || ''}`);
+        if (name && name !== 'Unknown product') parts.push(`• ${name} - ${item.quantity || ''}`);
       });
     }
     
@@ -476,34 +476,40 @@ function flattenCommunicationToText(comm: any, language: string): string {
       const steps = howTo.mixing_instructions.steps[lang] || howTo.mixing_instructions.steps.en || [];
       if (steps.length > 0) {
         parts.push('🧪 Mixing:');
-        steps.forEach((step: string, i: number) => parts.push(`${i + 1}. ${step}`));
+        steps.slice(0, 4).forEach((step: string, i: number) => parts.push(`${i + 1}. ${step}`));
       }
-    }
-    
-    // Timing
-    if (howTo.timing?.best_time) {
-      parts.push(`⏰ Best time: ${getText(howTo.timing.best_time)}`);
     }
   }
   
-  // 5. Warnings (Layer 4)
+  // 5. Rationale (ONLY IF PRESENT)
+  const rationale = comm.main_message?.sections?.rationale;
+  if (rationale) {
+    const heading = getText(rationale.heading);
+    const explanation = getText(rationale.problem_explanation);
+    if (heading && explanation) {
+      parts.push(`\n💡 ${heading}`);
+      parts.push(explanation);
+    }
+  }
+  
+  // 6. Warnings (ONLY IF PRESENT)
   const warnings = comm.main_message?.sections?.warnings;
   if (warnings?.blocked_actions?.length > 0) {
     parts.push('\n⚠️ Do NOT:');
-    warnings.blocked_actions.forEach((w: any) => {
+    warnings.blocked_actions.slice(0, 3).forEach((w: any) => {
       const action = getText(w.action);
       if (action) parts.push(`${w.icon || '❌'} ${action}`);
     });
   }
   
-  // 6. Economics (Layer 5)
+  // 7. Economics (ONLY IF PRESENT)
   const econ = comm.main_message?.sections?.economics;
   if (econ?.net_benefit) {
     const roi = getText(econ.net_benefit.roi_message);
     if (roi) parts.push(`\n💰 ${roi}`);
   }
   
-  // 7. Follow-up (Layer 6)
+  // 8. Follow-up (ONLY IF PRESENT)
   const followUp = comm.main_message?.sections?.follow_up;
   if (followUp?.schedule?.length > 0) {
     parts.push('\n📅 Follow-up:');
@@ -513,7 +519,7 @@ function flattenCommunicationToText(comm: any, language: string): string {
     });
   }
   
-  // 8. Closing
+  // 9. Closing (ALWAYS SHOW)
   if (comm.main_message?.closing) {
     parts.push(`\n${comm.main_message.closing}`);
   }
@@ -523,12 +529,10 @@ function flattenCommunicationToText(comm: any, language: string): string {
     return parts.join('\n').trim();
   }
   
-  // Fallback: try other structures
+  // Fallbacks
   if (comm.main_message_mr && lang === 'mr') return comm.main_message_mr;
   if (comm.main_message_hi && lang === 'hi') return comm.main_message_hi;
   if (comm.main_message_en || comm.main_message) return comm.main_message_en || comm.main_message || '';
-  
-  // Last resort: notification body
   if (comm.notification?.body) return comm.notification.body;
   
   return '';

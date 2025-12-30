@@ -16,6 +16,9 @@ import { CommunicationGenerator } from './communication-generator.ts';
 import { FeedbackLearningEngine } from './feedback-learning.ts';
 import { SafetyGuardian } from './safety-guardian.ts';
 
+// Import question classifier for adaptive templates
+import { classifyQuestion, type QuestionClassification } from './question-classifier.ts';
+
 // Import types
 import type { NLUOutput } from './types.ts';
 import type { VisualAnalysisOutput } from './visual-agent-types.ts';
@@ -57,6 +60,7 @@ export interface OrchestratorResponse {
   
   // For DECISION_PROVIDED
   communication?: FarmerCommunication;
+  question_classification?: QuestionClassification;  // NEW: Include classification in response
   
   // For CLARIFICATION_QUESTION
   question?: {
@@ -110,6 +114,8 @@ export interface OrchestratorResponse {
     rules_applied: number;
     processing_time_ms: number;
     agents_used: string[];
+    template_type?: string;      // NEW: Track template type
+    sections_count?: number;     // NEW: Track sections count
   };
 }
 
@@ -471,9 +477,25 @@ export class AIAgentOrchestrator {
       }
       
       // ========================================
-      // PHASE 6: FARMER COMMUNICATION GENERATION
+      // PHASE 6: QUESTION CLASSIFICATION + FARMER COMMUNICATION
       // ========================================
-      console.log('\n💬 PHASE 6: Generating Farmer Communication...');
+      console.log('\n📋 PHASE 6A: Classifying Question Type...');
+      
+      // Classify the question to determine which sections to show
+      const questionClassification = classifyQuestion(
+        nluWithRuleMapping.intent_classification?.primary_intent || 'GENERAL_QUERY',
+        nluWithRuleMapping,
+        contextState
+      );
+      
+      console.log(`   Template type: ${questionClassification.template_type}`);
+      console.log(`   Response style: ${questionClassification.response_style}`);
+      console.log(`   Sections required:`, Object.entries(questionClassification.requires_sections)
+        .filter(([_, v]) => v).map(([k]) => k).join(', '));
+      
+      agentsUsed.push('QuestionClassifier');
+      
+      console.log('\n💬 PHASE 6B: Generating Farmer Communication (Adaptive)...');
       
       const farmerProfile = await this.getFarmerProfile(farmerId, options.language);
       
@@ -485,11 +507,13 @@ export class AIAgentOrchestrator {
                          fusedIntelligence.unified_context?.problem?.severity === 'HIGH' ? 'HIGH' : 'MEDIUM',
           previous_failed_treatments: contextState.treatment_history?.filter(t => !t.successful).length || 0,
           questions_asked: contextState.questions_asked || 0
-        }
+        },
+        questionClassification  // Pass classification for adaptive sections
       );
       
       agentsUsed.push('Communication');
-      console.log('   ✅ Message generated in', farmerCommunication.language);
+      console.log('   ✅ Message generated with', farmerCommunication.metadata?.sections_count || 'all', 'sections');
+      console.log('   ✅ Sections:', farmerCommunication.metadata?.sections_included?.join(', ') || 'all');
       
       // ========================================
       // PHASE 7: SAVE & SCHEDULE FOLLOW-UPS
@@ -548,6 +572,7 @@ export class AIAgentOrchestrator {
       // ========================================
       const processingTime = Date.now() - startTime;
       console.log('\n✅ Orchestrator: Flow complete!');
+      console.log(`   Template used: ${questionClassification.template_type}`);
       console.log(`   Total processing time: ${processingTime}ms\n`);
       
       return {
@@ -555,12 +580,15 @@ export class AIAgentOrchestrator {
         session_id: sessionId,
         decision_id: decisionOutput.decision_id,
         communication: farmerCommunication,
+        question_classification: questionClassification,  // Include in response
         metadata: {
           confidence: diagnosticState.hypotheses?.[0]?.confidence || 0.7,
           safety_status: safetyVerification.safety_check.overall_safety_status,
           rules_applied: decisionOutput.rules_applied?.length || 0,
           processing_time_ms: processingTime,
-          agents_used: agentsUsed
+          agents_used: agentsUsed,
+          template_type: questionClassification.template_type,
+          sections_count: farmerCommunication.metadata?.sections_count || 0
         }
       };
       
