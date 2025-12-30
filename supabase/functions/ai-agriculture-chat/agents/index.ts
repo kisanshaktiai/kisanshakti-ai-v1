@@ -76,3 +76,24 @@ export { SafetyGuardian, safetyGuardian, SAFETY_GUARDIAN_VERSION } from './safet
 // Master Orchestrator (Coordinates all agents)
 export { AIAgentOrchestrator, orchestrator, ORCHESTRATOR_VERSION } from './orchestrator.ts';
 export type { OrchestratorResponse, OrchestratorResponseType } from './orchestrator.ts';
+
+// Crop Knowledge Base (Fallback advice)
+export * from './crop-knowledge-base.ts';
+export { CROP_KNOWLEDGE, getCropAdvice, getStageAdvice, getClarifyingQuestions } from './crop-knowledge-base.ts';
+
+// Fallback Response Generator (Error recovery)
+export * from './fallback-response-generator.ts';
+export { FallbackResponseGenerator, fallbackGenerator, generateFallbackResponse } from './fallback-response-generator.ts';
+
+// Soil-NDVI State Calculator (Crop-specific calculations)
+export * from './soil-ndvi-state-calculator.ts';
+export { 
+  calculateNitrogenState, 
+  calculatePhosphorusState, 
+  calculatePotassiumState,
+  mapNDVIToState,
+  calculateNDVITrend,
+  normalizeSoilType,
+  validateCropContext,
+  logLandCropStateCalculation
+} from './soil-ndvi-state-calculator.ts';
