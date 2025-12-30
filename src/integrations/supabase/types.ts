@@ -21841,6 +21841,7 @@ export type Database = {
           growing_degree_days: number | null
           humidity_percent: number | null
           id: string
+          land_id: string | null
           latitude: number
           location_key: string | null
           longitude: number
@@ -21849,6 +21850,7 @@ export type Database = {
           pressure_hpa: number | null
           rain_1h_mm: number | null
           rain_24h_mm: number | null
+          rain_3h_mm: number | null
           snow_1h_mm: number | null
           soil_moisture_percent: number | null
           soil_temperature_celsius: number | null
@@ -21856,6 +21858,7 @@ export type Database = {
           sunrise: string | null
           sunset: string | null
           temperature_celsius: number | null
+          tenant_id: string | null
           uv_index: number | null
           visibility_km: number | null
           weather_description: string | null
@@ -21875,6 +21878,7 @@ export type Database = {
           growing_degree_days?: number | null
           humidity_percent?: number | null
           id?: string
+          land_id?: string | null
           latitude: number
           location_key?: string | null
           longitude: number
@@ -21883,6 +21887,7 @@ export type Database = {
           pressure_hpa?: number | null
           rain_1h_mm?: number | null
           rain_24h_mm?: number | null
+          rain_3h_mm?: number | null
           snow_1h_mm?: number | null
           soil_moisture_percent?: number | null
           soil_temperature_celsius?: number | null
@@ -21890,6 +21895,7 @@ export type Database = {
           sunrise?: string | null
           sunset?: string | null
           temperature_celsius?: number | null
+          tenant_id?: string | null
           uv_index?: number | null
           visibility_km?: number | null
           weather_description?: string | null
@@ -21909,6 +21915,7 @@ export type Database = {
           growing_degree_days?: number | null
           humidity_percent?: number | null
           id?: string
+          land_id?: string | null
           latitude?: number
           location_key?: string | null
           longitude?: number
@@ -21917,6 +21924,7 @@ export type Database = {
           pressure_hpa?: number | null
           rain_1h_mm?: number | null
           rain_24h_mm?: number | null
+          rain_3h_mm?: number | null
           snow_1h_mm?: number | null
           soil_moisture_percent?: number | null
           soil_temperature_celsius?: number | null
@@ -21924,6 +21932,7 @@ export type Database = {
           sunrise?: string | null
           sunset?: string | null
           temperature_celsius?: number | null
+          tenant_id?: string | null
           uv_index?: number | null
           visibility_km?: number | null
           weather_description?: string | null
@@ -21935,10 +21944,52 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "weather_current_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "weather_current_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "weather_current_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "weather_current_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "weather_current_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "weather_current_station_id_fkey"
             columns: ["station_id"]
             isOneToOne: false
             referencedRelation: "weather_stations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_current_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -21955,6 +22006,7 @@ export type Database = {
           growing_degree_days: number | null
           humidity_percent: number | null
           id: string
+          land_id: string | null
           latitude: number
           location_key: string | null
           longitude: number
@@ -21967,6 +22019,7 @@ export type Database = {
           temperature_celsius: number | null
           temperature_max_celsius: number | null
           temperature_min_celsius: number | null
+          tenant_id: string | null
           uv_index: number | null
           weather_description: string | null
           weather_icon: string | null
@@ -21986,6 +22039,7 @@ export type Database = {
           growing_degree_days?: number | null
           humidity_percent?: number | null
           id?: string
+          land_id?: string | null
           latitude: number
           location_key?: string | null
           longitude: number
@@ -21998,6 +22052,7 @@ export type Database = {
           temperature_celsius?: number | null
           temperature_max_celsius?: number | null
           temperature_min_celsius?: number | null
+          tenant_id?: string | null
           uv_index?: number | null
           weather_description?: string | null
           weather_icon?: string | null
@@ -22017,6 +22072,7 @@ export type Database = {
           growing_degree_days?: number | null
           humidity_percent?: number | null
           id?: string
+          land_id?: string | null
           latitude?: number
           location_key?: string | null
           longitude?: number
@@ -22029,6 +22085,7 @@ export type Database = {
           temperature_celsius?: number | null
           temperature_max_celsius?: number | null
           temperature_min_celsius?: number | null
+          tenant_id?: string | null
           uv_index?: number | null
           weather_description?: string | null
           weather_icon?: string | null
@@ -22039,10 +22096,52 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "weather_forecasts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "weather_forecasts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "weather_forecasts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "weather_forecasts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "weather_forecasts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "weather_forecasts_station_id_fkey"
             columns: ["station_id"]
             isOneToOne: false
             referencedRelation: "weather_stations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_forecasts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -22113,6 +22212,7 @@ export type Database = {
           observation_time: string
           pressure_hpa: number | null
           rainfall_mm: number
+          snow_1h_mm: number | null
           temperature_celsius: number | null
           tenant_id: string
           updated_at: string
@@ -22136,6 +22236,7 @@ export type Database = {
           observation_time?: string
           pressure_hpa?: number | null
           rainfall_mm?: number
+          snow_1h_mm?: number | null
           temperature_celsius?: number | null
           tenant_id: string
           updated_at?: string
@@ -22159,6 +22260,7 @@ export type Database = {
           observation_time?: string
           pressure_hpa?: number | null
           rainfall_mm?: number
+          snow_1h_mm?: number | null
           temperature_celsius?: number | null
           tenant_id?: string
           updated_at?: string

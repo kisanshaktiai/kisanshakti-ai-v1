@@ -566,7 +566,7 @@ async function fetchTomorrowIoForecast(
   return { forecast, hourly }
 }
 
-// Store weather data in cache AND observation tables
+// Store weather data in cache AND observation tables - PER LAND storage
 async function cacheWeatherData(
   supabase: any,
   locationKey: string,
@@ -576,30 +576,38 @@ async function cacheWeatherData(
   hourly?: ForecastItem[],
   tenantId?: string,
   farmerId?: string,
-  landId?: string // NEW: Store weather per land
+  landId?: string // Store weather per land for agricultural tracking
 ) {
   try {
     const now = new Date()
     const expiresAt = new Date(now.getTime() + 60 * 60 * 1000) // 1 hour cache
     
-    // 1. Store in weather_current (cache table)
+    console.log(`💾 [Weather] Caching weather data for location: ${locationKey}, land: ${landId || 'none'}, tenant: ${tenantId || 'none'}`)
+    
+    // ============= 1. Store in weather_current (cache table) =============
     const currentRecord: Record<string, any> = {
       location_key: locationKey,
       latitude: rounded.lat,
       longitude: rounded.lon,
+      land_id: landId || null, // NEW: Per-land storage
+      tenant_id: tenantId || null, // NEW: Multi-tenant isolation
       temperature_celsius: current.temp,
       feels_like_celsius: current.feels_like,
       humidity_percent: current.humidity,
       pressure_hpa: current.pressure,
-      wind_speed_kmh: current.wind_speed * 3.6,
+      wind_speed_kmh: current.wind_speed * 3.6, // Convert m/s to km/h
       wind_direction_degrees: current.wind_deg,
       weather_description: current.description,
       weather_main: current.main,
+      weather_icon: current.icon,
       cloud_cover_percent: current.clouds,
-      visibility_km: current.visibility / 1000,
+      visibility_km: current.visibility / 1000, // Convert m to km
       uv_index: current.uv_index || 0,
-      rain_1h_mm: current.rain_1h || 0,
-      rain_24h_mm: (current.rain_3h || 0) * 8,
+      // RAIN DATA - Critical for agriculture
+      rain_1h_mm: current.rain_1h || 0, // 1-hour rainfall in mm
+      rain_3h_mm: current.rain_3h || 0, // 3-hour rainfall in mm (NEW)
+      rain_24h_mm: (current.rain_3h || 0) * 8, // Estimate 24h from 3h
+      snow_1h_mm: 0, // Future: Extract from API if available
       sunrise: current.sunrise ? new Date(current.sunrise * 1000).toISOString() : null,
       sunset: current.sunset ? new Date(current.sunset * 1000).toISOString() : null,
       observation_time: new Date(current.dt * 1000).toISOString(),
@@ -608,32 +616,35 @@ async function cacheWeatherData(
       created_at: now.toISOString()
     };
     
-    // Delete old cache entry first, then insert new one
+    // Delete old cache entry first (by location_key for shared 1km grid)
     await supabase.from('weather_current').delete().eq('location_key', locationKey)
     const { error: currentError } = await supabase.from('weather_current').insert(currentRecord)
     
     if (currentError) {
-      console.error('❌ [Weather] Failed to cache current weather:', currentError)
+      console.error('❌ [Weather] Failed to cache current weather:', currentError.message)
     } else {
       console.log(`💾 [Weather] ✅ Cached current weather for ${locationKey}`, {
         temp: current.temp,
-        rainfall_1h: current.rain_1h,
-        wind_speed_kmh: current.wind_speed * 3.6
+        rain_1h: current.rain_1h,
+        rain_3h: current.rain_3h,
+        wind_speed_kmh: current.wind_speed * 3.6,
+        land_id: landId
       })
     }
     
-    // 2. Store in weather_observations for historical tracking (NEW!)
+    // ============= 2. Store in weather_observations for historical tracking =============
     if (tenantId) {
       const observationRecord: Record<string, any> = {
         tenant_id: tenantId,
         farmer_id: farmerId || null,
-        land_id: landId || null,
+        land_id: landId || null, // Critical: Per-land historical data
         observation_date: now.toISOString().split('T')[0],
         observation_time: new Date(current.dt * 1000).toISOString(),
         temperature_celsius: current.temp,
         feels_like_celsius: current.feels_like,
         humidity_percent: current.humidity,
-        rainfall_mm: current.rain_1h || 0,
+        rainfall_mm: current.rain_1h || 0, // Primary rainfall tracking
+        snow_1h_mm: 0, // Future snowfall tracking
         wind_speed_kmh: current.wind_speed * 3.6,
         wind_direction: getWindDirection(current.wind_deg),
         weather_condition: current.main,
@@ -646,7 +657,8 @@ async function cacheWeatherData(
           provider: current.provider,
           location_key: locationKey,
           icon: current.icon,
-          description: current.description
+          description: current.description,
+          rain_3h_mm: current.rain_3h || 0 // Store 3h rain in metadata
         },
         created_at: now.toISOString()
       };
@@ -656,16 +668,18 @@ async function cacheWeatherData(
       if (obsError) {
         console.warn('⚠️ [Weather] Failed to save observation:', obsError.message)
       } else {
-        console.log(`💾 [Weather] ✅ Saved weather observation for ${tenantId}${landId ? ` land:${landId}` : ''}`)
+        console.log(`💾 [Weather] ✅ Saved weather observation for land: ${landId || 'global'}, rain: ${current.rain_1h || 0}mm`)
       }
     }
     
-    // 3. Store forecasts - FIXED column names
+    // ============= 3. Store daily forecasts =============
     if (forecast && forecast.length > 0) {
       const forecastRecords = forecast.map(day => ({
         location_key: locationKey,
         latitude: rounded.lat,
         longitude: rounded.lon,
+        land_id: landId || null, // NEW: Per-land forecasts
+        tenant_id: tenantId || null, // NEW: Multi-tenant
         forecast_time: new Date(day.dt * 1000).toISOString(),
         forecast_type: 'daily' as const,
         temperature_celsius: day.temp.day,
@@ -676,8 +690,9 @@ async function cacheWeatherData(
         wind_speed_kmh: day.wind_speed * 3.6,
         weather_description: day.weather[0]?.description || 'Unknown',
         weather_main: day.weather[0]?.main || 'Unknown',
+        weather_icon: day.weather[0]?.icon || '01d',
         rain_probability_percent: Math.round(day.pop * 100),
-        rain_amount_mm: day.rain || 0,
+        rain_amount_mm: day.rain || 0, // Daily rain forecast
         uv_index: day.uv_index || 0,
         data_source: current.provider || 'API',
         created_at: now.toISOString()
@@ -690,16 +705,18 @@ async function cacheWeatherData(
       if (dailyInsertErr) {
         console.warn('⚠️ [Weather] Daily forecast insert failed:', dailyInsertErr.message)
       } else {
-        console.log(`💾 [Weather] ✅ Cached ${forecastRecords.length} daily forecasts`)
+        console.log(`💾 [Weather] ✅ Cached ${forecastRecords.length} daily forecasts for land: ${landId || 'global'}`)
       }
     }
     
-    // 4. Store hourly forecasts
+    // ============= 4. Store hourly forecasts =============
     if (hourly && hourly.length > 0) {
       const hourlyRecords = hourly.map(hour => ({
         location_key: locationKey,
         latitude: rounded.lat,
         longitude: rounded.lon,
+        land_id: landId || null, // NEW: Per-land forecasts
+        tenant_id: tenantId || null, // NEW: Multi-tenant
         forecast_time: new Date(hour.dt * 1000).toISOString(),
         forecast_type: 'hourly' as const,
         temperature_celsius: hour.temp,
@@ -708,6 +725,7 @@ async function cacheWeatherData(
         wind_speed_kmh: hour.wind_speed * 3.6,
         weather_description: hour.weather[0]?.description || 'Unknown',
         weather_main: hour.weather[0]?.main || 'Unknown',
+        weather_icon: hour.weather[0]?.icon || '01d',
         rain_probability_percent: Math.round(hour.pop * 100),
         uv_index: hour.uv_index || null,
         data_source: current.provider || 'API',
@@ -717,16 +735,18 @@ async function cacheWeatherData(
       await supabase.from('weather_forecasts').delete().eq('location_key', locationKey).eq('forecast_type', 'hourly')
       const { error: hourlyInsertErr } = await supabase.from('weather_forecasts').insert(hourlyRecords)
       if (hourlyInsertErr) {
-      console.warn('⚠️ [Weather] Hourly forecast insert failed:', hourlyInsertErr.message)
+        console.warn('⚠️ [Weather] Hourly forecast insert failed:', hourlyInsertErr.message)
       } else {
-        console.log(`💾 [Weather] ✅ Cached ${hourlyRecords.length} hourly forecasts`)
+        console.log(`💾 [Weather] ✅ Cached ${hourlyRecords.length} hourly forecasts for land: ${landId || 'global'}`)
       }
     }
     
-    // 5. Update weather_aggregates for the day (NEW!)
+    // ============= 5. Update weather_aggregates for the day =============
     if (tenantId) {
       await updateWeatherAggregate(supabase, tenantId, farmerId, landId, current, now)
     }
+    
+    console.log(`✅ [Weather] All weather data cached successfully for ${locationKey}`)
     
   } catch (error) {
     console.error('❌ [Weather] Cache storage error:', error)
