@@ -72,6 +72,68 @@ export type OrchestratorResponseType =
   | 'ESCALATION_REQUIRED'
   | 'SYSTEM_ERROR';
 
+// Data Audit interface - shows what data was found/missing for debugging
+export interface DataAudit {
+  land: {
+    found: boolean;
+    land_id?: string;
+    land_name?: string;
+    current_crop?: string;
+    area_acres?: number;
+    growth_stage?: string;
+    days_since_sowing?: number;
+    has_coordinates: boolean;
+    missing_reasons: string[];
+  };
+  soil_health: {
+    found: boolean;
+    test_date?: string;
+    test_age_days?: number;
+    nitrogen_kg_per_ha?: number;
+    phosphorus_kg_per_ha?: number;
+    potassium_kg_per_ha?: number;
+    ph_level?: number;
+    nitrogen_state?: string;
+    phosphorus_state?: string;
+    potassium_state?: string;
+    missing_reasons: string[];
+  };
+  ndvi: {
+    found: boolean;
+    latest_value?: number;
+    latest_date?: string;
+    age_days?: number;
+    trend?: string;
+    health_status?: string;
+    history_count: number;
+    missing_reasons: string[];
+  };
+  weather: {
+    found: boolean;
+    temperature?: number;
+    humidity?: number;
+    rain_probability?: number;
+    rain_last_24h?: number;
+    data_age_hours?: number;
+    missing_reasons: string[];
+  };
+  crop_schedule: {
+    found: boolean;
+    crop_name?: string;
+    sowing_date?: string;
+    expected_harvest?: string;
+    status?: string;
+    missing_reasons: string[];
+  };
+  summary: {
+    total_data_sources: number;
+    available_sources: number;
+    data_quality_score: number; // 0-100
+    critical_missing: string[];
+    recommendations: string[];
+  };
+}
+
 export interface OrchestratorResponse {
   type: OrchestratorResponseType;
   session_id: string;
@@ -80,6 +142,9 @@ export interface OrchestratorResponse {
   // For DECISION_PROVIDED
   communication?: FarmerCommunication;
   question_classification?: QuestionClassification;  // NEW: Include classification in response
+  
+  // NEW: Data audit for debugging what data was found/missing
+  dataAudit?: DataAudit;
   
   // For CLARIFICATION_QUESTION
   question?: {
@@ -135,6 +200,7 @@ export interface OrchestratorResponse {
     agents_used: string[];
     template_type?: string;      // NEW: Track template type
     sections_count?: number;     // NEW: Track sections count
+    trace_id?: string;           // NEW: For observability
   };
 }
 
@@ -1176,6 +1242,117 @@ export class AIAgentOrchestrator {
     if (ndviValue >= 0.25) return 'moderate';
     if (ndviValue >= 0.15) return 'stressed';
     return 'poor';
+  }
+  
+  /**
+   * Build data audit object for debugging - shows what data was found/missing
+   */
+  private buildDataAudit(landContext: any, weatherData: any): DataAudit {
+    const now = new Date();
+    
+    // Land audit
+    const landAudit = {
+      found: !!landContext,
+      land_id: landContext?.land_id,
+      land_name: landContext?.land_name,
+      current_crop: landContext?.current_crop,
+      area_acres: landContext?.area_acres,
+      growth_stage: landContext?.growth_stage,
+      days_since_sowing: landContext?.days_since_sowing,
+      has_coordinates: !!(landContext?.center_lat && landContext?.center_lon),
+      missing_reasons: !landContext ? ['No land selected or land not found'] : 
+        (!landContext.center_lat ? ['Missing GPS coordinates'] : [])
+    };
+    
+    // Soil audit
+    const soilHealth = landContext?.soil_health;
+    const testDate = soilHealth?.test_date ? new Date(soilHealth.test_date) : null;
+    const testAgeDays = testDate ? Math.floor((now.getTime() - testDate.getTime()) / (1000 * 60 * 60 * 24)) : null;
+    
+    const soilAudit = {
+      found: !!soilHealth,
+      test_date: soilHealth?.test_date,
+      test_age_days: testAgeDays,
+      nitrogen_kg_per_ha: soilHealth?.nitrogen_kg_per_ha,
+      phosphorus_kg_per_ha: soilHealth?.phosphorus_kg_per_ha,
+      potassium_kg_per_ha: soilHealth?.potassium_kg_per_ha,
+      ph_level: soilHealth?.ph_level,
+      nitrogen_state: soilHealth?.nitrogen_level,
+      phosphorus_state: soilHealth?.phosphorus_level,
+      potassium_state: soilHealth?.potassium_level,
+      missing_reasons: !soilHealth ? ['No soil test data - recommend soil testing'] : []
+    };
+    
+    // NDVI audit
+    const ndvi = landContext?.ndvi;
+    const ndviDate = ndvi?.date ? new Date(ndvi.date) : null;
+    const ndviAgeDays = ndviDate ? Math.floor((now.getTime() - ndviDate.getTime()) / (1000 * 60 * 60 * 24)) : null;
+    
+    const ndviAudit = {
+      found: !!(ndvi?.value || ndvi?.ndvi_value || ndvi?.mean_ndvi),
+      latest_value: ndvi?.value || ndvi?.ndvi_value || ndvi?.mean_ndvi,
+      latest_date: ndvi?.date,
+      age_days: ndviAgeDays,
+      trend: ndvi?.ndvi_trend,
+      health_status: ndvi?.health_status,
+      history_count: landContext?.ndvi_history?.length || 0,
+      missing_reasons: !ndvi ? ['No satellite NDVI data available'] : []
+    };
+    
+    // Weather audit  
+    const weatherAudit = {
+      found: !!weatherData && !weatherData.is_default,
+      temperature: weatherData?.current?.temperature,
+      humidity: weatherData?.current?.humidity,
+      rain_probability: weatherData?.forecast?.[0]?.precipitation_probability,
+      rain_last_24h: weatherData?.current?.precipitation,
+      data_age_hours: null as number | null,
+      missing_reasons: !weatherData || weatherData.is_default ? ['Weather data unavailable - using defaults'] : []
+    };
+    
+    // Crop schedule audit
+    const schedule = landContext?.crop_schedule;
+    const scheduleAudit = {
+      found: !!schedule,
+      crop_name: schedule?.crop_name,
+      sowing_date: schedule?.sowing_date,
+      expected_harvest: schedule?.expected_harvest_date,
+      status: schedule?.status,
+      missing_reasons: !schedule ? ['No active crop schedule'] : []
+    };
+    
+    // Summary
+    const sources = [landAudit, soilAudit, ndviAudit, weatherAudit, scheduleAudit];
+    const availableSources = sources.filter(s => s.found).length;
+    const criticalMissing: string[] = [];
+    const recommendations: string[] = [];
+    
+    if (!soilAudit.found) {
+      criticalMissing.push('Soil Test');
+      recommendations.push('Get soil tested for accurate fertilizer recommendations');
+    }
+    if (!ndviAudit.found) {
+      criticalMissing.push('NDVI');
+      recommendations.push('Add land boundaries for satellite monitoring');
+    }
+    if (!landAudit.has_coordinates) {
+      recommendations.push('Add GPS coordinates for weather and satellite data');
+    }
+    
+    return {
+      land: landAudit,
+      soil_health: soilAudit,
+      ndvi: ndviAudit,
+      weather: weatherAudit,
+      crop_schedule: scheduleAudit,
+      summary: {
+        total_data_sources: 5,
+        available_sources: availableSources,
+        data_quality_score: Math.round((availableSources / 5) * 100),
+        critical_missing: criticalMissing,
+        recommendations
+      }
+    };
   }
   
   /**
