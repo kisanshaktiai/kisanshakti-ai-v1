@@ -936,22 +936,23 @@ export class AIAgentOrchestrator {
           .limit(1)
           .maybeSingle(),
         
-        // Fetch latest NDVI data
+        // Fetch latest NDVI data - CRITICAL FIX: Use 'date' column not 'captured_at'
         this.supabase
           .from('ndvi_data')
           .select('*')
           .eq('land_id', landId)
-          .order('captured_at', { ascending: false })
+          .order('date', { ascending: false })
           .limit(1)
           .maybeSingle(),
         
         // CRITICAL FIX: Fetch NDVI HISTORY (last 30 days for trend analysis)
+        // Use 'date' column - 'captured_at' does not exist in schema
         this.supabase
           .from('ndvi_data')
-          .select('ndvi_value, mean_ndvi, captured_at, health_status, ndvi_trend, quality_score')
+          .select('ndvi_value, mean_ndvi, date, quality_score, metadata')
           .eq('land_id', landId)
-          .gte('captured_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
-          .order('captured_at', { ascending: false })
+          .gte('date', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+          .order('date', { ascending: false })
           .limit(10),
         
         // Fetch active crop schedule
@@ -997,7 +998,7 @@ export class AIAgentOrchestrator {
         irrigation_type: land.irrigation_type,
         water_source: land.water_source,
         current_crop: cropSchedule?.crop_name || land.current_crop,
-        crop_variety: cropSchedule?.variety || land.crop_variety,
+        crop_variety: cropSchedule?.crop_variety || land.crop_variety,  // Schema uses 'crop_variety'
         sowing_date: cropSchedule?.sowing_date,
         days_since_sowing: daysSinceSowing,
         growth_stage: growthStage,
@@ -1009,52 +1010,63 @@ export class AIAgentOrchestrator {
         center_lon: land.center_lon,
         
         // Soil health data (FULL DATA for rule engine)
+        // CRITICAL FIX: Use correct column names from schema
         soil_health: soilHealth ? {
-          nitrogen: soilHealth.nitrogen,
           nitrogen_kg_per_ha: soilHealth.nitrogen_kg_per_ha,
-          phosphorus: soilHealth.phosphorus,
           phosphorus_kg_per_ha: soilHealth.phosphorus_kg_per_ha,
-          potassium: soilHealth.potassium,
           potassium_kg_per_ha: soilHealth.potassium_kg_per_ha,
-          ph: soilHealth.ph,
+          nitrogen_level: soilHealth.nitrogen_level,
+          phosphorus_level: soilHealth.phosphorus_level,
+          potassium_level: soilHealth.potassium_level,
+          ph: soilHealth.ph_level,  // Schema uses ph_level not ph
+          ph_level: soilHealth.ph_level,
           organic_carbon: soilHealth.organic_carbon,
-          organic_carbon_percent: soilHealth.organic_carbon_percent,
-          soil_moisture_percent: soilHealth.soil_moisture_percent,
-          ec: soilHealth.ec,
+          soil_type: soilHealth.soil_type,
+          texture: soilHealth.texture,
+          cec: soilHealth.cec,
           test_date: soilHealth.test_date,
-          tested_at: soilHealth.tested_at || soilHealth.test_date
+          tested_at: soilHealth.test_date,  // Schema uses test_date
+          confidence_level: soilHealth.confidence_level
         } : null,
+        soil_tested: !!soilHealth,
         
         // NDVI data with trend analysis (CRITICAL FOR DECISION BRAIN)
+        // CRITICAL FIX: Use correct column names - 'date' not 'captured_at', no 'health_status' column
         ndvi: ndviData ? {
           value: ndviData.ndvi_value,
           mean_ndvi: ndviData.mean_ndvi,
-          min_ndvi: ndviData.min_ndvi,
-          max_ndvi: ndviData.max_ndvi,
-          health_status: ndviData.health_status || this.getNDVIHealthStatus(ndviData.ndvi_value),
-          ndvi_trend: ndviData.ndvi_trend || ndviTrend.direction,
+          min_ndvi: ndviData.min_ndvi || ndviData.ndvi_min,
+          max_ndvi: ndviData.max_ndvi || ndviData.ndvi_max,
+          health_status: this.getNDVIHealthStatus(ndviData.ndvi_value || ndviData.mean_ndvi),  // Computed, not from DB
+          ndvi_trend: ndviTrend.direction,  // Computed from history, not from DB
           trend_slope: ndviTrend.slope,
           trend_description: ndviTrend.description,
           quality_score: ndviData.quality_score,
           confidence_level: ndviData.confidence_level,
-          captured_at: ndviData.captured_at
+          captured_at: ndviData.date,  // Schema uses 'date' column
+          date: ndviData.date
         } : null,
         
         // NDVI HISTORY for multi-signal intelligence
+        // CRITICAL FIX: Use 'date' column, health_status is computed
         ndvi_history: (ndviHistory || []).map((h: any) => ({
           value: h.ndvi_value || h.mean_ndvi,
-          captured_at: h.captured_at,
-          health_status: h.health_status
+          captured_at: h.date,  // Schema uses 'date' not 'captured_at'
+          date: h.date,
+          health_status: this.getNDVIHealthStatus(h.ndvi_value || h.mean_ndvi)  // Computed
         })),
         
         // Crop schedule data
+        // CRITICAL FIX: Use 'crop_variety' not 'variety'
         crop_schedule: cropSchedule ? {
           schedule_id: cropSchedule.id,
           crop_name: cropSchedule.crop_name,
-          variety: cropSchedule.variety,
+          variety: cropSchedule.crop_variety,  // Schema uses 'crop_variety'
+          crop_variety: cropSchedule.crop_variety,
           sowing_date: cropSchedule.sowing_date,
           expected_harvest_date: cropSchedule.expected_harvest_date,
-          tasks: cropSchedule.tasks
+          status: cropSchedule.status,
+          is_active: cropSchedule.is_active
         } : null
       };
       
@@ -1512,15 +1524,16 @@ export class AIAgentOrchestrator {
     preferredLanguage?: string
   ): Promise<FarmerProfile> {
     try {
+      // CRITICAL FIX: Schema uses 'farmer_name' not 'full_name'
       const { data } = await this.supabase
         .from('farmers')
-        .select('full_name, language_preference, education_level')
+        .select('farmer_name, language_preference')
         .eq('id', farmerId)
         .single();
       
       return {
         preferred_language: (preferredLanguage || data?.language_preference || 'mr') as 'mr' | 'hi' | 'en',
-        name: data?.full_name || 'शेतकरी',
+        name: data?.farmer_name || 'शेतकरी',
         literacy_level: (data?.education_level || 'MODERATE') as any,
         technical_knowledge: 'MODERATE',
         emotional_state: 'NEUTRAL'
