@@ -652,7 +652,200 @@ export enum Cause {
   NON_CHEMICAL_ONLY_NEAR_HARVEST = 'NON_CHEMICAL_ONLY_NEAR_HARVEST', // Non-chemical only near harvest
   BIOPESTICIDE_RECOMMENDED_NEAR_HARVEST = 'BIOPESTICIDE_RECOMMENDED_NEAR_HARVEST', // Biopesticide recommended
   RESIDUE_TESTING_RECOMMENDED = 'RESIDUE_TESTING_RECOMMENDED',     // Residue testing recommended
-  EU_MRL_STRICTER = 'EU_MRL_STRICTER'                              // EU MRL stricter than domestic
+  EU_MRL_STRICTER = 'EU_MRL_STRICTER',                             // EU MRL stricter than domestic
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // EXTENDED PEST CAUSES - Crop-Specific (87+ new codes from ICAR audit)
+  // ─────────────────────────────────────────────────────────────────────────
+  // MAIZE PESTS
+  ARMYWORM_RISK = 'ARMYWORM_RISK',                                 // Spodoptera frugiperda (Fall Armyworm)
+  SHOOT_FLY_MAIZE = 'SHOOT_FLY_MAIZE',                             // Atherigona soccata
+  PINK_STEM_BORER_MAIZE = 'PINK_STEM_BORER_MAIZE',                 // Sesamia inferens
+  
+  // RICE PESTS
+  GALL_MIDGE_RICE = 'GALL_MIDGE_RICE',                             // Orseolia oryzae (silver shoots)
+  LEAF_FOLDER_RICE = 'LEAF_FOLDER_RICE',                           // Cnaphalocrocis medinalis
+  WHORL_MAGGOT_RICE = 'WHORL_MAGGOT_RICE',                         // Hydrellia philippina
+  BPH_RICE = 'BPH_RICE',                                           // Brown Planthopper - Nilaparvata lugens
+  YELLOW_STEM_BORER_RICE = 'YELLOW_STEM_BORER_RICE',               // Scirpophaga incertulas
+  
+  // WHEAT PESTS
+  PINK_BORER_WHEAT = 'PINK_BORER_WHEAT',                           // Sesamia inferens
+  
+  // TOMATO PESTS
+  TUTA_ABSOLUTA = 'TUTA_ABSOLUTA',                                 // South American Tomato Leaf Miner - CRITICAL
+  LEAF_MINER_TOMATO = 'LEAF_MINER_TOMATO',                         // Liriomyza
+  FRUIT_FLY_TOMATO = 'FRUIT_FLY_TOMATO',                           // Bactrocera dorsalis
+  ROOT_KNOT_NEMATODE_TOMATO = 'ROOT_KNOT_NEMATODE_TOMATO',         // Meloidogyne incognita
+  SPIDER_MITE_TOMATO = 'SPIDER_MITE_TOMATO',                       // Tetranychus urticae
+  APHID_TOMATO = 'APHID_TOMATO',                                   // Aphis gossypii
+  
+  // POTATO PESTS
+  TUBER_MOTH_POTATO = 'TUBER_MOTH_POTATO',                         // Phthorimaea operculella
+  WHITE_GRUB_POTATO = 'WHITE_GRUB_POTATO',                         // Holotrichia consanguinea
+  POTATO_BEETLE = 'POTATO_BEETLE',                                 // Leptinotarsa decemlineata
+  WIREWORM_POTATO = 'WIREWORM_POTATO',                             // Agriotes spp
+  
+  // ONION PESTS
+  ONION_MAGGOT_RISK = 'ONION_MAGGOT_RISK',                         // Delia antiqua
+  ONION_MITE = 'ONION_MITE',                                       // Aceria tulipae
+  
+  // COTTON PESTS (Extended)
+  STINK_BUG_COTTON = 'STINK_BUG_COTTON',                           // Oxycarenus hyalinipennis (Dusky bug)
+  COTTON_APHID = 'COTTON_APHID',                                   // Aphis gossypii
+  
+  // SUGARCANE PESTS
+  EARLY_SHOOT_BORER = 'EARLY_SHOOT_BORER',                         // Chilo infuscatellus
+  TOP_BORER = 'TOP_BORER',                                         // Scirpophaga excerptalis
+  INTERNODE_BORER = 'INTERNODE_BORER',                             // Chilo sacchariphagus
+  WOOLLY_APHID = 'WOOLLY_APHID',                                   // Ceratovacuna lanigera
+  SCALE_INSECT = 'SCALE_INSECT',                                   // Melanaspis glomerata
+  PYRILLA = 'PYRILLA',                                             // Pyrilla perpusilla
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // EXTENDED DISEASE CAUSES - Crop-Specific
+  // ─────────────────────────────────────────────────────────────────────────
+  // RICE DISEASES
+  BACTERIAL_BLIGHT_RICE = 'BACTERIAL_BLIGHT_RICE',                 // Xanthomonas oryzae (kresek symptom)
+  SHEATH_BLIGHT_RICE = 'SHEATH_BLIGHT_RICE',                       // Rhizoctonia solani
+  SHEATH_ROT_RICE = 'SHEATH_ROT_RICE',                             // Sarocladium oryzae
+  FALSE_SMUT_RICE = 'FALSE_SMUT_RICE',                             // Ustilaginoidea virens
+  TUNGRO_RICE = 'TUNGRO_RICE',                                     // Rice Tungro Virus
+  
+  // WHEAT DISEASES
+  LOOSE_SMUT_WHEAT = 'LOOSE_SMUT_WHEAT',                           // Ustilago tritici
+  KARNAL_BUNT_WHEAT = 'KARNAL_BUNT_WHEAT',                         // Tilletia indica (quarantine)
+  POWDERY_MILDEW_WHEAT = 'POWDERY_MILDEW_WHEAT',                   // Blumeria graminis
+  HEAD_SCAB_WHEAT = 'HEAD_SCAB_WHEAT',                             // Fusarium graminearum
+  
+  // MAIZE DISEASES
+  TURCICUM_BLIGHT_MAIZE = 'TURCICUM_BLIGHT_MAIZE',                 // Exserohilum turcicum (NCLB)
+  DOWNY_MILDEW_MAIZE = 'DOWNY_MILDEW_MAIZE',                       // Peronosclerospora sorghi
+  STALK_ROT_MAIZE = 'STALK_ROT_MAIZE',                             // Fusarium moniliforme
+  MAYDIS_LEAF_BLIGHT = 'MAYDIS_LEAF_BLIGHT',                       // Bipolaris maydis
+  
+  // TOMATO DISEASES
+  SEPTORIA_LEAF_SPOT_TOMATO = 'SEPTORIA_LEAF_SPOT_TOMATO',         // Septoria lycopersici
+  BUCKEYE_ROT_TOMATO = 'BUCKEYE_ROT_TOMATO',                       // Phytophthora nicotianae
+  TMV_TOMATO = 'TMV_TOMATO',                                       // Tobacco Mosaic Virus
+  TOLCV_TOMATO = 'TOLCV_TOMATO',                                   // Tomato Leaf Curl Virus
+  TSWV_TOMATO = 'TSWV_TOMATO',                                     // Tomato Spotted Wilt Virus
+  FUSARIUM_WILT_TOMATO = 'FUSARIUM_WILT_TOMATO',                   // Fusarium oxysporum f.sp. lycopersici
+  VERTICILLIUM_WILT_TOMATO = 'VERTICILLIUM_WILT_TOMATO',           // Verticillium dahliae
+  ANTHRACNOSE_TOMATO = 'ANTHRACNOSE_TOMATO',                       // Colletotrichum
+  GRAY_MOLD_TOMATO = 'GRAY_MOLD_TOMATO',                           // Botrytis cinerea
+  BACTERIAL_CANKER_TOMATO = 'BACTERIAL_CANKER_TOMATO',             // Clavibacter michiganensis
+  SOUTHERN_BLIGHT_TOMATO = 'SOUTHERN_BLIGHT_TOMATO',               // Sclerotium rolfsii
+  TARGET_SPOT_TOMATO = 'TARGET_SPOT_TOMATO',                       // Corynespora cassiicola
+  LATE_BLIGHT_PREVENTIVE = 'LATE_BLIGHT_PREVENTIVE',               // Pre-spray schedule
+  LATE_BLIGHT_EMERGENCY = 'LATE_BLIGHT_EMERGENCY',                 // Emergency protocol
+  
+  // POTATO DISEASES
+  BLACK_SCURF_POTATO = 'BLACK_SCURF_POTATO',                       // Rhizoctonia solani
+  COMMON_SCAB_POTATO = 'COMMON_SCAB_POTATO',                       // Streptomyces scabies
+  DRY_ROT_POTATO = 'DRY_ROT_POTATO',                               // Fusarium (storage)
+  PINK_ROT_POTATO = 'PINK_ROT_POTATO',                             // Phytophthora erythroseptica
+  BROWN_ROT_POTATO = 'BROWN_ROT_POTATO',                           // Ralstonia solanacearum (bacterial)
+  BLACK_LEG_POTATO = 'BLACK_LEG_POTATO',                           // Pectobacterium
+  
+  // ONION DISEASES
+  PURPLE_BLOTCH_SPRAY = 'PURPLE_BLOTCH_SPRAY',                     // Spray schedule
+  BASAL_ROT_ONION = 'BASAL_ROT_ONION',                             // Fusarium oxysporum f.sp. cepae
+  DOWNY_MILDEW_ONION = 'DOWNY_MILDEW_ONION',                       // Peronospora destructor
+  WHITE_ROT_ONION = 'WHITE_ROT_ONION',                             // Sclerotium cepivorum
+  PINK_ROOT_ONION = 'PINK_ROOT_ONION',                             // Phoma terrestris
+  BLACK_MOLD_ONION = 'BLACK_MOLD_ONION',                           // Aspergillus niger (storage)
+  BACTERIAL_SOFT_ROT_ONION = 'BACTERIAL_SOFT_ROT_ONION',           // Erwinia carotovora
+  NECK_ROT_ONION = 'NECK_ROT_ONION',                               // Botrytis allii
+  
+  // COTTON DISEASES (Extended)
+  GREY_MILDEW_COTTON = 'GREY_MILDEW_COTTON',                       // Ramularia areola
+  FUSARIUM_WILT_COTTON = 'FUSARIUM_WILT_COTTON',                   // Fusarium oxysporum f.sp. vasinfectum
+  VERTICILLIUM_WILT_COTTON = 'VERTICILLIUM_WILT_COTTON',           // Verticillium dahliae
+  
+  // SUGARCANE DISEASES
+  RED_ROT_SUGARCANE = 'RED_ROT_SUGARCANE',                         // Colletotrichum falcatum
+  SMUT_SUGARCANE = 'SMUT_SUGARCANE',                               // Ustilago scitaminea
+  WILT_SUGARCANE = 'WILT_SUGARCANE',                               // Fusarium sacchari
+  GSD_SUGARCANE = 'GSD_SUGARCANE',                                 // Grassy Shoot Disease (phytoplasma)
+  RATOON_STUNTING = 'RATOON_STUNTING',                             // Leifsonia xyli
+  LEAF_SCALD_SUGARCANE = 'LEAF_SCALD_SUGARCANE',                   // Xanthomonas albilineans
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // EXTENDED NUTRIENT/PHYSIOLOGICAL CAUSES
+  // ─────────────────────────────────────────────────────────────────────────
+  CALCIUM_DEFICIENCY_BER = 'CALCIUM_DEFICIENCY_BER',               // Blossom End Rot prevention
+  MAGNESIUM_DEFICIENCY = 'MAGNESIUM_DEFICIENCY',                   // Interveinal chlorosis
+  BORON_DEFICIENCY = 'BORON_DEFICIENCY',                           // Hollow stem, poor fruit set
+  SULPHUR_DEFICIENCY = 'SULPHUR_DEFICIENCY',                       // Onion pungency
+  IRON_DEFICIENCY = 'IRON_DEFICIENCY',                             // Lime-induced chlorosis
+  MANGANESE_DEFICIENCY = 'MANGANESE_DEFICIENCY',                   // Gray speck in oats
+  COPPER_DEFICIENCY = 'COPPER_DEFICIENCY',                         // Reclamation disease
+  MOLYBDENUM_DEFICIENCY = 'MOLYBDENUM_DEFICIENCY',                 // Whiptail in cauliflower
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // EXTENDED WATER MANAGEMENT CAUSES
+  // ─────────────────────────────────────────────────────────────────────────
+  TUBER_INITIATION_CRITICAL = 'TUBER_INITIATION_CRITICAL',         // Potato 30-45 DAP
+  TUBER_BULKING_WATER = 'TUBER_BULKING_WATER',                     // Potato 45-70 DAP
+  PRE_HARVEST_IRRIGATION_STOP = 'PRE_HARVEST_IRRIGATION_STOP',     // Stop before harvest
+  BULB_FORMATION_CRITICAL = 'BULB_FORMATION_CRITICAL',             // Onion bulb development
+  FRUIT_DEVELOPMENT_CRITICAL = 'FRUIT_DEVELOPMENT_CRITICAL',       // Tomato 40-80 DAS
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // RESISTANCE MANAGEMENT EXTENDED
+  // ─────────────────────────────────────────────────────────────────────────
+  WHITEFLY_RESISTANCE_MANAGEMENT = 'WHITEFLY_RESISTANCE_MANAGEMENT', // Neonicotinoid resistance
+  THRIPS_RESISTANCE_MANAGEMENT = 'THRIPS_RESISTANCE_MANAGEMENT',   // Thrips resistance rotation
+  LATE_BLIGHT_RESISTANCE_ROTATION = 'LATE_BLIGHT_RESISTANCE_ROTATION', // Fungicide rotation
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // PGR (PLANT GROWTH REGULATOR) CAUSES - Advanced Technology
+  // ─────────────────────────────────────────────────────────────────────────
+  GIBBERELLIN_FOR_FRUIT_SET = 'GIBBERELLIN_FOR_FRUIT_SET',         // GA3 under cold stress
+  GIBBERELLIN_FOR_ELONGATION = 'GIBBERELLIN_FOR_ELONGATION',       // Fruit sizing
+  GIBBERELLIN_FOR_SEEDLESS = 'GIBBERELLIN_FOR_SEEDLESS',           // Parthenocarpy
+  CYTOKININ_DELAYED_SENESCENCE = 'CYTOKININ_DELAYED_SENESCENCE',   // Extend productive period
+  CYTOKININ_LATERAL_BRANCHING = 'CYTOKININ_LATERAL_BRANCHING',     // Promote branching
+  AUXIN_ROOT_DEVELOPMENT = 'AUXIN_ROOT_DEVELOPMENT',               // Root growth
+  AUXIN_FRUIT_RETENTION = 'AUXIN_FRUIT_RETENTION',                 // Prevent drop
+  AUXIN_PARTHENOCARPY = 'AUXIN_PARTHENOCARPY',                     // Seedless fruit
+  ETHEPHON_FLOWERING_SYNC = 'ETHEPHON_FLOWERING_SYNC',             // Synchronize flowering
+  ETHEPHON_RIPENING = 'ETHEPHON_RIPENING',                         // Accelerate ripening
+  ETHEPHON_BOLL_OPENING = 'ETHEPHON_BOLL_OPENING',                 // Cotton boll sync
+  PACLOBUTRAZOL_COMPACT_GROWTH = 'PACLOBUTRAZOL_COMPACT_GROWTH',   // Anti-lodging
+  PACLOBUTRAZOL_STRESS_TOLERANCE = 'PACLOBUTRAZOL_STRESS_TOLERANCE', // Stress adaptation
+  MEPIQUAT_CHLORIDE_COTTON = 'MEPIQUAT_CHLORIDE_COTTON',           // Cotton growth regulation
+  CCC_LODGING_CONTROL = 'CCC_LODGING_CONTROL',                     // Chlormequat wheat
+  TRINEXAPAC_LODGING = 'TRINEXAPAC_LODGING',                       // Moddus wheat
+  BRASSINOSTEROID_STRESS = 'BRASSINOSTEROID_STRESS',               // Stress recovery
+  TRIACONTANOL_PHOTOSYNTHESIS = 'TRIACONTANOL_PHOTOSYNTHESIS',     // Enhanced photosynthesis
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // PRECISION FERTIGATION CAUSES - Israel/Netherlands Technology
+  // ─────────────────────────────────────────────────────────────────────────
+  EC_TOO_LOW = 'EC_TOO_LOW',                                       // Increase nutrients
+  EC_TOO_HIGH = 'EC_TOO_HIGH',                                     // Flush system
+  PH_ACIDIC_CORRECTION = 'PH_ACIDIC_CORRECTION',                   // Add potassium hydroxide
+  PH_ALKALINE_CORRECTION = 'PH_ALKALINE_CORRECTION',               // Add phosphoric acid
+  VEGETATIVE_FERTIGATION_FORMULA = 'VEGETATIVE_FERTIGATION_FORMULA', // High N formula
+  REPRODUCTIVE_FERTIGATION_FORMULA = 'REPRODUCTIVE_FERTIGATION_FORMULA', // High K formula
+  VPD_HIGH_IRRIGATION = 'VPD_HIGH_IRRIGATION',                     // Vapor pressure deficit high
+  VPD_LOW_IRRIGATION = 'VPD_LOW_IRRIGATION',                       // VPD low
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // MICROBIOME/BIOLOGICAL CAUSES - Cutting Edge Technology
+  // ─────────────────────────────────────────────────────────────────────────
+  AZOSPIRILLUM_N_FIXATION = 'AZOSPIRILLUM_N_FIXATION',             // N fixing bacteria
+  AZOTOBACTER_N_FIXATION = 'AZOTOBACTER_N_FIXATION',               // Free-living N fixer
+  PSB_P_SOLUBILIZATION = 'PSB_P_SOLUBILIZATION',                   // Phosphate solubilizing bacteria
+  KSB_K_MOBILIZATION = 'KSB_K_MOBILIZATION',                       // Potassium solubilizing bacteria
+  TRICHODERMA_BIOCONTROL = 'TRICHODERMA_BIOCONTROL',               // Fungal biocontrol
+  PSEUDOMONAS_BIOCONTROL = 'PSEUDOMONAS_BIOCONTROL',               // Bacterial biocontrol
+  VAM_NUTRIENT_UPTAKE = 'VAM_NUTRIENT_UPTAKE',                     // Vesicular arbuscular mycorrhiza
+  HUMIC_ACID_APPLICATION = 'HUMIC_ACID_APPLICATION',               // Soil health
+  SEAWEED_EXTRACT_BIOSTIMULANT = 'SEAWEED_EXTRACT_BIOSTIMULANT',   // Biostimulant
+  SILICON_APPLICATION = 'SILICON_APPLICATION'                      // Stress tolerance (Japan/Korea tech)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
