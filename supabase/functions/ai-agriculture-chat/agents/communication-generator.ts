@@ -74,23 +74,38 @@ import {
   type ExtractedEconomicInfo
 } from './communication-data-extractors.ts';
 
+import { 
+  type QuestionClassification, 
+  type SectionRequirements,
+  ResponseTemplateType 
+} from './question-classifier.ts';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // COMMUNICATION GENERATOR CLASS
 // ═══════════════════════════════════════════════════════════════════════════
 
 export class CommunicationGenerator {
-  private readonly version = '3.0.0';
+  private readonly version = '3.1.0';
   
   /**
    * Main entry point - Generate farmer-friendly communication
+   * NOW WITH ADAPTIVE TEMPLATE SYSTEM
    */
   async generate(
     decisionOutput: DecisionOutput,
     farmerProfile: FarmerProfile,
-    conversationContext: ConversationContext
+    conversationContext: ConversationContext,
+    questionClassification?: QuestionClassification  // NEW: Optional for backward compat
   ): Promise<FarmerCommunication> {
     console.log('📝 Communication Generator: Starting message generation...');
     const startTime = Date.now();
+    
+    // Use default classification if not provided (backward compatibility)
+    const classification = questionClassification || this.getDefaultClassification();
+    const requires = classification.requires_sections;
+    
+    console.log(`   Template type: ${classification.template_type}`);
+    console.log(`   Response style: ${classification.response_style}`);
     
     // Determine scenario and tone
     const scenario = this.determineScenario(decisionOutput, conversationContext);
@@ -99,22 +114,60 @@ export class CommunicationGenerator {
     
     console.log(`   Scenario: ${scenario}, Tone: ${tone}, Language: ${lang}`);
     
-    // Generate all sections
-    const sections = {
-      immediate_action: this.generateImmediateAction(decisionOutput, lang, tone),
-      how_to: this.generateHowTo(decisionOutput, lang, farmerProfile.literacy_level),
-      rationale: this.generateRationale(decisionOutput, lang),
-      warnings: this.generateWarnings(decisionOutput, lang),
-      economics: this.generateEconomics(decisionOutput.economic_assessment, lang),
-      follow_up: this.generateFollowUp(decisionOutput, lang)
-    };
+    // Generate ONLY required sections based on question classification
+    const sections: any = {};
     
-    // Compile main message
+    // Layer 1: Immediate Action (ALWAYS REQUIRED)
+    sections.immediate_action = this.generateImmediateAction(decisionOutput, lang, tone);
+    console.log('   ✅ Generated immediate_action section');
+    
+    // Layer 2: Application Instructions (CONDITIONAL)
+    if (requires.materials || requires.mixing || requires.application) {
+      sections.how_to = this.generateHowTo(decisionOutput, lang, farmerProfile.literacy_level);
+      console.log('   ✅ Generated how_to section');
+    } else {
+      console.log('   ⏭️  Skipped how_to section (not required)');
+    }
+    
+    // Layer 3: Rationale (CONDITIONAL)
+    if (requires.rationale) {
+      sections.rationale = this.generateRationale(decisionOutput, lang);
+      console.log('   ✅ Generated rationale section');
+    } else {
+      console.log('   ⏭️  Skipped rationale section (not required)');
+    }
+    
+    // Layer 4: Warnings (CONDITIONAL)
+    if (requires.warnings) {
+      sections.warnings = this.generateWarnings(decisionOutput, lang);
+      console.log('   ✅ Generated warnings section');
+    } else {
+      console.log('   ⏭️  Skipped warnings section (not required)');
+    }
+    
+    // Layer 5: Economics (CONDITIONAL)
+    if (requires.economics) {
+      sections.economics = this.generateEconomics(decisionOutput.economic_assessment, lang);
+      console.log('   ✅ Generated economics section');
+    } else {
+      console.log('   ⏭️  Skipped economics section (not required)');
+    }
+    
+    // Layer 6: Follow-up (CONDITIONAL)
+    if (requires.follow_up) {
+      sections.follow_up = this.generateFollowUp(decisionOutput, lang);
+      console.log('   ✅ Generated follow_up section');
+    } else {
+      console.log('   ⏭️  Skipped follow_up section (not required)');
+    }
+    
+    // Compile main message with ONLY generated sections
     const mainMessage = this.compileMainMessage(
       sections,
       lang,
       tone,
-      farmerProfile
+      farmerProfile,
+      classification
     );
     
     // Generate notification
@@ -129,6 +182,7 @@ export class CommunicationGenerator {
     // Calculate metadata
     const fullText = this.getFullTextForMetrics(mainMessage, lang);
     const wordCount = fullText.split(/\s+/).length;
+    const sectionsIncluded = Object.keys(sections);
     
     const output: FarmerCommunication = {
       message_id: crypto.randomUUID(),
@@ -151,17 +205,42 @@ export class CommunicationGenerator {
       },
       metadata: {
         word_count: wordCount,
-        reading_time_seconds: Math.ceil(wordCount / 3), // ~180 words/min
+        reading_time_seconds: Math.ceil(wordCount / 3),
         complexity_score: this.calculateComplexity(fullText),
         adapted_for_literacy: farmerProfile.literacy_level !== 'HIGH',
-        adapted_for_emotion: farmerProfile.emotional_state !== 'NEUTRAL'
+        adapted_for_emotion: farmerProfile.emotional_state !== 'NEUTRAL',
+        template_type: classification.template_type,
+        sections_included: sectionsIncluded,
+        sections_count: sectionsIncluded.length
       }
     };
     
     console.log(`✅ Communication Generator: Message generated in ${Date.now() - startTime}ms`);
-    console.log(`   Word count: ${wordCount}, Reading time: ${output.metadata.reading_time_seconds}s`);
+    console.log(`   Word count: ${wordCount}, Sections: ${sectionsIncluded.length}, Style: ${classification.response_style}`);
     
     return output;
+  }
+  
+  /**
+   * Get default classification for backward compatibility
+   */
+  private getDefaultClassification(): QuestionClassification {
+    return {
+      template_type: ResponseTemplateType.TREATMENT_FULL,
+      requires_sections: {
+        materials: true,
+        mixing: true,
+        application: true,
+        timing: true,
+        economics: true,
+        follow_up: true,
+        warnings: true,
+        rationale: true
+      },
+      response_style: 'detailed',
+      max_sections: 8,
+      priority_order: ['immediate_action', 'how_to', 'warnings', 'economics', 'follow_up', 'rationale']
+    };
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1299,7 +1378,8 @@ export class CommunicationGenerator {
     sections: any,
     lang: SupportedLanguage,
     tone: MessageTone,
-    profile: FarmerProfile
+    profile: FarmerProfile,
+    questionClassification?: QuestionClassification
   ): any {
     const greeting = GREETINGS[lang][0];
     const empathyLine = profile.emotional_state !== 'NEUTRAL' 
@@ -1307,11 +1387,16 @@ export class CommunicationGenerator {
       : undefined;
     const closing = CLOSINGS[lang][0];
     
+    // Adjust closing based on response style
+    const adjustedClosing = questionClassification?.response_style === 'concise'
+      ? closing
+      : closing;
+    
     return {
       greeting,
       empathy_line: empathyLine,
-      sections,
-      closing,
+      sections,  // ONLY the sections that were generated
+      closing: adjustedClosing,
       signature: lang === 'mr' ? 'किसानशक्ती AI 🌾' : 
                  lang === 'hi' ? 'किसानशक्ति AI 🌾' : 
                  'KisanShakti AI 🌾'
