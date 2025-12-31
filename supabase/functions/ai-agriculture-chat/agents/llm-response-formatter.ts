@@ -129,29 +129,38 @@ export async function formatRecommendationsWithLLM(
   let aiModelUsed = '';
   
   try {
-    // Try Gemini first with 15-second timeout
-    if (GEMINI_API_KEY) {
-      const result = await callGeminiWithTimeout(systemPrompt, userPrompt, GEMINI_API_KEY, 15000);
-      if (result.success) {
-        formattedResponse = result.text;
-        aiModelUsed = 'gemini-2.0-flash';
-        console.log(`   ✅ Gemini formatting successful`);
-      }
-    }
-    
-    // Fallback to OpenAI if Gemini failed
-    if (!formattedResponse && OPENAI_API_KEY) {
-      const result = await callOpenAIWithTimeout(systemPrompt, userPrompt, OPENAI_API_KEY, 12000);
+    // TIER 1: Try OpenAI FIRST with 20-second timeout (user preference)
+    if (OPENAI_API_KEY) {
+      console.log(`   🔄 Trying OpenAI (primary)...`);
+      const result = await callOpenAIWithTimeout(systemPrompt, userPrompt, OPENAI_API_KEY, 20000);
       if (result.success) {
         formattedResponse = result.text;
         aiModelUsed = 'gpt-4o-mini';
         console.log(`   ✅ OpenAI formatting successful`);
+      } else if (result.error === 'RATE_LIMIT') {
+        console.warn(`   ⚠️ OpenAI rate limited, waiting 3s before fallback...`);
+        await new Promise(r => setTimeout(r, 3000));
       }
     }
     
-    // Fallback to Lovable AI
+    // TIER 2: Fallback to Gemini if OpenAI failed (18-second timeout)
+    if (!formattedResponse && GEMINI_API_KEY) {
+      console.log(`   🔄 Trying Gemini (fallback)...`);
+      const result = await callGeminiWithTimeout(systemPrompt, userPrompt, GEMINI_API_KEY, 18000);
+      if (result.success) {
+        formattedResponse = result.text;
+        aiModelUsed = 'gemini-2.0-flash';
+        console.log(`   ✅ Gemini formatting successful`);
+      } else if (result.error === 'RATE_LIMIT') {
+        console.warn(`   ⚠️ Gemini rate limited (429), waiting 3s before fallback...`);
+        await new Promise(r => setTimeout(r, 3000));
+      }
+    }
+    
+    // TIER 3: Fallback to Lovable AI (12-second timeout)
     if (!formattedResponse && LOVABLE_API_KEY) {
-      const result = await callLovableAIWithTimeout(systemPrompt, userPrompt, LOVABLE_API_KEY, 10000);
+      console.log(`   🔄 Trying Lovable AI (tertiary)...`);
+      const result = await callLovableAIWithTimeout(systemPrompt, userPrompt, LOVABLE_API_KEY, 12000);
       if (result.success) {
         formattedResponse = result.text;
         aiModelUsed = 'lovable-gemini-2.5-flash';
@@ -321,7 +330,7 @@ async function callGeminiWithTimeout(
   userPrompt: string, 
   apiKey: string, 
   timeoutMs: number
-): Promise<{ success: boolean; text: string }> {
+): Promise<{ success: boolean; text: string; error?: string }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   
@@ -347,8 +356,12 @@ async function callGeminiWithTimeout(
     clearTimeout(timeoutId);
     
     if (!response.ok) {
-      console.warn(`Gemini API error: ${response.status}`);
-      return { success: false, text: '' };
+      const statusCode = response.status;
+      console.warn(`Gemini API error: ${statusCode}`);
+      if (statusCode === 429) {
+        return { success: false, text: '', error: 'RATE_LIMIT' };
+      }
+      return { success: false, text: '', error: `HTTP_${statusCode}` };
     }
     
     const data = await response.json();
@@ -357,8 +370,9 @@ async function callGeminiWithTimeout(
     
   } catch (error) {
     clearTimeout(timeoutId);
-    console.warn(`Gemini call failed:`, error);
-    return { success: false, text: '' };
+    const isAbort = error instanceof Error && error.name === 'AbortError';
+    console.warn(`Gemini call failed:`, isAbort ? 'TIMEOUT' : error);
+    return { success: false, text: '', error: isAbort ? 'TIMEOUT' : 'NETWORK' };
   }
 }
 
@@ -367,7 +381,7 @@ async function callOpenAIWithTimeout(
   userPrompt: string, 
   apiKey: string, 
   timeoutMs: number
-): Promise<{ success: boolean; text: string }> {
+): Promise<{ success: boolean; text: string; error?: string }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   
@@ -393,8 +407,12 @@ async function callOpenAIWithTimeout(
     clearTimeout(timeoutId);
     
     if (!response.ok) {
-      console.warn(`OpenAI API error: ${response.status}`);
-      return { success: false, text: '' };
+      const statusCode = response.status;
+      console.warn(`OpenAI API error: ${statusCode}`);
+      if (statusCode === 429) {
+        return { success: false, text: '', error: 'RATE_LIMIT' };
+      }
+      return { success: false, text: '', error: `HTTP_${statusCode}` };
     }
     
     const data = await response.json();
@@ -403,8 +421,9 @@ async function callOpenAIWithTimeout(
     
   } catch (error) {
     clearTimeout(timeoutId);
-    console.warn(`OpenAI call failed:`, error);
-    return { success: false, text: '' };
+    const isAbort = error instanceof Error && error.name === 'AbortError';
+    console.warn(`OpenAI call failed:`, isAbort ? 'TIMEOUT' : error);
+    return { success: false, text: '', error: isAbort ? 'TIMEOUT' : 'NETWORK' };
   }
 }
 
@@ -463,6 +482,13 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
   const decision = input.decision_output;
   const parts: string[] = [];
   
+  // SESSION-AWARE TEMPLATE FALLBACK - CRITICAL FIX
+  // NEVER use cached/global data - ALWAYS use current decision_output
+  console.log(`   📋 Building SESSION-AWARE template fallback`);
+  console.log(`   📋 Decision status: ${decision?.status}`);
+  console.log(`   📋 Primary action: ${decision?.primary_decision?.action_type}`);
+  console.log(`   📋 Land crop: ${input.land_context?.current_crop}`);
+  
   // Greeting
   const greetings: Record<string, string> = {
     mr: 'नमस्कार शेतकरी मित्र! 🌾',
@@ -471,19 +497,31 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
   };
   parts.push(greetings[lang]);
   
-  // Acknowledgment
-  if (input.land_context?.current_crop) {
+  // Acknowledgment - from CURRENT land_context only
+  const currentCrop = input.land_context?.current_crop;
+  if (currentCrop) {
     const acks: Record<string, string> = {
-      mr: `तुमच्या ${input.land_context.current_crop} पिकाबद्दलचा प्रश्न समजला.`,
-      hi: `आपकी ${input.land_context.current_crop} फसल के बारे में प्रश्न समझा।`,
-      en: `I understand your question about ${input.land_context.current_crop}.`
+      mr: `तुमच्या ${currentCrop} पिकाबद्दलचा प्रश्न समजला.`,
+      hi: `आपकी ${currentCrop} फसल के बारे में प्रश्न समझा।`,
+      en: `I understand your question about ${currentCrop}.`
     };
     parts.push(acks[lang]);
   }
   
-  // Primary recommendation
-  const primary = decision.primary_decision;
-  if (primary && primary.action_type !== 'NO_ACTION') {
+  // Primary recommendation - EXTRACT ONLY FROM CURRENT decision_output
+  const primary = decision?.primary_decision;
+  
+  // VALIDATION: Check if template data matches current session
+  const templatePestCode = primary?.target?.pest_code;
+  const templateDiseaseCode = primary?.target?.disease_code;
+  const hasValidRecommendation = primary && 
+    primary.action_type && 
+    primary.action_type !== 'NO_ACTION' &&
+    (primary.application_details?.product_name || 
+     primary.application_details?.concentration ||
+     templatePestCode || templateDiseaseCode);
+  
+  if (hasValidRecommendation) {
     const headers: Record<string, string> = {
       mr: '📌 **शिफारस:**',
       hi: '📌 **सिफारिश:**',
@@ -491,44 +529,70 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     };
     parts.push(headers[lang]);
     
-    const productName = primary.application_details?.product_name || 'शिफारस केलेले उत्पादन';
-    const dosage = primary.application_details?.concentration || '';
-    const timing = primary.timing?.best_time_of_day === 'MORNING' ? 
-      (lang === 'mr' ? 'सकाळी' : lang === 'hi' ? 'सुबह' : 'Morning') :
-      (lang === 'mr' ? 'संध्याकाळी' : lang === 'hi' ? 'शाम को' : 'Evening');
+    // CRITICAL: Extract from current decision_output ONLY
+    const productName = primary.application_details?.product_name;
+    const dosage = primary.application_details?.concentration;
+    const method = primary.application_details?.method || primary.application_details?.application_method;
+    const timing = primary.timing?.best_time_of_day;
     
-    let recText = `1. **${productName}**`;
-    if (dosage) recText += ` @ ${dosage}`;
-    recText += `\n   ⏰ ${timing}`;
-    
-    if (primary.expected_outcomes?.efficacy_percent) {
-      recText += ` | 📊 ${primary.expected_outcomes.efficacy_percent}% ${lang === 'mr' ? 'प्रभावी' : lang === 'hi' ? 'प्रभावी' : 'effective'}`;
-    }
-    
-    parts.push(recText);
-    
-    // IPM urgency indicator
-    const ipmLevel = primary.ipm_level || 'LEVEL_3';
-    const urgencyLabel = IPM_URGENCY_LABELS[ipmLevel]?.[lang] || '';
-    if (urgencyLabel) {
-      parts.push(`\n${urgencyLabel}`);
+    // If product_name is null/empty, DO NOT use placeholder
+    if (productName && productName !== 'Recommended treatment') {
+      let recText = `1. **${productName}**`;
+      if (dosage && dosage !== 'As per label' && dosage !== 'N/A') {
+        recText += ` @ ${dosage}`;
+      }
+      if (method) {
+        const methodLabel = lang === 'mr' ? 
+          (method === 'SOIL_APPLICATION' ? 'जमिनीत द्या' : method === 'FOLIAR_SPRAY' ? 'पर्णीय फवारणी' : method) :
+          lang === 'hi' ? 
+          (method === 'SOIL_APPLICATION' ? 'मिट्टी में डालें' : method === 'FOLIAR_SPRAY' ? 'पत्ते पर छिड़काव' : method) :
+          method;
+        recText += `\n   📍 ${methodLabel}`;
+      }
+      if (timing) {
+        const timingLabel = timing === 'MORNING' ? 
+          (lang === 'mr' ? 'सकाळी' : lang === 'hi' ? 'सुबह' : 'Morning') :
+          (lang === 'mr' ? 'संध्याकाळी' : lang === 'hi' ? 'शाम को' : 'Evening');
+        recText += `\n   ⏰ ${timingLabel}`;
+      }
+      
+      if (primary.expected_outcomes?.efficacy_percent) {
+        recText += ` | 📊 ${primary.expected_outcomes.efficacy_percent}% ${lang === 'mr' ? 'प्रभावी' : lang === 'hi' ? 'प्रभावी' : 'effective'}`;
+      }
+      
+      parts.push(recText);
+      
+      // IPM urgency indicator
+      const ipmLevel = primary.ipm_level || 'LEVEL_3';
+      const urgencyLabel = IPM_URGENCY_LABELS[ipmLevel]?.[lang] || '';
+      if (urgencyLabel) {
+        parts.push(`\n${urgencyLabel}`);
+      }
+    } else {
+      // No valid product - ask for more info instead of giving wrong advice
+      const askMore: Record<string, string> = {
+        mr: '📋 **अधिक माहिती आवश्यक:**\nकृपया तुमच्या समस्येबद्दल अधिक तपशील द्या किंवा फोटो पाठवा.',
+        hi: '📋 **अधिक जानकारी आवश्यक:**\nकृपया अपनी समस्या के बारे में अधिक विवरण दें या फोटो भेजें।',
+        en: '📋 **More information needed:**\nPlease provide more details about your problem or send a photo.'
+      };
+      parts.push(askMore[lang]);
     }
   } else {
-    // No action required
-    const noAction: Record<string, string> = {
-      mr: '👀 **सध्या कोणतीही कृती आवश्यक नाही.** पिकाचे निरीक्षण सुरू ठेवा.',
-      hi: '👀 **अभी कोई कार्रवाई आवश्यक नहीं।** फसल की निगरानी जारी रखें।',
-      en: '👀 **No action required at this time.** Continue monitoring your crop.'
+    // No valid recommendation from rule engine - provide safe fallback
+    const safeAdvice: Record<string, string> = {
+      mr: '👀 **विश्लेषण:**\nतुमचा प्रश्न समजला. अचूक शिफारसीसाठी कृपया:\n• पिकाचा फोटो पाठवा\n• किंवा लक्षणांचे अधिक तपशील द्या',
+      hi: '👀 **विश्लेषण:**\nआपका प्रश्न समझा। सटीक सिफारिश के लिए कृपया:\n• फसल का फोटो भेजें\n• या लक्षणों का अधिक विवरण दें',
+      en: '👀 **Analysis:**\nI understand your question. For accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms'
     };
-    parts.push(noAction[lang]);
+    parts.push(safeAdvice[lang]);
   }
   
-  // Secondary recommendations
-  const secondary = decision.secondary_actions || decision.secondary_recommendations;
+  // Secondary recommendations - from CURRENT decision only
+  const secondary = decision?.secondary_actions || decision?.secondary_recommendations;
   if (secondary && secondary.length > 0) {
     parts.push('');
     secondary.slice(0, 2).forEach((sec: any, idx: number) => {
-      if (sec.action) {
+      if (sec.action && sec.action !== 'N/A' && sec.action !== 'None') {
         parts.push(`${idx + 2}. ${sec.action}${sec.reason ? ` - ${sec.reason}` : ''}`);
       }
     });
@@ -542,8 +606,11 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
   };
   parts.push(closings[lang]);
   
+  const finalResponse = parts.join('\n\n');
+  console.log(`   📋 Template fallback generated: ${finalResponse.length} chars`);
+  
   return {
-    formatted_response: parts.join('\n\n'),
+    formatted_response: finalResponse,
     confidence: 0.7,
     source: 'TEMPLATE_FALLBACK',
     processing_time_ms: Date.now() - startTime,

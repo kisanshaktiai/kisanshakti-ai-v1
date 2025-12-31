@@ -332,12 +332,53 @@ Please provide a helpful, accurate response in ${input.language === 'mr' ? 'Mara
   try {
     let responseText = '';
     
-    // Try Gemini first
-    if (GEMINI_API_KEY) {
+    // TIER 1: Try OpenAI FIRST (user preference) with 10-second timeout
+    if (OPENAI_API_KEY) {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
       
       try {
+        console.log('   🔄 LLM-Direct: Trying OpenAI (primary)...');
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${OPENAI_API_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt }
+            ],
+            max_tokens: 800,
+            temperature: 0.7
+          })
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          responseText = data.choices?.[0]?.message?.content || '';
+          if (responseText) console.log('   ✅ OpenAI response successful');
+        } else if (response.status === 429) {
+          console.warn('   ⚠️ OpenAI rate limited, waiting before fallback...');
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      } catch (e) {
+        console.warn('OpenAI API failed:', e);
+      }
+    }
+    
+    // TIER 2: Fallback to Gemini if OpenAI failed
+    if (!responseText && GEMINI_API_KEY) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      
+      try {
+        console.log('   🔄 LLM-Direct: Trying Gemini (fallback)...');
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
           {
@@ -361,19 +402,24 @@ Please provide a helpful, accurate response in ${input.language === 'mr' ? 'Mara
         if (response.ok) {
           const data = await response.json();
           responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          if (responseText) console.log('   ✅ Gemini response successful');
+        } else if (response.status === 429) {
+          console.warn('   ⚠️ Gemini rate limited');
         }
       } catch (e) {
         console.warn('Gemini API failed:', e);
       }
     }
     
-    // Fallback to OpenAI
-    if (!responseText && OPENAI_API_KEY) {
+    // Fallback to Lovable AI
+    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+    if (!responseText && LOVABLE_API_KEY) {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
       
       try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        console.log('   🔄 LLM-Direct: Trying Lovable AI (tertiary)...');
+        const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${OPENAI_API_KEY}`,
