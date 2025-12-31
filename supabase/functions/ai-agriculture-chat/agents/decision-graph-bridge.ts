@@ -1590,40 +1590,276 @@ const IPM_DATABASE: IPMRecommendation[] = [
   },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // GROUNDNUT PESTS
+  // WHEAT PESTS
   // ═══════════════════════════════════════════════════════════════════════════
   {
-    crop_codes: ['GROUNDNUT', 'MOONGFALI', 'BHUI_SHENG'],
-    pest_codes: ['SPODOPTERA', 'TOBACCO_CATERPILLAR'],
+    crop_codes: ['WHEAT', 'GEHUN'],
+    pest_codes: ['APHID', 'MAVYA'],
     severity_threshold: 'MODERATE',
     ipm_level: 4,
     recommendations: {
-      biological: ['SNPV @ 250 LE/acre'],
+      botanical: ['Neem oil 10000 ppm @ 5 ml/L'],
       chemical: [
-        { name: 'Emamectin benzoate 5% SG', dosage: '0.4 g/L or 80 g/acre', phi_days: 7 }
+        { name: 'Imidacloprid 17.8% SL', dosage: '0.3 ml/L or 60 ml/acre', phi_days: 21 },
+        { name: 'Thiamethoxam 25% WG', dosage: '0.2 g/L or 40 g/acre', phi_days: 14 }
       ]
     },
-    scientific_basis: 'NPV specific to Spodoptera. Rotate with other MoAs.',
-    icar_reference: 'ICAR-DGR Groundnut Package'
+    scientific_basis: 'Systemic neonicotinoids control aphid colonies effectively.',
+    icar_reference: 'ICAR-IIWBR Wheat Package 2023'
   },
   {
-    crop_codes: ['GROUNDNUT', 'MOONGFALI', 'BHUI_SHENG'],
-    pest_codes: ['WHITE_GRUB', 'ROOT_GRUB', 'BEETLE'],
+    crop_codes: ['WHEAT', 'GEHUN'],
+    pest_codes: ['ARMY_WORM', 'LASHKARI_ALI'],
+    severity_threshold: 'MODERATE',
+    ipm_level: 5,
+    recommendations: {
+      biological: ['NPV @ 250 LE/acre'],
+      chemical: [
+        { name: 'Chlorantraniliprole 18.5% SC', dosage: '0.4 ml/L or 60 ml/acre', phi_days: 21 },
+        { name: 'Lambda cyhalothrin 5% EC', dosage: '0.6 ml/L or 120 ml/acre', phi_days: 14 }
+      ]
+    },
+    scientific_basis: 'Diamides effective against army worm. Evening spray essential.',
+    icar_reference: 'ICAR-IIWBR Emergency Protocol'
+  },
+  {
+    crop_codes: ['WHEAT', 'GEHUN'],
+    pest_codes: ['TERMITE', 'DEEMAK'],
+    severity_threshold: 'MODERATE',
+    ipm_level: 5,
+    recommendations: {
+      biological: ['Metarhizium anisopliae @ 4 kg/acre'],
+      chemical: [
+        { name: 'Fipronil 5% SC', dosage: 'Seed treatment 6 ml/kg seed', phi_days: 90 },
+        { name: 'Chlorpyrifos 20% EC', dosage: '5 L/acre soil drench', phi_days: 45 }
+      ]
+    },
+    scientific_basis: 'Seed treatment provides season-long protection.',
+    icar_reference: 'ICAR-IIWBR Soil Pest Management'
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MAIZE PESTS
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    crop_codes: ['MAIZE', 'MAKKA', 'CORN'],
+    pest_codes: ['FALL_ARMYWORM', 'FAW', 'LASHKARI_ALI'],
+    severity_threshold: 'LOW',
+    ipm_level: 2,
+    recommendations: {
+      cultural: ['Deep summer ploughing', 'Pheromone traps @ 5/acre', 'Bird perches @ 20/acre'],
+      biological: ['Trichogramma @ 1.5 lakh/acre at egg stage']
+    },
+    scientific_basis: 'Early detection with pheromone traps enables timely intervention.',
+    icar_reference: 'ICAR FAW Advisory 2023'
+  },
+  {
+    crop_codes: ['MAIZE', 'MAKKA', 'CORN'],
+    pest_codes: ['FALL_ARMYWORM', 'FAW', 'LASHKARI_ALI'],
     severity_threshold: 'HIGH',
     ipm_level: 5,
     recommendations: {
-      biological: ['Metarhizium anisopliae @ 4 kg/acre mixed with FYM'],
       chemical: [
-        { name: 'Fipronil 5% SC', dosage: 'Soil drench 30 ml/10L', phi_days: 30 }
+        { name: 'Chlorantraniliprole 18.5% SC', dosage: '0.4 ml/L or 60-80 ml/acre', phi_days: 21 },
+        { name: 'Emamectin benzoate 5% SG', dosage: '0.4 g/L or 80 g/acre', phi_days: 7 },
+        { name: 'Spinetoram 11.7% SC', dosage: '0.5 ml/L or 100 ml/acre', phi_days: 3 }
       ]
     },
-    scientific_basis: 'Metarhizium controls grubs. Fipronil for immediate action.',
-    icar_reference: 'ICAR-DGR Soil Pest Management'
+    scientific_basis: 'Whorl application most effective. Target early morning when larvae active.',
+    icar_reference: 'ICAR FAW Chemical Management'
+  },
+  {
+    crop_codes: ['MAIZE', 'MAKKA', 'CORN'],
+    pest_codes: ['STEM_BORER', 'CHILO'],
+    severity_threshold: 'MODERATE',
+    ipm_level: 4,
+    recommendations: {
+      biological: ['Trichogramma @ 50,000/acre, 4 releases'],
+      chemical: [
+        { name: 'Chlorantraniliprole 18.5% SC', dosage: '0.4 ml/L whorl application', phi_days: 21 }
+      ]
+    },
+    scientific_basis: 'Whorl application critical for boring pests.',
+    icar_reference: 'ICAR-IIMR Stem Borer Package'
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PULSES PESTS
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    crop_codes: ['CHICKPEA', 'CHANA', 'GRAM', 'PIGEON_PEA', 'TUR', 'ARHAR'],
+    pest_codes: ['POD_BORER', 'HELICOVERPA', 'GRAM_POD_BORER'],
+    severity_threshold: 'LOW',
+    ipm_level: 2,
+    recommendations: {
+      cultural: ['Bird perches @ 20/acre', 'Pheromone traps @ 5/acre'],
+      biological: ['Trichogramma @ 1 lakh/acre', 'NPV @ 250 LE/acre']
+    },
+    scientific_basis: 'Early biocontrol prevents economic damage.',
+    icar_reference: 'ICAR-IIPR Pulses IPM'
+  },
+  {
+    crop_codes: ['CHICKPEA', 'CHANA', 'GRAM', 'PIGEON_PEA', 'TUR', 'ARHAR'],
+    pest_codes: ['POD_BORER', 'HELICOVERPA', 'GRAM_POD_BORER'],
+    severity_threshold: 'HIGH',
+    ipm_level: 5,
+    recommendations: {
+      chemical: [
+        { name: 'Chlorantraniliprole 18.5% SC', dosage: '0.3 ml/L or 60 ml/acre', phi_days: 14 },
+        { name: 'Indoxacarb 14.5% SC', dosage: '0.5 ml/L or 100 ml/acre', phi_days: 10 }
+      ]
+    },
+    scientific_basis: 'Diamides and oxadiazines highly effective on lepidopteran larvae.',
+    icar_reference: 'ICAR-IIPR Chemical Management'
+  },
+  {
+    crop_codes: ['MUNG', 'MOONG', 'URAD', 'BLACKGRAM'],
+    pest_codes: ['WHITEFLY', 'THRIPS', 'APHID'],
+    severity_threshold: 'MODERATE',
+    ipm_level: 4,
+    recommendations: {
+      botanical: ['Neem oil @ 5 ml/L'],
+      chemical: [
+        { name: 'Thiamethoxam 25% WG', dosage: '0.2 g/L or 40 g/acre', phi_days: 14 },
+        { name: 'Acetamiprid 20% SP', dosage: '0.2 g/L or 40 g/acre', phi_days: 7 }
+      ]
+    },
+    scientific_basis: 'Whitefly vector of MYMV. Early control essential.',
+    icar_reference: 'ICAR-IIPR Viral Disease Vector Control'
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POTATO PESTS
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    crop_codes: ['POTATO', 'ALOO', 'BATATA'],
+    pest_codes: ['TUBER_MOTH', 'PTM'],
+    severity_threshold: 'MODERATE',
+    ipm_level: 4,
+    recommendations: {
+      cultural: ['Deep planting', 'Proper earthing up', 'Early harvest'],
+      chemical: [
+        { name: 'Chlorantraniliprole 18.5% SC', dosage: '0.4 ml/L or 60 ml/acre', phi_days: 7 }
+      ]
+    },
+    scientific_basis: 'Earthing up prevents moth from reaching tubers.',
+    icar_reference: 'ICAR-CPRI Potato IPM'
+  },
+  {
+    crop_codes: ['POTATO', 'ALOO', 'BATATA'],
+    pest_codes: ['APHID', 'JASSID', 'WHITEFLY'],
+    severity_threshold: 'MODERATE',
+    ipm_level: 4,
+    recommendations: {
+      chemical: [
+        { name: 'Imidacloprid 17.8% SL', dosage: '0.3 ml/L or 60 ml/acre', phi_days: 14 },
+        { name: 'Thiamethoxam 25% WG', dosage: '0.2 g/L or 40 g/acre', phi_days: 14 }
+      ]
+    },
+    scientific_basis: 'Virus vector control essential for seed potato production.',
+    icar_reference: 'ICAR-CPRI Virus Vector Control'
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ONION & GARLIC PESTS
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    crop_codes: ['ONION', 'KANDA', 'PYAZ', 'GARLIC', 'LASUN', 'LAHSUN'],
+    pest_codes: ['THRIPS', 'ONION_THRIPS'],
+    severity_threshold: 'LOW',
+    ipm_level: 3,
+    recommendations: {
+      botanical: ['Neem oil @ 5 ml/L', 'NSKE 5%'],
+      biological: ['Beauveria bassiana @ 5 g/L']
+    },
+    scientific_basis: 'Blue sticky traps for monitoring. Neem disrupts feeding.',
+    icar_reference: 'ICAR-DOGR Onion IPM'
+  },
+  {
+    crop_codes: ['ONION', 'KANDA', 'PYAZ', 'GARLIC', 'LASUN', 'LAHSUN'],
+    pest_codes: ['THRIPS', 'ONION_THRIPS'],
+    severity_threshold: 'HIGH',
+    ipm_level: 5,
+    recommendations: {
+      chemical: [
+        { name: 'Fipronil 5% SC', dosage: '2 ml/L or 400 ml/acre', phi_days: 14 },
+        { name: 'Spinosad 45% SC', dosage: '0.3 ml/L or 75 ml/acre', phi_days: 3 },
+        { name: 'Spinetoram 11.7% SC', dosage: '0.5 ml/L or 100 ml/acre', phi_days: 3 }
+      ]
+    },
+    scientific_basis: 'Rotate chemistries to prevent resistance. Multiple sprays needed.',
+    icar_reference: 'ICAR-DOGR Chemical Control'
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GRAPES PESTS
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    crop_codes: ['GRAPES', 'DRAKSHA', 'ANGOOR'],
+    pest_codes: ['MEALYBUG', 'GRAPE_MEALYBUG'],
+    severity_threshold: 'MODERATE',
+    ipm_level: 4,
+    recommendations: {
+      biological: ['Cryptolaemus montrouzieri @ 5000/acre'],
+      chemical: [
+        { name: 'Buprofezin 25% SC', dosage: '2 ml/L or 400 ml/acre', phi_days: 21 },
+        { name: 'Spiromesifen 22.9% SC', dosage: '0.8 ml/L or 160 ml/acre', phi_days: 14 }
+      ]
+    },
+    scientific_basis: 'Lady beetle predators highly effective. IGRs prevent molting.',
+    icar_reference: 'ICAR-NRC Grapes IPM'
+  },
+  {
+    crop_codes: ['GRAPES', 'DRAKSHA', 'ANGOOR'],
+    pest_codes: ['THRIPS', 'FLEA_BEETLE'],
+    severity_threshold: 'MODERATE',
+    ipm_level: 4,
+    recommendations: {
+      chemical: [
+        { name: 'Spinosad 45% SC', dosage: '0.3 ml/L or 75 ml/acre', phi_days: 3 },
+        { name: 'Fipronil 5% SC', dosage: '1 ml/L or 200 ml/acre', phi_days: 21 }
+      ]
+    },
+    scientific_basis: 'Thrips cause berry scarring. Multiple sprays at flowering.',
+    icar_reference: 'ICAR-NRC Grapes Thrips Control'
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MANGO PESTS  
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    crop_codes: ['MANGO', 'AMBA', 'AAM'],
+    pest_codes: ['MANGO_HOPPER', 'HOPPER', 'TELIA'],
+    severity_threshold: 'MODERATE',
+    ipm_level: 4,
+    recommendations: {
+      botanical: ['Neem oil @ 5 ml/L at panicle emergence'],
+      chemical: [
+        { name: 'Imidacloprid 17.8% SL', dosage: '0.5 ml/L', phi_days: 21 },
+        { name: 'Thiamethoxam 25% WG', dosage: '0.2 g/L', phi_days: 14 }
+      ]
+    },
+    scientific_basis: 'Two sprays at panicle emergence and fruit set critical.',
+    icar_reference: 'ICAR-CISH Mango IPM'
+  },
+  {
+    crop_codes: ['MANGO', 'AMBA', 'AAM'],
+    pest_codes: ['FRUIT_FLY', 'MANGO_FRUIT_FLY'],
+    severity_threshold: 'MODERATE',
+    ipm_level: 4,
+    recommendations: {
+      cultural: ['Methyl eugenol traps @ 10/acre', 'BAT (Bait Application Technique)'],
+      chemical: [
+        { name: 'Spinosad 45% SC + jaggery bait', dosage: '0.3 ml/L + 10 g jaggery/L', phi_days: 3 }
+      ]
+    },
+    scientific_basis: 'Male annihilation technique reduces population. BAT for females.',
+    icar_reference: 'ICAR-CISH Fruit Fly Management'
   }
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
-// DISEASE MANAGEMENT DATABASE
+// COMPREHENSIVE DISEASE DATABASE
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface DiseaseRecommendation {
@@ -1638,6 +1874,7 @@ interface DiseaseRecommendation {
 }
 
 const DISEASE_DATABASE: DiseaseRecommendation[] = [
+  // COTTON DISEASES
   {
     crop_codes: ['COTTON'],
     disease_codes: ['BACTERIAL_LEAF_BLIGHT', 'BLB'],
@@ -1651,31 +1888,125 @@ const DISEASE_DATABASE: DiseaseRecommendation[] = [
     scientific_basis: 'Copper-based bactericides prevent bacterial spread.'
   },
   {
+    crop_codes: ['COTTON'],
+    disease_codes: ['GREY_MILDEW', 'AREOLATE_MILDEW', 'DAHIYA'],
+    dsi_threshold: 15,
+    recommendations: {
+      curative: [
+        { name: 'Carbendazim 50% WP', dosage: '1 g/L', phi_days: 14 },
+        { name: 'Propiconazole 25% EC', dosage: '1 ml/L', phi_days: 14 }
+      ]
+    },
+    scientific_basis: 'Systemic fungicides effective in humid conditions.'
+  },
+  {
+    crop_codes: ['COTTON'],
+    disease_codes: ['FUSARIUM_WILT', 'WILT'],
+    dsi_threshold: 5,
+    recommendations: {
+      preventive: ['Seed treatment with Trichoderma viride @ 10 g/kg', 'Carbendazim seed treatment @ 2 g/kg'],
+      curative: [
+        { name: 'Carbendazim 50% WP', dosage: '1 g/L soil drench', phi_days: 21 }
+      ]
+    },
+    scientific_basis: 'Wilt is soil-borne. Preventive measures essential.'
+  },
+  
+  // VEGETABLE DISEASES
+  {
     crop_codes: ['TOMATO', 'CHILLI'],
     disease_codes: ['EARLY_BLIGHT', 'ALTERNARIA'],
     dsi_threshold: 15,
     recommendations: {
-      preventive: ['Mancozeb 75 WP @ 25g/10L'],
+      preventive: ['Mancozeb 75% WP @ 25g/10L'],
       curative: [
-        { name: 'Azoxystrobin 23 SC', dosage: '10ml/10L', phi_days: 7 },
-        { name: 'Difenoconazole 25 EC', dosage: '5ml/10L', phi_days: 7 }
+        { name: 'Azoxystrobin 23% SC', dosage: '1 ml/L', phi_days: 7 },
+        { name: 'Difenoconazole 25% EC', dosage: '0.5 ml/L', phi_days: 7 }
       ]
     },
     scientific_basis: 'Strobilurins + triazoles for broad-spectrum fungal control.'
   },
   {
-    crop_codes: ['RICE', 'PADDY'],
-    disease_codes: ['BLAST', 'RICE_BLAST'],
+    crop_codes: ['TOMATO', 'POTATO'],
+    disease_codes: ['LATE_BLIGHT', 'PHYTOPHTHORA'],
     dsi_threshold: 10,
     recommendations: {
-      preventive: ['Tricyclazole 75 WP @ 6g/10L'],
+      preventive: ['Mancozeb 75% WP @ 25g/10L at 7-day intervals'],
       curative: [
-        { name: 'Isoprothiolane 40 EC', dosage: '15ml/10L', phi_days: 21 },
-        { name: 'Kasugamycin 3 SL', dosage: '20ml/10L', phi_days: 14 }
+        { name: 'Cymoxanil 8% + Mancozeb 64% WP', dosage: '3 g/L', phi_days: 14 },
+        { name: 'Metalaxyl 8% + Mancozeb 64% WP', dosage: '2.5 g/L', phi_days: 14 }
+      ]
+    },
+    scientific_basis: 'Phenylamides effective against oomycetes. Resistance management needed.'
+  },
+  {
+    crop_codes: ['CHILLI', 'CAPSICUM'],
+    disease_codes: ['ANTHRACNOSE', 'DIE_BACK', 'FRUIT_ROT'],
+    dsi_threshold: 15,
+    recommendations: {
+      preventive: ['Carbendazim seed treatment @ 2 g/kg'],
+      curative: [
+        { name: 'Carbendazim 50% WP', dosage: '1 g/L', phi_days: 7 },
+        { name: 'Azoxystrobin 23% SC', dosage: '1 ml/L', phi_days: 7 }
+      ]
+    },
+    scientific_basis: 'Anthracnose spreads rapidly in rain. Multiple sprays needed.'
+  },
+  {
+    crop_codes: ['CHILLI', 'TOMATO', 'BRINJAL'],
+    disease_codes: ['BACTERIAL_WILT', 'RALSTONIA'],
+    dsi_threshold: 5,
+    recommendations: {
+      preventive: ['Resistant varieties', 'Soil solarization', 'Trichoderma @ 2 kg/acre'],
+      curative: [
+        { name: 'Streptocycline + Copper oxychloride', dosage: '1 g + 3 g/L', phi_days: 7 }
+      ]
+    },
+    scientific_basis: 'Bacterial wilt has no effective cure. Prevention is key.'
+  },
+  
+  // RICE DISEASES
+  {
+    crop_codes: ['RICE', 'PADDY'],
+    disease_codes: ['BLAST', 'RICE_BLAST', 'LEAF_BLAST', 'NECK_BLAST'],
+    dsi_threshold: 10,
+    recommendations: {
+      preventive: ['Tricyclazole 75% WP @ 0.6 g/L at tillering and panicle emergence'],
+      curative: [
+        { name: 'Isoprothiolane 40% EC', dosage: '1.5 ml/L', phi_days: 21 },
+        { name: 'Kasugamycin 3% SL', dosage: '2 ml/L', phi_days: 14 }
       ]
     },
     scientific_basis: 'Melanin biosynthesis inhibitors prevent blast infection.'
   },
+  {
+    crop_codes: ['RICE', 'PADDY'],
+    disease_codes: ['SHEATH_BLIGHT', 'RHIZOCTONIA'],
+    dsi_threshold: 20,
+    recommendations: {
+      curative: [
+        { name: 'Hexaconazole 5% SC', dosage: '2 ml/L', phi_days: 14 },
+        { name: 'Propiconazole 25% EC', dosage: '1 ml/L', phi_days: 14 },
+        { name: 'Validamycin 3% L', dosage: '2 ml/L', phi_days: 7 }
+      ]
+    },
+    scientific_basis: 'Triazoles effective. Direct spray at sheath region.'
+  },
+  {
+    crop_codes: ['RICE', 'PADDY'],
+    disease_codes: ['BACTERIAL_LEAF_BLIGHT', 'BLB', 'KRESEK'],
+    dsi_threshold: 15,
+    recommendations: {
+      preventive: ['Balanced N fertilization', 'Resistant varieties'],
+      curative: [
+        { name: 'Streptocycline', dosage: '0.015%', phi_days: 7 },
+        { name: 'Copper hydroxide 77% WP', dosage: '2.5 g/L', phi_days: 7 }
+      ]
+    },
+    scientific_basis: 'Excess N promotes BLB. Copper bactericides help.'
+  },
+  
+  // SUGARCANE DISEASES
   {
     crop_codes: ['SUGARCANE'],
     disease_codes: ['RED_ROT', 'WILT'],
@@ -1683,10 +2014,163 @@ const DISEASE_DATABASE: DiseaseRecommendation[] = [
     recommendations: {
       preventive: ['Hot water treatment of setts @ 52°C for 30 min', 'Sett treatment with Carbendazim 0.1%'],
       curative: [
-        { name: 'Carbendazim 50 WP', dosage: '10g/10L (soil drench)', phi_days: 30 }
+        { name: 'Carbendazim 50% WP', dosage: '1 g/L (soil drench)', phi_days: 30 }
       ]
     },
     scientific_basis: 'Red rot is seed-borne. Prevention through sett treatment is critical.'
+  },
+  {
+    crop_codes: ['SUGARCANE'],
+    disease_codes: ['SMUT', 'WHIP_SMUT'],
+    dsi_threshold: 5,
+    recommendations: {
+      preventive: ['Resistant varieties', 'Hot water treatment', 'Remove smutted clumps'],
+      curative: [
+        { name: 'Carbendazim 50% WP sett treatment', dosage: '0.1%', phi_days: 0 }
+      ]
+    },
+    scientific_basis: 'Smut whip removal prevents spore spread. Rogue infected clumps.'
+  },
+  {
+    crop_codes: ['SUGARCANE'],
+    disease_codes: ['GRASSY_SHOOT', 'PHYTOPLASMA'],
+    dsi_threshold: 5,
+    recommendations: {
+      preventive: ['Hot water treatment 52°C 30 min', 'Remove infected plants'],
+      curative: []
+    },
+    scientific_basis: 'No chemical control. Prevention and roguing only.'
+  },
+  
+  // WHEAT DISEASES
+  {
+    crop_codes: ['WHEAT', 'GEHUN'],
+    disease_codes: ['RUST', 'YELLOW_RUST', 'BROWN_RUST', 'BLACK_RUST'],
+    dsi_threshold: 10,
+    recommendations: {
+      curative: [
+        { name: 'Propiconazole 25% EC', dosage: '1 ml/L', phi_days: 30 },
+        { name: 'Tebuconazole 25.9% EC', dosage: '1 ml/L', phi_days: 30 }
+      ]
+    },
+    scientific_basis: 'Triazoles highly effective. Two sprays at flag leaf and heading.'
+  },
+  {
+    crop_codes: ['WHEAT', 'GEHUN'],
+    disease_codes: ['POWDERY_MILDEW', 'BHURI'],
+    dsi_threshold: 15,
+    recommendations: {
+      curative: [
+        { name: 'Sulphur 80% WP', dosage: '3 g/L', phi_days: 14 },
+        { name: 'Hexaconazole 5% SC', dosage: '2 ml/L', phi_days: 21 }
+      ]
+    },
+    scientific_basis: 'Sulphur effective at lower severity. Triazoles for advanced cases.'
+  },
+  {
+    crop_codes: ['WHEAT', 'GEHUN'],
+    disease_codes: ['LOOSE_SMUT', 'KARNAL_BUNT'],
+    dsi_threshold: 5,
+    recommendations: {
+      preventive: ['Seed treatment with Carboxin 37.5% + Thiram 37.5% @ 2 g/kg'],
+      curative: []
+    },
+    scientific_basis: 'Seed-borne diseases require seed treatment.'
+  },
+  
+  // GRAPE DISEASES
+  {
+    crop_codes: ['GRAPES', 'DRAKSHA', 'ANGOOR'],
+    disease_codes: ['DOWNY_MILDEW', 'DAVANI'],
+    dsi_threshold: 10,
+    recommendations: {
+      preventive: ['Mancozeb 75% WP @ 2.5 g/L every 10 days'],
+      curative: [
+        { name: 'Fosetyl-Al 80% WP', dosage: '2.5 g/L', phi_days: 14 },
+        { name: 'Cymoxanil 8% + Mancozeb 64% WP', dosage: '3 g/L', phi_days: 14 }
+      ]
+    },
+    scientific_basis: 'Preventive sprays essential. Systemic for advanced cases.'
+  },
+  {
+    crop_codes: ['GRAPES', 'DRAKSHA', 'ANGOOR'],
+    disease_codes: ['POWDERY_MILDEW', 'BHURI'],
+    dsi_threshold: 10,
+    recommendations: {
+      curative: [
+        { name: 'Sulphur 80% WP', dosage: '3 g/L', phi_days: 14 },
+        { name: 'Hexaconazole 5% SC', dosage: '2 ml/L', phi_days: 21 },
+        { name: 'Myclobutanil 10% WP', dosage: '0.5 g/L', phi_days: 14 }
+      ]
+    },
+    scientific_basis: 'Sulphur effective but avoid in high temperatures. Triazoles preferred.'
+  },
+  {
+    crop_codes: ['GRAPES', 'DRAKSHA', 'ANGOOR'],
+    disease_codes: ['ANTHRACNOSE', 'BLACK_SPOT'],
+    dsi_threshold: 15,
+    recommendations: {
+      preventive: ['Dormant spray with Bordeaux mixture'],
+      curative: [
+        { name: 'Carbendazim 50% WP', dosage: '1 g/L', phi_days: 14 },
+        { name: 'Thiophanate methyl 70% WP', dosage: '1 g/L', phi_days: 14 }
+      ]
+    },
+    scientific_basis: 'Dormant spray critical. Growing season sprays for active infections.'
+  },
+  
+  // MANGO DISEASES
+  {
+    crop_codes: ['MANGO', 'AMBA', 'AAM'],
+    disease_codes: ['POWDERY_MILDEW', 'BHURI'],
+    dsi_threshold: 15,
+    recommendations: {
+      curative: [
+        { name: 'Sulphur 80% WP', dosage: '3 g/L', phi_days: 14 },
+        { name: 'Hexaconazole 5% SC', dosage: '2 ml/L', phi_days: 21 }
+      ]
+    },
+    scientific_basis: 'Two sprays at panicle emergence and pea stage.'
+  },
+  {
+    crop_codes: ['MANGO', 'AMBA', 'AAM'],
+    disease_codes: ['ANTHRACNOSE', 'BLACK_TIP'],
+    dsi_threshold: 20,
+    recommendations: {
+      preventive: ['Carbendazim 50% WP @ 1 g/L at fruit set'],
+      curative: [
+        { name: 'Azoxystrobin 23% SC', dosage: '1 ml/L', phi_days: 7 },
+        { name: 'Carbendazim 50% WP', dosage: '1 g/L', phi_days: 14 }
+      ]
+    },
+    scientific_basis: 'Anthracnose severe in humid conditions. Multiple sprays needed.'
+  },
+  
+  // ONION DISEASES
+  {
+    crop_codes: ['ONION', 'KANDA', 'PYAZ', 'GARLIC', 'LASUN', 'LAHSUN'],
+    disease_codes: ['PURPLE_BLOTCH', 'ALTERNARIA'],
+    dsi_threshold: 15,
+    recommendations: {
+      preventive: ['Mancozeb 75% WP @ 2.5 g/L at 10-day intervals'],
+      curative: [
+        { name: 'Tebuconazole 25.9% EC', dosage: '1 ml/L', phi_days: 14 },
+        { name: 'Azoxystrobin 23% SC', dosage: '1 ml/L', phi_days: 7 }
+      ]
+    },
+    scientific_basis: 'Purple blotch spreads in monsoon. Multiple protectant sprays.'
+  },
+  {
+    crop_codes: ['ONION', 'KANDA', 'PYAZ'],
+    disease_codes: ['BASAL_ROT', 'FUSARIUM'],
+    dsi_threshold: 10,
+    recommendations: {
+      preventive: ['Soil application of Trichoderma @ 2 kg/acre', 'Bulb treatment with Carbendazim 0.1%'],
+      curative: [
+        { name: 'Carbendazim 50% WP soil drench', dosage: '1 g/L', phi_days: 21 }
+      ]
+    },
+    scientific_basis: 'Soil-borne disease. Preventive soil treatment essential.'
   }
 ];
 
@@ -2099,11 +2583,11 @@ function evaluateDiseaseManagement(context: RuleEvaluationContext): EvaluatedRul
   const diseaseNorm = normalizeForMatching(context.disease_code);
   const cropNorm = normalizeForMatching(context.crop_code || '');
   const severity = context.severity || 'MODERATE';
+  const isOrganic = context.farming_mode === 'ORGANIC';
   
   console.log(`   🦠 Disease matching: disease="${diseaseNorm}", crop="${cropNorm}"`);
   
   for (const disease of DISEASE_DATABASE) {
-    // CRITICAL FIX: Use normalized matching for crop and disease codes
     const cropMatch = disease.crop_codes.some(c => codesMatch(cropNorm, c));
     const diseaseMatch = disease.disease_codes.some(d => codesMatch(diseaseNorm, d));
     
@@ -2115,11 +2599,54 @@ function evaluateDiseaseManagement(context: RuleEvaluationContext): EvaluatedRul
     const currentDSI = severityOrder[severity] || 25;
     
     if (currentDSI >= disease.dsi_threshold) {
-      const products = disease.recommendations.curative?.map(c => ({
-        name: c.name,
-        dosage: c.dosage,
-        method: 'Foliar spray'
-      }));
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CRITICAL FIX: Use extractProductRecommendation for COMPLETE fungicide details
+      // ═══════════════════════════════════════════════════════════════════════════
+      const selectedProduct = extractProductRecommendation(
+        context.crop_code || '',
+        null,
+        context.disease_code,
+        severity as SeverityLevel,
+        5, // Disease management typically IPM level 5
+        isOrganic,
+        'mr'
+      );
+      
+      let products: Array<{
+        name: string;
+        dosage: string;
+        method: string;
+        dosage_per_acre?: string;
+        timing?: string;
+        phi_days?: number;
+        efficacy_percent?: number;
+        water_volume?: string;
+        weather_restrictions?: string;
+        names?: { mr: string; hi: string; en: string };
+      }> | undefined;
+      
+      if (selectedProduct) {
+        products = [{
+          name: selectedProduct.product_name,
+          dosage: selectedProduct.dosage,
+          method: selectedProduct.application_method,
+          dosage_per_acre: selectedProduct.dosage_per_acre,
+          timing: selectedProduct.timing,
+          phi_days: selectedProduct.phi_days,
+          efficacy_percent: selectedProduct.efficacy_percent,
+          water_volume: selectedProduct.water_volume_per_acre,
+          weather_restrictions: selectedProduct.weather_restrictions,
+          names: selectedProduct.names
+        }];
+        console.log(`   📦 Fungicide selected: ${selectedProduct.product_name} @ ${selectedProduct.dosage}, efficacy=${selectedProduct.efficacy_percent}%`);
+      } else if (disease.recommendations.curative?.length) {
+        products = disease.recommendations.curative.map(c => ({
+          name: c.name,
+          dosage: c.dosage,
+          method: 'FOLIAR_SPRAY',
+          phi_days: c.phi_days
+        }));
+      }
       
       let recMr = '', recHi = '', recEn = '';
       
@@ -2129,9 +2656,18 @@ function evaluateDiseaseManagement(context: RuleEvaluationContext): EvaluatedRul
         recHi += `🛡️ रोकथाम: ${disease.recommendations.preventive.join(', ')}. `;
       }
       if (products?.length) {
-        recEn += `💊 Treatment: ${products.map(p => `${p.name} @ ${p.dosage}`).join(', ')}.`;
-        recMr += `💊 उपचार: ${products.map(p => `${p.name} @ ${p.dosage}`).join(', ')}.`;
-        recHi += `💊 उपचार: ${products.map(p => `${p.name} @ ${p.dosage}`).join(', ')}.`;
+        const productInfo = products[0];
+        const name = productInfo.names?.mr || productInfo.name;
+        recMr += `💊 उपचार: ${name} @ ${productInfo.dosage} (${productInfo.dosage_per_acre || ''}).`;
+        recHi += `💊 उपचार: ${productInfo.names?.hi || productInfo.name} @ ${productInfo.dosage}.`;
+        recEn += `💊 Treatment: ${productInfo.names?.en || productInfo.name} @ ${productInfo.dosage} (${productInfo.dosage_per_acre || ''}).`;
+        
+        if (productInfo.timing) {
+          recMr += ` वेळ: ${productInfo.timing}.`;
+        }
+        if (productInfo.phi_days) {
+          recMr += ` PHI: ${productInfo.phi_days} दिवस.`;
+        }
       }
       
       rules.push({
@@ -2140,7 +2676,7 @@ function evaluateDiseaseManagement(context: RuleEvaluationContext): EvaluatedRul
         priority: 'P4_ECONOMIC',
         fired: true,
         action: 'RECOMMEND',
-        confidence: 0.8,
+        confidence: selectedProduct ? 0.88 : 0.75,
         scientific_basis: disease.scientific_basis,
         recommendation_mr: recMr,
         recommendation_hi: recHi,
@@ -2168,10 +2704,20 @@ export function convertToRuleResults(evaluated: EvaluatedRule[]): RuleResult[] {
       hi: r.recommendation_hi || '',
       en: r.recommendation_en || ''
     },
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: Pass COMPLETE product details to Rule Engine
+    // ═══════════════════════════════════════════════════════════════════════════
     products: r.products?.map(p => ({
       product_name: p.name,
       dosage: p.dosage,
-      application_method: p.method
+      dosage_per_acre: (p as any).dosage_per_acre || null,
+      application_method: p.method,
+      timing: (p as any).timing || null,
+      phi_days: (p as any).phi_days || null,
+      efficacy_percent: (p as any).efficacy_percent || null,
+      water_volume: (p as any).water_volume || null,
+      weather_restrictions: (p as any).weather_restrictions || null,
+      names: (p as any).names || null
     })),
     alternatives: r.alternatives,
     scientific_basis: r.scientific_basis,
