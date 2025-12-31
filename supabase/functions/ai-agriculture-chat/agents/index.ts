@@ -92,6 +92,22 @@ export {
   calculatePhosphorusState, 
   calculatePotassiumState,
   mapNDVIToState,
+
+// Enhanced Intent Classification & Routing (PART 1)
+export * from './intent-router.ts';
+export { classifyEnhancedIntent, getResponseGuidelines } from './intent-router.ts';
+
+// Agronomic Validation (PART 4)
+export * from './agronomic-validator.ts';
+export { validateAgronomicAccuracy, getIPMDefaultRecommendation, PEST_BIOLOGY, IPM_DEFAULTS } from './agronomic-validator.ts';
+
+// Language Quality Validation (PART 5)
+export * from './language-quality-validator.ts';
+export { validateLanguageQuality, enforceTermConsistency, getSafeAskMoreInfoMessage } from './language-quality-validator.ts';
+
+// Response Validation Gate (PART 9)
+export * from './response-validation-gate.ts';
+export { validateResponseBeforeSend } from './response-validation-gate.ts';
   calculateNDVITrend,
   normalizeSoilType,
   validateCropContext,
