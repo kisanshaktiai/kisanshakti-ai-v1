@@ -12,6 +12,10 @@ import { checkRateLimit } from '../_shared/rateLimiter.ts';
 import { AIAgentOrchestrator } from './agents/orchestrator.ts';
 import type { OrchestratorResponse } from './agents/orchestrator.ts';
 
+// PHASE 5: Import LLM Response Formatter for natural language generation
+import { formatRecommendationsWithLLM } from './agents/llm-response-formatter.ts';
+import type { LLMFormatterInput, LLMFormatterOutput } from './agents/llm-response-formatter.ts';
+
 // Import legacy helpers for backward compatibility
 import { generateMultilingualQuickReplies } from './multilingual-quick-replies.ts';
 import { parseResponseToCards } from './response-parser.ts';
@@ -435,33 +439,93 @@ serve(async (req) => {
       (actions_filtered_out && actions_filtered_out.length > 0);
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // PHASE 3B: LANGUAGE CONSISTENCY - Translate to user's language
+    // PHASE 5: LLM RESPONSE FORMATTING & DELIVERY
+    // Takes rule engine output and formats it into natural, empathetic advice
     // ═══════════════════════════════════════════════════════════════════════════
+    console.log(`\n📝 [${traceId}] ═══ PHASE 5: LLM RESPONSE FORMATTING ═══`);
+    
     let responseContent: string;
+    let llmFormatterOutput: LLMFormatterOutput | null = null;
+    let aiModelUsed: string | undefined;
+    
+    // Calculate remaining time for timeout protection (25s total budget, minus time spent so far)
+    const timeSpentSoFar = Date.now() - startTime;
+    const remainingTime = Math.max(25000 - timeSpentSoFar, 5000); // At least 5s for formatting
+    console.log(`   Time budget: ${remainingTime}ms remaining for response formatting`);
     
     if (allActionsFiltered) {
       // Special response when all actions were filtered
-      console.log(`⚠️ [${traceId}] ALL actions filtered - generating explanation`);
+      console.log(`   ⚠️ ALL actions filtered - generating explanation response`);
       responseContent = generateAllActionsFilteredResponse(actions_filtered_out, detectedLanguage as 'mr' | 'hi' | 'en');
+    } else if (orchestratorResponse.type === 'DECISION_PROVIDED' && orchestratorResponse.decision_output) {
+      // PHASE 5: Use LLM to format rule engine recommendations
+      console.log(`   🤖 Using LLM formatter for natural language generation`);
+      
+      try {
+        // Build land context for LLM from orchestrator response
+        const landContext = orchestratorResponse.dataAudit?.land?.found ? {
+          current_crop: orchestratorResponse.dataAudit.land.current_crop,
+          growth_stage: orchestratorResponse.dataAudit.land.growth_stage,
+          area_acres: orchestratorResponse.dataAudit.land.area_acres,
+          days_since_sowing: orchestratorResponse.dataAudit.land.days_since_sowing,
+          soil_health: orchestratorResponse.dataAudit?.soil_health?.found ? {
+            nitrogen_kg_per_ha: orchestratorResponse.dataAudit.soil_health.nitrogen_kg_per_ha,
+            phosphorus_kg_per_ha: orchestratorResponse.dataAudit.soil_health.phosphorus_kg_per_ha,
+            potassium_kg_per_ha: orchestratorResponse.dataAudit.soil_health.potassium_kg_per_ha,
+            ph_level: orchestratorResponse.dataAudit.soil_health.ph_level
+          } : undefined,
+          ndvi: orchestratorResponse.dataAudit?.ndvi?.found ? {
+            value: orchestratorResponse.dataAudit.ndvi.latest_value,
+            trend: orchestratorResponse.dataAudit.ndvi.trend
+          } : undefined
+        } : undefined;
+        
+        const formatterInput: LLMFormatterInput = {
+          farmer_message: userMessageContent,
+          language: detectedLanguage as 'mr' | 'hi' | 'en',
+          decision_output: orchestratorResponse.decision_output,
+          land_context: landContext,
+          data_audit: orchestratorResponse.dataAudit,
+          trace_id: traceId
+        };
+        
+        // Call LLM formatter with timeout protection
+        const formatterPromise = formatRecommendationsWithLLM(formatterInput);
+        const timeoutPromise = new Promise<LLMFormatterOutput>((_, reject) => {
+          setTimeout(() => reject(new Error('LLM formatter timeout')), remainingTime - 2000);
+        });
+        
+        llmFormatterOutput = await Promise.race([formatterPromise, timeoutPromise]);
+        responseContent = llmFormatterOutput.formatted_response;
+        aiModelUsed = llmFormatterOutput.ai_model_used;
+        
+        console.log(`   ✅ LLM formatting complete: ${llmFormatterOutput.source} (${llmFormatterOutput.processing_time_ms}ms)`);
+        console.log(`   📊 Sections: ${llmFormatterOutput.sections_included.join(', ')}`);
+        
+      } catch (formatterError) {
+        console.error(`   ❌ LLM formatter failed:`, formatterError);
+        // Fallback to template-based response
+        console.log(`   📋 Falling back to template-based response`);
+        responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
+      }
     } else {
-      // Normal response generation with language translation
+      // Non-decision responses (clarification, photo request, etc.)
       responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
     }
     
     // Verify language consistency
     const responseHasTargetLanguage = verifyLanguageConsistency(responseContent, detectedLanguage);
-    console.log(`🌐 [${traceId}] Language Check: input=${detectedLanguage}, response_matches=${responseHasTargetLanguage}`);
+    console.log(`   🌐 Language Check: input=${detectedLanguage}, response_matches=${responseHasTargetLanguage}`);
     
     if (!responseHasTargetLanguage && detectedLanguage !== 'en') {
-      console.log(`🔄 [${traceId}] Response not in target language, applying translation`);
-      // Force translation to target language
+      console.log(`   🔄 Response not in target language, applying translation`);
       responseContent = forceTranslateResponse(responseContent, detectedLanguage as 'mr' | 'hi' | 'en');
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
     // VALIDATION GATE: Prevent silent failures before saving response
     // ═══════════════════════════════════════════════════════════════════════════
-    const decision_brain_source = true; // This flow always uses decision brain
+    const decision_brain_source = true;
     const validationResult = validateResponseBeforeSave({
       decision_brain_source,
       actions_returned,
@@ -474,6 +538,7 @@ serve(async (req) => {
     console.log(`   Decision Brain Source: ${decision_brain_source}`);
     console.log(`   Actions Returned Count: ${actions_returned?.length || 0}`);
     console.log(`   Response Content Length: ${responseContent?.length || 0}`);
+    console.log(`   LLM Model Used: ${aiModelUsed || 'template'}`);
     console.log(`   Validation Passed: ${validationResult.passed}`);
     
     if (!validationResult.passed) {
@@ -484,6 +549,7 @@ serve(async (req) => {
         actions_returned: actions_returned,
         actions_filtered_out: actions_filtered_out,
         response_content_preview: responseContent?.substring(0, 200),
+        llm_formatter_used: !!llmFormatterOutput,
         metadata: orchestratorResponse.metadata
       }, null, 2));
       
@@ -530,6 +596,7 @@ serve(async (req) => {
         message_type: 'orchestrator',
         response_time_ms: responseTime,
         decision_brain_source: true,
+        ai_model: aiModelUsed || 'template', // PHASE 5: Track LLM model used
         is_training_candidate: true,
         conversation_turn_number: messages.length + 1,
         // Store actions with explicit filter reasons
@@ -547,6 +614,10 @@ serve(async (req) => {
           actions_filtered_count: actions_filtered_out?.length || 0,
           all_actions_filtered: allActionsFiltered,
           filter_categories: audit_log.filter_categories,
+          // PHASE 5: LLM formatter tracking
+          llm_formatter_used: !!llmFormatterOutput,
+          llm_formatter_source: llmFormatterOutput?.source,
+          llm_formatter_time_ms: llmFormatterOutput?.processing_time_ms,
           // VALIDATION GATE: Track whether response passed validation
           response_validation_passed: validationResult.passed,
           validation_errors: validationResult.passed ? undefined : validationResult.errors,
