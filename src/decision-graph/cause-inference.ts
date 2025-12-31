@@ -34,6 +34,9 @@ import MICRONUTRIENT_RULES from './crop-group-rules/micronutrients';
 // Import safety rules
 import { getAllSafetyRules } from './safety-rules';
 
+// Import intelligence rules (variety recommendations)
+import { VARIETY_RECOMMENDATION_RULES } from './intelligence/variety-recommendation-rules';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // GLOBAL FALLBACK RULES - Apply to all crops
 // ═══════════════════════════════════════════════════════════════════════════
@@ -688,10 +691,11 @@ export function inferCauses(
   const executionTrace: RuleExecutionResult[] = [];
   const matchedCauses: Map<Cause, { priority: number; rule_id: string }> = new Map();
 
-  // Combine all applicable rules (safety rules first for priority, then micronutrients)
+  // Combine all applicable rules (safety rules first for priority, then micronutrients, then variety)
   const allRules = [
     ...getAllSafetyRules(),
     ...MICRONUTRIENT_RULES,
+    ...VARIETY_RECOMMENDATION_RULES,
     ...additionalRules,
     ...GLOBAL_RULES
   ];
