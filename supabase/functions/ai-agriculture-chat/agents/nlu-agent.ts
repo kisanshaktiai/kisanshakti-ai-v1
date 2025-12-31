@@ -36,10 +36,15 @@ import {
   getAllSymptomTerms,
 } from './agricultural-vocabulary.ts';
 
-// CRITICAL FIX: Import normalization for consistent pest codes
-import { normalizePestCode } from './type-mappers.ts';
+// CRITICAL FIX: Import CENTRALIZED entity normalizer for consistent codes across pipeline
+import { 
+  normalizePestEntity, 
+  normalizeDiseaseEntity, 
+  normalizeCropEntity,
+  validateEntityConsistency 
+} from './entity-normalizer.ts';
 
-const NLU_VERSION = '4.0.0';
+const NLU_VERSION = '4.1.0'; // Updated to include centralized entity normalization
 
 // ═══════════════════════════════════════════════════════════════════════════
 // AI-POWERED SEMANTIC UNDERSTANDING (Gemini/OpenAI)
@@ -502,8 +507,10 @@ function extractEntities(text: string): EntityExtractionResult {
       /सुरळी.*(वाळली|मरली|सुकली|पूर्ण)/.test(text) ||
       /ऊसाची.*सुरळी/.test(text) ||
       /गाभा\s*सुकला/.test(text)) {
-    pests.push({ canonical: 'SHOOT_BORER', localTerm: 'शूट बोरर / Dead Heart', confidence: 0.92 });
-    console.log('🎯 [EntityExtraction] Multi-word match: SHOOT_BORER');
+    // CRITICAL: Normalize to canonical code using centralized normalizer
+    const normalizedCode = normalizePestEntity('SHOOT_BORER');
+    pests.push({ canonical: normalizedCode, localTerm: 'शूट बोरर / Dead Heart', confidence: 0.92 });
+    console.log(`🎯 [EntityExtraction] Multi-word match: ${normalizedCode}`);
   }
   
   // Check multi-word pest terms from vocabulary against full text
@@ -515,16 +522,19 @@ function extractEntities(text: string): EntityExtractionResult {
     }
   }
   
-  // Then check single words
+  // Then check single words and NORMALIZE all entity codes
   for (const word of words) {
-    if (cropTerms.has(word) && !crops.find(c => c.canonical === cropTerms.get(word))) {
-      crops.push({ canonical: cropTerms.get(word)!, localTerm: word, confidence: 0.9 });
+    if (cropTerms.has(word) && !crops.find(c => c.canonical === normalizeCropEntity(cropTerms.get(word)))) {
+      const normalizedCrop = normalizeCropEntity(cropTerms.get(word)!);
+      crops.push({ canonical: normalizedCrop, localTerm: word, confidence: 0.9 });
     }
-    if (pestTerms.has(word) && !pests.find(p => p.canonical === pestTerms.get(word))) {
-      pests.push({ canonical: pestTerms.get(word)!, localTerm: word, confidence: 0.85 });
+    if (pestTerms.has(word) && !pests.find(p => p.canonical === normalizePestEntity(pestTerms.get(word)))) {
+      const normalizedPest = normalizePestEntity(pestTerms.get(word)!);
+      pests.push({ canonical: normalizedPest, localTerm: word, confidence: 0.85 });
     }
-    if (diseaseTerms.has(word) && !diseases.find(d => d.canonical === diseaseTerms.get(word))) {
-      diseases.push({ canonical: diseaseTerms.get(word)!, localTerm: word, confidence: 0.85 });
+    if (diseaseTerms.has(word) && !diseases.find(d => d.canonical === normalizeDiseaseEntity(diseaseTerms.get(word)))) {
+      const normalizedDisease = normalizeDiseaseEntity(diseaseTerms.get(word)!);
+      diseases.push({ canonical: normalizedDisease, localTerm: word, confidence: 0.85 });
     }
   }
   
@@ -674,43 +684,44 @@ function inferPestDiseaseFromSymptoms(text: string, symptoms: VisualSymptom[]): 
       /सुरळी.*(वाळली|मरली|सुकली|पूर्ण|वाळल)/.test(text) ||
       /ऊसाची.*सुरळी/.test(text) ||
       /डेड\s*हार्ट|deadheart/i.test(text)) {
-    result.pest = { canonical: 'SHOOT_BORER', localTerm: 'शूट बोरर / Dead Heart', confidence: 0.92 };
-    console.log('🎯 [NLU] Detected SHOOT_BORER from symptom pattern:', text.substring(0, 50));
+    const normalizedCode = normalizePestEntity('SHOOT_BORER');
+    result.pest = { canonical: normalizedCode, localTerm: 'शूट बोरर / Dead Heart', confidence: 0.92 };
+    console.log(`🎯 [NLU] Detected ${normalizedCode} from symptom pattern:`, text.substring(0, 50));
   }
   
   // Whitefly patterns
   if (/पांढऱ्या?\s*माश[ाी]|सफेद\s*मक्खी|white\s*fl(y|ies)/.test(text)) {
-    result.pest = { canonical: 'WHITEFLY', localTerm: 'पांढरी माशी', confidence: 0.9 };
+    result.pest = { canonical: normalizePestEntity('WHITEFLY'), localTerm: 'पांढरी माशी', confidence: 0.9 };
   }
   
   // Bollworm patterns
   if (/बोंड\s*(अळी|किडा)|बोंडातील|boll\s*worm|bolls?\s*damaged/.test(text)) {
-    result.pest = { canonical: 'BOLLWORM', localTerm: 'बोंड अळी', confidence: 0.85 };
+    result.pest = { canonical: normalizePestEntity('BOLLWORM'), localTerm: 'बोंड अळी', confidence: 0.85 };
   }
   
   // Aphid patterns
   if (/मावा|माव[ाे]|aphid|चिकट\s*पाणी|honeydew/.test(text)) {
-    result.pest = { canonical: 'APHID', localTerm: 'मावा', confidence: 0.85 };
+    result.pest = { canonical: normalizePestEntity('APHID'), localTerm: 'मावा', confidence: 0.85 };
   }
   
   // Powdery mildew patterns
   if (/पांढरी?\s*भुकटी|सफेद\s*पाउडर|powdery\s*mildew|white\s*powder/.test(text)) {
-    result.disease = { canonical: 'POWDERY_MILDEW', localTerm: 'भुरी', confidence: 0.85 };
+    result.disease = { canonical: normalizeDiseaseEntity('POWDERY_MILDEW'), localTerm: 'भुरी', confidence: 0.85 };
   }
   
   // Rust patterns
   if (/तांबेरा|रस्ट|rust|तांबड[ेा]\s*डाग|orange\s*spots/.test(text)) {
-    result.disease = { canonical: 'RUST', localTerm: 'तांबेरा', confidence: 0.85 };
+    result.disease = { canonical: normalizeDiseaseEntity('RUST'), localTerm: 'तांबेरा', confidence: 0.85 };
   }
   
   // Wilt patterns
   if (/विल्ट|wilt|मरगळ|सुकणे|wilting|drooping/.test(text)) {
-    result.disease = { canonical: 'WILT', localTerm: 'मरगळ', confidence: 0.8 };
+    result.disease = { canonical: normalizeDiseaseEntity('WILT'), localTerm: 'मरगळ', confidence: 0.8 };
   }
   
   // Leaf curl patterns
   if (/पाने?\s*(वळ|curl)|leaf\s*curl|curled\s*leaves/.test(text)) {
-    result.disease = { canonical: 'LEAF_CURL', localTerm: 'पाने वळणे', confidence: 0.8 };
+    result.disease = { canonical: normalizeDiseaseEntity('LEAF_CURL'), localTerm: 'पाने वळणे', confidence: 0.8 };
   }
   
   return result;
@@ -767,20 +778,33 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
     });
   }
   if (aiResult?.pest && !entityResult.pests.length) {
-    // CRITICAL FIX: Normalize pest code to use underscores (SHOOT_BORER not SHOOTBORER)
-    let pestCode = aiResult.pest.code.toUpperCase();
-    pestCode = normalizePestCode(pestCode);
+    // CRITICAL: Use centralized entity normalizer for consistent codes
+    const normalizedPestCode = normalizePestEntity(aiResult.pest.code);
     entityResult.pests.push({
-      canonical: pestCode,
+      canonical: normalizedPestCode,
       localTerm: aiResult.pest.name,
       confidence: 0.85
     });
+    console.log(`🔄 [NLU] AI pest normalized: "${aiResult.pest.code}" → "${normalizedPestCode}"`);
   }
   if (aiResult?.disease && !entityResult.diseases.length) {
+    // Use centralized normalizer for diseases too
+    const normalizedDiseaseCode = normalizeDiseaseEntity(aiResult.disease.code);
     entityResult.diseases.push({
-      canonical: aiResult.disease.code,
+      canonical: normalizedDiseaseCode,
       localTerm: aiResult.disease.name,
       confidence: 0.85
+    });
+    console.log(`🔄 [NLU] AI disease normalized: "${aiResult.disease.code}" → "${normalizedDiseaseCode}"`);
+  }
+  
+  // VALIDATION LOGGING: Log entity codes for pipeline consistency verification
+  if (entityResult.pests.length > 0 || entityResult.diseases.length > 0) {
+    console.log('📋 [NLU_ENTITY_VALIDATION] Extracted entities:', {
+      pests: entityResult.pests.map(p => ({ code: p.canonical, term: p.localTerm })),
+      diseases: entityResult.diseases.map(d => ({ code: d.canonical, term: d.localTerm })),
+      crops: entityResult.crops.map(c => ({ code: c.canonical, term: c.localTerm })),
+      stage: 'NLU_EXTRACTION'
     });
   }
   

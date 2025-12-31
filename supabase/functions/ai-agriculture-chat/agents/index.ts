@@ -113,3 +113,7 @@ export { validateLanguageQuality, enforceTermConsistency, getSafeAskMoreInfoMess
 // Response Validation Gate (PART 9)
 export * from './response-validation-gate.ts';
 export { validateResponseBeforeSend } from './response-validation-gate.ts';
+
+// Centralized Entity Normalizer (CRITICAL: Single source of truth for pest/disease/crop codes)
+export * from './entity-normalizer.ts';
+export { normalizePestEntity, normalizeDiseaseEntity, normalizeCropEntity, validateEntityConsistency } from './entity-normalizer.ts';
