@@ -262,8 +262,21 @@ serve(async (req) => {
       );
     }
 
-    // Detect language from message
+    // ═══════════════════════════════════════════════════════════════════════════
+    // LANGUAGE DETECTION & CONSISTENCY CHECK
+    // Detect user's language and prepare for translation pipeline
+    // ═══════════════════════════════════════════════════════════════════════════
     const detectedLanguage = detectLanguage(userMessageContent, language);
+    
+    // Normalize content to English for NLU processing (preprocessed_content)
+    const preprocessedContent = normalizeToEnglish(userMessageContent);
+    
+    console.log(`🌐 [${traceId}] Language Pipeline:`, {
+      raw_input_language: detectedLanguage,
+      has_devanagari: /[\u0900-\u097F]/.test(userMessageContent),
+      preprocessed_to_english: preprocessedContent.substring(0, 50),
+      output_language_target: detectedLanguage
+    });
     
     // ═══════════════════════════════════════════════════════════════════════════
     // SESSION CONTEXT INJECTION - Add previous recommendation context
@@ -323,49 +336,137 @@ serve(async (req) => {
     const responseTime = Date.now() - startTime;
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // PHASE 3A: EXTRACT & AUDIT RECOMMENDATIONS FROM DECISION BRAIN
+    // PHASE 3A: COMPREHENSIVE FILTERING AUDIT WITH TRANSPARENT LOGGING
     // ═══════════════════════════════════════════════════════════════════════════
-    const { actions_returned, actions_filtered_out, audit_log } = extractAndAuditActions(orchestratorResponse, traceId);
     
-    // Log complete audit trail
-    console.log(`\n📋 [${traceId}] ═══ DECISION AUDIT START ═══`);
-    console.log(`📋 [${traceId}] Orchestrator Type: ${orchestratorResponse.type}`);
-    console.log(`📋 [${traceId}] Actions Returned: ${actions_returned?.length || 0}`);
-    console.log(`📋 [${traceId}] Actions Filtered: ${actions_filtered_out?.length || 0}`);
+    // STEP 1: Log RAW recommendations from decision graph BEFORE any filtering
+    console.log(`\n🔬 [${traceId}] ═══ FILTERING AUDIT START ═══`);
+    console.log(`🔬 [${traceId}] ─── BEFORE FILTERING: RAW DECISION GRAPH OUTPUT ───`);
+    
+    const rawDecisionOutput = orchestratorResponse.decision_output;
+    if (rawDecisionOutput) {
+      console.log(`   Status: ${rawDecisionOutput.status}`);
+      console.log(`   Primary Decision: ${rawDecisionOutput.primary_decision?.action_type || 'NONE'}`);
+      console.log(`   Secondary Actions: ${rawDecisionOutput.secondary_actions?.length || 0}`);
+      console.log(`   Blocked Actions: ${rawDecisionOutput.blocked_actions?.length || 0}`);
+      
+      // Log all raw recommendations before processing
+      if (rawDecisionOutput.primary_decision) {
+        console.log(`   📌 RAW Primary: ${JSON.stringify({
+          action_type: rawDecisionOutput.primary_decision.action_type,
+          product: rawDecisionOutput.primary_decision.application_details?.product_name,
+          target: rawDecisionOutput.primary_decision.target,
+          priority: rawDecisionOutput.primary_decision.priority
+        })}`);
+      }
+      if (rawDecisionOutput.secondary_actions?.length > 0) {
+        rawDecisionOutput.secondary_actions.forEach((sec: any, i: number) => {
+          console.log(`   📎 RAW Secondary ${i + 1}: ${sec.action} | Priority: ${sec.priority}`);
+        });
+      }
+    } else {
+      console.log(`   ⚠️ No decision_output present in orchestrator response`);
+    }
+    
+    // STEP 2: Extract and audit with filter logging
+    const { actions_returned, actions_filtered_out, audit_log, filter_trace } = extractAndAuditActionsWithFilterTrace(orchestratorResponse, traceId);
+    
+    // STEP 3: Log DURING filtering - each filter rule applied
+    console.log(`\n🔬 [${traceId}] ─── DURING FILTERING: FILTER RULES APPLIED ───`);
+    if (filter_trace && filter_trace.length > 0) {
+      filter_trace.forEach((trace, idx) => {
+        const icon = trace.passed ? '✅' : '❌';
+        console.log(`   ${icon} Rule ${idx + 1}: ${trace.filter_name}`);
+        console.log(`      Action: ${trace.action}`);
+        console.log(`      Result: ${trace.passed ? 'PASSED' : 'BLOCKED'}`);
+        if (!trace.passed) {
+          console.log(`      Reason: ${trace.reason}`);
+          console.log(`      Category: ${trace.category}`);
+        }
+      });
+    } else {
+      console.log(`   ℹ️ No explicit filter rules applied (direct pass-through)`);
+    }
+    
+    // STEP 4: Log AFTER filtering - what PASSED and what was BLOCKED
+    console.log(`\n🔬 [${traceId}] ─── AFTER FILTERING: FINAL RESULTS ───`);
+    console.log(`   ✅ PASSED Actions: ${actions_returned?.length || 0}`);
+    console.log(`   ❌ BLOCKED Actions: ${actions_filtered_out?.length || 0}`);
+    
+    if (actions_returned && actions_returned.length > 0) {
+      console.log(`   ─── PASSED RECOMMENDATIONS ───`);
+      actions_returned.forEach((action, idx) => {
+        console.log(`   ${idx + 1}. [PASSED] ${action.action_type || action.action}`);
+        console.log(`      Product: ${action.product_name || 'N/A'}`);
+        console.log(`      Priority: ${action.priority || 'N/A'}`);
+        console.log(`      Rule ID: ${action.rule_id || 'N/A'}`);
+      });
+    }
+    
+    if (actions_filtered_out && actions_filtered_out.length > 0) {
+      console.log(`   ─── BLOCKED ACTIONS (with explicit reasons) ───`);
+      actions_filtered_out.forEach((filtered, idx) => {
+        console.log(`   ${idx + 1}. [BLOCKED] ${filtered.action}`);
+        console.log(`      Category: ${filtered.filter_category}`);
+        console.log(`      Reason: ${filtered.reason}`);
+        console.log(`      Blocked By Rule: ${filtered.blocked_by_rule || 'SYSTEM'}`);
+        if (filtered.alternatives?.length > 0) {
+          console.log(`      Alternatives: ${filtered.alternatives.join(', ')}`);
+        }
+      });
+    }
+    
+    // Log filter category summary
+    if (Object.keys(audit_log.filter_categories).length > 0) {
+      console.log(`   ─── FILTER CATEGORY SUMMARY ───`);
+      Object.entries(audit_log.filter_categories).forEach(([category, count]) => {
+        console.log(`      ${category}: ${count} action(s) blocked`);
+      });
+    }
     
     if (audit_log.validation_errors.length > 0) {
       console.warn(`⚠️ [${traceId}] Validation Errors:`, audit_log.validation_errors);
     }
+    console.log(`🔬 [${traceId}] ═══ FILTERING AUDIT END ═══\n`);
     
-    // Log each recommendation in detail
-    if (actions_returned && actions_returned.length > 0) {
-      console.log(`📋 [${traceId}] ─── RECOMMENDATIONS DETAIL ───`);
-      actions_returned.forEach((action, idx) => {
-        console.log(`   ${idx + 1}. Type: ${action.type}, Action: ${action.action_type || action.action}`);
-        console.log(`      Product: ${action.product_name || 'N/A'}, Priority: ${action.priority || 'N/A'}`);
-        console.log(`      Has Title: ${!!action.title}, Has Description: ${!!action.description}`);
-      });
+    // STEP 5: Check if ALL actions were filtered - generate special response
+    const allActionsFiltered = orchestratorResponse.type === 'DECISION_PROVIDED' &&
+      (!actions_returned || actions_returned.length === 0) &&
+      (actions_filtered_out && actions_filtered_out.length > 0);
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 3B: LANGUAGE CONSISTENCY - Translate to user's language
+    // ═══════════════════════════════════════════════════════════════════════════
+    let responseContent: string;
+    
+    if (allActionsFiltered) {
+      // Special response when all actions were filtered
+      console.log(`⚠️ [${traceId}] ALL actions filtered - generating explanation`);
+      responseContent = generateAllActionsFilteredResponse(actions_filtered_out, detectedLanguage as 'mr' | 'hi' | 'en');
+    } else {
+      // Normal response generation with language translation
+      responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
     }
     
-    // Log WHY actions were filtered
-    if (actions_filtered_out && actions_filtered_out.length > 0) {
-      console.log(`📋 [${traceId}] ─── FILTERED ACTIONS (with reasons) ───`);
-      actions_filtered_out.forEach((filtered, idx) => {
-        console.log(`   ${idx + 1}. Action: ${filtered.action}`);
-        console.log(`      Filter Reason: ${filtered.filter_category} - ${filtered.reason}`);
-        console.log(`      Blocked By: ${filtered.blocked_by_rule || 'N/A'}`);
-      });
-    }
-    console.log(`📋 [${traceId}] ═══ DECISION AUDIT END ═══\n`);
+    // Verify language consistency
+    const responseHasTargetLanguage = verifyLanguageConsistency(responseContent, detectedLanguage);
+    console.log(`🌐 [${traceId}] Language Check: input=${detectedLanguage}, response_matches=${responseHasTargetLanguage}`);
     
-    // Store user message
+    if (!responseHasTargetLanguage && detectedLanguage !== 'en') {
+      console.log(`🔄 [${traceId}] Response not in target language, applying translation`);
+      // Force translation to target language
+      responseContent = forceTranslateResponse(responseContent, detectedLanguage as 'mr' | 'hi' | 'en');
+    }
+    
+    // Store user message with preprocessed_content (English normalized)
     try {
       await supabase.from('ai_chat_messages').insert({
         session_id: currentSessionId,
         tenant_id: finalTenantId,
         farmer_id: finalFarmerId,
         role: 'user',
-        content: userMessageContent,
+        content: userMessageContent, // Original in user's language
+        preprocessed_content: preprocessedContent, // Normalized to English for NLU
         language: detectedLanguage,
         message_type: imageUrl ? 'image_analysis' : 'text',
         image_urls: imageUrl ? [imageUrl] : null,
@@ -375,25 +476,26 @@ serve(async (req) => {
         metadata: {
           source: 'orchestrator_v1',
           has_image: !!imageUrl,
-          land_id: landId
+          land_id: landId,
+          language_detected: detectedLanguage,
+          preprocessed: true
         }
       });
       
-      // Store assistant response with actions
-      const responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
+      // Store assistant response with language-appropriate content
       await supabase.from('ai_chat_messages').insert({
         session_id: currentSessionId,
         tenant_id: finalTenantId,
         farmer_id: finalFarmerId,
         role: 'assistant',
-        content: responseContent,
+        content: responseContent, // In user's language (translated if needed)
         language: detectedLanguage,
         message_type: 'orchestrator',
         response_time_ms: responseTime,
         decision_brain_source: true,
         is_training_candidate: true,
         conversation_turn_number: messages.length + 1,
-        // ✅ CRITICAL FIX: Store actions data
+        // Store actions with explicit filter reasons
         actions_returned: actions_returned,
         actions_filtered_out: actions_filtered_out,
         metadata: {
@@ -405,11 +507,18 @@ serve(async (req) => {
           decision_id: orchestratorResponse.decision_id,
           trace_id: traceId,
           actions_returned_count: actions_returned?.length || 0,
-          actions_filtered_count: actions_filtered_out?.length || 0
+          actions_filtered_count: actions_filtered_out?.length || 0,
+          all_actions_filtered: allActionsFiltered,
+          filter_categories: audit_log.filter_categories,
+          language_pipeline: {
+            input_language: detectedLanguage,
+            output_language: detectedLanguage,
+            translation_applied: !responseHasTargetLanguage
+          }
         }
       });
       
-      console.log('💾 [Storage] Messages saved for training');
+      console.log('💾 [Storage] Messages saved with language consistency');
     } catch (storageError) {
       console.warn('⚠️ [Storage] Failed to save messages:', storageError);
       // Continue - don't fail the request for storage issues
@@ -521,15 +630,206 @@ serve(async (req) => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
+ * Normalize message content to English for NLU processing
+ * Maps common agricultural terms from regional languages to English
+ */
+function normalizeToEnglish(content: string): string {
+  // Common agricultural term mappings
+  const termMappings: Record<string, string> = {
+    // Marathi terms
+    'ऊस': 'sugarcane',
+    'मधली सुरळी': 'shoot borer',
+    'खोड किडा': 'stem borer',
+    'कापूस': 'cotton',
+    'सोयाबीन': 'soybean',
+    'तूर': 'tur dal',
+    'गहू': 'wheat',
+    'भात': 'paddy',
+    'ज्वारी': 'jowar',
+    'बाजरी': 'bajra',
+    'फवारणी': 'spray',
+    'खत': 'fertilizer',
+    'पाणी': 'water',
+    'रोग': 'disease',
+    'किडा': 'pest',
+    'पान': 'leaf',
+    // Hindi terms
+    'गन्ना': 'sugarcane',
+    'कीट': 'pest',
+    'बीमारी': 'disease',
+    'छिड़काव': 'spray',
+    'उर्वरक': 'fertilizer',
+    'सिंचाई': 'irrigation'
+  };
+  
+  let normalized = content;
+  for (const [regional, english] of Object.entries(termMappings)) {
+    normalized = normalized.replace(new RegExp(regional, 'gi'), english);
+  }
+  
+  return normalized;
+}
+
+/**
+ * Verify if response content matches target language
+ */
+function verifyLanguageConsistency(content: string, targetLanguage: string): boolean {
+  if (targetLanguage === 'en') {
+    // For English, check it's mostly ASCII
+    const asciiRatio = (content.match(/[\x00-\x7F]/g) || []).length / content.length;
+    return asciiRatio > 0.8;
+  }
+  
+  if (targetLanguage === 'mr' || targetLanguage === 'hi') {
+    // For Marathi/Hindi, check for Devanagari presence
+    const hasDevanagari = /[\u0900-\u097F]/.test(content);
+    return hasDevanagari;
+  }
+  
+  return true; // Default to true for other languages
+}
+
+/**
+ * Force translate response to target language using templates
+ */
+function forceTranslateResponse(content: string, targetLang: 'mr' | 'hi' | 'en'): string {
+  if (targetLang === 'en') return content;
+  
+  // Basic translation templates for common phrases
+  const translations: Record<string, Record<string, string>> = {
+    'Hello farmer friend!': {
+      mr: 'नमस्कार शेतकरी मित्र!',
+      hi: 'नमस्कार किसान मित्र!'
+    },
+    'What to do now:': {
+      mr: 'आता काय करावे:',
+      hi: 'अभी क्या करें:'
+    },
+    'Recommendations:': {
+      mr: 'शिफारसी:',
+      hi: 'सिफारिशें:'
+    },
+    'Best wishes!': {
+      mr: 'शुभेच्छा!',
+      hi: 'शुभकामनाएं!'
+    },
+    'Morning': {
+      mr: 'सकाळी',
+      hi: 'सुबह'
+    },
+    'Evening': {
+      mr: 'संध्याकाळी',
+      hi: 'शाम को'
+    },
+    'Apply': {
+      mr: 'वापरा',
+      hi: 'लगाएं'
+    }
+  };
+  
+  let translated = content;
+  for (const [english, langs] of Object.entries(translations)) {
+    translated = translated.replace(new RegExp(english, 'gi'), langs[targetLang] || english);
+  }
+  
+  return translated;
+}
+
+/**
+ * Generate response when ALL actions were filtered
+ */
+function generateAllActionsFilteredResponse(
+  filteredActions: any[], 
+  lang: 'mr' | 'hi' | 'en'
+): string {
+  const parts: string[] = [];
+  
+  // Greeting
+  const greetings: Record<string, string> = {
+    mr: 'नमस्कार शेतकरी मित्र! 🌾',
+    hi: 'नमस्कार किसान मित्र! 🌾',
+    en: 'Hello farmer friend! 🌾'
+  };
+  parts.push(greetings[lang]);
+  
+  // Explanation
+  const explanations: Record<string, string> = {
+    mr: '⚠️ सध्या या परिस्थितीत शिफारसी देणे शक्य नाही. कारणे खालीलप्रमाणे:',
+    hi: '⚠️ वर्तमान में इस स्थिति में सिफारिशें देना संभव नहीं है। कारण इस प्रकार हैं:',
+    en: '⚠️ Unable to provide recommendations at this time. Here\'s why:'
+  };
+  parts.push(explanations[lang]);
+  
+  // List filtered reasons by category
+  const categoryReasons: Record<string, string[]> = {};
+  filteredActions.forEach(action => {
+    const category = action.filter_category || 'UNKNOWN';
+    if (!categoryReasons[category]) categoryReasons[category] = [];
+    categoryReasons[category].push(action.reason || action.action);
+  });
+  
+  const categoryLabels: Record<string, Record<string, string>> = {
+    REGULATORY: {
+      mr: '📋 नियामक निर्बंध',
+      hi: '📋 नियामक प्रतिबंध',
+      en: '📋 Regulatory Restrictions'
+    },
+    SAFETY: {
+      mr: '🛡️ सुरक्षा कारणे',
+      hi: '🛡️ सुरक्षा कारण',
+      en: '🛡️ Safety Reasons'
+    },
+    SEASONAL: {
+      mr: '📅 हंगाम-संबंधित',
+      hi: '📅 मौसम-संबंधित',
+      en: '📅 Seasonal Restrictions'
+    },
+    WEATHER: {
+      mr: '🌧️ हवामान-संबंधित',
+      hi: '🌧️ मौसम-संबंधित',
+      en: '🌧️ Weather Conditions'
+    },
+    ECONOMIC: {
+      mr: '💰 आर्थिक कारणे',
+      hi: '💰 आर्थिक कारण',
+      en: '💰 Economic Factors'
+    },
+    COMPATIBILITY: {
+      mr: '⚗️ सुसंगतता समस्या',
+      hi: '⚗️ संगतता समस्या',
+      en: '⚗️ Compatibility Issues'
+    },
+    UNKNOWN: {
+      mr: 'ℹ️ इतर कारणे',
+      hi: 'ℹ️ अन्य कारण',
+      en: 'ℹ️ Other Reasons'
+    }
+  };
+  
+  Object.entries(categoryReasons).forEach(([category, reasons]) => {
+    const label = categoryLabels[category]?.[lang] || category;
+    parts.push(`\n${label}:`);
+    reasons.slice(0, 2).forEach(reason => {
+      parts.push(`  • ${reason}`);
+    });
+  });
+  
+  // Suggestion
+  const suggestions: Record<string, string> = {
+    mr: '\n💡 **पुढे काय करावे:**\n1. हवामान सुधारण्याची प्रतीक्षा करा\n2. पीक टप्पा बदलल्यावर पुन्हा विचारा\n3. कृषी अधिकाऱ्यांशी संपर्क साधा',
+    hi: '\n💡 **आगे क्या करें:**\n1. मौसम सुधरने का इंतज़ार करें\n2. फसल चरण बदलने पर फिर से पूछें\n3. कृषि अधिकारियों से संपर्क करें',
+    en: '\n💡 **What to do next:**\n1. Wait for weather conditions to improve\n2. Ask again when crop stage changes\n3. Contact your local agricultural officer'
+  };
+  parts.push(suggestions[lang]);
+  
+  return parts.join('\n');
+}
+
+/**
  * ═══════════════════════════════════════════════════════════════════════════
- * EXTRACT & AUDIT ACTIONS - Comprehensive action extraction with validation
+ * EXTRACT & AUDIT ACTIONS WITH FILTER TRACE
+ * Enhanced version with detailed filter rule logging
  * ═══════════════════════════════════════════════════════════════════════════
- * 
- * This function:
- * 1. Logs EXACTLY what's in the recommendations array
- * 2. Verifies each recommendation has: title, description, priority, actions
- * 3. Categorizes WHY actions were filtered (regulatory, safety, seasonal)
- * 4. Returns complete audit trail
  */
 interface ActionAuditLog {
   total_recommendations: number;
@@ -538,11 +838,25 @@ interface ActionAuditLog {
   filter_categories: Record<string, number>;
 }
 
-type FilterCategory = 'REGULATORY' | 'SAFETY' | 'SEASONAL' | 'WEATHER' | 'ECONOMIC' | 'COMPATIBILITY' | 'UNKNOWN';
+interface FilterTraceEntry {
+  filter_name: string;
+  action: string;
+  passed: boolean;
+  reason?: string;
+  category?: string;
+}
+
+type FilterCategory = 'REGULATORY' | 'SAFETY' | 'SEASONAL' | 'WEATHER' | 'ECONOMIC' | 'COMPATIBILITY' | 'EMERGENCY' | 'UNKNOWN';
 
 function categorizeFilterReason(reason: string, blockedByRule?: string): FilterCategory {
   const reasonLower = (reason || '').toLowerCase();
   const ruleLower = (blockedByRule || '').toLowerCase();
+  
+  // Emergency: immediate danger, acute toxicity
+  if (reasonLower.includes('emergency') || reasonLower.includes('acute') || 
+      reasonLower.includes('immediate') || reasonLower.includes('danger')) {
+    return 'EMERGENCY';
+  }
   
   // Regulatory: pesticide bans, government restrictions
   if (reasonLower.includes('banned') || reasonLower.includes('regulated') || 
@@ -584,10 +898,11 @@ function categorizeFilterReason(reason: string, blockedByRule?: string): FilterC
   return 'UNKNOWN';
 }
 
-function extractAndAuditActions(orchestratorResponse: OrchestratorResponse, traceId: string): {
+function extractAndAuditActionsWithFilterTrace(orchestratorResponse: OrchestratorResponse, traceId: string): {
   actions_returned: any[] | null;
   actions_filtered_out: any[] | null;
   audit_log: ActionAuditLog;
+  filter_trace: FilterTraceEntry[];
 } {
   const audit_log: ActionAuditLog = {
     total_recommendations: 0,
@@ -596,17 +911,19 @@ function extractAndAuditActions(orchestratorResponse: OrchestratorResponse, trac
     filter_categories: {}
   };
   
+  const filter_trace: FilterTraceEntry[] = [];
+  
   // Return early for non-decision types
   if (orchestratorResponse.type !== 'DECISION_PROVIDED') {
     console.log(`📋 [${traceId}] Non-decision response type: ${orchestratorResponse.type}`);
-    return { actions_returned: null, actions_filtered_out: null, audit_log };
+    return { actions_returned: null, actions_filtered_out: null, audit_log, filter_trace };
   }
 
   const decisionOutput = orchestratorResponse.decision_output;
   
   if (!decisionOutput) {
     audit_log.validation_errors.push('decision_output is null/undefined');
-    return { actions_returned: null, actions_filtered_out: null, audit_log };
+    return { actions_returned: null, actions_filtered_out: null, audit_log, filter_trace };
   }
 
   const actionsReturned: any[] = [];
@@ -647,6 +964,13 @@ function extractAndAuditActions(orchestratorResponse: OrchestratorResponse, trac
       actions: [primary.action_type]
     };
     
+    // Log filter trace for primary action (it passed all filters)
+    filter_trace.push({
+      filter_name: 'DECISION_GRAPH_OUTPUT',
+      action: primary.action_type,
+      passed: true
+    });
+    
     actionsReturned.push(enrichedAction);
     validationErrors.forEach(e => audit_log.validation_errors.push(e));
   }
@@ -658,6 +982,13 @@ function extractAndAuditActions(orchestratorResponse: OrchestratorResponse, trac
       if (!secondary.action) {
         audit_log.validation_errors.push('secondary.action missing');
       }
+      
+      // Log filter trace for secondary action
+      filter_trace.push({
+        filter_name: 'SECONDARY_ACTION_INCLUDED',
+        action: secondary.action || 'UNKNOWN',
+        passed: true
+      });
       
       actionsReturned.push({
         type: 'secondary',
@@ -674,7 +1005,7 @@ function extractAndAuditActions(orchestratorResponse: OrchestratorResponse, trac
     }
   }
 
-  // Extract blocked/filtered actions with categorization
+  // Extract blocked/filtered actions with comprehensive categorization and tracing
   const actionsFilteredOut: any[] = [];
   
   if (decisionOutput.blocked_actions && decisionOutput.blocked_actions.length > 0) {
@@ -685,13 +1016,24 @@ function extractAndAuditActions(orchestratorResponse: OrchestratorResponse, trac
       audit_log.filter_categories[filterCategory] = 
         (audit_log.filter_categories[filterCategory] || 0) + 1;
       
+      // Log filter trace for blocked action with explicit reason
+      filter_trace.push({
+        filter_name: blocked.blocked_by_rule || 'SAFETY_GUARDIAN',
+        action: blocked.action || 'UNKNOWN',
+        passed: false,
+        reason: blocked.reason,
+        category: filterCategory
+      });
+      
       actionsFilteredOut.push({
         action: blocked.action,
         blocked_by_rule: blocked.blocked_by_rule,
         reason: blocked.reason,
         filter_category: filterCategory, // WHY it was filtered
         priority: blocked.priority,
-        alternatives: blocked.alternatives || []
+        alternatives: blocked.alternatives || [],
+        // Additional explicit reason fields for transparency
+        explicit_reason: buildExplicitFilterReason(blocked, filterCategory)
       });
     }
   }
@@ -702,8 +1044,27 @@ function extractAndAuditActions(orchestratorResponse: OrchestratorResponse, trac
   return {
     actions_returned: actionsReturned.length > 0 ? actionsReturned : null,
     actions_filtered_out: actionsFilteredOut.length > 0 ? actionsFilteredOut : null,
-    audit_log
+    audit_log,
+    filter_trace
   };
+}
+
+/**
+ * Build explicit human-readable filter reason
+ */
+function buildExplicitFilterReason(blocked: any, category: FilterCategory): string {
+  const reasons: Record<FilterCategory, string> = {
+    EMERGENCY: `EMERGENCY BLOCK: ${blocked.reason || 'Immediate safety concern'}`,
+    REGULATORY: `REGULATORY COMPLIANCE: ${blocked.reason || 'Product banned or restricted by government regulations'}`,
+    SAFETY: `SAFETY RESTRICTION: ${blocked.reason || 'Pre-harvest interval (PHI) or toxicity concern'}`,
+    SEASONAL: `SEASONAL MISMATCH: ${blocked.reason || 'Not appropriate for current crop growth stage'}`,
+    WEATHER: `WEATHER CONDITIONS: ${blocked.reason || 'Current weather unsuitable for application'}`,
+    ECONOMIC: `ECONOMIC FACTOR: ${blocked.reason || 'Cost or availability concern'}`,
+    COMPATIBILITY: `COMPATIBILITY ISSUE: ${blocked.reason || 'Cannot be mixed with other products'}`,
+    UNKNOWN: `FILTERED: ${blocked.reason || 'Action blocked by system rules'}`
+  };
+  
+  return reasons[category];
 }
 
 /**
