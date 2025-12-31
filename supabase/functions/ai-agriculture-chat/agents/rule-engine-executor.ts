@@ -122,26 +122,37 @@ export class RuleEngineExecutor {
       const bridgeEvaluation = await evaluateDecisionGraph(bridgeContext);
       
       // Convert bridge recommendations to RuleResult format
+      // CRITICAL FIX: Handle field name differences between bridge (name/method) and RuleResult (product_name/application_method)
       if (bridgeEvaluation.recommendations?.length > 0) {
-        bridgeResults = bridgeEvaluation.recommendations.map(rec => ({
-          rule_id: rec.rule_id,
-          priority: rec.priority as RulePriority,
-          action: bridgeEvaluation.blocked ? 'BLOCK' : 'RECOMMEND',
-          cause: rec.recommendation_type || 'INTEGRATED_RECOMMENDATION',
-          reason: rec.recommendation_text_en,
-          reason_mr: rec.recommendation_text_mr,
-          reason_hi: rec.recommendation_text_hi,
-          recommendation: rec.products?.[0] ? {
-            product_name: rec.products[0].product_name,
-            product_type: 'INTEGRATED' as any,
-            dosage: rec.products[0].dosage,
-            application_method: rec.products[0].application_method as any,
-            ipm_level: 3,
-            efficacy_percent: 80,
-            cost_per_acre_inr: parseInt(rec.cost_estimate?.replace(/[^0-9]/g, '') || '0') || 0
-          } : undefined,
-          confidence: 0.85
-        }));
+        bridgeResults = bridgeEvaluation.recommendations.map(rec => {
+          const product = rec.products?.[0];
+          // CRITICAL FIX: Map both bridge field names (name, method) AND expected field names (product_name, application_method)
+          const productName = product?.product_name || product?.name || null;
+          const productDosage = product?.dosage || null;
+          const productMethod = product?.application_method || product?.method || 'FOLIAR_SPRAY';
+          
+          console.log(`   [${traceId}] 📦 Bridge product mapping: name=${productName}, dosage=${productDosage}, method=${productMethod}`);
+          
+          return {
+            rule_id: rec.rule_id,
+            priority: rec.priority as RulePriority,
+            action: bridgeEvaluation.blocked ? 'BLOCK' : 'RECOMMEND',
+            cause: rec.recommendation_type || 'INTEGRATED_RECOMMENDATION',
+            reason: rec.recommendation_text_en,
+            reason_mr: rec.recommendation_text_mr,
+            reason_hi: rec.recommendation_text_hi,
+            recommendation: productName ? {
+              product_name: productName,
+              product_type: 'INTEGRATED' as any,
+              dosage: productDosage,
+              application_method: productMethod as any,
+              ipm_level: rec.ipm_level || 3,
+              efficacy_percent: 80,
+              cost_per_acre_inr: parseInt(rec.cost_estimate?.replace(/[^0-9]/g, '') || '0') || 0
+            } : undefined,
+            confidence: 0.85
+          };
+        });
         console.log(`   [${traceId}] ✅ Decision Graph Bridge: ${bridgeResults.length} recommendations`);
       }
       
