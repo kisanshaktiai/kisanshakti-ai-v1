@@ -73,6 +73,7 @@ import { IPM_RULES } from './ipm-rules';
 import { RESISTANCE_MANAGEMENT_RULES } from './resistance-management-rules';
 import { HARVEST_QUALITY_RULES } from './harvest-quality-rules';
 import { CROP_SPECIFIC_IPM_RULES } from './crop-specific-ipm-ladders';
+import { SOIL_PH_INTERACTION_RULES } from './soil-ph-interaction-rules';
 
 /**
  * Get total count of safety rules
@@ -90,7 +91,8 @@ export function getSafetyRuleCount(): number {
          WATER_RULES.length + 
          WEATHER_ACTION_RULES.length + 
          REGIONAL_SEASONAL_RULES.length + 
-         DISEASE_MANAGEMENT_RULES.length;
+         DISEASE_MANAGEMENT_RULES.length +
+         SOIL_PH_INTERACTION_RULES.length;
 }
 
 /**
@@ -111,6 +113,7 @@ export function getAllSafetyRules() {
     ...WEATHER_ACTION_RULES,
     ...REGIONAL_SEASONAL_RULES,
     ...DISEASE_MANAGEMENT_RULES,
+    ...SOIL_PH_INTERACTION_RULES,
   ];
 }
 
@@ -154,8 +157,12 @@ export function getRuleCountByCategory(): Record<string, number> {
     'weather-action': WEATHER_ACTION_RULES.length,
     'regional-seasonal': REGIONAL_SEASONAL_RULES.length,
     'disease-management': DISEASE_MANAGEMENT_RULES.length,
+    'soil-ph-interaction': SOIL_PH_INTERACTION_RULES.length,
   };
 }
 
 // Export crop-specific IPM rules
 export { CROP_SPECIFIC_IPM_RULES } from './crop-specific-ipm-ladders';
+
+// Export soil pH interaction rules
+export { SOIL_PH_INTERACTION_RULES } from './soil-ph-interaction-rules';

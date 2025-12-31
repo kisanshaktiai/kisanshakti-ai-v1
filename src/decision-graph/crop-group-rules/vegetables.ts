@@ -612,7 +612,7 @@ export const BRINJAL_RULES: CauseRule[] = [
     icar_package: 'ICAR-IIVR Brinjal PoP 2024'
   },
 
-  // Bacterial wilt
+// Bacterial wilt
   {
     rule_id: 'C_VEG_BRINJAL_DISEASE_002',
     category: 'disease',
@@ -792,6 +792,437 @@ export const VEGETABLES_CPWS_RULES: CauseRule[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CABBAGE RULES (7 rules)
+// Source: ICAR-IIVR + ICAR-IIHR
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const CABBAGE_RULES: CauseRule[] = [
+  // CABBAGE_DISEASE_001: Black Rot - Most Destructive
+  {
+    rule_id: 'C_VEG_CABBAGE_DISEASE_001',
+    category: 'disease',
+    crop_code: 'cabbage',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cabbage' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.CABBAGE_BLACK_ROT_RISK,
+    priority: 10,
+    scientific_source: 'ICAR-IIVR Varanasi',
+    scientific_basis: 'Xanthomonas campestris pv. campestris causes V-shaped yellow lesions from leaf margins. Systemic vascular disease. Can destroy entire crop. NO chemical cure - only prevention. Hot water seed treatment 50°C for 25 min mandatory.',
+    icar_package: 'ICAR-IIVR Cabbage PoP 2024'
+  },
+
+  // CABBAGE_DISEASE_002: Clubroot
+  {
+    rule_id: 'C_VEG_CABBAGE_DISEASE_002',
+    category: 'disease',
+    crop_code: 'cabbage',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'cabbage' &&
+      input.metadata?.soil_ph_state === 'ACIDIC' &&
+      input.ndvi_state === NDVIState.HIGH_STRESS,
+    cause: Cause.CABBAGE_CLUBROOT_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Plasmodiophora brassicae causes root galls. Favored by acidic pH <6.5. Apply lime to raise pH to 7.0-7.2. Soil-borne pathogen survives 20+ years. Rotate out of Brassica for 5-7 years.',
+    icar_package: 'ICAR Clubroot Management'
+  },
+
+  // CABBAGE_PEST_001: Diamondback Moth - THE Major Pest
+  {
+    rule_id: 'C_VEG_CABBAGE_PEST_001',
+    category: 'pest',
+    crop_code: 'cabbage',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cabbage' &&
+      input.metadata?.pest_detected === 'DIAMONDBACK_MOTH' &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.CABBAGE_DIAMONDBACK_MOTH_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-IIVR + Global IPM',
+    scientific_basis: 'Plutella xylostella is MOST serious pest of Brassicas worldwide. Highly resistant to pyrethroids. ETL: 5 larvae/plant. MUST use IPM ladder. Release Trichogramma @ 40,000/acre OR Bt spray.',
+    icar_package: 'ICAR-IIVR Cabbage IPM 2024'
+  },
+
+  // CABBAGE_PEST_002: Cabbage Aphid
+  {
+    rule_id: 'C_VEG_CABBAGE_PEST_002',
+    category: 'pest',
+    crop_code: 'cabbage',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'cabbage' &&
+      input.metadata?.pest_detected === 'APHID' &&
+      input.weather_state === WeatherState.DRY_SPELL,
+    cause: Cause.CABBAGE_APHID_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Brevicoryne brassicae forms dense colonies inside head. Dry weather favors aphids. ETL: 10-15% plants infested. Spray neem oil 0.3% OR imidacloprid 0.3ml/L.',
+    icar_package: 'ICAR-IIVR Pest Management'
+  },
+
+  // CABBAGE_NUTRIENT_001: Boron Deficiency - Hollow Stem
+  {
+    rule_id: 'C_VEG_CABBAGE_NUTRIENT_001',
+    category: 'nutrient',
+    crop_code: 'cabbage',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cabbage' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.metadata?.hollow_stem === true,
+    cause: Cause.BORON_DEFICIENCY_CRITICAL,
+    priority: 9,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Boron deficiency causes brown heart (hollow stem) in cabbage. Head develops brown patches internally. Unmarketable. Apply borax @ 10 kg/ha at planting OR foliar 0.2% at head initiation.',
+    icar_package: 'ICAR-IIVR Nutrition Guide'
+  },
+
+  // CABBAGE_WATER_001: Head Formation Critical Period
+  {
+    rule_id: 'C_VEG_CABBAGE_WATER_001',
+    category: 'water',
+    crop_code: 'cabbage',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cabbage' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.WATER_STRESS_CRITICAL,
+    priority: 9,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Head formation stage requires consistent moisture. Water stress causes loose heads, cracking, bolting. Irrigate every 5-7 days.',
+    icar_package: 'ICAR-IIVR Cabbage PoP 2024'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CAULIFLOWER RULES (6 rules)
+// Source: ICAR-IIVR + ICAR-IIHR
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const CAULIFLOWER_RULES: CauseRule[] = [
+  // CAULIFLOWER_DISEASE_001: Downy Mildew
+  {
+    rule_id: 'C_VEG_CAULIFLOWER_DISEASE_001',
+    category: 'disease',
+    crop_code: 'cauliflower',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'cauliflower' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY &&
+      input.days_after_sowing <= 45,
+    cause: Cause.CAULIFLOWER_DOWNY_MILDEW_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Peronospora parasitica attacks seedling stage. Yellow patches on upper leaf surface, white fungal growth below. Spray Metalaxyl+Mancozeb 0.25%.',
+    icar_package: 'ICAR-IIVR Cauliflower PoP 2024'
+  },
+
+  // CAULIFLOWER_DISEASE_002: Black Rot
+  {
+    rule_id: 'C_VEG_CAULIFLOWER_DISEASE_002',
+    category: 'disease',
+    crop_code: 'cauliflower',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cauliflower' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.CAULIFLOWER_BLACK_ROT_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Xanthomonas campestris - same as cabbage. V-shaped yellow lesions. Hot water seed treatment 50°C for 25 min. Streptocycline 200 ppm spray.',
+    icar_package: 'ICAR-IIVR Disease Package'
+  },
+
+  // CAULIFLOWER_PEST_001: Diamondback Moth
+  {
+    rule_id: 'C_VEG_CAULIFLOWER_PEST_001',
+    category: 'pest',
+    crop_code: 'cauliflower',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'cauliflower' &&
+      input.metadata?.pest_detected === 'DIAMONDBACK_MOTH',
+    cause: Cause.CABBAGE_DIAMONDBACK_MOTH_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Plutella xylostella attacks leaves before curd formation. Bt spray OR Spinosad. AVOID pyrethroids (resistance).',
+    icar_package: 'ICAR-IIVR IPM Package'
+  },
+
+  // CAULIFLOWER_PEST_002: Aphid
+  {
+    rule_id: 'C_VEG_CAULIFLOWER_PEST_002',
+    category: 'pest',
+    crop_code: 'cauliflower',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cauliflower' &&
+      input.metadata?.pest_detected === 'APHID',
+    cause: Cause.CAULIFLOWER_APHID_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Aphids cluster on curd, causing black sooty mold. Quality loss. Neem oil 0.3% OR imidacloprid.',
+    icar_package: 'ICAR-IIVR Pest Control'
+  },
+
+  // CAULIFLOWER_NUTRIENT_001: Boron for Curd Quality
+  {
+    rule_id: 'C_VEG_CAULIFLOWER_NUTRIENT_001',
+    category: 'nutrient',
+    crop_code: 'cauliflower',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cauliflower' &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.BORON_DEFICIENCY,
+    priority: 8,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Boron deficiency causes brown spots in curd. Apply borax @ 10 kg/ha OR foliar 0.2% at curd initiation.',
+    icar_package: 'ICAR-IIVR Nutrition'
+  },
+
+  // CAULIFLOWER_WATER_001: Curd Development
+  {
+    rule_id: 'C_VEG_CAULIFLOWER_WATER_001',
+    category: 'water',
+    crop_code: 'cauliflower',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cauliflower' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.WATER_STRESS_CRITICAL,
+    priority: 9,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Curd development requires continuous moisture. Stress causes small, loose, ricey curds. Irrigate every 5-7 days.',
+    icar_package: 'ICAR-IIVR Cauliflower PoP 2024'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OKRA (BHINDI) RULES (6 rules)
+// Source: ICAR-IIVR
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const OKRA_RULES: CauseRule[] = [
+  // OKRA_DISEASE_001: Yellow Vein Mosaic Virus - MOST Destructive
+  {
+    rule_id: 'C_VEG_OKRA_DISEASE_001',
+    category: 'disease',
+    crop_code: 'okra',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'okra' &&
+      input.metadata?.pest_detected === 'WHITEFLY' &&
+      input.ndvi_state === NDVIState.HIGH_STRESS,
+    cause: Cause.OKRA_YELLOW_VEIN_MOSAIC_RISK,
+    priority: 10,
+    scientific_source: 'ICAR-IIVR + IIHR',
+    scientific_basis: 'YVMV (Bhindi Yellow Vein Mosaic Virus) transmitted by whitefly Bemisia tabaci. Causes severe yellowing of veins, stunting, fruit deformation. Can cause 90-100% yield loss. NO CURE - only prevention. Control whitefly vector. Use resistant varieties like Arka Anamika.',
+    icar_package: 'ICAR-IIVR Okra PoP 2024'
+  },
+
+  // OKRA_DISEASE_002: Powdery Mildew
+  {
+    rule_id: 'C_VEG_OKRA_DISEASE_002',
+    category: 'disease',
+    crop_code: 'okra',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'okra' &&
+      input.weather_state === WeatherState.DRY_SPELL &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.OKRA_POWDERY_MILDEW_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Erysiphe cichoracearum causes white powdery coating on leaves. Favored by dry weather. Reduces photosynthesis. Spray Sulphur 0.2% OR Carbendazim 0.1%.',
+    icar_package: 'ICAR-IIVR Disease Management'
+  },
+
+  // OKRA_PEST_001: Shoot and Fruit Borer - Major Pest
+  {
+    rule_id: 'C_VEG_OKRA_PEST_001',
+    category: 'pest',
+    crop_code: 'okra',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'okra' &&
+      input.metadata?.pest_detected === 'SHOOT_FRUIT_BORER' &&
+      (Number(input.metadata?.fruit_damage_percent) || 0) > 5,
+    cause: Cause.OKRA_SHOOT_FRUIT_BORER_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Earias vittella bores into shoots (vegetative) and fruits (reproductive). ETL: 5% damaged fruits. Makes fruits unmarketable. Spray Spinosad 0.3ml/L OR release Trichogramma @ 40,000/acre.',
+    icar_package: 'ICAR-IIVR Okra IPM'
+  },
+
+  // OKRA_PEST_002: Jassid (Leafhopper)
+  {
+    rule_id: 'C_VEG_OKRA_PEST_002',
+    category: 'pest',
+    crop_code: 'okra',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'okra' &&
+      input.metadata?.pest_detected === 'JASSID' &&
+      input.ndvi_state === NDVIState.MODERATE_STRESS,
+    cause: Cause.OKRA_JASSID_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Amrasca biguttula sucks sap from leaf undersurface. Causes hopper burn (leaf curling, browning). ETL: 5 nymphs/leaf. Spray imidacloprid 0.3ml/L.',
+    icar_package: 'ICAR-IIVR Pest Package'
+  },
+
+  // OKRA_PEST_003: Whitefly (YVMV Vector)
+  {
+    rule_id: 'C_VEG_OKRA_PEST_003',
+    category: 'pest',
+    crop_code: 'okra',
+    stage_applicable: [CropStage.GERMINATION, CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'okra' &&
+      input.metadata?.pest_detected === 'WHITEFLY' &&
+      input.days_after_sowing <= 30,
+    cause: Cause.OKRA_WHITEFLY_RISK,
+    priority: 10,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Whitefly is YVMV vector. MUST control in first 30 days to prevent virus. ETL: 3 adults/leaf. Yellow sticky traps + neem oil OR imidacloprid seed treatment.',
+    icar_package: 'ICAR-IIVR YVMV Prevention'
+  },
+
+  // OKRA_WATER_001: Flowering Critical Period
+  {
+    rule_id: 'C_VEG_OKRA_WATER_001',
+    category: 'water',
+    crop_code: 'okra',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'okra' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.WATER_STRESS_MODERATE,
+    priority: 7,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Flowering-fruiting requires consistent moisture. Water stress reduces fruit set. Irrigate every 5-7 days in summer.',
+    icar_package: 'ICAR-IIVR Okra PoP 2024'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BEANS (FRENCH BEAN, CLUSTER BEAN) RULES (6 rules)
+// Source: ICAR-IIVR + IIPR
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const BEANS_RULES: CauseRule[] = [
+  // BEANS_DISEASE_001: Anthracnose
+  {
+    rule_id: 'C_VEG_BEANS_DISEASE_001',
+    category: 'disease',
+    crop_code: 'beans',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      (input.crop_code === 'beans' || input.crop_code === 'french_bean') &&
+      input.weather_state === WeatherState.RAIN_ACTIVE &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.BEANS_ANTHRACNOSE_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Colletotrichum lindemuthianum causes dark sunken lesions on pods and stems. Spread by rain splash. Seed-borne. Hot water seed treatment 50°C for 10 min. Spray Mancozeb 0.25% OR Carbendazim 0.1%.',
+    icar_package: 'ICAR-IIVR Beans PoP 2024'
+  },
+
+  // BEANS_DISEASE_002: Rust
+  {
+    rule_id: 'C_VEG_BEANS_DISEASE_002',
+    category: 'disease',
+    crop_code: 'beans',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      (input.crop_code === 'beans' || input.crop_code === 'french_bean') &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.BEANS_RUST_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Uromyces appendiculatus causes reddish-brown pustules on leaves. Spray Mancozeb 0.25% at first sign.',
+    icar_package: 'ICAR-IIVR Disease Management'
+  },
+
+  // BEANS_DISEASE_003: Root Rot
+  {
+    rule_id: 'C_VEG_BEANS_DISEASE_003',
+    category: 'disease',
+    crop_code: 'beans',
+    stage_applicable: [CropStage.GERMINATION, CropStage.VEGETATIVE],
+    conditions: (input) =>
+      (input.crop_code === 'beans' || input.crop_code === 'french_bean') &&
+      input.soil_states.moisture === SoilMoistureState.WATERLOGGED &&
+      input.ndvi_state === NDVIState.HIGH_STRESS,
+    cause: Cause.BEANS_ROOT_ROT_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IIPR',
+    scientific_basis: 'Rhizoctonia solani + Fusarium complex causes root rot in waterlogged soils. Poor drainage fatal. Seed treatment with Trichoderma. Improve drainage immediately.',
+    icar_package: 'ICAR-IIPR Pulse Diseases'
+  },
+
+  // BEANS_PEST_001: Pod Borer
+  {
+    rule_id: 'C_VEG_BEANS_PEST_001',
+    category: 'pest',
+    crop_code: 'beans',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      (input.crop_code === 'beans' || input.crop_code === 'french_bean') &&
+      input.metadata?.pest_detected === 'POD_BORER' &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.BEANS_POD_BORER_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Helicoverpa armigera bores into pods. ETL: 2 larvae/10 plants. Spray Spinosad 0.3ml/L OR Bt.',
+    icar_package: 'ICAR-IIVR Vegetable IPM'
+  },
+
+  // BEANS_PEST_002: Aphid
+  {
+    rule_id: 'C_VEG_BEANS_PEST_002',
+    category: 'pest',
+    crop_code: 'beans',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      (input.crop_code === 'beans' || input.crop_code === 'french_bean') &&
+      input.metadata?.pest_detected === 'APHID',
+    cause: Cause.BEANS_APHID_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Aphis craccivora colonies on tender shoots. Spray neem oil 0.3% OR imidacloprid 0.3ml/L.',
+    icar_package: 'ICAR-IIVR Pest Control'
+  },
+
+  // BEANS_NUTRIENT_001: Nitrogen Fixation
+  {
+    rule_id: 'C_VEG_BEANS_NUTRIENT_001',
+    category: 'nutrient',
+    crop_code: 'beans',
+    stage_applicable: [CropStage.GERMINATION],
+    conditions: (input) =>
+      (input.crop_code === 'beans' || input.crop_code === 'french_bean') &&
+      input.soil_states.n === SoilNState.LOW_N &&
+      input.crop_stage === CropStage.GERMINATION,
+    cause: Cause.NITROGEN_DEFICIENCY,
+    priority: 6,
+    scientific_source: 'ICAR-IIPR',
+    scientific_basis: 'Beans fix atmospheric N through Rhizobium. Seed inoculation with Rhizobium @ 200g/10kg seed. Apply starter N 20 kg/ha.',
+    icar_package: 'ICAR-IIPR Pulse Production'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
 // COMBINED VEGETABLES RULES
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -800,6 +1231,10 @@ export const VEGETABLES_RULES: CauseRule[] = [
   ...ONION_RULES,
   ...POTATO_RULES,
   ...BRINJAL_RULES,
+  ...CABBAGE_RULES,
+  ...CAULIFLOWER_RULES,
+  ...OKRA_RULES,
+  ...BEANS_RULES,
   ...VEGETABLES_CPWS_RULES,
   ...ALL_VEGETABLES_RULES
 ];
