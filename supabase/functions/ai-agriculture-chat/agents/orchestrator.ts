@@ -141,6 +141,7 @@ export interface OrchestratorResponse {
   
   // For DECISION_PROVIDED
   communication?: FarmerCommunication;
+  decision_output?: DecisionOutput;  // CRITICAL FIX: Include decision output for response assembly
   question_classification?: QuestionClassification;  // NEW: Include classification in response
   
   // NEW: Data audit for debugging what data was found/missing
@@ -353,6 +354,17 @@ export class AIAgentOrchestrator {
               template_type: 'LLM_DIRECT',
               sections_included: ['main_message']
             }
+          } as any,
+          // CRITICAL FIX: Include minimal decision_output for LLM path
+          decision_output: {
+            decision_id: `llm_${Date.now()}`,
+            status: 'DECISION_PROVIDED',
+            primary_decision: {
+              action_type: 'INFORMATION',
+              product_details: null
+            },
+            rules_applied: [],
+            confidence_score: llmResponse.confidence
           } as any,
           dataAudit,  // NEW: Include data audit for debugging
           metadata: {
@@ -831,6 +843,7 @@ export class AIAgentOrchestrator {
         session_id: sessionId,
         decision_id: decisionOutput.decision_id,
         communication: farmerCommunication,
+        decision_output: safetyVerification.modified_decision || decisionOutput,  // CRITICAL FIX: Include decision output
         question_classification: questionClassification,  // Include in response
         dataAudit,  // NEW: Include data audit for debugging
         metadata: {
