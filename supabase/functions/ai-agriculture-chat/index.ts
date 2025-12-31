@@ -458,6 +458,43 @@ serve(async (req) => {
       responseContent = forceTranslateResponse(responseContent, detectedLanguage as 'mr' | 'hi' | 'en');
     }
     
+    // ═══════════════════════════════════════════════════════════════════════════
+    // VALIDATION GATE: Prevent silent failures before saving response
+    // ═══════════════════════════════════════════════════════════════════════════
+    const decision_brain_source = true; // This flow always uses decision brain
+    const validationResult = validateResponseBeforeSave({
+      decision_brain_source,
+      actions_returned,
+      responseContent,
+      orchestratorResponse,
+      traceId
+    });
+    
+    console.log(`🔐 [${traceId}] ═══ RESPONSE VALIDATION GATE ═══`);
+    console.log(`   Decision Brain Source: ${decision_brain_source}`);
+    console.log(`   Actions Returned Count: ${actions_returned?.length || 0}`);
+    console.log(`   Response Content Length: ${responseContent?.length || 0}`);
+    console.log(`   Validation Passed: ${validationResult.passed}`);
+    
+    if (!validationResult.passed) {
+      console.error(`❌ [${traceId}] VALIDATION FAILED:`, validationResult.errors);
+      console.error(`   Full Context Dump:`, JSON.stringify({
+        orchestrator_type: orchestratorResponse.type,
+        decision_output_keys: Object.keys(orchestratorResponse.decision_output || {}),
+        actions_returned: actions_returned,
+        actions_filtered_out: actions_filtered_out,
+        response_content_preview: responseContent?.substring(0, 200),
+        metadata: orchestratorResponse.metadata
+      }, null, 2));
+      
+      // Generate fallback response if validation fails
+      responseContent = generateValidationFailureFallback(
+        detectedLanguage as 'mr' | 'hi' | 'en',
+        validationResult.errors,
+        orchestratorResponse
+      );
+    }
+    
     // Store user message with preprocessed_content (English normalized)
     try {
       await supabase.from('ai_chat_messages').insert({
@@ -510,6 +547,9 @@ serve(async (req) => {
           actions_filtered_count: actions_filtered_out?.length || 0,
           all_actions_filtered: allActionsFiltered,
           filter_categories: audit_log.filter_categories,
+          // VALIDATION GATE: Track whether response passed validation
+          response_validation_passed: validationResult.passed,
+          validation_errors: validationResult.passed ? undefined : validationResult.errors,
           language_pipeline: {
             input_language: detectedLanguage,
             output_language: detectedLanguage,
@@ -733,6 +773,146 @@ function forceTranslateResponse(content: string, targetLang: 'mr' | 'hi' | 'en')
   }
   
   return translated;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RESPONSE VALIDATION GATE - Prevents silent failures
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface ValidationResult {
+  passed: boolean;
+  errors: string[];
+}
+
+/**
+ * Validate response before saving to database
+ * Ensures decision brain output is properly reflected in user response
+ */
+function validateResponseBeforeSave(params: {
+  decision_brain_source: boolean;
+  actions_returned: any[] | null;
+  responseContent: string;
+  orchestratorResponse: OrchestratorResponse;
+  traceId: string;
+}): ValidationResult {
+  const { decision_brain_source, actions_returned, responseContent, orchestratorResponse, traceId } = params;
+  const errors: string[] = [];
+  
+  console.log(`🔍 [${traceId}] Running validation checks...`);
+  
+  // Check 1: If decision_brain_source is TRUE
+  if (decision_brain_source) {
+    console.log(`   ✓ Check 1: decision_brain_source = TRUE`);
+    
+    // Check 2: For DECISION_PROVIDED type, verify actions_returned is not empty
+    if (orchestratorResponse.type === 'DECISION_PROVIDED') {
+      if (!actions_returned || actions_returned.length === 0) {
+        // Only flag as error if there's a decision_output with recommendations
+        const decisionOutput = orchestratorResponse.decision_output;
+        const hasPrimaryDecision = !!decisionOutput?.primary_decision;
+        const hasSecondaryDecisions = (decisionOutput?.secondary_recommendations?.length || 0) > 0;
+        
+        if (hasPrimaryDecision || hasSecondaryDecisions) {
+          errors.push(`VALIDATION_FAIL: decision_output has recommendations but actions_returned is empty`);
+          console.log(`   ✗ Check 2: actions_returned is empty but decision_output has data`);
+        } else {
+          console.log(`   ✓ Check 2: actions_returned empty, but decision_output also empty (expected)`);
+        }
+      } else {
+        console.log(`   ✓ Check 2: actions_returned has ${actions_returned.length} items`);
+      }
+    }
+    
+    // Check 3: Verify content field contains recommendation text (not empty)
+    if (!responseContent || responseContent.trim().length === 0) {
+      errors.push(`VALIDATION_FAIL: response content is empty`);
+      console.log(`   ✗ Check 3: responseContent is empty`);
+    } else if (responseContent.trim().length < 20) {
+      errors.push(`VALIDATION_WARN: response content suspiciously short (${responseContent.length} chars)`);
+      console.log(`   ⚠️ Check 3: responseContent very short: "${responseContent.substring(0, 50)}"`);
+    } else {
+      console.log(`   ✓ Check 3: responseContent has ${responseContent.length} chars`);
+    }
+    
+    // Check 4: For decisions with actions, verify content mentions key terms
+    if (actions_returned && actions_returned.length > 0 && orchestratorResponse.type === 'DECISION_PROVIDED') {
+      const contentLower = responseContent.toLowerCase();
+      const hasRecommendationIndicators = 
+        contentLower.includes('recommend') ||
+        contentLower.includes('शिफारस') || // Marathi
+        contentLower.includes('सिफारिश') || // Hindi
+        contentLower.includes('करा') ||      // Marathi action
+        contentLower.includes('करें') ||      // Hindi action
+        contentLower.includes('apply') ||
+        contentLower.includes('spray') ||
+        contentLower.includes('फवारणी') ||   // Marathi spray
+        contentLower.includes('छिड़काव') ||   // Hindi spray
+        contentLower.includes('use') ||
+        contentLower.includes('वापरा');      // Marathi use
+      
+      if (!hasRecommendationIndicators) {
+        errors.push(`VALIDATION_WARN: actions_returned present but response lacks recommendation language`);
+        console.log(`   ⚠️ Check 4: Response may not properly convey recommendations`);
+      } else {
+        console.log(`   ✓ Check 4: Response contains recommendation language`);
+      }
+    }
+  }
+  
+  return {
+    passed: errors.filter(e => e.includes('VALIDATION_FAIL')).length === 0,
+    errors
+  };
+}
+
+/**
+ * Generate fallback response when validation fails
+ * Ensures user always gets helpful feedback even on failures
+ */
+function generateValidationFailureFallback(
+  lang: 'mr' | 'hi' | 'en',
+  validationErrors: string[],
+  orchestratorResponse: OrchestratorResponse
+): string {
+  const fallbacks: Record<string, string> = {
+    mr: `🌾 **नमस्कार शेतकरी मित्र!**
+
+माझ्याकडून शिफारस तयार करताना तांत्रिक समस्या आली. कृपया खालील माहिती द्या:
+
+1. तुमचे पीक कोणते आहे?
+2. सध्याची समस्या काय आहे?
+3. पिकाचा टप्पा कोणता आहे?
+
+या माहितीवरून मी तुम्हाला योग्य मार्गदर्शन करू शकेन.
+
+📞 तातडीसाठी: जवळच्या कृषी विज्ञान केंद्राशी (KVK) संपर्क साधा.`,
+
+    hi: `🌾 **नमस्कार किसान मित्र!**
+
+सिफारिश तैयार करते समय तकनीकी समस्या आई। कृपया निम्नलिखित जानकारी दें:
+
+1. आपकी फसल कौन सी है?
+2. वर्तमान समस्या क्या है?
+3. फसल की अवस्था क्या है?
+
+इस जानकारी से मैं आपको उचित मार्गदर्शन दे सकूंगा।
+
+📞 तत्काल सहायता के लिए: निकटतम कृषि विज्ञान केंद्र (KVK) से संपर्क करें।`,
+
+    en: `🌾 **Hello Farmer Friend!**
+
+I encountered a technical issue while preparing recommendations. Please provide the following information:
+
+1. What is your crop?
+2. What is the current problem?
+3. What is the crop stage?
+
+With this information, I can provide you proper guidance.
+
+📞 For urgent help: Contact your nearest Krishi Vigyan Kendra (KVK).`
+  };
+  
+  return fallbacks[lang] || fallbacks['en'];
 }
 
 /**
