@@ -20,42 +20,363 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 const PEST_MASTER_TABLE: Record<string, string> = {
-  // === SHOOT_BORER variations ===
-  'shoot_borer': 'SHOOT_BORER',
-  'shootborer': 'SHOOT_BORER',
-  'shoot borer': 'SHOOT_BORER',
-  'shoot-borer': 'SHOOT_BORER',
-  'shootBorer': 'SHOOT_BORER',
-  'ShootBorer': 'SHOOT_BORER',
-  'SHOOTBORER': 'SHOOT_BORER',
-  'SHOOT-BORER': 'SHOOT_BORER',
-  'SHOOT BORER': 'SHOOT_BORER',
-  'early shoot borer': 'SHOOT_BORER',
-  'sugarcane borer': 'SHOOT_BORER',
-  'dead heart': 'SHOOT_BORER', // Symptom mapping
-  'deadheart': 'SHOOT_BORER',
-  'dead_heart': 'SHOOT_BORER',
-  'DEAD_HEART': 'SHOOT_BORER',
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SUGARCANE-SPECIFIC PESTS
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // === SUGARCANE_SHOOT_BORER (Chilo infuscatellus) ===
+  'shoot_borer': 'SUGARCANE_SHOOT_BORER',
+  'shootborer': 'SUGARCANE_SHOOT_BORER',
+  'shoot borer': 'SUGARCANE_SHOOT_BORER',
+  'shoot-borer': 'SUGARCANE_SHOOT_BORER',
+  'shootBorer': 'SUGARCANE_SHOOT_BORER',
+  'ShootBorer': 'SUGARCANE_SHOOT_BORER',
+  'SHOOTBORER': 'SUGARCANE_SHOOT_BORER',
+  'SHOOT-BORER': 'SUGARCANE_SHOOT_BORER',
+  'SHOOT BORER': 'SUGARCANE_SHOOT_BORER',
+  'early shoot borer': 'SUGARCANE_SHOOT_BORER',
+  'sugarcane borer': 'SUGARCANE_SHOOT_BORER',
+  'sugarcane shoot borer': 'SUGARCANE_SHOOT_BORER',
+  'cane borer': 'SUGARCANE_SHOOT_BORER',
+  'dead heart': 'SUGARCANE_SHOOT_BORER',
+  'deadheart': 'SUGARCANE_SHOOT_BORER',
+  'dead_heart': 'SUGARCANE_SHOOT_BORER',
+  'DEAD_HEART': 'SUGARCANE_SHOOT_BORER',
+  'central shoot dead': 'SUGARCANE_SHOOT_BORER',
+  // Marathi - SUGARCANE_SHOOT_BORER
+  'शूट बोरर': 'SUGARCANE_SHOOT_BORER',
+  'शूटबोरर': 'SUGARCANE_SHOOT_BORER',
+  'मधली सुरळी': 'SUGARCANE_SHOOT_BORER',
+  'मधली सुरळी सुकली': 'SUGARCANE_SHOOT_BORER',
+  'सुखी सुरळी': 'SUGARCANE_SHOOT_BORER',
+  'सुकलेली सुरळी': 'SUGARCANE_SHOOT_BORER',
+  'मधली सुरळी वाळली': 'SUGARCANE_SHOOT_BORER',
+  'मरलेली सुरळी': 'SUGARCANE_SHOOT_BORER',
+  'डेड हार्ट': 'SUGARCANE_SHOOT_BORER',
+  'गाभा मेला': 'SUGARCANE_SHOOT_BORER',
+  'गाभा सुकला': 'SUGARCANE_SHOOT_BORER',
+  'गाभा वाळला': 'SUGARCANE_SHOOT_BORER',
+  'मध्यवर्ती सुरळी मरली': 'SUGARCANE_SHOOT_BORER',
+  'ऊसाची मधली सुरळी': 'SUGARCANE_SHOOT_BORER',
+  'मधली पान वाळली': 'SUGARCANE_SHOOT_BORER',
+  'शेंडा पोखरणारी अळी': 'SUGARCANE_SHOOT_BORER',
+  'ऊस मधली सुरळी': 'SUGARCANE_SHOOT_BORER',
+  'ऊस बोंडाळा': 'SUGARCANE_SHOOT_BORER',
+  'बोंडाळा': 'SUGARCANE_SHOOT_BORER',
+  // Marathi Regional - Marathwada
+  'सुरळी सुकली': 'SUGARCANE_SHOOT_BORER',
+  'मधला भाग मेला': 'SUGARCANE_SHOOT_BORER',
+  // Marathi Regional - Vidarbha
+  'ऊसाची सुरळी': 'SUGARCANE_SHOOT_BORER',
+  // Marathi Regional - Western MH
+  'शूट बोअरर': 'SUGARCANE_SHOOT_BORER',
+  'डेड हर्ट': 'SUGARCANE_SHOOT_BORER',
+  // Hindi - SUGARCANE_SHOOT_BORER
+  'मृत मध्य': 'SUGARCANE_SHOOT_BORER',
+  'बीच की पत्ती सूखी': 'SUGARCANE_SHOOT_BORER',
+  'गन्ने का खुदक': 'SUGARCANE_SHOOT_BORER',
+  'गन्ने का शूट बोरर': 'SUGARCANE_SHOOT_BORER',
+  'मध्य पत्ती सूखी': 'SUGARCANE_SHOOT_BORER',
+  'बीच की पत्ती मरी': 'SUGARCANE_SHOOT_BORER',
+  'गन्ने का छेदक': 'SUGARCANE_SHOOT_BORER',
+  // Hindi Regional - UP/Bihar
+  'मध्य भाग सूखा': 'SUGARCANE_SHOOT_BORER',
+  // Voice variants
+  'shootborer problem': 'SUGARCANE_SHOOT_BORER',
+  'shoot borer attack': 'SUGARCANE_SHOOT_BORER',
+  'dead heart problem': 'SUGARCANE_SHOOT_BORER',
+  
+  // === SUGARCANE_TOP_BORER (Scirpophaga excerptalis) ===
+  'top_borer': 'SUGARCANE_TOP_BORER',
+  'topborer': 'SUGARCANE_TOP_BORER',
+  'top borer': 'SUGARCANE_TOP_BORER',
+  'TOPBORER': 'SUGARCANE_TOP_BORER',
+  'TOP BORER': 'SUGARCANE_TOP_BORER',
+  'sugarcane top borer': 'SUGARCANE_TOP_BORER',
+  'white borer': 'SUGARCANE_TOP_BORER',
   // Marathi
-  'शूट बोरर': 'SHOOT_BORER',
-  'शूटबोरर': 'SHOOT_BORER',
-  'मधली सुरळी': 'SHOOT_BORER',
-  'सुखी सुरळी': 'SHOOT_BORER',
-  'मधली सुरळी वाळली': 'SHOOT_BORER',
-  'मरलेली सुरळी': 'SHOOT_BORER',
-  'गाभा सुकला': 'SHOOT_BORER',
-  'गाभा वाळला': 'SHOOT_BORER',
-  'डेड हार्ट': 'SHOOT_BORER',
-  'शेंडा पोखरणारी अळी': 'SHOOT_BORER',
-  'ऊस मधली सुरळी': 'SHOOT_BORER',
-  'ऊस बोंडाळा': 'SHOOT_BORER',
-  'बोंडाळा': 'SHOOT_BORER',
+  'टॉप बोरर': 'SUGARCANE_TOP_BORER',
+  'वरच्या भागाचा किडा': 'SUGARCANE_TOP_BORER',
+  'वरचा भाग पोखरणारा': 'SUGARCANE_TOP_BORER',
   // Hindi
-  'शूट बोरर': 'SHOOT_BORER',
-  'डेड हार्ट': 'SHOOT_BORER',
-  'मृत मध्य': 'SHOOT_BORER',
-  'बीच की पत्ती सूखी': 'SHOOT_BORER',
-  'गन्ने का खुदक': 'SHOOT_BORER',
+  'शीर्ष छेदक': 'SUGARCANE_TOP_BORER',
+  'ऊपरी हिस्से का कीड़ा': 'SUGARCANE_TOP_BORER',
+  'टॉप में छेद करने वाला': 'SUGARCANE_TOP_BORER',
+  
+  // === SUGARCANE_INTERNODE_BORER (Chilo sacchariphagus) ===
+  'internode_borer': 'SUGARCANE_INTERNODE_BORER',
+  'internodeborer': 'SUGARCANE_INTERNODE_BORER',
+  'internode borer': 'SUGARCANE_INTERNODE_BORER',
+  'INTERNODEBORER': 'SUGARCANE_INTERNODE_BORER',
+  'stalk borer': 'SUGARCANE_INTERNODE_BORER',
+  'sugarcane stalk borer': 'SUGARCANE_INTERNODE_BORER',
+  // Marathi
+  'खोड किडा': 'SUGARCANE_INTERNODE_BORER',
+  'गाठ पोखरणारी अळी': 'SUGARCANE_INTERNODE_BORER',
+  'इंटरनोड बोरर': 'SUGARCANE_INTERNODE_BORER',
+  'खोडकिडा': 'SUGARCANE_INTERNODE_BORER',
+  // Hindi
+  'गांठ छेदक': 'SUGARCANE_INTERNODE_BORER',
+  'तना छेदक': 'SUGARCANE_INTERNODE_BORER',
+  'स्टेम बोरर': 'SUGARCANE_INTERNODE_BORER',
+  
+  // === SUGARCANE_PYRILLA (Pyrilla perpusilla) ===
+  'pyrilla': 'SUGARCANE_PYRILLA',
+  'sugarcane pyrilla': 'SUGARCANE_PYRILLA',
+  'sugarcane planthopper': 'SUGARCANE_PYRILLA',
+  'sugarcane leafhopper': 'SUGARCANE_PYRILLA',
+  'cane hopper': 'SUGARCANE_PYRILLA',
+  // Marathi
+  'पाकोळी': 'SUGARCANE_PYRILLA',
+  'पायरीला': 'SUGARCANE_PYRILLA',
+  'पाकोळी किडा': 'SUGARCANE_PYRILLA',
+  'ऊसाची पाकोळी': 'SUGARCANE_PYRILLA',
+  'पायरीला किडा': 'SUGARCANE_PYRILLA',
+  // Hindi
+  'पायरिला': 'SUGARCANE_PYRILLA',
+  'गन्ने का पाइरिला': 'SUGARCANE_PYRILLA',
+  'पत्ता फुदका': 'SUGARCANE_PYRILLA',
+  'गन्ने की मक्खी': 'SUGARCANE_PYRILLA',
+  'पत्ता कूदने वाला': 'SUGARCANE_PYRILLA',
+  
+  // === SUGARCANE_WOOLLY_APHID (Ceratovacuna lanigera) ===
+  'woolly_aphid': 'SUGARCANE_WOOLLY_APHID',
+  'woollyaphid': 'SUGARCANE_WOOLLY_APHID',
+  'woolly aphid': 'SUGARCANE_WOOLLY_APHID',
+  'sugarcane woolly aphid': 'SUGARCANE_WOOLLY_APHID',
+  'cotton-like aphid': 'SUGARCANE_WOOLLY_APHID',
+  'white woolly': 'SUGARCANE_WOOLLY_APHID',
+  // Marathi
+  'लोकरी मावा': 'SUGARCANE_WOOLLY_APHID',
+  'लोकरासारखा मावा': 'SUGARCANE_WOOLLY_APHID',
+  'पांढरा रुई सारखा किडा': 'SUGARCANE_WOOLLY_APHID',
+  'पांढरा लोकरी किडा': 'SUGARCANE_WOOLLY_APHID',
+  // Hindi
+  'ऊनी माहू': 'SUGARCANE_WOOLLY_APHID',
+  'रुई जैसा माहू': 'SUGARCANE_WOOLLY_APHID',
+  'सफेद ऊन वाला कीड़ा': 'SUGARCANE_WOOLLY_APHID',
+  
+  // === SUGARCANE_TERMITE (Odontotermes obesus) ===
+  'termite': 'SUGARCANE_TERMITE',
+  'termites': 'SUGARCANE_TERMITE',
+  'white ant': 'SUGARCANE_TERMITE',
+  'white ants': 'SUGARCANE_TERMITE',
+  'sugarcane termite': 'SUGARCANE_TERMITE',
+  // Marathi
+  'हमणी': 'SUGARCANE_TERMITE',
+  'मातकिडा': 'SUGARCANE_TERMITE',
+  'ऊसाची हमणी': 'SUGARCANE_TERMITE',
+  'माती खाणारा किडा': 'SUGARCANE_TERMITE',
+  // Hindi
+  'दीमक': 'SUGARCANE_TERMITE',
+  'गन्ने की दीमक': 'SUGARCANE_TERMITE',
+  'सफेद चींटी': 'SUGARCANE_TERMITE',
+  'गन्ने की सफेद चींटी': 'SUGARCANE_TERMITE',
+  
+  // === SUGARCANE_WHITEFLY (Aleurolobus barodensis) ===
+  'sugarcane whitefly': 'SUGARCANE_WHITEFLY',
+  'sugarcane white fly': 'SUGARCANE_WHITEFLY',
+  'cane whitefly': 'SUGARCANE_WHITEFLY',
+  // Marathi
+  'ऊसाची सफेद माशी': 'SUGARCANE_WHITEFLY',
+  'ऊसाची पांढरी माशी': 'SUGARCANE_WHITEFLY',
+  // Hindi
+  'गन्ने की सफेद मक्खी': 'SUGARCANE_WHITEFLY',
+  
+  // === SUGARCANE_SCALE_INSECT (Melanaspis glomerata) ===
+  'scale_insect': 'SUGARCANE_SCALE_INSECT',
+  'scaleinsect': 'SUGARCANE_SCALE_INSECT',
+  'scale insect': 'SUGARCANE_SCALE_INSECT',
+  'sugarcane scale': 'SUGARCANE_SCALE_INSECT',
+  'armoured scale': 'SUGARCANE_SCALE_INSECT',
+  // Marathi
+  'खवल्या कीड': 'SUGARCANE_SCALE_INSECT',
+  'स्केल इन्सेक्ट': 'SUGARCANE_SCALE_INSECT',
+  'ढालीसारखा किडा': 'SUGARCANE_SCALE_INSECT',
+  // Hindi
+  'खोपड़ी कीट': 'SUGARCANE_SCALE_INSECT',
+  'स्केल कीट': 'SUGARCANE_SCALE_INSECT',
+  'ढाल जैसा कीड़ा': 'SUGARCANE_SCALE_INSECT',
+  
+  // === WIREWORM (Agriotes spp.) ===
+  'wireworm': 'WIREWORM',
+  'wireworms': 'WIREWORM',
+  'wire worm': 'WIREWORM',
+  'click beetle': 'WIREWORM',
+  'elaterid beetle': 'WIREWORM',
+  // Marathi
+  'वायरवर्म': 'WIREWORM',
+  'तारे सारखी अळी': 'WIREWORM',
+  'कडक अळी': 'WIREWORM',
+  'क्लिक बीटल': 'WIREWORM',
+  // Hindi
+  'तार जैसा कीड़ा': 'WIREWORM',
+  
+  // === ROOT_BORER variations ===
+  'root_borer': 'ROOT_BORER',
+  'rootborer': 'ROOT_BORER',
+  'root borer': 'ROOT_BORER',
+  'ROOTBORER': 'ROOT_BORER',
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // COTTON-SPECIFIC PESTS
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // === COTTON_SPOTTED_BOLLWORM (Earias vittella) ===
+  'spotted_bollworm': 'COTTON_SPOTTED_BOLLWORM',
+  'spottedbollworm': 'COTTON_SPOTTED_BOLLWORM',
+  'spotted bollworm': 'COTTON_SPOTTED_BOLLWORM',
+  'earias': 'COTTON_SPOTTED_BOLLWORM',
+  'earias bollworm': 'COTTON_SPOTTED_BOLLWORM',
+  'green bollworm': 'COTTON_SPOTTED_BOLLWORM',
+  // Marathi
+  'ओंबव्याची बोंड आळी': 'COTTON_SPOTTED_BOLLWORM',
+  'चित्तेदार अळी': 'COTTON_SPOTTED_BOLLWORM',
+  'स्पॉटेड बॉलवर्म': 'COTTON_SPOTTED_BOLLWORM',
+  'चट्टेदार बोंड अळी': 'COTTON_SPOTTED_BOLLWORM',
+  // Hindi
+  'चित्तीदार बॉलवर्म': 'COTTON_SPOTTED_BOLLWORM',
+  'धब्बेदार इल्ली': 'COTTON_SPOTTED_BOLLWORM',
+  'चित्तीदार सूंडी': 'COTTON_SPOTTED_BOLLWORM',
+  
+  // === COTTON_AMERICAN_BOLLWORM (Helicoverpa armigera) ===
+  'american_bollworm': 'COTTON_AMERICAN_BOLLWORM',
+  'americanbollworm': 'COTTON_AMERICAN_BOLLWORM',
+  'american bollworm': 'COTTON_AMERICAN_BOLLWORM',
+  'helicoverpa': 'COTTON_AMERICAN_BOLLWORM',
+  'helicoverpa armigera': 'COTTON_AMERICAN_BOLLWORM',
+  'bollworm': 'COTTON_AMERICAN_BOLLWORM',
+  'boll_worm': 'COTTON_AMERICAN_BOLLWORM',
+  'boll worm': 'COTTON_AMERICAN_BOLLWORM',
+  'fruit borer': 'COTTON_AMERICAN_BOLLWORM',
+  'pod borer': 'COTTON_AMERICAN_BOLLWORM',
+  // Marathi
+  'अमेरिकन बॉलवर्म': 'COTTON_AMERICAN_BOLLWORM',
+  'गाभा अळी': 'COTTON_AMERICAN_BOLLWORM',
+  'फळ पोखरणारी अळी': 'COTTON_AMERICAN_BOLLWORM',
+  'बोंड अळी': 'COTTON_AMERICAN_BOLLWORM',
+  'बोंडअळी': 'COTTON_AMERICAN_BOLLWORM',
+  'गाभा': 'COTTON_AMERICAN_BOLLWORM',
+  // Hindi
+  'गाभा कीट': 'COTTON_AMERICAN_BOLLWORM',
+  'फल छेदक': 'COTTON_AMERICAN_BOLLWORM',
+  'अमेरिकन बोलवर्म': 'COTTON_AMERICAN_BOLLWORM',
+  
+  // === COTTON_PINK_BOLLWORM (Pectinophora gossypiella) ===
+  'pink_bollworm': 'COTTON_PINK_BOLLWORM',
+  'pinkbollworm': 'COTTON_PINK_BOLLWORM',
+  'pink bollworm': 'COTTON_PINK_BOLLWORM',
+  'PINKBOLLWORM': 'COTTON_PINK_BOLLWORM',
+  'pbw': 'COTTON_PINK_BOLLWORM',
+  'pectinophora': 'COTTON_PINK_BOLLWORM',
+  'cotton pink worm': 'COTTON_PINK_BOLLWORM',
+  // Marathi
+  'गुलाबी बोंडआळी': 'COTTON_PINK_BOLLWORM',
+  'गुलाबी बोंडअळी': 'COTTON_PINK_BOLLWORM',
+  'पिंक बॉलवर्म': 'COTTON_PINK_BOLLWORM',
+  'गुलाबी गाभा अळी': 'COTTON_PINK_BOLLWORM',
+  'गुलाबी अळी': 'COTTON_PINK_BOLLWORM',
+  // Hindi
+  'गुलाबी बॉलवर्म': 'COTTON_PINK_BOLLWORM',
+  'गुलाबी इल्ली': 'COTTON_PINK_BOLLWORM',
+  'गुलाबी सूंडी': 'COTTON_PINK_BOLLWORM',
+  
+  // === COTTON_GREEN_BOLLWORM (Earias spp.) ===
+  'green_bollworm': 'COTTON_GREEN_BOLLWORM',
+  'greenbollworm': 'COTTON_GREEN_BOLLWORM',
+  'cotton green bollworm': 'COTTON_GREEN_BOLLWORM',
+  'green caterpillar': 'COTTON_GREEN_BOLLWORM',
+  // Marathi
+  'हिरवी बोंड अळी': 'COTTON_GREEN_BOLLWORM',
+  'हिरवा गाभा किडा': 'COTTON_GREEN_BOLLWORM',
+  'ग्रीन बॉलवर्म': 'COTTON_GREEN_BOLLWORM',
+  // Hindi
+  'हरी बॉलवर्म': 'COTTON_GREEN_BOLLWORM',
+  'हरा इल्ली': 'COTTON_GREEN_BOLLWORM',
+  'हरा गाभा कीट': 'COTTON_GREEN_BOLLWORM',
+  
+  // === COTTON_JASSID (Amrasca biguttula) ===
+  'jassid': 'COTTON_JASSID',
+  'jassids': 'COTTON_JASSID',
+  'cotton jassid': 'COTTON_JASSID',
+  'cotton leafhopper': 'COTTON_JASSID',
+  'leafhopper': 'COTTON_JASSID',
+  // Marathi
+  'तुडतुडे': 'COTTON_JASSID',
+  'कापसाचे तुडतुडे': 'COTTON_JASSID',
+  'हिरवे तुडतुडे': 'COTTON_JASSID',
+  'जॅसिड': 'COTTON_JASSID',
+  // Hindi
+  'जेसिड': 'COTTON_JASSID',
+  'हरा तुड़तुड़ा': 'COTTON_JASSID',
+  'कपास का जेसिड': 'COTTON_JASSID',
+  
+  // === COTTON_WHITEFLY (Bemisia tabaci) ===
+  'whitefly': 'COTTON_WHITEFLY',
+  'white_fly': 'COTTON_WHITEFLY',
+  'white fly': 'COTTON_WHITEFLY',
+  'white flies': 'COTTON_WHITEFLY',
+  'cotton whitefly': 'COTTON_WHITEFLY',
+  'bemisia': 'COTTON_WHITEFLY',
+  'bemisia tabaci': 'COTTON_WHITEFLY',
+  // Marathi
+  'पांढरी माशी': 'COTTON_WHITEFLY',
+  'कापसाची सफेद माशी': 'COTTON_WHITEFLY',
+  'व्हाइटफ्लाय': 'COTTON_WHITEFLY',
+  // Hindi
+  'सफेद मक्खी': 'COTTON_WHITEFLY',
+  'सफ़ेद मक्खी': 'COTTON_WHITEFLY',
+  'कपास की सफेद मक्खी': 'COTTON_WHITEFLY',
+  'व्हाइटफ्लाई': 'COTTON_WHITEFLY',
+  
+  // === COTTON_MEALYBUG (Phenacoccus solenopsis) ===
+  'mealybug': 'COTTON_MEALYBUG',
+  'mealy_bug': 'COTTON_MEALYBUG',
+  'mealy bug': 'COTTON_MEALYBUG',
+  'cotton mealybug': 'COTTON_MEALYBUG',
+  'phenacoccus': 'COTTON_MEALYBUG',
+  // Marathi
+  'मिलीबग': 'COTTON_MEALYBUG',
+  'कपाशीवरील मावा': 'COTTON_MEALYBUG',
+  'पांढरा चिकट किडा': 'COTTON_MEALYBUG',
+  'ढेकूण': 'COTTON_MEALYBUG',
+  // Hindi
+  'कपास का मावा': 'COTTON_MEALYBUG',
+  'सफेद चिपचिपा कीड़ा': 'COTTON_MEALYBUG',
+  'चिपचिपा कीट': 'COTTON_MEALYBUG',
+  
+  // === COTTON_THRIPS (Thrips tabaci) ===
+  'thrips': 'COTTON_THRIPS',
+  'thrip': 'COTTON_THRIPS',
+  'cotton thrips': 'COTTON_THRIPS',
+  'thunder flies': 'COTTON_THRIPS',
+  'flower thrips': 'COTTON_THRIPS',
+  // Marathi
+  'फुलकिडे': 'COTTON_THRIPS',
+  'कापसाचे फुलकिडे': 'COTTON_THRIPS',
+  'थ्रिप्स': 'COTTON_THRIPS',
+  // Hindi
+  'कपास के थ्रिप्स': 'COTTON_THRIPS',
+  'फूल कीट': 'COTTON_THRIPS',
+  
+  // === COTTON_LEAF_REDDENING_COMPLEX ===
+  'leaf_reddening': 'COTTON_LEAF_REDDENING',
+  'leafreddening': 'COTTON_LEAF_REDDENING',
+  'leaf reddening': 'COTTON_LEAF_REDDENING',
+  'reddening complex': 'COTTON_LEAF_REDDENING',
+  'cotton leaf red': 'COTTON_LEAF_REDDENING',
+  // Marathi
+  'हेडडॉविंग': 'COTTON_LEAF_REDDENING',
+  'लाल्या': 'COTTON_LEAF_REDDENING',
+  'पाने लाल होणे': 'COTTON_LEAF_REDDENING',
+  'रेडनिंग': 'COTTON_LEAF_REDDENING',
+  // Hindi
+  'पत्ते लाल होना': 'COTTON_LEAF_REDDENING',
+  'लाली रोग': 'COTTON_LEAF_REDDENING',
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GENERAL PESTS (Cross-crop)
+  // ═══════════════════════════════════════════════════════════════════════════
   
   // === STEM_BORER variations ===
   'stem_borer': 'STEM_BORER',
@@ -65,68 +386,10 @@ const PEST_MASTER_TABLE: Record<string, string> = {
   'stemBorer': 'STEM_BORER',
   'StemBorer': 'STEM_BORER',
   'STEMBORER': 'STEM_BORER',
-  'stalk borer': 'STEM_BORER',
-  'खोड किडा': 'STEM_BORER',
-  'खोडकिडा': 'STEM_BORER',
-  'तना छेदक': 'STEM_BORER',
-  'स्टेम बोरर': 'STEM_BORER',
-  
-  // === TOP_BORER variations ===
-  'top_borer': 'TOP_BORER',
-  'topborer': 'TOP_BORER',
-  'top borer': 'TOP_BORER',
-  'TOPBORER': 'TOP_BORER',
-  
-  // === INTERNODE_BORER variations ===
-  'internode_borer': 'INTERNODE_BORER',
-  'internodeborer': 'INTERNODE_BORER',
-  'internode borer': 'INTERNODE_BORER',
-  'INTERNODEBORER': 'INTERNODE_BORER',
-  
-  // === ROOT_BORER variations ===
-  'root_borer': 'ROOT_BORER',
-  'rootborer': 'ROOT_BORER',
-  'root borer': 'ROOT_BORER',
-  'ROOTBORER': 'ROOT_BORER',
   
   // === FRUIT_BORER variations ===
   'fruit_borer': 'FRUIT_BORER',
   'fruitborer': 'FRUIT_BORER',
-  'fruit borer': 'FRUIT_BORER',
-  'FRUITBORER': 'FRUIT_BORER',
-  'pod borer': 'FRUIT_BORER',
-  
-  // === BOLLWORM variations ===
-  'bollworm': 'BOLLWORM',
-  'boll_worm': 'BOLLWORM',
-  'boll worm': 'BOLLWORM',
-  'helicoverpa': 'BOLLWORM',
-  'american bollworm': 'BOLLWORM',
-  'बोंड अळी': 'BOLLWORM',
-  'बोंडअळी': 'BOLLWORM',
-  'गाभा': 'BOLLWORM',
-  
-  // === PINK_BOLLWORM variations ===
-  'pink_bollworm': 'PINK_BOLLWORM',
-  'pinkbollworm': 'PINK_BOLLWORM',
-  'pink bollworm': 'PINK_BOLLWORM',
-  'PINKBOLLWORM': 'PINK_BOLLWORM',
-  'pbw': 'PINK_BOLLWORM',
-  'pectinophora': 'PINK_BOLLWORM',
-  'गुलाबी बोंडअळी': 'PINK_BOLLWORM',
-  'गुलाबी अळी': 'PINK_BOLLWORM',
-  'गुलाबी इल्ली': 'PINK_BOLLWORM',
-  
-  // === WHITEFLY variations ===
-  'whitefly': 'WHITEFLY',
-  'white_fly': 'WHITEFLY',
-  'white fly': 'WHITEFLY',
-  'white flies': 'WHITEFLY',
-  'bemisia': 'WHITEFLY',
-  'पांढरी माशी': 'WHITEFLY',
-  'सफेद माशी': 'WHITEFLY',
-  'सफेद मक्खी': 'WHITEFLY',
-  'सफ़ेद मक्खी': 'WHITEFLY',
   
   // === APHID variations ===
   'aphid': 'APHID',
@@ -137,32 +400,6 @@ const PEST_MASTER_TABLE: Record<string, string> = {
   'माहू': 'APHID',
   'चेपा': 'APHID',
   'मोयला': 'APHID',
-  
-  // === JASSID variations ===
-  'jassid': 'JASSID',
-  'jassids': 'JASSID',
-  'leafhopper': 'JASSID',
-  'cotton jassid': 'JASSID',
-  'तुडतुडे': 'JASSID',
-  'हिरवे तुडतुडे': 'JASSID',
-  'हरा तेला': 'JASSID',
-  'पत्ता फुदका': 'JASSID',
-  
-  // === THRIPS variations ===
-  'thrips': 'THRIPS',
-  'thrip': 'THRIPS',
-  'thunder flies': 'THRIPS',
-  'फुलकिडे': 'THRIPS',
-  'थ्रिप्स': 'THRIPS',
-  
-  // === MEALYBUG variations ===
-  'mealybug': 'MEALYBUG',
-  'mealy_bug': 'MEALYBUG',
-  'mealy bug': 'MEALYBUG',
-  'cotton mealybug': 'MEALYBUG',
-  'मिलीबग': 'MEALYBUG',
-  'ढेकूण': 'MEALYBUG',
-  'चिपचिपा कीट': 'MEALYBUG',
   
   // === RED_SPIDER_MITE variations ===
   'red_spider_mite': 'RED_SPIDER_MITE',
@@ -246,6 +483,206 @@ const PEST_MASTER_TABLE: Record<string, string> = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const DISEASE_MASTER_TABLE: Record<string, string> = {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SUGARCANE-SPECIFIC DISEASES
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // === SUGARCANE_RED_ROT (Colletotrichum falcatum) ===
+  'red_rot': 'SUGARCANE_RED_ROT',
+  'redrot': 'SUGARCANE_RED_ROT',
+  'red rot': 'SUGARCANE_RED_ROT',
+  'red rot disease': 'SUGARCANE_RED_ROT',
+  'stalk rot': 'SUGARCANE_RED_ROT',
+  'sugarcane red rot': 'SUGARCANE_RED_ROT',
+  // Marathi
+  'लाल कुजण्या': 'SUGARCANE_RED_ROT',
+  'रेड रॉट': 'SUGARCANE_RED_ROT',
+  'लाल सडणे': 'SUGARCANE_RED_ROT',
+  'लाल कुजणे रोग': 'SUGARCANE_RED_ROT',
+  'लाल कुज': 'SUGARCANE_RED_ROT',
+  'रेड रोट': 'SUGARCANE_RED_ROT',
+  // Hindi
+  'लाल सड़न': 'SUGARCANE_RED_ROT',
+  'लाल गलना रोग': 'SUGARCANE_RED_ROT',
+  'लाल गलन': 'SUGARCANE_RED_ROT',
+  
+  // === SUGARCANE_SMUT (Ustilago scitaminea) ===
+  'smut': 'SUGARCANE_SMUT',
+  'sugarcane smut': 'SUGARCANE_SMUT',
+  'smut disease': 'SUGARCANE_SMUT',
+  // Marathi
+  'मट रोग': 'SUGARCANE_SMUT',
+  'काळा चाबूक': 'SUGARCANE_SMUT',
+  'स्मट': 'SUGARCANE_SMUT',
+  'काळी अंकुर': 'SUGARCANE_SMUT',
+  'कांडी': 'SUGARCANE_SMUT',
+  // Hindi
+  'काला चाबुक': 'SUGARCANE_SMUT',
+  'स्मट रोग': 'SUGARCANE_SMUT',
+  
+  // === SUGARCANE_WHIP_SMUT ===
+  'whip_smut': 'SUGARCANE_WHIP_SMUT',
+  'whipsmut': 'SUGARCANE_WHIP_SMUT',
+  'whip smut': 'SUGARCANE_WHIP_SMUT',
+  'black whip': 'SUGARCANE_WHIP_SMUT',
+  'black whip disease': 'SUGARCANE_WHIP_SMUT',
+  // Marathi
+  'चाबूक काणी': 'SUGARCANE_WHIP_SMUT',
+  'चाबूक स्मट': 'SUGARCANE_WHIP_SMUT',
+  'काळा चाबूक रोग': 'SUGARCANE_WHIP_SMUT',
+  // Hindi
+  'चाबुक रोग': 'SUGARCANE_WHIP_SMUT',
+  'व्हिप स्मट': 'SUGARCANE_WHIP_SMUT',
+  
+  // === SUGARCANE_GRASSY_SHOOT (Phytoplasma) ===
+  'grassy_shoot': 'SUGARCANE_GRASSY_SHOOT',
+  'grassyshoot': 'SUGARCANE_GRASSY_SHOOT',
+  'grassy shoot': 'SUGARCANE_GRASSY_SHOOT',
+  'grassy shoot disease': 'SUGARCANE_GRASSY_SHOOT',
+  'phytoplasma disease': 'SUGARCANE_GRASSY_SHOOT',
+  // Marathi
+  'गवताळ वाढ': 'SUGARCANE_GRASSY_SHOOT',
+  'ग्रासी शूट': 'SUGARCANE_GRASSY_SHOOT',
+  'गवत सारखी वाढ': 'SUGARCANE_GRASSY_SHOOT',
+  'पातळ अंकुर रोग': 'SUGARCANE_GRASSY_SHOOT',
+  // Hindi
+  'घासी अंकुर': 'SUGARCANE_GRASSY_SHOOT',
+  'घास जैसी बढ़वार': 'SUGARCANE_GRASSY_SHOOT',
+  
+  // === SUGARCANE_RUST (Puccinia melanocephala) ===
+  'sugarcane_rust': 'SUGARCANE_RUST',
+  'sugarcane rust': 'SUGARCANE_RUST',
+  'brown rust': 'SUGARCANE_RUST',
+  'orange rust': 'SUGARCANE_RUST',
+  // Marathi
+  'ऊसाचा तांबेरा': 'SUGARCANE_RUST',
+  'तांबटा रोग': 'SUGARCANE_RUST',
+  'तांबूस डाग': 'SUGARCANE_RUST',
+  // Hindi
+  'गन्ने का रस्ट': 'SUGARCANE_RUST',
+  
+  // === SUGARCANE_WILT (Fusarium sacchari) ===
+  'sugarcane_wilt': 'SUGARCANE_WILT',
+  'sugarcane wilt': 'SUGARCANE_WILT',
+  // Marathi
+  'ऊस मरणे': 'SUGARCANE_WILT',
+  'कोमेजणे रोग': 'SUGARCANE_WILT',
+  // Hindi
+  'उकठा रोग': 'SUGARCANE_WILT',
+  'मुरझाना रोग': 'SUGARCANE_WILT',
+  
+  // === SUGARCANE_LEAF_SCALD (Xanthomonas albilineans) ===
+  'leaf_scald': 'SUGARCANE_LEAF_SCALD',
+  'leafscald': 'SUGARCANE_LEAF_SCALD',
+  'leaf scald': 'SUGARCANE_LEAF_SCALD',
+  'white stripe': 'SUGARCANE_LEAF_SCALD',
+  'bacterial stripe': 'SUGARCANE_LEAF_SCALD',
+  // Marathi
+  'पान जळणे': 'SUGARCANE_LEAF_SCALD',
+  'पातळ पांढरी पट्टी': 'SUGARCANE_LEAF_SCALD',
+  'लीफ स्कॉल्ड': 'SUGARCANE_LEAF_SCALD',
+  // Hindi
+  'पत्ता झुलसा': 'SUGARCANE_LEAF_SCALD',
+  'सफेद धारी रोग': 'SUGARCANE_LEAF_SCALD',
+  'पत्ता जलना': 'SUGARCANE_LEAF_SCALD',
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // COTTON-SPECIFIC DISEASES
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // === COTTON_WILT (Fusarium oxysporum) ===
+  'cotton_wilt': 'COTTON_WILT',
+  'cotton wilt': 'COTTON_WILT',
+  'fusarium wilt': 'COTTON_WILT',
+  'vascular wilt': 'COTTON_WILT',
+  // Marathi
+  'कापसाचा मर': 'COTTON_WILT',
+  'झाड मरणे': 'COTTON_WILT',
+  // Hindi
+  'कपास का उकठा': 'COTTON_WILT',
+  'पौधा मरना': 'COTTON_WILT',
+  
+  // === COTTON_BOLL_ROT ===
+  'boll_rot': 'COTTON_BOLL_ROT',
+  'bollrot': 'COTTON_BOLL_ROT',
+  'boll rot': 'COTTON_BOLL_ROT',
+  'boll rots': 'COTTON_BOLL_ROT',
+  'cotton boll rot': 'COTTON_BOLL_ROT',
+  // Marathi
+  'बोंड सड': 'COTTON_BOLL_ROT',
+  'गाभा सडणे': 'COTTON_BOLL_ROT',
+  'गोळा कुजणे': 'COTTON_BOLL_ROT',
+  // Hindi
+  'गाभा सड़न': 'COTTON_BOLL_ROT',
+  'बॉल रॉट': 'COTTON_BOLL_ROT',
+  'गोला सड़ना': 'COTTON_BOLL_ROT',
+  
+  // === COTTON_BACTERIAL_BLIGHT (Xanthomonas campestris) ===
+  'cotton_bacterial_blight': 'COTTON_BACTERIAL_BLIGHT',
+  'cotton bacterial blight': 'COTTON_BACTERIAL_BLIGHT',
+  'angular leaf spot': 'COTTON_BACTERIAL_BLIGHT',
+  'bacterial leaf spot': 'COTTON_BACTERIAL_BLIGHT',
+  // Marathi
+  'नीवाणू जण्य कट्या': 'COTTON_BACTERIAL_BLIGHT',
+  // Hindi
+  'जीवाणु झुलसा': 'COTTON_BACTERIAL_BLIGHT',
+  'बैक्टीरियल ब्लाइट': 'COTTON_BACTERIAL_BLIGHT',
+  'पत्ता धब्बा': 'COTTON_BACTERIAL_BLIGHT',
+  
+  // === COTTON_GREY_MILDEW (Ramularia areola) ===
+  'grey_mildew': 'COTTON_GREY_MILDEW',
+  'greymildew': 'COTTON_GREY_MILDEW',
+  'grey mildew': 'COTTON_GREY_MILDEW',
+  'gray mildew': 'COTTON_GREY_MILDEW',
+  'areolate mildew': 'COTTON_GREY_MILDEW',
+  // Marathi
+  'दहिया रोग': 'COTTON_GREY_MILDEW',
+  'ग्रे मिल्ड्यू': 'COTTON_GREY_MILDEW',
+  'करडा पावडर': 'COTTON_GREY_MILDEW',
+  'राख सारखा रोग': 'COTTON_GREY_MILDEW',
+  // Hindi
+  'राख रोग': 'COTTON_GREY_MILDEW',
+  'धूसर रोग': 'COTTON_GREY_MILDEW',
+  'सफेद धूल': 'COTTON_GREY_MILDEW',
+  
+  // === COTTON_ALTERNARIA_BLIGHT (Alternaria macrospora) ===
+  'cotton_alternaria': 'COTTON_ALTERNARIA_BLIGHT',
+  'cotton alternaria': 'COTTON_ALTERNARIA_BLIGHT',
+  'alternaria blight': 'COTTON_ALTERNARIA_BLIGHT',
+  'alternaria leaf spot': 'COTTON_ALTERNARIA_BLIGHT',
+  'leaf blight': 'COTTON_ALTERNARIA_BLIGHT',
+  // Marathi
+  'आकुंचित मट': 'COTTON_ALTERNARIA_BLIGHT',
+  'अल्टरनेरिया करपा': 'COTTON_ALTERNARIA_BLIGHT',
+  'पान डाग रोग': 'COTTON_ALTERNARIA_BLIGHT',
+  // Hindi
+  'आकुंचित रोग': 'COTTON_ALTERNARIA_BLIGHT',
+  'अल्टरनेरिया': 'COTTON_ALTERNARIA_BLIGHT',
+  
+  // === COTTON_LEAF_CURL_VIRUS ===
+  'cotton_leaf_curl': 'COTTON_LEAF_CURL_VIRUS',
+  'leaf_curl': 'COTTON_LEAF_CURL_VIRUS',
+  'leafcurl': 'COTTON_LEAF_CURL_VIRUS',
+  'leaf curl': 'COTTON_LEAF_CURL_VIRUS',
+  'cotton leaf curl': 'COTTON_LEAF_CURL_VIRUS',
+  'clcv': 'COTTON_LEAF_CURL_VIRUS',
+  'clcuv': 'COTTON_LEAF_CURL_VIRUS',
+  'leaf curl virus': 'COTTON_LEAF_CURL_VIRUS',
+  // Marathi
+  'पान वळणे विषाणू': 'COTTON_LEAF_CURL_VIRUS',
+  'लीफ कर्ल': 'COTTON_LEAF_CURL_VIRUS',
+  'पाने मुरडणे रोग': 'COTTON_LEAF_CURL_VIRUS',
+  'पाने वळणे': 'COTTON_LEAF_CURL_VIRUS',
+  'पाने मुडणे': 'COTTON_LEAF_CURL_VIRUS',
+  // Hindi
+  'पत्ता मोड़ वायरस': 'COTTON_LEAF_CURL_VIRUS',
+  'पत्ता मुड़ना': 'COTTON_LEAF_CURL_VIRUS',
+  'पत्ता मोड़': 'COTTON_LEAF_CURL_VIRUS',
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GENERAL DISEASES (Cross-crop)
+  // ═══════════════════════════════════════════════════════════════════════════
+  
   // === POWDERY_MILDEW variations ===
   'powdery_mildew': 'POWDERY_MILDEW',
   'powderymildew': 'POWDERY_MILDEW',
@@ -268,8 +705,7 @@ const DISEASE_MASTER_TABLE: Record<string, string> = {
   // === WILT variations ===
   'wilt': 'WILT',
   'wilting': 'WILT',
-  'fusarium_wilt': 'FUSARIUM_WILT',
-  'fusarium wilt': 'FUSARIUM_WILT',
+  'fusarium_wilt': 'WILT',
   'verticillium wilt': 'WILT',
   'मर': 'WILT',
   'विल्ट': 'WILT',
@@ -294,7 +730,7 @@ const DISEASE_MASTER_TABLE: Record<string, string> = {
   'bacterial leaf blight': 'BACTERIAL_BLIGHT',
   'blb': 'BACTERIAL_BLIGHT',
   'जीवाणूजन्य करपा': 'BACTERIAL_BLIGHT',
-  'जीवाणु झुलसा': 'BACTERIAL_BLIGHT',
+  'बॅक्टेरियल ब्लाइट': 'BACTERIAL_BLIGHT',
   
   // === RUST variations ===
   'rust': 'RUST',
@@ -305,16 +741,8 @@ const DISEASE_MASTER_TABLE: Record<string, string> = {
   'गंज': 'RUST',
   'गेरुआ': 'RUST',
   'रतुआ': 'RUST',
-  
-  // === LEAF_CURL variations ===
-  'leaf_curl': 'LEAF_CURL',
-  'leafcurl': 'LEAF_CURL',
-  'leaf curl': 'LEAF_CURL',
-  'clcv': 'LEAF_CURL',
-  'clcuv': 'LEAF_CURL',
-  'पाने वळणे': 'LEAF_CURL',
-  'पाने मुडणे': 'LEAF_CURL',
-  'पत्ता मोड़': 'LEAF_CURL',
+  'गंज रोग': 'RUST',
+  'जंग रोग': 'RUST',
   
   // === ROOT_ROT variations ===
   'root_rot': 'ROOT_ROT',
@@ -323,19 +751,6 @@ const DISEASE_MASTER_TABLE: Record<string, string> = {
   'collar rot': 'ROOT_ROT',
   'मूळ कुज': 'ROOT_ROT',
   'जड़ सड़न': 'ROOT_ROT',
-  
-  // === RED_ROT variations ===
-  'red_rot': 'RED_ROT',
-  'redrot': 'RED_ROT',
-  'red rot': 'RED_ROT',
-  'लाल कुज': 'RED_ROT',
-  'लाल सड़न': 'RED_ROT',
-  
-  // === SMUT variations ===
-  'smut': 'SMUT',
-  'whip_smut': 'SMUT',
-  'whip smut': 'SMUT',
-  'कांडी': 'SMUT',
   
   // === ANTHRACNOSE variations ===
   'anthracnose': 'ANTHRACNOSE',
