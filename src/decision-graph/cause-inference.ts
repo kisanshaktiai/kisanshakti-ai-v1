@@ -688,9 +688,10 @@ export function inferCauses(
   const executionTrace: RuleExecutionResult[] = [];
   const matchedCauses: Map<Cause, { priority: number; rule_id: string }> = new Map();
 
-  // Combine all applicable rules (safety rules first for priority)
+  // Combine all applicable rules (safety rules first for priority, then micronutrients)
   const allRules = [
     ...getAllSafetyRules(),
+    ...MICRONUTRIENT_RULES,
     ...additionalRules,
     ...GLOBAL_RULES
   ];
