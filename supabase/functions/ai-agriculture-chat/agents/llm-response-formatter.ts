@@ -108,6 +108,59 @@ export async function formatRecommendationsWithLLM(
   console.log(`   Language: ${input.language}`);
   console.log(`   Decision Status: ${input.decision_output?.status}`);
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL VALIDATION GATE - Prevent LLM from creating incorrect advice
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  const actions = input.decision_output?.actions_returned;
+  const isDecisionBrain = input.decision_output?.decision_brain_source === true;
+  const hasPrimaryDecision = !!input.decision_output?.primary_decision;
+  const hasSecondaryActions = (input.decision_output?.secondary_actions?.length || 0) > 0;
+  
+  // If decision brain produced recommendations but actions are empty, this is a FAILURE
+  if (isDecisionBrain && (hasPrimaryDecision || hasSecondaryActions) && (!actions || actions.length === 0)) {
+    console.error(`
+🚫 [VALIDATION GATE] CRITICAL ERROR DETECTED:
+   Decision Brain invoked: ${isDecisionBrain}
+   Has Primary Decision: ${hasPrimaryDecision}
+   Has Secondary Actions: ${hasSecondaryActions}
+   Actions Returned: ${actions?.length || 0}
+   
+   This indicates a mapping failure in the rule engine to actions pipeline.
+   The decision brain found matching rules but failed to extract products.
+   BLOCKING LLM response generation to prevent hallucinated advice.
+    `);
+    
+    // Return error to trigger fallback handling
+    return {
+      formatted_response: '',
+      confidence: 0,
+      source: 'TEMPLATE_FALLBACK' as const,
+      processing_time_ms: Date.now() - startTime,
+      sections_included: ['ERROR_NO_ACTIONS']
+    };
+  }
+  
+  // Validate product details are present when actions exist
+  if (actions && actions.length > 0) {
+    const primaryAction = actions.find((a: any) => a.type === 'primary');
+    if (primaryAction) {
+      const hasProductName = !!primaryAction.application_details?.product_name || !!primaryAction.product_name;
+      const hasDosage = !!primaryAction.application_details?.dosage || !!primaryAction.dosage;
+      
+      if (!hasProductName || !hasDosage) {
+        console.warn(`
+⚠️ [VALIDATION GATE] WARNING: Incomplete product details
+   Product Name: ${hasProductName ? 'Present' : 'MISSING'}
+   Dosage: ${hasDosage ? 'Present' : 'MISSING'}
+   Action Type: ${primaryAction.action_type}
+   
+   Proceeding with LLM formatting but response may lack specific recommendations.
+        `);
+      }
+    }
+  }
+  
   const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
   const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');

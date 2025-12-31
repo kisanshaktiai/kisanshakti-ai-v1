@@ -43,6 +43,30 @@ const PEST_MASTER_TABLE: Record<string, string> = {
   'dead_heart': 'SUGARCANE_SHOOT_BORER',
   'DEAD_HEART': 'SUGARCANE_SHOOT_BORER',
   'central shoot dead': 'SUGARCANE_SHOOT_BORER',
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Missing variations causing rule matching failures
+  // ═══════════════════════════════════════════════════════════════════════════
+  'sugarcaneshootborer': 'SUGARCANE_SHOOT_BORER',
+  'SUGARCANESHOOTBORER': 'SUGARCANE_SHOOT_BORER',
+  'sugarcane_shoot_borer': 'SUGARCANE_SHOOT_BORER',
+  'SUGARCANE_SHOOT_BORER': 'SUGARCANE_SHOOT_BORER',
+  'SUGARCANE-SHOOT-BORER': 'SUGARCANE_SHOOT_BORER',
+  'shootborersugarcane': 'SUGARCANE_SHOOT_BORER',
+  'shoot_borer_sugarcane': 'SUGARCANE_SHOOT_BORER',
+  // Symptom-based entries (CRITICAL for dead heart recognition)
+  'dead_heart_sugarcane': 'SUGARCANE_SHOOT_BORER',
+  'deadheartsugarcane': 'SUGARCANE_SHOOT_BORER',
+  'sugarcane_dead_heart': 'SUGARCANE_SHOOT_BORER',
+  'DEAD_HEART_SUGARCANE': 'SUGARCANE_SHOOT_BORER',
+  'SUGARCANE_DEAD_HEART': 'SUGARCANE_SHOOT_BORER',
+  // Marathi transliterated variations
+  'मधली_सुरळी_वाळली': 'SUGARCANE_SHOOT_BORER',
+  'madhli_surli': 'SUGARCANE_SHOOT_BORER',
+  'madhli_surli_wali': 'SUGARCANE_SHOOT_BORER',
+  'MADHLI_SURLI': 'SUGARCANE_SHOOT_BORER',
+  // Combined crop-pest codes
+  'SUGARCANE+SHOOT_BORER': 'SUGARCANE_SHOOT_BORER',
+  'sugarcane+shootborer': 'SUGARCANE_SHOOT_BORER',
   // Marathi - SUGARCANE_SHOOT_BORER
   'शूट बोरर': 'SUGARCANE_SHOOT_BORER',
   'शूटबोरर': 'SUGARCANE_SHOOT_BORER',

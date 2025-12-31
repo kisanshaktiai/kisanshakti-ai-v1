@@ -874,6 +874,7 @@ function validateResponseBeforeSave(params: {
 }): ValidationResult {
   const { decision_brain_source, actions_returned, responseContent, orchestratorResponse, traceId } = params;
   const errors: string[] = [];
+  const detectedLanguage = orchestratorResponse.metadata?.language || 'en';
   
   console.log(`🔍 [${traceId}] Running validation checks...`);
   
@@ -904,34 +905,83 @@ function validateResponseBeforeSave(params: {
     if (!responseContent || responseContent.trim().length === 0) {
       errors.push(`VALIDATION_FAIL: response content is empty`);
       console.log(`   ✗ Check 3: responseContent is empty`);
-    } else if (responseContent.trim().length < 20) {
-      errors.push(`VALIDATION_WARN: response content suspiciously short (${responseContent.length} chars)`);
-      console.log(`   ⚠️ Check 3: responseContent very short: "${responseContent.substring(0, 50)}"`);
+    } else if (responseContent.trim().length < 50) {
+      // Increased threshold from 20 to 50 for more robust content check
+      errors.push(`VALIDATION_FAIL: response content too short for decision brain output (${responseContent.length} chars)`);
+      console.log(`   ✗ Check 3: responseContent too short: "${responseContent.substring(0, 50)}"`);
     } else {
       console.log(`   ✓ Check 3: responseContent has ${responseContent.length} chars`);
     }
     
-    // Check 4: For decisions with actions, verify content mentions key terms
+    // Check 4: For decisions with actions, verify content mentions actionable language
     if (actions_returned && actions_returned.length > 0 && orchestratorResponse.type === 'DECISION_PROVIDED') {
       const contentLower = responseContent.toLowerCase();
-      const hasRecommendationIndicators = 
-        contentLower.includes('recommend') ||
-        contentLower.includes('शिफारस') || // Marathi
-        contentLower.includes('सिफारिश') || // Hindi
-        contentLower.includes('करा') ||      // Marathi action
-        contentLower.includes('करें') ||      // Hindi action
-        contentLower.includes('apply') ||
-        contentLower.includes('spray') ||
-        contentLower.includes('फवारणी') ||   // Marathi spray
-        contentLower.includes('छिड़काव') ||   // Hindi spray
-        contentLower.includes('use') ||
-        contentLower.includes('वापरा');      // Marathi use
+      
+      // Language-specific recommendation keywords
+      const recommendationKeywords: Record<string, string[]> = {
+        'mr': ['फवारणी', 'करा', 'द्या', 'वापरा', 'शिफारस', 'उपाय', 'नियंत्रण', 'काढा', 'टाका'],
+        'hi': ['छिड़काव', 'करें', 'दें', 'उपयोग', 'सिफारिश', 'उपाय', 'नियंत्रण', 'हटाएं', 'लगाएं'],
+        'en': ['spray', 'apply', 'use', 'recommend', 'control', 'remove', 'treat', 'dosage', 'application']
+      };
+      
+      const keywords = recommendationKeywords[detectedLanguage as string] || recommendationKeywords['en'];
+      const hasRecommendationIndicators = keywords.some(kw => contentLower.includes(kw.toLowerCase()));
       
       if (!hasRecommendationIndicators) {
-        errors.push(`VALIDATION_WARN: actions_returned present but response lacks recommendation language`);
-        console.log(`   ⚠️ Check 4: Response may not properly convey recommendations`);
+        errors.push(`VALIDATION_FAIL: actions_returned present but response lacks actionable recommendation language`);
+        console.log(`   ✗ Check 4: Response missing recommendation language for ${detectedLanguage}`);
       } else {
         console.log(`   ✓ Check 4: Response contains recommendation language`);
+      }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NEW CHECK 5: Detect agricultural errors (harvest for young crops)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const contentLower = responseContent.toLowerCase();
+    const cropStage = orchestratorResponse.dataAudit?.land?.growth_stage?.toUpperCase() || '';
+    const daysSinceSowing = orchestratorResponse.dataAudit?.land?.days_since_sowing || 0;
+    const crop = orchestratorResponse.dataAudit?.land?.current_crop?.toUpperCase() || '';
+    
+    const youngCropStages = ['GERMINATION', 'SEEDLING', 'VEGETATIVE', 'TILLERING', 'GRAND_GROWTH'];
+    const isYoungCrop = youngCropStages.includes(cropStage) || daysSinceSowing < 120;
+    
+    // Check for harvest keywords in young crop responses
+    const harvestKeywords = ['harvest', 'कापणी', 'काटाई', 'कटाई', 'वेचणी', 'काढणी', 'तोडणी'];
+    const mentionsHarvest = harvestKeywords.some(kw => contentLower.includes(kw.toLowerCase()));
+    
+    if (isYoungCrop && mentionsHarvest) {
+      errors.push(`VALIDATION_FAIL: Response recommends harvest for young crop (stage: ${cropStage}, days: ${daysSinceSowing})`);
+      console.log(`   ✗ Check 5: AGRICULTURAL ERROR - Harvest recommended for ${cropStage} stage crop (${daysSinceSowing} days old)`);
+    } else if (!isYoungCrop || !mentionsHarvest) {
+      console.log(`   ✓ Check 5: No harvest-for-young-crop error (stage: ${cropStage || 'unknown'}, days: ${daysSinceSowing})`);
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NEW CHECK 6: Validate product details are present for chemical/spray actions
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (actions_returned && actions_returned.length > 0) {
+      const primaryAction = actions_returned.find((a: any) => a.type === 'primary');
+      if (primaryAction) {
+        const actionType = primaryAction.action_type?.toUpperCase() || '';
+        const isChemicalAction = ['SPRAY', 'INSECTICIDE', 'FUNGICIDE', 'PESTICIDE', 'CHEMICAL'].some(t => actionType.includes(t));
+        
+        if (isChemicalAction) {
+          const hasProductName = !!primaryAction.application_details?.product_name || !!primaryAction.product_name;
+          const hasDosage = !!primaryAction.application_details?.dosage || !!primaryAction.dosage;
+          
+          if (!hasProductName) {
+            errors.push(`VALIDATION_WARN: Chemical action missing product_name`);
+            console.log(`   ⚠️ Check 6: Chemical action lacks product_name`);
+          }
+          if (!hasDosage) {
+            errors.push(`VALIDATION_WARN: Chemical action missing dosage`);
+            console.log(`   ⚠️ Check 6: Chemical action lacks dosage`);
+          }
+          if (hasProductName && hasDosage) {
+            console.log(`   ✓ Check 6: Chemical action has complete product details`);
+          }
+        }
       }
     }
   }
