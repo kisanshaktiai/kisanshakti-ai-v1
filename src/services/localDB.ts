@@ -498,6 +498,7 @@ export interface AIChatMessageData {
   // Feedback
   feedback_rating: number | null;
   feedback_text: string | null;
+  feedback_timestamp: string | null;
   
   // Attachments
   attachments: any;
@@ -519,8 +520,29 @@ export interface AIChatMessageData {
   ip_address: any;
   partition_key: number | null;
   
-  // Analysis
+  // Analysis & Intent Classification
   word_count: number | null;
+  inferred_intent: string | null;
+  intent_confidence: number | null;
+  
+  // Training & Quality fields (Supabase schema)
+  is_training_candidate: boolean | null;
+  human_verified: boolean | null;
+  correction_notes: string | null;
+  conversation_quality_score: number | null;
+  domain_tags: string[] | null;
+  complexity_level: string | null;
+  conversation_turn_number: number | null;
+  off_topic: boolean | null;
+  training_processed: boolean | null;
+  preprocessed_content: string | null;
+  excluded_reason: string | null;
+  agricultural_accuracy: number | null;
+  
+  // Decision Brain fields
+  decision_brain_source: boolean | null;
+  actions_returned: any;
+  actions_filtered_out: any;
   
   // Metadata
   metadata: any;
@@ -781,8 +803,8 @@ interface KisanDB extends DBSchema {
 // ============================================================================
 
 const DB_NAME = 'KisanDB';
-const DB_VERSION = 8; // Bumped for scheduleTasks index updates (2025-12-09)
-const SCHEMA_VERSION = 6; // Bumped for full schedule_tasks sync support
+const DB_VERSION = 9; // Bumped for ai_chat_messages schema update with training/intent fields (2025-12-31)
+const SCHEMA_VERSION = 7; // Bumped for ai_chat_messages intent/training fields sync
 
 class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;

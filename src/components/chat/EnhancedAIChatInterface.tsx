@@ -141,6 +141,7 @@ export function EnhancedAIChatInterface() {
   const [loadingMessage, setLoadingMessage] = useState('');
   const [sessionIds, setSessionIds] = useState<Record<string, string>>({});
   const [loadedSessionIds, setLoadedSessionIds] = useState<Set<string>>(new Set());
+  const [hasEverHadMessages, setHasEverHadMessages] = useState<Record<string, boolean>>({});
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -487,6 +488,8 @@ export function EnhancedAIChatInterface() {
             ...prev,
             [sessionKey]: loadedMsgs
           }));
+          // Track that this tab has had messages (prevents welcome card flash)
+          setHasEverHadMessages(prev => ({ ...prev, [sessionKey]: true }));
         }
         
         setLoadedSessionIds(prev => new Set([...prev, sessionKey]));
@@ -1283,7 +1286,7 @@ export function EnhancedAIChatInterface() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => navigate(-1)}
+                onClick={() => navigate('/app/home')}
                 className="h-10 w-10 rounded-xl bg-muted/50 hover:bg-muted/80 backdrop-blur-sm border border-border/30"
               >
                 <ArrowLeft className="h-5 w-5" />
@@ -1401,42 +1404,65 @@ export function EnhancedAIChatInterface() {
           )}
         </AnimatePresence>
 
-        {/* Modern Land Tabs with Glass Effect */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="relative w-full">
-          <div className="px-4 pb-3 overflow-x-auto scrollbar-hide">
-            <TabsList className="h-11 w-auto inline-flex gap-2 bg-transparent p-0">
-              <TabsTrigger 
-                value="general" 
-                className={cn(
-                  "text-sm px-4 h-10 rounded-xl font-medium transition-all border",
-                  "data-[state=inactive]:bg-muted/40 data-[state=inactive]:border-border/30 data-[state=inactive]:text-muted-foreground",
-                  "data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary data-[state=active]:to-primary/80",
-                  "data-[state=active]:text-primary-foreground data-[state=active]:border-primary/50",
-                  "data-[state=active]:shadow-lg data-[state=active]:shadow-primary/20"
-                )}
-              >
-                <MessageSquare className="h-4 w-4 mr-2" />
-                {t('chat.generalChat', 'General')}
-              </TabsTrigger>
-              {lands.slice(0, 5).map(land => (
-                <TabsTrigger 
-                  key={land.id} 
-                  value={land.id}
+        {/* 2030 Modern Land Selector - Horizontal Swipe Cards */}
+        <div className="px-3 pb-3">
+          <div 
+            className="flex gap-2 overflow-x-auto scrollbar-hide pb-1 snap-x snap-mandatory"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+          >
+            {/* General Chat Card */}
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setActiveTab('general')}
+              className={cn(
+                "flex-shrink-0 snap-start flex flex-col items-center justify-center",
+                "w-[72px] h-[56px] rounded-xl border-2 transition-all duration-200",
+                activeTab === 'general'
+                  ? "bg-gradient-to-br from-primary to-primary/80 border-primary/50 shadow-lg shadow-primary/25"
+                  : "bg-muted/40 border-border/30 hover:bg-muted/60"
+              )}
+            >
+              <MessageSquare className={cn(
+                "h-5 w-5 mb-0.5",
+                activeTab === 'general' ? "text-primary-foreground" : "text-muted-foreground"
+              )} />
+              <span className={cn(
+                "text-[10px] font-medium truncate max-w-[60px]",
+                activeTab === 'general' ? "text-primary-foreground" : "text-muted-foreground"
+              )}>
+                {t('chat.general', 'General')}
+              </span>
+            </motion.button>
+
+            {/* Land Cards */}
+            {lands.map(land => {
+              const cropEmoji = land.current_crop?.icon || '🌾';
+              const isActive = activeTab === land.id;
+              return (
+                <motion.button
+                  key={land.id}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => setActiveTab(land.id)}
                   className={cn(
-                    "text-sm px-4 h-10 rounded-xl font-medium transition-all border whitespace-nowrap",
-                    "data-[state=inactive]:bg-muted/40 data-[state=inactive]:border-border/30 data-[state=inactive]:text-muted-foreground",
-                    "data-[state=active]:bg-gradient-to-br data-[state=active]:from-success data-[state=active]:to-success/80",
-                    "data-[state=active]:text-success-foreground data-[state=active]:border-success/50",
-                    "data-[state=active]:shadow-lg data-[state=active]:shadow-success/20"
+                    "flex-shrink-0 snap-start flex flex-col items-center justify-center",
+                    "w-[72px] h-[56px] rounded-xl border-2 transition-all duration-200",
+                    isActive
+                      ? "bg-gradient-to-br from-success to-success/80 border-success/50 shadow-lg shadow-success/25"
+                      : "bg-muted/40 border-border/30 hover:bg-muted/60"
                   )}
                 >
-                  <Mountain className="h-4 w-4 mr-2" />
-                  {land.name?.substring(0, 10) || 'Land'}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+                  <span className="text-lg mb-0.5">{cropEmoji}</span>
+                  <span className={cn(
+                    "text-[10px] font-medium truncate max-w-[60px] px-1",
+                    isActive ? "text-success-foreground" : "text-muted-foreground"
+                  )}>
+                    {land.name?.substring(0, 8) || 'Land'}
+                  </span>
+                </motion.button>
+              );
+            })}
           </div>
-        </Tabs>
+        </div>
       </header>
 
       {/* ═══════════════════════════════════════════════════════════════════════════
@@ -1476,15 +1502,18 @@ export function EnhancedAIChatInterface() {
               </motion.div>
             )}
 
-            {/* Welcome Card - Enhanced */}
-            {!isLoadingHistory && currentMessages.length === 0 && (
+            {/* Welcome Card - Only show if never had messages (prevents flash) */}
+            {!isLoadingHistory && currentMessages.length === 0 && !hasEverHadMessages[activeTab] && (
               <motion.div
                 initial={{ opacity: 0, y: 20, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.5, type: "spring", bounce: 0.3 }}
+                transition={{ duration: 0.5, type: "spring", bounce: 0.3, delay: 0.1 }}
               >
                 {activeTab === 'general' ? (
-                  <GeneralChatWelcomeCard />
+                  <GeneralChatWelcomeCard onQuickAction={(query) => {
+                    setInputValue(query);
+                    setTimeout(() => sendMessage(query), 100);
+                  }} />
                 ) : currentLand ? (
                   <LandContextCard land={currentLand} />
                 ) : null}
@@ -1625,26 +1654,22 @@ export function EnhancedAIChatInterface() {
       </AnimatePresence>
 
       {/* ═══════════════════════════════════════════════════════════════════════════
-          2030 FUTURISTIC INPUT AREA - Neural Glassmorphism Design
+          2030 MODERN INPUT AREA - Clean Pill Design (Reference: chat_bottom.jpg)
           ═══════════════════════════════════════════════════════════════════════════ */}
       <footer className="sticky bottom-0 z-50 flex-shrink-0">
-        {/* Gradient glow effect */}
-        <div className="absolute -top-8 left-0 right-0 h-8 bg-gradient-to-t from-background/80 to-transparent pointer-events-none" />
+        {/* Gradient fade effect */}
+        <div className="absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-background to-transparent pointer-events-none" />
         
-        {/* Main footer with glassmorphism */}
-        <div className="relative bg-card/80 backdrop-blur-2xl border-t border-border/30">
-          {/* Top glow line */}
-          <div className="absolute top-0 left-4 right-4 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent" />
-          
-          <div className="px-4 py-3 pb-safe space-y-3">
-            {/* Attached Files Preview - Enhanced */}
+        <div className="relative bg-background/95 backdrop-blur-xl">
+          <div className="px-3 py-3 pb-safe space-y-2">
+            {/* Attached Files Preview */}
             <AnimatePresence>
               {attachedFiles.length > 0 && (
                 <motion.div
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="flex gap-3 overflow-x-auto scrollbar-hide"
+                  className="flex gap-2 overflow-x-auto scrollbar-hide"
                 >
                   {attachedFiles.map((file, index) => (
                     <motion.div 
@@ -1653,7 +1678,7 @@ export function EnhancedAIChatInterface() {
                       animate={{ opacity: 1, scale: 1 }}
                       className="relative flex-shrink-0 group"
                     >
-                      <div className="h-20 w-20 rounded-xl overflow-hidden border-2 border-primary/30 shadow-lg ring-2 ring-primary/10">
+                      <div className="h-16 w-16 rounded-xl overflow-hidden border-2 border-primary/20 shadow-md">
                         {file.type.startsWith('image/') ? (
                           <img
                             src={URL.createObjectURL(file)}
@@ -1662,17 +1687,17 @@ export function EnhancedAIChatInterface() {
                           />
                         ) : (
                           <div className="h-full w-full flex items-center justify-center bg-muted">
-                            <Paperclip className="h-6 w-6 text-muted-foreground" />
+                            <Paperclip className="h-5 w-5 text-muted-foreground" />
                           </div>
                         )}
                       </div>
                       <Button
                         variant="destructive"
                         size="icon"
-                        className="absolute -top-2 -right-2 h-6 w-6 rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full shadow-md"
                         onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))}
                       >
-                        <X className="h-3.5 w-3.5" />
+                        <X className="h-3 w-3" />
                       </Button>
                     </motion.div>
                   ))}
@@ -1680,109 +1705,94 @@ export function EnhancedAIChatInterface() {
               )}
             </AnimatePresence>
 
-            {/* Input Row */}
+            {/* Hidden File Input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files || []);
+                setAttachedFiles(prev => [...prev, ...files]);
+                e.target.value = '';
+              }}
+            />
+
+            {/* Modern Pill-Shaped Input Container */}
             <div className="flex items-center gap-2">
-              {/* Action Buttons Group */}
-              <div className="flex items-center gap-1">
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setShowCamera(true)}
-                    className="h-11 w-11 rounded-xl bg-gradient-to-br from-accent/20 to-info/20 hover:from-accent/30 hover:to-info/30 border border-accent/30 text-accent-foreground transition-all"
-                  >
-                    <Camera className="h-5 w-5 text-accent" />
-                  </Button>
-                </motion.div>
-
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Button
-                    variant="ghost"
-                    size="icon"
+              {/* Main Pill Input */}
+              <div className="flex-1 flex items-center bg-muted/60 rounded-full border border-border/40 px-1.5 py-1 shadow-sm">
+                {/* Left Action Buttons - Combined */}
+                <div className="flex items-center gap-0.5 pl-1">
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
                     onClick={() => fileInputRef.current?.click()}
-                    className="h-11 w-11 rounded-xl bg-muted/50 hover:bg-muted/80 border border-border/30 transition-all"
+                    className="h-9 w-9 rounded-full flex items-center justify-center hover:bg-muted transition-colors"
+                    aria-label={t('chat.attach', 'Attach file')}
                   >
-                    <Paperclip className="h-5 w-5" />
-                  </Button>
-                </motion.div>
-              </div>
+                    <Paperclip className="h-5 w-5 text-muted-foreground" />
+                  </motion.button>
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => setShowCamera(true)}
+                    className="h-9 w-9 rounded-full flex items-center justify-center hover:bg-muted transition-colors"
+                    aria-label={t('chat.camera', 'Take photo')}
+                  >
+                    <Camera className="h-5 w-5 text-muted-foreground" />
+                  </motion.button>
+                </div>
 
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  const files = Array.from(e.target.files || []);
-                  setAttachedFiles(prev => [...prev, ...files]);
-                  e.target.value = '';
-                }}
-              />
-
-              {/* Main Input Field - Enhanced */}
-              <div className="flex-1 relative group">
-                <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-accent/10 to-primary/10 rounded-xl opacity-0 group-focus-within:opacity-100 blur-sm transition-opacity" />
-                <Input
+                {/* Input Field */}
+                <input
                   ref={inputRef}
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder={t('chat.placeholder', 'Ask about your farm...')}
-                  className="relative h-11 rounded-xl bg-muted/50 border-border/50 focus:border-primary/50 focus:ring-2 focus:ring-primary/20 pr-4 transition-all"
+                  placeholder={t('chat.input.placeholder', 'तुमचा संदेश टाइप करा...')}
+                  className="flex-1 bg-transparent border-none outline-none px-3 py-2 text-sm placeholder:text-muted-foreground/60"
                   disabled={isLoading}
                 />
+
+                {/* Right Side - Mic or Send */}
+                {inputValue.trim() || attachedFiles.length > 0 ? (
+                  <motion.button
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={() => sendMessage()}
+                    disabled={isLoading}
+                    className="h-9 w-9 rounded-full flex items-center justify-center bg-primary text-primary-foreground shadow-md mr-0.5"
+                    aria-label={t('chat.send', 'Send message')}
+                  >
+                    {isLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    whileTap={{ scale: 0.9 }}
+                    animate={isListening ? { scale: [1, 1.05, 1] } : {}}
+                    transition={isListening ? { repeat: Infinity, duration: 0.8 } : {}}
+                    onClick={isListening ? stopListening : startListening}
+                    className={cn(
+                      "h-9 w-9 rounded-full flex items-center justify-center mr-0.5 transition-all",
+                      isListening 
+                        ? "bg-destructive text-destructive-foreground shadow-md" 
+                        : "bg-gradient-to-br from-primary/15 to-accent/15 hover:from-primary/25 hover:to-accent/25"
+                    )}
+                    aria-label={isListening ? t('chat.stopRecording', 'Stop recording') : t('chat.startRecording', 'Start recording')}
+                  >
+                    {isListening ? (
+                      <MicOff className="h-4 w-4" />
+                    ) : (
+                      <Mic className="h-5 w-5 text-primary" />
+                    )}
+                  </motion.button>
+                )}
               </div>
-
-              {/* Voice Button - Enhanced */}
-              <motion.div 
-                whileHover={{ scale: 1.05 }} 
-                whileTap={{ scale: 0.95 }}
-                animate={isListening ? { scale: [1, 1.1, 1] } : {}}
-                transition={isListening ? { repeat: Infinity, duration: 1 } : {}}
-              >
-                <Button
-                  variant={isListening ? "destructive" : "ghost"}
-                  size="icon"
-                  onClick={isListening ? stopListening : startListening}
-                  className={cn(
-                    "h-11 w-11 rounded-xl transition-all",
-                    isListening 
-                      ? "bg-destructive text-destructive-foreground shadow-lg shadow-destructive/30" 
-                      : "bg-muted/50 hover:bg-muted/80 border border-border/30"
-                  )}
-                >
-                  {isListening ? (
-                    <MicOff className="h-5 w-5" />
-                  ) : (
-                    <Mic className="h-5 w-5" />
-                  )}
-                </Button>
-              </motion.div>
-
-              {/* Send Button - Futuristic Design */}
-              <motion.div 
-                whileHover={{ scale: 1.05 }} 
-                whileTap={{ scale: 0.95 }}
-              >
-                <Button
-                  onClick={() => sendMessage()}
-                  disabled={isLoading || (!inputValue.trim() && attachedFiles.length === 0)}
-                  size="icon"
-                  className={cn(
-                    "h-11 w-11 rounded-xl transition-all shadow-lg",
-                    inputValue.trim() || attachedFiles.length > 0
-                      ? "bg-gradient-to-br from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-primary/30"
-                      : "bg-muted/50 border border-border/30"
-                  )}
-                >
-                  {isLoading ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <Send className="h-5 w-5" />
-                  )}
-                </Button>
-              </motion.div>
             </div>
           </div>
         </div>
