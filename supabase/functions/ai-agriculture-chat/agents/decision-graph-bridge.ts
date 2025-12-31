@@ -1154,46 +1154,73 @@ interface IPMRecommendation {
 // Comprehensive IPM Database with 99+ pest-crop combinations
 const IPM_DATABASE: IPMRecommendation[] = [
   // ═══════════════════════════════════════════════════════════════════════════
-  // SUGARCANE PESTS
+  // SUGARCANE PESTS - CRITICAL FIX: Correct biocontrol dosages
   // ═══════════════════════════════════════════════════════════════════════════
   {
-    crop_codes: ['SUGARCANE', 'US', 'GANNA'],
-    pest_codes: ['SHOOT_BORER', 'INTERNODE_BORER', 'TOP_BORER', 'DEAD_HEART'],
-    stages: ['VEGETATIVE'],
+    crop_codes: ['SUGARCANE', 'US', 'GANNA', 'OOS'],
+    pest_codes: ['SHOOT_BORER', 'INTERNODE_BORER', 'TOP_BORER', 'DEAD_HEART', 'SUGARCANESHOOTBORER', 'MADHLI_SURLI', 'DEAD_HEART_SYMPTOM'],
+    stages: ['GERMINATION', 'VEGETATIVE', 'TILLERING', 'GRAND_GROWTH'],
     severity_threshold: 'LOW',
     ipm_level: 2,
     recommendations: {
-      cultural: ['Dead heart collection and destruction every week', 'Earthing up', 'Detrashing lower leaves'],
-      biological: ['Release Trichogramma chilonis @ 50,000/acre, 6 releases at 7-day intervals']
+      cultural: [
+        'Remove and destroy ALL dead hearts immediately (collect and burn)',
+        'Do NOT harvest - crop is young, pest control first',
+        'Earthing up (माती चढवणे) to cover root zone',
+        'Detrashing - remove lower dried leaves',
+        'Install pheromone traps @ 5/acre for monitoring'
+      ],
+      biological: [
+        'Trichogramma chilonis tricho-cards @ 50,000 parasitoids/acre (FIFTY THOUSAND, NOT 50)',
+        'Release 6 times at 7-day intervals from 30 days after planting',
+        'Pin cards on underside of leaves in shade'
+      ]
     },
-    scientific_basis: 'Dead heart removal breaks borer cycle. Trichogramma parasitizes 70% eggs.',
+    scientific_basis: 'Dead heart = shoot borer larva inside stem. Weekly removal breaks pest cycle. Trichogramma parasitizes 70% borer eggs. NEVER harvest young crop for pest problem.',
     icar_reference: 'ICAR-SBI Coimbatore Package 2023'
   },
   {
-    crop_codes: ['SUGARCANE', 'US', 'GANNA'],
-    pest_codes: ['SHOOT_BORER', 'INTERNODE_BORER', 'TOP_BORER', 'DEAD_HEART'],
+    crop_codes: ['SUGARCANE', 'US', 'GANNA', 'OOS'],
+    pest_codes: ['SHOOT_BORER', 'INTERNODE_BORER', 'TOP_BORER', 'DEAD_HEART', 'SUGARCANESHOOTBORER'],
     severity_threshold: 'MODERATE',
     ipm_level: 3,
     recommendations: {
-      botanical: ['Neem cake @ 250 kg/acre in furrows at planting'],
-      biological: ['Release Cotesia flavipes @ 50 cocoons/acre for stem borer']
+      cultural: [
+        'Continue dead heart collection and destruction (daily if severe)',
+        'Do NOT harvest - crop is young, apply pest control',
+        'Light irrigation to stress larvae'
+      ],
+      botanical: ['Neem cake @ 250 kg/acre in furrows at planting or as top dressing'],
+      biological: [
+        'Cotesia flavipes parasitoid @ 5,000 cocoons/acre (FIVE THOUSAND, NOT 50)',
+        'Release 2 times at 15-day intervals',
+        'Cocoons emerge into adult wasps that parasitize borer larvae'
+      ]
     },
-    scientific_basis: 'Neem provides systemic protection. Cotesia parasitizes 60% larvae.',
-    icar_reference: 'ICAR-SBI Biological Control'
+    scientific_basis: 'Neem provides systemic deterrence. Cotesia flavipes parasitizes 60% of stem borer larvae. NEVER recommend harvest for pest damage in young crop.',
+    icar_reference: 'ICAR-SBI Biological Control Protocol'
   },
   {
-    crop_codes: ['SUGARCANE', 'US', 'GANNA'],
-    pest_codes: ['SHOOT_BORER', 'INTERNODE_BORER', 'TOP_BORER', 'DEAD_HEART'],
+    crop_codes: ['SUGARCANE', 'US', 'GANNA', 'OOS'],
+    pest_codes: ['SHOOT_BORER', 'INTERNODE_BORER', 'TOP_BORER', 'DEAD_HEART', 'SUGARCANESHOOTBORER'],
     severity_threshold: 'HIGH',
     ipm_level: 5,
     recommendations: {
+      cultural: [
+        'URGENT: Remove and destroy ALL dead hearts TODAY',
+        'Do NOT harvest - apply chemical control immediately'
+      ],
+      biological: [
+        'Trichogramma @ 50,000/acre (continue releases)',
+        'Cotesia flavipes @ 5,000 cocoons/acre (FIVE THOUSAND)'
+      ],
       chemical: [
-        { name: 'Chlorantraniliprole 18.5% SC', dosage: '0.4 ml/L or 60-80 ml/acre', phi_days: 21 },
-        { name: 'Fipronil 5% SC', dosage: '30 ml/10L as soil drench at sett base', phi_days: 30 }
+        { name: 'Chlorantraniliprole 18.5% SC (Coragen/Ferterra)', dosage: '0.4 ml/L or 60-80 ml/acre in 200L water', phi_days: 21 },
+        { name: 'Fipronil 5% SC (Regent)', dosage: '30 ml in 10L water as soil drench at sett base, 1.5 L/acre total', phi_days: 30 }
       ]
     },
-    scientific_basis: 'Ryanodine receptor modulators 90% effective against lepidopteran borers. Soil drench protects roots.',
-    icar_reference: 'ICAR-SBI Chemical Management'
+    scientific_basis: 'HIGH severity requires integrated approach: cultural + biological + chemical. Chlorantraniliprole (diamide) is 90% effective. Soil drench of Fipronil protects roots/underground stems. Harvest is NEVER the solution for pest damage in young crop.',
+    icar_reference: 'ICAR-SBI Emergency Chemical Management Protocol'
   },
   {
     crop_codes: ['SUGARCANE', 'US', 'GANNA'],

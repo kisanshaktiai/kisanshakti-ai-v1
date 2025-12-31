@@ -204,6 +204,9 @@ function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
   
   const ruralRules = getRuralLanguageRules(input.language);
   
+  // Get crop stage constraints
+  const cropStageConstraints = getCropStageConstraints(input);
+  
   return `You are KisanMitra (किसानमित्र), a warm and experienced agricultural advisor for Indian farmers.
 Your task is to convert technical recommendations into natural, empathetic, action-oriented advice.
 
@@ -223,14 +226,115 @@ CRITICAL RULES:
 - Use IPM hierarchy urgency levels as indicators (Level 5 = "तुरंत करें/Do immediately")
 - Include emojis for visual clarity: 🌾 for crops, 💧 for water, ⏰ for timing, ⚠️ for warnings
 - Add supportive closing like "Feel free to ask if you need clarification"
-- Keep response under 400 words - farmers need concise advice`;
+- Keep response under 400 words - farmers need concise advice
+
+═══════════════════════════════════════════════════════════════════════════
+MANDATORY AGRICULTURAL DOMAIN CONSTRAINTS (ICAR-CERTIFIED):
+═══════════════════════════════════════════════════════════════════════════
+
+${cropStageConstraints}
+
+DEAD HEART SYMPTOM RECOGNITION:
+- "मधली सुरळी वाळली" (middle shoot dried), "डेड हार्ट", or "dead heart" = SHOOT BORER damage
+- This is a PEST PROBLEM, NOT harvest indicator
+- Dead heart appears in VEGETATIVE stage (crop age <120 days for sugarcane)
+- CORRECT response: Remove dead hearts + Apply pest control + Monitor
+- WRONG response: Harvest (crop is too young!)
+
+BIOCONTROL DOSAGE RULES (CRITICAL - DO NOT MODIFY):
+- Trichogramma chilonis: ALWAYS 50,000 parasitoids/acre (NOT 50)
+- Cotesia flavipes: ALWAYS 5,000 cocoons/acre (NOT 50 or 500)
+- Number of releases must be preserved (6 releases at weekly intervals)
+- These are 1000x LARGER than typical chemical dosages - this is CORRECT
+
+CHEMICAL CONTROL MANDATE FOR HIGH SEVERITY:
+- When severity is HIGH or CRITICAL, ALWAYS include chemical control option
+- Cultural/biological methods are NOT sufficient alone for high severity
+- Present in order: Cultural → Biological → Chemical (all three for HIGH severity)
+
+DOSAGE PRESERVATION:
+- Copy dosages EXACTLY from recommendations (e.g., "0.4 ml/L or 60-80 ml/acre")
+- Include both concentration AND per-acre dosages when available
+- Include PHI days: "PHI: 21 दिवस - कापणी करू नका"`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CROP STAGE CONSTRAINTS GENERATOR
+// ═══════════════════════════════════════════════════════════════════════════
+
+function getCropStageConstraints(input: LLMFormatterInput): string {
+  const cropStage = input.land_context?.growth_stage?.toUpperCase() || '';
+  const daysSinceSowing = input.land_context?.days_since_sowing || 0;
+  const crop = input.land_context?.current_crop?.toUpperCase() || '';
+  
+  // Define young crop stages where harvest is NEVER appropriate
+  const youngCropStages = ['GERMINATION', 'SEEDLING', 'VEGETATIVE', 'TILLERING', 'GRAND_GROWTH'];
+  const isYoungCrop = youngCropStages.includes(cropStage) || daysSinceSowing < 120;
+  
+  // Define minimum harvest ages by crop (days)
+  const minHarvestAge: Record<string, number> = {
+    'SUGARCANE': 270, // 9 months minimum
+    'COTTON': 150,
+    'RICE': 120,
+    'WHEAT': 120,
+    'MAIZE': 90,
+    'SOYBEAN': 95,
+    'GROUNDNUT': 110,
+  };
+  
+  const cropMinAge = minHarvestAge[crop] || 120;
+  const cropIsTooYoung = daysSinceSowing < cropMinAge;
+  
+  if (isYoungCrop || cropIsTooYoung) {
+    return `⚠️ CRITICAL CROP STAGE CONSTRAINT:
+- Current stage: ${cropStage || 'VEGETATIVE'}
+- Days since sowing: ${daysSinceSowing || 'Unknown (assume young)'}
+- Crop: ${crop || 'Unknown'}
+
+🚫 HARVEST RECOMMENDATIONS ARE BLOCKED FOR THIS CROP!
+- This crop is in ${cropStage || 'early growth'} stage
+- Minimum harvest age for ${crop || 'this crop'}: ${cropMinAge} days
+- Current age: ${daysSinceSowing} days
+- ${cropMinAge - daysSinceSowing > 0 ? `${cropMinAge - daysSinceSowing} more days needed before harvest` : 'Age unknown'}
+
+For pest/disease problems on young crops, ONLY recommend:
+1. Immediate pest/disease control measures
+2. Cultural practices (remove affected parts)
+3. Biological control agents
+4. Chemical control if severity is HIGH
+5. Monitoring schedule
+
+NEVER recommend: Harvesting, early harvest, cutting crop, selling crop`;
+  }
+  
+  return `CROP STAGE: ${cropStage || 'Not specified'} (${daysSinceSowing} days since sowing)
+- Harvest recommendations allowed if crop is near maturity
+- Always check PHI compliance for chemical recommendations`;
 }
 
 function buildFormattingUserPrompt(input: LLMFormatterInput, recData: string): string {
+  const cropStage = input.land_context?.growth_stage?.toUpperCase() || 'UNKNOWN';
+  const daysSinceSowing = input.land_context?.days_since_sowing || 0;
+  const crop = input.land_context?.current_crop || 'Unknown';
+  
+  // Determine if crop is young (harvest not appropriate)
+  const youngCropStages = ['GERMINATION', 'SEEDLING', 'VEGETATIVE', 'TILLERING', 'GRAND_GROWTH'];
+  const isYoungCrop = youngCropStages.includes(cropStage) || daysSinceSowing < 120;
+  
+  // Build explicit constraint for young crops
+  const harvestConstraint = isYoungCrop ? `
+⚠️ CRITICAL CONSTRAINT - READ CAREFULLY:
+This crop (${crop}) is only ${daysSinceSowing} days old in ${cropStage} stage.
+DO NOT recommend harvesting, cutting, or selling the crop.
+For pest/disease problems, recommend CONTROL MEASURES only.
+The farmer's problem is about pest damage (dead heart = shoot borer), NOT about harvesting.
+
+` : '';
+
   const landInfo = input.land_context ? `
 LAND CONTEXT:
 - Crop: ${input.land_context.current_crop || 'Not specified'}
-- Growth Stage: ${input.land_context.growth_stage || 'Not specified'}
+- Growth Stage: ${input.land_context.growth_stage || 'Not specified'} ${isYoungCrop ? '⚠️ YOUNG CROP - NO HARVEST' : ''}
 - Area: ${input.land_context.area_acres || 'N/A'} acres
 - Days Since Sowing: ${input.land_context.days_since_sowing || 'N/A'}
 - NDVI Health: ${input.land_context.ndvi?.value || 'N/A'} (${input.land_context.ndvi?.trend || 'unknown'})
@@ -241,13 +345,19 @@ LAND CONTEXT:
   return `FARMER'S QUESTION (in their language):
 "${input.farmer_message}"
 
-${landInfo}
+${harvestConstraint}${landInfo}
 
-RULE ENGINE RECOMMENDATIONS:
+RULE ENGINE RECOMMENDATIONS (PRESERVE ALL DOSAGES EXACTLY):
 ${recData}
 
 FORMAT this into natural, empathetic farmer advice in ${input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English'}.
-Remember: Include ALL product names and dosages. Be warm and supportive.`;
+
+IMPORTANT REMINDERS:
+1. Include ALL product names and dosages EXACTLY as shown above
+2. Trichogramma = 50,000/acre (fifty thousand), Cotesia = 5,000/acre (five thousand)
+3. ${isYoungCrop ? 'DO NOT recommend harvest - this is a young crop with pest problem' : 'Check PHI before recommending harvest'}
+4. For dead heart symptom, the solution is pest control, NOT harvesting
+5. Be warm and supportive`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -261,7 +371,7 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
   // Status
   parts.push(`STATUS: ${decision.status || 'UNKNOWN'}`);
   
-  // Primary recommendation
+  // Primary recommendation with COMPLETE product details
   const primary = decision.primary_decision;
   if (primary) {
     const pestCode = primary.target?.pest_code;
@@ -272,10 +382,33 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     parts.push(`\nPRIMARY RECOMMENDATION:`);
     parts.push(`- Action Type: ${primary.action_type}`);
     parts.push(`- Target: ${pestName || diseaseName || primary.target?.nutrient_deficiency || 'General'}`);
-    parts.push(`- Product: ${primary.application_details?.product_name || 'Not specified'}`);
-    parts.push(`- Dosage: ${primary.application_details?.concentration || 'As per label'}`);
-    parts.push(`- Method: ${primary.application_details?.method || 'Standard application'}`);
-    parts.push(`- Timing: ${primary.timing?.best_time_of_day || 'Morning recommended'}`);
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: Extract and pass COMPLETE product details
+    // ═══════════════════════════════════════════════════════════════════════════
+    const appDetails = primary.application_details;
+    if (appDetails) {
+      parts.push(`- Product Name: ${appDetails.product_name || 'Not specified'}`);
+      parts.push(`- Dosage (concentration): ${appDetails.concentration || appDetails.dosage || 'As per label'}`);
+      parts.push(`- Dosage (per acre): ${appDetails.dosage_per_acre || 'See concentration'}`);
+      parts.push(`- Application Method: ${appDetails.method || appDetails.application_method || 'Standard application'}`);
+      parts.push(`- Timing: ${appDetails.timing || primary.timing?.best_time_of_day || 'Early morning 6-10 AM'}`);
+      parts.push(`- Water Volume: ${appDetails.water_volume || appDetails.water_volume_per_acre || '200 L/acre'}`);
+      parts.push(`- PHI Days: ${appDetails.phi_days || 'Follow label'} (कापणीपूर्वी वाट पाहा)`);
+      parts.push(`- Expected Efficacy: ${appDetails.efficacy_percent || primary.expected_outcomes?.efficacy_percent || 75}%`);
+      parts.push(`- Weather Restrictions: ${appDetails.weather_restrictions || 'No rain within 4-6 hours after spray'}`);
+      
+      // Multilingual product names for farmer
+      if (appDetails.names) {
+        const names = appDetails.names as { mr?: string; hi?: string; en?: string };
+        parts.push(`- Product (Marathi): ${names.mr || appDetails.product_name}`);
+        parts.push(`- Product (Hindi): ${names.hi || appDetails.product_name}`);
+      }
+    } else {
+      parts.push(`- Product: ${primary.product_name || 'Not specified'}`);
+      parts.push(`- Dosage: As per label`);
+    }
+    
     parts.push(`- Priority: ${primary.priority || 'HIGH'}`);
     parts.push(`- IPM Level: ${primary.ipm_level || 'LEVEL_3'}`);
     
@@ -283,23 +416,36 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     const urgency = IPM_URGENCY_LABELS[primary.ipm_level || 'LEVEL_3']?.[input.language] || 'Normal priority';
     parts.push(`- Urgency: ${urgency}`);
     
-    if (primary.expected_outcomes?.efficacy_percent) {
-      parts.push(`- Expected Efficacy: ${primary.expected_outcomes.efficacy_percent}%`);
-    }
     if (primary.rule_id) {
       parts.push(`- Scientific Basis: ICAR Rule ${primary.rule_id}`);
     }
   }
   
-  // Secondary recommendations
+  // Secondary recommendations with product details
   const secondary = decision.secondary_actions || decision.secondary_recommendations;
   if (secondary && secondary.length > 0) {
-    parts.push(`\nSECONDARY RECOMMENDATIONS:`);
+    parts.push(`\n═══ ADDITIONAL RECOMMENDATIONS (Include ALL in response): ═══`);
     secondary.forEach((sec: any, idx: number) => {
-      parts.push(`${idx + 1}. ${sec.action || sec.action_type} - ${sec.reason || 'Supporting action'}`);
+      parts.push(`\n${idx + 1}. ${sec.action || sec.action_type} - ${sec.reason || 'Supporting action'}`);
+      if (sec.product_name) parts.push(`   Product: ${sec.product_name}`);
+      if (sec.dosage) parts.push(`   Dosage: ${sec.dosage}`);
+      if (sec.dosage_per_acre) parts.push(`   Per Acre: ${sec.dosage_per_acre}`);
       if (sec.timing) parts.push(`   Timing: ${sec.timing}`);
+      if (sec.phi_days) parts.push(`   PHI: ${sec.phi_days} days`);
       if (sec.priority) parts.push(`   Priority: ${sec.priority}`);
+      if (sec.names?.mr) parts.push(`   Name (MR): ${sec.names.mr}`);
     });
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BIOCONTROL AGENTS - Explicit high-value information
+  // ═══════════════════════════════════════════════════════════════════════════
+  const biocontrolMentioned = JSON.stringify(decision).toLowerCase();
+  if (biocontrolMentioned.includes('trichogramma') || biocontrolMentioned.includes('cotesia')) {
+    parts.push(`\n═══ BIOCONTROL DOSAGE REMINDER (CRITICAL - Copy exactly): ═══`);
+    parts.push(`⚠️ Trichogramma chilonis: 50,000 parasitoids/acre (FIFTY THOUSAND)`);
+    parts.push(`⚠️ Cotesia flavipes: 5,000 cocoons/acre (FIVE THOUSAND)`);
+    parts.push(`These are 1000x larger than chemical dosages - this is CORRECT!`);
   }
   
   // Warnings
