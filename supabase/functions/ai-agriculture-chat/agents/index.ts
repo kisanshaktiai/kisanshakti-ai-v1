@@ -92,6 +92,11 @@ export {
   calculatePhosphorusState, 
   calculatePotassiumState,
   mapNDVIToState,
+  calculateNDVITrend,
+  normalizeSoilType,
+  validateCropContext,
+  logLandCropStateCalculation
+} from './soil-ndvi-state-calculator.ts';
 
 // Enhanced Intent Classification & Routing (PART 1)
 export * from './intent-router.ts';
@@ -108,8 +113,3 @@ export { validateLanguageQuality, enforceTermConsistency, getSafeAskMoreInfoMess
 // Response Validation Gate (PART 9)
 export * from './response-validation-gate.ts';
 export { validateResponseBeforeSend } from './response-validation-gate.ts';
-  calculateNDVITrend,
-  normalizeSoilType,
-  validateCropContext,
-  logLandCropStateCalculation
-} from './soil-ndvi-state-calculator.ts';
