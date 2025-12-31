@@ -845,7 +845,36 @@ export enum Cause {
   VAM_NUTRIENT_UPTAKE = 'VAM_NUTRIENT_UPTAKE',                     // Vesicular arbuscular mycorrhiza
   HUMIC_ACID_APPLICATION = 'HUMIC_ACID_APPLICATION',               // Soil health
   SEAWEED_EXTRACT_BIOSTIMULANT = 'SEAWEED_EXTRACT_BIOSTIMULANT',   // Biostimulant
-  SILICON_APPLICATION = 'SILICON_APPLICATION'                      // Stress tolerance (Japan/Korea tech)
+  SILICON_APPLICATION = 'SILICON_APPLICATION',                      // Stress tolerance (Japan/Korea tech)
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // DISEASE RISK CASCADE CAUSES (Pest-Disease Interaction)
+  // ─────────────────────────────────────────────────────────────────────────
+  SECONDARY_INFECTION_RISK = 'SECONDARY_INFECTION_RISK',           // Secondary pathogen entry via pest wounds
+  WOUND_ENTRY_DISEASE = 'WOUND_ENTRY_DISEASE',                     // Disease entry through mechanical/pest wounds
+  PEST_DISEASE_CASCADE = 'PEST_DISEASE_CASCADE',                   // Pest attack leading to disease outbreak
+  FUNGAL_SECONDARY_INFECTION = 'FUNGAL_SECONDARY_INFECTION',       // Fungal pathogens on pest damage
+  BACTERIAL_SECONDARY_INFECTION = 'BACTERIAL_SECONDARY_INFECTION', // Bacterial infection via pest wounds
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // BAJRA (PEARL MILLET) SPECIFIC CAUSES
+  // ─────────────────────────────────────────────────────────────────────────
+  BAJRA_DOWNY_MILDEW_RISK = 'BAJRA_DOWNY_MILDEW_RISK',             // Sclerospora graminicola - most destructive
+  BAJRA_SHOOT_FLY_RISK = 'BAJRA_SHOOT_FLY_RISK',                   // Atherigona approximata - dead heart
+  BAJRA_STEM_BORER_RISK = 'BAJRA_STEM_BORER_RISK',                 // Coniesta ignefusalis
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // JOWAR (SORGHUM) SPECIFIC CAUSES
+  // ─────────────────────────────────────────────────────────────────────────
+  JOWAR_SHOOT_FLY_RISK = 'JOWAR_SHOOT_FLY_RISK',                   // Atherigona soccata - THE most destructive
+  JOWAR_STEM_BORER_RISK = 'JOWAR_STEM_BORER_RISK',                 // Chilo partellus
+  JOWAR_CHARCOAL_ROT_RISK = 'JOWAR_CHARCOAL_ROT_RISK',             // Macrophomina phaseolina
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // RAGI (FINGER MILLET) SPECIFIC CAUSES
+  // ─────────────────────────────────────────────────────────────────────────
+  RAGI_BLAST_RISK = 'RAGI_BLAST_RISK',                             // Pyricularia grisea - most serious
+  RAGI_FINGER_BLAST_RISK = 'RAGI_FINGER_BLAST_RISK'                // Finger blast at grain filling
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
