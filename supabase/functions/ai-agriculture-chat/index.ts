@@ -1319,6 +1319,13 @@ function generateActionDescription(primary: any, lang: string): string {
 function getResponseContent(response: OrchestratorResponse, language: string): string {
   const lang = language as 'mr' | 'hi' | 'en';
   console.log(`📝 [PostProcessor] Converting response type: ${response.type} to language: ${lang}`);
+  console.log(`📝 [PostProcessor] Response assembly:`, {
+    has_communication: !!response.communication,
+    has_decision_output: !!response.decision_output,
+    comm_keys: response.communication?.main_message ? Object.keys(response.communication.main_message) : [],
+    decision_status: response.decision_output?.status,
+    has_primary: !!response.decision_output?.primary_decision
+  });
   
   switch (response.type) {
     case 'DECISION_PROVIDED':
@@ -1326,24 +1333,24 @@ function getResponseContent(response: OrchestratorResponse, language: string): s
       const comm = response.communication;
       const decisionOutput = response.decision_output;
       
-      // Check if decision brain ran but produced no actionable recommendations
-      if (!decisionOutput || 
-          (!decisionOutput.primary_decision && 
-           (!decisionOutput.secondary_actions || decisionOutput.secondary_actions.length === 0))) {
-        console.log(`   ⚠️ Decision brain ran but no recommendations - generating fallback`);
-        return generateNoRecommendationsFallback(response, lang);
-      }
-      
-      // Step 1: Try FarmerCommunication structure (preferred - already translated)
+      // Step 1: Try FarmerCommunication structure FIRST (preferred - already translated)
+      // This includes both sections format AND full_text format (LLM-first path)
       const communicationText = flattenCommunicationToText(comm, language);
       if (communicationText && communicationText.length > 50) {
         console.log(`   ✅ Using FarmerCommunication text (${communicationText.length} chars)`);
         return communicationText;
       }
       
-      // Step 2: Fallback - Build formatted response directly from decision_output
-      console.log(`   ⚠️ FarmerCommunication incomplete, building formatted list from decision_output`);
-      return buildFormattedRecommendationsList(decisionOutput, lang);
+      // Step 2: Check decision_output if communication is incomplete
+      if (decisionOutput?.primary_decision || 
+          (decisionOutput?.secondary_actions && decisionOutput.secondary_actions.length > 0)) {
+        console.log(`   ✅ Building from decision_output (primary or secondary actions found)`);
+        return buildFormattedRecommendationsList(decisionOutput, lang);
+      }
+      
+      // Step 3: Fallback - only when truly no recommendations
+      console.log(`   ⚠️ No valid communication or decision_output - generating fallback`);
+      return generateNoRecommendationsFallback(response, lang);
       
     case 'CLARIFICATION_QUESTION':
       const questionText = lang === 'mr' ? (response.question?.text_mr || '') :
@@ -1729,6 +1736,15 @@ function flattenCommunicationToText(comm: any, language: string, requires?: any)
     if (typeof obj === 'string') return obj;
     return obj[lang] || obj.en || obj.hi || obj.mr || '';
   };
+  
+  // CRITICAL FIX: Check for full_text format FIRST (used by LLM-first path)
+  if (comm.main_message?.full_text) {
+    const fullText = getText(comm.main_message.full_text);
+    if (fullText && fullText.length > 20) {
+      console.log(`   ✅ Using full_text format (${fullText.length} chars)`);
+      return fullText;
+    }
+  }
   
   // 1. Greeting (ALWAYS SHOW)
   if (comm.main_message?.greeting) {
