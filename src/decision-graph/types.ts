@@ -896,7 +896,109 @@ export enum Cause {
   CPWS_GRAM_POD_DEVELOPMENT = 'CPWS_GRAM_POD_DEVELOPMENT',         // Gram pod development critical
   CPWS_SUGARCANE_FORMATIVE = 'CPWS_SUGARCANE_FORMATIVE',           // Sugarcane formative phase
   CPWS_TOMATO_FLOWERING = 'CPWS_TOMATO_FLOWERING',                 // Tomato flowering-fruit set
-  CPWS_ONION_BULB_INITIATION = 'CPWS_ONION_BULB_INITIATION'        // Onion bulb initiation
+  CPWS_ONION_BULB_INITIATION = 'CPWS_ONION_BULB_INITIATION',       // Onion bulb initiation
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CROP-SPECIFIC IPM LADDER CAUSES - 15 Major Pest-Crop Combinations
+  // ─────────────────────────────────────────────────────────────────────────
+  // TOMATO FRUIT BORER (Helicoverpa armigera) IPM Ladder
+  IPM_TOMATO_FRUIT_BORER_L1 = 'IPM_TOMATO_FRUIT_BORER_L1',         // Cultural control (0-10%)
+  IPM_TOMATO_FRUIT_BORER_L2 = 'IPM_TOMATO_FRUIT_BORER_L2',         // Mechanical control (10-15%)
+  IPM_TOMATO_FRUIT_BORER_L3 = 'IPM_TOMATO_FRUIT_BORER_L3',         // Biological control (15-20%)
+  IPM_TOMATO_FRUIT_BORER_L4 = 'IPM_TOMATO_FRUIT_BORER_L4',         // Botanical control (20-30%)
+  IPM_TOMATO_FRUIT_BORER_L5 = 'IPM_TOMATO_FRUIT_BORER_L5',         // Selective chemical (30-40%)
+  IPM_TOMATO_FRUIT_BORER_L6 = 'IPM_TOMATO_FRUIT_BORER_L6',         // Emergency broad spectrum (>40%)
+
+  // COTTON BOLLWORM (Helicoverpa armigera) IPM Ladder
+  IPM_COTTON_BOLLWORM_L1 = 'IPM_COTTON_BOLLWORM_L1',               // Cultural control (<1 larva/10 plants)
+  IPM_COTTON_BOLLWORM_L2 = 'IPM_COTTON_BOLLWORM_L2',               // Mechanical control (1-2 larvae)
+  IPM_COTTON_BOLLWORM_L3 = 'IPM_COTTON_BOLLWORM_L3',               // Biological control (2-4 larvae)
+  IPM_COTTON_BOLLWORM_L4 = 'IPM_COTTON_BOLLWORM_L4',               // Botanical control (4-6 larvae)
+  IPM_COTTON_BOLLWORM_L5 = 'IPM_COTTON_BOLLWORM_L5',               // Selective chemical (6-10 larvae)
+  IPM_COTTON_BOLLWORM_L6 = 'IPM_COTTON_BOLLWORM_L6',               // Emergency broad spectrum (>10 larvae)
+
+  // COTTON WHITEFLY (Bemisia tabaci) IPM Ladder
+  IPM_COTTON_WHITEFLY_L1 = 'IPM_COTTON_WHITEFLY_L1',               // Cultural control (<3 adults/leaf)
+  IPM_COTTON_WHITEFLY_L2 = 'IPM_COTTON_WHITEFLY_L2',               // Mechanical control (3-5 adults)
+  IPM_COTTON_WHITEFLY_L3 = 'IPM_COTTON_WHITEFLY_L3',               // Biological control (5-8 adults)
+  IPM_COTTON_WHITEFLY_L4 = 'IPM_COTTON_WHITEFLY_L4',               // Botanical control (8-12 adults)
+  IPM_COTTON_WHITEFLY_L5 = 'IPM_COTTON_WHITEFLY_L5',               // Selective chemical (>12 adults)
+
+  // RICE STEM BORER (Scirpophaga incertulas) IPM Ladder
+  IPM_RICE_STEM_BORER_L1 = 'IPM_RICE_STEM_BORER_L1',               // Cultural control (<2% dead hearts)
+  IPM_RICE_STEM_BORER_L2 = 'IPM_RICE_STEM_BORER_L2',               // Mechanical control (2-5%)
+  IPM_RICE_STEM_BORER_L3 = 'IPM_RICE_STEM_BORER_L3',               // Biological control (5-10%)
+  IPM_RICE_STEM_BORER_L4 = 'IPM_RICE_STEM_BORER_L4',               // Botanical control (10-15%)
+  IPM_RICE_STEM_BORER_L5 = 'IPM_RICE_STEM_BORER_L5',               // Selective chemical (>15%)
+
+  // WHEAT APHID (Sitobion avenae) IPM Ladder
+  IPM_WHEAT_APHID_L1 = 'IPM_WHEAT_APHID_L1',                       // Cultural control (<5 aphids/ear)
+  IPM_WHEAT_APHID_L2 = 'IPM_WHEAT_APHID_L2',                       // Mechanical control (5-10 aphids)
+  IPM_WHEAT_APHID_L3 = 'IPM_WHEAT_APHID_L3',                       // Biological control (10-20 aphids)
+  IPM_WHEAT_APHID_L4 = 'IPM_WHEAT_APHID_L4',                       // Botanical control (20-30 aphids)
+  IPM_WHEAT_APHID_L5 = 'IPM_WHEAT_APHID_L5',                       // Selective chemical (>30 aphids)
+
+  // BRINJAL SHOOT & FRUIT BORER (Leucinodes orbonalis) IPM Ladder
+  IPM_BRINJAL_SHOOT_FRUIT_BORER_L1 = 'IPM_BRINJAL_SHOOT_FRUIT_BORER_L1', // Cultural control (<5% damage)
+  IPM_BRINJAL_SHOOT_FRUIT_BORER_L2 = 'IPM_BRINJAL_SHOOT_FRUIT_BORER_L2', // Mechanical control (5-10%)
+  IPM_BRINJAL_SHOOT_FRUIT_BORER_L3 = 'IPM_BRINJAL_SHOOT_FRUIT_BORER_L3', // Biological control (10-20%)
+  IPM_BRINJAL_SHOOT_FRUIT_BORER_L4 = 'IPM_BRINJAL_SHOOT_FRUIT_BORER_L4', // Botanical control (20-30%)
+  IPM_BRINJAL_SHOOT_FRUIT_BORER_L5 = 'IPM_BRINJAL_SHOOT_FRUIT_BORER_L5', // Selective chemical (>30%)
+
+  // CABBAGE DIAMONDBACK MOTH (Plutella xylostella) IPM Ladder
+  IPM_CABBAGE_DIAMONDBACK_MOTH_L1 = 'IPM_CABBAGE_DIAMONDBACK_MOTH_L1', // Cultural control (<2 larvae/plant)
+  IPM_CABBAGE_DIAMONDBACK_MOTH_L2 = 'IPM_CABBAGE_DIAMONDBACK_MOTH_L2', // Mechanical control (2-5 larvae)
+  IPM_CABBAGE_DIAMONDBACK_MOTH_L3 = 'IPM_CABBAGE_DIAMONDBACK_MOTH_L3', // Biological control (5-10 larvae)
+  IPM_CABBAGE_DIAMONDBACK_MOTH_L4 = 'IPM_CABBAGE_DIAMONDBACK_MOTH_L4', // Botanical control (10-15 larvae)
+  IPM_CABBAGE_DIAMONDBACK_MOTH_L5 = 'IPM_CABBAGE_DIAMONDBACK_MOTH_L5', // Selective chemical (>15 larvae)
+
+  // OKRA SHOOT & FRUIT BORER (Earias vittella/insulana) IPM Ladder
+  IPM_OKRA_SHOOT_FRUIT_BORER_L1 = 'IPM_OKRA_SHOOT_FRUIT_BORER_L1', // Cultural control (<5% damage)
+  IPM_OKRA_SHOOT_FRUIT_BORER_L2 = 'IPM_OKRA_SHOOT_FRUIT_BORER_L2', // Mechanical control (5-10%)
+  IPM_OKRA_SHOOT_FRUIT_BORER_L3 = 'IPM_OKRA_SHOOT_FRUIT_BORER_L3', // Botanical control (10-20%)
+  IPM_OKRA_SHOOT_FRUIT_BORER_L4 = 'IPM_OKRA_SHOOT_FRUIT_BORER_L4', // Selective chemical (>20%)
+
+  // CHILLI THRIPS (Scirtothrips dorsalis) IPM Ladder
+  IPM_CHILLI_THRIPS_L1 = 'IPM_CHILLI_THRIPS_L1',                   // Cultural control (<5 thrips/leaf)
+  IPM_CHILLI_THRIPS_L2 = 'IPM_CHILLI_THRIPS_L2',                   // Mechanical control (5-10 thrips)
+  IPM_CHILLI_THRIPS_L3 = 'IPM_CHILLI_THRIPS_L3',                   // Biological control (10-20 thrips)
+  IPM_CHILLI_THRIPS_L4 = 'IPM_CHILLI_THRIPS_L4',                   // Botanical control (20-30 thrips)
+  IPM_CHILLI_THRIPS_L5 = 'IPM_CHILLI_THRIPS_L5',                   // Selective chemical (>30 thrips)
+
+  // MANGO HOPPER (Idioscopus spp.) IPM Ladder
+  IPM_MANGO_HOPPER_L1 = 'IPM_MANGO_HOPPER_L1',                     // Cultural control (<5 hoppers/panicle)
+  IPM_MANGO_HOPPER_L2 = 'IPM_MANGO_HOPPER_L2',                     // Mechanical control (5-10 hoppers)
+  IPM_MANGO_HOPPER_L3 = 'IPM_MANGO_HOPPER_L3',                     // Botanical control (10-20 hoppers)
+  IPM_MANGO_HOPPER_L4 = 'IPM_MANGO_HOPPER_L4',                     // Selective chemical (>20 hoppers)
+
+  // SOYBEAN GIRDLE BEETLE (Obereopsis brevis) IPM Ladder
+  IPM_SOYBEAN_GIRDLE_BEETLE_L1 = 'IPM_SOYBEAN_GIRDLE_BEETLE_L1',   // Cultural control (<5% girdled plants)
+  IPM_SOYBEAN_GIRDLE_BEETLE_L2 = 'IPM_SOYBEAN_GIRDLE_BEETLE_L2',   // Mechanical control (5-10%)
+  IPM_SOYBEAN_GIRDLE_BEETLE_L3 = 'IPM_SOYBEAN_GIRDLE_BEETLE_L3',   // Botanical control (10-20%)
+  IPM_SOYBEAN_GIRDLE_BEETLE_L4 = 'IPM_SOYBEAN_GIRDLE_BEETLE_L4',   // Selective chemical (>20%)
+
+  // GROUNDNUT LEAF MINER (Aproaerema modicella) IPM Ladder
+  IPM_GROUNDNUT_LEAF_MINER_L1 = 'IPM_GROUNDNUT_LEAF_MINER_L1',     // Cultural control (<10% leaflets mined)
+  IPM_GROUNDNUT_LEAF_MINER_L2 = 'IPM_GROUNDNUT_LEAF_MINER_L2',     // Botanical control (10-25%)
+  IPM_GROUNDNUT_LEAF_MINER_L3 = 'IPM_GROUNDNUT_LEAF_MINER_L3',     // Selective chemical (>25%)
+
+  // MUSTARD APHID (Lipaphis erysimi) IPM Ladder
+  IPM_MUSTARD_APHID_L1 = 'IPM_MUSTARD_APHID_L1',                   // Cultural control (<10% infested plants)
+  IPM_MUSTARD_APHID_L2 = 'IPM_MUSTARD_APHID_L2',                   // Mechanical control (10-25%)
+  IPM_MUSTARD_APHID_L3 = 'IPM_MUSTARD_APHID_L3',                   // Botanical control (25-50%)
+  IPM_MUSTARD_APHID_L4 = 'IPM_MUSTARD_APHID_L4',                   // Selective chemical (>50%)
+
+  // ONION THRIPS (Thrips tabaci) IPM Ladder
+  IPM_ONION_THRIPS_L1 = 'IPM_ONION_THRIPS_L1',                     // Cultural control (<10 thrips/plant)
+  IPM_ONION_THRIPS_L2 = 'IPM_ONION_THRIPS_L2',                     // Mechanical control (10-25 thrips)
+  IPM_ONION_THRIPS_L3 = 'IPM_ONION_THRIPS_L3',                     // Botanical control (25-50 thrips)
+  IPM_ONION_THRIPS_L4 = 'IPM_ONION_THRIPS_L4',                     // Selective chemical (>50 thrips)
+
+  // SUGARCANE SHOOT BORER (Chilo infuscatellus) IPM Ladder
+  IPM_SUGARCANE_SHOOT_BORER_L1 = 'IPM_SUGARCANE_SHOOT_BORER_L1',   // Cultural control (<5% dead hearts)
+  IPM_SUGARCANE_SHOOT_BORER_L2 = 'IPM_SUGARCANE_SHOOT_BORER_L2',   // Mechanical control (5-10%)
+  IPM_SUGARCANE_SHOOT_BORER_L3 = 'IPM_SUGARCANE_SHOOT_BORER_L3',   // Biological control (10-15%)
+  IPM_SUGARCANE_SHOOT_BORER_L4 = 'IPM_SUGARCANE_SHOOT_BORER_L4'    // Selective chemical (>15%)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
