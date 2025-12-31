@@ -720,6 +720,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "advisory_audit_log_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
             foreignKeyName: "advisory_audit_log_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -1662,6 +1669,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "alert_notifications_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
           },
         ]
       }
@@ -3799,6 +3813,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "copernicus_api_calls_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
             foreignKeyName: "copernicus_api_calls_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -4183,6 +4204,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "crop_growth_alerts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
             foreignKeyName: "crop_growth_alerts_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -4325,6 +4353,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "crop_growth_analysis_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
             foreignKeyName: "crop_growth_analysis_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -4415,6 +4450,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_growth_history_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "crop_growth_history_tenant_id_fkey"
@@ -4530,6 +4572,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_growth_uploads_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "crop_growth_uploads_schedule_id_fkey"
@@ -4659,6 +4708,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "crop_health_assessments_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
             foreignKeyName: "fk_crop_health_assessments_tenant"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -4751,6 +4807,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_history_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "fk_crop_history_tenant"
@@ -5076,6 +5139,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_schedules_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
           },
         ]
       }
@@ -9114,6 +9184,13 @@ export type Database = {
             referencedRelation: "lands"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "land_activities_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
         ]
       }
       land_clusters: {
@@ -9273,6 +9350,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "land_crops_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
             foreignKeyName: "land_crops_schedule_id_fkey"
             columns: ["schedule_id"]
             isOneToOne: false
@@ -9411,6 +9495,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "land_tile_mapping_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: true
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
             foreignKeyName: "land_tile_mapping_mgrs_tile_id_fkey"
             columns: ["mgrs_tile_id"]
             isOneToOne: false
@@ -9443,6 +9534,7 @@ export type Database = {
           cultivation_date: string | null
           current_crop: string | null
           current_crop_id: string | null
+          current_moisture_status: string | null
           deleted_at: string | null
           district: string | null
           district_id: string | null
@@ -9460,6 +9552,7 @@ export type Database = {
           land_type: string | null
           last_crop: string | null
           last_harvest_date: string | null
+          last_moisture_update: string | null
           last_ndvi_calculation: string | null
           last_ndvi_value: number | null
           last_processed_at: string | null
@@ -9484,6 +9577,8 @@ export type Database = {
           previous_crop: string | null
           previous_crop_id: string | null
           slope_percentage: number | null
+          soil_confidence_level: string | null
+          soil_data_source: string | null
           soil_ph: number | null
           soil_tested: boolean | null
           soil_type: string | null
@@ -9516,6 +9611,7 @@ export type Database = {
           cultivation_date?: string | null
           current_crop?: string | null
           current_crop_id?: string | null
+          current_moisture_status?: string | null
           deleted_at?: string | null
           district?: string | null
           district_id?: string | null
@@ -9533,6 +9629,7 @@ export type Database = {
           land_type?: string | null
           last_crop?: string | null
           last_harvest_date?: string | null
+          last_moisture_update?: string | null
           last_ndvi_calculation?: string | null
           last_ndvi_value?: number | null
           last_processed_at?: string | null
@@ -9557,6 +9654,8 @@ export type Database = {
           previous_crop?: string | null
           previous_crop_id?: string | null
           slope_percentage?: number | null
+          soil_confidence_level?: string | null
+          soil_data_source?: string | null
           soil_ph?: number | null
           soil_tested?: boolean | null
           soil_type?: string | null
@@ -9589,6 +9688,7 @@ export type Database = {
           cultivation_date?: string | null
           current_crop?: string | null
           current_crop_id?: string | null
+          current_moisture_status?: string | null
           deleted_at?: string | null
           district?: string | null
           district_id?: string | null
@@ -9606,6 +9706,7 @@ export type Database = {
           land_type?: string | null
           last_crop?: string | null
           last_harvest_date?: string | null
+          last_moisture_update?: string | null
           last_ndvi_calculation?: string | null
           last_ndvi_value?: number | null
           last_processed_at?: string | null
@@ -9630,6 +9731,8 @@ export type Database = {
           previous_crop?: string | null
           previous_crop_id?: string | null
           slope_percentage?: number | null
+          soil_confidence_level?: string | null
+          soil_data_source?: string | null
           soil_ph?: number | null
           soil_tested?: boolean | null
           soil_type?: string | null
@@ -10951,6 +11054,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "marketplace_products_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
             foreignKeyName: "marketplace_products_seller_id_fkey"
             columns: ["seller_id"]
             isOneToOne: false
@@ -12113,6 +12223,13 @@ export type Database = {
             referencedRelation: "lands"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "ndvi_data_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
         ]
       }
       ndvi_micro_tiles: {
@@ -12233,6 +12350,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "ndvi_micro_tiles_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
             foreignKeyName: "ndvi_micro_tiles_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -12322,6 +12446,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ndvi_processing_logs_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "ndvi_processing_logs_satellite_tile_id_fkey"
@@ -14612,6 +14743,13 @@ export type Database = {
             referencedRelation: "lands"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "prescription_maps_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
         ]
       }
       pricing_models: {
@@ -16318,6 +16456,13 @@ export type Database = {
             referencedRelation: "lands"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "satellite_alerts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
         ]
       }
       satellite_api_usage: {
@@ -16467,6 +16612,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satellite_imagery_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
           },
         ]
       }
@@ -17474,19 +17626,26 @@ export type Database = {
       }
       soil_health: {
         Row: {
+          agro_climatic_zone: string | null
           bulk_density: number | null
           cec: number | null
           clay_percent: number | null
+          clay_std: number | null
           confidence_level: string | null
           created_at: string
           data_completeness: number | null
           data_quality_flags: Json | null
           data_quality_warnings: Json | null
+          evapotranspiration_mm: number | null
           farmer_id: string | null
           fertility_class: string | null
           field_area_ha: number | null
+          humidity_avg_percent: number | null
           id: string
           land_id: string
+          moisture_measurement_date: number | null
+          moisture_status: string | null
+          nitrogen_confidence: string | null
           nitrogen_est: number | null
           nitrogen_kg_per_ha: number | null
           nitrogen_level: string | null
@@ -17494,43 +17653,70 @@ export type Database = {
           nitrogen_total_kg: number | null
           note: string | null
           organic_carbon: number | null
+          organic_carbon_max: number | null
+          organic_carbon_min: number | null
+          organic_carbon_std: number | null
           organic_carbon_text: string | null
           ph_level: number | null
+          ph_max: number | null
+          ph_min: number | null
+          ph_std: number | null
           ph_text: string | null
+          phosphorus_confidence: string | null
           phosphorus_est: number | null
           phosphorus_kg_per_ha: number | null
           phosphorus_level: string | null
           phosphorus_text: string | null
           phosphorus_total_kg: number | null
+          potassium_confidence: string | null
           potassium_est: number | null
           potassium_kg_per_ha: number | null
           potassium_level: string | null
           potassium_text: string | null
           potassium_total_kg: number | null
+          precipitation_30d_mm: number | null
+          sample_count: number | null
           sand_percent: number | null
+          sand_std: number | null
           silt_percent: number | null
+          silt_std: number | null
+          soil_moisture_profile_percent: number | null
+          soil_moisture_rootzone_percent: number | null
+          soil_moisture_surface_percent: number | null
+          soil_temperature_c: number | null
           soil_type: string | null
           source: string
+          temperature_avg_c: number | null
+          temperature_max_c: number | null
+          temperature_min_c: number | null
           tenant_id: string
           test_date: string | null
           test_report_url: string | null
           texture: string | null
           updated_at: string
+          water_balance_mm: number | null
         }
         Insert: {
+          agro_climatic_zone?: string | null
           bulk_density?: number | null
           cec?: number | null
           clay_percent?: number | null
+          clay_std?: number | null
           confidence_level?: string | null
           created_at?: string
           data_completeness?: number | null
           data_quality_flags?: Json | null
           data_quality_warnings?: Json | null
+          evapotranspiration_mm?: number | null
           farmer_id?: string | null
           fertility_class?: string | null
           field_area_ha?: number | null
+          humidity_avg_percent?: number | null
           id?: string
           land_id: string
+          moisture_measurement_date?: number | null
+          moisture_status?: string | null
+          nitrogen_confidence?: string | null
           nitrogen_est?: number | null
           nitrogen_kg_per_ha?: number | null
           nitrogen_level?: string | null
@@ -17538,43 +17724,70 @@ export type Database = {
           nitrogen_total_kg?: number | null
           note?: string | null
           organic_carbon?: number | null
+          organic_carbon_max?: number | null
+          organic_carbon_min?: number | null
+          organic_carbon_std?: number | null
           organic_carbon_text?: string | null
           ph_level?: number | null
+          ph_max?: number | null
+          ph_min?: number | null
+          ph_std?: number | null
           ph_text?: string | null
+          phosphorus_confidence?: string | null
           phosphorus_est?: number | null
           phosphorus_kg_per_ha?: number | null
           phosphorus_level?: string | null
           phosphorus_text?: string | null
           phosphorus_total_kg?: number | null
+          potassium_confidence?: string | null
           potassium_est?: number | null
           potassium_kg_per_ha?: number | null
           potassium_level?: string | null
           potassium_text?: string | null
           potassium_total_kg?: number | null
+          precipitation_30d_mm?: number | null
+          sample_count?: number | null
           sand_percent?: number | null
+          sand_std?: number | null
           silt_percent?: number | null
+          silt_std?: number | null
+          soil_moisture_profile_percent?: number | null
+          soil_moisture_rootzone_percent?: number | null
+          soil_moisture_surface_percent?: number | null
+          soil_temperature_c?: number | null
           soil_type?: string | null
           source?: string
+          temperature_avg_c?: number | null
+          temperature_max_c?: number | null
+          temperature_min_c?: number | null
           tenant_id: string
           test_date?: string | null
           test_report_url?: string | null
           texture?: string | null
           updated_at?: string
+          water_balance_mm?: number | null
         }
         Update: {
+          agro_climatic_zone?: string | null
           bulk_density?: number | null
           cec?: number | null
           clay_percent?: number | null
+          clay_std?: number | null
           confidence_level?: string | null
           created_at?: string
           data_completeness?: number | null
           data_quality_flags?: Json | null
           data_quality_warnings?: Json | null
+          evapotranspiration_mm?: number | null
           farmer_id?: string | null
           fertility_class?: string | null
           field_area_ha?: number | null
+          humidity_avg_percent?: number | null
           id?: string
           land_id?: string
+          moisture_measurement_date?: number | null
+          moisture_status?: string | null
+          nitrogen_confidence?: string | null
           nitrogen_est?: number | null
           nitrogen_kg_per_ha?: number | null
           nitrogen_level?: string | null
@@ -17582,28 +17795,48 @@ export type Database = {
           nitrogen_total_kg?: number | null
           note?: string | null
           organic_carbon?: number | null
+          organic_carbon_max?: number | null
+          organic_carbon_min?: number | null
+          organic_carbon_std?: number | null
           organic_carbon_text?: string | null
           ph_level?: number | null
+          ph_max?: number | null
+          ph_min?: number | null
+          ph_std?: number | null
           ph_text?: string | null
+          phosphorus_confidence?: string | null
           phosphorus_est?: number | null
           phosphorus_kg_per_ha?: number | null
           phosphorus_level?: string | null
           phosphorus_text?: string | null
           phosphorus_total_kg?: number | null
+          potassium_confidence?: string | null
           potassium_est?: number | null
           potassium_kg_per_ha?: number | null
           potassium_level?: string | null
           potassium_text?: string | null
           potassium_total_kg?: number | null
+          precipitation_30d_mm?: number | null
+          sample_count?: number | null
           sand_percent?: number | null
+          sand_std?: number | null
           silt_percent?: number | null
+          silt_std?: number | null
+          soil_moisture_profile_percent?: number | null
+          soil_moisture_rootzone_percent?: number | null
+          soil_moisture_surface_percent?: number | null
+          soil_temperature_c?: number | null
           soil_type?: string | null
           source?: string
+          temperature_avg_c?: number | null
+          temperature_max_c?: number | null
+          temperature_min_c?: number | null
           tenant_id?: string
           test_date?: string | null
           test_report_url?: string | null
           texture?: string | null
           updated_at?: string
+          water_balance_mm?: number | null
         }
         Relationships: [
           {
@@ -17654,6 +17887,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "soil_health_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "soil_health_tenant_id_fkey"
@@ -20424,6 +20664,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "treatment_outcomes_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
             foreignKeyName: "treatment_outcomes_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -21613,6 +21860,13 @@ export type Database = {
             referencedRelation: "lands"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "weather_activity_recommendations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
         ]
       }
       weather_aggregates: {
@@ -21740,6 +21994,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_aggregates_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
           },
         ]
       }
@@ -21979,6 +22240,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "weather_current_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
             foreignKeyName: "weather_current_station_id_fkey"
             columns: ["station_id"]
             isOneToOne: false
@@ -22129,6 +22397,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_forecasts_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
           },
           {
             foreignKeyName: "weather_forecasts_station_id_fkey"
@@ -22307,6 +22582,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "fk_weather_land"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
             foreignKeyName: "weather_observations_farmer_id_fkey"
             columns: ["farmer_id"]
             isOneToOne: false
@@ -22354,6 +22636,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
           },
         ]
       }
@@ -23126,6 +23415,13 @@ export type Database = {
             referencedRelation: "lands"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "ndvi_data_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
         ]
       }
       pending_payouts: {
@@ -23227,6 +23523,181 @@ export type Database = {
           },
         ]
       }
+      vw_latest_soil_data: {
+        Row: {
+          agro_climatic_zone: string | null
+          area_acres: number | null
+          area_guntas: number | null
+          confidence_level: string | null
+          created_at: string | null
+          data_completeness: number | null
+          farmer_id: string | null
+          field_area_ha: number | null
+          id: string | null
+          land_id: string | null
+          moisture_status: string | null
+          nitrogen_kg_per_ha: number | null
+          organic_carbon: number | null
+          ph_level: number | null
+          phosphorus_kg_per_ha: number | null
+          potassium_kg_per_ha: number | null
+          sample_count: number | null
+          soil_moisture_surface_percent: number | null
+          source: string | null
+          temperature_avg_c: number | null
+          tenant_id: string | null
+          test_date: string | null
+          texture: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "soil_health_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "soil_health_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+          {
+            foreignKeyName: "soil_health_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_health_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "soil_health_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "soil_health_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_health_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "soil_health_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "soil_health_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vw_soil_summary: {
+        Row: {
+          agro_climatic_zone: string | null
+          area_acres: number | null
+          area_guntas: number | null
+          bulk_density: number | null
+          cec: number | null
+          clay_percent: number | null
+          confidence_level: string | null
+          created_at: string | null
+          data_completeness: number | null
+          data_quality_flags: Json | null
+          data_quality_warnings: Json | null
+          data_source: string | null
+          farmer_id: string | null
+          field_area_ha: number | null
+          land_id: string | null
+          moisture_status: string | null
+          nitrogen_confidence: string | null
+          nitrogen_kg_per_ha: number | null
+          nitrogen_level: string | null
+          nitrogen_total_kg: number | null
+          organic_carbon: number | null
+          organic_carbon_std: number | null
+          ph_level: number | null
+          ph_std: number | null
+          phosphorus_confidence: string | null
+          phosphorus_kg_per_ha: number | null
+          phosphorus_level: string | null
+          phosphorus_total_kg: number | null
+          potassium_confidence: string | null
+          potassium_kg_per_ha: number | null
+          potassium_level: string | null
+          potassium_total_kg: number | null
+          precipitation_30d_mm: number | null
+          sample_count: number | null
+          sand_percent: number | null
+          silt_percent: number | null
+          soil_moisture_rootzone_percent: number | null
+          soil_moisture_surface_percent: number | null
+          soil_temperature_c: number | null
+          temperature_avg_c: number | null
+          tenant_id: string | null
+          test_date: string | null
+          texture: string | null
+          updated_at: string | null
+          water_balance_mm: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lands_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lands_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
+        ]
+      }
+      vw_zone_statistics: {
+        Row: {
+          agro_climatic_zone: string | null
+          avg_completeness: number | null
+          avg_moisture: number | null
+          avg_nitrogen: number | null
+          avg_oc: number | null
+          avg_ph: number | null
+          avg_phosphorus: number | null
+          avg_potassium: number | null
+          avg_samples: number | null
+          high_confidence_count: number | null
+          stddev_oc: number | null
+          stddev_ph: number | null
+          total_analyses: number | null
+        }
+        Relationships: []
+      }
       weather_with_location: {
         Row: {
           area_acres: number | null
@@ -23295,6 +23766,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "fk_weather_land"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
             foreignKeyName: "weather_observations_farmer_id_fkey"
             columns: ["farmer_id"]
             isOneToOne: false
@@ -23342,6 +23820,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "lands"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weather_observations_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
           },
         ]
       }
@@ -23523,6 +24008,16 @@ export type Database = {
           wind_speed_kmh: number
         }
         Returns: number
+      }
+      calculate_field_stats: {
+        Args: { p_tenant_id: string }
+        Returns: {
+          analyzed_fields: number
+          avg_nitrogen: number
+          avg_ph: number
+          fields_need_attention: number
+          total_fields: number
+        }[]
       }
       calculate_growing_degree_days: {
         Args: { base_temp?: number; temp_max: number; temp_min: number }
@@ -24053,6 +24548,21 @@ export type Database = {
           id: string
           name: string
           tenant_id: string
+        }[]
+      }
+      get_latest_soil_data: {
+        Args: { p_land_id: string }
+        Returns: {
+          confidence_level: string
+          moisture_status: string
+          nitrogen_kg_per_ha: number
+          organic_carbon: number
+          ph_level: number
+          phosphorus_kg_per_ha: number
+          potassium_kg_per_ha: number
+          soil_health_id: string
+          source: string
+          test_date: string
         }[]
       }
       get_location_context: {
