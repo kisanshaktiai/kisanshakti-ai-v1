@@ -11,3 +11,16 @@ export * from './weed-intelligence';
 
 // Organic Intelligence - with conflict rules & honest assessments
 export * from './organic-intelligence';
+
+// Variety Database - ICAR released varieties with resistance profiles
+export * from './variety-database';
+
+// Variety Recommendation Rules - triggers variety recommendations
+export * from './variety-recommendation-rules';
+
+// Combined Intelligence Rules
+import { VARIETY_RECOMMENDATION_RULES } from './variety-recommendation-rules';
+
+export const ALL_INTELLIGENCE_RULES = [
+  ...VARIETY_RECOMMENDATION_RULES
+];

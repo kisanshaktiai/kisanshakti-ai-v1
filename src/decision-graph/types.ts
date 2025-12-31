@@ -1037,7 +1037,23 @@ export enum Cause {
   PH_CORRECTION_SULPHUR_NEEDED = 'PH_CORRECTION_SULPHUR_NEEDED',   // Alkaline soil - sulphur required
   PH_CORRECTION_GYPSUM_NEEDED = 'PH_CORRECTION_GYPSUM_NEEDED',     // Sodic soil - gypsum required
   PH_OPTIMAL_RANGE = 'PH_OPTIMAL_RANGE',                           // pH 6.5-7.5 optimal
-  SALINITY_STRESS_HIGH_EC = 'SALINITY_STRESS_HIGH_EC'              // EC >4 dS/m saline stress
+  SALINITY_STRESS_HIGH_EC = 'SALINITY_STRESS_HIGH_EC',              // EC >4 dS/m saline stress
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // VARIETY/CULTIVAR RECOMMENDATION CAUSES
+  // ─────────────────────────────────────────────────────────────────────────
+  VARIETY_DISEASE_RESISTANT_AVAILABLE = 'VARIETY_DISEASE_RESISTANT_AVAILABLE',
+  VARIETY_PEST_RESISTANT_AVAILABLE = 'VARIETY_PEST_RESISTANT_AVAILABLE',
+  VARIETY_HEAT_TOLERANT_AVAILABLE = 'VARIETY_HEAT_TOLERANT_AVAILABLE',
+  VARIETY_DROUGHT_TOLERANT_AVAILABLE = 'VARIETY_DROUGHT_TOLERANT_AVAILABLE',
+  VARIETY_SALINITY_TOLERANT_AVAILABLE = 'VARIETY_SALINITY_TOLERANT_AVAILABLE',
+  VARIETY_LODGING_RESISTANT_AVAILABLE = 'VARIETY_LODGING_RESISTANT_AVAILABLE',
+  VARIETY_HIGH_YIELD_POTENTIAL = 'VARIETY_HIGH_YIELD_POTENTIAL',
+  VARIETY_EARLY_MATURITY_AVAILABLE = 'VARIETY_EARLY_MATURITY_AVAILABLE',
+  VARIETY_QUALITY_SUPERIOR_AVAILABLE = 'VARIETY_QUALITY_SUPERIOR_AVAILABLE',
+  VARIETY_BIOFORTIFIED_AVAILABLE = 'VARIETY_BIOFORTIFIED_AVAILABLE',
+  VARIETY_REGION_SPECIFIC_RECOMMENDED = 'VARIETY_REGION_SPECIFIC_RECOMMENDED',
+  VARIETY_SUBOPTIMAL_CURRENT = 'VARIETY_SUBOPTIMAL_CURRENT'
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1516,6 +1532,7 @@ export type RuleCategory =
   | 'seasonal'         // Season-specific rules (Kharif/Rabi/Zaid)
   | 'regional'         // Agro-climatic zone specific rules
   | 'weather_safety'   // Weather-action coupling rules
+  | 'variety'          // Variety/cultivar recommendation rules
   | 'pgr_hormone'      // Plant Growth Regulator rules (GA3, NAA, Ethephon, etc.)
   | 'precision_fertigation' // Israel/Netherlands precision fertigation rules
   | 'biological';      // Microbiome and biological control rules
@@ -1616,6 +1633,129 @@ export interface ConflictRule {
   description: string;
   condition: (actions: PrioritizedAction[], input: DecisionInput) => boolean;
   resolution: (actions: PrioritizedAction[], input: DecisionInput) => PrioritizedAction[];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VARIETY RECOMMENDATION SYSTEM TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Resistance/Tolerance Level */
+export enum ResistanceLevel {
+  IMMUNE = 'IMMUNE',                    // No disease/pest damage
+  HIGHLY_RESISTANT = 'HIGHLY_RESISTANT', // <5% damage
+  RESISTANT = 'RESISTANT',               // 5-10% damage
+  MODERATELY_RESISTANT = 'MODERATELY_RESISTANT', // 10-25% damage
+  TOLERANT = 'TOLERANT',                 // 25-40% damage (plant survives)
+  SUSCEPTIBLE = 'SUSCEPTIBLE'            // >40% damage
+}
+
+/** Variety maturity duration */
+export enum MaturityDuration {
+  EXTRA_EARLY = 'EXTRA_EARLY',   // <90 days
+  EARLY = 'EARLY',               // 90-110 days
+  MEDIUM = 'MEDIUM',             // 110-130 days
+  LATE = 'LATE',                 // 130-150 days
+  VERY_LATE = 'VERY_LATE'        // >150 days
+}
+
+/** Special quality traits */
+export enum QualityTrait {
+  HIGH_PROTEIN = 'HIGH_PROTEIN',
+  HIGH_OIL = 'HIGH_OIL',
+  HIGH_ZINC = 'HIGH_ZINC',           // Biofortified
+  HIGH_IRON = 'HIGH_IRON',           // Biofortified
+  HIGH_VITAMIN_A = 'HIGH_VITAMIN_A', // Golden rice, orange maize
+  BASMATI_QUALITY = 'BASMATI_QUALITY',
+  EXPORT_QUALITY = 'EXPORT_QUALITY',
+  LOW_GLYCEMIC_INDEX = 'LOW_GLYCEMIC_INDEX'
+}
+
+/** Disease resistance profile */
+export interface DiseaseResistance {
+  disease_name: string;
+  disease_code: string;              // e.g., 'BLAST', 'RUST', 'WILT'
+  resistance_level: ResistanceLevel;
+  pathogen_races?: string[];         // Specific races/biotypes resistant to
+  breakdown_risk?: 'LOW' | 'MEDIUM' | 'HIGH'; // Risk of resistance breaking down
+}
+
+/** Pest resistance profile */
+export interface PestResistance {
+  pest_name: string;
+  pest_code: string;                 // e.g., 'BOLLWORM', 'STEM_BORER'
+  resistance_level: ResistanceLevel;
+  resistance_mechanism?: string;     // e.g., 'Bt protein', 'Antibiosis', 'Antixenosis'
+}
+
+/** Abiotic stress tolerance */
+export interface AbioticTolerance {
+  stress_type: 'DROUGHT' | 'HEAT' | 'COLD' | 'SALINITY' | 'WATERLOGGING' | 'LODGING';
+  tolerance_level: ResistanceLevel;
+  critical_stages?: CropStage[];     // Stages where tolerance is most valuable
+}
+
+/** Regional suitability */
+export interface RegionalSuitability {
+  zone: AgroClimaticZone;
+  suitability: 'HIGHLY_SUITABLE' | 'SUITABLE' | 'MODERATELY_SUITABLE' | 'NOT_RECOMMENDED';
+  specific_states?: string[];
+  specific_districts?: string[];
+  soil_type_preference?: string[];
+  irrigation_requirement?: 'RAINFED' | 'IRRIGATED' | 'BOTH';
+}
+
+/** Complete variety profile */
+export interface CropVariety {
+  variety_code: string;              // Unique identifier
+  variety_name: string;              // Official name
+  common_names?: string[];           // Local names
+  crop_code: string;                 // Parent crop
+  
+  // Release information
+  released_by: string;               // ICAR institute
+  release_year: number;
+  notification_number?: string;      // Official gazette notification
+  
+  // Agronomic characteristics
+  maturity_duration: MaturityDuration;
+  maturity_days_min: number;
+  maturity_days_max: number;
+  yield_potential_kg_per_ha: number;
+  average_yield_kg_per_ha: number;
+  
+  // Resistance/Tolerance profiles
+  disease_resistances: DiseaseResistance[];
+  pest_resistances: PestResistance[];
+  abiotic_tolerances: AbioticTolerance[];
+  
+  // Regional suitability
+  regional_suitability: RegionalSuitability[];
+  
+  // Quality traits
+  quality_traits?: QualityTrait[];
+  grain_quality_description?: string;
+  
+  // Seed availability
+  seed_available: boolean;
+  seed_sources?: string[];           // NSC, State Seed Corps, Private companies
+  seed_cost_inr_per_kg?: number;
+  
+  // Scientific validation
+  scientific_source: string;
+  icar_package: string;
+  trials_conducted?: string[];       // Location of field trials
+  
+  // Limitations/warnings
+  limitations?: string[];
+  not_suitable_for?: string[];       // Conditions to avoid
+  
+  // Replacement tracking
+  replaces_varieties?: string[];     // Older varieties this improves upon
+  superseded_by?: string;            // If newer variety exists
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
