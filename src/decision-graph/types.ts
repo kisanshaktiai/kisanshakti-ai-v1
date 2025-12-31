@@ -874,7 +874,29 @@ export enum Cause {
   // RAGI (FINGER MILLET) SPECIFIC CAUSES
   // ─────────────────────────────────────────────────────────────────────────
   RAGI_BLAST_RISK = 'RAGI_BLAST_RISK',                             // Pyricularia grisea - most serious
-  RAGI_FINGER_BLAST_RISK = 'RAGI_FINGER_BLAST_RISK'                // Finger blast at grain filling
+  RAGI_FINGER_BLAST_RISK = 'RAGI_FINGER_BLAST_RISK',               // Finger blast at grain filling
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // MICRONUTRIENT SPECIFIC CAUSES (Critical only - basic ones already exist above)
+  // ─────────────────────────────────────────────────────────────────────────
+  IRON_CHLOROSIS_CRITICAL = 'IRON_CHLOROSIS_CRITICAL',             // Severe Fe chlorosis in alkaline soil
+  BORON_DEFICIENCY_CRITICAL = 'BORON_DEFICIENCY_CRITICAL',         // Critical B deficiency - flower drop
+  SULPHUR_DEFICIENCY_CRITICAL = 'SULPHUR_DEFICIENCY_CRITICAL',     // Critical S deficiency - oilseeds
+  CALCIUM_DEFICIENCY = 'CALCIUM_DEFICIENCY',                       // Ca deficiency - blossom end rot
+  
+  // ─────────────────────────────────────────────────────────────────────────
+  // CRITICAL PERIOD WATER STRESS (CPWS) - CROP SPECIFIC
+  // ─────────────────────────────────────────────────────────────────────────
+  CPWS_RICE_PANICLE_INITIATION = 'CPWS_RICE_PANICLE_INITIATION',   // Rice PI stage - most critical
+  CPWS_WHEAT_FLOWERING = 'CPWS_WHEAT_FLOWERING',                   // Wheat flowering - critical 5 days
+  CPWS_MAIZE_TASSELING_SILKING = 'CPWS_MAIZE_TASSELING_SILKING',   // Maize ASI critical
+  CPWS_COTTON_FLOWERING_BOLL = 'CPWS_COTTON_FLOWERING_BOLL',       // Cotton squaring-boll 30-day window
+  CPWS_SOYBEAN_FLOWERING = 'CPWS_SOYBEAN_FLOWERING',               // Soybean flowering-pod critical
+  CPWS_GROUNDNUT_PEGGING = 'CPWS_GROUNDNUT_PEGGING',               // Groundnut pegging - unique critical
+  CPWS_GRAM_POD_DEVELOPMENT = 'CPWS_GRAM_POD_DEVELOPMENT',         // Gram pod development critical
+  CPWS_SUGARCANE_FORMATIVE = 'CPWS_SUGARCANE_FORMATIVE',           // Sugarcane formative phase
+  CPWS_TOMATO_FLOWERING = 'CPWS_TOMATO_FLOWERING',                 // Tomato flowering-fruit set
+  CPWS_ONION_BULB_INITIATION = 'CPWS_ONION_BULB_INITIATION'        // Onion bulb initiation
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

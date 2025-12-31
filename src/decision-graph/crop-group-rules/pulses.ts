@@ -621,8 +621,29 @@ export const ALL_PULSES_RULES: CauseRule[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CRITICAL PERIOD WATER STRESS (CPWS) RULES - PULSES
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const PULSES_CPWS_RULES: CauseRule[] = [
+  {
+    rule_id: 'CPWS_GRAM_001',
+    category: 'water',
+    crop_code: 'gram',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'gram' &&
+      input.days_after_sowing >= 70 && input.days_after_sowing <= 90 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.CPWS_GRAM_POD_DEVELOPMENT,
+    priority: 9,
+    scientific_source: 'ICAR-IIPR',
+    scientific_basis: 'Pod development (70-90 DAS) critical period. One irrigation at 70-80 DAS can increase yield by 30-40%.',
+    icar_package: 'ICAR-IIPR Gram PoP 2024'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
 // COMBINED PULSES RULES
-// Total: 40+ rules
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const PULSES_RULES: CauseRule[] = [
@@ -630,6 +651,7 @@ export const PULSES_RULES: CauseRule[] = [
   ...LENTIL_RULES,
   ...ARHAR_RULES,
   ...MOONG_URAD_RULES,
+  ...PULSES_CPWS_RULES,
   ...ALL_PULSES_RULES
 ];
 

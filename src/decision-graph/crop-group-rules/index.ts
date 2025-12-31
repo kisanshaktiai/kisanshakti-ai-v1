@@ -15,6 +15,7 @@ import SUGARCANE_RULES from './sugarcane';
 import { FRUITS_RULES } from './fruits';
 import { SPICES_RULES } from './spices';
 import { FODDER_RULES } from './fodder';
+import MICRONUTRIENT_RULES from './micronutrients';
 
 // Map of crop group to rules
 export const CROP_GROUP_RULES: Map<CropGroup, CauseRule[]> = new Map([
@@ -36,12 +37,15 @@ export function getRulesForCropGroup(group: CropGroup): CauseRule[] {
 
 // Get total rule count
 export function getTotalRuleCount(): number {
-  let count = 0;
+  let count = MICRONUTRIENT_RULES.length;
   for (const rules of CROP_GROUP_RULES.values()) {
     count += rules.length;
   }
   return count;
 }
+
+// Universal rules that apply across all crops
+export const UNIVERSAL_RULES = MICRONUTRIENT_RULES;
 
 // Re-export individual rule sets
 export {
@@ -54,4 +58,5 @@ export {
   FRUITS_RULES,
   SPICES_RULES,
   FODDER_RULES,
+  MICRONUTRIENT_RULES,
 };

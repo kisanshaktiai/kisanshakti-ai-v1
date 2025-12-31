@@ -1636,9 +1636,56 @@ export const RAGI_RULES: CauseRule[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
-// COMBINED CEREALS RULES
-// Total: 95+ rules (including Bajra, Jowar, Ragi, Cascade)
+// CRITICAL PERIOD WATER STRESS (CPWS) RULES - CEREALS
 // ═══════════════════════════════════════════════════════════════════════════
+
+export const CEREALS_CPWS_RULES: CauseRule[] = [
+  {
+    rule_id: 'CPWS_RICE_001',
+    category: 'water',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.days_after_sowing >= 45 && input.days_after_sowing <= 55 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.CPWS_RICE_PANICLE_INITIATION,
+    priority: 10,
+    scientific_source: 'ICAR-CRRI + IRRI Philippines',
+    scientific_basis: 'Panicle Initiation (PI) stage (45-55 DAT) is THE single most critical 10-day window in rice. Water stress here reduces spikelet number by 50-70%. Even 2-3 days stress = PERMANENT yield loss.',
+    icar_package: 'ICAR-CRRI Rice Water Management'
+  },
+  {
+    rule_id: 'CPWS_WHEAT_001',
+    category: 'water',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.days_after_sowing >= 75 && input.days_after_sowing <= 80 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.CPWS_WHEAT_FLOWERING,
+    priority: 10,
+    scientific_source: 'ICAR-IARI + CIMMYT',
+    scientific_basis: 'Flowering (75-80 DAS) is THE critical 5-day window. Water stress reduces pollen viability and grain set by 30-40%.',
+    icar_package: 'ICAR-IARI Wheat PoP 2024'
+  },
+  {
+    rule_id: 'CPWS_MAIZE_001',
+    category: 'water',
+    crop_code: 'maize',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'maize' &&
+      input.days_after_sowing >= 55 && input.days_after_sowing <= 65 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.CPWS_MAIZE_TASSELING_SILKING,
+    priority: 10,
+    scientific_source: 'ICAR-IIMR + CIMMYT',
+    scientific_basis: 'Tasseling-Silking (55-65 DAS) is THE most water-sensitive period. Water stress increases ASI → poor pollination → barren cobs. Can reduce yield by 40-60%.',
+    icar_package: 'ICAR-IIMR Maize PoP 2024'
+  }
+];
 
 export const CEREALS_RULES: CauseRule[] = [
   ...PEST_DISEASE_CASCADE_RULES,
@@ -1648,6 +1695,7 @@ export const CEREALS_RULES: CauseRule[] = [
   ...BAJRA_RULES,
   ...JOWAR_RULES,
   ...RAGI_RULES,
+  ...CEREALS_CPWS_RULES,
   ...ALL_CEREALS_RULES
 ];
 
