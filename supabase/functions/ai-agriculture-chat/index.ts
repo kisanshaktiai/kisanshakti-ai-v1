@@ -340,8 +340,11 @@ serve(async (req) => {
 
     // ═══════════════════════════════════════════════════════════════════════════
     // UPDATE SESSION ACTIVITY AND PERSIST CONTEXT STATE
-    // CRITICAL FIX: Persist accumulated knowledge to session metadata
+    // CRITICAL: Track that recommendations were provided for this session
     // ═══════════════════════════════════════════════════════════════════════════
+    const recommendationsProvided = orchestratorResponse.type === 'DECISION_PROVIDED' && 
+      (actions_returned && actions_returned.length > 0);
+    
     try {
       await supabase
         .from('ai_chat_sessions')
@@ -355,18 +358,22 @@ serve(async (req) => {
             confidence: orchestratorResponse.metadata?.confidence,
             rules_applied: orchestratorResponse.metadata?.rules_applied,
             decision_id: orchestratorResponse.decision_id,
+            // Flag indicating recommendations were provided
+            recommendations_provided: recommendationsProvided,
+            recommendations_count: actions_returned?.length || 0,
             // Persist conversation state for continuity
             conversation_state: {
               turn_count: messages.length + 1,
               has_photo: !!imageUrl,
               last_intent: orchestratorResponse.type,
-              safety_status: orchestratorResponse.metadata?.safety_status
+              safety_status: orchestratorResponse.metadata?.safety_status,
+              has_recommendations: recommendationsProvided
             }
           }
         })
         .eq('id', currentSessionId);
       
-      console.log('💾 [Session] State persisted to database');
+      console.log(`💾 [Session] State persisted: recommendations_provided=${recommendationsProvided}, count=${actions_returned?.length || 0}`);
     } catch (sessionUpdateError) {
       console.warn('⚠️ [Session] Failed to update session:', sessionUpdateError);
     }
@@ -476,12 +483,36 @@ function extractActionsFromDecisionOutput(orchestratorResponse: OrchestratorResp
   };
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * POST-PROCESSING: Convert Decision Brain output to natural language
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * This step runs AFTER the decision graph completes and:
+ * 1. Takes all recommendations from decision brain output
+ * 2. Converts them to natural language for detected language (MR/HI/EN)
+ * 3. Returns text suitable for ai_chat_messages.content field
+ */
 function getResponseContent(response: OrchestratorResponse, language: string): string {
+  console.log(`📝 [PostProcessor] Converting response type: ${response.type} to language: ${language}`);
+  
   switch (response.type) {
     case 'DECISION_PROVIDED':
+      // PRIMARY PATH: Decision Brain generated recommendations
       const comm = response.communication;
-      // Fix: Use flattenCommunicationToText to extract from FarmerCommunication structure
-      return flattenCommunicationToText(comm, language);
+      const decisionOutput = response.decision_output;
+      
+      // Step 1: Try FarmerCommunication structure (preferred - already translated)
+      const communicationText = flattenCommunicationToText(comm, language);
+      if (communicationText && communicationText.length > 50) {
+        console.log(`   ✅ Using FarmerCommunication text (${communicationText.length} chars)`);
+        return communicationText;
+      }
+      
+      // Step 2: Fallback - Build response directly from decision_output
+      console.log(`   ⚠️ FarmerCommunication incomplete, building from decision_output`);
+      return buildResponseFromDecisionOutput(decisionOutput, language);
+      
     case 'CLARIFICATION_QUESTION':
       return language === 'mr' ? (response.question?.text_mr || '') :
              language === 'hi' ? (response.question?.text_hi || '') :
@@ -498,9 +529,143 @@ function getResponseContent(response: OrchestratorResponse, language: string): s
       return language === 'mr' ? (response.escalation?.message_mr || '') :
              language === 'hi' ? (response.escalation?.message_hi || '') :
              (response.escalation?.message_en || '');
+    case 'LLM_RESPONSE':
+      return response.llm_response || 
+             (response.escalation?.message_mr || '') ||
+             (response.escalation?.message_en || '');
     default:
       return 'Response generated';
   }
+}
+
+/**
+ * Fallback: Build natural language response directly from DecisionOutput
+ * Used when CommunicationGenerator fails or returns incomplete data
+ */
+function buildResponseFromDecisionOutput(decision: any, language: string): string {
+  if (!decision) {
+    return getGenericMonitoringMessage(language);
+  }
+  
+  const parts: string[] = [];
+  const lang = language as 'mr' | 'hi' | 'en';
+  
+  // Greeting
+  const greetings: Record<string, string> = {
+    mr: 'नमस्कार शेतकरी मित्र! 🌾',
+    hi: 'नमस्कार किसान मित्र! 🌾',
+    en: 'Hello farmer friend! 🌾'
+  };
+  parts.push(greetings[lang] || greetings.en);
+  
+  const primary = decision.primary_decision;
+  
+  // Status handling
+  if (decision.status === 'BLOCKED') {
+    const blockedReason = decision.blocked_actions?.[0]?.reason || 'Safety check required';
+    const blockedMessages: Record<string, string> = {
+      mr: `⚠️ थांबा: ${blockedReason}`,
+      hi: `⚠️ रुकें: ${blockedReason}`,
+      en: `⚠️ Stop: ${blockedReason}`
+    };
+    parts.push(blockedMessages[lang]);
+    return parts.join('\n\n');
+  }
+  
+  if (decision.status === 'WEATHER_DELAYED') {
+    const delayMessages: Record<string, string> = {
+      mr: '⏱️ फवारणी पुढे ढकला - हवामान सुधारल्यावर फवारणी करा. सध्या पिकाचे निरीक्षण सुरू ठेवा.',
+      hi: '⏱️ छिड़काव टालें - मौसम साफ होने पर छिड़काव करें। अभी फसल की निगरानी जारी रखें।',
+      en: '⏱️ Postpone spray - Spray when weather clears. Continue crop monitoring for now.'
+    };
+    parts.push(delayMessages[lang]);
+    return parts.join('\n\n');
+  }
+  
+  // Action type
+  if (primary?.action_type === 'NO_ACTION' || primary?.action_type === 'MONITOR_ONLY') {
+    const monitorMessages: Record<string, string> = {
+      mr: '👀 सध्या कोणतीही कृती आवश्यक नाही. निरीक्षण सुरू ठेवा.',
+      hi: '👀 अभी कोई कार्रवाई आवश्यक नहीं। निगरानी जारी रखें।',
+      en: '👀 No action required at this time. Continue monitoring.'
+    };
+    parts.push(monitorMessages[lang]);
+    return parts.join('\n\n');
+  }
+  
+  // Primary recommendation
+  if (primary) {
+    const productName = primary.application_details?.product_name || 'Recommended product';
+    const dosage = primary.application_details?.concentration || '';
+    const timing = primary.timing?.best_time_of_day || 'MORNING';
+    
+    const actionHeaders: Record<string, string> = {
+      mr: '📌 आता काय करावे:',
+      hi: '📌 अभी क्या करें:',
+      en: '📌 What to do now:'
+    };
+    parts.push(actionHeaders[lang]);
+    
+    // Product and dosage
+    const productLine = dosage ? `${productName} @ ${dosage}` : productName;
+    parts.push(productLine);
+    
+    // Timing
+    const timingLabels: Record<string, Record<string, string>> = {
+      MORNING: { mr: 'सकाळी फवारणी करा', hi: 'सुबह छिड़काव करें', en: 'Apply in the morning' },
+      EVENING: { mr: 'संध्याकाळी फवारणी करा', hi: 'शाम को छिड़काव करें', en: 'Apply in the evening' },
+      ANY: { mr: 'दिवसातून कधीही', hi: 'दिन में कभी भी', en: 'Any time of day' }
+    };
+    const timingText = timingLabels[timing]?.[lang] || timingLabels.MORNING[lang];
+    parts.push(`⏰ ${timingText}`);
+    
+    // Efficacy if available
+    const efficacy = primary.expected_outcomes?.efficacy_percent;
+    if (efficacy) {
+      const efficacyText: Record<string, string> = {
+        mr: `📊 अपेक्षित परिणामकारकता: ${efficacy}%`,
+        hi: `📊 अपेक्षित प्रभावशीलता: ${efficacy}%`,
+        en: `📊 Expected efficacy: ${efficacy}%`
+      };
+      parts.push(efficacyText[lang]);
+    }
+  }
+  
+  // Secondary actions
+  if (decision.secondary_actions && decision.secondary_actions.length > 0) {
+    const altHeaders: Record<string, string> = {
+      mr: '\n🔄 पर्यायी उपाय:',
+      hi: '\n🔄 वैकल्पिक उपाय:',
+      en: '\n🔄 Alternative measures:'
+    };
+    parts.push(altHeaders[lang]);
+    
+    decision.secondary_actions.slice(0, 2).forEach((alt: any) => {
+      if (alt.action) parts.push(`• ${alt.action}`);
+    });
+  }
+  
+  // Closing
+  const closings: Record<string, string> = {
+    mr: '\nशुभेच्छा! 🙏',
+    hi: '\nशुभकामनाएं! 🙏',
+    en: '\nBest wishes! 🙏'
+  };
+  parts.push(closings[lang]);
+  
+  return parts.join('\n');
+}
+
+/**
+ * Get generic monitoring message when no decision output is available
+ */
+function getGenericMonitoringMessage(language: string): string {
+  const messages: Record<string, string> = {
+    mr: 'नमस्कार! 🌾 तुमच्या पिकाचे निरीक्षण सुरू ठेवा. काही समस्या दिसल्यास आम्हाला कळवा.',
+    hi: 'नमस्कार! 🌾 अपनी फसल की निगरानी जारी रखें। कोई समस्या दिखे तो हमें बताएं।',
+    en: 'Hello! 🌾 Continue monitoring your crop. Let us know if you notice any issues.'
+  };
+  return messages[language] || messages.en;
 }
 
 /**
