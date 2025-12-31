@@ -296,12 +296,30 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
   
   const actionType = mapToActionType(rec?.product_type);
   
+  // CRITICAL FIX: Extract product name properly, NEVER use placeholder fallbacks
+  // If no product_name exists, use the rule cause or scientific name as product reference
+  const productName = rec?.product_name || 
+                      (rule.cause && !rule.cause.includes('_') ? rule.cause : undefined) ||
+                      extractProductFromReason(rule.reason);
+  
+  const dosage = rec?.dosage || extractDosageFromReason(rule.reason);
+  
+  // CRITICAL FIX: Extract pest/disease codes from rule metadata, not just keyword matching
+  const pestCode = rule.pest_code || (rule.cause?.toUpperCase().includes('PEST') || 
+                   rule.cause?.toUpperCase().includes('BORER') || 
+                   rule.cause?.toUpperCase().includes('WHITEFLY') ? rule.cause : undefined);
+  const diseaseCode = rule.disease_code || (rule.cause?.toUpperCase().includes('DISEASE') || 
+                      rule.cause?.toUpperCase().includes('BLIGHT') ||
+                      rule.cause?.toUpperCase().includes('ROT') ? rule.cause : undefined);
+  
+  console.log(`🎯 [ConflictResolver] Converting to PrimaryDecision: product=${productName}, dosage=${dosage}, pest=${pestCode}, disease=${diseaseCode}`);
+  
   return {
     action_type: actionType,
-    specific_action: rec?.product_name || rule.cause,
+    specific_action: productName || rule.cause,
     target: {
-      pest_code: rule.cause.includes('PEST') ? rule.cause : undefined,
-      disease_code: rule.cause.includes('DISEASE') ? rule.cause : undefined
+      pest_code: pestCode,
+      disease_code: diseaseCode
     },
     urgency: 'WITHIN_24H',
     timing: {
@@ -311,10 +329,10 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
       reason: rule.reason
     },
     application_details: {
-      product_name: rec?.product_name || 'Recommended treatment',
+      product_name: productName || rule.reason_mr || rule.reason_hi || 'See recommendation details',
       product_type: rec?.product_type || 'BOTANICAL',
-      concentration: rec?.dosage || 'As per label',
-      quantity_per_acre: rec?.dosage || 'As per label',
+      concentration: dosage || 'See product label',
+      quantity_per_acre: dosage || 'See product label',
       total_quantity: 'Calculate based on land size',
       water_requirement: '200-400 liters/acre',
       application_method: (rec?.application_method as ApplicationMethod) || 'FOLIAR_SPRAY',
@@ -334,8 +352,59 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
         'No new damage symptoms'
       ]
     },
-    ipm_level: rec?.ipm_level
+    ipm_level: rec?.ipm_level,
+    // Preserve multilingual reasons for LLM formatter
+    reason_mr: rule.reason_mr,
+    reason_hi: rule.reason_hi
   };
+}
+
+/**
+ * CRITICAL FIX: Extract product name from reason text when not explicitly provided
+ * Handles formats like "Apply XYZ @ dosage" or "Use ABC product"
+ */
+function extractProductFromReason(reason?: string): string | undefined {
+  if (!reason) return undefined;
+  
+  // Common patterns: "Apply X @ Y", "Use X", "Spray X"
+  const patterns = [
+    /(?:Apply|Use|Spray|वापरा|लगाएं)\s+([A-Za-z0-9\s]+(?:WP|SC|EC|SL|WG|SP)?)\s*@/i,
+    /(?:Apply|Use|Spray)\s+([A-Za-z0-9\s]+(?:WP|SC|EC|SL|WG|SP)?)/i,
+    /([A-Za-z0-9]+\s+\d+(?:\.\d+)?\s*(?:WP|SC|EC|SL|WG|SP))/i
+  ];
+  
+  for (const pattern of patterns) {
+    const match = reason.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  
+  return undefined;
+}
+
+/**
+ * CRITICAL FIX: Extract dosage from reason text
+ * Handles formats like "@ 3ml/10L" or "@ 25g/10L"
+ */
+function extractDosageFromReason(reason?: string): string | undefined {
+  if (!reason) return undefined;
+  
+  // Pattern: @ followed by dosage
+  const patterns = [
+    /@\s*(\d+(?:\.\d+)?(?:ml|g|kg|L|gm)\/\d+L)/i,
+    /(\d+(?:\.\d+)?(?:ml|g|kg|gm)\/\d+L)/i,
+    /(\d+(?:\.\d+)?(?:ml|g)\/(?:10|15|16)L)/i
+  ];
+  
+  for (const pattern of patterns) {
+    const match = reason.match(pattern);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+  }
+  
+  return undefined;
 }
 
 function mapToActionType(productType?: ProductType): ActionType {
@@ -368,18 +437,18 @@ function createMonitoringDecision(): PrimaryDecision {
       reason: 'Situation does not require immediate intervention'
     },
     application_details: {
-      product_name: 'No treatment required',
-      product_type: 'ORGANIC',
-      concentration: 'N/A',
-      quantity_per_acre: 'N/A',
-      total_quantity: 'N/A',
-      water_requirement: 'N/A',
+      product_name: 'Continue regular monitoring',
+      product_type: 'CULTURAL',
+      concentration: 'Monitor daily',
+      quantity_per_acre: 'Visual inspection',
+      total_quantity: 'Daily observations',
+      water_requirement: 'Regular irrigation schedule',
       application_method: 'HAND_PICKING',
-      coverage_instructions: 'Monitor crop health daily. Check for new pest/disease symptoms.'
+      coverage_instructions: 'Monitor crop health daily. Check for new pest/disease symptoms. Look for yellowing leaves, holes, or unusual spots.'
     },
     expected_outcomes: {
       efficacy_percent: 100,
-      time_to_visible_effect_days: 'N/A',
+      time_to_visible_effect_days: 'Ongoing',
       success_indicators: [
         'Crop remains healthy',
         'No increase in pest population',

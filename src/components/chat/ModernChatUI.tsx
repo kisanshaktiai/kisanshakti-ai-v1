@@ -205,7 +205,18 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
       return true;
     });
     
-    // Step 5: Render remaining lines
+    // Step 5.5: ✅ CRITICAL FIX: If all lines were filtered, show fallback message
+    if (lines.length === 0 || lines.every(line => !line.trim())) {
+      console.log('[ModernChatUI] All lines filtered - showing fallback');
+      const fallbackMessage = "मला समजले आहे. कृपया पुन्हा एकदा विचारा किंवा अधिक माहिती द्या. / Please ask again or provide more details.";
+      return [
+        <div key="fallback" className="mb-1.5 leading-relaxed text-sm md:text-base text-muted-foreground italic">
+          {fallbackMessage}
+        </div>
+      ];
+    }
+    
+    // Step 6: Render remaining lines
     return lines.map((line, idx) => {
       const trimmedLine = line.trim();
       if (!trimmedLine) {

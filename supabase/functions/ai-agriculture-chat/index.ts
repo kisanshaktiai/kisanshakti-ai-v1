@@ -637,12 +637,18 @@ serve(async (req) => {
 
     // ═══════════════════════════════════════════════════════════════════════════
     // TRANSFORM ORCHESTRATOR RESPONSE TO LEGACY FORMAT
+    // CRITICAL FIX: Use responseContent (from LLM formatter) instead of re-generating
+    // This ensures what we save to DB is EXACTLY what we return to user
     // ═══════════════════════════════════════════════════════════════════════════
-    const responsePayload = transformOrchestratorResponse(
+    const responsePayload = transformOrchestratorResponseWithContent(
       orchestratorResponse,
+      responseContent, // ← CRITICAL: Use the LLM-formatted content we already generated
       detectedLanguage,
       currentSessionId,
-      startTime
+      startTime,
+      actions_returned,
+      traceId,
+      aiModelUsed
     );
 
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1946,6 +1952,55 @@ function detectLanguage(text: string, fallback: string): string {
   return fallback;
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CRITICAL FIX: New transform function that uses PRE-GENERATED content
+ * This ensures DB save and API response are IDENTICAL (no duplicate messages)
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+function transformOrchestratorResponseWithContent(
+  response: OrchestratorResponse,
+  preGeneratedContent: string,
+  language: string,
+  sessionId: string,
+  startTime: number,
+  actionsReturned: any[] | null,
+  traceId: string,
+  aiModelUsed?: string
+): any {
+  const responseTime = Date.now() - startTime;
+  const comm = response.communication;
+
+  // For DECISION_PROVIDED, use the pre-generated LLM-formatted content
+  if (response.type === 'DECISION_PROVIDED') {
+    return {
+      response: preGeneratedContent, // ← CRITICAL: Use exact same content as DB save
+      sessionId: sessionId,
+      language: language,
+      responseTime: responseTime,
+      dataAudit: response.dataAudit,
+      actionsReturned: actionsReturned,
+      metadata: {
+        type: 'decision',
+        orchestrator_type: 'DECISION_PROVIDED', // Normalized enum
+        confidence: response.metadata?.confidence,
+        safety_status: response.metadata?.safety_status,
+        rules_applied: response.metadata?.rules_applied,
+        agents_used: response.metadata?.agents_used,
+        decision_id: response.decision_id,
+        trace_id: traceId,
+        ai_model: aiModelUsed || 'template',
+        actions_count: actionsReturned?.length || 0
+      },
+      quickReplies: generateQuickRepliesFromCommunication(comm, language),
+      source: 'orchestrator_v1'
+    };
+  }
+
+  // For other types, delegate to the original function
+  return transformOrchestratorResponse(response, language, sessionId, startTime);
+}
+
 function transformOrchestratorResponse(
   response: OrchestratorResponse,
   language: string,
@@ -1969,6 +2024,7 @@ function transformOrchestratorResponse(
         dataAudit: response.dataAudit,
         metadata: {
           type: 'decision',
+          orchestrator_type: 'DECISION_PROVIDED',
           confidence: response.metadata?.confidence,
           safety_status: response.metadata?.safety_status,
           rules_applied: response.metadata?.rules_applied,
