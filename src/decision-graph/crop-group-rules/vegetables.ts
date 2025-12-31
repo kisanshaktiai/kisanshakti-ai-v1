@@ -755,8 +755,44 @@ export const ALL_VEGETABLES_RULES: CauseRule[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CRITICAL PERIOD WATER STRESS (CPWS) RULES - VEGETABLES
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const VEGETABLES_CPWS_RULES: CauseRule[] = [
+  {
+    rule_id: 'CPWS_TOMATO_001',
+    category: 'water',
+    crop_code: 'tomato',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'tomato' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.CPWS_TOMATO_FLOWERING,
+    priority: 10,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Flowering-fruit set stage EXTREMELY sensitive. Water stress causes flower drop, blossom end rot.',
+    icar_package: 'ICAR-IIVR Tomato PoP 2024'
+  },
+  {
+    rule_id: 'CPWS_ONION_001',
+    category: 'water',
+    crop_code: 'onion',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'onion' &&
+      input.days_after_sowing >= 40 && input.days_after_sowing <= 60 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.CPWS_ONION_BULB_INITIATION,
+    priority: 9,
+    scientific_source: 'ICAR-DOGR',
+    scientific_basis: 'Bulb initiation (40-60 DAT) critical period. Stress = small bulbs.',
+    icar_package: 'ICAR-DOGR Onion PoP 2024'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
 // COMBINED VEGETABLES RULES
-// Total: 50+ rules
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const VEGETABLES_RULES: CauseRule[] = [
@@ -764,6 +800,7 @@ export const VEGETABLES_RULES: CauseRule[] = [
   ...ONION_RULES,
   ...POTATO_RULES,
   ...BRINJAL_RULES,
+  ...VEGETABLES_CPWS_RULES,
   ...ALL_VEGETABLES_RULES
 ];
 

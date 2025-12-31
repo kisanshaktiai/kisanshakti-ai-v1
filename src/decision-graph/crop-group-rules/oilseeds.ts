@@ -707,8 +707,44 @@ export const ALL_OILSEEDS_RULES: CauseRule[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CRITICAL PERIOD WATER STRESS (CPWS) RULES - OILSEEDS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const OILSEEDS_CPWS_RULES: CauseRule[] = [
+  {
+    rule_id: 'CPWS_SOYBEAN_001',
+    category: 'water',
+    crop_code: 'soybean',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'soybean' &&
+      input.days_after_sowing >= 40 && input.days_after_sowing <= 60 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.CPWS_SOYBEAN_FLOWERING,
+    priority: 10,
+    scientific_source: 'ICAR-IISR',
+    scientific_basis: 'Flowering-pod formation (40-60 DAS) critical 20-day window. Water stress causes flower drop and pod abortion.',
+    icar_package: 'ICAR-IISR Soybean PoP 2024'
+  },
+  {
+    rule_id: 'CPWS_GROUNDNUT_001',
+    category: 'water',
+    crop_code: 'groundnut',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'groundnut' &&
+      input.days_after_sowing >= 40 && input.days_after_sowing <= 60 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.CPWS_GROUNDNUT_PEGGING,
+    priority: 10,
+    scientific_source: 'ICAR-DGR',
+    scientific_basis: 'Pegging stage (40-60 DAS) UNIQUE critical period. Pegs must penetrate soil to form pods. DRY HARD soil = NO pods.',
+    icar_package: 'ICAR-DGR Groundnut PoP 2024'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
 // COMBINED OILSEEDS RULES
-// Total: 45+ rules
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const OILSEEDS_RULES: CauseRule[] = [
@@ -716,6 +752,7 @@ export const OILSEEDS_RULES: CauseRule[] = [
   ...GROUNDNUT_RULES,
   ...MUSTARD_RULES,
   ...SUNFLOWER_RULES,
+  ...OILSEEDS_CPWS_RULES,
   ...ALL_OILSEEDS_RULES
 ];
 

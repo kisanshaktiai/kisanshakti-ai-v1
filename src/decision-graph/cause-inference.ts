@@ -29,6 +29,7 @@ import { VEGETABLES_RULES } from './crop-group-rules/vegetables';
 import { FRUITS_RULES } from './crop-group-rules/fruits';
 import { SPICES_RULES } from './crop-group-rules/spices';
 import { FODDER_RULES } from './crop-group-rules/fodder';
+import MICRONUTRIENT_RULES from './crop-group-rules/micronutrients';
 
 // Import safety rules
 import { getAllSafetyRules } from './safety-rules';

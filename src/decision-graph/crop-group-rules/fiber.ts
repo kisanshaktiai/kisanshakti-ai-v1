@@ -630,6 +630,28 @@ export const ALL_FIBER_RULES: CauseRule[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CRITICAL PERIOD WATER STRESS (CPWS) RULES - FIBER
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const COTTON_CPWS_RULES: CauseRule[] = [
+  {
+    rule_id: 'CPWS_COTTON_001',
+    category: 'water',
+    crop_code: 'cotton',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cotton' &&
+      input.days_after_sowing >= 50 && input.days_after_sowing <= 80 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.CPWS_COTTON_FLOWERING_BOLL,
+    priority: 10,
+    scientific_source: 'ICAR-CICR',
+    scientific_basis: 'Squaring to peak boll formation (50-80 DAS) is 30-day critical window. Water stress causes massive square/boll shedding (30-40%).',
+    icar_package: 'ICAR-CICR Cotton PoP 2024'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
 // COMBINED FIBER RULES
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -637,6 +659,7 @@ export const FIBER_RULES: CauseRule[] = [
   ...COTTON_RULES,
   ...JUTE_RULES,
   ...MESTA_RULES,
+  ...COTTON_CPWS_RULES,
   ...ALL_FIBER_RULES
 ];
 
