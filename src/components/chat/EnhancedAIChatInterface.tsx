@@ -1470,19 +1470,19 @@ export function EnhancedAIChatInterface() {
           ═══════════════════════════════════════════════════════════════════════════ */}
       <main 
         ref={scrollAreaRef}
-        className="flex-1 overflow-y-auto overscroll-contain scroll-smooth"
+        className="flex-1 overflow-y-auto overscroll-contain scroll-smooth pb-28"
       >
         {/* Subtle gradient background pattern */}
         <div className="relative min-h-full">
-          <div className="absolute inset-0 opacity-[0.02] pointer-events-none">
+          <div className="absolute inset-0 opacity-[0.015] pointer-events-none">
             <div className="absolute inset-0" style={{
-              backgroundImage: `radial-gradient(circle at 25% 25%, hsl(var(--primary)) 1px, transparent 1px),
-                               radial-gradient(circle at 75% 75%, hsl(var(--accent)) 1px, transparent 1px)`,
-              backgroundSize: '48px 48px'
+              backgroundImage: `radial-gradient(circle at 20% 30%, hsl(var(--primary)) 1px, transparent 1px),
+                               radial-gradient(circle at 80% 70%, hsl(var(--accent)) 1px, transparent 1px)`,
+              backgroundSize: '60px 60px'
             }} />
           </div>
           
-          <div className="relative px-4 py-6 space-y-4">
+          <div className="relative px-4 py-4 space-y-4">
             {/* Loading History - Modern Skeleton */}
             {isLoadingHistory && (
               <motion.div
@@ -1613,8 +1613,8 @@ export function EnhancedAIChatInterface() {
               </motion.div>
             )}
             
-            {/* Bottom spacing for input area */}
-            <div className="h-4" />
+            {/* Bottom spacing for fixed input area */}
+            <div className="h-6" />
           </div>
         </div>
       </main>
@@ -1654,14 +1654,14 @@ export function EnhancedAIChatInterface() {
       </AnimatePresence>
 
       {/* ═══════════════════════════════════════════════════════════════════════════
-          2030 MODERN INPUT AREA - Clean Pill Design (Reference: chat_bottom.jpg)
+          2030 MODERN INPUT AREA - Clean Pill Design (Exact Match: chat_bottom.png)
           ═══════════════════════════════════════════════════════════════════════════ */}
-      <footer className="sticky bottom-0 z-50 flex-shrink-0">
-        {/* Gradient fade effect */}
-        <div className="absolute -top-6 left-0 right-0 h-6 bg-gradient-to-t from-background to-transparent pointer-events-none" />
+      <footer className="fixed bottom-0 left-0 right-0 z-50">
+        {/* Gradient fade overlay for seamless blend */}
+        <div className="absolute -top-8 left-0 right-0 h-8 bg-gradient-to-t from-background via-background/80 to-transparent pointer-events-none" />
         
-        <div className="relative bg-background/95 backdrop-blur-xl">
-          <div className="px-3 py-3 pb-safe space-y-2">
+        <div className="relative bg-background pt-2 pb-safe">
+          <div className="px-4 pb-4 space-y-3">
             {/* Attached Files Preview */}
             <AnimatePresence>
               {attachedFiles.length > 0 && (
@@ -1678,7 +1678,7 @@ export function EnhancedAIChatInterface() {
                       animate={{ opacity: 1, scale: 1 }}
                       className="relative flex-shrink-0 group"
                     >
-                      <div className="h-16 w-16 rounded-xl overflow-hidden border-2 border-primary/20 shadow-md">
+                      <div className="h-14 w-14 rounded-xl overflow-hidden border-2 border-violet-200 shadow-md">
                         {file.type.startsWith('image/') ? (
                           <img
                             src={URL.createObjectURL(file)}
@@ -1687,14 +1687,14 @@ export function EnhancedAIChatInterface() {
                           />
                         ) : (
                           <div className="h-full w-full flex items-center justify-center bg-muted">
-                            <Paperclip className="h-5 w-5 text-muted-foreground" />
+                            <Paperclip className="h-4 w-4 text-muted-foreground" />
                           </div>
                         )}
                       </div>
                       <Button
                         variant="destructive"
                         size="icon"
-                        className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full shadow-md"
+                        className="absolute -top-1 -right-1 h-5 w-5 rounded-full shadow-md"
                         onClick={() => setAttachedFiles(prev => prev.filter((_, i) => i !== index))}
                       >
                         <X className="h-3 w-3" />
@@ -1719,42 +1719,44 @@ export function EnhancedAIChatInterface() {
               }}
             />
 
-            {/* Modern Pill-Shaped Input Container */}
-            <div className="flex items-center gap-2">
-              {/* Main Pill Input */}
-              <div className="flex-1 flex items-center bg-muted/60 rounded-full border border-border/40 px-1.5 py-1 shadow-sm">
-                {/* Left Action Buttons - Combined */}
-                <div className="flex items-center gap-0.5 pl-1">
-                  <motion.button
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => fileInputRef.current?.click()}
-                    className="h-9 w-9 rounded-full flex items-center justify-center hover:bg-muted transition-colors"
-                    aria-label={t('chat.attach', 'Attach file')}
-                  >
-                    <Paperclip className="h-5 w-5 text-muted-foreground" />
-                  </motion.button>
-                  <motion.button
-                    whileTap={{ scale: 0.9 }}
-                    onClick={() => setShowCamera(true)}
-                    className="h-9 w-9 rounded-full flex items-center justify-center hover:bg-muted transition-colors"
-                    aria-label={t('chat.camera', 'Take photo')}
-                  >
-                    <Camera className="h-5 w-5 text-muted-foreground" />
-                  </motion.button>
-                </div>
+            {/* ═══════════════════════════════════════════════════════════════════════════
+                EXACT MATCH: Reference Image - Clean Pill with Violet Mic Button
+                ═══════════════════════════════════════════════════════════════════════════ */}
+            <div className="flex items-center gap-3">
+              {/* Main Pill Input Container */}
+              <div className="flex-1 flex items-center bg-white dark:bg-card border-2 border-gray-100 dark:border-border/40 rounded-full px-2 py-1.5 shadow-lg shadow-gray-200/50 dark:shadow-black/20">
+                {/* Left: Attachment Icon */}
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="h-10 w-10 rounded-full flex items-center justify-center hover:bg-gray-100 dark:hover:bg-muted transition-colors"
+                  aria-label={t('chat.attach', 'Attach file')}
+                >
+                  <Paperclip className="h-5 w-5 text-gray-400 dark:text-muted-foreground" />
+                </motion.button>
 
-                {/* Input Field */}
+                {/* Left: Camera Icon */}
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  onClick={() => setShowCamera(true)}
+                  className="h-10 w-10 rounded-full flex items-center justify-center hover:bg-gray-100 dark:hover:bg-muted transition-colors -ml-1"
+                  aria-label={t('chat.camera', 'Take photo')}
+                >
+                  <Camera className="h-5 w-5 text-gray-400 dark:text-muted-foreground" />
+                </motion.button>
+
+                {/* Center: Input Field */}
                 <input
                   ref={inputRef}
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder={t('chat.input.placeholder', 'तुमचा संदेश टाइप करा...')}
-                  className="flex-1 bg-transparent border-none outline-none px-3 py-2 text-sm placeholder:text-muted-foreground/60"
+                  placeholder={t('chat.input.placeholder', 'Type your message...')}
+                  className="flex-1 bg-transparent border-none outline-none px-2 py-2 text-base text-gray-700 dark:text-foreground placeholder:text-gray-400 dark:placeholder:text-muted-foreground"
                   disabled={isLoading}
                 />
 
-                {/* Right Side - Mic or Send */}
+                {/* Right: Violet Mic Button OR Send Button */}
                 {inputValue.trim() || attachedFiles.length > 0 ? (
                   <motion.button
                     initial={{ scale: 0.8, opacity: 0 }}
@@ -1762,33 +1764,33 @@ export function EnhancedAIChatInterface() {
                     whileTap={{ scale: 0.9 }}
                     onClick={() => sendMessage()}
                     disabled={isLoading}
-                    className="h-9 w-9 rounded-full flex items-center justify-center bg-primary text-primary-foreground shadow-md mr-0.5"
+                    className="h-10 w-10 rounded-full flex items-center justify-center bg-violet-500 hover:bg-violet-600 text-white shadow-md shadow-violet-200 dark:shadow-violet-900/30 transition-all"
                     aria-label={t('chat.send', 'Send message')}
                   >
                     {isLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <Loader2 className="h-5 w-5 animate-spin" />
                     ) : (
-                      <Send className="h-4 w-4" />
+                      <Send className="h-5 w-5" />
                     )}
                   </motion.button>
                 ) : (
                   <motion.button
                     whileTap={{ scale: 0.9 }}
-                    animate={isListening ? { scale: [1, 1.05, 1] } : {}}
-                    transition={isListening ? { repeat: Infinity, duration: 0.8 } : {}}
+                    animate={isListening ? { scale: [1, 1.08, 1] } : {}}
+                    transition={isListening ? { repeat: Infinity, duration: 1 } : {}}
                     onClick={isListening ? stopListening : startListening}
                     className={cn(
-                      "h-9 w-9 rounded-full flex items-center justify-center mr-0.5 transition-all",
+                      "h-10 w-10 rounded-full flex items-center justify-center transition-all shadow-md",
                       isListening 
-                        ? "bg-destructive text-destructive-foreground shadow-md" 
-                        : "bg-gradient-to-br from-primary/15 to-accent/15 hover:from-primary/25 hover:to-accent/25"
+                        ? "bg-red-500 hover:bg-red-600 text-white shadow-red-200 dark:shadow-red-900/30" 
+                        : "bg-violet-500 hover:bg-violet-600 text-white shadow-violet-200 dark:shadow-violet-900/30"
                     )}
                     aria-label={isListening ? t('chat.stopRecording', 'Stop recording') : t('chat.startRecording', 'Start recording')}
                   >
                     {isListening ? (
-                      <MicOff className="h-4 w-4" />
+                      <MicOff className="h-5 w-5" />
                     ) : (
-                      <Mic className="h-5 w-5 text-primary" />
+                      <Mic className="h-5 w-5" />
                     )}
                   </motion.button>
                 )}
