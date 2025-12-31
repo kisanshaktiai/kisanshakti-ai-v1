@@ -322,10 +322,41 @@ serve(async (req) => {
     // ═══════════════════════════════════════════════════════════════════════════
     const responseTime = Date.now() - startTime;
     
-    // Extract actions from decision output for database storage
-    const { actions_returned, actions_filtered_out } = extractActionsFromDecisionOutput(orchestratorResponse);
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 3A: EXTRACT & AUDIT RECOMMENDATIONS FROM DECISION BRAIN
+    // ═══════════════════════════════════════════════════════════════════════════
+    const { actions_returned, actions_filtered_out, audit_log } = extractAndAuditActions(orchestratorResponse, traceId);
     
-    console.log(`💾 [Storage] Storing actions: returned=${actions_returned?.length || 0}, filtered=${actions_filtered_out?.length || 0}`);
+    // Log complete audit trail
+    console.log(`\n📋 [${traceId}] ═══ DECISION AUDIT START ═══`);
+    console.log(`📋 [${traceId}] Orchestrator Type: ${orchestratorResponse.type}`);
+    console.log(`📋 [${traceId}] Actions Returned: ${actions_returned?.length || 0}`);
+    console.log(`📋 [${traceId}] Actions Filtered: ${actions_filtered_out?.length || 0}`);
+    
+    if (audit_log.validation_errors.length > 0) {
+      console.warn(`⚠️ [${traceId}] Validation Errors:`, audit_log.validation_errors);
+    }
+    
+    // Log each recommendation in detail
+    if (actions_returned && actions_returned.length > 0) {
+      console.log(`📋 [${traceId}] ─── RECOMMENDATIONS DETAIL ───`);
+      actions_returned.forEach((action, idx) => {
+        console.log(`   ${idx + 1}. Type: ${action.type}, Action: ${action.action_type || action.action}`);
+        console.log(`      Product: ${action.product_name || 'N/A'}, Priority: ${action.priority || 'N/A'}`);
+        console.log(`      Has Title: ${!!action.title}, Has Description: ${!!action.description}`);
+      });
+    }
+    
+    // Log WHY actions were filtered
+    if (actions_filtered_out && actions_filtered_out.length > 0) {
+      console.log(`📋 [${traceId}] ─── FILTERED ACTIONS (with reasons) ───`);
+      actions_filtered_out.forEach((filtered, idx) => {
+        console.log(`   ${idx + 1}. Action: ${filtered.action}`);
+        console.log(`      Filter Reason: ${filtered.filter_category} - ${filtered.reason}`);
+        console.log(`      Blocked By: ${filtered.blocked_by_rule || 'N/A'}`);
+      });
+    }
+    console.log(`📋 [${traceId}] ═══ DECISION AUDIT END ═══\n`);
     
     // Store user message
     try {
@@ -490,37 +521,120 @@ serve(async (req) => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Extract actions from orchestrator response for database storage
- * Parses primary_decision, secondary_actions, and blocked_actions
+ * ═══════════════════════════════════════════════════════════════════════════
+ * EXTRACT & AUDIT ACTIONS - Comprehensive action extraction with validation
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * This function:
+ * 1. Logs EXACTLY what's in the recommendations array
+ * 2. Verifies each recommendation has: title, description, priority, actions
+ * 3. Categorizes WHY actions were filtered (regulatory, safety, seasonal)
+ * 4. Returns complete audit trail
  */
-function extractActionsFromDecisionOutput(orchestratorResponse: OrchestratorResponse): {
+interface ActionAuditLog {
+  total_recommendations: number;
+  total_filtered: number;
+  validation_errors: string[];
+  filter_categories: Record<string, number>;
+}
+
+type FilterCategory = 'REGULATORY' | 'SAFETY' | 'SEASONAL' | 'WEATHER' | 'ECONOMIC' | 'COMPATIBILITY' | 'UNKNOWN';
+
+function categorizeFilterReason(reason: string, blockedByRule?: string): FilterCategory {
+  const reasonLower = (reason || '').toLowerCase();
+  const ruleLower = (blockedByRule || '').toLowerCase();
+  
+  // Regulatory: pesticide bans, government restrictions
+  if (reasonLower.includes('banned') || reasonLower.includes('regulated') || 
+      reasonLower.includes('prohibited') || ruleLower.includes('REG_')) {
+    return 'REGULATORY';
+  }
+  
+  // Safety: PHI, worker safety, toxicity
+  if (reasonLower.includes('phi') || reasonLower.includes('safety') || 
+      reasonLower.includes('toxic') || reasonLower.includes('harmful') ||
+      ruleLower.includes('SAFETY_') || reasonLower.includes('pre-harvest')) {
+    return 'SAFETY';
+  }
+  
+  // Seasonal: wrong season, wrong growth stage
+  if (reasonLower.includes('season') || reasonLower.includes('stage') || 
+      reasonLower.includes('timing') || ruleLower.includes('SEASON_')) {
+    return 'SEASONAL';
+  }
+  
+  // Weather: rain, wind, temperature
+  if (reasonLower.includes('rain') || reasonLower.includes('weather') || 
+      reasonLower.includes('wind') || reasonLower.includes('temperature')) {
+    return 'WEATHER';
+  }
+  
+  // Economic: cost, availability
+  if (reasonLower.includes('cost') || reasonLower.includes('expensive') || 
+      reasonLower.includes('unavailable')) {
+    return 'ECONOMIC';
+  }
+  
+  // Compatibility: tank mix issues
+  if (reasonLower.includes('compatible') || reasonLower.includes('mix') || 
+      reasonLower.includes('incompatible')) {
+    return 'COMPATIBILITY';
+  }
+  
+  return 'UNKNOWN';
+}
+
+function extractAndAuditActions(orchestratorResponse: OrchestratorResponse, traceId: string): {
   actions_returned: any[] | null;
   actions_filtered_out: any[] | null;
+  audit_log: ActionAuditLog;
 } {
-  // Only extract actions when type is DECISION_PROVIDED
+  const audit_log: ActionAuditLog = {
+    total_recommendations: 0,
+    total_filtered: 0,
+    validation_errors: [],
+    filter_categories: {}
+  };
+  
+  // Return early for non-decision types
   if (orchestratorResponse.type !== 'DECISION_PROVIDED') {
-    return { actions_returned: null, actions_filtered_out: null };
+    console.log(`📋 [${traceId}] Non-decision response type: ${orchestratorResponse.type}`);
+    return { actions_returned: null, actions_filtered_out: null, audit_log };
   }
 
   const decisionOutput = orchestratorResponse.decision_output;
   
   if (!decisionOutput) {
-    return { actions_returned: null, actions_filtered_out: null };
+    audit_log.validation_errors.push('decision_output is null/undefined');
+    return { actions_returned: null, actions_filtered_out: null, audit_log };
   }
 
   const actionsReturned: any[] = [];
   
-  // Extract primary decision
+  // Extract and validate primary decision
   if (decisionOutput.primary_decision) {
     const primary = decisionOutput.primary_decision;
-    actionsReturned.push({
+    
+    // Validation: Check required fields
+    const validationErrors: string[] = [];
+    if (!primary.action_type) validationErrors.push('primary.action_type missing');
+    if (!primary.priority && primary.action_type !== 'NO_ACTION') {
+      validationErrors.push('primary.priority missing');
+    }
+    
+    // Build enriched action object with title/description
+    const enrichedAction = {
       type: 'primary',
       action_type: primary.action_type,
+      // Generate title from action type
+      title: generateActionTitle(primary, 'mr'),
+      // Generate description from action details
+      description: generateActionDescription(primary, 'mr'),
       product_name: primary.application_details?.product_name,
       dosage: primary.application_details?.concentration,
       timing: primary.timing,
       urgency: primary.urgency,
-      priority: primary.priority,
+      priority: primary.priority || 'HIGH',
       ipm_level: primary.ipm_level,
       rule_id: primary.rule_id,
       efficacy_percent: primary.expected_outcomes?.efficacy_percent,
@@ -528,44 +642,125 @@ function extractActionsFromDecisionOutput(orchestratorResponse: OrchestratorResp
         pest_code: primary.target?.pest_code,
         disease_code: primary.target?.disease_code,
         nutrient_deficiency: primary.target?.nutrient_deficiency
-      }
-    });
+      },
+      // Actions array for compatibility
+      actions: [primary.action_type]
+    };
+    
+    actionsReturned.push(enrichedAction);
+    validationErrors.forEach(e => audit_log.validation_errors.push(e));
   }
 
-  // Extract secondary actions
+  // Extract and validate secondary actions
   if (decisionOutput.secondary_actions && decisionOutput.secondary_actions.length > 0) {
     for (const secondary of decisionOutput.secondary_actions) {
+      // Validation
+      if (!secondary.action) {
+        audit_log.validation_errors.push('secondary.action missing');
+      }
+      
       actionsReturned.push({
         type: 'secondary',
         action: secondary.action,
+        title: secondary.action, // Use action as title for secondary
+        description: secondary.reason || '',
         reason: secondary.reason,
         timing: secondary.timing,
-        priority: secondary.priority,
+        priority: secondary.priority || 'MEDIUM',
         ipm_level: secondary.ipm_level,
-        rule_id: secondary.rule_id
+        rule_id: secondary.rule_id,
+        actions: [secondary.action]
       });
     }
   }
 
-  // Extract blocked/filtered actions
+  // Extract blocked/filtered actions with categorization
   const actionsFilteredOut: any[] = [];
   
   if (decisionOutput.blocked_actions && decisionOutput.blocked_actions.length > 0) {
     for (const blocked of decisionOutput.blocked_actions) {
+      const filterCategory = categorizeFilterReason(blocked.reason, blocked.blocked_by_rule);
+      
+      // Track category counts
+      audit_log.filter_categories[filterCategory] = 
+        (audit_log.filter_categories[filterCategory] || 0) + 1;
+      
       actionsFilteredOut.push({
         action: blocked.action,
         blocked_by_rule: blocked.blocked_by_rule,
         reason: blocked.reason,
+        filter_category: filterCategory, // WHY it was filtered
         priority: blocked.priority,
         alternatives: blocked.alternatives || []
       });
     }
   }
 
+  audit_log.total_recommendations = actionsReturned.length;
+  audit_log.total_filtered = actionsFilteredOut.length;
+
   return {
     actions_returned: actionsReturned.length > 0 ? actionsReturned : null,
-    actions_filtered_out: actionsFilteredOut.length > 0 ? actionsFilteredOut : null
+    actions_filtered_out: actionsFilteredOut.length > 0 ? actionsFilteredOut : null,
+    audit_log
   };
+}
+
+/**
+ * Generate human-readable title for an action
+ */
+function generateActionTitle(primary: any, lang: string): string {
+  const actionType = primary.action_type || 'UNKNOWN';
+  const productName = primary.application_details?.product_name;
+  const pestCode = primary.target?.pest_code;
+  const diseaseCode = primary.target?.disease_code;
+  
+  const titles: Record<string, Record<string, string>> = {
+    SPRAY: {
+      mr: productName ? `${productName} फवारणी` : 'किटकनाशक फवारणी',
+      hi: productName ? `${productName} छिड़काव` : 'कीटनाशक छिड़काव',
+      en: productName ? `Apply ${productName}` : 'Insecticide Spray'
+    },
+    FERTILIZER: {
+      mr: 'खत देणे',
+      hi: 'उर्वरक देना',
+      en: 'Apply Fertilizer'
+    },
+    NO_ACTION: {
+      mr: 'कोणतीही कृती नाही',
+      hi: 'कोई कार्रवाई नहीं',
+      en: 'No Action Required'
+    },
+    MONITOR_ONLY: {
+      mr: 'निरीक्षण करा',
+      hi: 'निगरानी करें',
+      en: 'Monitor Only'
+    }
+  };
+  
+  return titles[actionType]?.[lang] || titles[actionType]?.en || actionType;
+}
+
+/**
+ * Generate human-readable description for an action
+ */
+function generateActionDescription(primary: any, lang: string): string {
+  const parts: string[] = [];
+  
+  if (primary.target?.pest_code) {
+    parts.push(`Target: ${primary.target.pest_code}`);
+  }
+  if (primary.target?.disease_code) {
+    parts.push(`Target: ${primary.target.disease_code}`);
+  }
+  if (primary.application_details?.concentration) {
+    parts.push(`Dosage: ${primary.application_details.concentration}`);
+  }
+  if (primary.expected_outcomes?.efficacy_percent) {
+    parts.push(`Efficacy: ${primary.expected_outcomes.efficacy_percent}%`);
+  }
+  
+  return parts.join(' | ') || 'Recommendation based on current conditions';
 }
 
 /**
@@ -576,16 +771,27 @@ function extractActionsFromDecisionOutput(orchestratorResponse: OrchestratorResp
  * This step runs AFTER the decision graph completes and:
  * 1. Takes all recommendations from decision brain output
  * 2. Converts them to natural language for detected language (MR/HI/EN)
- * 3. Returns text suitable for ai_chat_messages.content field
+ * 3. Formats as bullet points or numbered list for chat response
+ * 4. Returns text suitable for ai_chat_messages.content field
+ * 5. NEVER returns empty - always reflects decision brain output
  */
 function getResponseContent(response: OrchestratorResponse, language: string): string {
-  console.log(`📝 [PostProcessor] Converting response type: ${response.type} to language: ${language}`);
+  const lang = language as 'mr' | 'hi' | 'en';
+  console.log(`📝 [PostProcessor] Converting response type: ${response.type} to language: ${lang}`);
   
   switch (response.type) {
     case 'DECISION_PROVIDED':
       // PRIMARY PATH: Decision Brain generated recommendations
       const comm = response.communication;
       const decisionOutput = response.decision_output;
+      
+      // Check if decision brain ran but produced no actionable recommendations
+      if (!decisionOutput || 
+          (!decisionOutput.primary_decision && 
+           (!decisionOutput.secondary_actions || decisionOutput.secondary_actions.length === 0))) {
+        console.log(`   ⚠️ Decision brain ran but no recommendations - generating fallback`);
+        return generateNoRecommendationsFallback(response, lang);
+      }
       
       // Step 1: Try FarmerCommunication structure (preferred - already translated)
       const communicationText = flattenCommunicationToText(comm, language);
@@ -594,33 +800,246 @@ function getResponseContent(response: OrchestratorResponse, language: string): s
         return communicationText;
       }
       
-      // Step 2: Fallback - Build response directly from decision_output
-      console.log(`   ⚠️ FarmerCommunication incomplete, building from decision_output`);
-      return buildResponseFromDecisionOutput(decisionOutput, language);
+      // Step 2: Fallback - Build formatted response directly from decision_output
+      console.log(`   ⚠️ FarmerCommunication incomplete, building formatted list from decision_output`);
+      return buildFormattedRecommendationsList(decisionOutput, lang);
       
     case 'CLARIFICATION_QUESTION':
-      return language === 'mr' ? (response.question?.text_mr || '') :
-             language === 'hi' ? (response.question?.text_hi || '') :
-             (response.question?.text_en || '');
+      const questionText = lang === 'mr' ? (response.question?.text_mr || '') :
+                          lang === 'hi' ? (response.question?.text_hi || '') :
+                          (response.question?.text_en || '');
+      // Never silent - if no question text, generate clarification prompt
+      return questionText || generateClarificationPrompt(response, lang);
+      
     case 'PHOTO_REQUEST':
-      return language === 'mr' ? (response.photo_instructions?.text_mr || '') :
-             language === 'hi' ? (response.photo_instructions?.text_hi || '') :
+      return lang === 'mr' ? (response.photo_instructions?.text_mr || '') :
+             lang === 'hi' ? (response.photo_instructions?.text_hi || '') :
              (response.photo_instructions?.text_en || '');
     case 'SAFETY_BLOCKED':
-      return language === 'mr' ? (response.blocked_reason?.reason_mr || '') :
-             language === 'hi' ? (response.blocked_reason?.reason_hi || '') :
+      return lang === 'mr' ? (response.blocked_reason?.reason_mr || '') :
+             lang === 'hi' ? (response.blocked_reason?.reason_hi || '') :
              (response.blocked_reason?.reason_en || '');
     case 'ESCALATION_REQUIRED':
-      return language === 'mr' ? (response.escalation?.message_mr || '') :
-             language === 'hi' ? (response.escalation?.message_hi || '') :
+      return lang === 'mr' ? (response.escalation?.message_mr || '') :
+             lang === 'hi' ? (response.escalation?.message_hi || '') :
              (response.escalation?.message_en || '');
     case 'LLM_RESPONSE':
       return response.llm_response || 
              (response.escalation?.message_mr || '') ||
              (response.escalation?.message_en || '');
     default:
-      return 'Response generated';
+      // NEVER silent - even for unknown types
+      console.log(`   ⚠️ Unknown response type: ${response.type}`);
+      return generateGenericAcknowledgment(lang);
   }
+}
+
+/**
+ * FALLBACK: When decision brain runs but produces no recommendations
+ * Generates explanatory message asking for more information
+ */
+function generateNoRecommendationsFallback(response: OrchestratorResponse, lang: 'mr' | 'hi' | 'en'): string {
+  const parts: string[] = [];
+  
+  // Greeting
+  const greetings: Record<string, string> = {
+    mr: 'नमस्कार शेतकरी मित्र! 🌾',
+    hi: 'नमस्कार किसान मित्र! 🌾',
+    en: 'Hello farmer friend! 🌾'
+  };
+  parts.push(greetings[lang]);
+  
+  // Extract context clues from response
+  const nluIntent = response.metadata?.nlu_output?.primary_intent;
+  const detectedPest = response.metadata?.nlu_output?.pest_mentions?.[0];
+  const detectedDisease = response.metadata?.nlu_output?.disease_mentions?.[0];
+  const detectedCrop = response.metadata?.nlu_output?.crop_mentions?.[0];
+  
+  // Build context-aware message
+  if (detectedPest || detectedDisease) {
+    const target = detectedPest || detectedDisease;
+    const messages: Record<string, string> = {
+      mr: `तुमच्या ${target} समस्येबद्दल माहिती मिळाली. अचूक शिफारसी देण्यासाठी मला आणखी काही माहिती हवी:`,
+      hi: `आपकी ${target} समस्या के बारे में जानकारी मिली। सटीक सिफारिशों के लिए मुझे और जानकारी चाहिए:`,
+      en: `I understand you're dealing with ${target}. To give accurate recommendations, I need more information:`
+    };
+    parts.push(messages[lang]);
+  } else {
+    const messages: Record<string, string> = {
+      mr: 'तुमच्या प्रश्नाचे योग्य उत्तर देण्यासाठी मला आणखी काही माहिती हवी:',
+      hi: 'आपके प्रश्न का सही उत्तर देने के लिए मुझे और जानकारी चाहिए:',
+      en: 'To properly answer your question, I need some more information:'
+    };
+    parts.push(messages[lang]);
+  }
+  
+  // Numbered list of required information
+  const questions: Record<string, string[]> = {
+    mr: [
+      '1. पिकाचे नाव काय आहे?',
+      '2. पिकाची सध्याची अवस्था (वाढीचा टप्पा) काय आहे?',
+      '3. समस्येची लक्षणे काय दिसत आहेत?',
+      '4. शक्य असल्यास प्रभावित पानांचा/रोपांचा फोटो पाठवा'
+    ],
+    hi: [
+      '1. फसल का नाम क्या है?',
+      '2. फसल की वर्तमान अवस्था (विकास चरण) क्या है?',
+      '3. समस्या के लक्षण क्या दिख रहे हैं?',
+      '4. यदि संभव हो तो प्रभावित पत्तियों/पौधों की तस्वीर भेजें'
+    ],
+    en: [
+      '1. What is the crop name?',
+      '2. What is the current growth stage?',
+      '3. What symptoms are you seeing?',
+      '4. If possible, send a photo of the affected leaves/plants'
+    ]
+  };
+  parts.push('\n' + questions[lang].join('\n'));
+  
+  // Encouragement
+  const closings: Record<string, string> = {
+    mr: '\nही माहिती मिळाल्यावर मी तुम्हाला योग्य शिफारस देईन! 🙏',
+    hi: '\nयह जानकारी मिलने पर मैं आपको सही सिफारिश दूंगा! 🙏',
+    en: '\nOnce I have this information, I can give you the right recommendation! 🙏'
+  };
+  parts.push(closings[lang]);
+  
+  return parts.join('\n\n');
+}
+
+/**
+ * Build formatted numbered list from decision output
+ */
+function buildFormattedRecommendationsList(decision: any, lang: 'mr' | 'hi' | 'en'): string {
+  const parts: string[] = [];
+  
+  // Greeting
+  const greetings: Record<string, string> = {
+    mr: 'नमस्कार शेतकरी मित्र! 🌾',
+    hi: 'नमस्कार किसान मित्र! 🌾',
+    en: 'Hello farmer friend! 🌾'
+  };
+  parts.push(greetings[lang]);
+  
+  const primary = decision.primary_decision;
+  
+  // Status handling
+  if (decision.status === 'BLOCKED') {
+    const blockedReason = decision.blocked_actions?.[0]?.reason || 'Safety check required';
+    const blockedMessages: Record<string, string> = {
+      mr: `⚠️ **थांबा:** ${blockedReason}`,
+      hi: `⚠️ **रुकें:** ${blockedReason}`,
+      en: `⚠️ **Stop:** ${blockedReason}`
+    };
+    parts.push(blockedMessages[lang]);
+    return parts.join('\n\n');
+  }
+  
+  if (decision.status === 'WEATHER_DELAYED') {
+    const delayMessages: Record<string, string> = {
+      mr: '⏱️ **फवारणी पुढे ढकला** - हवामान सुधारल्यावर फवारणी करा. सध्या पिकाचे निरीक्षण सुरू ठेवा.',
+      hi: '⏱️ **छिड़काव टालें** - मौसम साफ होने पर छिड़काव करें। अभी फसल की निगरानी जारी रखें।',
+      en: '⏱️ **Postpone spray** - Spray when weather clears. Continue crop monitoring for now.'
+    };
+    parts.push(delayMessages[lang]);
+    return parts.join('\n\n');
+  }
+  
+  // Action type - NO ACTION
+  if (primary?.action_type === 'NO_ACTION' || primary?.action_type === 'MONITOR_ONLY') {
+    const monitorMessages: Record<string, string> = {
+      mr: '👀 **सध्या कोणतीही कृती आवश्यक नाही.** निरीक्षण सुरू ठेवा.',
+      hi: '👀 **अभी कोई कार्रवाई आवश्यक नहीं।** निगरानी जारी रखें।',
+      en: '👀 **No action required at this time.** Continue monitoring.'
+    };
+    parts.push(monitorMessages[lang]);
+    return parts.join('\n\n');
+  }
+  
+  // Primary recommendation as numbered list
+  if (primary) {
+    const actionHeaders: Record<string, string> = {
+      mr: '📌 **शिफारसी:**',
+      hi: '📌 **सिफारिशें:**',
+      en: '📌 **Recommendations:**'
+    };
+    parts.push(actionHeaders[lang]);
+    
+    let recNumber = 1;
+    const recParts: string[] = [];
+    
+    // Primary action
+    const productName = primary.application_details?.product_name || 'Recommended product';
+    const dosage = primary.application_details?.concentration || '';
+    const timing = primary.timing?.best_time_of_day || 'MORNING';
+    
+    let primaryText = `**${recNumber}. ${productName}**`;
+    if (dosage) primaryText += ` @ ${dosage}`;
+    
+    // Add timing
+    const timingLabels: Record<string, Record<string, string>> = {
+      MORNING: { mr: 'सकाळी', hi: 'सुबह', en: 'Morning' },
+      EVENING: { mr: 'संध्याकाळी', hi: 'शाम को', en: 'Evening' },
+      ANY: { mr: 'दिवसातून कधीही', hi: 'दिन में कभी भी', en: 'Any time' }
+    };
+    const timingText = timingLabels[timing]?.[lang] || timingLabels.MORNING[lang];
+    primaryText += ` | ⏰ ${timingText}`;
+    
+    // Add efficacy
+    const efficacy = primary.expected_outcomes?.efficacy_percent;
+    if (efficacy) {
+      primaryText += ` | 📊 ${efficacy}%`;
+    }
+    
+    recParts.push(primaryText);
+    recNumber++;
+    
+    // Secondary actions
+    if (decision.secondary_actions && decision.secondary_actions.length > 0) {
+      decision.secondary_actions.slice(0, 2).forEach((alt: any) => {
+        if (alt.action) {
+          recParts.push(`**${recNumber}. ${alt.action}** ${alt.reason ? `- ${alt.reason}` : ''}`);
+          recNumber++;
+        }
+      });
+    }
+    
+    parts.push(recParts.join('\n'));
+  }
+  
+  // Closing
+  const closings: Record<string, string> = {
+    mr: '\n✅ शुभेच्छा! 🙏',
+    hi: '\n✅ शुभकामनाएं! 🙏',
+    en: '\n✅ Best wishes! 🙏'
+  };
+  parts.push(closings[lang]);
+  
+  return parts.join('\n\n');
+}
+
+/**
+ * Generate clarification prompt when question text is missing
+ */
+function generateClarificationPrompt(response: OrchestratorResponse, lang: 'mr' | 'hi' | 'en'): string {
+  const messages: Record<string, string> = {
+    mr: 'कृपया तुमच्या प्रश्नाबद्दल अधिक माहिती द्या. पिकाचे नाव, समस्या आणि लक्षणे सांगा.',
+    hi: 'कृपया अपने प्रश्न के बारे में अधिक जानकारी दें। फसल का नाम, समस्या और लक्षण बताएं।',
+    en: 'Please provide more details about your question. Tell us the crop name, problem, and symptoms.'
+  };
+  return messages[lang];
+}
+
+/**
+ * Generic acknowledgment for unknown response types
+ */
+function generateGenericAcknowledgment(lang: 'mr' | 'hi' | 'en'): string {
+  const messages: Record<string, string> = {
+    mr: 'तुमचा संदेश प्राप्त झाला. आम्ही तुम्हाला लवकरच उत्तर देऊ.',
+    hi: 'आपका संदेश प्राप्त हुआ। हम जल्द ही आपको जवाब देंगे।',
+    en: 'Your message has been received. We will respond shortly.'
+  };
+  return messages[lang];
 }
 
 /**
