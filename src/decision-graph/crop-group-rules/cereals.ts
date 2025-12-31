@@ -15,7 +15,8 @@ import {
   SoilPState,
   SoilKState,
   SoilMoistureState,
-  WeatherState
+  WeatherState,
+  SoilPHState
 } from '../types';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -921,14 +922,732 @@ export const ALL_CEREALS_RULES: CauseRule[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PEST-DISEASE CASCADE RULES FOR ALL CEREALS (10 rules)
+// Scientific Basis: Pest wounds create entry points for pathogens
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const PEST_DISEASE_CASCADE_RULES: CauseRule[] = [
+  // CASCADE_001: Stem Borer → Fusarium/Bacterial Infection
+  {
+    rule_id: 'CASCADE_CEREALS_001',
+    category: 'disease',
+    crop_code: 'ALL_CEREALS',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      (input.metadata?.pest_detected === 'STEM_BORER' || 
+       input.metadata?.pest_detected === 'SHOOT_BORER') &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.SECONDARY_INFECTION_RISK,
+    priority: 9,
+    scientific_source: 'ICAR Plant Pathology',
+    scientific_basis: 'Stem/shoot borer larvae create tunnels that become entry points for Fusarium oxysporum and bacterial pathogens. Humid weather increases infection rate by 300%.',
+    icar_package: 'ICAR IPM Guidelines 2024'
+  },
+
+  // CASCADE_002: Aphid Honeydew → Sooty Mold
+  {
+    rule_id: 'CASCADE_CEREALS_002',
+    category: 'disease',
+    crop_code: 'ALL_CEREALS',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      (input.metadata?.pest_detected === 'APHID' || 
+       input.metadata?.pest_detected === 'JASSID') &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.FUNGAL_SECONDARY_INFECTION,
+    priority: 7,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'Aphid honeydew secretions support sooty mold (Cladosporium) growth. Reduces photosynthesis by 25-40%. Black coating on leaves diagnostic.',
+    icar_package: 'ICAR Aphid Management 2024'
+  },
+
+  // CASCADE_003: Termite Damage → Root Rot Complex
+  {
+    rule_id: 'CASCADE_CEREALS_003',
+    category: 'disease',
+    crop_code: 'ALL_CEREALS',
+    stage_applicable: [CropStage.GERMINATION, CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.metadata?.pest_detected === 'TERMITE' &&
+      input.soil_states.moisture === SoilMoistureState.WATERLOGGED,
+    cause: Cause.WOUND_ENTRY_DISEASE,
+    priority: 8,
+    scientific_source: 'ICAR Soil Microbiology',
+    scientific_basis: 'Termite galleries expose roots to Pythium, Rhizoctonia, Fusarium complex. Waterlogged soil accelerates root rot. Can cause 60-80% stand loss.',
+    icar_package: 'ICAR Root Disease Management'
+  },
+
+  // CASCADE_004: Wheat - Rust Spores on Aphid Vectors
+  {
+    rule_id: 'CASCADE_WHEAT_001',
+    category: 'disease',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.metadata?.pest_detected === 'APHID' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY &&
+      input.days_after_sowing >= 60,
+    cause: Cause.WHEAT_RUST_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-IARI Wheat Pathology',
+    scientific_basis: 'Aphids carry rust (Puccinia) spores mechanically. High aphid population + humid weather = rapid rust spread. Yellow/brown rust can cause 40-70% yield loss.',
+    icar_package: 'ICAR-IARI Wheat PoP 2024'
+  },
+
+  // CASCADE_005: Rice - BPH Feeding → Sheath Blight Severity
+  {
+    rule_id: 'CASCADE_RICE_001',
+    category: 'disease',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      (input.metadata?.pest_detected === 'BROWN_PLANTHOPPER' ||
+       input.metadata?.pest_detected === 'LEAFHOPPER') &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.RICE_SHEATH_BLIGHT_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Brown planthopper feeding wounds facilitate Rhizoctonia solani (sheath blight) penetration. Humid microclimate from BPH colonies favors fungal growth.',
+    icar_package: 'ICAR-CRRI Rice PoP 2024'
+  },
+
+  // CASCADE_006: Maize - Fall Armyworm → Fusarium Ear Rot
+  {
+    rule_id: 'CASCADE_MAIZE_001',
+    category: 'disease',
+    crop_code: 'maize',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'maize' &&
+      input.metadata?.pest_detected === 'FALL_ARMYWORM' &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.FUNGAL_SECONDARY_INFECTION,
+    priority: 9,
+    scientific_source: 'ICAR-IIMR',
+    scientific_basis: 'Fall armyworm damage to cob creates entry for Fusarium verticillioides. Mycotoxin contamination risk. Can make grain unfit for consumption.',
+    icar_package: 'ICAR-IIMR Maize PoP 2024'
+  },
+
+  // CASCADE_007: General - Hail/Wind Damage → Bacterial Blight
+  {
+    rule_id: 'CASCADE_CEREALS_004',
+    category: 'disease',
+    crop_code: 'ALL_CEREALS',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.metadata?.hail_damage === true &&
+      input.weather_state === WeatherState.RAIN_ACTIVE,
+    cause: Cause.BACTERIAL_SECONDARY_INFECTION,
+    priority: 8,
+    scientific_source: 'ICAR Extreme Weather Management',
+    scientific_basis: 'Hail creates multiple wound sites. Rain splash disperses Xanthomonas, Pseudomonas bacteria into wounds. Requires immediate copper spray.',
+    icar_package: 'ICAR Climate Resilience 2024'
+  },
+
+  // CASCADE_008: Sugarcane - Shoot Borer → Red Rot Entry
+  {
+    rule_id: 'CASCADE_SUGARCANE_001',
+    category: 'disease',
+    crop_code: 'sugarcane',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'sugarcane' &&
+      input.metadata?.pest_detected === 'SHOOT_BORER' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.PEST_DISEASE_CASCADE,
+    priority: 10,
+    scientific_source: 'ICAR-SBI',
+    scientific_basis: 'Chilo infuscatellus (shoot borer) tunnels are primary entry for Colletotrichum falcatum (red rot). Most destructive sugarcane disease. Can destroy entire crop.',
+    icar_package: 'ICAR-SBI Sugarcane PoP 2024'
+  },
+
+  // CASCADE_009: Cotton - Bollworm → Boll Rot Complex
+  {
+    rule_id: 'CASCADE_COTTON_001',
+    category: 'disease',
+    crop_code: 'cotton',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cotton' &&
+      (input.metadata?.pest_detected === 'PINK_BOLLWORM' ||
+       input.metadata?.pest_detected === 'AMERICAN_BOLLWORM') &&
+      input.weather_state === WeatherState.RAIN_ACTIVE,
+    cause: Cause.COTTON_BOLL_ROT_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-CICR',
+    scientific_basis: 'Bollworm exit holes allow Xanthomonas, Aspergillus, Fusarium entry. Rainy weather = rapid boll rot spread. Causes fiber quality degradation.',
+    icar_package: 'ICAR-CICR Cotton PoP 2024'
+  },
+
+  // CASCADE_010: Preventive Action When Pest Detected
+  {
+    rule_id: 'CASCADE_PREVENTIVE_001',
+    category: 'disease',
+    crop_code: 'ALL_CEREALS',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.metadata?.pest_severity === 'HIGH' &&
+      input.weather_state !== WeatherState.DRY_SPELL &&
+      !input.metadata?.fungicide_applied_last_7days,
+    cause: Cause.SECONDARY_INFECTION_RISK,
+    priority: 7,
+    scientific_source: 'ICAR Integrated Pest Disease Management',
+    scientific_basis: 'High pest infestation creates numerous wounds. Preventive fungicide/bactericide needed even without disease symptoms. Prevention cheaper than cure.',
+    icar_package: 'ICAR IPDM Strategy 2024'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BAJRA (PEARL MILLET) RULES (12 rules)
+// Source: ICAR-AICPMIP Jodhpur, ICRISAT Hyderabad
+// India's 4th largest cereal - 8.5 million hectares
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const BAJRA_RULES: CauseRule[] = [
+  // BAJRA_DISEASE_001: Downy Mildew - Most Destructive
+  {
+    rule_id: 'C_CEREALS_BAJRA_DISEASE_001',
+    category: 'disease',
+    crop_code: 'bajra',
+    stage_applicable: [CropStage.GERMINATION, CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'bajra' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY &&
+      input.days_after_sowing <= 30,
+    cause: Cause.BAJRA_DOWNY_MILDEW_RISK,
+    priority: 10,
+    scientific_source: 'ICAR-AICPMIP Jodhpur',
+    scientific_basis: 'Sclerospora graminicola causes 50-80% yield loss if early infection. Systemic disease - entire plant becomes chlorotic. Seed treatment with Metalaxyl 35SD @ 6g/kg mandatory.',
+    icar_package: 'ICAR-AICPMIP Bajra PoP 2024'
+  },
+
+  // BAJRA_DISEASE_002: Ergot (Claviceps fusiformis)
+  {
+    rule_id: 'C_CEREALS_BAJRA_DISEASE_002',
+    category: 'disease',
+    crop_code: 'bajra',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'bajra' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.FUNGAL_SECONDARY_INFECTION,
+    priority: 8,
+    scientific_source: 'ICAR-AICPMIP',
+    scientific_basis: 'Ergot replaces grain with toxic sclerotia (honeydew stage visible). Common in rainy season crop. Remove infected earheads immediately. Grain unsafe for consumption.',
+    icar_package: 'ICAR Bajra Disease Management'
+  },
+
+  // BAJRA_DISEASE_003: Blast (Pyricularia grisea)
+  {
+    rule_id: 'C_CEREALS_BAJRA_DISEASE_003',
+    category: 'disease',
+    crop_code: 'bajra',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'bajra' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY &&
+      input.soil_states.n === SoilNState.HIGH_N,
+    cause: Cause.RAGI_BLAST_RISK,
+    priority: 7,
+    scientific_source: 'ICRISAT',
+    scientific_basis: 'Neck and finger blast attacks earheads. Favored by excess N + high humidity. Spray Tricyclazole 75% WP @ 0.6g/L at ear emergence.',
+    icar_package: 'ICRISAT Pearl Millet Production'
+  },
+
+  // BAJRA_PEST_001: Shoot Fly (Atherigona approximata)
+  {
+    rule_id: 'C_CEREALS_BAJRA_PEST_001',
+    category: 'pest',
+    crop_code: 'bajra',
+    stage_applicable: [CropStage.GERMINATION, CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'bajra' &&
+      input.days_after_sowing >= 8 && input.days_after_sowing <= 25 &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.BAJRA_SHOOT_FLY_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-AICPMIP',
+    scientific_basis: 'Shoot fly maggot damages growing point causing dead heart. ETL: 20-25% dead hearts. Most critical 8-20 DAS. Seed treatment with imidacloprid 48FS @ 8ml/kg effective.',
+    icar_package: 'ICAR-AICPMIP Bajra PoP 2024'
+  },
+
+  // BAJRA_PEST_002: Stem Borer
+  {
+    rule_id: 'C_CEREALS_BAJRA_PEST_002',
+    category: 'pest',
+    crop_code: 'bajra',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'bajra' &&
+      input.days_after_sowing >= 30 &&
+      input.ndvi_state === NDVIState.MODERATE_STRESS,
+    cause: Cause.BAJRA_STEM_BORER_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-AICPMIP',
+    scientific_basis: 'Coniesta ignefusalis bores into stem. Causes lodging and poor grain filling. Release Trichogramma chilonis @ 50,000/acre at weekly intervals.',
+    icar_package: 'ICAR-AICPMIP IPM Package'
+  },
+
+  // BAJRA_PEST_003: Hairy Caterpillar
+  {
+    rule_id: 'C_CEREALS_BAJRA_PEST_003',
+    category: 'pest',
+    crop_code: 'bajra',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'bajra' &&
+      input.crop_stage === CropStage.VEGETATIVE &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.PEST_GENERAL_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-AICPMIP',
+    scientific_basis: 'Amsacta albistriga causes severe defoliation. Larvae are gregarious. ETL: 5-10 larvae/plant. Spray Quinalphos 25EC @ 2ml/L.',
+    icar_package: 'ICAR Bajra Pest Management'
+  },
+
+  // BAJRA_WATER_001: Critical Period Water Stress
+  {
+    rule_id: 'C_CEREALS_BAJRA_WATER_001',
+    category: 'water',
+    crop_code: 'bajra',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'bajra' &&
+      input.days_after_sowing >= 45 && input.days_after_sowing <= 55 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.WATER_STRESS_CRITICAL,
+    priority: 10,
+    scientific_source: 'ICRISAT',
+    scientific_basis: 'Flowering-grain filling (45-55 DAS) is THE most critical 10-day window. Water stress here reduces yield by 50-70%. Even 2-3 days wilting = permanent grain loss.',
+    icar_package: 'ICRISAT Dryland Agriculture'
+  },
+
+  // BAJRA_WATER_002: Drought Tolerance
+  {
+    rule_id: 'C_CEREALS_BAJRA_WATER_002',
+    category: 'water',
+    crop_code: 'bajra',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'bajra' &&
+      input.crop_stage === CropStage.VEGETATIVE &&
+      input.soil_states.moisture === SoilMoistureState.DRY &&
+      input.weather_state === WeatherState.DRY_SPELL,
+    cause: Cause.WATER_STRESS_MILD,
+    priority: 5,
+    scientific_source: 'ICRISAT',
+    scientific_basis: 'Bajra is MOST drought-tolerant cereal. Can survive on 250-400mm rainfall. Vegetative stage stress is tolerable. Save water for critical flowering stage.',
+    icar_package: 'ICRISAT Pearl Millet Guide'
+  },
+
+  // BAJRA_NUTRIENT_001: Nitrogen Requirement
+  {
+    rule_id: 'C_CEREALS_BAJRA_NUTRIENT_001',
+    category: 'nutrient',
+    crop_code: 'bajra',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'bajra' &&
+      input.soil_states.n === SoilNState.LOW_N &&
+      input.days_after_sowing >= 15 && input.days_after_sowing <= 30,
+    cause: Cause.NITROGEN_DEFICIENCY,
+    priority: 7,
+    scientific_source: 'ICAR-AICPMIP',
+    scientific_basis: 'Bajra needs 80-100 kg N/ha (less than wheat). Split: 50% basal + 25% at 25 DAS + 25% at panicle initiation. Excess N increases lodging.',
+    icar_package: 'ICAR-AICPMIP Nutrient Management'
+  },
+
+  // BAJRA_NUTRIENT_002: Phosphorus for Root Development
+  {
+    rule_id: 'C_CEREALS_BAJRA_NUTRIENT_002',
+    category: 'nutrient',
+    crop_code: 'bajra',
+    stage_applicable: [CropStage.GERMINATION],
+    conditions: (input) =>
+      input.crop_code === 'bajra' &&
+      input.soil_states.p === SoilPState.LOW_P &&
+      input.crop_stage === CropStage.GERMINATION,
+    cause: Cause.PHOSPHORUS_DEFICIENCY_CRITICAL,
+    priority: 8,
+    scientific_source: 'ICRISAT',
+    scientific_basis: 'Phosphorus critical for drought tolerance root development. Apply full dose (40 kg P2O5/ha) at sowing. DAP or SSP preferred.',
+    icar_package: 'ICRISAT Soil Management'
+  },
+
+  // BAJRA_NUTRIENT_003: Zinc Deficiency
+  {
+    rule_id: 'C_CEREALS_BAJRA_NUTRIENT_003',
+    category: 'nutrient',
+    crop_code: 'bajra',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'bajra' &&
+      input.ndvi_state === NDVIState.MODERATE_STRESS &&
+      input.soil_states.n === SoilNState.ADEQUATE_N,
+    cause: Cause.ZINC_DEFICIENCY,
+    priority: 7,
+    scientific_source: 'ICAR-AICPMIP',
+    scientific_basis: 'Zinc deficiency common in sandy/alkaline soils. Causes white/chlorotic bands on leaves. Apply ZnSO4 @ 25 kg/ha OR foliar 0.5%.',
+    icar_package: 'ICAR Micronutrient Management'
+  },
+
+  // BAJRA_WEED_001: Critical Weed Period
+  {
+    rule_id: 'C_CEREALS_BAJRA_WEED_001',
+    category: 'weed',
+    crop_code: 'bajra',
+    stage_applicable: [CropStage.GERMINATION, CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'bajra' &&
+      input.days_after_sowing >= 15 && input.days_after_sowing <= 35 &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.WEED_COMPETITION_CRITICAL,
+    priority: 8,
+    scientific_source: 'ICAR-AICPMIP',
+    scientific_basis: 'Critical weed competition period: 15-35 DAS. Weeds reduce yield by 40-60%. One hand weeding at 20-25 DAS OR Atrazine 50% WP @ 0.5kg/ha at 3-4 DAS.',
+    icar_package: 'ICAR-AICPMIP Weed Management'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// JOWAR (SORGHUM) RULES (10 rules)
+// Source: ICAR-IIMR Hyderabad
+// India's 3rd largest cereal after rice and wheat - 4.2 million hectares
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const JOWAR_RULES: CauseRule[] = [
+  // JOWAR_DISEASE_001: Charcoal Rot (Macrophomina phaseolina)
+  {
+    rule_id: 'C_CEREALS_JOWAR_DISEASE_001',
+    category: 'disease',
+    crop_code: 'jowar',
+    stage_applicable: [CropStage.REPRODUCTIVE, CropStage.MATURITY],
+    conditions: (input) =>
+      input.crop_code === 'jowar' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.weather_state === WeatherState.HEAT_STRESS &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.JOWAR_CHARCOAL_ROT_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-IIMR Hyderabad',
+    scientific_basis: 'Charcoal rot causes sudden wilting at maturity. Favored by heat stress + drought. Stem pith turns black with charcoal-like sclerotia. Can cause 30-50% yield loss. Use resistant varieties.',
+    icar_package: 'ICAR-IIMR Sorghum PoP 2024'
+  },
+
+  // JOWAR_DISEASE_002: Grain Mold Complex
+  {
+    rule_id: 'C_CEREALS_JOWAR_DISEASE_002',
+    category: 'disease',
+    crop_code: 'jowar',
+    stage_applicable: [CropStage.MATURITY],
+    conditions: (input) =>
+      input.crop_code === 'jowar' &&
+      input.crop_stage === CropStage.MATURITY &&
+      input.weather_state === WeatherState.RAIN_ACTIVE,
+    cause: Cause.FUNGAL_SECONDARY_INFECTION,
+    priority: 8,
+    scientific_source: 'ICAR-IIMR',
+    scientific_basis: 'Fusarium, Curvularia, Alternaria complex attacks ripening grain. Rain during maturity = severe infection. Grain discoloration, poor quality. Spray Mancozeb 0.25% at flowering.',
+    icar_package: 'ICAR-IIMR Disease Management'
+  },
+
+  // JOWAR_DISEASE_003: Downy Mildew
+  {
+    rule_id: 'C_CEREALS_JOWAR_DISEASE_003',
+    category: 'disease',
+    crop_code: 'jowar',
+    stage_applicable: [CropStage.GERMINATION, CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'jowar' &&
+      input.days_after_sowing <= 30 &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.FUNGAL_SECONDARY_INFECTION,
+    priority: 8,
+    scientific_source: 'ICAR-IIMR',
+    scientific_basis: 'Peronosclerospora sorghi causes systemic infection. White downy growth on leaf undersurface. Seed treatment with Metalaxyl 35SD @ 6g/kg.',
+    icar_package: 'ICAR-IIMR Sorghum PoP 2024'
+  },
+
+  // JOWAR_PEST_001: Shoot Fly (Atherigona soccata)
+  {
+    rule_id: 'C_CEREALS_JOWAR_PEST_001',
+    category: 'pest',
+    crop_code: 'jowar',
+    stage_applicable: [CropStage.GERMINATION, CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'jowar' &&
+      input.days_after_sowing >= 7 && input.days_after_sowing <= 30 &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.JOWAR_SHOOT_FLY_RISK,
+    priority: 10,
+    scientific_source: 'ICAR-IIMR',
+    scientific_basis: 'Shoot fly THE most destructive pest of sorghum. Maggot bores into whorl, kills growing point → dead heart. ETL: 20% dead hearts. Critical 7-30 DAS. Seed treatment: imidacloprid 48FS @ 12ml/kg.',
+    icar_package: 'ICAR-IIMR Sorghum PoP 2024'
+  },
+
+  // JOWAR_PEST_002: Stem Borer (Chilo partellus)
+  {
+    rule_id: 'C_CEREALS_JOWAR_PEST_002',
+    category: 'pest',
+    crop_code: 'jowar',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'jowar' &&
+      input.days_after_sowing >= 30 &&
+      input.ndvi_state === NDVIState.MODERATE_STRESS,
+    cause: Cause.JOWAR_STEM_BORER_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IIMR',
+    scientific_basis: 'Stem borer larvae bore into stem causing dead hearts (vegetative) or chaffy panicles (reproductive). ETL: 10% dead hearts. Whorl application of carbofuran 3G @ 10kg/ha.',
+    icar_package: 'ICAR-IIMR IPM Package'
+  },
+
+  // JOWAR_PEST_003: Shoot Bug
+  {
+    rule_id: 'C_CEREALS_JOWAR_PEST_003',
+    category: 'pest',
+    crop_code: 'jowar',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'jowar' &&
+      input.crop_stage === CropStage.VEGETATIVE &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.PEST_GENERAL_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-IIMR',
+    scientific_basis: 'Peregrinus maidis sucks sap from growing shoot. Causes stunting, leaf crinkling. Transmits virus. ETL: 5-10 bugs/plant.',
+    icar_package: 'ICAR-IIMR Pest Management'
+  },
+
+  // JOWAR_WATER_001: Critical Period Water Stress
+  {
+    rule_id: 'C_CEREALS_JOWAR_WATER_001',
+    category: 'water',
+    crop_code: 'jowar',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'jowar' &&
+      input.days_after_sowing >= 50 && input.days_after_sowing <= 65 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.WATER_STRESS_CRITICAL,
+    priority: 10,
+    scientific_source: 'ICAR-IIMR',
+    scientific_basis: 'Boot leaf to flowering (50-65 DAS) is THE critical period. Water stress reduces grain number per panicle by 40-60%. One irrigation mandatory if rain fails.',
+    icar_package: 'ICAR-IIMR Sorghum PoP 2024'
+  },
+
+  // JOWAR_WATER_002: Drought Tolerance
+  {
+    rule_id: 'C_CEREALS_JOWAR_WATER_002',
+    category: 'water',
+    crop_code: 'jowar',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'jowar' &&
+      input.crop_stage === CropStage.VEGETATIVE &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.WATER_STRESS_MILD,
+    priority: 5,
+    scientific_source: 'ICRISAT',
+    scientific_basis: 'Sorghum has excellent drought recovery. Can survive on 400-600mm rainfall. Vegetative stress tolerable. Save water for boot-to-flowering critical window.',
+    icar_package: 'ICRISAT Dryland Crops'
+  },
+
+  // JOWAR_NUTRIENT_001: Nitrogen Management
+  {
+    rule_id: 'C_CEREALS_JOWAR_NUTRIENT_001',
+    category: 'nutrient',
+    crop_code: 'jowar',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'jowar' &&
+      input.soil_states.n === SoilNState.LOW_N &&
+      input.days_after_sowing >= 20 && input.days_after_sowing <= 35,
+    cause: Cause.NITROGEN_DEFICIENCY,
+    priority: 7,
+    scientific_source: 'ICAR-IIMR',
+    scientific_basis: 'Sorghum needs 80-100 kg N/ha. Split: 50% basal + 50% at 30-35 DAS (pre-boot). Excess N delays maturity and increases lodging.',
+    icar_package: 'ICAR-IIMR Nutrient Management'
+  },
+
+  // JOWAR_NUTRIENT_002: Phosphorus
+  {
+    rule_id: 'C_CEREALS_JOWAR_NUTRIENT_002',
+    category: 'nutrient',
+    crop_code: 'jowar',
+    stage_applicable: [CropStage.GERMINATION],
+    conditions: (input) =>
+      input.crop_code === 'jowar' &&
+      input.soil_states.p === SoilPState.LOW_P,
+    cause: Cause.PHOSPHORUS_DEFICIENCY,
+    priority: 7,
+    scientific_source: 'ICAR-IIMR',
+    scientific_basis: 'Apply full P (40-50 kg P2O5/ha) at sowing. Supports root development in low-moisture conditions.',
+    icar_package: 'ICAR-IIMR Sorghum PoP 2024'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RAGI (FINGER MILLET) RULES (8 rules)
+// Source: ICAR-IIMR Bangalore Unit
+// Nutritionally superior - high calcium (344mg/100g)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const RAGI_RULES: CauseRule[] = [
+  // RAGI_DISEASE_001: Blast (Pyricularia grisea) - Most Destructive
+  {
+    rule_id: 'C_CEREALS_RAGI_DISEASE_001',
+    category: 'disease',
+    crop_code: 'ragi',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'ragi' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY &&
+      input.soil_states.n === SoilNState.HIGH_N,
+    cause: Cause.RAGI_BLAST_RISK,
+    priority: 10,
+    scientific_source: 'ICAR-IIMR Bangalore',
+    scientific_basis: 'Blast is THE most serious disease of ragi. Attacks leaves (leaf blast), neck (neck blast), and fingers (finger blast). Can cause 50-90% yield loss. Favored by high N + humid weather. Spray Tricyclazole 75% WP @ 0.6g/L.',
+    icar_package: 'ICAR-IIMR Ragi PoP 2024'
+  },
+
+  // RAGI_DISEASE_002: Finger Blast Specific
+  {
+    rule_id: 'C_CEREALS_RAGI_DISEASE_002',
+    category: 'disease',
+    crop_code: 'ragi',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'ragi' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.RAGI_FINGER_BLAST_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-IIMR',
+    scientific_basis: 'Finger blast attacks at grain filling stage. Causes grain abortion and chaffy fingers. Critical spray timing: finger emergence and 10 days later.',
+    icar_package: 'ICAR-IIMR Disease Calendar'
+  },
+
+  // RAGI_DISEASE_003: Brown Spot
+  {
+    rule_id: 'C_CEREALS_RAGI_DISEASE_003',
+    category: 'disease',
+    crop_code: 'ragi',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'ragi' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.EARLY_BLIGHT_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-IIMR',
+    scientific_basis: 'Helminthosporium nodulosum causes brown spots on leaves. Reduces photosynthetic area. Spray Mancozeb 0.25%.',
+    icar_package: 'ICAR-IIMR Ragi Diseases'
+  },
+
+  // RAGI_PEST_001: Pink Stem Borer
+  {
+    rule_id: 'C_CEREALS_RAGI_PEST_001',
+    category: 'pest',
+    crop_code: 'ragi',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'ragi' &&
+      input.days_after_sowing >= 30 &&
+      input.ndvi_state === NDVIState.MODERATE_STRESS,
+    cause: Cause.STEM_BORER_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IIMR',
+    scientific_basis: 'Sesamia inferens bores into stem causing dead hearts. ETL: 5-10% dead hearts. Whorl application of carbofuran 3G @ 20kg/ha.',
+    icar_package: 'ICAR-IIMR Ragi PoP 2024'
+  },
+
+  // RAGI_PEST_002: Leaf Eating Caterpillar
+  {
+    rule_id: 'C_CEREALS_RAGI_PEST_002',
+    category: 'pest',
+    crop_code: 'ragi',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'ragi' &&
+      input.crop_stage === CropStage.VEGETATIVE &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.PEST_GENERAL_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-IIMR',
+    scientific_basis: 'Spodoptera litura causes defoliation. ETL: 5 larvae/plant. Spray Quinalphos 25EC @ 2ml/L.',
+    icar_package: 'ICAR-IIMR Pest Management'
+  },
+
+  // RAGI_WATER_001: Critical Period
+  {
+    rule_id: 'C_CEREALS_RAGI_WATER_001',
+    category: 'water',
+    crop_code: 'ragi',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'ragi' &&
+      input.days_after_sowing >= 60 && input.days_after_sowing <= 75 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.WATER_STRESS_CRITICAL,
+    priority: 9,
+    scientific_source: 'ICAR-IIMR',
+    scientific_basis: 'Flowering to milk stage (60-75 DAS) is critical for grain filling. Water stress reduces grain weight by 30-50%.',
+    icar_package: 'ICAR-IIMR Ragi PoP 2024'
+  },
+
+  // RAGI_NUTRIENT_001: Calcium - Unique Requirement
+  {
+    rule_id: 'C_CEREALS_RAGI_NUTRIENT_001',
+    category: 'nutrient',
+    crop_code: 'ragi',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'ragi' &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.MICRONUTRIENT_DEFICIENCY,
+    priority: 7,
+    scientific_source: 'ICAR-IIMR',
+    scientific_basis: 'Ragi accumulates 10x more calcium than rice/wheat. Needs calcium supplementation for grain quality. Foliar spray CaCl2 0.5% at flowering and grain filling.',
+    icar_package: 'ICAR-IIMR Nutrition Guide'
+  },
+
+  // RAGI_NUTRIENT_002: Nitrogen
+  {
+    rule_id: 'C_CEREALS_RAGI_NUTRIENT_002',
+    category: 'nutrient',
+    crop_code: 'ragi',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'ragi' &&
+      input.soil_states.n === SoilNState.LOW_N &&
+      input.days_after_sowing >= 20 && input.days_after_sowing <= 40,
+    cause: Cause.NITROGEN_DEFICIENCY,
+    priority: 7,
+    scientific_source: 'ICAR-IIMR',
+    scientific_basis: 'Ragi needs 50-75 kg N/ha (less than wheat/rice). Split: 50% basal + 25% at 25 DAS + 25% at panicle initiation. Excess N increases blast susceptibility.',
+    icar_package: 'ICAR-IIMR Ragi PoP 2024'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
 // COMBINED CEREALS RULES
-// Total: 55+ rules
+// Total: 95+ rules (including Bajra, Jowar, Ragi, Cascade)
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const CEREALS_RULES: CauseRule[] = [
+  ...PEST_DISEASE_CASCADE_RULES,
   ...WHEAT_RULES,
   ...RICE_RULES,
   ...MAIZE_RULES,
+  ...BAJRA_RULES,
+  ...JOWAR_RULES,
+  ...RAGI_RULES,
   ...ALL_CEREALS_RULES
 ];
 
