@@ -72,6 +72,7 @@ import { ECONOMIC_THRESHOLD_RULES } from './economic-threshold-rules';
 import { IPM_RULES } from './ipm-rules';
 import { RESISTANCE_MANAGEMENT_RULES } from './resistance-management-rules';
 import { HARVEST_QUALITY_RULES } from './harvest-quality-rules';
+import { CROP_SPECIFIC_IPM_RULES } from './crop-specific-ipm-ladders';
 
 /**
  * Get total count of safety rules
@@ -82,6 +83,7 @@ export function getSafetyRuleCount(): number {
          PHI_WITHDRAWAL_RULES.length +
          ECONOMIC_THRESHOLD_RULES.length +
          IPM_RULES.length +
+         CROP_SPECIFIC_IPM_RULES.length +
          RESISTANCE_MANAGEMENT_RULES.length +
          HARVEST_QUALITY_RULES.length +
          NUTRIENT_RULES.length + 
@@ -101,6 +103,7 @@ export function getAllSafetyRules() {
     ...PHI_WITHDRAWAL_RULES,
     ...ECONOMIC_THRESHOLD_RULES,
     ...IPM_RULES,
+    ...CROP_SPECIFIC_IPM_RULES,
     ...RESISTANCE_MANAGEMENT_RULES,
     ...HARVEST_QUALITY_RULES,
     ...NUTRIENT_RULES,
@@ -120,7 +123,8 @@ export function getRulesByCategory(category: string) {
     case 'emergency': return EMERGENCY_RULES;
     case 'phi-withdrawal': return PHI_WITHDRAWAL_RULES;
     case 'economic-threshold': return ECONOMIC_THRESHOLD_RULES;
-    case 'ipm': return IPM_RULES;
+    case 'ipm': return [...IPM_RULES, ...CROP_SPECIFIC_IPM_RULES];
+    case 'crop-specific-ipm': return CROP_SPECIFIC_IPM_RULES;
     case 'resistance-management': return RESISTANCE_MANAGEMENT_RULES;
     case 'harvest-quality': return HARVEST_QUALITY_RULES;
     case 'nutrient': return NUTRIENT_RULES;
@@ -142,6 +146,7 @@ export function getRuleCountByCategory(): Record<string, number> {
     'phi-withdrawal': PHI_WITHDRAWAL_RULES.length,
     'economic-threshold': ECONOMIC_THRESHOLD_RULES.length,
     'ipm': IPM_RULES.length,
+    'crop-specific-ipm': CROP_SPECIFIC_IPM_RULES.length,
     'resistance-management': RESISTANCE_MANAGEMENT_RULES.length,
     'harvest-quality': HARVEST_QUALITY_RULES.length,
     'nutrient': NUTRIENT_RULES.length,
@@ -151,3 +156,6 @@ export function getRuleCountByCategory(): Record<string, number> {
     'disease-management': DISEASE_MANAGEMENT_RULES.length,
   };
 }
+
+// Export crop-specific IPM rules
+export { CROP_SPECIFIC_IPM_RULES } from './crop-specific-ipm-ladders';
