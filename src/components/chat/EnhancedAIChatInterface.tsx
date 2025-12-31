@@ -316,6 +316,13 @@ export function EnhancedAIChatInterface() {
                 videoUrl: metadata?.video_url || undefined,
                 messageType: msg.message_type as Message['messageType'] || 'text',
                 analysisResult,
+                // ✅ FIX: Extract orchestrator metadata for proper rendering
+                orchestratorType: metadata?.orchestrator_type as Message['orchestratorType'],
+                dataAudit: metadata?.data_audit,
+                analytics: metadata?.response_time_ms ? {
+                  responseTime: metadata.response_time_ms,
+                  queryComplexity: metadata?.source
+                } : undefined,
                 feedback: msg.feedback_rating 
                   ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
                   : null
@@ -406,6 +413,13 @@ export function EnhancedAIChatInterface() {
               videoUrl: metadata?.video_url || undefined,
               messageType: msg.message_type as Message['messageType'] || 'text',
               analysisResult,
+              // ✅ FIX: Extract orchestrator metadata for proper rendering after re-login
+              orchestratorType: metadata?.orchestrator_type as Message['orchestratorType'],
+              dataAudit: metadata?.data_audit,
+              analytics: msg.response_time_ms ? {
+                responseTime: msg.response_time_ms,
+                queryComplexity: metadata?.source
+              } : undefined,
               feedback: msg.feedback_rating 
                 ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
                 : null

@@ -146,9 +146,22 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
   // ✅ FIXED: For user image/video messages, show ONLY the image (no text/cards)
   const isUserImageMessage = isUser && (message.messageType === 'image_analysis' || message.messageType === 'video_analysis');
   
-  // ✅ Enhanced text formatter - handles numbered lists, bullets, and line breaks
+  // ✅ Enhanced text formatter - handles numbered lists, bullets, line breaks, and FILTERS placeholder content
   const formatAIResponse = (text: string) => {
     if (!text) return null;
+    
+    // Step 0: ✅ FIX - Filter out template placeholder lines with "None", "N/A" or empty values
+    // These indicate backend template failures that should not be shown to users
+    const placeholderPatterns = [
+      /^[•\-\*]\s*(None|N\/A)\s*$/i,                     // • None, • N/A
+      /^[•\-\*]\s*\S+\s*-\s*N\/A\s*$/i,                  // • पाणी - N/A
+      /^[•\-\*]\s*No treatment required\s*-\s*N\/A\s*$/i, // • No treatment required - N/A
+      /^\d+\.\s*.*None.*घाला\s*$/i,                      // 1. ...None घाला
+      /^\d+\.\s*अर्ध्?या?\s*पाण्यात\s*None\s*घाला\s*$/i, // अर्ध्या पाण्यात None घाला
+      /^🛒\s*Materials:\s*$/i,                            // Empty Materials section header
+      /^🧪\s*Mixing:\s*$/i,                               // Empty Mixing section header  
+      /^[•\-\*]\s*$/,                                     // Empty bullet point
+    ];
     
     // Step 1: Clean markdown symbols
     let formatted = text
@@ -171,9 +184,28 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
       .replace(/^\n+/, '')
       .trim();
     
-    // Step 4: Split into lines and render
-    const lines = formatted.split('\n');
+    // Step 4: Split into lines and filter out placeholder lines
+    const lines = formatted.split('\n').filter(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return true; // Keep empty lines for spacing
+      
+      // Filter out placeholder patterns
+      for (const pattern of placeholderPatterns) {
+        if (pattern.test(trimmed)) {
+          console.log('[ModernChatUI] Filtered placeholder line:', trimmed);
+          return false;
+        }
+      }
+      
+      // Also filter lines that are just "- N/A" or have None as the main content
+      if (/^\s*[•\-\*]?\s*(None|N\/A|null|undefined)\s*$/i.test(trimmed)) {
+        return false;
+      }
+      
+      return true;
+    });
     
+    // Step 5: Render remaining lines
     return lines.map((line, idx) => {
       const trimmedLine = line.trim();
       if (!trimmedLine) {
