@@ -998,7 +998,46 @@ export enum Cause {
   IPM_SUGARCANE_SHOOT_BORER_L1 = 'IPM_SUGARCANE_SHOOT_BORER_L1',   // Cultural control (<5% dead hearts)
   IPM_SUGARCANE_SHOOT_BORER_L2 = 'IPM_SUGARCANE_SHOOT_BORER_L2',   // Mechanical control (5-10%)
   IPM_SUGARCANE_SHOOT_BORER_L3 = 'IPM_SUGARCANE_SHOOT_BORER_L3',   // Biological control (10-15%)
-  IPM_SUGARCANE_SHOOT_BORER_L4 = 'IPM_SUGARCANE_SHOOT_BORER_L4'    // Selective chemical (>15%)
+  IPM_SUGARCANE_SHOOT_BORER_L4 = 'IPM_SUGARCANE_SHOOT_BORER_L4',   // Selective chemical (>15%)
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // VEGETABLE DISEASE CAUSES - Cabbage, Cauliflower, Okra, Beans
+  // ─────────────────────────────────────────────────────────────────────────
+  CABBAGE_BLACK_ROT_RISK = 'CABBAGE_BLACK_ROT_RISK',               // Xanthomonas campestris
+  CABBAGE_CLUBROOT_RISK = 'CABBAGE_CLUBROOT_RISK',                 // Plasmodiophora brassicae
+  CAULIFLOWER_DOWNY_MILDEW_RISK = 'CAULIFLOWER_DOWNY_MILDEW_RISK', // Peronospora parasitica
+  CAULIFLOWER_BLACK_ROT_RISK = 'CAULIFLOWER_BLACK_ROT_RISK',       // Xanthomonas campestris
+  OKRA_YELLOW_VEIN_MOSAIC_RISK = 'OKRA_YELLOW_VEIN_MOSAIC_RISK',   // YVMV - whitefly transmitted
+  OKRA_POWDERY_MILDEW_RISK = 'OKRA_POWDERY_MILDEW_RISK',           // Erysiphe cichoracearum
+  BEANS_ANTHRACNOSE_RISK = 'BEANS_ANTHRACNOSE_RISK',               // Colletotrichum lindemuthianum
+  BEANS_RUST_RISK = 'BEANS_RUST_RISK',                             // Uromyces appendiculatus
+  BEANS_ROOT_ROT_RISK = 'BEANS_ROOT_ROT_RISK',                     // Rhizoctonia + Fusarium
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // VEGETABLE PEST CAUSES - Cabbage, Cauliflower, Okra, Beans
+  // ─────────────────────────────────────────────────────────────────────────
+  CABBAGE_DIAMONDBACK_MOTH_RISK = 'CABBAGE_DIAMONDBACK_MOTH_RISK', // Plutella xylostella - THE most serious
+  CABBAGE_APHID_RISK = 'CABBAGE_APHID_RISK',                       // Brevicoryne brassicae
+  CAULIFLOWER_APHID_RISK = 'CAULIFLOWER_APHID_RISK',               // Aphids on curd
+  OKRA_SHOOT_FRUIT_BORER_RISK = 'OKRA_SHOOT_FRUIT_BORER_RISK',     // Earias vittella
+  OKRA_JASSID_RISK = 'OKRA_JASSID_RISK',                           // Amrasca biguttula
+  OKRA_WHITEFLY_RISK = 'OKRA_WHITEFLY_RISK',                       // Bemisia tabaci - YVMV vector
+  BEANS_POD_BORER_RISK = 'BEANS_POD_BORER_RISK',                   // Helicoverpa armigera
+  BEANS_APHID_RISK = 'BEANS_APHID_RISK',                           // Aphis craccivora
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SOIL pH INTERACTION CAUSES - Nutrient Availability Matrix
+  // ─────────────────────────────────────────────────────────────────────────
+  PH_ACIDIC_PULSE_FAILURE = 'PH_ACIDIC_PULSE_FAILURE',             // pH <6.0 Rhizobium failure
+  PH_ACIDIC_ALUMINUM_TOXICITY = 'PH_ACIDIC_ALUMINUM_TOXICITY',     // pH <5.5 Al3+ toxicity
+  PH_ALKALINE_ZINC_LOCKUP = 'PH_ALKALINE_ZINC_LOCKUP',             // pH >8.0 Zn unavailable
+  PH_ALKALINE_IRON_LOCKUP = 'PH_ALKALINE_IRON_LOCKUP',             // pH >8.0 Fe chlorosis
+  PH_ALKALINE_PHOSPHORUS_LOCKUP = 'PH_ALKALINE_PHOSPHORUS_LOCKUP', // pH >8.5 P fixation
+  PH_CORRECTION_LIME_NEEDED = 'PH_CORRECTION_LIME_NEEDED',         // Acidic soil - lime required
+  PH_CORRECTION_SULPHUR_NEEDED = 'PH_CORRECTION_SULPHUR_NEEDED',   // Alkaline soil - sulphur required
+  PH_CORRECTION_GYPSUM_NEEDED = 'PH_CORRECTION_GYPSUM_NEEDED',     // Sodic soil - gypsum required
+  PH_OPTIMAL_RANGE = 'PH_OPTIMAL_RANGE',                           // pH 6.5-7.5 optimal
+  SALINITY_STRESS_HIGH_EC = 'SALINITY_STRESS_HIGH_EC'              // EC >4 dS/m saline stress
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
