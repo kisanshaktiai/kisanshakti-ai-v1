@@ -216,6 +216,38 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // FETCH SESSION STATE - Check for previous recommendations before processing
+    // ═══════════════════════════════════════════════════════════════════════════
+    let sessionState: {
+      decision_state?: string;
+      last_pest?: string;
+      last_crop?: string;
+      last_disease?: string;
+      pending_user_action?: boolean;
+      turn_count?: number;
+      recommendations_count?: number;
+    } | null = null;
+    
+    if (currentSessionId) {
+      const { data: existingSession } = await supabase
+        .from('ai_chat_sessions')
+        .select('metadata')
+        .eq('id', currentSessionId)
+        .single();
+      
+      if (existingSession?.metadata?.decision_tracking) {
+        sessionState = existingSession.metadata.decision_tracking;
+        console.log(`📋 [Session] Previous state loaded:`, {
+          decision_state: sessionState?.decision_state,
+          last_pest: sessionState?.last_pest,
+          last_crop: sessionState?.last_crop,
+          pending_action: sessionState?.pending_user_action,
+          turn: sessionState?.turn_count
+        });
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // EXTRACT USER MESSAGE
     // ═══════════════════════════════════════════════════════════════════════════
     const lastUserMessage = messages[messages.length - 1];
@@ -232,6 +264,21 @@ serve(async (req) => {
 
     // Detect language from message
     const detectedLanguage = detectLanguage(userMessageContent, language);
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SESSION CONTEXT INJECTION - Add previous recommendation context
+    // ═══════════════════════════════════════════════════════════════════════════
+    let contextPrefix = '';
+    if (sessionState?.pending_user_action && sessionState?.decision_state === 'recommendations_given') {
+      // Build context about previous recommendations
+      const contextParts: string[] = [];
+      if (sessionState.last_pest) contextParts.push(`pest: ${sessionState.last_pest}`);
+      if (sessionState.last_disease) contextParts.push(`disease: ${sessionState.last_disease}`);
+      if (sessionState.last_crop) contextParts.push(`crop: ${sessionState.last_crop}`);
+      
+      contextPrefix = `[PREVIOUS_RECOMMENDATIONS: ${contextParts.join(', ')} | COUNT: ${sessionState.recommendations_count || 0}] `;
+      console.log(`🔗 [Session] Injecting context for follow-up:`, contextPrefix);
+    }
 
     console.log(`🚀 [${traceId}] Processing message:`, {
       sessionId: currentSessionId,
@@ -242,7 +289,7 @@ serve(async (req) => {
     });
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // CALL ORCHESTRATOR - THE NEW 9-AGENT FLOW WITH TRACE_ID
+    // CALL ORCHESTRATOR - THE NEW 9-AGENT FLOW WITH TRACE_ID AND SESSION STATE
     // ═══════════════════════════════════════════════════════════════════════════
     const orch = getOrchestrator();
     
@@ -255,7 +302,16 @@ serve(async (req) => {
         photoUrl: imageUrl,
         language: detectedLanguage as 'mr' | 'hi' | 'en',
         landId: landId,
-        traceId: traceId  // PHASE A: Pass trace_id for observability
+        traceId: traceId,
+        // Pass session state for follow-up awareness
+        sessionState: sessionState ? {
+          hasPreviousRecommendations: sessionState.pending_user_action || false,
+          previousPest: sessionState.last_pest,
+          previousDisease: sessionState.last_disease,
+          previousCrop: sessionState.last_crop,
+          turnCount: sessionState.turn_count || 0,
+          decisionState: sessionState.decision_state
+        } : undefined
       }
     );
 
@@ -339,11 +395,33 @@ serve(async (req) => {
     );
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // UPDATE SESSION ACTIVITY AND PERSIST CONTEXT STATE
-    // CRITICAL: Track that recommendations were provided for this session
+    // SESSION-LEVEL DECISION TRACKING
+    // Updates session metadata after every decision brain execution
     // ═══════════════════════════════════════════════════════════════════════════
     const recommendationsProvided = orchestratorResponse.type === 'DECISION_PROVIDED' && 
       (actions_returned && actions_returned.length > 0);
+    
+    // Extract target info from primary action for session tracking
+    const primaryAction = actions_returned?.find(a => a.type === 'primary');
+    const lastPest = primaryAction?.target?.pest_code || null;
+    const lastDisease = primaryAction?.target?.disease_code || null;
+    const lastCrop = orchestratorResponse.decision_output?.input_context?.crop?.name || 
+                     orchestratorResponse.decision_output?.primary_decision?.crop_name || null;
+    
+    // Build decision tracking state
+    const decisionTracking = {
+      decision_state: recommendationsProvided ? 'recommendations_given' : 
+                      orchestratorResponse.type === 'CLARIFICATION_NEEDED' ? 'awaiting_clarification' : 
+                      'no_action_needed',
+      last_pest: lastPest,
+      last_disease: lastDisease,
+      last_crop: lastCrop,
+      pending_user_action: recommendationsProvided, // User should act on recommendations
+      turn_count: (sessionState?.turn_count || 0) + 1,
+      recommendations_count: actions_returned?.length || 0,
+      last_action_types: actions_returned?.map(a => a.action_type || a.action).slice(0, 3) || [],
+      timestamp: new Date().toISOString()
+    };
     
     try {
       await supabase
@@ -358,12 +436,13 @@ serve(async (req) => {
             confidence: orchestratorResponse.metadata?.confidence,
             rules_applied: orchestratorResponse.metadata?.rules_applied,
             decision_id: orchestratorResponse.decision_id,
-            // Flag indicating recommendations were provided
             recommendations_provided: recommendationsProvided,
             recommendations_count: actions_returned?.length || 0,
+            // CRITICAL: Decision tracking for session memory
+            decision_tracking: decisionTracking,
             // Persist conversation state for continuity
             conversation_state: {
-              turn_count: messages.length + 1,
+              turn_count: decisionTracking.turn_count,
               has_photo: !!imageUrl,
               last_intent: orchestratorResponse.type,
               safety_status: orchestratorResponse.metadata?.safety_status,
@@ -373,7 +452,13 @@ serve(async (req) => {
         })
         .eq('id', currentSessionId);
       
-      console.log(`💾 [Session] State persisted: recommendations_provided=${recommendationsProvided}, count=${actions_returned?.length || 0}`);
+      console.log(`💾 [Session] Decision tracking persisted:`, {
+        state: decisionTracking.decision_state,
+        pest: decisionTracking.last_pest,
+        crop: decisionTracking.last_crop,
+        pending: decisionTracking.pending_user_action,
+        turn: decisionTracking.turn_count
+      });
     } catch (sessionUpdateError) {
       console.warn('⚠️ [Session] Failed to update session:', sessionUpdateError);
     }
