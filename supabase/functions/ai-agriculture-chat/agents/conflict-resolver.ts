@@ -151,8 +151,11 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
           .slice(0, 2)
           .forEach(a => {
             const isDelayedSpray = isSprayAction(a);
+            // CRITICAL FIX: Never use reason text as action name - it may contain weather/harvest messages
+            const actionLabel = a.recommendation?.product_name || 
+                               (a.cause && !a.cause.includes('_') && a.cause.length < 50 ? a.cause : 'INTEGRATED');
             secondary_actions.push({
-              action: a.recommendation?.product_name || a.cause,
+              action: actionLabel,
               reason: isDelayedSpray ? `${a.reason} (हवामान सुधारल्यावर)` : a.reason,
               timing: isDelayedSpray ? 'After weather clears' : 'As alternative if primary is unavailable',
               priority: isDelayedSpray ? 'LOW' : 'MEDIUM'
@@ -195,12 +198,16 @@ export function resolveConflicts(decisions: DecisionsByPriority): ResolvedDecisi
   // ─────────────────────────────────────────────────────────────────────────
   
   // Convert remaining viable actions to secondary recommendations
+  // CRITICAL FIX: Never use reason_mr/hi as action name - those are user messages, not product/action identifiers
   viableActions
     .filter(a => a.rule_id !== selectedAction.rule_id)
     .slice(0, 2) // Max 2 alternatives
     .forEach(a => {
+      // CRITICAL FIX: Use product name, cause, or generic label - NEVER use reason text which may contain weather/harvest messages
+      const actionLabel = a.recommendation?.product_name || 
+                          (a.cause && !a.cause.includes('_') && a.cause.length < 50 ? a.cause : 'INTEGRATED');
       secondary_actions.push({
-        action: a.recommendation?.product_name || a.cause,
+        action: actionLabel,
         reason: a.reason,
         timing: 'As alternative if primary is unavailable',
         priority: 'MEDIUM'
@@ -296,11 +303,11 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
   
   const actionType = mapToActionType(rec?.product_type);
   
-  // CRITICAL FIX: Extract product name properly, NEVER use placeholder fallbacks
-  // If no product_name exists, use the rule cause or scientific name as product reference
+  // CRITICAL FIX: Extract product name properly, NEVER use reason_mr/hi as product name
+  // reason fields contain user-facing messages like weather warnings, NOT product names
   const productName = rec?.product_name || 
-                      (rule.cause && !rule.cause.includes('_') ? rule.cause : undefined) ||
-                      extractProductFromReason(rule.reason);
+                      extractProductFromReason(rule.reason) ||
+                      (rule.cause && !rule.cause.includes('_') && rule.cause.length < 50 ? rule.cause : undefined);
   
   const dosage = rec?.dosage || extractDosageFromReason(rule.reason);
   
@@ -329,7 +336,9 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
       reason: rule.reason
     },
     application_details: {
-      product_name: productName || rule.reason_mr || rule.reason_hi || 'See recommendation details',
+      // CRITICAL FIX: NEVER use reason_mr/hi as product_name - those contain user messages, not products
+      // If no product found, provide a clear placeholder that the LLM formatter can handle
+      product_name: productName || (rec?.efficacy_percent ? 'Recommended treatment' : 'Consult agricultural expert'),
       product_type: rec?.product_type || 'BOTANICAL',
       concentration: dosage || 'See product label',
       quantity_per_acre: dosage || 'See product label',

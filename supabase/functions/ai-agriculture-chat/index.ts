@@ -937,24 +937,44 @@ function validateResponseBeforeSave(params: {
     
     // ═══════════════════════════════════════════════════════════════════════════
     // NEW CHECK 5: Detect agricultural errors (harvest for young crops)
+    // CRITICAL FIX: Only validate when we HAVE crop schedule data - missing data should NOT trigger errors
     // ═══════════════════════════════════════════════════════════════════════════
     const contentLower = responseContent.toLowerCase();
     const cropStage = orchestratorResponse.dataAudit?.land?.growth_stage?.toUpperCase() || '';
-    const daysSinceSowing = orchestratorResponse.dataAudit?.land?.days_since_sowing || 0;
+    const daysSinceSowing = orchestratorResponse.dataAudit?.land?.days_since_sowing;
     const crop = orchestratorResponse.dataAudit?.land?.current_crop?.toUpperCase() || '';
+    const hasCropScheduleData = orchestratorResponse.dataAudit?.crop_schedule?.found === true;
+    
+    // CRITICAL FIX: Also check decision_output.input_context for crop data when dataAudit is incomplete
+    const inputContext = orchestratorResponse.decision_output?.input_context || {};
+    const fallbackDays = inputContext.days_after_sowing || inputContext.farmer_context?.days_after_sowing;
+    const fallbackStage = inputContext.crop_stage || inputContext.farmer_context?.crop_stage;
+    
+    const effectiveDays = daysSinceSowing ?? fallbackDays ?? null;
+    const effectiveStage = cropStage || fallbackStage?.toUpperCase() || '';
     
     const youngCropStages = ['GERMINATION', 'SEEDLING', 'VEGETATIVE', 'TILLERING', 'GRAND_GROWTH'];
-    const isYoungCrop = youngCropStages.includes(cropStage) || daysSinceSowing < 120;
+    
+    // CRITICAL FIX: Only apply harvest check if we ACTUALLY know the crop's age
+    // If daysSinceSowing is null/undefined, skip this check - don't assume anything
+    const hasValidCropData = (effectiveDays !== null && effectiveDays > 0) || effectiveStage;
+    const isYoungCrop = hasValidCropData && (
+      youngCropStages.includes(effectiveStage) || 
+      (effectiveDays !== null && effectiveDays > 0 && effectiveDays < 120)
+    );
     
     // Check for harvest keywords in young crop responses
     const harvestKeywords = ['harvest', 'कापणी', 'काटाई', 'कटाई', 'वेचणी', 'काढणी', 'तोडणी'];
     const mentionsHarvest = harvestKeywords.some(kw => contentLower.includes(kw.toLowerCase()));
     
     if (isYoungCrop && mentionsHarvest) {
-      errors.push(`VALIDATION_FAIL: Response recommends harvest for young crop (stage: ${cropStage}, days: ${daysSinceSowing})`);
-      console.log(`   ✗ Check 5: AGRICULTURAL ERROR - Harvest recommended for ${cropStage} stage crop (${daysSinceSowing} days old)`);
-    } else if (!isYoungCrop || !mentionsHarvest) {
-      console.log(`   ✓ Check 5: No harvest-for-young-crop error (stage: ${cropStage || 'unknown'}, days: ${daysSinceSowing})`);
+      errors.push(`VALIDATION_FAIL: Response recommends harvest for young crop (stage: ${effectiveStage}, days: ${effectiveDays})`);
+      console.log(`   ✗ Check 5: AGRICULTURAL ERROR - Harvest recommended for ${effectiveStage} stage crop (${effectiveDays} days old)`);
+    } else if (!hasValidCropData && mentionsHarvest) {
+      // If we don't have crop data but response mentions harvest, don't block - just log warning
+      console.log(`   ⚠️ Check 5: Response mentions harvest but no crop schedule data to validate (skipping check)`);
+    } else {
+      console.log(`   ✓ Check 5: No harvest-for-young-crop error (stage: ${effectiveStage || 'unknown'}, days: ${effectiveDays ?? 'unknown'})`);
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
