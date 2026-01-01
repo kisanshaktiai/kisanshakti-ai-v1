@@ -678,12 +678,17 @@ serve(async (req) => {
     const decisionOutput = orchestratorResponse.decision_output;
     
     // CRITICAL FIX: Extract pest from multiple sources (not just action.target which may not exist)
+    // Safely handle rules_applied which may be an object, array, or undefined
+    const rulesAppliedArray = Array.isArray(orchestratorResponse.metadata?.rules_applied) 
+      ? orchestratorResponse.metadata.rules_applied 
+      : [];
+    
     const lastPest = 
       primaryAction?.target?.pest_code ||
       primaryAction?.pest_code ||
       decisionOutput?.primary_decision?.target?.pest ||
       decisionOutput?.input_context?.pest?.code ||
-      orchestratorResponse.metadata?.rules_applied?.find((r: string) => r.includes('PEST'))?.split('_')[1] ||
+      rulesAppliedArray.find((r: string) => r.includes('PEST'))?.split('_')[1] ||
       null;
     
     // CRITICAL FIX: Extract disease from multiple sources
