@@ -2616,6 +2616,9 @@ serve(async (req) => {
       localizedCropName = "",
       farmingType = "organic_fertilizer",
       aiProvider: requestedProvider,
+      // NEW: Multi-crop and backdated consent support
+      intercrop = null,
+      backdatedConsent = false,
     } = reqBody;
     
     // CRITICAL: Use the app language from request, default to English if not provided
@@ -4313,13 +4316,22 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
         irrigation_count_total: Math.round(scheduleData.total_duration_days / 7),
         tasks_total_count: processedTasks.length,
         tasks_completed_count: 0,
+        // NEW: Intercrop support
+        intercrop_name: intercrop?.cropName || null,
+        intercrop_variety: intercrop?.cropVariety || null,
+        intercrop_area_percent: intercrop?.areaPercent || 0,
+        // NEW: Backdated consent tracking
+        backdated_consent: backdatedConsent || false,
+        backdated_consent_at: backdatedConsent ? new Date().toISOString() : null,
         metadata: {
           seed_data: { quantity: exactSeedQty, rate: seedData.rate_kg_per_acre, cost: seedCost },
           fertilizer_data: { urea_kg: ureaKg, dap_kg: dapKg, mop_kg: mopKg, fym_tons: fymTons },
           translated_crop_name: translatedCropName,
           ai_version: AI_CONFIG.MODEL,
           generation_timestamp: new Date().toISOString(),
-          harvest_date: harvestDateStr, // Also store in metadata
+          harvest_date: harvestDateStr,
+          intercrop: intercrop || null,
+          backdated_consent: backdatedConsent || false,
         },
       })
       .select()
@@ -4406,11 +4418,12 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
       .eq("id", landId)
       .single();
     
-    // 2. Update lands table with new crop info
+    // 2. Update lands table with new crop info - CRITICAL FIX: Also update cultivation_date
     const { error: landUpdateError } = await supabase
       .from("lands")
       .update({
         current_crop: cropName,
+        cultivation_date: sowingDate, // CRITICAL: Sync cultivation_date with schedule sowing_date
         // If previous crop exists, move it to previous_crop
         previous_crop: landBeforeUpdate?.current_crop || null,
         previous_crop_id: landBeforeUpdate?.current_crop_id || null,

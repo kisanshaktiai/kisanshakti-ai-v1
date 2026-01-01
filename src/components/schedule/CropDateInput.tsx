@@ -1,17 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, ChevronLeft, Sparkles, Droplets } from 'lucide-react';
-import { format } from 'date-fns';
+import { CalendarIcon, ChevronLeft, Sparkles, Droplets, AlertTriangle } from 'lucide-react';
+import { format, differenceInDays, startOfDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { CentralizedCropSelector } from '@/components/crops/CentralizedCropSelector';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import FarmingTypeDialog, { FarmingMode } from './FarmingTypeDialog';
+import BackdatedConsentDialog from './BackdatedConsentDialog';
+import IntercropSelector, { IntercropData } from './IntercropSelector';
 
 interface CropDateInputProps {
   land: {
@@ -24,7 +26,17 @@ interface CropDateInputProps {
     soil_type?: string;
     water_source?: string;
   };
-  onSubmit: (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: FarmingMode, nurseryDays: number, localizedCropName: string) => void;
+  onSubmit: (
+    cropName: string, 
+    cropVariety: string, 
+    sowingDate: Date, 
+    isReadyMadePlant: boolean, 
+    farmingType: FarmingMode, 
+    nurseryDays: number, 
+    localizedCropName: string,
+    intercrop?: IntercropData | null,
+    backdatedConsent?: boolean
+  ) => void;
   onBack: () => void;
   loading?: boolean;
 }
@@ -46,6 +58,21 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   const [nurseryDays, setNurseryDays] = useState<number>(0);
   const [showFarmingTypeDialog, setShowFarmingTypeDialog] = useState(false);
   const [selectedFarmingType, setSelectedFarmingType] = useState<FarmingMode | null>(null);
+  const [intercrop, setIntercrop] = useState<IntercropData | null>(null);
+  const [showBackdatedConsent, setShowBackdatedConsent] = useState(false);
+  const [pendingSubmitData, setPendingSubmitData] = useState<{farmingType: FarmingMode} | null>(null);
+
+  // Calculate if date is backdated
+  const backdatedInfo = useMemo(() => {
+    if (!sowingDate) return { isBackdated: false, daysAgo: 0 };
+    const today = startOfDay(new Date());
+    const selectedDate = startOfDay(sowingDate);
+    const daysDiff = differenceInDays(today, selectedDate);
+    return {
+      isBackdated: daysDiff > 0,
+      daysAgo: daysDiff,
+    };
+  }, [sowingDate]);
 
   const handleSubmit = () => {
     if (!cropName) {
@@ -75,17 +102,62 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     console.log('✅ [CropDateInput] Farming type selected:', farmingType);
     setSelectedFarmingType(farmingType);
     setShowFarmingTypeDialog(false);
-    // Now submit with the farming type - parent will handle loading state
-    if (sowingDate) {
-      console.log('🚀 [CropDateInput] Calling onSubmit with farmingType:', farmingType, 'nurseryDays:', nurseryDays);
-      onSubmit(cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType, nurseryDays, localizedCropName);
+
+    // Check if backdated consent is needed
+    if (backdatedInfo.isBackdated && backdatedInfo.daysAgo > 0) {
+      setPendingSubmitData({ farmingType });
+      setShowBackdatedConsent(true);
+    } else {
+      // No backdated consent needed, proceed directly
+      proceedWithSubmit(farmingType, false);
     }
+  };
+
+  const proceedWithSubmit = (farmingType: FarmingMode, backdatedConsent: boolean) => {
+    if (sowingDate) {
+      console.log('🚀 [CropDateInput] Calling onSubmit with:', {
+        cropName,
+        farmingType,
+        nurseryDays,
+        intercrop,
+        backdatedConsent,
+      });
+      onSubmit(
+        cropName, 
+        cropVariety, 
+        sowingDate, 
+        isReadyMadePlant, 
+        farmingType, 
+        nurseryDays, 
+        localizedCropName,
+        intercrop,
+        backdatedConsent
+      );
+    }
+  };
+
+  const handleBackdatedConsentConfirm = () => {
+    setShowBackdatedConsent(false);
+    if (pendingSubmitData) {
+      proceedWithSubmit(pendingSubmitData.farmingType, true);
+      setPendingSubmitData(null);
+    }
+  };
+
+  const handleBackdatedConsentCancel = () => {
+    setShowBackdatedConsent(false);
+    setPendingSubmitData(null);
+    // Reset date to today
+    setSowingDate(new Date());
   };
 
   const handleCropSelect = (id: string, name: string, localized: string, english: string) => {
     setCropId(id);
     setCropName(name);
     setLocalizedCropName(localized || name);
+    
+    // Reset intercrop when major crop changes
+    setIntercrop(null);
     
     // Auto-suggest variety based on crop
     if (english.toLowerCase().includes('rice')) setCropVariety('IR-64');
@@ -154,7 +226,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="bg-background/95 backdrop-blur-2xl border-t border-border/50 p-4 space-y-4"
+            className="bg-background/95 backdrop-blur-2xl border-t border-border/50 p-4 space-y-4 max-h-[60vh] overflow-y-auto"
           >
             {/* Variety Input */}
             <div className="space-y-2">
@@ -167,6 +239,18 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                 value={cropVariety}
                 onChange={(e) => setCropVariety(e.target.value)}
                 className="h-10 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-white/30 dark:border-white/20 focus:border-primary/50 transition-all"
+              />
+            </div>
+
+            {/* Intercrop Selector - NEW FEATURE */}
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-muted-foreground">
+                {t('schedule.crop_input.intercrop_label', 'Intercrop (Optional)')}
+              </Label>
+              <IntercropSelector
+                majorCropName={cropName}
+                intercrop={intercrop}
+                onIntercropChange={setIntercrop}
               />
             </div>
 
@@ -223,6 +307,12 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                 <span className="text-xs font-medium">
                   {isReadyMadePlant ? t('schedule.crop_input.planting_date') : t('schedule.crop_input.sowing_date')}
                 </span>
+                {backdatedInfo.isBackdated && (
+                  <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400">
+                    <AlertTriangle className="h-3 w-3" />
+                    {backdatedInfo.daysAgo}d ago
+                  </span>
+                )}
               </div>
               
               <Popover>
@@ -233,6 +323,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                       "w-full justify-start text-left font-normal h-10",
                       "bg-white/50 dark:bg-black/20 backdrop-blur-sm",
                       "border-white/30 dark:border-white/20 hover:border-primary/50",
+                      backdatedInfo.isBackdated && "border-amber-500/50",
                       !sowingDate && "text-muted-foreground"
                     )}
                   >
@@ -246,13 +337,26 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                     selected={sowingDate}
                     onSelect={(date) => date && setSowingDate(date)}
                     initialFocus
-                    disabled={(date) => 
-                      date < new Date(new Date().setHours(0,0,0,0)) || 
-                      date > new Date(new Date().setFullYear(new Date().getFullYear() + 1))
-                    }
+                    // Allow past dates up to 180 days (6 months) for existing crops
+                    disabled={(date) => {
+                      const today = new Date();
+                      const sixMonthsAgo = new Date();
+                      sixMonthsAgo.setMonth(today.getMonth() - 6);
+                      const oneYearFromNow = new Date();
+                      oneYearFromNow.setFullYear(today.getFullYear() + 1);
+                      return date < sixMonthsAgo || date > oneYearFromNow;
+                    }}
                   />
                 </PopoverContent>
               </Popover>
+
+              {/* Backdated Warning Hint */}
+              {backdatedInfo.isBackdated && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  {t('schedule.crop_input.backdated_warning', 'Past date selected. You\'ll need to confirm consent for backdated schedule.')}
+                </p>
+              )}
             </div>
 
             {/* Submit Button */}
@@ -283,7 +387,18 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         open={showFarmingTypeDialog}
         onOpenChange={setShowFarmingTypeDialog}
         onSelect={handleFarmingTypeSelect}
-        cropName={cropName}
+        cropName={localizedCropName || cropName}
+      />
+
+      {/* Backdated Consent Dialog */}
+      <BackdatedConsentDialog
+        open={showBackdatedConsent}
+        onOpenChange={setShowBackdatedConsent}
+        onConfirm={handleBackdatedConsentConfirm}
+        onCancel={handleBackdatedConsentCancel}
+        sowingDate={sowingDate || new Date()}
+        daysAgo={backdatedInfo.daysAgo}
+        cropName={localizedCropName || cropName}
       />
     </div>
   );

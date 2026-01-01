@@ -4832,6 +4832,8 @@ export type Database = {
           actual_yield_quintals: number | null
           agro_climatic_zone: string | null
           ai_model: string | null
+          backdated_consent: boolean | null
+          backdated_consent_at: string | null
           bio_fertilizer_units: number | null
           bio_pesticide_ml: number | null
           calculated_for_area_acres: number | null
@@ -4869,6 +4871,10 @@ export type Database = {
           input_soil_data: Json | null
           input_weather_data: Json | null
           insecticide_ml: number | null
+          intercrop_area_percent: number | null
+          intercrop_name: string | null
+          intercrop_sowing_date: string | null
+          intercrop_variety: string | null
           irrigation_count_total: number | null
           is_active: boolean | null
           is_training_candidate: boolean | null
@@ -4925,6 +4931,8 @@ export type Database = {
           actual_yield_quintals?: number | null
           agro_climatic_zone?: string | null
           ai_model?: string | null
+          backdated_consent?: boolean | null
+          backdated_consent_at?: string | null
           bio_fertilizer_units?: number | null
           bio_pesticide_ml?: number | null
           calculated_for_area_acres?: number | null
@@ -4962,6 +4970,10 @@ export type Database = {
           input_soil_data?: Json | null
           input_weather_data?: Json | null
           insecticide_ml?: number | null
+          intercrop_area_percent?: number | null
+          intercrop_name?: string | null
+          intercrop_sowing_date?: string | null
+          intercrop_variety?: string | null
           irrigation_count_total?: number | null
           is_active?: boolean | null
           is_training_candidate?: boolean | null
@@ -5018,6 +5030,8 @@ export type Database = {
           actual_yield_quintals?: number | null
           agro_climatic_zone?: string | null
           ai_model?: string | null
+          backdated_consent?: boolean | null
+          backdated_consent_at?: string | null
           bio_fertilizer_units?: number | null
           bio_pesticide_ml?: number | null
           calculated_for_area_acres?: number | null
@@ -5055,6 +5069,10 @@ export type Database = {
           input_soil_data?: Json | null
           input_weather_data?: Json | null
           insecticide_ml?: number | null
+          intercrop_area_percent?: number | null
+          intercrop_name?: string | null
+          intercrop_sowing_date?: string | null
+          intercrop_variety?: string | null
           irrigation_count_total?: number | null
           is_active?: boolean | null
           is_training_candidate?: boolean | null
