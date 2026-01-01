@@ -47,8 +47,10 @@ interface Message {
   };
   // ✅ NEW: Decision Brain structured response
   decisionBrainResponse?: DecisionBrainResponse;
-  // ✅ NEW: Data Audit for debugging
+  // Data Audit for debugging
   dataAudit?: DataAudit;
+  // PHASE 5: trace_id for debugging
+  traceId?: string;
   analytics?: {
     responseTime?: number;
     tokensUsed?: {
@@ -597,7 +599,7 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
                 </div>
               )}
               
-              {/* Timestamp & Token Usage */}
+              {/* Timestamp, Token Usage & Trace ID */}
               <div className={cn(
                 "flex items-center justify-between text-xs mt-1 opacity-60",
                 isUser ? "text-primary-foreground/80 px-4 pb-3" : "text-muted-foreground px-3 pb-2.5"
@@ -608,12 +610,28 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
                     minute: '2-digit' 
                   })}
                 </span>
-                {!isUser && message.analytics?.tokensUsed?.total && (
-                  <span className="flex items-center gap-1 text-primary/70">
-                    <Zap className="h-3 w-3" />
-                    {message.analytics.tokensUsed.total.toLocaleString()} tokens
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {/* PHASE 5: Trace ID display for debugging */}
+                  {!isUser && message.traceId && (
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(message.traceId || '');
+                        console.log('📋 Trace ID copied:', message.traceId);
+                      }}
+                      className="flex items-center gap-1 text-muted-foreground/60 hover:text-primary/70 transition-colors cursor-pointer"
+                      title={`Copy trace ID: ${message.traceId}`}
+                    >
+                      <span className="font-mono text-[10px]">{message.traceId.substring(0, 16)}...</span>
+                      <Copy className="h-2.5 w-2.5" />
+                    </button>
+                  )}
+                  {!isUser && message.analytics?.tokensUsed?.total && (
+                    <span className="flex items-center gap-1 text-primary/70">
+                      <Zap className="h-3 w-3" />
+                      {message.analytics.tokensUsed.total.toLocaleString()} tokens
+                    </span>
+                  )}
+                </div>
               </div>
             </>
           )}
