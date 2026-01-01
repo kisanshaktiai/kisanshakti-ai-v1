@@ -506,7 +506,18 @@ serve(async (req) => {
         console.error(`   ❌ LLM formatter failed:`, formatterError);
         // Fallback to template-based response
         console.log(`   📋 Falling back to template-based response`);
-        responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
+        
+        // CRITICAL FIX: When LLM times out, build response directly from decision_output
+        // instead of relying on potentially incomplete FarmerCommunication
+        if (orchestratorResponse.decision_output?.primary_decision) {
+          console.log(`   📋 Using buildFormattedRecommendationsList for complete response`);
+          responseContent = buildFormattedRecommendationsList(
+            orchestratorResponse.decision_output, 
+            detectedLanguage as 'mr' | 'hi' | 'en'
+          );
+        } else {
+          responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
+        }
       }
     } else {
       // Non-decision responses (clarification, photo request, etc.)
@@ -662,11 +673,35 @@ serve(async (req) => {
       (actions_returned && actions_returned.length > 0);
     
     // Extract target info from primary action for session tracking
+    // CRITICAL FIX: Search multiple possible locations for pest/crop data
     const primaryAction = actions_returned?.find(a => a.type === 'primary');
-    const lastPest = primaryAction?.target?.pest_code || null;
-    const lastDisease = primaryAction?.target?.disease_code || null;
-    const lastCrop = orchestratorResponse.decision_output?.input_context?.crop?.name || 
-                     orchestratorResponse.decision_output?.primary_decision?.crop_name || null;
+    const decisionOutput = orchestratorResponse.decision_output;
+    
+    // CRITICAL FIX: Extract pest from multiple sources (not just action.target which may not exist)
+    const lastPest = 
+      primaryAction?.target?.pest_code ||
+      primaryAction?.pest_code ||
+      decisionOutput?.primary_decision?.target?.pest ||
+      decisionOutput?.input_context?.pest?.code ||
+      orchestratorResponse.metadata?.rules_applied?.find((r: string) => r.includes('PEST'))?.split('_')[1] ||
+      null;
+    
+    // CRITICAL FIX: Extract disease from multiple sources
+    const lastDisease = 
+      primaryAction?.target?.disease_code ||
+      primaryAction?.disease_code ||
+      decisionOutput?.primary_decision?.target?.disease ||
+      decisionOutput?.input_context?.disease?.code ||
+      null;
+    
+    // CRITICAL FIX: Extract crop from multiple sources
+    const lastCrop = 
+      decisionOutput?.input_context?.crop?.name ||
+      decisionOutput?.input_context?.crop?.code ||
+      decisionOutput?.primary_decision?.crop_name ||
+      primaryAction?.crop_code ||
+      orchestratorResponse.dataAudit?.land?.current_crop ||
+      null;
     
     // Build decision tracking state
     const decisionTracking = {
@@ -679,7 +714,7 @@ serve(async (req) => {
       pending_user_action: recommendationsProvided, // User should act on recommendations
       turn_count: (sessionState?.turn_count || 0) + 1,
       recommendations_count: actions_returned?.length || 0,
-      last_action_types: actions_returned?.map(a => a.action_type || a.action).slice(0, 3) || [],
+      last_action_types: actions_returned?.map((a: any) => a.action_type || a.action).slice(0, 3) || [],
       timestamp: new Date().toISOString()
     };
     

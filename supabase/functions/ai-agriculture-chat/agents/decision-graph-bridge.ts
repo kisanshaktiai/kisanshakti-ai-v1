@@ -676,6 +676,37 @@ const PRODUCT_DATABASE: ProductDetails[] = [
       en: 'Trichogramma chilonis cards (Egg parasitoid) - Biological'
     }
   },
+  // CRITICAL FIX: Add Cotesia flavipes for sugarcane shoot borer (IPM level 4 biocontrol)
+  {
+    product_name: 'Cotesia flavipes',
+    formulation: 'Cocoons (parasitoid wasp)',
+    brand_examples: ['NBAIR Cotesia', 'Bio-Cotesia', 'SBI Cotesia'],
+    active_ingredient: 'Cotesia flavipes parasitoid wasp',
+    mode_of_action: 'Larval parasitoid - parasitizes stem borer larvae inside stems',
+    ipm_level: 4,
+    target_pests: ['SHOOT_BORER', 'STEM_BORER', 'TOP_BORER', 'INTERNODE_BORER', 'SUGARCANESHOOTBORER'],
+    target_crops: ['SUGARCANE', 'MAIZE'],
+    dosage: '250-500 cocoons per release',
+    dosage_per_acre: '5,000 cocoons/acre (FIVE THOUSAND)',
+    water_volume_per_acre: 'N/A - Cocoons placed in field',
+    application_method: 'FOLIAR_SPRAY', // Actually placement, but for matching
+    timing: 'When borer larvae active (dead hearts visible), 2 releases at 15-day intervals',
+    repeat_interval_days: 15,
+    max_applications: 4,
+    phi_days: 0,
+    efficacy_percent: 70,
+    nozzle_type: 'N/A - Manual placement',
+    target_stage: '3rd-4th instar larvae inside stems',
+    weather_restrictions: 'Release in morning or evening, avoid rain for 4 hours',
+    safety_precautions: ['Store cocoons in shade', 'Release within 48 hours of receipt', 'Avoid chemical sprays for 10 days'],
+    organic_approved: true,
+    price_range_per_unit: '₹100-150/100 cocoons',
+    names: {
+      mr: 'कोटेसिया फ्लेविपेस (अळी परजीवी) - 5,000 कोष/एकर',
+      hi: 'कोटेसिया फ्लेविप्स (लार्वा परजीवी) - 5,000 कोकून/एकड़',
+      en: 'Cotesia flavipes (Larval parasitoid) - 5,000 cocoons/acre'
+    }
+  },
   {
     product_name: 'Beauveria bassiana 1.15% WP',
     formulation: '1.15% WP (1 × 10⁸ cfu/g)',
@@ -1067,13 +1098,28 @@ export function extractProductRecommendation(
   
   console.log(`📦 [ProductSelection] crop=${cropNorm}, pest=${pestNorm}, disease=${diseaseNorm}, severity=${severity}, ipmLevel=${ipmLevel}`);
   
+  // CRITICAL FIX: Map IPM level semantics to product database IPM levels
+  // IPM_DATABASE levels: 1=cultural, 2=mechanical/biological, 3=botanical, 4=biocontrol, 5-6=chemical
+  // PRODUCT_DATABASE levels: 3=botanical, 4=biological, 5-6=chemical
+  // When IPM level 2 is requested (biological), we should look for products at level 4 (biocontrol)
+  // When IPM level 3 is requested (botanical), we should look for products at level 3-4
+  const productIPMRange = {
+    1: [1, 2], // Cultural - no products typically
+    2: [3, 4], // Biological - look at botanicals and biocontrol products
+    3: [3, 4], // Botanical - neem, biocontrol
+    4: [4, 5], // Biocontrol - biocontrol and safer chemicals
+    5: [4, 5, 6], // Chemical - all products
+    6: [5, 6] // Last resort chemical
+  };
+  const allowedLevels = productIPMRange[ipmLevel as keyof typeof productIPMRange] || [ipmLevel];
+  
   // Filter products by target
   let candidates = PRODUCT_DATABASE.filter(product => {
     // Check organic constraint
     if (organicOnly && !product.organic_approved) return false;
     
-    // Check IPM level (allow products at or below requested level)
-    if (product.ipm_level > ipmLevel) return false;
+    // CRITICAL FIX: Check if product IPM level is in allowed range
+    if (!allowedLevels.includes(product.ipm_level)) return false;
     
     // Check crop match
     const cropMatch = product.target_crops.some(tc => 
@@ -1098,15 +1144,19 @@ export function extractProductRecommendation(
   
   if (candidates.length === 0) {
     console.log(`📦 [ProductSelection] No products found, trying fallback...`);
-    // Fallback: Try broader match
+    // Fallback: Try broader match with expanded IPM level range
+    const fallbackLevels = [3, 4, 5]; // Include botanical, biological, and chemical
     candidates = PRODUCT_DATABASE.filter(p => {
       if (organicOnly && !p.organic_approved) return false;
-      if (p.ipm_level > ipmLevel) return false;
+      if (!fallbackLevels.includes(p.ipm_level)) return false;
       if (pestNorm && p.target_pests.length > 0) {
-        return p.target_pests.some(tp => pestNorm.includes(normalizeForMatching(tp).substring(0, 4)));
+        // More lenient matching: check if pest name starts with same prefix
+        const pestPrefix = pestNorm.substring(0, 5);
+        return p.target_pests.some(tp => normalizeForMatching(tp).includes(pestPrefix) || pestNorm.includes(normalizeForMatching(tp).substring(0, 5)));
       }
       return false;
     });
+    console.log(`📦 [ProductSelection] Fallback found ${candidates.length} products with expanded search`);
   }
   
   if (candidates.length === 0) return null;
