@@ -231,166 +231,171 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="bg-background/95 backdrop-blur-2xl border-t border-border/50 p-4 space-y-4 max-h-[60vh] overflow-y-auto"
+            className="bg-background/95 backdrop-blur-2xl border-t border-border/50 space-y-0 max-h-[55vh] flex flex-col shrink-0"
           >
-            {/* Variety Input */}
-            <div className="space-y-2">
-              <Label htmlFor="variety" className="text-xs font-medium text-muted-foreground">
-                {t('schedule.crop_input.variety_label')}
-              </Label>
-              <Input
-                id="variety"
-                placeholder={t('schedule.crop_input.variety_placeholder')}
-                value={cropVariety}
-                onChange={(e) => setCropVariety(e.target.value)}
-                className="h-10 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-white/30 dark:border-white/20 focus:border-primary/50 transition-all"
-              />
-            </div>
-
-            {/* Multi-Intercrop Selector - 2030 Ready UI */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                  <Wheat className="h-3.5 w-3.5" />
-                  {t('schedule.crop_input.intercrop_label', 'Intercrops (Optional)')}
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+              {/* Variety Input */}
+              <div className="space-y-2">
+                <Label htmlFor="variety" className="text-xs font-medium text-muted-foreground">
+                  {t('schedule.crop_input.variety_label')}
                 </Label>
-                {intercrops.length > 0 && (
-                  <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                    {intercrops.length}/3 • {totalIntercropArea}% area
-                  </span>
-                )}
-              </div>
-              <MultiIntercropSelector
-                majorCropName={cropName}
-                intercrops={intercrops}
-                onIntercropsChange={setIntercrops}
-                maxIntercrops={3}
-              />
-            </div>
-
-            {/* Ready-made Plant Checkbox */}
-            <div className="space-y-3">
-              <div className="flex items-start gap-3 p-3 bg-accent/20 rounded-lg border border-border/50">
-                <input
-                  type="checkbox"
-                  id="ready-made-plant"
-                  checked={isReadyMadePlant}
-                  onChange={(e) => {
-                    setIsReadyMadePlant(e.target.checked);
-                    if (!e.target.checked) setNurseryDays(0);
-                  }}
-                  className="mt-1 h-4 w-4 rounded border-gray-300"
+                <Input
+                  id="variety"
+                  placeholder={t('schedule.crop_input.variety_placeholder')}
+                  value={cropVariety}
+                  onChange={(e) => setCropVariety(e.target.value)}
+                  className="h-11 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-white/30 dark:border-white/20 focus:border-primary/50 transition-all rounded-xl"
                 />
-                <div className="flex-1">
-                  <Label htmlFor="ready-made-plant" className="text-xs font-medium cursor-pointer">
-                    {t('schedule.crop_input.ready_made_plant')}
-                  </Label>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
-                    {t('schedule.crop_input.ready_made_description')}
-                  </p>
-                </div>
               </div>
 
-              {/* Nursery Days Input - Only shown when ready-made plant is selected */}
-              {isReadyMadePlant && (
-                <div className="p-3 bg-primary/10 rounded-lg border border-primary/30 space-y-2">
-                  <Label htmlFor="nursery-days" className="text-xs font-medium text-primary">
-                    {t('schedule.crop_input.nursery_days_label', 'Plant age (days from seed sowing)')}
+              {/* Multi-Intercrop Selector - 2030 Ready UI */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                    <Wheat className="h-3.5 w-3.5" />
+                    {t('schedule.crop_input.intercrop_label', 'Intercrops (Optional)')}
                   </Label>
-                  <Input
-                    id="nursery-days"
-                    type="number"
-                    min={1}
-                    max={90}
-                    placeholder={t('schedule.crop_input.nursery_days_placeholder', 'e.g., 25, 30, 45 days')}
-                    value={nurseryDays || ''}
-                    onChange={(e) => setNurseryDays(parseInt(e.target.value) || 0)}
-                    className="h-10 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-primary/30 focus:border-primary/50 transition-all"
-                  />
-                  <p className="text-[10px] text-muted-foreground">
-                    {t('schedule.crop_input.nursery_days_help', 'Enter how many days old the nursery plant is. Schedule will start from transplanting.')}
-                  </p>
+                  {intercrops.length > 0 && (
+                    <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                      {intercrops.length}/3 • {totalIntercropArea}% area
+                    </span>
+                  )}
                 </div>
-              )}
-            </div>
+                <MultiIntercropSelector
+                  majorCropName={cropName}
+                  intercrops={intercrops}
+                  onIntercropsChange={setIntercrops}
+                  maxIntercrops={3}
+                />
+              </div>
 
-            {/* Date Selection */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <CalendarIcon className="h-4 w-4 text-primary" />
-                <span className="text-xs font-medium">
-                  {isReadyMadePlant ? t('schedule.crop_input.planting_date') : t('schedule.crop_input.sowing_date')}
-                </span>
-                {backdatedInfo.isBackdated && (
-                  <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400">
-                    <AlertTriangle className="h-3 w-3" />
-                    {backdatedInfo.daysAgo}d ago
-                  </span>
+              {/* Ready-made Plant Checkbox */}
+              <div className="space-y-3">
+                <div className="flex items-start gap-3 p-3 bg-accent/20 rounded-xl border border-border/50">
+                  <input
+                    type="checkbox"
+                    id="ready-made-plant"
+                    checked={isReadyMadePlant}
+                    onChange={(e) => {
+                      setIsReadyMadePlant(e.target.checked);
+                      if (!e.target.checked) setNurseryDays(0);
+                    }}
+                    className="mt-1 h-5 w-5 rounded border-gray-300 accent-primary"
+                  />
+                  <div className="flex-1">
+                    <Label htmlFor="ready-made-plant" className="text-sm font-medium cursor-pointer">
+                      {t('schedule.crop_input.ready_made_plant')}
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {t('schedule.crop_input.ready_made_description')}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Nursery Days Input - Only shown when ready-made plant is selected */}
+                {isReadyMadePlant && (
+                  <div className="p-3 bg-primary/10 rounded-xl border border-primary/30 space-y-2">
+                    <Label htmlFor="nursery-days" className="text-xs font-medium text-primary">
+                      {t('schedule.crop_input.nursery_days_label', 'Plant age (days from seed sowing)')}
+                    </Label>
+                    <Input
+                      id="nursery-days"
+                      type="number"
+                      min={1}
+                      max={90}
+                      placeholder={t('schedule.crop_input.nursery_days_placeholder', 'e.g., 25, 30, 45 days')}
+                      value={nurseryDays || ''}
+                      onChange={(e) => setNurseryDays(parseInt(e.target.value) || 0)}
+                      className="h-11 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-primary/30 focus:border-primary/50 transition-all rounded-xl"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {t('schedule.crop_input.nursery_days_help', 'Enter how many days old the nursery plant is. Schedule will start from transplanting.')}
+                    </p>
+                  </div>
                 )}
               </div>
-              
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal h-10",
-                      "bg-white/50 dark:bg-black/20 backdrop-blur-sm",
-                      "border-white/30 dark:border-white/20 hover:border-primary/50",
-                      backdatedInfo.isBackdated && "border-amber-500/50",
-                      !sowingDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {sowingDate ? format(sowingDate, "PPP") : t('schedule.crop_input.pick_date')}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={sowingDate}
-                    onSelect={(date) => date && setSowingDate(date)}
-                    initialFocus
-                    // Allow past dates up to 180 days (6 months) for existing crops
-                    disabled={(date) => {
-                      const today = new Date();
-                      const sixMonthsAgo = new Date();
-                      sixMonthsAgo.setMonth(today.getMonth() - 6);
-                      const oneYearFromNow = new Date();
-                      oneYearFromNow.setFullYear(today.getFullYear() + 1);
-                      return date < sixMonthsAgo || date > oneYearFromNow;
-                    }}
-                  />
-                </PopoverContent>
-              </Popover>
 
-              {/* Backdated Warning Hint */}
-              {backdatedInfo.isBackdated && (
-                <p className="text-[10px] text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3" />
-                  {t('schedule.crop_input.backdated_warning', 'Past date selected. You\'ll need to confirm consent for backdated schedule.')}
-                </p>
-              )}
+              {/* Date Selection */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <CalendarIcon className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium">
+                    {isReadyMadePlant ? t('schedule.crop_input.planting_date') : t('schedule.crop_input.sowing_date')}
+                  </span>
+                  {backdatedInfo.isBackdated && (
+                    <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400">
+                      <AlertTriangle className="h-3 w-3" />
+                      {backdatedInfo.daysAgo}d ago
+                    </span>
+                  )}
+                </div>
+                
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal h-11 rounded-xl",
+                        "bg-white/50 dark:bg-black/20 backdrop-blur-sm",
+                        "border-white/30 dark:border-white/20 hover:border-primary/50",
+                        backdatedInfo.isBackdated && "border-amber-500/50",
+                        !sowingDate && "text-muted-foreground"
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {sowingDate ? format(sowingDate, "PPP") : t('schedule.crop_input.pick_date')}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={sowingDate}
+                      onSelect={(date) => date && setSowingDate(date)}
+                      initialFocus
+                      // Allow past dates up to 180 days (6 months) for existing crops
+                      disabled={(date) => {
+                        const today = new Date();
+                        const sixMonthsAgo = new Date();
+                        sixMonthsAgo.setMonth(today.getMonth() - 6);
+                        const oneYearFromNow = new Date();
+                        oneYearFromNow.setFullYear(today.getFullYear() + 1);
+                        return date < sixMonthsAgo || date > oneYearFromNow;
+                      }}
+                    />
+                  </PopoverContent>
+                </Popover>
+
+                {/* Backdated Warning Hint */}
+                {backdatedInfo.isBackdated && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3" />
+                    {t('schedule.crop_input.backdated_warning', 'Past date selected. You\'ll need to confirm consent for backdated schedule.')}
+                  </p>
+                )}
+              </div>
             </div>
 
-            {/* Submit Button */}
-            <Button
-              onClick={handleSubmit}
-              disabled={!cropName || !sowingDate || loading}
-              className="w-full bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg"
-            >
-              {loading ? (
-                <>
-                  <Sparkles className="mr-2 h-4 w-4 animate-spin" />
-                  {t('schedule.crop_input.generating')}
-                </>
-              ) : (
-                <>
-                  {t('schedule.crop_input.generate_ai_schedule')}
-                  <Sparkles className="ml-2 h-4 w-4" />
-                </>
-              )}
-            </Button>
+            {/* Fixed Submit Button at Bottom */}
+            <div className="p-4 pt-2 border-t border-border/30 bg-background/90 backdrop-blur-sm shrink-0">
+              <Button
+                onClick={handleSubmit}
+                disabled={!cropName || !sowingDate || loading}
+                className="w-full h-14 rounded-xl text-base font-semibold bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg shadow-primary/25 transition-all active:scale-[0.98]"
+              >
+                {loading ? (
+                  <>
+                    <Sparkles className="mr-2 h-5 w-5 animate-spin" />
+                    {t('schedule.crop_input.generating')}
+                  </>
+                ) : (
+                  <>
+                    {t('schedule.crop_input.generate_ai_schedule')}
+                    <Sparkles className="ml-2 h-5 w-5" />
+                  </>
+                )}
+              </Button>
+            </div>
           </motion.div>
         )}
 
