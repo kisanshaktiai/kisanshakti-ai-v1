@@ -254,8 +254,8 @@ export default function MultiIntercropSelector({
 
       {/* Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent className="max-w-md w-[calc(100vw-2rem)] max-h-[85vh] p-0 gap-0 rounded-2xl overflow-hidden border-0 shadow-2xl flex flex-col bg-background/95 backdrop-blur-xl">
-          {/* Header */}
+        <DialogContent className="max-w-md w-[calc(100vw-2rem)] max-h-[80vh] p-0 gap-0 rounded-2xl overflow-hidden border-0 shadow-2xl flex flex-col bg-background/95 backdrop-blur-xl">
+          {/* Header - Fixed */}
           <DialogHeader className="px-5 pt-5 pb-3 shrink-0 bg-gradient-to-b from-emerald-500/10 to-transparent">
             <DialogTitle className="text-base font-semibold text-foreground flex items-center gap-2">
               <div className="p-2 rounded-xl bg-emerald-500/20">
@@ -268,68 +268,71 @@ export default function MultiIntercropSelector({
             </DialogDescription>
           </DialogHeader>
 
-          {/* Crop Selector */}
-          <div className="flex-1 overflow-hidden min-h-[250px] max-h-[320px]">
-            <CentralizedCropSelector
-              selectedCropId={selectedCropId}
-              onSelect={handleCropSelect}
-              className="h-full"
-              showHeader={false}
-              variant="compact"
-              showSearch={true}
-            />
+          {/* Scrollable Content Area */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {/* Crop Selector - Scrollable */}
+            <div className="h-[280px] overflow-y-auto">
+              <CentralizedCropSelector
+                selectedCropId={selectedCropId}
+                onSelect={handleCropSelect}
+                className="h-full"
+                showHeader={false}
+                variant="compact"
+                showSearch={true}
+              />
+            </div>
+
+            {/* Selected Crop Details */}
+            <AnimatePresence>
+              {selectedCropName && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="px-5 py-4 border-t border-border/50 space-y-4 bg-gradient-to-t from-emerald-500/5 to-transparent"
+                >
+                  <div className="flex items-center gap-2 p-2.5 bg-emerald-500/15 rounded-xl border border-emerald-500/30">
+                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+                    <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300 truncate">
+                      {selectedLocalizedName || selectedCropName}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground font-medium">{t.variety}</Label>
+                      <Input
+                        placeholder={t.varietyPlaceholder}
+                        value={variety}
+                        onChange={(e) => setVariety(e.target.value)}
+                        className="h-11 text-sm rounded-xl bg-background/50 border-border/50 focus:border-emerald-500/50"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground font-medium">{t.areaPercent}</Label>
+                      <Input
+                        type="number"
+                        min={5}
+                        max={remainingArea}
+                        placeholder={t.areaPlaceholder}
+                        value={areaPercent}
+                        onChange={(e) => setAreaPercent(parseInt(e.target.value) || 15)}
+                        className="h-11 text-sm rounded-xl bg-background/50 border-border/50 focus:border-emerald-500/50"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Area hint */}
+                  <p className="text-[10px] text-muted-foreground text-center">
+                    Max: {remainingArea}% available
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
-          {/* Selected Crop Details */}
-          <AnimatePresence>
-            {selectedCropName && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="px-5 py-4 border-t border-border/50 space-y-4 bg-gradient-to-t from-emerald-500/5 to-transparent"
-              >
-                <div className="flex items-center gap-2 p-2.5 bg-emerald-500/15 rounded-xl border border-emerald-500/30">
-                  <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                  <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300 truncate">
-                    {selectedLocalizedName || selectedCropName}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground font-medium">{t.variety}</Label>
-                    <Input
-                      placeholder={t.varietyPlaceholder}
-                      value={variety}
-                      onChange={(e) => setVariety(e.target.value)}
-                      className="h-10 text-sm rounded-xl bg-background/50 border-border/50 focus:border-emerald-500/50"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground font-medium">{t.areaPercent}</Label>
-                    <Input
-                      type="number"
-                      min={5}
-                      max={remainingArea}
-                      placeholder={t.areaPlaceholder}
-                      value={areaPercent}
-                      onChange={(e) => setAreaPercent(parseInt(e.target.value) || 15)}
-                      className="h-10 text-sm rounded-xl bg-background/50 border-border/50 focus:border-emerald-500/50"
-                    />
-                  </div>
-                </div>
-
-                {/* Area hint */}
-                <p className="text-[10px] text-muted-foreground text-center">
-                  Max: {remainingArea}% available
-                </p>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Footer */}
-          <DialogFooter className="flex flex-col gap-2 p-5 pt-3 border-t border-border/50 shrink-0">
+          {/* Footer - Fixed at Bottom */}
+          <DialogFooter className="flex flex-col gap-2 p-5 pt-3 border-t border-border/50 shrink-0 bg-background/80 backdrop-blur-sm">
             <Button
               onClick={handleConfirm}
               disabled={!selectedCropName || areaPercent <= 0}
