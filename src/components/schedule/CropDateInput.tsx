@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, ChevronLeft, Sparkles, Droplets, AlertTriangle } from 'lucide-react';
+import { CalendarIcon, ChevronLeft, Sparkles, Droplets, AlertTriangle, Wheat } from 'lucide-react';
 import { format, differenceInDays, startOfDay } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -13,7 +13,7 @@ import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import FarmingTypeDialog, { FarmingMode } from './FarmingTypeDialog';
 import BackdatedConsentDialog from './BackdatedConsentDialog';
-import IntercropSelector, { IntercropData } from './IntercropSelector';
+import MultiIntercropSelector, { IntercropData } from './MultiIntercropSelector';
 
 interface CropDateInputProps {
   land: {
@@ -34,7 +34,7 @@ interface CropDateInputProps {
     farmingType: FarmingMode, 
     nurseryDays: number, 
     localizedCropName: string,
-    intercrop?: IntercropData | null,
+    intercrops?: IntercropData[],
     backdatedConsent?: boolean
   ) => void;
   onBack: () => void;
@@ -58,9 +58,14 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   const [nurseryDays, setNurseryDays] = useState<number>(0);
   const [showFarmingTypeDialog, setShowFarmingTypeDialog] = useState(false);
   const [selectedFarmingType, setSelectedFarmingType] = useState<FarmingMode | null>(null);
-  const [intercrop, setIntercrop] = useState<IntercropData | null>(null);
+  const [intercrops, setIntercrops] = useState<IntercropData[]>([]);
   const [showBackdatedConsent, setShowBackdatedConsent] = useState(false);
   const [pendingSubmitData, setPendingSubmitData] = useState<{farmingType: FarmingMode} | null>(null);
+
+  // Calculate total area for display
+  const totalIntercropArea = useMemo(() => {
+    return intercrops.reduce((sum, ic) => sum + (ic.areaPercent || 0), 0);
+  }, [intercrops]);
 
   // Calculate if date is backdated
   const backdatedInfo = useMemo(() => {
@@ -119,7 +124,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         cropName,
         farmingType,
         nurseryDays,
-        intercrop,
+        intercrops,
         backdatedConsent,
       });
       onSubmit(
@@ -130,7 +135,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         farmingType, 
         nurseryDays, 
         localizedCropName,
-        intercrop,
+        intercrops,
         backdatedConsent
       );
     }
@@ -156,8 +161,8 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     setCropName(name);
     setLocalizedCropName(localized || name);
     
-    // Reset intercrop when major crop changes
-    setIntercrop(null);
+    // Reset intercrops when major crop changes
+    setIntercrops([]);
     
     // Auto-suggest variety based on crop
     if (english.toLowerCase().includes('rice')) setCropVariety('IR-64');
@@ -242,15 +247,24 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
               />
             </div>
 
-            {/* Intercrop Selector - NEW FEATURE */}
+            {/* Multi-Intercrop Selector - 2030 Ready UI */}
             <div className="space-y-2">
-              <Label className="text-xs font-medium text-muted-foreground">
-                {t('schedule.crop_input.intercrop_label', 'Intercrop (Optional)')}
-              </Label>
-              <IntercropSelector
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <Wheat className="h-3.5 w-3.5" />
+                  {t('schedule.crop_input.intercrop_label', 'Intercrops (Optional)')}
+                </Label>
+                {intercrops.length > 0 && (
+                  <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                    {intercrops.length}/3 • {totalIntercropArea}% area
+                  </span>
+                )}
+              </div>
+              <MultiIntercropSelector
                 majorCropName={cropName}
-                intercrop={intercrop}
-                onIntercropChange={setIntercrop}
+                intercrops={intercrops}
+                onIntercropsChange={setIntercrops}
+                maxIntercrops={3}
               />
             </div>
 
