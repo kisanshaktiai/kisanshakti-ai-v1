@@ -2616,10 +2616,24 @@ serve(async (req) => {
       localizedCropName = "",
       farmingType = "organic_fertilizer",
       aiProvider: requestedProvider,
-      // NEW: Multi-crop and backdated consent support
-      intercrop = null,
+      // NEW: Multi-crop support (array of up to 3 intercrops)
+      intercrops = [],
       backdatedConsent = false,
     } = reqBody;
+    
+    // Parse intercrops array - support both new array format and legacy single intercrop
+    const intercropArray: Array<{cropName: string; localizedCropName?: string; cropVariety?: string; areaPercent?: number}> = 
+      Array.isArray(intercrops) ? intercrops : 
+      (reqBody.intercrop ? [reqBody.intercrop] : []);
+    
+    const intercrop1 = intercropArray[0] || null;
+    const intercrop2 = intercropArray[1] || null;
+    const intercrop3 = intercropArray[2] || null;
+    
+    console.log(`🌿 [AI-Schedule] Intercrops received: ${intercropArray.length} (max 3)`);
+    if (intercrop1) console.log(`  1️⃣ ${intercrop1.cropName} - ${intercrop1.areaPercent}%`);
+    if (intercrop2) console.log(`  2️⃣ ${intercrop2.cropName} - ${intercrop2.areaPercent}%`);
+    if (intercrop3) console.log(`  3️⃣ ${intercrop3.cropName} - ${intercrop3.areaPercent}%`);
     
     // CRITICAL: Use the app language from request, default to English if not provided
     // This ensures schedule is generated in the user's selected app language
@@ -4316,10 +4330,21 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
         irrigation_count_total: Math.round(scheduleData.total_duration_days / 7),
         tasks_total_count: processedTasks.length,
         tasks_completed_count: 0,
-        // NEW: Intercrop support
-        intercrop_name: intercrop?.cropName || null,
-        intercrop_variety: intercrop?.cropVariety || null,
-        intercrop_area_percent: intercrop?.areaPercent || 0,
+        // NEW: Multi-intercrop support (up to 3 intercrops)
+        intercrop_name: intercrop1?.cropName || null,
+        intercrop_variety: intercrop1?.cropVariety || null,
+        intercrop_area_percent: intercrop1?.areaPercent || 0,
+        intercrop_sowing_date: sowingDate,
+        // Intercrop 2
+        intercrop_2_name: intercrop2?.cropName || null,
+        intercrop_2_variety: intercrop2?.cropVariety || null,
+        intercrop_2_area_percent: intercrop2?.areaPercent || 0,
+        intercrop_2_sowing_date: intercrop2 ? sowingDate : null,
+        // Intercrop 3
+        intercrop_3_name: intercrop3?.cropName || null,
+        intercrop_3_variety: intercrop3?.cropVariety || null,
+        intercrop_3_area_percent: intercrop3?.areaPercent || 0,
+        intercrop_3_sowing_date: intercrop3 ? sowingDate : null,
         // NEW: Backdated consent tracking
         backdated_consent: backdatedConsent || false,
         backdated_consent_at: backdatedConsent ? new Date().toISOString() : null,
@@ -4330,7 +4355,7 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
           ai_version: AI_CONFIG.MODEL,
           generation_timestamp: new Date().toISOString(),
           harvest_date: harvestDateStr,
-          intercrop: intercrop || null,
+          intercrops: intercropArray,
           backdated_consent: backdatedConsent || false,
         },
       })
@@ -4498,6 +4523,47 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
       }
     } else {
       console.log(`✅ [Sync] land_crops entry updated for major crop "${cropName}"`);
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🌿 INSERT INTERCROP ENTRIES TO land_crops TABLE
+    // ═══════════════════════════════════════════════════════════════════════
+    for (let i = 0; i < intercropArray.length; i++) {
+      const ic = intercropArray[i];
+      if (ic?.cropName) {
+        console.log(`🌿 [Sync] Inserting intercrop ${i + 1}: ${ic.cropName} (${ic.areaPercent}%)`);
+        
+        const { error: icInsertError } = await supabase
+          .from("land_crops")
+          .insert({
+            land_id: landId,
+            tenant_id: tenantId,
+            farmer_id: farmerId,
+            crop_name: ic.cropName,
+            crop_name_local: ic.localizedCropName || ic.cropName,
+            crop_variety: ic.cropVariety || null,
+            crop_type: 'intercrop',
+            crop_sequence: i + 1,
+            sowing_date: sowingDate,
+            expected_harvest_date: harvestDateStr,
+            area_percentage: ic.areaPercent || 0,
+            area_acres: (landAreaAcres * (ic.areaPercent || 0)) / 100,
+            schedule_id: savedSchedule.id,
+            is_active: true,
+            status: 'growing',
+            farming_type: farmingType,
+            metadata: {
+              parent_crop: cropName,
+              intercrop_index: i + 1,
+            }
+          });
+        
+        if (icInsertError) {
+          console.warn(`⚠️ land_crops intercrop ${i + 1} insert warning:`, icInsertError.message);
+        } else {
+          console.log(`✅ [Sync] land_crops entry created for intercrop ${i + 1}: "${ic.cropName}"`);
+        }
+      }
     }
 
     const executionTime = Date.now() - startTime;

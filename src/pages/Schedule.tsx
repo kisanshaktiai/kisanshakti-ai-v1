@@ -117,10 +117,10 @@ export default function Schedule() {
     }
   };
 
-  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrop?: any, backdatedConsent?: boolean) => {
+  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrops?: any[], backdatedConsent?: boolean) => {
     if (!selectedLand) return;
 
-    console.log('🚀 [Schedule] Starting schedule generation:', { cropName, localizedCropName, farmingType, isReadyMadePlant, nurseryDays, intercrop, backdatedConsent });
+    console.log('🚀 [Schedule] Starting schedule generation:', { cropName, localizedCropName, farmingType, isReadyMadePlant, nurseryDays, intercrops, backdatedConsent });
     
     // Set generating state FIRST before anything else
     setGenerating(true);
@@ -191,8 +191,8 @@ export default function Schedule() {
           regenerate: true,
           language: scheduleLanguage,
           country: 'India',
-          // NEW: Multi-crop and backdated consent support
-          intercrop: intercrop || null,
+          // NEW: Multi-crop and backdated consent support (array of intercrops)
+          intercrops: intercrops || [],
           backdatedConsent: backdatedConsent || false,
         },
         headers: {
