@@ -262,13 +262,109 @@ export class AIAgentOrchestrator {
     
     try {
       // ========================================
-      // PHASE 0: FETCH LAND CONTEXT FIRST
+      // PHASE 0: FETCH LAND CONTEXT FIRST (Single Source of Truth)
       // ========================================
       let landContext: any = null;
       if (options.landId) {
         landContext = await this.fetchComprehensiveLandContext(options.landId, farmerId);
         console.log('📍 [Orchestrator] Pre-fetched land context:', landContext ? 'SUCCESS' : 'EMPTY');
+        if (landContext) {
+          console.log(`   📊 crop_schedules data: crop=${landContext.current_crop}, sowing=${landContext.sowing_date}, stage=${landContext.growth_stage}`);
+        }
       }
+      
+      // ========================================
+      // PHASE 0.5: STATIC DATA GATE (CRITICAL - BEFORE AI)
+      // ========================================
+      // Check if query is about static land attributes - answer WITHOUT AI
+      const { checkStaticDataGate } = await import('./static-data-gate.ts');
+      
+      const staticGateResult = checkStaticDataGate({
+        farmer_message: farmerMessage,
+        language: (options.language || 'mr') as 'mr' | 'hi' | 'en',
+        land_context: landContext ? {
+          land_id: landContext.land_id,
+          land_name: landContext.land_name,
+          area_acres: landContext.area_acres,
+          soil_type: landContext.soil_type,
+          current_crop: landContext.current_crop,
+          crop_schedule: landContext.crop_schedule,
+          growth_stage: landContext.growth_stage,
+          days_since_sowing: landContext.days_since_sowing,
+          irrigation_type: landContext.irrigation_type,
+          water_source: landContext.water_source,
+          location: {
+            village: landContext.village,
+            district: landContext.district,
+            state: landContext.state
+          }
+        } : null
+      });
+      
+      if (staticGateResult.handled) {
+        console.log(`✅ [${traceId}] Static Data Gate HANDLED query in ${staticGateResult.processing_time_ms.toFixed(1)}ms`);
+        console.log(`   💰 SAVED: 1 NLU AI call + 0-1 LLM call = $0.0001-0.001`);
+        console.log(`   ⚡ LATENCY: ${staticGateResult.processing_time_ms.toFixed(1)}ms vs typical 2000-5000ms`);
+        agentsUsed.push('STATIC_DATA_GATE');
+        
+        // Return immediately with static response (NO AI CALLS)
+        return {
+          type: 'DECISION_PROVIDED',
+          session_id: sessionId,
+          communication: {
+            message_id: crypto.randomUUID(),
+            decision_id: `static_${Date.now()}`,
+            session_id: sessionId,
+            farmer_id: farmerId,
+            language: options.language || 'mr',
+            format: 'RICH_TEXT',
+            tone: 'FRIENDLY',
+            created_at: new Date().toISOString(),
+            main_message: {
+              full_text: {
+                mr: staticGateResult.response || '',
+                hi: staticGateResult.response || '',
+                en: staticGateResult.response || ''
+              }
+            },
+            quick_actions: [],
+            metadata: {
+              word_count: (staticGateResult.response || '').split(/\s+/).length,
+              reading_time_seconds: 5,
+              confidence_score: staticGateResult.confidence,
+              source: 'STATIC_DATA_GATE',
+              response_type: staticGateResult.response_type,
+              processing_time_ms: staticGateResult.processing_time_ms
+            }
+          } as any,
+          decision_output: {
+            decision_id: `static_${Date.now()}`,
+            session_id: sessionId,
+            status: 'INFORMATION_PROVIDED',
+            decision_brain_source: false,
+            actions_returned: [],
+            metadata: {
+              confidence: staticGateResult.confidence,
+              trace_id: traceId,
+              processing_time_ms: staticGateResult.processing_time_ms,
+              agents_used: ['STATIC_DATA_GATE'],
+              template_type: 'STATIC_DIRECT',
+              data_source: 'crop_schedules' // Single source of truth
+            }
+          } as any,
+          metadata: {
+            confidence: staticGateResult.confidence,
+            safety_status: 'SAFE',
+            rules_applied: 0,
+            processing_time_ms: staticGateResult.processing_time_ms,
+            agents_used: agentsUsed,
+            template_type: 'STATIC_DIRECT',
+            trace_id: traceId
+          }
+        };
+      }
+      
+      console.log(`⏭️ [${traceId}] Static gate passed - continuing to AI pipeline`);
       
       // ========================================
       // PHASE 1A: NLU PROCESSING
@@ -1076,19 +1172,39 @@ export class AIAgentOrchestrator {
         return null;
       }
       
-      // Calculate days since sowing if crop schedule exists
-      let daysSinceSowing = null;
-      let growthStage = null;
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CRITICAL: Calculate days since sowing ONLY from crop_schedules.sowing_date
+      // NEVER fall back to lands.cultivation_date - it may contain old/stale data
+      // ═══════════════════════════════════════════════════════════════════════════
+      let daysSinceSowing: number | null = null;
+      let growthStage: string | null = null;
+      
       if (cropSchedule?.sowing_date) {
         const sowingDate = new Date(cropSchedule.sowing_date);
         const today = new Date();
         daysSinceSowing = Math.floor((today.getTime() - sowingDate.getTime()) / (1000 * 60 * 60 * 24));
         growthStage = this.calculateGrowthStage(daysSinceSowing, cropSchedule.crop_name);
+        
+        console.log(`✅ [SOWING_DATE_SOURCE] crop_schedules table (SINGLE SOURCE OF TRUTH)`);
+        console.log(`   Crop: ${cropSchedule.crop_name}`);
+        console.log(`   Sowing Date: ${cropSchedule.sowing_date}`);
+        console.log(`   Days Since Sowing: ${daysSinceSowing}`);
+        console.log(`   Growth Stage: ${growthStage}`);
+        console.log(`   ⚠️ NEVER using lands.cultivation_date (could be old season)`);
+      } else {
+        console.warn(`⚠️ [SOWING_DATE_MISSING] No active crop_schedule for land ${landId}`);
+        console.warn('   → REFUSING to use lands.current_crop or lands.cultivation_date');
+        console.warn('   → These fields may contain OLD/STALE data from previous seasons');
+        console.warn('   → User MUST create crop_schedule to use crop-specific features');
       }
       
       // CRITICAL FIX: Calculate NDVI trend from history
       const ndviTrend = this.calculateNDVITrend(ndviHistory || []);
       
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CRITICAL: All crop data MUST come from crop_schedules table ONLY
+      // lands.current_crop and lands.cultivation_date are DEPRECATED and may be stale
+      // ═══════════════════════════════════════════════════════════════════════════
       const context = {
         land_id: landId,
         land_name: land.name,
@@ -1096,9 +1212,10 @@ export class AIAgentOrchestrator {
         soil_type: land.soil_type,
         irrigation_type: land.irrigation_type,
         water_source: land.water_source,
-        current_crop: cropSchedule?.crop_name || land.current_crop,
-        crop_variety: cropSchedule?.crop_variety || land.crop_variety,  // Schema uses 'crop_variety'
-        sowing_date: cropSchedule?.sowing_date,
+        // CRITICAL: Use ONLY crop_schedules data - NEVER fall back to lands table
+        current_crop: cropSchedule?.crop_name || null,  // NO FALLBACK to land.current_crop
+        crop_variety: cropSchedule?.crop_variety || null,  // NO FALLBACK
+        sowing_date: cropSchedule?.sowing_date || null,  // ONLY from crop_schedules
         days_since_sowing: daysSinceSowing,
         growth_stage: growthStage,
         expected_harvest_date: cropSchedule?.expected_harvest_date,
