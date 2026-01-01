@@ -121,3 +121,27 @@ export { checkStaticDataGate, validateLandContextForCropQueries } from './static
 // Centralized Entity Normalizer (CRITICAL: Single source of truth for pest/disease/crop codes)
 export * from './entity-normalizer.ts';
 export { normalizePestEntity, normalizeDiseaseEntity, normalizeCropEntity, validateEntityConsistency } from './entity-normalizer.ts';
+
+// Data Validator (PHASE 1: NDVI-Stage validation, growth stage calculation)
+export * from './data-validator.ts';
+export { 
+  validateNDVIForStage, 
+  calculateGrowthStage, 
+  validateGrowthStage,
+  canRecommendHarvest,
+  validateSoilData,
+  generateDataQualityReport,
+  MINIMUM_HARVEST_DAYS,
+  DATA_VALIDATOR_VERSION
+} from './data-validator.ts';
+
+// Crop Stage Advisor (PHASE 5: Stage-specific decision trees)
+export * from './crop-stage-advisor.ts';
+export {
+  getStageSpecificAdvice,
+  getWaterAdvice,
+  getCriticalActions,
+  getPestWatch,
+  shouldAvoidAction,
+  CROP_STAGE_ADVISOR_VERSION
+} from './crop-stage-advisor.ts';
