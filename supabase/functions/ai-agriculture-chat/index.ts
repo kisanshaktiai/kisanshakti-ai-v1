@@ -531,7 +531,8 @@ serve(async (req) => {
       actions_returned,
       responseContent,
       orchestratorResponse,
-      traceId
+      traceId,
+      language: detectedLanguage as 'mr' | 'hi' | 'en'  // CRITICAL FIX: Pass explicit language
     });
     
     console.log(`🔐 [${traceId}] ═══ RESPONSE VALIDATION GATE ═══`);
@@ -554,10 +555,12 @@ serve(async (req) => {
       }, null, 2));
       
       // Generate fallback response if validation fails
+      // CRITICAL FIX: Pass actions_returned so we can use them in fallback
       responseContent = generateValidationFailureFallback(
         detectedLanguage as 'mr' | 'hi' | 'en',
         validationResult.errors,
-        orchestratorResponse
+        orchestratorResponse,
+        actions_returned  // Pass actions so fallback can use them
       );
     }
     
@@ -871,10 +874,12 @@ function validateResponseBeforeSave(params: {
   responseContent: string;
   orchestratorResponse: OrchestratorResponse;
   traceId: string;
+  language: 'mr' | 'hi' | 'en';  // CRITICAL FIX: Accept explicit language instead of inferring
 }): ValidationResult {
-  const { decision_brain_source, actions_returned, responseContent, orchestratorResponse, traceId } = params;
+  const { decision_brain_source, actions_returned, responseContent, orchestratorResponse, traceId, language } = params;
   const errors: string[] = [];
-  const detectedLanguage = orchestratorResponse.metadata?.language || 'en';
+  // CRITICAL FIX: Use explicitly passed language, not metadata (which doesn't contain language)
+  const detectedLanguage = language;
   
   console.log(`🔍 [${traceId}] Running validation checks...`);
   
@@ -928,8 +933,14 @@ function validateResponseBeforeSave(params: {
       const hasRecommendationIndicators = keywords.some(kw => contentLower.includes(kw.toLowerCase()));
       
       if (!hasRecommendationIndicators) {
-        errors.push(`VALIDATION_FAIL: actions_returned present but response lacks actionable recommendation language`);
-        console.log(`   ✗ Check 4: Response missing recommendation language for ${detectedLanguage}`);
+        // CRITICAL FIX: Downgrade to WARNING instead of FAIL - this is a heuristic check
+        // If we have actions and content > 100 chars, don't block the response
+        if (responseContent.length > 100) {
+          console.log(`   ⚠️ Check 4: Response may lack recommendation language for ${detectedLanguage} (warning only - content is substantive)`);
+        } else {
+          errors.push(`VALIDATION_WARN: actions_returned present but response may lack actionable recommendation language`);
+          console.log(`   ⚠️ Check 4: Response may lack recommendation language for ${detectedLanguage} (short content)`);
+        }
       } else {
         console.log(`   ✓ Check 4: Response contains recommendation language`);
       }
@@ -1014,13 +1025,71 @@ function validateResponseBeforeSave(params: {
 
 /**
  * Generate fallback response when validation fails
+ * CRITICAL FIX: Use available actions if present instead of generic "technical issue"
  * Ensures user always gets helpful feedback even on failures
  */
 function generateValidationFailureFallback(
   lang: 'mr' | 'hi' | 'en',
   validationErrors: string[],
-  orchestratorResponse: OrchestratorResponse
+  orchestratorResponse: OrchestratorResponse,
+  actionsReturned?: any[] | null
 ): string {
+  // CRITICAL FIX: If we have actions, build a minimal response from them
+  // This prevents "technical issue" messages when we actually have recommendations
+  if (actionsReturned && actionsReturned.length > 0) {
+    console.log(`   🔄 Validation fallback: Building response from ${actionsReturned.length} available actions`);
+    
+    const parts: string[] = [];
+    
+    // Greeting
+    const greetings: Record<string, string> = {
+      mr: '🌾 नमस्कार शेतकरी मित्र!',
+      hi: '🌾 नमस्कार किसान मित्र!',
+      en: '🌾 Hello farmer friend!'
+    };
+    parts.push(greetings[lang]);
+    
+    // Header
+    const headers: Record<string, string> = {
+      mr: '📌 **आता काय करावे:**',
+      hi: '📌 **अभी क्या करें:**',
+      en: '📌 **What to do now:**'
+    };
+    parts.push(headers[lang]);
+    
+    // Extract actions
+    const primaryAction = actionsReturned.find(a => a.type === 'primary');
+    if (primaryAction) {
+      const productName = primaryAction.product_name || 
+                          primaryAction.application_details?.product_name || 
+                          primaryAction.title || 
+                          'Recommended treatment';
+      const dosage = primaryAction.dosage || primaryAction.application_details?.dosage || '';
+      
+      let actionText = `1. **${productName}**`;
+      if (dosage) actionText += ` @ ${dosage}`;
+      parts.push(actionText);
+    }
+    
+    // Add secondary actions
+    const secondaryActions = actionsReturned.filter(a => a.type === 'secondary');
+    secondaryActions.slice(0, 2).forEach((action, idx) => {
+      const actionName = action.action || action.title || 'Additional measure';
+      parts.push(`${idx + 2}. ${actionName}`);
+    });
+    
+    // Closing
+    const closings: Record<string, string> = {
+      mr: '\n✅ शुभेच्छा! 🙏',
+      hi: '\n✅ शुभकामनाएं! 🙏',
+      en: '\n✅ Best wishes! 🙏'
+    };
+    parts.push(closings[lang]);
+    
+    return parts.join('\n\n');
+  }
+  
+  // Original fallback when no actions available
   const fallbacks: Record<string, string> = {
     mr: `🌾 **नमस्कार शेतकरी मित्र!**
 
@@ -1059,6 +1128,8 @@ With this information, I can provide you proper guidance.
 📞 For urgent help: Contact your nearest Krishi Vigyan Kendra (KVK).`
   };
   
+  return fallbacks[lang] || fallbacks['en'];
+}
   return fallbacks[lang] || fallbacks['en'];
 }
 
