@@ -1191,20 +1191,35 @@ export class AIAgentOrchestrator {
         console.log(`   Days Since Sowing: ${daysSinceSowing}`);
         console.log(`   Growth Stage: ${growthStage}`);
         console.log(`   ⚠️ NEVER using lands.cultivation_date (could be old season)`);
-      } else {
+      } else if (land.current_crop) {
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CRITICAL FIX: Fallback to lands.current_crop when no crop_schedule exists
+        // This prevents "No land current crop" warnings and enables crop-specific advice
+        // ═══════════════════════════════════════════════════════════════════════════
         console.warn(`⚠️ [SOWING_DATE_MISSING] No active crop_schedule for land ${landId}`);
-        console.warn('   → REFUSING to use lands.current_crop or lands.cultivation_date');
-        console.warn('   → These fields may contain OLD/STALE data from previous seasons');
-        console.warn('   → User MUST create crop_schedule to use crop-specific features');
+        console.warn(`   → FALLBACK: Using lands.current_crop = "${land.current_crop}"`);
+        console.warn('   → days_since_sowing and growth_stage will use DEFAULTS');
+        console.warn('   → Recommend user creates crop_schedule for accurate stage tracking');
+        
+        // Use default growth stage based on typical assumptions
+        // Without sowing_date, we assume mid-vegetative stage as safe default
+        growthStage = 'VEGETATIVE';
+        daysSinceSowing = null; // Unknown without sowing_date
+      } else {
+        console.warn(`⚠️ [NO_CROP_DATA] No crop_schedule AND no lands.current_crop for ${landId}`);
+        console.warn('   → Cannot provide crop-specific advice');
       }
       
       // CRITICAL FIX: Calculate NDVI trend from history
       const ndviTrend = this.calculateNDVITrend(ndviHistory || []);
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // CRITICAL: All crop data MUST come from crop_schedules table ONLY
-      // lands.current_crop and lands.cultivation_date are DEPRECATED and may be stale
+      // CRITICAL FIX: Prioritize crop_schedules, but FALLBACK to lands.current_crop
+      // This ensures crop context is available even without a formal schedule
       // ═══════════════════════════════════════════════════════════════════════════
+      const effectiveCropName = cropSchedule?.crop_name || land.current_crop || null;
+      const effectiveCropVariety = cropSchedule?.crop_variety || null;
+      
       const context = {
         land_id: landId,
         land_name: land.name,
@@ -1212,13 +1227,15 @@ export class AIAgentOrchestrator {
         soil_type: land.soil_type,
         irrigation_type: land.irrigation_type,
         water_source: land.water_source,
-        // CRITICAL: Use ONLY crop_schedules data - NEVER fall back to lands table
-        current_crop: cropSchedule?.crop_name || null,  // NO FALLBACK to land.current_crop
-        crop_variety: cropSchedule?.crop_variety || null,  // NO FALLBACK
-        sowing_date: cropSchedule?.sowing_date || null,  // ONLY from crop_schedules
+        // CRITICAL FIX: Use effectiveCropName with fallback to lands.current_crop
+        current_crop: effectiveCropName,
+        crop_variety: effectiveCropVariety,
+        sowing_date: cropSchedule?.sowing_date || null,  // Only from crop_schedules
         days_since_sowing: daysSinceSowing,
         growth_stage: growthStage,
         expected_harvest_date: cropSchedule?.expected_harvest_date,
+        // NEW: Track data source for debugging
+        crop_data_source: cropSchedule ? 'crop_schedules' : (land.current_crop ? 'lands_table_fallback' : 'none'),
         district: land.district,
         state: land.state,
         village: land.village,
