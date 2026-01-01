@@ -108,6 +108,8 @@ interface Message {
   isCopied?: boolean;
   // Orchestrator response metadata
   orchestratorType?: 'DECISION_PROVIDED' | 'CLARIFICATION_QUESTION' | 'PHOTO_REQUEST' | 'SAFETY_BLOCKED' | 'ESCALATION_REQUIRED';
+  // PHASE 5: Add trace_id for debugging
+  traceId?: string;
   analytics?: {
     responseTime?: number;
     tokensUsed?: {
@@ -942,26 +944,10 @@ export function EnhancedAIChatInterface() {
          'I need more information to help you. Please provide more details.');
       
       console.log('✅ [Orchestrator] Response received:', data.metadata?.type || 'DECISION_PROVIDED');
+      console.log('🔍 [Trace ID]:', data.metadata?.trace_id || 'none');
       
-      // Save user message to database
-      await supabase.from('ai_chat_messages').insert({
-        session_id: sessionId,
-        tenant_id: tenant?.id,
-        farmer_id: user?.id,
-        role: 'user',
-        content: finalMessage,
-        status: 'sent',
-        language,
-        message_type: 'text',
-        word_count: finalMessage.split(/\s+/).length,
-        land_context: landContext ? {
-          land_id: landContext.land_id,
-          crop_name: landContext.crop_name,
-          area_hectares: landContext.area_hectares
-        } : null,
-        is_training_candidate: true,
-        metadata: { source: 'orchestrator_v2' }
-      });
+      // PHASE 5: Server already persists messages, so we DON'T save user message here
+      // This eliminates duplicate message persistence and makes server the single writer
       
       // Create AI response message - use responseText which has fallback
       const aiMessageId = crypto.randomUUID();
@@ -972,7 +958,9 @@ export function EnhancedAIChatInterface() {
         timestamp: new Date(),
         messageType: 'orchestrator',
         orchestratorType: data.metadata?.type || 'DECISION_PROVIDED',
-        // ✅ NEW: Include data audit for debugging cards
+        // PHASE 5: Include trace_id for debugging
+        traceId: data.metadata?.trace_id,
+        // Include data audit for debugging cards
         dataAudit: data.dataAudit,
         analytics: {
           responseTime: data.responseTime,
@@ -985,34 +973,8 @@ export function EnhancedAIChatInterface() {
         [activeTab]: [...(prev[activeTab] || []), aiMessage]
       }));
       
-      // Save AI response to database
-      await supabase.from('ai_chat_messages').insert({
-        id: aiMessageId,
-        session_id: sessionId,
-        tenant_id: tenant?.id,
-        farmer_id: user?.id,
-        role: 'assistant',
-        content: responseText,
-        status: 'sent',
-        language,
-        message_type: 'orchestrator',
-        ai_model: 'orchestrator_v2',
-        response_time_ms: data.responseTime,
-        word_count: responseText.split(/\s+/).length,
-        land_context: landContext ? {
-          land_id: landContext.land_id,
-          crop_name: landContext.crop_name
-        } : null,
-        is_training_candidate: true,
-        metadata: {
-          source: 'orchestrator_v2',
-          orchestrator_type: data.metadata?.type,
-          confidence: data.metadata?.confidence,
-          safety_status: data.metadata?.safety_status,
-          rules_applied: data.metadata?.rules_applied,
-          agents_used: data.metadata?.agents_used
-        }
-      });
+      // PHASE 5: Server already persists AI response, so we DON'T save here
+      // This eliminates duplicate message persistence - server is single source of truth
       
       // Set quick replies from orchestrator
       if (data.quickReplies && data.quickReplies.length > 0) {

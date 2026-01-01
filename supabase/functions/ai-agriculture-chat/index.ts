@@ -1130,8 +1130,6 @@ With this information, I can provide you proper guidance.
   
   return fallbacks[lang] || fallbacks['en'];
 }
-  return fallbacks[lang] || fallbacks['en'];
-}
 
 /**
  * Generate response when ALL actions were filtered
