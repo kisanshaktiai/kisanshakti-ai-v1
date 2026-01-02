@@ -21,6 +21,14 @@ import { generateMultilingualQuickReplies } from './multilingual-quick-replies.t
 import { parseResponseToCards } from './response-parser.ts';
 import { localizeResponse } from './response-localizer.ts';
 
+// CRITICAL FIX: Import translation functions for farmer-friendly product names
+import { 
+  getProductName, 
+  getActionTranslation, 
+  getMethodTranslation,
+  getUrgencyTranslation
+} from './agents/communication-translation-dictionary.ts';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id, x-session-token',
@@ -1772,37 +1780,55 @@ function buildFormattedRecommendationsList(decision: any, lang: 'mr' | 'hi' | 'e
     let recNumber = 1;
     const recParts: string[] = [];
     
-    // Primary action
-    const productName = primary.application_details?.product_name || 'Recommended product';
+    // Primary action - CRITICAL FIX: Translate chemical names to farmer-friendly language
+    const rawProductName = primary.application_details?.product_name || '';
+    // Use translation dictionary for farmer-friendly names
+    const productName = rawProductName ? getProductName(rawProductName, lang) : (
+      lang === 'mr' ? 'शिफारस केलेले उत्पादन' : 
+      lang === 'hi' ? 'सिफारिश किया गया उत्पाद' : 
+      'Recommended product'
+    );
     const dosage = primary.application_details?.concentration || '';
     const timing = primary.timing?.best_time_of_day || 'MORNING';
+    const method = primary.application_details?.method || primary.application_details?.application_method || '';
     
     let primaryText = `**${recNumber}. ${productName}**`;
     if (dosage) primaryText += ` @ ${dosage}`;
     
+    // Add method - translated
+    if (method) {
+      const methodText = getMethodTranslation(method, lang);
+      primaryText += `\n   📍 ${methodText}`;
+    }
+    
     // Add timing
     const timingLabels: Record<string, Record<string, string>> = {
-      MORNING: { mr: 'सकाळी', hi: 'सुबह', en: 'Morning' },
-      EVENING: { mr: 'संध्याकाळी', hi: 'शाम को', en: 'Evening' },
+      MORNING: { mr: 'सकाळी 6-10 वाजता', hi: 'सुबह 6-10 बजे', en: 'Morning 6-10 AM' },
+      EVENING: { mr: 'संध्याकाळी 4-6 वाजता', hi: 'शाम 4-6 बजे', en: 'Evening 4-6 PM' },
       ANY: { mr: 'दिवसातून कधीही', hi: 'दिन में कभी भी', en: 'Any time' }
     };
     const timingText = timingLabels[timing]?.[lang] || timingLabels.MORNING[lang];
-    primaryText += ` | ⏰ ${timingText}`;
+    primaryText += `\n   ⏰ ${timingText}`;
     
     // Add efficacy
     const efficacy = primary.expected_outcomes?.efficacy_percent;
     if (efficacy) {
-      primaryText += ` | 📊 ${efficacy}%`;
+      const efficacyLabel = lang === 'mr' ? 'प्रभावी' : lang === 'hi' ? 'प्रभावी' : 'effective';
+      primaryText += ` | 📊 ${efficacy}% ${efficacyLabel}`;
     }
     
     recParts.push(primaryText);
     recNumber++;
     
-    // Secondary actions
+    // Secondary actions - CRITICAL FIX: Translate action names
     if (decision.secondary_actions && decision.secondary_actions.length > 0) {
       decision.secondary_actions.slice(0, 2).forEach((alt: any) => {
-        if (alt.action) {
-          recParts.push(`**${recNumber}. ${alt.action}** ${alt.reason ? `- ${alt.reason}` : ''}`);
+        if (alt.action && alt.action !== 'N/A' && alt.action !== 'None') {
+          // Translate action type to farmer language
+          const translatedAction = getActionTranslation(alt.action, lang);
+          // Also translate reason if it contains technical terms
+          const reason = alt.reason || '';
+          recParts.push(`**${recNumber}. ${translatedAction}** ${reason ? `- ${reason}` : ''}`);
           recNumber++;
         }
       });
@@ -1901,11 +1927,18 @@ function buildResponseFromDecisionOutput(decision: any, language: string): strin
     return parts.join('\n\n');
   }
   
-  // Primary recommendation
+  // Primary recommendation - CRITICAL FIX: Translate chemical names to farmer language
   if (primary) {
-    const productName = primary.application_details?.product_name || 'Recommended product';
+    const rawProductName = primary.application_details?.product_name || '';
+    // Use translation dictionary for farmer-friendly names
+    const productName = rawProductName ? getProductName(rawProductName, lang) : (
+      lang === 'mr' ? 'शिफारस केलेले औषध' : 
+      lang === 'hi' ? 'सिफारिश की गई दवा' : 
+      'Recommended treatment'
+    );
     const dosage = primary.application_details?.concentration || '';
     const timing = primary.timing?.best_time_of_day || 'MORNING';
+    const method = primary.application_details?.method || '';
     
     const actionHeaders: Record<string, string> = {
       mr: '📌 आता काय करावे:',
@@ -1914,14 +1947,20 @@ function buildResponseFromDecisionOutput(decision: any, language: string): strin
     };
     parts.push(actionHeaders[lang]);
     
-    // Product and dosage
+    // Product and dosage - with translated product name
     const productLine = dosage ? `${productName} @ ${dosage}` : productName;
     parts.push(productLine);
     
-    // Timing
+    // Application method - translated
+    if (method) {
+      const methodText = getMethodTranslation(method, lang);
+      parts.push(`📍 ${methodText}`);
+    }
+    
+    // Timing - with detailed labels
     const timingLabels: Record<string, Record<string, string>> = {
-      MORNING: { mr: 'सकाळी फवारणी करा', hi: 'सुबह छिड़काव करें', en: 'Apply in the morning' },
-      EVENING: { mr: 'संध्याकाळी फवारणी करा', hi: 'शाम को छिड़काव करें', en: 'Apply in the evening' },
+      MORNING: { mr: 'सकाळी 6-10 वाजता फवारणी करा', hi: 'सुबह 6-10 बजे छिड़काव करें', en: 'Spray in the morning 6-10 AM' },
+      EVENING: { mr: 'संध्याकाळी 4-6 वाजता फवारणी करा', hi: 'शाम 4-6 बजे छिड़काव करें', en: 'Spray in the evening 4-6 PM' },
       ANY: { mr: 'दिवसातून कधीही', hi: 'दिन में कभी भी', en: 'Any time of day' }
     };
     const timingText = timingLabels[timing]?.[lang] || timingLabels.MORNING[lang];
@@ -1939,7 +1978,7 @@ function buildResponseFromDecisionOutput(decision: any, language: string): strin
     }
   }
   
-  // Secondary actions
+  // Secondary actions - CRITICAL FIX: Translate action names
   if (decision.secondary_actions && decision.secondary_actions.length > 0) {
     const altHeaders: Record<string, string> = {
       mr: '\n🔄 पर्यायी उपाय:',
@@ -1949,7 +1988,11 @@ function buildResponseFromDecisionOutput(decision: any, language: string): strin
     parts.push(altHeaders[lang]);
     
     decision.secondary_actions.slice(0, 2).forEach((alt: any) => {
-      if (alt.action) parts.push(`• ${alt.action}`);
+      if (alt.action) {
+        // Translate action to farmer language
+        const translatedAction = getActionTranslation(alt.action, lang);
+        parts.push(`• ${translatedAction}`);
+      }
     });
   }
   
