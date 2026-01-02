@@ -6,35 +6,30 @@
  * Production-grade intelligence modules for decision graph.
  */
 
-// Weed Intelligence - with validation & resistance logic
+// Core Intelligence Modules
 export * from './weed-intelligence';
-
-// Organic Intelligence - with conflict rules & honest assessments
 export * from './organic-intelligence';
-
-// Variety Database - ICAR released varieties with resistance profiles
 export * from './variety-database';
-
-// Variety Recommendation Rules - triggers variety recommendations
 export * from './variety-recommendation-rules';
-
-// P1: Resistance Management System - Regional MOA rotation
 export * from './resistance-management';
 
-// P1: Soil Test Report Integration - Nutrient analysis & recommendations
+// P1 Modules
 export * from './soil-test-integration';
-
-// P1: Explainable AI Engine - Reasoning chains & transparency
 export * from './explainable-ai-engine';
 
-// P2: Disease Forecasting - BLITECAST & predictive models
+// P2 Modules
 export * from './disease-forecasting';
-
-// P2: Carbon & Sustainability Tracking
 export * from './carbon-sustainability';
 
-// P3: Market Intelligence Integration
+// P3 Modules
 export * from './market-intelligence';
+
+// NEW: Missing Modules Implemented
+export * from './intercropping-rules';
+export * from './equipment-calibration';
+export * from './remote-sensing-indices';
+export * from './protected-cultivation';
+export * from './outcome-tracking';
 
 // Combined Intelligence Rules
 import { VARIETY_RECOMMENDATION_RULES } from './variety-recommendation-rules';
