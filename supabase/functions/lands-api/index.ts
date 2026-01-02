@@ -95,7 +95,7 @@ serve(async (req) => {
           // ✅ CRITICAL: Fetch soil_health data for this land
           const { data: soilHealth } = await supabase
             .from('soil_health')
-            .select('nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, ph_level, organic_carbon, soil_moisture_percent, test_date, confidence_level, source')
+            .select('nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, ph_level, organic_carbon, soil_moisture_surface_percent, soil_moisture_rootzone_percent, test_date, confidence_level, source')
             .eq('land_id', landId)
             .order('test_date', { ascending: false })
             .limit(1)
@@ -119,7 +119,7 @@ serve(async (req) => {
               k: soilHealth.potassium_kg_per_ha ?? land.potassium_kg_per_ha,
               ph: soilHealth.ph_level ?? land.soil_ph,
               organic_carbon: soilHealth.organic_carbon ?? land.organic_carbon_percent,
-              moisture: soilHealth.soil_moisture_percent,
+              moisture: soilHealth.soil_moisture_surface_percent ?? soilHealth.soil_moisture_rootzone_percent,
               test_date: soilHealth.test_date ?? land.last_soil_test_date,
               confidence: soilHealth.confidence_level,
               source: soilHealth.source
@@ -205,7 +205,7 @@ serve(async (req) => {
           
           const { data: soilRecords } = await supabase
             .from('soil_health')
-            .select('land_id, nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, ph_level, organic_carbon, soil_moisture_percent, test_date')
+            .select('land_id, nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, ph_level, organic_carbon, soil_moisture_surface_percent, soil_moisture_rootzone_percent, test_date')
             .in('land_id', landIds)
             .order('test_date', { ascending: false });
           
@@ -241,7 +241,7 @@ serve(async (req) => {
                 k: soil.potassium_kg_per_ha ?? land.potassium_kg_per_ha,
                 ph: soil.ph_level ?? land.soil_ph,
                 organic_carbon: soil.organic_carbon ?? land.organic_carbon_percent,
-                moisture: soil.soil_moisture_percent,
+                moisture: soil.soil_moisture_surface_percent ?? soil.soil_moisture_rootzone_percent,
                 test_date: soil.test_date ?? land.last_soil_test_date
               } : (land.nitrogen_kg_per_ha || land.soil_ph) ? {
                 n: land.nitrogen_kg_per_ha,
