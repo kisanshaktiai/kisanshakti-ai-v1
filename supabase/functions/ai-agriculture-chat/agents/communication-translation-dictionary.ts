@@ -270,6 +270,42 @@ export const ACTION_TRANSLATIONS: Record<string, TrilingualText> = {
     mr: 'तज्ञाचा सल्ला घ्या',
     hi: 'विशेषज्ञ से सलाह लें',
     en: 'Consult an expert'
+  },
+  // Cultural Control and Biological Release Actions
+  'CULTURAL_CONTROL': {
+    mr: 'सांस्कृतिक नियंत्रण (निरोगी बियाणे, अवशेष काढणे)',
+    hi: 'सांस्कृतिक नियंत्रण (स्वस्थ बीज, अवशेष निकालना)',
+    en: 'Cultural control (healthy setts, debris removal)'
+  },
+  'RELEASE': {
+    mr: 'जैविक किडे सोडा',
+    hi: 'जैविक कीट छोड़ें',
+    en: 'Release biological agents'
+  },
+  'RELEASE_BIOAGENT': {
+    mr: 'जैविक नियंत्रक सोडा (ट्रायकोग्रामा/कोटेसिया)',
+    hi: 'जैविक नियंत्रक छोड़ें (ट्राइकोग्रामा/कोटेसिया)',
+    en: 'Release biocontrol agents (Trichogramma/Cotesia)'
+  },
+  'RELEASE_TRICHOGRAMMA': {
+    mr: 'ट्रायकोग्रामा कार्ड सोडा - 50,000 अंडी/एकर',
+    hi: 'ट्राइकोग्रामा कार्ड छोड़ें - 50,000 अंडे/एकड़',
+    en: 'Release Trichogramma cards - 50,000 eggs/acre'
+  },
+  'INSTALL_PHEROMONE_TRAPS': {
+    mr: 'फेरोमोन ट्रॅप्स बसवा',
+    hi: 'फेरोमोन ट्रैप लगाएं',
+    en: 'Install pheromone traps'
+  },
+  'REMOVE_AFFECTED_PLANTS': {
+    mr: 'प्रभावित झाडे काढून टाका',
+    hi: 'प्रभावित पौधे निकालें',
+    en: 'Remove affected plants'
+  },
+  'CROP_ROTATION': {
+    mr: 'पीक फेरबदल करा',
+    hi: 'फसल चक्र अपनाएं',
+    en: 'Practice crop rotation'
   }
 };
 

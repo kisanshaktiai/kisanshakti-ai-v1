@@ -1416,6 +1416,32 @@ export const SYMBOLIC_RULES_REGISTRY: SymbolicRule[] = [
   
   // SUGARCANE RULES
   {
+    rule_id: 'CROP_SUGARCANE_SHOOT_BORER',
+    category: 'pest',
+    crop_code: 'sugarcane',
+    priority: 'P3_CROP_STAGE',
+    cause: 'SHOOT_BORER_INFESTATION',
+    scientific_source: 'ICAR-SBI Coimbatore',
+    scientific_basis: 'Early shoot borer (Chilo infuscatellus) causes dead hearts in young cane (0-3 months). ETL: 10% dead hearts. Release Trichogramma chilonis @ 50,000/acre at 30, 37, 44 DAP.',
+    icar_package: 'ICAR-SBI Integrated Pest Management Package for Sugarcane',
+    trigger_keywords: [
+      'shoot borer', 'early shoot borer', 'dead heart', 'deadheart', 'मधली सुरळी', 
+      'सुरळी वाळली', 'मधली सुरळी वाळली', 'गाभा मेला', 'गाभा वाळला', 'मध्य सुरळी',
+      'गन्ने का शूट बोरर', 'मृत मध्य', 'chilo infuscatellus', 'SHOOT_BORER', 
+      'SUGARCANE_SHOOT_BORER', 'DEAD_HEART', 'dead hearts'
+    ],
+    response_mr: '🪱 **ऊसाला शूट बोरर (मधली सुरळी वाळली)!**\n\n📋 **शिफारस:**\n1. **ट्रायकोग्रामा चिलोनिस** @ 50,000 अंडी/एकर - 30, 37, 44 दिवसांनी सोडा\n2. 10% पेक्षा जास्त मृत टोके असल्यास **क्लोरँट्रानिलिप्रोल (कोरेजन)** 60 मिली/एकर फवारा\n\n⏰ **वेळ:** सकाळी किंवा संध्याकाळी\n📍 **पद्धत:** जैविक प्रथम, रासायनिक आवश्यकतेनुसार',
+    response_hi: '🪱 **गन्ने में शूट बोरर (मृत मध्य)!**\n\n📋 **सिफारिश:**\n1. **ट्राइकोग्रामा चिलोनिस** @ 50,000 अंडे/एकड़ - 30, 37, 44 दिन पर छोड़ें\n2. 10% से अधिक मृत शीर्ष होने पर **क्लोरेंट्रानिलिप्रोल (कोराजेन)** 60 मिली/एकड़ स्प्रे करें\n\n⏰ **समय:** सुबह या शाम\n📍 **विधि:** जैविक पहले, रासायनिक आवश्यकतानुसार',
+    response_en: '🪱 **Sugarcane shoot borer (dead heart)!**\n\n📋 **Recommendation:**\n1. **Trichogramma chilonis** @ 50,000 eggs/acre - Release at 30, 37, 44 DAP\n2. If >10% dead hearts, spray **Chlorantraniliprole (Coragen)** 60 ml/acre\n\n⏰ **Timing:** Early morning or evening\n📍 **Method:** Biological first, chemical as escalation',
+    alternatives: [
+      'Trichogramma chilonis @ 50,000 eggs/acre (IPM Level 3)',
+      'Cotesia flavipes @ 5,000 cocoons/acre for advanced infestation',
+      'Chlorantraniliprole 18.5% SC @ 60-80 ml/acre (IPM Level 5)',
+      'Fipronil 5% SC @ 400 ml/acre as soil drench'
+    ],
+    action_type: 'RECOMMEND'
+  },
+  {
     rule_id: 'CROP_SUGARCANE_BORER',
     category: 'pest',
     crop_code: 'sugarcane',
@@ -1423,7 +1449,7 @@ export const SYMBOLIC_RULES_REGISTRY: SymbolicRule[] = [
     cause: 'TOP_BORER_INFESTATION',
     scientific_source: 'ICAR-SBI Sugarcane Package',
     scientific_basis: 'Top borer (Scirpophaga excerptalis) causes dead heart. ETL: 5% dead hearts.',
-    trigger_keywords: ['top borer', 'ऊसातील अळी', 'गन्ने का टॉप बोरर', 'dead heart', 'scirpophaga'],
+    trigger_keywords: ['top borer', 'ऊसातील अळी', 'गन्ने का टॉप बोरर', 'scirpophaga'],
     response_mr: '🪱 ऊसातील अळी! 5% मृत टोके असल्यास कार्बोफ्युरॉन ग्रॅन्युल्स द्या.',
     response_hi: '🪱 गन्ने में टॉप बोरर! 5% मृत शीर्ष होने पर कार्बोफ्यूरॉन ग्रेन्यूल्स दें।',
     response_en: '🪱 Sugarcane top borer! Apply Carbofuran granules if 5% dead hearts.',

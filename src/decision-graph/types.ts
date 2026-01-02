@@ -1179,7 +1179,15 @@ export enum Action {
   APPLY_LIME_ACIDIC_SOIL = 'APPLY_LIME_ACIDIC_SOIL',     // pH correction for acidic soil
   APPLY_SULFUR_ALKALINE = 'APPLY_SULFUR_ALKALINE',       // pH correction for alkaline soil
   GREEN_MANURING = 'GREEN_MANURING',                     // Incorporate green manure crop
-  ADD_VERMICOMPOST = 'ADD_VERMICOMPOST'                  // Add organic matter
+  ADD_VERMICOMPOST = 'ADD_VERMICOMPOST',                 // Add organic matter
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CULTURAL CONTROL ACTIONS (IPM Level 1)
+  // ─────────────────────────────────────────────────────────────────────────
+  CULTURAL_CONTROL = 'CULTURAL_CONTROL',                 // Cultural practices (healthy setts, debris removal)
+  REMOVE_AFFECTED_PLANTS = 'REMOVE_AFFECTED_PLANTS',     // Remove infested/diseased plants
+  CROP_ROTATION = 'CROP_ROTATION',                       // Rotate crops to break pest cycle
+  INTERCROPPING = 'INTERCROPPING'                        // Companion planting for pest management
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
