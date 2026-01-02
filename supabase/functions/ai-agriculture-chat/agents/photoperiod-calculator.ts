@@ -356,3 +356,55 @@ export function integratePhotoperiodWithPhenology(
     day_length_hours: analysis.current_day_length
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EXPORTED ALIAS FOR ORCHESTRATOR COMPATIBILITY
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Alias for checkPhotoperiodTrigger - used by orchestrator
+ * Checks if photoperiod conditions trigger stage transition
+ */
+export function checkPhotoperiodTrigger(
+  cropCode: string,
+  latitude: number,
+  das: number,
+  currentStage?: string
+): PhotoperiodResult {
+  const analysis = analyzePhotoperiod(cropCode, latitude);
+  const integration = integratePhotoperiodWithPhenology(cropCode, currentStage || '', latitude, das);
+  
+  return {
+    crop_code: cropCode,
+    latitude,
+    current_day_length_hours: analysis.current_day_length,
+    sensitivity: analysis.crop_sensitivity,
+    critical_threshold_hours: analysis.critical_threshold,
+    threshold_met: analysis.threshold_met,
+    days_until_threshold: analysis.days_until_threshold,
+    recommendation: analysis.recommendation,
+    photoperiod_suitable: integration.photoperiod_suitable,
+    warning: integration.warning,
+    adjustment: integration.adjustment,
+    confidence: analysis.confidence
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RESULT TYPE FOR ORCHESTRATOR
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface PhotoperiodResult {
+  crop_code: string;
+  latitude: number;
+  current_day_length_hours: number;
+  sensitivity: PhotoperiodSensitivity;
+  critical_threshold_hours: number;
+  threshold_met: boolean;
+  days_until_threshold?: number;
+  recommendation: string;
+  photoperiod_suitable: boolean;
+  warning?: string;
+  adjustment?: string;
+  confidence: number;
+}
