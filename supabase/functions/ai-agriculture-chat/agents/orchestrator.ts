@@ -61,6 +61,42 @@ import {
   validateCropContext 
 } from './soil-ndvi-state-calculator.ts';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// P0 CRITICAL MODULE IMPORTS - PRODUCTION-READY INTEGRATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+// P0: GDD Phenology Engine - Replaces fixed DAS with thermal unit calculations
+import { 
+  calculatePhenologicalStage, 
+  type PhenologyResult 
+} from './gdd-phenology-engine.ts';
+
+// P0: Agricultural NLP Validator - Marathi/Hindi validation with fuzzy matching
+import { 
+  validateAgricultureNLP, 
+  type NLPValidationResult 
+} from './nlp-agriculture-validator.ts';
+
+// P0: PHI Enforcement Guardian - Pre-Harvest Interval safety blocking
+import { 
+  enforcePHI, 
+  type PHIEnforcementResult 
+} from './phi-enforcement-guardian.ts';
+
+// P0: Pollinator Protection Rules - Flowering stage safety enforcement
+import { 
+  enforcePollinatorProtection, 
+  isFloweringStage,
+  type PollinatorEnforcementResult 
+} from './pollinator-protection-rules.ts';
+
+// P0: Photoperiod Calculator - Day length for bulbing/flowering crops
+import { 
+  calculateDayLength, 
+  checkPhotoperiodTrigger,
+  type PhotoperiodResult 
+} from './photoperiod-calculator.ts';
+
 export const ORCHESTRATOR_VERSION = '2.0.0';
 
 // Response types
@@ -380,6 +416,99 @@ export class AIAgentOrchestrator {
         console.error('   ❌ NLU Agent failed, using fallback:', nluError);
         nluOutput = this.createFallbackNLUOutput(farmerMessage, options.language, landContext);
         agentsUsed.push('NLU_FALLBACK');
+      }
+      
+      // ========================================
+      // PHASE 1A.1: P0 NLP VALIDATION (Marathi/Hindi agricultural vocabulary)
+      // ========================================
+      console.log('\n🔍 PHASE 1A.1: P0 NLP Agricultural Validation...');
+      
+      let nlpValidation: NLPValidationResult | null = null;
+      try {
+        nlpValidation = validateAgricultureNLP(farmerMessage, options.language || 'mr');
+        agentsUsed.push('NLP_VALIDATOR');
+        
+        if (!nlpValidation.is_valid || nlpValidation.is_gibberish) {
+          console.warn(`   ⚠️ NLP Validation: INVALID or GIBBERISH detected (score: ${nlpValidation.gibberish_score})`);
+          console.warn(`   Errors: ${nlpValidation.errors.join(', ')}`);
+        } else {
+          console.log(`   ✅ NLP Validation: VALID (confidence: ${nlpValidation.confidence.toFixed(2)})`);
+          console.log(`   Entities found: crops=${nlpValidation.entities.crops.length}, pests=${nlpValidation.entities.pests.length}, diseases=${nlpValidation.entities.diseases.length}`);
+        }
+        
+        // Check for forbidden combinations (e.g., "spray during rain")
+        if (nlpValidation.forbidden_combinations.length > 0) {
+          console.warn(`   ⚠️ Forbidden combinations detected: ${nlpValidation.forbidden_combinations.map(fc => fc.reason).join(', ')}`);
+        }
+        
+        // Apply spelling corrections if any
+        if (nlpValidation.spelling_corrections && nlpValidation.spelling_corrections.length > 0) {
+          console.log(`   📝 Applied ${nlpValidation.spelling_corrections.length} spelling corrections`);
+        }
+      } catch (nlpError) {
+        console.error('   ❌ NLP Validation failed (non-blocking):', nlpError);
+      }
+      
+      // ========================================
+      // PHASE 1A.2: P0 GDD PHENOLOGY CALCULATION (Replaces fixed DAS)
+      // ========================================
+      console.log('\n🌡️ PHASE 1A.2: P0 GDD Phenology Engine...');
+      
+      let phenologyResult: PhenologyResult | null = null;
+      if (landContext?.current_crop && landContext?.sowing_date) {
+        try {
+          // Fetch weather history for GDD calculation (last 14 days)
+          const weatherHistory = await this.fetchWeatherHistoryForGDD(landContext.center_lat, landContext.center_lon);
+          
+          phenologyResult = calculatePhenologicalStage(
+            landContext.current_crop.toUpperCase(),
+            new Date(landContext.sowing_date),
+            weatherHistory,
+            landContext.days_since_sowing || 0
+          );
+          agentsUsed.push('GDD_PHENOLOGY');
+          
+          console.log(`   ✅ GDD Stage: ${phenologyResult.current_stage} (${phenologyResult.stage_name})`);
+          console.log(`   Accumulated GDD: ${phenologyResult.accumulated_gdd.toFixed(0)} (source: ${phenologyResult.gdd_source})`);
+          console.log(`   Critical irrigation: ${phenologyResult.critical_irrigation_needed}, Critical nutrition: ${phenologyResult.critical_nutrition_needed}`);
+          
+          // Override growth_stage in landContext with GDD-calculated stage
+          landContext.growth_stage = phenologyResult.current_stage;
+          landContext.gdd_phenology = phenologyResult;
+        } catch (gddError) {
+          console.error('   ❌ GDD calculation failed, using DAS fallback:', gddError);
+        }
+      } else {
+        console.log('   ⏭️ Skipping GDD (no crop or sowing date)');
+      }
+      
+      // ========================================
+      // PHASE 1A.3: P0 PHOTOPERIOD CHECK (Onion bulbing, rice flowering)
+      // ========================================
+      if (landContext?.center_lat && ['ONION', 'RICE'].includes(landContext?.current_crop?.toUpperCase() || '')) {
+        console.log('\n☀️ PHASE 1A.3: P0 Photoperiod Sensitivity Check...');
+        try {
+          const dayLengthResult = calculateDayLength(landContext.center_lat, new Date());
+          const photoperiodTrigger = checkPhotoperiodTrigger(
+            landContext.current_crop.toUpperCase(),
+            dayLengthResult.day_length_hours,
+            landContext.days_since_sowing || 0
+          );
+          
+          if (photoperiodTrigger.trigger_active) {
+            console.log(`   ✅ Photoperiod trigger ACTIVE: ${photoperiodTrigger.trigger_type}`);
+            console.log(`   Day length: ${dayLengthResult.day_length_hours.toFixed(1)} hours`);
+            landContext.photoperiod_data = {
+              day_length_hours: dayLengthResult.day_length_hours,
+              trigger_active: photoperiodTrigger.trigger_active,
+              trigger_type: photoperiodTrigger.trigger_type,
+              advice: photoperiodTrigger.advice
+            };
+          }
+          agentsUsed.push('PHOTOPERIOD');
+        } catch (photoError) {
+          console.error('   ❌ Photoperiod calculation failed:', photoError);
+        }
       }
       
       // ========================================
@@ -736,10 +865,79 @@ export class AIAgentOrchestrator {
       console.log('   ✅ Rules applied:', decisionOutput.rules_applied?.length || 0);
       
       // ========================================
-      // PHASE 5: SAFETY VERIFICATION
+      // PHASE 5: SAFETY VERIFICATION (With P0 PHI & Pollinator Enforcement)
       // ========================================
-      console.log('\n🛡️ PHASE 5: Safety Verification...');
+      console.log('\n🛡️ PHASE 5: Safety Verification with P0 Critical Modules...');
       
+      // ═══════════════════════════════════════════════════════════════════════════
+      // P0: PHI ENFORCEMENT - Block chemicals if days to harvest < PHI
+      // ═══════════════════════════════════════════════════════════════════════════
+      let phiEnforcement: PHIEnforcementResult | null = null;
+      const chemicalRecommendations = this.extractChemicalRecommendations(decisionOutput);
+      
+      if (chemicalRecommendations.length > 0 && landContext?.expected_harvest_date) {
+        console.log('\n🧪 PHASE 5.1: P0 PHI Enforcement Check...');
+        try {
+          const daysToHarvest = this.calculateDaysToHarvest(landContext.expected_harvest_date);
+          
+          phiEnforcement = enforcePHI(
+            chemicalRecommendations,
+            daysToHarvest,
+            landContext.current_crop?.toUpperCase(),
+            'DOMESTIC',  // TODO: Get from farmer profile for export-oriented farms
+            false        // TODO: Get organic status from farmer profile
+          );
+          agentsUsed.push('PHI_GUARDIAN');
+          
+          console.log(`   Days to harvest: ${daysToHarvest}`);
+          console.log(`   Blocked chemicals: ${phiEnforcement.blocked_chemicals.length}`);
+          console.log(`   Allowed chemicals: ${phiEnforcement.allowed_chemicals.length}`);
+          
+          // CRITICAL: If any chemicals blocked, modify decision output
+          if (phiEnforcement.blocked_chemicals.length > 0) {
+            console.warn(`   ⚠️ PHI VIOLATION: ${phiEnforcement.blocked_chemicals.map(c => c.chemical_name).join(', ')}`);
+            decisionOutput = this.applyPHIBlocking(decisionOutput, phiEnforcement);
+          }
+        } catch (phiError) {
+          console.error('   ❌ PHI Enforcement failed (non-blocking):', phiError);
+        }
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // P0: POLLINATOR PROTECTION - Block bee-toxic chemicals during flowering
+      // ═══════════════════════════════════════════════════════════════════════════
+      let pollinatorEnforcement: PollinatorEnforcementResult | null = null;
+      const currentHour = new Date().getHours();
+      const isFlowering = landContext?.current_crop && landContext?.days_since_sowing
+        ? isFloweringStage(landContext.current_crop.toUpperCase(), landContext.days_since_sowing)
+        : false;
+      
+      if (chemicalRecommendations.length > 0 && isFlowering) {
+        console.log('\n🐝 PHASE 5.2: P0 Pollinator Protection Enforcement...');
+        try {
+          pollinatorEnforcement = enforcePollinatorProtection(
+            chemicalRecommendations,
+            landContext.current_crop.toUpperCase(),
+            landContext.days_since_sowing,
+            currentHour
+          );
+          agentsUsed.push('POLLINATOR_PROTECTION');
+          
+          console.log(`   Crop in flowering: YES (DAS: ${landContext.days_since_sowing})`);
+          console.log(`   Blocked chemicals: ${pollinatorEnforcement.blocked_chemicals.length}`);
+          console.log(`   Time-restricted: ${pollinatorEnforcement.time_restricted_chemicals.length}`);
+          
+          // CRITICAL: If any chemicals blocked for pollinators, modify decision output
+          if (pollinatorEnforcement.blocked_chemicals.length > 0) {
+            console.warn(`   ⚠️ POLLINATOR SAFETY: ${pollinatorEnforcement.blocked_chemicals.map(c => c.chemical_name).join(', ')} BLOCKED`);
+            decisionOutput = this.applyPollinatorBlocking(decisionOutput, pollinatorEnforcement);
+          }
+        } catch (pollinatorError) {
+          console.error('   ❌ Pollinator Protection failed (non-blocking):', pollinatorError);
+        }
+      }
+      
+      // Continue with standard Safety Guardian verification
       const safetyVerification = await this.safetyGuardian.verifySafety(
         decisionOutput,
         {
@@ -2429,6 +2627,177 @@ export class AIAgentOrchestrator {
         agents_used: agentsUsed
       }
     };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P0 HELPER METHODS - PHI, Pollinator, GDD Support
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  /**
+   * Fetch weather history for GDD calculation (last 14 days)
+   */
+  private async fetchWeatherHistoryForGDD(lat?: number, lon?: number): Promise<Array<{ date: string; tmax: number; tmin: number }>> {
+    if (!lat || !lon) {
+      // Return estimated average temperatures if no coordinates
+      const today = new Date();
+      const history: Array<{ date: string; tmax: number; tmin: number }> = [];
+      for (let i = 0; i < 14; i++) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+        // Use seasonal averages for India
+        const month = date.getMonth();
+        const { tmax, tmin } = this.getSeasonalAverageTemps(month);
+        history.push({ date: date.toISOString(), tmax, tmin });
+      }
+      return history;
+    }
+    
+    try {
+      // Try to fetch from weather_data table
+      const { data, error } = await this.supabase
+        .from('weather_data')
+        .select('recorded_at, temperature_max, temperature_min')
+        .gte('recorded_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
+        .order('recorded_at', { ascending: false })
+        .limit(14);
+      
+      if (data && data.length > 0) {
+        return data.map((d: any) => ({
+          date: d.recorded_at,
+          tmax: d.temperature_max || 35,
+          tmin: d.temperature_min || 20
+        }));
+      }
+    } catch (e) {
+      console.warn('Weather history fetch failed, using defaults');
+    }
+    
+    // Fallback to seasonal averages
+    return this.fetchWeatherHistoryForGDD(undefined, undefined);
+  }
+  
+  /**
+   * Get seasonal average temperatures for GDD fallback
+   */
+  private getSeasonalAverageTemps(month: number): { tmax: number; tmin: number } {
+    // Average temps for central/western India
+    const seasonalTemps: Record<number, { tmax: number; tmin: number }> = {
+      0: { tmax: 28, tmin: 12 },  // January
+      1: { tmax: 31, tmin: 14 },  // February
+      2: { tmax: 36, tmin: 19 },  // March
+      3: { tmax: 40, tmin: 24 },  // April
+      4: { tmax: 42, tmin: 27 },  // May
+      5: { tmax: 38, tmin: 26 },  // June
+      6: { tmax: 32, tmin: 24 },  // July
+      7: { tmax: 31, tmin: 24 },  // August
+      8: { tmax: 32, tmin: 23 },  // September
+      9: { tmax: 34, tmin: 20 },  // October
+      10: { tmax: 31, tmin: 16 }, // November
+      11: { tmax: 28, tmin: 12 }, // December
+    };
+    return seasonalTemps[month] || { tmax: 32, tmin: 20 };
+  }
+  
+  /**
+   * Extract chemical recommendations from decision output
+   */
+  private extractChemicalRecommendations(decisionOutput: DecisionOutput): string[] {
+    const chemicals: string[] = [];
+    
+    // Extract from primary decision
+    if (decisionOutput.primary_decision?.product_details?.product_name) {
+      chemicals.push(decisionOutput.primary_decision.product_details.product_name);
+    }
+    if (decisionOutput.primary_decision?.product_details?.active_ingredient) {
+      chemicals.push(decisionOutput.primary_decision.product_details.active_ingredient);
+    }
+    
+    // Extract from secondary actions
+    if (decisionOutput.secondary_actions) {
+      for (const action of decisionOutput.secondary_actions) {
+        if (action.product_details?.product_name) {
+          chemicals.push(action.product_details.product_name);
+        }
+      }
+    }
+    
+    return [...new Set(chemicals)]; // Remove duplicates
+  }
+  
+  /**
+   * Calculate days to harvest from expected harvest date
+   */
+  private calculateDaysToHarvest(expectedHarvestDate: string): number {
+    const harvest = new Date(expectedHarvestDate);
+    const today = new Date();
+    const diffMs = harvest.getTime() - today.getTime();
+    return Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+  }
+  
+  /**
+   * Apply PHI blocking to decision output - replace blocked chemicals with safe alternatives
+   */
+  private applyPHIBlocking(decisionOutput: DecisionOutput, phiEnforcement: PHIEnforcementResult): DecisionOutput {
+    const blockedChemicalNames = new Set(phiEnforcement.blocked_chemicals.map(c => c.chemical_name.toLowerCase()));
+    
+    // If primary decision product is blocked, replace with alternative or block
+    if (decisionOutput.primary_decision?.product_details?.product_name) {
+      const productName = decisionOutput.primary_decision.product_details.product_name.toLowerCase();
+      if (blockedChemicalNames.has(productName)) {
+        // Replace with safe alternative
+        if (phiEnforcement.safe_alternatives.length > 0) {
+          decisionOutput.primary_decision.product_details.product_name = phiEnforcement.safe_alternatives[0];
+          decisionOutput.primary_decision.notes = `${decisionOutput.primary_decision.notes || ''} ⚠️ PHI उल्लंघन: मूळ शिफारस बदलली. ${phiEnforcement.general_advice_mr}`;
+        } else {
+          // Add to blocked actions
+          decisionOutput.blocked_actions = decisionOutput.blocked_actions || [];
+          decisionOutput.blocked_actions.push({
+            action: `${decisionOutput.primary_decision.product_details.product_name} spray`,
+            reason: phiEnforcement.blocked_chemicals.find(c => c.chemical_name.toLowerCase() === productName)?.block_reason_mr || 'PHI उल्लंघन',
+            alternative_suggested: 'नैसर्गिक पर्याय वापरा किंवा कापणीनंतर फवारणी करा'
+          });
+        }
+      }
+    }
+    
+    return decisionOutput;
+  }
+  
+  /**
+   * Apply Pollinator blocking to decision output - enforce bee safety
+   */
+  private applyPollinatorBlocking(decisionOutput: DecisionOutput, pollinatorEnforcement: PollinatorEnforcementResult): DecisionOutput {
+    const blockedChemicalNames = new Set(pollinatorEnforcement.blocked_chemicals.map(c => c.chemical_name.toLowerCase()));
+    
+    // If primary decision product is blocked for pollinators
+    if (decisionOutput.primary_decision?.product_details?.product_name) {
+      const productName = decisionOutput.primary_decision.product_details.product_name.toLowerCase();
+      if (blockedChemicalNames.has(productName)) {
+        // Replace with bee-safe alternative
+        if (pollinatorEnforcement.safe_alternatives.length > 0) {
+          decisionOutput.primary_decision.product_details.product_name = pollinatorEnforcement.safe_alternatives[0];
+          decisionOutput.primary_decision.notes = `${decisionOutput.primary_decision.notes || ''} 🐝 परागीकरण संरक्षण: फुलोऱ्यात मधमाशी-सुरक्षित पर्याय. ${pollinatorEnforcement.general_advice_mr}`;
+        } else {
+          // Add blocking warning
+          decisionOutput.blocked_actions = decisionOutput.blocked_actions || [];
+          decisionOutput.blocked_actions.push({
+            action: `${decisionOutput.primary_decision.product_details.product_name} फुलोऱ्यात`,
+            reason: pollinatorEnforcement.blocked_chemicals.find(c => c.chemical_name.toLowerCase() === productName)?.block_reason_mr || 'मधमाशी विषारी',
+            alternative_suggested: 'संध्याकाळी ७ नंतर किंवा मधमाशी-सुरक्षित पर्याय वापरा'
+          });
+        }
+      }
+    }
+    
+    // Handle time-restricted chemicals
+    for (const restricted of pollinatorEnforcement.time_restricted_chemicals) {
+      if (!decisionOutput.primary_decision?.notes?.includes('संध्याकाळी')) {
+        decisionOutput.primary_decision = decisionOutput.primary_decision || { action_type: 'SPRAY' };
+        decisionOutput.primary_decision.notes = `${decisionOutput.primary_decision.notes || ''} ⏰ फक्त संध्याकाळी ७ नंतर फवारणी करा (मधमाशी संरक्षण)`;
+      }
+    }
+    
+    return decisionOutput;
   }
 }
 
