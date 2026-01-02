@@ -1150,14 +1150,19 @@ function generateValidationFailureFallback(
       // CRITICAL: Validate product name is meaningful
       if (isValidProductName(rawProductName)) {
         hasValidPrimaryAction = true;
+        
+        // CRITICAL FIX: Translate chemical name to farmer-friendly language
+        const translatedProductName = getProductName(rawProductName, lang);
+        
         const rawDosage = primaryAction.dosage || primaryAction.application_details?.dosage;
         const isValidDosage = rawDosage && 
                               rawDosage !== 'N/A' && 
                               rawDosage !== 'See product label' &&
                               rawDosage.length > 0;
         
-        let actionText = `1. **${rawProductName}**`;
-        if (isValidDosage) actionText += ` @ ${rawDosage}`;
+        let actionText = `1. **${translatedProductName}**`;
+        // Only add dosage if not already included in translation
+        if (isValidDosage && !translatedProductName.includes('/')) actionText += ` - ${rawDosage}`;
         parts.push(actionText);
       }
     }
@@ -1184,19 +1189,21 @@ function generateValidationFailureFallback(
         return fallbacks[lang] || fallbacks['en'];
       }
       
-      // Use valid secondary actions
+      // Use valid secondary actions - TRANSLATE to farmer-friendly language
       validSecondaryActions.slice(0, 3).forEach((action, idx) => {
-        const actionName = action.action || action.title || action.product_name;
-        parts.push(`${idx + 1}. **${actionName}**`);
+        const rawActionName = action.action || action.title || action.product_name;
+        const translatedName = getProductName(rawActionName, lang);
+        parts.push(`${idx + 1}. **${translatedName}**`);
       });
     } else {
-      // Add secondary actions (only if primary was valid)
+      // Add secondary actions (only if primary was valid) - TRANSLATE names
       const secondaryActions = actionsReturned.filter(a => a.type === 'secondary');
       let actionIdx = 2;
       for (const action of secondaryActions.slice(0, 2)) {
-        const actionName = action.action || action.title;
-        if (isValidProductName(actionName)) {
-          parts.push(`${actionIdx}. ${actionName}`);
+        const rawActionName = action.action || action.title;
+        if (isValidProductName(rawActionName)) {
+          const translatedName = getProductName(rawActionName, lang);
+          parts.push(`${actionIdx}. **${translatedName}**`);
           actionIdx++;
         }
       }
