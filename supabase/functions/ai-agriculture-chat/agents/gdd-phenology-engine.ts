@@ -599,18 +599,65 @@ export function calculatePhenologicalStage(
   // Find current stage based on GDD or DAS fallback
   let currentStage: GDDStageThreshold | undefined;
   
+  // CRITICAL: Ensure daysSinceSowing is a valid number
+  const safeDASSinceSowing = typeof daysSinceSowing === 'number' && !isNaN(daysSinceSowing) ? daysSinceSowing : 0;
+  console.log(`[GDD] Safe DAS value: ${safeDASSinceSowing} (original: ${daysSinceSowing})`);
+  
   if (gddSource === 'FALLBACK_DAS') {
-    // Use DAS-based lookup
-    for (const stage of phenologyStages) {
-      if (daysSinceSowing >= stage.typical_das_range.min && 
-          daysSinceSowing <= stage.typical_das_range.max) {
+    console.log(`[GDD] DAS Fallback for ${cropUpper}: ${safeDASSinceSowing} DAS`);
+    
+    // Use DAS-based lookup with explicit stage matching
+    for (let i = 0; i < phenologyStages.length; i++) {
+      const stage = phenologyStages[i];
+      console.log(`  Checking stage ${stage.stage_code}: ${stage.typical_das_range.min}-${stage.typical_das_range.max} DAS`);
+      
+      if (safeDASSinceSowing >= stage.typical_das_range.min && 
+          safeDASSinceSowing <= stage.typical_das_range.max) {
         currentStage = stage;
+        console.log(`  ✓ Matched: ${stage.stage_code}`);
         break;
       }
     }
-    // If beyond all ranges, use last stage
+    
+    // CRITICAL FIX: If no match found, find the NEAREST stage instead of defaulting to HARVEST
     if (!currentStage) {
-      currentStage = phenologyStages[phenologyStages.length - 1];
+      console.log(`[GDD] No exact DAS match for ${safeDASSinceSowing}, finding nearest stage...`);
+      
+      // Find stage where DAS is between current and next stage
+      for (let i = 0; i < phenologyStages.length - 1; i++) {
+        const current = phenologyStages[i];
+        const next = phenologyStages[i + 1];
+        if (safeDASSinceSowing > current.typical_das_range.max && 
+            safeDASSinceSowing < next.typical_das_range.min) {
+          // Use the earlier (more conservative) stage
+          currentStage = current;
+          warnings.push(`DAS ${safeDASSinceSowing} between stages, using ${current.stage_code}`);
+          console.log(`  ✓ Gap match: ${current.stage_code} (between ${current.stage_code} and ${next.stage_code})`);
+          break;
+        }
+      }
+      
+      // SAFETY NET: If DAS is very low but no stage matched, use GERMINATION
+      if (!currentStage && safeDASSinceSowing < 100) {
+        currentStage = phenologyStages[0]; // GERMINATION
+        warnings.push(`Low DAS (${safeDASSinceSowing}) with no stage match, defaulting to GERMINATION`);
+        console.log(`  ✓ Safety net: GERMINATION (DAS ${safeDASSinceSowing} < 100)`);
+      }
+      
+      // Only use last stage if DAS is genuinely high (> minimum harvest DAS for crop)
+      if (!currentStage) {
+        const lastStage = phenologyStages[phenologyStages.length - 1];
+        // Only default to HARVEST if DAS exceeds the minimum harvest threshold
+        if (safeDASSinceSowing >= lastStage.typical_das_range.min) {
+          currentStage = lastStage;
+          console.log(`  ✓ Genuine harvest: ${lastStage.stage_code} (DAS ${safeDASSinceSowing} >= ${lastStage.typical_das_range.min})`);
+        } else {
+          // CRITICAL: Still shouldn't reach harvest, use second-to-last stage
+          currentStage = phenologyStages[Math.max(0, phenologyStages.length - 2)];
+          warnings.push(`DAS ${safeDASSinceSowing} below harvest threshold, using ${currentStage.stage_code}`);
+          console.log(`  ✓ Pre-harvest fallback: ${currentStage.stage_code}`);
+        }
+      }
     }
   } else {
     // Use GDD-based lookup

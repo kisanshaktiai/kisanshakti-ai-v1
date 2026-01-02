@@ -488,6 +488,31 @@ serve(async (req) => {
           } : undefined
         } : undefined;
         
+        // SANITY CHECK: Prevent impossible stage calculations before LLM formatting
+        const daysAfterSowing = orchestratorResponse.dataAudit?.land?.days_since_sowing;
+        const currentGrowthStage = landContext?.growth_stage?.toUpperCase();
+        
+        if (daysAfterSowing !== undefined && currentGrowthStage) {
+          const impossibleHarvest = 
+            (currentGrowthStage === 'HARVEST' || currentGrowthStage === 'MATURITY') && 
+            daysAfterSowing < 100; // No crop harvests before 100 DAS
+          
+          if (impossibleHarvest) {
+            console.error(`🚨 SANITY CHECK FAILED: ${currentGrowthStage} stage for ${daysAfterSowing} DAS crop`);
+            console.error(`   Overriding to GERMINATION stage in landContext`);
+            
+            // Override to safe stage in landContext for LLM
+            if (landContext) {
+              landContext.growth_stage = 'GERMINATION';
+            }
+            
+            // Also fix in dataAudit if present
+            if (orchestratorResponse.dataAudit?.land) {
+              orchestratorResponse.dataAudit.land.growth_stage = 'GERMINATION';
+            }
+          }
+        }
+        
         const formatterInput: LLMFormatterInput = {
           farmer_message: userMessageContent,
           language: detectedLanguage as 'mr' | 'hi' | 'en',
@@ -1105,26 +1130,77 @@ function generateValidationFailureFallback(
     };
     parts.push(headers[lang]);
     
-    // Extract actions
+    // Extract actions - with STRICT validation to prevent placeholder content
+    const invalidNames = ['none', 'n/a', 'null', 'undefined', 'unknown', '', 'recommended treatment', 'additional measure'];
+    
+    const isValidProductName = (name: string | null | undefined): boolean => {
+      if (!name) return false;
+      const cleanName = name.toLowerCase().trim();
+      return cleanName.length > 2 && !invalidNames.includes(cleanName);
+    };
+    
     const primaryAction = actionsReturned.find(a => a.type === 'primary');
+    let hasValidPrimaryAction = false;
+    
     if (primaryAction) {
-      const productName = primaryAction.product_name || 
-                          primaryAction.application_details?.product_name || 
-                          primaryAction.title || 
-                          'Recommended treatment';
-      const dosage = primaryAction.dosage || primaryAction.application_details?.dosage || '';
+      const rawProductName = primaryAction.product_name || 
+                             primaryAction.application_details?.product_name || 
+                             primaryAction.title;
       
-      let actionText = `1. **${productName}**`;
-      if (dosage) actionText += ` @ ${dosage}`;
-      parts.push(actionText);
+      // CRITICAL: Validate product name is meaningful
+      if (isValidProductName(rawProductName)) {
+        hasValidPrimaryAction = true;
+        const rawDosage = primaryAction.dosage || primaryAction.application_details?.dosage;
+        const isValidDosage = rawDosage && 
+                              rawDosage !== 'N/A' && 
+                              rawDosage !== 'See product label' &&
+                              rawDosage.length > 0;
+        
+        let actionText = `1. **${rawProductName}**`;
+        if (isValidDosage) actionText += ` @ ${rawDosage}`;
+        parts.push(actionText);
+      }
     }
     
-    // Add secondary actions
-    const secondaryActions = actionsReturned.filter(a => a.type === 'secondary');
-    secondaryActions.slice(0, 2).forEach((action, idx) => {
-      const actionName = action.action || action.title || 'Additional measure';
-      parts.push(`${idx + 2}. ${actionName}`);
-    });
+    // If no valid primary action, check secondary actions
+    if (!hasValidPrimaryAction) {
+      console.log(`   ⚠️ Primary action invalid, checking secondary actions...`);
+      
+      // Check if any secondary action has valid data
+      const validSecondaryActions = actionsReturned.filter(a => {
+        if (a.type === 'primary') return false;
+        const name = a.action || a.title || a.product_name;
+        return isValidProductName(name);
+      });
+      
+      if (validSecondaryActions.length === 0) {
+        // NO valid actions at all - use technical issue fallback
+        console.log(`   ⚠️ No valid actions found in actionsReturned, using technical fallback`);
+        const fallbacks: Record<string, string> = {
+          mr: `🌾 नमस्कार शेतकरी मित्र!\n\nमाझ्याकडून शिफारस तयार करताना तांत्रिक समस्या आली. कृपया पुन्हा प्रयत्न करा किंवा तुमची समस्या अधिक तपशीलात सांगा.\n\n📞 तातडीसाठी: जवळच्या कृषी विज्ञान केंद्राशी संपर्क साधा.`,
+          hi: `🌾 नमस्कार किसान मित्र!\n\nसिफारिश तैयार करते समय तकनीकी समस्या आई। कृपया दोबारा प्रयास करें या अपनी समस्या और विस्तार से बताएं।\n\n📞 तत्काल सहायता के लिए: निकटतम KVK से संपर्क करें।`,
+          en: `🌾 Hello Farmer Friend!\n\nI encountered a technical issue. Please try again or describe your problem in more detail.\n\n📞 For urgent help: Contact your nearest KVK.`
+        };
+        return fallbacks[lang] || fallbacks['en'];
+      }
+      
+      // Use valid secondary actions
+      validSecondaryActions.slice(0, 3).forEach((action, idx) => {
+        const actionName = action.action || action.title || action.product_name;
+        parts.push(`${idx + 1}. **${actionName}**`);
+      });
+    } else {
+      // Add secondary actions (only if primary was valid)
+      const secondaryActions = actionsReturned.filter(a => a.type === 'secondary');
+      let actionIdx = 2;
+      for (const action of secondaryActions.slice(0, 2)) {
+        const actionName = action.action || action.title;
+        if (isValidProductName(actionName)) {
+          parts.push(`${actionIdx}. ${actionName}`);
+          actionIdx++;
+        }
+      }
+    }
     
     // Closing
     const closings: Record<string, string> = {
