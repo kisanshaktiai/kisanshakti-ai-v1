@@ -17,6 +17,11 @@
 import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts';
 import type { DataAudit } from './orchestrator.ts';
 import { getRuralLanguageRules, replaceFormalsWithRural } from '../rural-language-dictionary.ts';
+// CRITICAL FIX: Import translation functions for farmer-friendly product names
+import { 
+  getProductName, 
+  getActionTranslation 
+} from './communication-translation-dictionary.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -729,23 +734,29 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     parts.push(headers[lang]);
     
     // CRITICAL: Extract from current decision_output ONLY
-    const productName = primary.application_details?.product_name;
-    const dosage = primary.application_details?.concentration;
+    const rawProductName = primary.application_details?.product_name;
+    const dosage = primary.application_details?.concentration || primary.application_details?.dosage;
     const method = primary.application_details?.method || primary.application_details?.application_method;
     const timing = primary.timing?.best_time_of_day;
     
     // If product_name is null/empty, DO NOT use placeholder
-    if (productName && productName !== 'Recommended treatment') {
-      let recText = `1. **${productName}**`;
-      if (dosage && dosage !== 'As per label' && dosage !== 'N/A') {
+    if (rawProductName && rawProductName !== 'Recommended treatment') {
+      // CRITICAL FIX: Translate chemical name to farmer-friendly language
+      const translatedProductName = getProductName(rawProductName, lang);
+      
+      let recText = `1. **${translatedProductName}**`;
+      // Only add dosage if not already included in the translated name
+      if (dosage && dosage !== 'As per label' && dosage !== 'N/A' && !translatedProductName.includes('/')) {
         recText += ` @ ${dosage}`;
       }
       if (method) {
-        const methodLabel = lang === 'mr' ? 
-          (method === 'SOIL_APPLICATION' ? 'जमिनीत द्या' : method === 'FOLIAR_SPRAY' ? 'पर्णीय फवारणी' : method) :
+        // CRITICAL FIX: Translate method name
+        const methodLabel = getActionTranslation(method, lang) || 
+          (lang === 'mr' ? 
+            (method === 'SOIL_APPLICATION' ? 'जमिनीत द्या' : method === 'FOLIAR_SPRAY' ? 'पर्णीय फवारणी' : method) :
           lang === 'hi' ? 
-          (method === 'SOIL_APPLICATION' ? 'मिट्टी में डालें' : method === 'FOLIAR_SPRAY' ? 'पत्ते पर छिड़काव' : method) :
-          method;
+            (method === 'SOIL_APPLICATION' ? 'मिट्टी में डालें' : method === 'FOLIAR_SPRAY' ? 'पत्ते पर छिड़काव' : method) :
+          method);
         recText += `\n   📍 ${methodLabel}`;
       }
       if (timing) {
@@ -791,8 +802,11 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
   if (secondary && secondary.length > 0) {
     parts.push('');
     secondary.slice(0, 2).forEach((sec: any, idx: number) => {
-      if (sec.action && sec.action !== 'N/A' && sec.action !== 'None') {
-        parts.push(`${idx + 2}. ${sec.action}${sec.reason ? ` - ${sec.reason}` : ''}`);
+      const rawAction = sec.action || sec.product_name;
+      if (rawAction && rawAction !== 'N/A' && rawAction !== 'None') {
+        // CRITICAL FIX: Translate secondary action names to farmer-friendly language
+        const translatedAction = getProductName(rawAction, lang);
+        parts.push(`${idx + 2}. ${translatedAction}${sec.reason ? ` - ${sec.reason}` : ''}`);
       }
     });
   }
