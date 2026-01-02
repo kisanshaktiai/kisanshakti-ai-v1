@@ -339,12 +339,12 @@ export function EnhancedSpeakerButton({
         currentLanguage={language}
       />
 
-      {/* Sentence Highlighting Overlay */}
+      {/* Sentence Highlighting Overlay - Uses CSS variable for theming */}
       {isThisMessageActive && isSpeaking && currentSentence >= 0 && (
         <style>
           {`
             [data-message-id="${messageId}"] [data-sentence="${currentSentence}"] {
-              background-color: rgba(34, 197, 94, 0.15);
+              background-color: hsl(var(--success) / 0.15);
               border-radius: 0.25rem;
               padding: 0.125rem 0.25rem;
               margin: 0 -0.25rem;
