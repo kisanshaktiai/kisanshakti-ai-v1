@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.ai-query-understanding]
 verify_jwt = false
+
+[functions.validation-monitor]
+verify_jwt = false
