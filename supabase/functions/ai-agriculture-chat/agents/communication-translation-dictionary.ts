@@ -445,6 +445,35 @@ export const PRODUCT_TRANSLATIONS: Record<string, TrilingualText> = {
     mr: 'निंबोळी पेंड - 250 किलो/एकर',
     hi: 'नीम की खली - 250 किलो/एकड़',
     en: 'Neem cake - 250 kg/acre'
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ACTION TYPE TRANSLATIONS - Farmer-friendly action descriptions
+  // ═══════════════════════════════════════════════════════════════════════════
+  'INTEGRATED': {
+    mr: 'एकात्मिक कीड व्यवस्थापन (IPM) - सांस्कृतिक + जैविक उपाय',
+    hi: 'समेकित कीट प्रबंधन (IPM) - सांस्कृतिक + जैविक उपचार',
+    en: 'Integrated Pest Management (IPM) - Cultural + Biological measures'
+  },
+  'SPRAY_BOTANICAL': {
+    mr: 'वनस्पतीजन्य फवारणी - नैसर्गिक कीटकनाशक',
+    hi: 'वानस्पतिक छिड़काव - प्राकृतिक कीटनाशक',
+    en: 'Botanical spray - Natural pesticide'
+  },
+  'SPRAY_CHEMICAL': {
+    mr: 'रासायनिक फवारणी',
+    hi: 'रासायनिक छिड़काव',
+    en: 'Chemical spray'
+  },
+  'CULTURAL_PRACTICE': {
+    mr: 'सांस्कृतिक उपाय - हाताने काढणे, नाश करणे',
+    hi: 'सांस्कृतिक उपाय - हाथ से निकालना, नष्ट करना',
+    en: 'Cultural practice - Hand picking, destruction'
+  },
+  'BIOLOGICAL_CONTROL': {
+    mr: 'जैविक नियंत्रण - मित्र कीटक वापरणे',
+    hi: 'जैविक नियंत्रण - मित्र कीट का उपयोग',
+    en: 'Biological control - Using beneficial insects'
   }
 };
 
