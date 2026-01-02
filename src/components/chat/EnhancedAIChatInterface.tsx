@@ -288,6 +288,7 @@ export function EnhancedAIChatInterface() {
   }, []);
 
   // Load session with LocalDB caching for offline-first experience
+  // CRITICAL FIX: Prioritize Supabase when online, sync to LocalDB for offline
   const loadLandSession = useCallback(async (landId: string | null) => {
     const sessionKey = landId || 'general';
     
@@ -297,47 +298,36 @@ export function EnhancedAIChatInterface() {
     }
     
     try {
-      // 1. Try to load from LocalDB (instant, offline-first)
-      let cachedMessages: Message[] = [];
-      try {
-        const localMessages = await localDB.getChatMessages(landId);
-        if (localMessages && localMessages.length > 0) {
-          cachedMessages = localMessages
-            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-            .map(msg => {
-              const metadata = msg.metadata as Record<string, any> | null;
-              const imageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
-              const analysisResult = metadata?.analysis_result || undefined;
-              
-              return {
-                id: msg.id,
-                role: msg.role as 'user' | 'assistant',
-                content: msg.content,
-                timestamp: new Date(msg.created_at),
-                imageUrl,
-                imageUrls: msg.image_urls || undefined,
-                videoUrl: metadata?.video_url || undefined,
-                messageType: msg.message_type as Message['messageType'] || 'text',
-                analysisResult,
-                // ✅ FIX: Extract orchestrator metadata for proper rendering
-                orchestratorType: metadata?.orchestrator_type as Message['orchestratorType'],
-                dataAudit: metadata?.data_audit,
-                analytics: metadata?.response_time_ms ? {
-                  responseTime: metadata.response_time_ms,
-                  queryComplexity: metadata?.source
-                } : undefined,
-                feedback: msg.feedback_rating 
-                  ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
-                  : null
-              };
-            });
-          console.log(`⚡ [LocalDB] Loaded ${cachedMessages.length} cached messages for ${sessionKey}`);
-        }
-      } catch (localErr) {
-        console.warn('LocalDB read failed, continuing with Supabase:', localErr);
-      }
+      // Helper function to map message from DB to Message type
+      const mapMessageFromDB = (msg: any): Message => {
+        const metadata = msg.metadata as Record<string, any> | null;
+        const imageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
+        const analysisResult = metadata?.analysis_result || undefined;
+        
+        return {
+          id: msg.id,
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content || '', // CRITICAL: Ensure content is never undefined
+          timestamp: new Date(msg.created_at),
+          imageUrl,
+          imageUrls: msg.image_urls || undefined,
+          videoUrl: metadata?.video_url || undefined,
+          messageType: msg.message_type as Message['messageType'] || 'text',
+          analysisResult,
+          orchestratorType: metadata?.orchestrator_type as Message['orchestratorType'],
+          dataAudit: metadata?.data_audit,
+          traceId: metadata?.trace_id,
+          analytics: msg.response_time_ms ? {
+            responseTime: msg.response_time_ms,
+            queryComplexity: metadata?.source
+          } : undefined,
+          feedback: msg.feedback_rating 
+            ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
+            : null
+        };
+      };
       
-      // 2. Sync from Supabase in background (if online)
+      // 1. Try to load from Supabase FIRST (source of truth when online)
       let sessionQuery = supabase
         .from('ai_chat_sessions')
         .select('id')
@@ -355,36 +345,10 @@ export function EnhancedAIChatInterface() {
       
       const { data: existingSession, error: sessionError } = await sessionQuery.maybeSingle();
 
-      if (sessionError) {
-        console.warn(`Session query error for ${sessionKey}:`, sessionError);
-        if (cachedMessages.length > 0) {
-          return { sessionId: null, messages: cachedMessages };
-        }
-        return { sessionId: null, messages: [] };
-      }
-
-      if (existingSession) {
-        console.log(`✅ Loaded session from Supabase for ${sessionKey}:`, existingSession.id);
+      if (!sessionError && existingSession) {
+        console.log(`✅ [Supabase] Loaded session for ${sessionKey}:`, existingSession.id);
         
-        // Cache session to LocalDB
-        try {
-          await localDB.saveChatSession({
-            id: existingSession.id,
-            tenant_id: tenant?.id || '',
-            farmer_id: user?.id || '',
-            land_id: landId || null,
-            session_type: landId ? 'land_specific' : 'general',
-            session_title: landId ? `Land Chat ${landId}` : 'General Agriculture Chat',
-            is_active: true,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            metadata: {}
-          });
-        } catch (cacheSessionErr) {
-          console.warn('Failed to cache session:', cacheSessionErr);
-        }
-        
-        // Load messages for this session
+        // Load messages for this session from Supabase
         const { data: previousMessages, error: messagesError } = await supabase
           .from('ai_chat_messages')
           .select('*')
@@ -393,49 +357,117 @@ export function EnhancedAIChatInterface() {
           .order('created_at', { ascending: true })
           .limit(100);
 
-        if (messagesError) {
-          console.warn(`Messages query error for ${sessionKey}:`, messagesError);
-          if (cachedMessages.length > 0) {
-            return { sessionId: existingSession.id, messages: cachedMessages };
-          }
-        }
-
-        if (previousMessages && previousMessages.length > 0) {
-          const loadedMessages: Message[] = previousMessages.map(msg => {
-            const metadata = msg.metadata as Record<string, any> | null;
-            const imageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
-            const analysisResult = metadata?.analysis_result || undefined;
+        if (!messagesError && previousMessages && previousMessages.length > 0) {
+          console.log(`✅ [Supabase] Loaded ${previousMessages.length} messages for ${sessionKey}`);
+          
+          const loadedMessages: Message[] = previousMessages.map(mapMessageFromDB);
+          
+          // CRITICAL FIX: Sync Supabase messages TO LocalDB for offline access
+          try {
+            // Cache session first
+            await localDB.saveChatSession({
+              id: existingSession.id,
+              tenant_id: tenant.id,
+              farmer_id: user.id,
+              land_id: landId || null,
+              session_type: landId ? 'land_specific' : 'general',
+              session_title: landId ? `Land Chat ${landId}` : 'General Agriculture Chat',
+              is_active: true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+              metadata: {}
+            });
             
-            return {
-              id: msg.id,
-              role: msg.role as 'user' | 'assistant',
-              content: msg.content,
-              timestamp: new Date(msg.created_at),
-              imageUrl,
-              imageUrls: msg.image_urls || undefined,
-              videoUrl: metadata?.video_url || undefined,
-              messageType: msg.message_type as Message['messageType'] || 'text',
-              analysisResult,
-              // ✅ FIX: Extract orchestrator metadata for proper rendering after re-login
-              orchestratorType: metadata?.orchestrator_type as Message['orchestratorType'],
-              dataAudit: metadata?.data_audit,
-              analytics: msg.response_time_ms ? {
-                responseTime: msg.response_time_ms,
-                queryComplexity: metadata?.source
-              } : undefined,
-              feedback: msg.feedback_rating 
-                ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
-                : null
-            };
-          });
+            // Cache all messages for offline
+            for (const msg of previousMessages) {
+              await localDB.saveChatMessage({
+                id: msg.id,
+                session_id: msg.session_id,
+                tenant_id: msg.tenant_id,
+                farmer_id: msg.farmer_id,
+                role: msg.role,
+                content: msg.content,
+                land_context: msg.land_context,
+                crop_context: msg.crop_context,
+                weather_context: msg.weather_context,
+                location_context: msg.location_context,
+                agro_climatic_zone: msg.agro_climatic_zone,
+                soil_zone: msg.soil_zone,
+                rainfall_zone: msg.rainfall_zone,
+                crop_season: msg.crop_season,
+                ai_model: msg.ai_model,
+                response_time_ms: msg.response_time_ms,
+                tokens_used: msg.tokens_used,
+                feedback_rating: msg.feedback_rating,
+                feedback_text: msg.feedback_text,
+                feedback_timestamp: msg.feedback_timestamp,
+                attachments: msg.attachments,
+                image_urls: msg.image_urls,
+                status: msg.status,
+                language: msg.language,
+                message_type: msg.message_type,
+                error_details: msg.error_details,
+                is_edited: msg.is_edited,
+                edited_at: msg.edited_at,
+                parent_message_id: msg.parent_message_id,
+                user_agent: msg.user_agent,
+                ip_address: msg.ip_address,
+                partition_key: msg.partition_key,
+                word_count: msg.word_count,
+                inferred_intent: msg.inferred_intent,
+                intent_confidence: msg.intent_confidence,
+                is_training_candidate: msg.is_training_candidate,
+                human_verified: msg.human_verified,
+                correction_notes: msg.correction_notes,
+                conversation_quality_score: msg.conversation_quality_score,
+                domain_tags: msg.domain_tags,
+                complexity_level: msg.complexity_level,
+                conversation_turn_number: msg.conversation_turn_number,
+                off_topic: msg.off_topic,
+                training_processed: msg.training_processed,
+                preprocessed_content: msg.preprocessed_content,
+                excluded_reason: msg.excluded_reason,
+                agricultural_accuracy: msg.agricultural_accuracy,
+                decision_brain_source: msg.decision_brain_source,
+                actions_returned: msg.actions_returned,
+                actions_filtered_out: msg.actions_filtered_out,
+                metadata: msg.metadata,
+                created_at: msg.created_at,
+                updated_at: msg.updated_at
+              });
+            }
+            console.log(`💾 [LocalDB] Cached ${previousMessages.length} messages for offline`);
+          } catch (cacheErr) {
+            console.warn('Failed to cache messages to LocalDB:', cacheErr);
+          }
           
           return { sessionId: existingSession.id, messages: loadedMessages };
         }
         
-        return { sessionId: existingSession.id, messages: cachedMessages };
+        // Session exists but no messages
+        return { sessionId: existingSession.id, messages: [] };
+      }
+
+      // 2. FALLBACK: Load from LocalDB if Supabase failed (offline mode)
+      if (sessionError) {
+        console.warn(`[Supabase] Session query error for ${sessionKey}:`, sessionError);
       }
       
-      return { sessionId: null, messages: cachedMessages };
+      console.log(`📴 [LocalDB] Trying offline cache for ${sessionKey}`);
+      try {
+        const localMessages = await localDB.getChatMessages(landId);
+        if (localMessages && localMessages.length > 0) {
+          const cachedMessages = localMessages
+            .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+            .map(mapMessageFromDB);
+          console.log(`⚡ [LocalDB] Loaded ${cachedMessages.length} cached messages for ${sessionKey}`);
+          return { sessionId: null, messages: cachedMessages };
+        }
+      } catch (localErr) {
+        console.warn('LocalDB read failed:', localErr);
+      }
+      
+      return { sessionId: null, messages: [] };
     } catch (err) {
       console.error(`Error loading session for ${sessionKey}:`, err);
       return { sessionId: null, messages: [] };
