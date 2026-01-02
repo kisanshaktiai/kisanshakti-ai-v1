@@ -707,6 +707,46 @@ const PRODUCT_DATABASE: ProductDetails[] = [
       en: 'Cotesia flavipes (Larval parasitoid) - 5,000 cocoons/acre'
     }
   },
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TRICHOGRAMMA CHILONIS - Egg Parasitoid for Shoot Borer (CRITICAL IPM)
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    product_name: 'Trichogramma chilonis',
+    formulation: 'Egg parasitoid cards (Tricho-cards)',
+    brand_examples: ['Bio-Cards', 'Trichocards', 'NBAII Cards', 'ICAR Tricho-cards'],
+    active_ingredient: 'Trichogramma chilonis (egg parasitic wasp)',
+    mode_of_action: 'Egg parasitoid - female wasps lay eggs inside pest eggs, larvae consume host egg from inside, preventing caterpillar emergence',
+    ipm_level: 3,
+    target_pests: ['SHOOT_BORER', 'SUGARCANE_SHOOT_BORER', 'STEM_BORER', 'TOP_BORER', 'INTERNODE_BORER', 'FRUIT_BORER', 'BOLLWORM', 'HELICOVERPA', 'PINK_BOLLWORM'],
+    target_crops: ['SUGARCANE', 'RICE', 'COTTON', 'MAIZE', 'TOMATO', 'BRINJAL', 'VEGETABLES'],
+    dosage: '50,000 eggs/acre per release (1-2 cards)',
+    dosage_per_acre: '50,000 eggs/acre (release at 30, 37, 44 DAP for sugarcane)',
+    water_volume_per_acre: 'N/A - biological release, no water needed',
+    application_method: 'FOLIAR_SPRAY',
+    timing: 'Release at 30, 37, 44 days after planting for sugarcane. Early morning (6-8 AM) or evening (5-7 PM) when temperature is cool',
+    repeat_interval_days: 7,
+    max_applications: 5,
+    phi_days: 0,
+    efficacy_percent: 75,
+    nozzle_type: 'N/A - manual card placement',
+    target_stage: 'Pest egg stage - most effective when pest eggs are present',
+    weather_restrictions: 'Avoid release during rain, strong wind (>15 km/h), or extreme heat. Do not spray any chemicals 7 days before/after release',
+    safety_precautions: [
+      'Handle cards gently - do not crush',
+      'Release in shaded area of field',
+      'Staple cards at 45° angle to leaf underside',
+      'No chemical pesticides for 7 days before and after release',
+      'Store cards in cool, shaded place before release',
+      'Release within 24 hours of receiving cards'
+    ],
+    organic_approved: true,
+    price_range_per_unit: '₹150-200 per card (25,000 eggs)',
+    names: {
+      mr: 'ट्रायकोग्रामा चिलोनिस (जैविक अंडी परजीवी) - 50,000 अंडी/एकर',
+      hi: 'ट्राइकोग्रामा चिलोनिस (जैविक अंडा परजीवी) - 50,000 अंडे/एकड़',
+      en: 'Trichogramma chilonis (Egg Parasitoid) - 50,000 eggs/acre - IPM Level 3'
+    }
+  },
   {
     product_name: 'Beauveria bassiana 1.15% WP',
     formulation: '1.15% WP (1 × 10⁸ cfu/g)',

@@ -428,6 +428,30 @@ export const ACTION_MAPPINGS: ActionMapping[] = [
   },
 
   // ─────────────────────────────────────────────────────────────────────────
+  // SUGARCANE SHOOT BORER & IPM LADDER → ACTIONS
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    cause: Cause.SHOOT_BORER_RISK,
+    action: Action.RELEASE_BIOAGENT,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.bioagent.shoot_borer',
+    rule_id: 'A_PEST_SUGAR_001',
+    scientific_source: 'ICAR-SBI Coimbatore',
+    organic_alternative: Action.INSTALL_PHEROMONE_TRAPS
+  },
+  {
+    cause: Cause.FRUIT_BORER_RISK,
+    action: Action.APPLY_BT_SPRAY,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.bt_spray.fruit_borer',
+    rule_id: 'A_PEST_VEG_002',
+    scientific_source: 'ICAR-IIHR',
+    organic_alternative: Action.RELEASE_BIOAGENT
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
   // WEED → ACTIONS
   // ─────────────────────────────────────────────────────────────────────────
   {
@@ -741,7 +765,12 @@ export function getActionDescription(action: Action): {
     [Action.APPLY_LIME_ACIDIC_SOIL]: { label: 'Apply Lime for Acidic Soil', labelKey: 'action.apply_lime_acidic', category: 'soil' },
     [Action.APPLY_SULFUR_ALKALINE]: { label: 'Apply Sulfur for Alkaline Soil', labelKey: 'action.apply_sulfur', category: 'soil' },
     [Action.GREEN_MANURING]: { label: 'Green Manuring', labelKey: 'action.green_manure', category: 'soil' },
-    [Action.ADD_VERMICOMPOST]: { label: 'Add Vermicompost', labelKey: 'action.add_vermicompost', category: 'soil' }
+    [Action.ADD_VERMICOMPOST]: { label: 'Add Vermicompost', labelKey: 'action.add_vermicompost', category: 'soil' },
+    // Cultural Control Actions
+    [Action.CULTURAL_CONTROL]: { label: 'Cultural Control', labelKey: 'action.cultural_control', category: 'ipm' },
+    [Action.REMOVE_AFFECTED_PLANTS]: { label: 'Remove Affected Plants', labelKey: 'action.remove_affected', category: 'ipm' },
+    [Action.CROP_ROTATION]: { label: 'Crop Rotation', labelKey: 'action.crop_rotation', category: 'ipm' },
+    [Action.INTERCROPPING]: { label: 'Intercropping', labelKey: 'action.intercropping', category: 'ipm' }
   };
 
   return descriptions[action] || { label: action, labelKey: `action.${action.toLowerCase()}`, category: 'unknown' };
