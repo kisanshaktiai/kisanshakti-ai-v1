@@ -452,6 +452,246 @@ export const ACTION_MAPPINGS: ActionMapping[] = [
   },
 
   // ─────────────────────────────────────────────────────────────────────────
+  // IPM LADDER ACTIONS - SUGARCANE SHOOT BORER (L1-L4)
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    cause: Cause.IPM_SUGARCANE_SHOOT_BORER_L1,
+    action: Action.CULTURAL_CONTROL,
+    base_priority: 5,
+    urgency: ActionUrgency.WITHIN_WEEK,
+    justification_key: 'action.cultural.shoot_borer_l1',
+    rule_id: 'A_IPM_SUGAR_SB_L1',
+    scientific_source: 'ICAR-SBI Coimbatore'
+  },
+  {
+    cause: Cause.IPM_SUGARCANE_SHOOT_BORER_L2,
+    action: Action.INSTALL_PHEROMONE_TRAPS,
+    base_priority: 6,
+    urgency: ActionUrgency.WITHIN_3DAYS,
+    justification_key: 'action.traps.shoot_borer_l2',
+    rule_id: 'A_IPM_SUGAR_SB_L2',
+    scientific_source: 'SBI Monitoring Protocol'
+  },
+  {
+    cause: Cause.IPM_SUGARCANE_SHOOT_BORER_L3,
+    action: Action.RELEASE_BIOAGENT,
+    base_priority: 7,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.bioagent.shoot_borer_l3',
+    rule_id: 'A_IPM_SUGAR_SB_L3',
+    scientific_source: 'ICAR-NBAII Sugarcane Biocontrol'
+  },
+  {
+    cause: Cause.IPM_SUGARCANE_SHOOT_BORER_L4,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.insecticide.shoot_borer_l4',
+    rule_id: 'A_IPM_SUGAR_SB_L4',
+    scientific_source: 'IRAC + SBI'
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // IPM LADDER ACTIONS - COTTON BOLLWORM (L1-L4)
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    cause: Cause.IPM_COTTON_BOLLWORM_L1,
+    action: Action.CULTURAL_CONTROL,
+    base_priority: 5,
+    urgency: ActionUrgency.WITHIN_WEEK,
+    justification_key: 'action.cultural.bollworm_l1',
+    rule_id: 'A_IPM_COTTON_BW_L1',
+    scientific_source: 'CICR Nagpur'
+  },
+  {
+    cause: Cause.IPM_COTTON_BOLLWORM_L2,
+    action: Action.INSTALL_PHEROMONE_TRAPS,
+    base_priority: 6,
+    urgency: ActionUrgency.WITHIN_3DAYS,
+    justification_key: 'action.traps.bollworm_l2',
+    rule_id: 'A_IPM_COTTON_BW_L2',
+    scientific_source: 'CICR IPM Protocol'
+  },
+  {
+    cause: Cause.IPM_COTTON_BOLLWORM_L3,
+    action: Action.APPLY_BT_SPRAY,
+    base_priority: 7,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.bt.bollworm_l3',
+    rule_id: 'A_IPM_COTTON_BW_L3',
+    scientific_source: 'ICAR-NBAII'
+  },
+  {
+    cause: Cause.IPM_COTTON_BOLLWORM_L4,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.insecticide.bollworm_l4',
+    rule_id: 'A_IPM_COTTON_BW_L4',
+    scientific_source: 'IRAC + CICR'
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // IPM LADDER ACTIONS - RICE STEM BORER (L1-L4)
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    cause: Cause.IPM_RICE_STEM_BORER_L1,
+    action: Action.CULTURAL_CONTROL,
+    base_priority: 5,
+    urgency: ActionUrgency.WITHIN_WEEK,
+    justification_key: 'action.cultural.stem_borer_l1',
+    rule_id: 'A_IPM_RICE_SB_L1',
+    scientific_source: 'ICAR-NRRI Cuttack'
+  },
+  {
+    cause: Cause.IPM_RICE_STEM_BORER_L2,
+    action: Action.INSTALL_PHEROMONE_TRAPS,
+    base_priority: 6,
+    urgency: ActionUrgency.WITHIN_3DAYS,
+    justification_key: 'action.traps.stem_borer_l2',
+    rule_id: 'A_IPM_RICE_SB_L2',
+    scientific_source: 'NRRI Monitoring'
+  },
+  {
+    cause: Cause.IPM_RICE_STEM_BORER_L3,
+    action: Action.RELEASE_BIOAGENT,
+    base_priority: 7,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.bioagent.stem_borer_l3',
+    rule_id: 'A_IPM_RICE_SB_L3',
+    scientific_source: 'ICAR-NBAII'
+  },
+  {
+    cause: Cause.IPM_RICE_STEM_BORER_L4,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.insecticide.stem_borer_l4',
+    rule_id: 'A_IPM_RICE_SB_L4',
+    scientific_source: 'IRAC + NRRI'
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // IPM LADDER ACTIONS - TOMATO FRUIT BORER (L1-L4)
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    cause: Cause.IPM_TOMATO_FRUIT_BORER_L1,
+    action: Action.CULTURAL_CONTROL,
+    base_priority: 5,
+    urgency: ActionUrgency.WITHIN_WEEK,
+    justification_key: 'action.cultural.fruit_borer_l1',
+    rule_id: 'A_IPM_TOMATO_FB_L1',
+    scientific_source: 'ICAR-IIHR Bangalore'
+  },
+  {
+    cause: Cause.IPM_TOMATO_FRUIT_BORER_L2,
+    action: Action.INSTALL_PHEROMONE_TRAPS,
+    base_priority: 6,
+    urgency: ActionUrgency.WITHIN_3DAYS,
+    justification_key: 'action.traps.fruit_borer_l2',
+    rule_id: 'A_IPM_TOMATO_FB_L2',
+    scientific_source: 'IIHR IPM'
+  },
+  {
+    cause: Cause.IPM_TOMATO_FRUIT_BORER_L3,
+    action: Action.APPLY_BT_SPRAY,
+    base_priority: 7,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.bt.fruit_borer_l3',
+    rule_id: 'A_IPM_TOMATO_FB_L3',
+    scientific_source: 'IIHR Biocontrol'
+  },
+  {
+    cause: Cause.IPM_TOMATO_FRUIT_BORER_L4,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.insecticide.fruit_borer_l4',
+    rule_id: 'A_IPM_TOMATO_FB_L4',
+    scientific_source: 'ICAR-IIHR'
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // IPM LADDER ACTIONS - MUSTARD APHID (L1-L4)
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    cause: Cause.IPM_MUSTARD_APHID_L1,
+    action: Action.CULTURAL_CONTROL,
+    base_priority: 5,
+    urgency: ActionUrgency.WITHIN_WEEK,
+    justification_key: 'action.cultural.aphid_l1',
+    rule_id: 'A_IPM_MUSTARD_APH_L1',
+    scientific_source: 'DRMR Bharatpur'
+  },
+  {
+    cause: Cause.IPM_MUSTARD_APHID_L2,
+    action: Action.APPLY_NEEM_OIL,
+    base_priority: 6,
+    urgency: ActionUrgency.WITHIN_3DAYS,
+    justification_key: 'action.neem.aphid_l2',
+    rule_id: 'A_IPM_MUSTARD_APH_L2',
+    scientific_source: 'DRMR IPM'
+  },
+  {
+    cause: Cause.IPM_MUSTARD_APHID_L3,
+    action: Action.RELEASE_BIOAGENT,
+    base_priority: 7,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.bioagent.aphid_l3',
+    rule_id: 'A_IPM_MUSTARD_APH_L3',
+    scientific_source: 'ICAR-NBAII'
+  },
+  {
+    cause: Cause.IPM_MUSTARD_APHID_L4,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.insecticide.aphid_l4',
+    rule_id: 'A_IPM_MUSTARD_APH_L4',
+    scientific_source: 'DRMR'
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // IPM LADDER ACTIONS - ONION THRIPS (L1-L4)
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    cause: Cause.IPM_ONION_THRIPS_L1,
+    action: Action.CULTURAL_CONTROL,
+    base_priority: 5,
+    urgency: ActionUrgency.WITHIN_WEEK,
+    justification_key: 'action.cultural.thrips_l1',
+    rule_id: 'A_IPM_ONION_THR_L1',
+    scientific_source: 'ICAR-DOGR Pune'
+  },
+  {
+    cause: Cause.IPM_ONION_THRIPS_L2,
+    action: Action.APPLY_NEEM_OIL,
+    base_priority: 6,
+    urgency: ActionUrgency.WITHIN_3DAYS,
+    justification_key: 'action.neem.thrips_l2',
+    rule_id: 'A_IPM_ONION_THR_L2',
+    scientific_source: 'DOGR IPM'
+  },
+  {
+    cause: Cause.IPM_ONION_THRIPS_L3,
+    action: Action.APPLY_BT_SPRAY,
+    base_priority: 7,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.bt.thrips_l3',
+    rule_id: 'A_IPM_ONION_THR_L3',
+    scientific_source: 'DOGR Biocontrol'
+  },
+  {
+    cause: Cause.IPM_ONION_THRIPS_L4,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.insecticide.thrips_l4',
+    rule_id: 'A_IPM_ONION_THR_L4',
+    scientific_source: 'ICAR-DOGR'
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
   // WEED → ACTIONS
   // ─────────────────────────────────────────────────────────────────────────
   {
