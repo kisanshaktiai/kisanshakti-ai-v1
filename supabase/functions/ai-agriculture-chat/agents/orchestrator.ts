@@ -460,11 +460,16 @@ export class AIAgentOrchestrator {
           // Fetch weather history for GDD calculation (last 14 days)
           const weatherHistory = await this.fetchWeatherHistoryForGDD(landContext.center_lat, landContext.center_lon);
           
+          // CRITICAL FIX: Pass daysSinceSowing as NUMBER (not Date object)
+          // calculatePhenologicalStage expects: (cropCode, daysSinceSowing, weatherHistory, avgRegionalTemp, latitude)
+          const daysAfterSowing = landContext.days_since_sowing || 0;
+          
           phenologyResult = calculatePhenologicalStage(
             landContext.current_crop.toUpperCase(),
-            new Date(landContext.sowing_date),
+            daysAfterSowing,  // NUMBER, not Date
             weatherHistory,
-            landContext.days_since_sowing || 0
+            undefined,  // avgRegionalTemp - use undefined to trigger DAS fallback if no weather
+            landContext.center_lat
           );
           agentsUsed.push('GDD_PHENOLOGY');
           
