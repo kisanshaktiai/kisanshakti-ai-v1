@@ -228,7 +228,7 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // FETCH SESSION STATE - Check for previous recommendations before processing
+    // FETCH SESSION STATE + CONVERSATION HISTORY - CRITICAL for context continuity
     // ═══════════════════════════════════════════════════════════════════════════
     let sessionState: {
       decision_state?: string;
@@ -240,7 +240,11 @@ serve(async (req) => {
       recommendations_count?: number;
     } | null = null;
     
+    // CRITICAL FIX: Fetch previous messages from DB for conversation continuity
+    let conversationHistory: Array<{ role: string; content: string }> = [];
+    
     if (currentSessionId) {
+      // Fetch session metadata
       const { data: existingSession } = await supabase
         .from('ai_chat_sessions')
         .select('metadata')
@@ -256,6 +260,23 @@ serve(async (req) => {
           pending_action: sessionState?.pending_user_action,
           turn: sessionState?.turn_count
         });
+      }
+      
+      // CRITICAL FIX: Fetch last 6 messages from DB for context
+      const { data: previousMessages, error: historyError } = await supabase
+        .from('ai_chat_messages')
+        .select('role, content')
+        .eq('session_id', currentSessionId)
+        .order('created_at', { ascending: false })
+        .limit(6);
+      
+      if (!historyError && previousMessages && previousMessages.length > 0) {
+        // Reverse to get chronological order and format
+        conversationHistory = previousMessages
+          .reverse()
+          .map(m => ({ role: m.role, content: m.content }));
+        
+        console.log(`📜 [Session] Loaded ${conversationHistory.length} previous messages for context`);
       }
     }
 
@@ -328,6 +349,8 @@ serve(async (req) => {
         language: detectedLanguage as 'mr' | 'hi' | 'en',
         landId: landId,
         traceId: traceId,
+        // CRITICAL FIX: Pass conversation history for context continuity
+        conversationHistory: conversationHistory,
         // Pass session state for follow-up awareness
         sessionState: sessionState ? {
           hasPreviousRecommendations: sessionState.pending_user_action || false,
@@ -2297,7 +2320,7 @@ function transformOrchestratorResponseWithContent(
         ai_model: aiModelUsed || 'template',
         actions_count: actionsReturned?.length || 0
       },
-      quickReplies: generateQuickRepliesFromCommunication(comm, language),
+      quickReplies: generateQuickRepliesFromCommunication(comm, language, preGeneratedContent, actionsReturned, response.dataAudit),
       source: 'orchestrator_v1'
     };
   }
@@ -2512,19 +2535,148 @@ function getLocalizedMessage(comm: any, language: string): string {
   return comm.main_message || '';
 }
 
-function generateQuickRepliesFromCommunication(comm: any, language: string): string[] {
-  if (!comm) return getDefaultQuickReplies(language);
+/**
+ * CRITICAL FIX: Generate context-aware follow-up questions based on:
+ * 1. The actual AI response content
+ * 2. The actions returned (pest/disease/fertilizer)
+ * 3. The land and crop context
+ * 4. User's preferred language
+ */
+function generateQuickRepliesFromCommunication(
+  comm: any, 
+  language: string, 
+  responseContent?: string,
+  actionsReturned?: any[],
+  dataAudit?: any
+): string[] {
+  const lang = language as 'mr' | 'hi' | 'en';
   
-  // If communication has follow-up options
-  if (comm.follow_up_options && Array.isArray(comm.follow_up_options)) {
+  // If communication has explicit follow-up options, use them
+  if (comm?.follow_up_options && Array.isArray(comm.follow_up_options) && comm.follow_up_options.length > 0) {
     return comm.follow_up_options.slice(0, 4);
   }
   
-  return getDefaultQuickReplies(language);
+  // CONTEXT-AWARE GENERATION based on response content
+  const questions: string[] = [];
+  const content = responseContent || '';
+  const lowerContent = content.toLowerCase();
+  
+  // Get crop name for personalized questions
+  const cropName = dataAudit?.land?.current_crop || dataAudit?.crop_schedule?.crop_name || '';
+  
+  // Detect topics from response content
+  const hasPest = /pest|कीट|कीड|किडा|borer|aphid|mites|whitefly|bollworm|stem.*borer|shoot.*borer|early.*shoot|trichogramma/i.test(lowerContent);
+  const hasDisease = /disease|रोग|blight|rust|mildew|fungus|bacterial|virus|yellowing|wilting|rot|dead.*heart/i.test(lowerContent);
+  const hasFertilizer = /fertilizer|खाद|खत|urea|dap|npk|nitrogen|potash|phosphorus|nutrient/i.test(lowerContent);
+  const hasIrrigation = /water|पानी|पाणी|irrigation|सिंचाई|drip|sprinkler/i.test(lowerContent);
+  const hasSpray = /spray|फवारणी|छिड़काव|treatment|उपचार/i.test(lowerContent);
+  const hasDiagnosis = /diagnos|तपास|निदान|symptom|लक्षण|check|confirm|possible.*cause|संभाव्य/i.test(lowerContent);
+  
+  // Check actions returned for more context
+  const primaryActionType = actionsReturned?.[0]?.action_type || actionsReturned?.[0]?.action || '';
+  const hasChemicalAction = /SPRAY|PESTICIDE|FUNGICIDE|INSECTICIDE/i.test(primaryActionType);
+  const hasBiologicalAction = /BIOLOGICAL|TRICHOGRAMMA|IPM|INTEGRATED/i.test(primaryActionType);
+  
+  // Generate language-specific context-aware questions
+  if (lang === 'mr') {
+    // Marathi questions
+    if (hasPest || hasDisease || hasSpray) {
+      questions.push(`💊 ${cropName ? cropName + 'साठी' : ''} औषध किती दिवसांनी पुन्हा फवारावे?`);
+      questions.push('💰 या उपचाराने किती नुकसान टळेल?');
+      if (hasBiologicalAction) {
+        questions.push('🦠 ट्रायकोग्रामा कुठे मिळेल?');
+      }
+    }
+    if (hasDiagnosis) {
+      questions.push('🔍 मी कसे खात्री करू की हेच कारण आहे?');
+      questions.push('📸 फोटो पाठवू का तपासणीसाठी?');
+    }
+    if (hasFertilizer) {
+      questions.push(`📊 ${cropName || 'पीक'}साठी किती खत द्यावे?`);
+      questions.push('💵 या खताने उत्पादन किती वाढेल?');
+    }
+    if (hasIrrigation) {
+      questions.push('💧 पुढचे पाणी कधी द्यावे?');
+      questions.push('🌧️ पाऊस आला तर पाणी द्यावे का?');
+    }
+    // Add general follow-ups if less than 3
+    if (questions.length < 3) {
+      questions.push('📅 उद्या सर्वात आधी काय करू?');
+    }
+    if (questions.length < 3) {
+      questions.push('📈 माझ्या पिकाची वाढ कशी आहे?');
+    }
+  } else if (lang === 'hi') {
+    // Hindi questions
+    if (hasPest || hasDisease || hasSpray) {
+      questions.push(`💊 ${cropName ? cropName + ' पर' : ''} दोबारा स्प्रे कब करें?`);
+      questions.push('💰 इस इलाज से कितना नुकसान बचेगा?');
+      if (hasBiologicalAction) {
+        questions.push('🦠 ट्राइकोग्रामा कहां मिलेगा?');
+      }
+    }
+    if (hasDiagnosis) {
+      questions.push('🔍 मैं कैसे पक्का करूं कि यही कारण है?');
+      questions.push('📸 जांच के लिए फोटो भेजूं?');
+    }
+    if (hasFertilizer) {
+      questions.push(`📊 ${cropName || 'फसल'} को कितना खाद दूं?`);
+      questions.push('💵 इस खाद से उपज कितनी बढ़ेगी?');
+    }
+    if (hasIrrigation) {
+      questions.push('💧 अगला पानी कब दूं?');
+      questions.push('🌧️ बारिश आए तो भी पानी दूं?');
+    }
+    if (questions.length < 3) {
+      questions.push('📅 कल सबसे पहले क्या करूं?');
+    }
+    if (questions.length < 3) {
+      questions.push('📈 मेरी फसल की बढ़त कैसी है?');
+    }
+  } else {
+    // English questions
+    if (hasPest || hasDisease || hasSpray) {
+      questions.push(`💊 When should I spray ${cropName || 'my crop'} again?`);
+      questions.push('💰 How much crop loss will this treatment prevent?');
+      if (hasBiologicalAction) {
+        questions.push('🦠 Where can I get Trichogramma cards?');
+      }
+    }
+    if (hasDiagnosis) {
+      questions.push('🔍 How can I confirm which cause is affecting my crop?');
+      questions.push('📸 Should I send a photo for diagnosis?');
+    }
+    if (hasFertilizer) {
+      questions.push(`📊 How much fertilizer should I use for ${cropName || 'my crop'}?`);
+      questions.push('💵 How much will yield increase with this fertilizer?');
+    }
+    if (hasIrrigation) {
+      questions.push('💧 When should I water next?');
+      questions.push('🌧️ Should I water even if it rains?');
+    }
+    if (questions.length < 3) {
+      questions.push('📅 What should I do first thing tomorrow?');
+    }
+    if (questions.length < 3) {
+      questions.push('📈 How is my crop growth progressing?');
+    }
+  }
+  
+  // Return up to 4 unique questions
+  const uniqueQuestions = [...new Set(questions)];
+  return uniqueQuestions.slice(0, 4);
 }
 
 function getDefaultQuickReplies(language: string): string[] {
-  if (language === 'hi' || language === 'mr') {
+  if (language === 'mr') {
+    return [
+      '🌅 आज काय करावे?',
+      '💧 पाणी द्यावे का?',
+      '🌾 माझे पीक कसे आहे?',
+      '📅 पुढील काम कधी?'
+    ];
+  }
+  if (language === 'hi') {
     return [
       '🌅 आज क्या करूं?',
       '💧 पानी देना है?',
