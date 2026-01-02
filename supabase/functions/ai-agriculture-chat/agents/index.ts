@@ -145,3 +145,63 @@ export {
   shouldAvoidAction,
   CROP_STAGE_ADVISOR_VERSION
 } from './crop-stage-advisor.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// P0 CRITICAL MODULES - World-Class Agricultural Science (Audit Implementation)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// GDD Phenology Engine (GAP 1.1, 1.2, 1.3: Replaces fixed DAS with thermal units)
+export * from './gdd-phenology-engine.ts';
+export {
+  calculatePhenologicalStage,
+  calculateDailyGDD,
+  calculateAccumulatedGDD,
+  estimateGDDFromAverage,
+  calculateDayLength,
+  getPhotoperiodInfo,
+  CROP_GDD_CONFIG,
+  WHEAT_PHENOLOGY,
+  RICE_PHENOLOGY,
+  COTTON_PHENOLOGY,
+  SUGARCANE_PHENOLOGY,
+  GDD_PHENOLOGY_VERSION
+} from './gdd-phenology-engine.ts';
+
+// NLP Agriculture Validator (GAP 2.1, 2.2, 2.3: Marathi/Hindi dialect + fuzzy matching)
+export * from './nlp-agriculture-validator.ts';
+export {
+  validateAgricultureNLP,
+  fuzzyMatchAgTerm,
+  detectGibberish,
+  devanagariSoundex,
+  isPhoneticallySimilar,
+  MARATHI_AG_VOCABULARY,
+  HINDI_AG_VOCABULARY,
+  DIALECT_NORMALIZATIONS,
+  FORBIDDEN_COMBINATIONS,
+  NLP_VALIDATOR_VERSION
+} from './nlp-agriculture-validator.ts';
+
+// PHI Enforcement Guardian (GAP 6.1: Pre-Harvest Interval safety blocking)
+export * from './phi-enforcement-guardian.ts';
+export {
+  checkPHISafety,
+  enforcePHI,
+  getChemicalPHI,
+  getSafeAlternativesForPest,
+  PHI_DATABASE,
+  NEAR_HARVEST_ALTERNATIVES,
+  PHI_GUARDIAN_VERSION
+} from './phi-enforcement-guardian.ts';
+
+// Pollinator Protection Rules (GAP 6.2: Bee-safe spray restrictions)
+export * from './pollinator-protection-rules.ts';
+export {
+  checkPollinatorSafety,
+  enforcePollinatorProtection,
+  getPollinatorProfile,
+  isFloweringStage,
+  POLLINATOR_TOXICITY_DB,
+  POLLINATOR_DEPENDENT_CROPS,
+  POLLINATOR_PROTECTION_VERSION
+} from './pollinator-protection-rules.ts';
