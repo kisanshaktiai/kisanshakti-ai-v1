@@ -21,6 +21,21 @@ export * from './variety-recommendation-rules';
 // P1: Resistance Management System - Regional MOA rotation
 export * from './resistance-management';
 
+// P1: Soil Test Report Integration - Nutrient analysis & recommendations
+export * from './soil-test-integration';
+
+// P1: Explainable AI Engine - Reasoning chains & transparency
+export * from './explainable-ai-engine';
+
+// P2: Disease Forecasting - BLITECAST & predictive models
+export * from './disease-forecasting';
+
+// P2: Carbon & Sustainability Tracking
+export * from './carbon-sustainability';
+
+// P3: Market Intelligence Integration
+export * from './market-intelligence';
+
 // Combined Intelligence Rules
 import { VARIETY_RECOMMENDATION_RULES } from './variety-recommendation-rules';
 
