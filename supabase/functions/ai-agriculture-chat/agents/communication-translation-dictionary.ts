@@ -406,6 +406,45 @@ export const PRODUCT_TRANSLATIONS: Record<string, TrilingualText> = {
     mr: 'कॅल्शियम नायट्रेट',
     hi: 'कैल्शियम नाइट्रेट',
     en: 'Calcium Nitrate'
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BIOCONTROL AGENTS - CRITICAL FOR FARMER-FRIENDLY NAMES
+  // ═══════════════════════════════════════════════════════════════════════════
+  'Trichogramma chilonis': {
+    mr: 'ट्रायकोग्रामा कार्ड (अंडी परजीवी) - 50,000/एकर जैविक कीटकनाशक',
+    hi: 'ट्राइकोग्रामा कार्ड (अंडा परजीवी) - 50,000/एकड़ जैविक कीटनाशक',
+    en: 'Trichogramma cards (Egg parasitoid) - 50,000/acre biocontrol'
+  },
+  'Cotesia flavipes': {
+    mr: 'कोटेसिया फ्लेविपेस (अळी परजीवी) - 5,000 कोष/एकर',
+    hi: 'कोटेसिया फ्लेविप्स (लार्वा परजीवी) - 5,000 कोकून/एकड़',
+    en: 'Cotesia flavipes (Larval parasitoid) - 5,000 cocoons/acre'
+  },
+  'Neem Oil 1500 ppm': {
+    mr: 'कडुनिंबाचे तेल - 5 मिली/लिटर पाण्यात मिसळा',
+    hi: 'नीम तेल - 5 मिली/लीटर पानी में मिलाएं',
+    en: 'Neem Oil - Mix 5ml per liter of water'
+  },
+  'Chlorantraniliprole 18.5 SC': {
+    mr: 'कोराजेन (क्लोरॅन्ट्रानिलिप्रोल) - 0.4 मिली/लिटर',
+    hi: 'कोराजेन (क्लोरेंट्रानिलीप्रोल) - 0.4 मिली/लीटर',
+    en: 'Coragen (Chlorantraniliprole) - 0.4 ml/L'
+  },
+  'Fipronil 5 SC': {
+    mr: 'फिप्रोनिल (रीजेंट) - 1.5 मिली/लिटर',
+    hi: 'फिप्रोनिल (रीजेंट) - 1.5 मिली/लीटर',
+    en: 'Fipronil (Regent) - 1.5 ml/L'
+  },
+  'NPV': {
+    mr: 'न्यूक्लिओपॉलिहेड्रोसिस विषाणू (जैविक कीटकनाशक)',
+    hi: 'न्यूक्लियोपॉलीहेड्रोसिस वायरस (जैविक कीटनाशक)',
+    en: 'Nuclear Polyhedrosis Virus (Biopesticide)'
+  },
+  'Neem cake': {
+    mr: 'निंबोळी पेंड - 250 किलो/एकर',
+    hi: 'नीम की खली - 250 किलो/एकड़',
+    en: 'Neem cake - 250 kg/acre'
   }
 };
 
