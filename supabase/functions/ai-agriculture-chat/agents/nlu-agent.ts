@@ -61,6 +61,10 @@ interface AIUnderstandingResult {
   urgency: 'HIGH' | 'MEDIUM' | 'LOW';
   emotional_state: 'PANIC' | 'STRESSED' | 'NEUTRAL' | 'CONFIDENT';
   extracted_context: string;
+  // NEW: Clarification fields for farmer-friendly options
+  response_strategy?: 'ACKNOWLEDGE' | 'CLARIFY' | 'ASSESS';
+  clarification_type?: 'NONE' | 'OPTIONS' | 'PHOTO' | 'OPTIONS_PLUS_PHOTO';
+  clarification_options?: string[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -169,8 +173,29 @@ CRITICAL CONTRACT - OUTPUT FORMAT (JSON only, no markdown):
   "confidence": 0.0-1.0,
   "urgency": "HIGH" | "MEDIUM" | "LOW",
   "emotional_state": "PANIC" | "STRESSED" | "NEUTRAL" | "CONFIDENT",
-  "extracted_context": "brief summary in farmer's language"
+  "extracted_context": "brief summary in farmer's language",
+  "response_strategy": "ACKNOWLEDGE" | "CLARIFY" | "ASSESS",
+  "clarification_type": "NONE" | "OPTIONS" | "PHOTO" | "OPTIONS_PLUS_PHOTO",
+  "clarification_options": ["<max 3 farmer-friendly options IF clarification needed>"]
 }
+
+═══════════════════════════════════════════════════════════════════════════
+CLARIFICATION RULES (CRITICAL):
+═══════════════════════════════════════════════════════════════════════════
+
+When confidence < 0.7 OR farmer's symptom is ambiguous:
+1. Prefer SIMPLE OPTIONS over free-text questions (max 3 options)
+2. Options must be CONCRETE and FARMER-FRIENDLY (visual symptoms they can see)
+3. Request photo ONLY if visual evidence would significantly improve accuracy
+4. If both options and photo helpful: ask options FIRST, mention photo can help further
+
+NEVER ask both multiple questions AND many options together.
+Max: 1 question OR 1 option set OR 1 photo request.
+
+Example clarification for "काही ठिकाणी लावण केलेला ऊस मेलाआहे" (Some planted sugarcane died):
+- response_strategy: "CLARIFY"
+- clarification_type: "OPTIONS_PLUS_PHOTO"
+- clarification_options: ["मधोमध कोंब वाळलेला आहे", "झाड मुळासकट कुजलेले दिसते", "पाणी साचते / फार ओल आहे"]
 
 ═══════════════════════════════════════════════════════════════════════════
 FORBIDDEN - NEVER OUTPUT THESE (CRITICAL):
@@ -944,6 +969,10 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
       clarification_priority: clarificationQuestions.length > 1 ? 'HIGH' : clarificationQuestions.length > 0 ? 'MEDIUM' : 'NONE',
       questions_to_ask: clarificationQuestions
     },
+    // NEW: AI-powered clarification fields for farmer-friendly options
+    clarification_type: aiResult?.clarification_type || (overallConfidence < 0.7 ? 'OPTIONS' : 'NONE'),
+    clarification_options: aiResult?.clarification_options || [],
+    response_strategy: aiResult?.response_strategy || (overallConfidence >= 0.7 ? 'ASSESS' : 'CLARIFY'),
     photo_recommendation: {
       photo_needed: intentResult.primary === 'PEST_PROBLEM' || intentResult.primary === 'DISEASE_PROBLEM',
       photo_priority: overallConfidence < 0.7 ? 'HIGH' : 'MEDIUM',
