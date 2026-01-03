@@ -106,6 +106,15 @@ import {
   type PhotoperiodResult 
 } from './photoperiod-calculator.ts';
 
+// NEW: Smart Clarification Generator - Farmer-friendly options & photo requests
+import {
+  generateClarificationResponse,
+  matchFarmerResponseToOption,
+  mapOptionToObservation,
+  type ClarificationInput,
+  type ClarificationOutput
+} from './clarification-generator.ts';
+
 export const ORCHESTRATOR_VERSION = '2.0.0';
 
 // Response types
@@ -776,7 +785,51 @@ export class AIAgentOrchestrator {
       
       // Check if clarification is needed (low confidence)
       if (requiresClarification(intentConfidence)) {
-        console.log(`   ⚠️ Low confidence (${(intentConfidence * 100).toFixed(0)}%) - may need clarification`);
+        console.log(`   ⚠️ Low confidence (${(intentConfidence * 100).toFixed(0)}%) - generating clarification`);
+        
+        // Extract NLU clarification hints
+        const nluClarificationType = (nluOutput as any)?.clarification_type || 'OPTIONS';
+        const nluClarificationOptions = (nluOutput as any)?.clarification_options || [];
+        
+        // Generate farmer-friendly clarification
+        const clarificationInput: ClarificationInput = {
+          language: (options.language || 'mr') as 'mr' | 'hi' | 'en',
+          farmer_message: farmerMessage,
+          observations: nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [],
+          crop_code: landContext?.current_crop?.toUpperCase(),
+          clarification_type: nluClarificationType as any,
+          clarification_options: nluClarificationOptions
+        };
+        
+        const clarificationResponse = generateClarificationResponse(clarificationInput);
+        
+        if (clarificationResponse.response_text) {
+          console.log(`   📋 Returning clarification with ${clarificationResponse.options.length} options`);
+          agentsUsed.push('CLARIFICATION_GENERATOR');
+          
+          return {
+            type: 'CLARIFICATION_QUESTION',
+            session_id: sessionId,
+            question: {
+              question_id: `clarify_${Date.now()}`,
+              text_mr: clarificationResponse.response_text,
+              text_hi: clarificationResponse.response_text,
+              text_en: clarificationResponse.response_text,
+              options: clarificationResponse.options.map((opt, idx) => ({
+                value: String(idx + 1),
+                label: opt
+              }))
+            },
+            metadata: {
+              confidence: intentConfidence,
+              safety_status: 'NEEDS_CLARIFICATION',
+              rules_applied: 0,
+              processing_time_ms: Date.now() - startTime,
+              agents_used: agentsUsed,
+              trace_id: traceId
+            }
+          };
+        }
       }
       
       // ========================================
