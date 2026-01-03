@@ -1063,6 +1063,105 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_chat_audit_logs: {
+        Row: {
+          actions_filtered_out: Json | null
+          actions_returned: Json | null
+          agents_used: string[] | null
+          allowed_scopes: string[] | null
+          created_at: string | null
+          crop_code: string | null
+          detected_language: string | null
+          farmer_id: string
+          farmer_message: string | null
+          forbidden_actions: string[] | null
+          growth_stage: string | null
+          id: string
+          intent_label: string | null
+          land_id: string | null
+          llm_model_used: string | null
+          locked_intent: string | null
+          nlu_confidence: number | null
+          observation_mapping: Json | null
+          observations: Json | null
+          processing_time_ms: number | null
+          response_language_match: boolean | null
+          response_source: string | null
+          rules_fired: string[] | null
+          session_id: string
+          symbolic_decision_id: string | null
+          tenant_id: string
+          trace_id: string | null
+          turn_id: string
+          validation_errors: string[] | null
+          validation_passed: boolean | null
+        }
+        Insert: {
+          actions_filtered_out?: Json | null
+          actions_returned?: Json | null
+          agents_used?: string[] | null
+          allowed_scopes?: string[] | null
+          created_at?: string | null
+          crop_code?: string | null
+          detected_language?: string | null
+          farmer_id: string
+          farmer_message?: string | null
+          forbidden_actions?: string[] | null
+          growth_stage?: string | null
+          id?: string
+          intent_label?: string | null
+          land_id?: string | null
+          llm_model_used?: string | null
+          locked_intent?: string | null
+          nlu_confidence?: number | null
+          observation_mapping?: Json | null
+          observations?: Json | null
+          processing_time_ms?: number | null
+          response_language_match?: boolean | null
+          response_source?: string | null
+          rules_fired?: string[] | null
+          session_id: string
+          symbolic_decision_id?: string | null
+          tenant_id: string
+          trace_id?: string | null
+          turn_id: string
+          validation_errors?: string[] | null
+          validation_passed?: boolean | null
+        }
+        Update: {
+          actions_filtered_out?: Json | null
+          actions_returned?: Json | null
+          agents_used?: string[] | null
+          allowed_scopes?: string[] | null
+          created_at?: string | null
+          crop_code?: string | null
+          detected_language?: string | null
+          farmer_id?: string
+          farmer_message?: string | null
+          forbidden_actions?: string[] | null
+          growth_stage?: string | null
+          id?: string
+          intent_label?: string | null
+          land_id?: string | null
+          llm_model_used?: string | null
+          locked_intent?: string | null
+          nlu_confidence?: number | null
+          observation_mapping?: Json | null
+          observations?: Json | null
+          processing_time_ms?: number | null
+          response_language_match?: boolean | null
+          response_source?: string | null
+          rules_fired?: string[] | null
+          session_id?: string
+          symbolic_decision_id?: string | null
+          tenant_id?: string
+          trace_id?: string | null
+          turn_id?: string
+          validation_errors?: string[] | null
+          validation_passed?: boolean | null
+        }
+        Relationships: []
+      }
       ai_chat_messages: {
         Row: {
           actions_filtered_out: Json | null
