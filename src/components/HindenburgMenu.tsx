@@ -37,7 +37,7 @@ const defaultMenuItems: MenuItemType[] = [
   { id: 'crop-growth', icon: Sprout, labelKey: 'menu.cropGrowth', path: '/app/crop-growth', category: 'ai', isNew: true },
   
   // Community & Market
-  { id: 'community', icon: Users, labelKey: 'menu.community', path: '/app/social', category: 'social' },
+  { id: 'community', icon: Users, labelKey: 'menu.community', path: '/app/community', category: 'social' },
   { id: 'market', icon: Store, labelKey: 'menu.market', path: '/app/market', category: 'social' },
   { id: 'videos', icon: MessageSquare, labelKey: 'menu.videos', path: '/app/videos', category: 'social' },
   

@@ -135,7 +135,7 @@ const LOCAL_INTENTS: Record<string, IntentPattern[]> = {
     { id: 'market', patterns: ['market', 'shop', 'buy', 'sell', 'prices', 'mandi', 'bazaar'], action: 'navigate', route: '/app/market', offline: true, priority: 'high' },
     { id: 'profile', patterns: ['profile', 'account', 'settings', 'my profile', 'my account'], action: 'navigate', route: '/app/profile', offline: true, priority: 'high' },
     { id: 'profile_edit', patterns: ['edit profile', 'update profile', 'change profile'], action: 'navigate', route: '/app/profile/edit', offline: true, priority: 'high' },
-    { id: 'community', patterns: ['community', 'social', 'farmers', 'connect'], action: 'navigate', route: '/app/social', offline: true, priority: 'medium' },
+    { id: 'community', patterns: ['community', 'social', 'farmers', 'connect'], action: 'navigate', route: '/app/community', offline: true, priority: 'medium' },
     { id: 'analytics', patterns: ['analytics', 'stats', 'statistics', 'reports', 'data'], action: 'navigate', route: '/app/analytics', offline: true, priority: 'medium' },
     { id: 'advisory', patterns: ['advisory', 'advice', 'recommendations', 'tips'], action: 'navigate', route: '/app/advisory', offline: true, priority: 'medium' },
     { id: 'schemes', patterns: ['schemes', 'yojana', 'subsidy', 'government', 'benefits'], action: 'navigate', route: '/app/schemes', offline: true, priority: 'medium' },
