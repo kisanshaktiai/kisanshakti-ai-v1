@@ -1321,6 +1321,40 @@ export class AIAgentOrchestrator {
       console.log(`   📊 Data Quality Score: ${dataAudit.summary.data_quality_score}%`);
       console.log(`   📊 Available Sources: ${dataAudit.summary.available_sources}/${dataAudit.summary.total_data_sources}`);
       
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CRITICAL FIX: Complete audit logging before returning
+      // This ensures every turn is persisted for forensic tracing
+      // ═══════════════════════════════════════════════════════════════════════════
+      try {
+        // Log symbolic decision output
+        auditLogger.logSymbolicDecision({
+          decision_id: decisionOutput.decision_id,
+          rules_fired: decisionOutput.rules_applied || [],
+          actions_returned: decisionOutput.primary_decision ? [decisionOutput.primary_decision, ...(decisionOutput.secondary_actions || [])] : [],
+          actions_filtered_out: decisionOutput.blocked_actions || []
+        });
+        
+        // Log response source
+        auditLogger.logResponse({
+          source: 'SYMBOLIC_TEMPLATE',
+          language_match: true,
+          llm_model: undefined
+        });
+        
+        // Log validation (passed at this point)
+        auditLogger.logValidation({
+          passed: true,
+          errors: []
+        });
+        
+        // CRITICAL: Complete the turn to persist to database
+        await auditLogger.completeTurn(processingTime);
+        console.log('📋 [Audit] Turn completed and persisted to database');
+      } catch (auditError) {
+        console.error('⚠️ [Audit] Failed to complete audit log (non-blocking):', auditError);
+        // Don't fail the request for audit issues
+      }
+      
       return {
         type: 'DECISION_PROVIDED',
         session_id: sessionId,
@@ -1500,13 +1534,19 @@ export class AIAgentOrchestrator {
    */
   private async fetchComprehensiveLandContext(landId: string, farmerId: string): Promise<any> {
     try {
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CRITICAL SECURITY FIX: Validate farmer ownership FIRST before fetching data
+      // This prevents cross-farmer/cross-tenant data access attacks
+      // ═══════════════════════════════════════════════════════════════════════════
+      
       // PARALLEL FETCHING: Fetch all data simultaneously for speed
       const [landResult, soilResult, ndviLatestResult, ndviHistoryResult, cropScheduleResult] = await Promise.all([
-        // Fetch land details
+        // Fetch land details - CRITICAL: Must validate farmer_id ownership
         this.supabase
           .from('lands')
           .select('*')
           .eq('id', landId)
+          .eq('farmer_id', farmerId)  // SECURITY: Enforce farmer ownership
           .single(),
         
         // Fetch latest soil health data
@@ -1555,7 +1595,10 @@ export class AIAgentOrchestrator {
       const { data: cropSchedule } = cropScheduleResult;
       
       if (landError || !land) {
-        console.warn('⚠️ [Orchestrator] Failed to fetch land:', landError);
+        // SECURITY: If land not found OR farmer doesn't own this land, return null
+        // This prevents data leakage across farmers
+        console.warn('⚠️ [Orchestrator] Land fetch failed or farmer does not own this land:', landError?.message || 'ACCESS_DENIED');
+        console.warn(`   landId=${landId}, farmerId=${farmerId}`);
         return null;
       }
       
