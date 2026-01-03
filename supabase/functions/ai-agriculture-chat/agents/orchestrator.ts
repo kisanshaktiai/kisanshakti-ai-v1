@@ -450,6 +450,11 @@ export class AIAgentOrchestrator {
         
         const cropHealthResponse = this.generateCropHealthResponse(landContext, options.language || 'mr');
         
+        // Log critical status
+        if (cropHealthResponse.isCritical) {
+          console.log(`🚨 [${traceId}] NDVI CRITICAL ALERT - actions: ${cropHealthResponse.actions.length}`);
+        }
+        
         return {
           type: 'DECISION_PROVIDED',
           session_id: sessionId,
@@ -460,7 +465,7 @@ export class AIAgentOrchestrator {
             farmer_id: farmerId,
             language: options.language || 'mr',
             format: 'RICH_TEXT',
-            tone: 'FRIENDLY',
+            tone: cropHealthResponse.isCritical ? 'URGENT' : 'FRIENDLY',
             created_at: new Date().toISOString(),
             main_message: {
               full_text: {
@@ -478,32 +483,33 @@ export class AIAgentOrchestrator {
               word_count: cropHealthResponse.message.split(/\s+/).length,
               reading_time_seconds: 10,
               confidence_score: cropHealthResponse.confidence,
-              source: 'CROP_HEALTH_MODULE',
-              response_type: 'CROP_HEALTH_ASSESSMENT'
+              source: cropHealthResponse.isCritical ? 'NDVI_CRITICAL_MODULE' : 'CROP_HEALTH_MODULE',
+              response_type: cropHealthResponse.isCritical ? 'NDVI_CRITICAL_ALERT' : 'CROP_HEALTH_ASSESSMENT'
             }
           } as any,
           decision_output: {
             decision_id: `crop_health_${Date.now()}`,
             session_id: sessionId,
-            status: 'INFORMATION_PROVIDED',
-            decision_brain_source: false,
-            actions_returned: [],
+            status: cropHealthResponse.isCritical ? 'URGENT_ACTION_REQUIRED' : 'INFORMATION_PROVIDED',
+            decision_brain_source: true, // Now includes actions based on actual signals
+            actions_returned: cropHealthResponse.actions,
             metadata: {
               confidence: cropHealthResponse.confidence,
               trace_id: traceId,
               processing_time_ms: Date.now() - startTime,
               agents_used: agentsUsed,
-              template_type: 'CROP_HEALTH_ASSESSMENT'
+              template_type: cropHealthResponse.isCritical ? 'NDVI_CRITICAL_ALERT' : 'CROP_HEALTH_ASSESSMENT',
+              ndvi_critical: cropHealthResponse.isCritical
             }
           } as any,
           dataAudit: this.buildDataAudit(landContext, null),
           metadata: {
             confidence: cropHealthResponse.confidence,
-            safety_status: 'SAFE',
-            rules_applied: 0,
+            safety_status: cropHealthResponse.isCritical ? 'URGENT' : 'SAFE',
+            rules_applied: cropHealthResponse.actions.length,
             processing_time_ms: Date.now() - startTime,
             agents_used: agentsUsed,
-            template_type: 'CROP_HEALTH_ASSESSMENT',
+            template_type: cropHealthResponse.isCritical ? 'NDVI_CRITICAL_ALERT' : 'CROP_HEALTH_ASSESSMENT',
             trace_id: traceId
           }
         };
@@ -1966,23 +1972,91 @@ export class AIAgentOrchestrator {
   
   /**
    * Calculate growth stage based on days since sowing
+   * CRITICAL FIX: Uses ICAR-standard stage definitions
    */
   private calculateGrowthStage(daysSinceSowing: number, cropName?: string): string {
-    // Crop-specific durations (approximate)
-    const cropDurations: Record<string, number> = {
-      'cotton': 180, 'soybean': 100, 'rice': 120, 'wheat': 120,
-      'maize': 90, 'tomato': 90, 'onion': 120, 'potato': 90,
-      'sugarcane': 365, 'groundnut': 110, 'tur': 150
+    // ICAR-standard crop-specific stage definitions
+    const CROP_STAGES: Record<string, { maxDays: number; stage: string }[]> = {
+      'WHEAT': [
+        { maxDays: 7, stage: 'GERMINATION' },
+        { maxDays: 21, stage: 'SEEDLING' },
+        { maxDays: 45, stage: 'TILLERING' },
+        { maxDays: 75, stage: 'STEM_ELONGATION' },
+        { maxDays: 100, stage: 'FLOWERING' },
+        { maxDays: 120, stage: 'GRAIN_FILLING' },
+        { maxDays: 140, stage: 'MATURITY' },
+        { maxDays: 999, stage: 'HARVEST' }
+      ],
+      'RICE': [
+        { maxDays: 10, stage: 'GERMINATION' },
+        { maxDays: 25, stage: 'SEEDLING' },
+        { maxDays: 45, stage: 'TILLERING' },
+        { maxDays: 65, stage: 'PANICLE_INITIATION' },
+        { maxDays: 85, stage: 'FLOWERING' },
+        { maxDays: 110, stage: 'GRAIN_FILLING' },
+        { maxDays: 130, stage: 'MATURITY' },
+        { maxDays: 999, stage: 'HARVEST' }
+      ],
+      'SUGARCANE': [
+        { maxDays: 30, stage: 'GERMINATION' },
+        { maxDays: 60, stage: 'SEEDLING' },
+        { maxDays: 90, stage: 'TILLERING' },
+        { maxDays: 180, stage: 'GRAND_GROWTH' },
+        { maxDays: 270, stage: 'MATURITY' },
+        { maxDays: 330, stage: 'RIPENING' },
+        { maxDays: 999, stage: 'HARVEST' }
+      ],
+      'COTTON': [
+        { maxDays: 10, stage: 'GERMINATION' },
+        { maxDays: 25, stage: 'SEEDLING' },
+        { maxDays: 50, stage: 'VEGETATIVE' },
+        { maxDays: 70, stage: 'SQUARING' },
+        { maxDays: 95, stage: 'FLOWERING' },
+        { maxDays: 130, stage: 'BOLL_FORMATION' },
+        { maxDays: 160, stage: 'BOLL_OPENING' },
+        { maxDays: 999, stage: 'HARVEST' }
+      ],
+      'SOYBEAN': [
+        { maxDays: 7, stage: 'GERMINATION' },
+        { maxDays: 20, stage: 'SEEDLING' },
+        { maxDays: 40, stage: 'VEGETATIVE' },
+        { maxDays: 60, stage: 'FLOWERING' },
+        { maxDays: 80, stage: 'POD_FORMATION' },
+        { maxDays: 100, stage: 'MATURITY' },
+        { maxDays: 999, stage: 'HARVEST' }
+      ],
+      'MAIZE': [
+        { maxDays: 7, stage: 'GERMINATION' },
+        { maxDays: 20, stage: 'SEEDLING' },
+        { maxDays: 45, stage: 'VEGETATIVE' },
+        { maxDays: 60, stage: 'TASSELING' },
+        { maxDays: 75, stage: 'SILKING' },
+        { maxDays: 100, stage: 'GRAIN_FILLING' },
+        { maxDays: 120, stage: 'MATURITY' },
+        { maxDays: 999, stage: 'HARVEST' }
+      ]
     };
     
-    const totalDays = cropDurations[cropName?.toLowerCase() || ''] || 120;
-    const percentComplete = (daysSinceSowing / totalDays) * 100;
+    // Default stages for unknown crops
+    const DEFAULT_STAGES = [
+      { maxDays: 10, stage: 'GERMINATION' },
+      { maxDays: 25, stage: 'SEEDLING' },
+      { maxDays: 50, stage: 'VEGETATIVE' },
+      { maxDays: 75, stage: 'FLOWERING' },
+      { maxDays: 100, stage: 'FRUITING' },
+      { maxDays: 130, stage: 'MATURITY' },
+      { maxDays: 999, stage: 'HARVEST' }
+    ];
     
-    if (percentComplete < 15) return 'GERMINATION';
-    if (percentComplete < 30) return 'SEEDLING';
-    if (percentComplete < 50) return 'VEGETATIVE';
-    if (percentComplete < 70) return 'FLOWERING';
-    if (percentComplete < 90) return 'FRUITING';
+    const cropUpper = (cropName || '').toUpperCase();
+    const stages = CROP_STAGES[cropUpper] || DEFAULT_STAGES;
+    
+    for (const stageDef of stages) {
+      if (daysSinceSowing <= stageDef.maxDays) {
+        return stageDef.stage;
+      }
+    }
+    
     return 'MATURITY';
   }
   
@@ -3225,50 +3299,148 @@ export class AIAgentOrchestrator {
   private generateCropHealthResponse(
     landContext: any,
     language: 'mr' | 'hi' | 'en'
-  ): { message: string; confidence: number; suggestions: string[] } {
+  ): { message: string; confidence: number; suggestions: string[]; actions: any[]; isCritical: boolean } {
     const crop = landContext.current_crop || 'पीक';
+    const cropCode = (crop || '').toUpperCase();
     const stage = landContext.growth_stage || 'VEGETATIVE';
     const das = landContext.days_since_sowing || 0;
     const ndvi = landContext.ndvi?.value || landContext.ndvi?.ndvi_value;
     const ndviTrend = landContext.ndvi?.ndvi_trend;
     const soil = landContext.soil_health;
     
-    // Determine crop health status
-    let healthStatus: 'excellent' | 'good' | 'moderate' | 'concern' = 'good';
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL: NDVI THRESHOLDS BY CROP + STAGE (ICAR Standards)
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    // Expected NDVI ranges by stage for common crops
+    const EXPECTED_NDVI_BY_STAGE: Record<string, { min: number; critical: number }> = {
+      'GERMINATION': { min: 0.08, critical: 0.05 },
+      'SEEDLING': { min: 0.15, critical: 0.10 },
+      'TILLERING': { min: 0.35, critical: 0.20 },
+      'VEGETATIVE': { min: 0.40, critical: 0.25 },
+      'STEM_ELONGATION': { min: 0.50, critical: 0.30 },
+      'FLOWERING': { min: 0.55, critical: 0.35 },
+      'GRAIN_FILLING': { min: 0.50, critical: 0.30 },
+      'MATURITY': { min: 0.35, critical: 0.20 }
+    };
+    
+    // Determine expected NDVI for current stage
+    const stageUpper = (stage || 'VEGETATIVE').toUpperCase();
+    const expectedNdvi = EXPECTED_NDVI_BY_STAGE[stageUpper] || { min: 0.35, critical: 0.20 };
+    
+    // Calculate nitrogen state
+    const nitrogenKgPerHa = soil?.nitrogen_kg_per_ha;
+    let nitrogenState: 'LOW' | 'ADEQUATE' | 'HIGH' = 'ADEQUATE';
+    
+    // Nitrogen thresholds by crop (kg/ha)
+    const N_THRESHOLDS: Record<string, { low: number; high: number }> = {
+      'WHEAT': { low: 100, high: 200 },
+      'RICE': { low: 100, high: 200 },
+      'COTTON': { low: 80, high: 180 },
+      'SUGARCANE': { low: 120, high: 250 },
+      'SOYBEAN': { low: 40, high: 100 },
+      'MAIZE': { low: 100, high: 220 }
+    };
+    
+    const nThresh = N_THRESHOLDS[cropCode] || { low: 100, high: 200 };
+    if (nitrogenKgPerHa !== undefined) {
+      if (nitrogenKgPerHa < nThresh.low) nitrogenState = 'LOW';
+      else if (nitrogenKgPerHa > nThresh.high) nitrogenState = 'HIGH';
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HEALTH STATUS DETERMINATION (CRITICAL FIX)
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    let healthStatus: 'excellent' | 'good' | 'moderate' | 'concern' | 'critical' = 'good';
     let healthIcon = '✅';
-    let healthMessage = '';
+    let isCritical = false;
+    const actions: any[] = [];
     
     if (ndvi !== undefined) {
-      if (ndvi >= 0.6) {
+      // CRITICAL: NDVI below critical threshold for stage
+      if (ndvi < expectedNdvi.critical) {
+        healthStatus = 'critical';
+        healthIcon = '🚨';
+        isCritical = true;
+        console.log(`🚨 [NDVI CRITICAL] NDVI=${ndvi} < critical threshold ${expectedNdvi.critical} for stage ${stageUpper}`);
+      } else if (ndvi < expectedNdvi.min) {
+        healthStatus = 'concern';
+        healthIcon = '🔴';
+      } else if (ndvi >= 0.6) {
         healthStatus = 'excellent';
         healthIcon = '🌟';
       } else if (ndvi >= 0.4) {
         healthStatus = 'good';
         healthIcon = '✅';
-      } else if (ndvi >= 0.25) {
+      } else {
         healthStatus = 'moderate';
         healthIcon = '⚠️';
-      } else {
-        healthStatus = 'concern';
-        healthIcon = '🔴';
       }
     }
     
-    // Build response based on language
+    // ═══════════════════════════════════════════════════════════════════════════
+    // BUILD ACTIONS BASED ON ACTUAL CONDITIONS
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    // Add fertilizer action if nitrogen is low
+    if (nitrogenState === 'LOW') {
+      const ureaDosage = cropCode === 'WHEAT' ? '50' : cropCode === 'RICE' ? '45' : '40';
+      actions.push({
+        action_type: 'APPLY_FERTILIZER',
+        title: language === 'mr' ? 'युरिया खत द्या' : language === 'hi' ? 'यूरिया खाद दें' : 'Apply Urea',
+        description: language === 'mr' 
+          ? `नायट्रोजन कमी आहे (${nitrogenKgPerHa?.toFixed(1)} kg/ha). युरिया ${ureaDosage} kg/acre द्या.`
+          : language === 'hi'
+          ? `नाइट्रोजन कम है (${nitrogenKgPerHa?.toFixed(1)} kg/ha). यूरिया ${ureaDosage} kg/acre दें.`
+          : `Nitrogen is low (${nitrogenKgPerHa?.toFixed(1)} kg/ha). Apply Urea ${ureaDosage} kg/acre.`,
+        dosage: `${ureaDosage} kg/acre`,
+        product_name: 'Urea (46% N)',
+        priority: isCritical ? 'URGENT' : 'HIGH',
+        timing: { recommended_start: new Date().toISOString() }
+      });
+    }
+    
+    // Add monitoring action
+    actions.push({
+      action_type: 'MONITOR',
+      title: language === 'mr' ? 'निरीक्षण करा' : language === 'hi' ? 'निगरानी करें' : 'Monitor',
+      description: language === 'mr' 
+        ? 'पिकाचे नियमित निरीक्षण करा'
+        : language === 'hi'
+        ? 'फसल की नियमित निगरानी करें'
+        : 'Regularly monitor the crop',
+      priority: 'MEDIUM',
+      timing: 'Every 3-5 days'
+    });
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // BUILD RESPONSE MESSAGE
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    let healthMessage = '';
+    
     if (language === 'mr') {
-      const statusMap = {
+      const statusMap: Record<string, string> = {
         excellent: 'उत्कृष्ट',
         good: 'चांगले',
         moderate: 'मध्यम',
-        concern: 'चिंताजनक'
+        concern: 'चिंताजनक',
+        critical: '🚨 गंभीर - तातडीने लक्ष द्या!'
       };
       
       healthMessage = `${healthIcon} **तुमच्या ${crop} पिकाची स्थिती: ${statusMap[healthStatus]}**\n\n`;
       healthMessage += `🌱 **पिकाचा टप्पा:** ${stage} (${das} दिवस झाले)\n`;
       
       if (ndvi !== undefined) {
-        healthMessage += `📊 **NDVI (पिकाची हिरवळ):** ${ndvi.toFixed(2)}`;
-        if (ndviTrend === 'IMPROVING') {
+        healthMessage += `📊 **NDVI (पिकाची हिरवळ):** ${ndvi.toFixed(3)}`;
+        
+        // Show expected vs actual for critical cases
+        if (healthStatus === 'critical' || healthStatus === 'concern') {
+          healthMessage += ` ⚠️ (अपेक्षित: ${expectedNdvi.min.toFixed(2)}+)`;
+        }
+        
+        if (ndviTrend === 'IMPROVING' || ndviTrend === 'RISING') {
           healthMessage += ' 📈 (सुधारत आहे)';
         } else if (ndviTrend === 'DECLINING') {
           healthMessage += ' 📉 (कमी होत आहे)';
@@ -3278,74 +3450,120 @@ export class AIAgentOrchestrator {
       
       if (soil) {
         healthMessage += `\n🧪 **जमिनीची स्थिती:**\n`;
-        healthMessage += `   • नत्र (N): ${soil.nitrogen_kg_per_ha || 'N/A'} kg/ha\n`;
-        healthMessage += `   • स्फुरद (P): ${soil.phosphorus_kg_per_ha || 'N/A'} kg/ha\n`;
-        healthMessage += `   • पालाश (K): ${soil.potassium_kg_per_ha || 'N/A'} kg/ha\n`;
+        healthMessage += `   • नत्र (N): ${nitrogenKgPerHa?.toFixed(1) || 'N/A'} kg/ha`;
+        if (nitrogenState === 'LOW') healthMessage += ' ⚠️ **कमी**';
+        else if (nitrogenState === 'HIGH') healthMessage += ' ⬆️ जास्त';
+        healthMessage += '\n';
+        healthMessage += `   • स्फुरद (P): ${soil.phosphorus_kg_per_ha?.toFixed(1) || 'N/A'} kg/ha\n`;
+        healthMessage += `   • पालाश (K): ${soil.potassium_kg_per_ha?.toFixed(1) || 'N/A'} kg/ha\n`;
         healthMessage += `   • pH: ${soil.ph_level || 'N/A'}\n`;
       }
       
       // Add recommendations based on status
       healthMessage += `\n💡 **पुढील कृती:**\n`;
-      if (healthStatus === 'excellent' || healthStatus === 'good') {
-        healthMessage += `• सध्याचे व्यवस्थापन चांगले आहे, चालू ठेवा\n`;
-        healthMessage += `• नियमित पाणी व्यवस्थापन करा\n`;
-      } else if (healthStatus === 'moderate') {
-        healthMessage += `• पिकाची अधिक काळजी घ्या\n`;
-        healthMessage += `• पोषक तत्वांची कमतरता तपासा\n`;
-        healthMessage += `• पाण्याचे प्रमाण तपासा\n`;
-      } else {
-        healthMessage += `• तात्काळ लक्ष द्या\n`;
+      
+      if (healthStatus === 'critical') {
+        healthMessage += `🚨 **तातडीने कृती करा:**\n`;
+        if (nitrogenState === 'LOW') {
+          healthMessage += `• युरिया खत तातडीने द्या (${actions[0]?.dosage})\n`;
+        }
+        healthMessage += `• पिकाला पाणी द्या\n`;
         healthMessage += `• किडी-रोग तपासा\n`;
         healthMessage += `• तज्ञांचा सल्ला घ्या\n`;
+      } else if (healthStatus === 'concern') {
+        healthMessage += `⚠️ **लक्ष द्या:**\n`;
+        if (nitrogenState === 'LOW') {
+          healthMessage += `• नत्र कमी आहे - युरिया द्या\n`;
+        }
+        healthMessage += `• पिकाची काळजी घ्या\n`;
+        healthMessage += `• पाण्याचे प्रमाण तपासा\n`;
+      } else if (healthStatus === 'excellent' || healthStatus === 'good') {
+        healthMessage += `• सध्याचे व्यवस्थापन चांगले आहे, चालू ठेवा\n`;
+        healthMessage += `• नियमित पाणी व्यवस्थापन करा\n`;
+      } else {
+        healthMessage += `• पिकाची अधिक काळजी घ्या\n`;
+        if (nitrogenState === 'LOW') {
+          healthMessage += `• नायट्रोजन कमी - खत द्या\n`;
+        }
       }
       
-      healthMessage += `\n❓ **तुम्हाला आणखी माहिती हवी आहे का?**`;
-      
     } else if (language === 'hi') {
-      const statusMap = {
+      const statusMap: Record<string, string> = {
         excellent: 'उत्कृष्ट',
         good: 'अच्छी',
         moderate: 'मध्यम',
-        concern: 'चिंताजनक'
+        concern: 'चिंताजनक',
+        critical: '🚨 गंभीर - तुरंत ध्यान दें!'
       };
       
       healthMessage = `${healthIcon} **आपकी ${crop} फसल की स्थिति: ${statusMap[healthStatus]}**\n\n`;
       healthMessage += `🌱 **फसल की अवस्था:** ${stage} (${das} दिन हुए)\n`;
       
       if (ndvi !== undefined) {
-        healthMessage += `📊 **NDVI (फसल की हरियाली):** ${ndvi.toFixed(2)}\n`;
+        healthMessage += `📊 **NDVI (फसल की हरियाली):** ${ndvi.toFixed(3)}`;
+        if (healthStatus === 'critical' || healthStatus === 'concern') {
+          healthMessage += ` ⚠️ (अपेक्षित: ${expectedNdvi.min.toFixed(2)}+)`;
+        }
+        healthMessage += '\n';
       }
       
-      healthMessage += `\n💡 **अगला कदम:** नियमित निगरानी जारी रखें`;
+      healthMessage += `\n💡 **अगला कदम:**\n`;
+      if (healthStatus === 'critical') {
+        healthMessage += `🚨 **तुरंत कार्रवाई करें:**\n`;
+        if (nitrogenState === 'LOW') {
+          healthMessage += `• यूरिया खाद तुरंत दें\n`;
+        }
+        healthMessage += `• फसल को पानी दें\n`;
+        healthMessage += `• विशेषज्ञ से सलाह लें\n`;
+      } else {
+        healthMessage += `• नियमित निगरानी जारी रखें\n`;
+      }
       
     } else {
-      const statusMap = {
+      const statusMap: Record<string, string> = {
         excellent: 'Excellent',
         good: 'Good',
         moderate: 'Moderate',
-        concern: 'Needs Attention'
+        concern: 'Needs Attention',
+        critical: '🚨 CRITICAL - Urgent Action Required!'
       };
       
       healthMessage = `${healthIcon} **Your ${crop} crop status: ${statusMap[healthStatus]}**\n\n`;
       healthMessage += `🌱 **Growth Stage:** ${stage} (Day ${das})\n`;
       
       if (ndvi !== undefined) {
-        healthMessage += `📊 **NDVI (Vegetation Index):** ${ndvi.toFixed(2)}\n`;
+        healthMessage += `📊 **NDVI (Vegetation Index):** ${ndvi.toFixed(3)}`;
+        if (healthStatus === 'critical' || healthStatus === 'concern') {
+          healthMessage += ` ⚠️ (Expected: ${expectedNdvi.min.toFixed(2)}+)`;
+        }
+        healthMessage += '\n';
       }
       
-      healthMessage += `\n💡 **Next Steps:** Continue regular monitoring`;
+      healthMessage += `\n💡 **Next Steps:**\n`;
+      if (healthStatus === 'critical') {
+        healthMessage += `🚨 **Take Immediate Action:**\n`;
+        if (nitrogenState === 'LOW') {
+          healthMessage += `• Apply Urea fertilizer immediately\n`;
+        }
+        healthMessage += `• Check irrigation\n`;
+        healthMessage += `• Consult agricultural expert\n`;
+      } else {
+        healthMessage += `• Continue regular monitoring\n`;
+      }
     }
     
     const suggestions = language === 'mr' 
-      ? ['किडी समस्या आहे का?', 'पाणी व्यवस्थापन', 'खत शिफारस']
+      ? ['किडी समस्या आहे का?', 'पाणी कधी द्यावे?', 'खत शिफारस']
       : language === 'hi'
-      ? ['कीट समस्या है?', 'पानी प्रबंधन', 'खाद सिफारिश']
-      : ['Any pest issues?', 'Irrigation schedule', 'Fertilizer recommendation'];
+      ? ['कीट समस्या है?', 'पानी कब दें?', 'खाद सिफारिश']
+      : ['Any pest issues?', 'When to irrigate?', 'Fertilizer recommendation'];
     
     return {
       message: healthMessage,
       confidence: ndvi !== undefined ? 0.85 : 0.65,
-      suggestions
+      suggestions,
+      actions,
+      isCritical
     };
   }
   

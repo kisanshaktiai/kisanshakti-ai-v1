@@ -84,15 +84,38 @@ const INTENT_SCOPE_MAP: Record<string, {
   // General queries - informational
   'GENERAL_QUERY': {
     allowed_scopes: ['GENERAL', 'INFORMATION', 'ADVISORY'],
-    allowed_actions: ['INFORM', 'ADVISE', 'CLARIFY'],
+    allowed_actions: ['INFORM', 'ADVISE', 'CLARIFY', 'MONITOR'],
     forbidden_actions: [] // Allow clarification for any topic
+  },
+  
+  // CROP_HEALTH - "How is my crop?" queries
+  // CRITICAL: This must allow FERTILIZE when soil shows deficiency
+  // and allow IRRIGATE when NDVI shows stress
+  'CROP_HEALTH': {
+    allowed_scopes: ['GENERAL', 'INFORMATION', 'ADVISORY', 'NUTRIENT', 'FERTILIZER', 'IRRIGATION', 'HEALTH', 'NDVI'],
+    allowed_actions: ['INFORM', 'ADVISE', 'CLARIFY', 'MONITOR', 'FERTILIZE', 'APPLY_FERTILIZER', 'IRRIGATE', 'APPLY', 'SOIL_TEST'],
+    forbidden_actions: ['SPRAY', 'HARVEST', 'SELL'] // Don't recommend pesticides for general health check
+  },
+  
+  // HEALTH_ASSESSMENT - Same as CROP_HEALTH (alias)
+  'HEALTH_ASSESSMENT': {
+    allowed_scopes: ['GENERAL', 'INFORMATION', 'ADVISORY', 'NUTRIENT', 'FERTILIZER', 'IRRIGATION', 'HEALTH', 'NDVI'],
+    allowed_actions: ['INFORM', 'ADVISE', 'CLARIFY', 'MONITOR', 'FERTILIZE', 'APPLY_FERTILIZER', 'IRRIGATE', 'APPLY', 'SOIL_TEST'],
+    forbidden_actions: ['SPRAY', 'HARVEST', 'SELL']
   },
   
   // Emergency - allows broader scope but still controlled
   'EMERGENCY': {
-    allowed_scopes: ['PEST', 'DISEASE', 'IPM', 'CHEMICAL', 'CULTURAL', 'EMERGENCY'],
-    allowed_actions: ['SPRAY', 'APPLY', 'REMOVE', 'MONITOR', 'CULTURAL_PRACTICE', 'EMERGENCY_ACTION'],
+    allowed_scopes: ['PEST', 'DISEASE', 'IPM', 'CHEMICAL', 'CULTURAL', 'EMERGENCY', 'NUTRIENT', 'IRRIGATION'],
+    allowed_actions: ['SPRAY', 'APPLY', 'REMOVE', 'MONITOR', 'CULTURAL_PRACTICE', 'EMERGENCY_ACTION', 'FERTILIZE', 'IRRIGATE'],
     forbidden_actions: ['HARVEST', 'SELL'] // Even in emergency, young crop shouldn't be harvested
+  },
+  
+  // NDVI_CRITICAL - When NDVI is dangerously low, allow emergency actions
+  'NDVI_CRITICAL': {
+    allowed_scopes: ['EMERGENCY', 'NUTRIENT', 'FERTILIZER', 'IRRIGATION', 'HEALTH', 'ADVISORY'],
+    allowed_actions: ['FERTILIZE', 'APPLY_FERTILIZER', 'IRRIGATE', 'MONITOR', 'ADVISE', 'EMERGENCY_ACTION', 'APPLY'],
+    forbidden_actions: ['HARVEST', 'SELL', 'SPRAY'] // Don't spray on dying crop
   },
   
   // Greeting - no actions
