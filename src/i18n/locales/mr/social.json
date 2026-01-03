@@ -1,29 +1,34 @@
 {
   "__meta": {
     "page": "social",
-    "version": "1.0",
+    "version": "2.0",
     "updated_by": "AI Localization Engineer",
-    "last_updated": "2025-11-29"
+    "last_updated": "2025-12-18"
   },
   "social": {
     "header": {
-      "title": "समुदाय"
-    },
-    "user": {
-      "level": "स्तर {{level}}",
-      "points": "{{points}} गुण"
-    },
-    "search": {
-      "placeholder": "समुदाय शोधा..."
+      "title": "शेतकरी समुदाय",
+      "subtitle": "{{count}} शेतकरी ऑनलाइन",
+      "search_placeholder": "पोस्ट, शेतकरी शोधा..."
     },
     "tabs": {
       "feed": "फीड",
-      "communities": "समुदाय",
-      "messages": "संदेश",
-      "rankings": "रँकिंग",
-      "trending": "ट्रेंडिंग"
+      "groups": "गट",
+      "trending": "ट्रेंडिंग",
+      "my_posts": "माझ्या पोस्ट",
+      "saved": "जतन केलेले"
+    },
+    "search": {
+      "placeholder": "समुदाय शोधा...",
+      "title": "शोधा",
+      "recent": "अलीकडील शोध",
+      "results": "शोध परिणाम",
+      "no_results": "कोणताही परिणाम सापडला नाही"
     },
     "notifications": {
+      "title": "सूचना",
+      "empty": "कोणत्याही नवीन सूचना नाहीत",
+      "mark_read": "सर्व वाचले म्हणून चिन्हांकित करा",
       "new_message": {
         "title": "नवीन संदेश",
         "message": "तुम्हाला नवीन संदेश मिळाला आहे"
@@ -47,15 +52,79 @@
         "message": "तुमची पोस्ट समुदायासह शेअर केली आहे."
       },
       "create": "पोस्ट तयार करा",
-      "whats_on_mind": "तुमच्या मनात काय आहे?",
+      "whats_on_mind": "तुमची शेती माहिती शेअर करा...",
+      "tap_or_speak": "टाइप करण्यासाठी टॅप करा किंवा बोलण्यासाठी माइक धरा...",
       "add_photo": "फोटो जोडा",
-      "publish": "प्रकाशित करा",
+      "publish": "पोस्ट करा",
       "cancel": "रद्द करा",
+      "clear": "साफ करा",
       "like": "आवडले",
       "comment": "टिप्पणी",
       "share": "शेअर करा",
+      "save": "जतन करा",
+      "original": "मूळ",
+      "voice": "आवाज",
+      "translating": "अनुवाद होत आहे...",
+      "show_translated": "अनुवादित दाखवा",
+      "show_original": "मूळ दाखवा",
+      "show_less": "कमी दाखवा",
+      "read_more": "अधिक वाचा",
+      "share_copied": "सामग्री क्लिपबोर्डवर कॉपी झाली!",
       "liked_by": "{{count}} शेतकऱ्यांना आवडले",
-      "comments": "{{count}} टिप्पण्या"
+      "comments": "{{count}} टिप्पण्या",
+      "success": "पोस्ट यशस्वीरित्या शेअर झाली! 🎉",
+      "empty_error": "कृपया काहीतरी लिहा किंवा बोला",
+      "recording_error": "माइक्रोफोन वापरता आला नाही",
+      "transcribed": "आवाज मजकुरात रूपांतरित झाला!",
+      "transcription_error": "आवाज रूपांतरण अयशस्वी",
+      "hold_mic": "तुमच्या भाषेत बोलण्यासाठी 🎤 बटण धरा",
+      "release_to_stop": "🎤 रेकॉर्डिंग... थांबवण्यासाठी सोडा",
+      "converting": "✨ आवाज मजकुरात रूपांतरित होत आहे..."
+    },
+    "groups": {
+      "search": "गट शोधा...",
+      "create": "नवीन गट तयार करा",
+      "create_title": "गट तयार करा",
+      "create_btn": "तयार करा",
+      "crop_groups": "पीक गट",
+      "community_groups": "सामुदायिक गट",
+      "discuss": "चर्चा",
+      "join": "सामील व्हा",
+      "leave": "सोडा",
+      "members": "सदस्य",
+      "no_crop_groups": "कोणतेही पीक गट सापडले नाहीत",
+      "no_groups": "अजून कोणतेही गट नाहीत",
+      "be_first": "पहिला गट तयार करणारे व्हा!",
+      "opening_discussion": "{{name}} चर्चा उघडत आहे",
+      "discussion_title": "{{name}} चर्चा",
+      "type_message": "तुमचा संदेश टाइप करा...",
+      "send": "पाठवा",
+      "you": "तुम्ही",
+      "anonymous": "अज्ञात शेतकरी",
+      "no_messages": "अजून कोणतेही संदेश नाहीत. संभाषण सुरू करा!",
+      "name_required": "कृपया गटाचे नाव प्रविष्ट करा",
+      "select_icon": "गट आयकॉन निवडा",
+      "name_label": "गटाचे नाव",
+      "name_placeholder": "उदा., पंजाबचे भात शेतकरी",
+      "description_label": "वर्णन (पर्यायी)",
+      "description_placeholder": "हा गट कशाबद्दल आहे?",
+      "voice_hint": "गटाचे नाव किंवा वर्णन बोलण्यासाठी 🎤 बटण धरा"
+    },
+    "feed": {
+      "refreshing": "रिफ्रेश होत आहे...",
+      "refresh": "पोस्ट रिफ्रेश करा",
+      "loading": "पोस्ट लोड होत आहेत...",
+      "new_posts": "नवीन पोस्ट उपलब्ध"
+    },
+    "empty": {
+      "feed": "अजून कोणत्याही पोस्ट नाहीत",
+      "feed_hint": "तुमची शेती माहिती शेअर करणारे पहिले व्हा!",
+      "my_posts": "तुम्ही अजून पोस्ट केली नाही",
+      "my_posts_hint": "समुदायासह तुमची शेती माहिती शेअर करा!",
+      "saved": "जतन केलेल्या पोस्ट येथे दिसतील",
+      "saved_hint": "जतन करण्यासाठी कोणत्याही पोस्टवर डावीकडे स्वाइप करा",
+      "messages": "अजून कोणतीही संभाषणे नाहीत",
+      "communities": "कोणताही समुदाय सापडला नाही"
     },
     "community": {
       "join": "सामील व्हा",
@@ -69,7 +138,7 @@
     "messages": {
       "title": "संदेश",
       "new": "नवीन संदेश",
-      "no_messages": "अजून संदेश नाहीत",
+      "no_messages": "अजून कोणतेही संदेश नाहीत",
       "type_message": "संदेश टाइप करा...",
       "send": "पाठवा",
       "online": "ऑनलाइन",
@@ -87,36 +156,13 @@
     },
     "trending": {
       "title": "ट्रेंडिंग विषय",
+      "subtitle": "शेतकरी कशाबद्दल बोलत आहेत",
       "hashtag": "#{{tag}}",
-      "posts_count": "{{count}} पोस्ट"
-    },
-    "empty": {
-      "feed": "अजून पोस्ट नाहीत. समुदायासह शेअर करायला सुरुवात करा!",
-      "messages": "अजून संभाषण नाहीत",
-      "communities": "समुदाय सापडले नाहीत"
+      "posts_count": "{{count}} पोस्ट",
+      "view_all": "सर्व ट्रेंडिंग विषय पहा"
     },
     "profile": {
       "activity_feed_soon": "क्रियाकलाप फीड लवकरच येत आहे"
     }
-  },
-  "__qa": {
-    "voice_examples_en": [
-      "Show community feed",
-      "Create new post",
-      "Check my messages",
-      "View leaderboard"
-    ],
-    "voice_examples_hi": [
-      "समुदाय फीड दिखाओ",
-      "नई पोस्ट बनाएं",
-      "मेरे संदेश देखें",
-      "लीडरबोर्ड देखें"
-    ],
-    "voice_examples_mr": [
-      "समुदाय फीड दाखवा",
-      "नवीन पोस्ट तयार करा",
-      "माझे संदेश पहा",
-      "लीडरबोर्ड पहा"
-    ]
   }
 }

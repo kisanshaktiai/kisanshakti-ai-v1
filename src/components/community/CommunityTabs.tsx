@@ -14,6 +14,7 @@ const tabs: { id: CommunityTab; icon: React.ElementType; labelKey: string }[] = 
   { id: 'feed', icon: Home, labelKey: 'social.tabs.feed' },
   { id: 'groups', icon: Users, labelKey: 'social.tabs.groups' },
   { id: 'trending', icon: TrendingUp, labelKey: 'social.tabs.trending' },
+  { id: 'saved', icon: Bookmark, labelKey: 'social.tabs.saved' },
   { id: 'my-posts', icon: User, labelKey: 'social.tabs.my_posts' },
 ];
 
