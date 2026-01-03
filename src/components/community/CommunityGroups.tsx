@@ -113,7 +113,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder={t('social.groups.search')}
+          placeholder={t('groups.search')}
           className="pl-12 h-12 rounded-2xl bg-card/80 border-border/50 backdrop-blur-sm"
         />
       </motion.div>
@@ -135,14 +135,14 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
         <div className="w-12 h-12 rounded-2xl bg-primary-foreground/20 flex items-center justify-center backdrop-blur-sm">
           <Plus className="w-6 h-6" />
         </div>
-        <span>{t('social.groups.create')}</span>
+        <span>{t('groups.create')}</span>
       </motion.button>
 
       {/* Crop-Based Groups Section */}
       <div className="mb-8">
         <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
           <Sprout className="w-5 h-5 text-primary" />
-          {t('social.groups.crop_groups')}
+          {t('groups.crop_groups')}
         </h2>
         
         <div className="grid grid-cols-2 gap-3">
@@ -185,7 +185,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
                 className="rounded-full text-xs w-full bg-primary/5 border-primary/20 hover:bg-primary/10"
               >
                 <MessageCircle className="w-3 h-3 mr-1" />
-                {t('social.groups.discuss')}
+                {t('groups.discuss')}
               </Button>
             </motion.div>
           ))}
@@ -193,7 +193,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
 
         {filteredCropGroups.length === 0 && (
           <p className="text-center text-muted-foreground py-4">
-            {t('social.groups.no_crop_groups')}
+            {t('groups.no_crop_groups')}
           </p>
         )}
       </div>
@@ -202,7 +202,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
       <div>
         <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
           <Users className="w-5 h-5 text-primary" />
-          {t('social.groups.community_groups')}
+          {t('groups.community_groups')}
         </h2>
 
         <div className="space-y-3">
@@ -236,7 +236,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-xs text-muted-foreground flex items-center gap-1">
                     <Users className="w-3 h-3" />
-                    {group.member_count} {t('social.groups.members')}
+                    {group.member_count} {t('groups.members')}
                   </span>
                 </div>
               </div>
@@ -260,7 +260,7 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
                   {joinGroupMutation.isPending ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
-                    t('social.groups.join')
+                    t('groups.join')
                   )}
                 </Button>
               )}
@@ -276,17 +276,17 @@ export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, 
           >
             <div className="text-6xl mb-4">👥</div>
             <h3 className="text-lg font-semibold text-foreground mb-2">
-              {t('social.groups.no_groups')}
+              {t('groups.no_groups')}
             </h3>
             <p className="text-muted-foreground text-sm mb-4">
-              {t('social.groups.be_first')}
+              {t('groups.be_first')}
             </p>
             <Button
               onClick={() => handleModalStateChange(true)}
               className="rounded-full gap-2"
             >
               <Plus className="w-4 h-4" />
-              {t('social.groups.create')}
+              {t('groups.create')}
             </Button>
           </motion.div>
         )}
