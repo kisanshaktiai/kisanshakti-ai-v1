@@ -411,3 +411,35 @@ export {
   exportLogsAsCsv,
   forceFlush as flushAuditLogs
 } from './audit-logger';
+
+// Rule Deduplication Registry
+export {
+  getPrimaryRule,
+  getIPMLadderRules,
+  shouldSkipRule,
+  getRuleRegistryStats,
+  RULE_REGISTRY
+} from './rule-deduplication-registry';
+
+// Advanced Layers
+export {
+  evaluateAllAdvancedLayers,
+  getAdvancedRuleCount,
+  evaluatePlantDemandRules,
+  evaluateRootDominanceRules,
+  evaluateNitrogenEfficiencyRules,
+  evaluateStressAnticipationRules,
+  evaluateSoilMicrobiologyRules,
+  evaluatePGRGovernanceRules
+} from './advanced-layers';
+
+// Intelligence Modules
+export {
+  getDiseaseForecast,
+  getAllDiseaseForecastsForCrop
+} from './intelligence/disease-forecasting';
+export {
+  getIntercroppingRecommendation,
+  getIntercroppingProfile,
+  getIntercroppingOptions
+} from './intelligence/intercropping-rules';
