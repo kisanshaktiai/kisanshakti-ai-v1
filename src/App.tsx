@@ -45,10 +45,7 @@ import AddLand from "./pages/AddLand";
 import EditLand from "./pages/EditLand";
 import LandDetails from "./pages/LandDetails";
 import AIChat from "./pages/AIChat";
-import Social from "./pages/Social";
 import Analytics from "./pages/Analytics";
-import { CommunityPage } from "./components/social/CommunityPage";
-import { ModernCommunityChatRoom } from "./components/social/ModernCommunityChatRoom";
 import AICommunityPage from "./pages/CommunityPage";
 import CropSelectionTest from "./pages/CropSelectionTest";
 import Schedule from "./pages/Schedule";
@@ -331,9 +328,6 @@ const router = createBrowserRouter([
       { path: "lands/:id/ndvi", element: <NDVIAnalysis /> },
       { path: "ai-chat", element: <AIChat /> },
       { path: "chat", element: <AIChat /> }, // Alias for ai-chat
-      { path: "social", element: <Social /> },
-      { path: "social/community/:communityId", element: <CommunityPage /> },
-      { path: "social/community/:communityId/chat/:channelId", element: <ModernCommunityChatRoom /> },
       { path: "community", element: <AICommunityPage /> },
       { path: "analytics", element: <Analytics /> },
       { path: "test/crop-selection", element: <CropSelectionTest /> },
