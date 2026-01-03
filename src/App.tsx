@@ -316,6 +316,7 @@ const router = createBrowserRouter([
     errorElement: <RouteErrorBoundary />,
     children: [
       { index: true, element: <Home /> },
+      { path: "home", element: <Home /> }, // Explicit /app/home route
       { path: "weather", element: <Weather /> },
       { path: "market", element: <Market /> },
       { path: "advisory", element: <Advisory /> },
