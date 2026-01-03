@@ -19,7 +19,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { Bookmark } from 'lucide-react';
 
 const CommunityPage: React.FC = () => {
-  const { t } = useTranslation('social');
+  const { t } = useTranslation();
   const { currentLanguage } = useLanguageStore();
   const [activeTab, setActiveTab] = useState<CommunityTab>('feed');
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);

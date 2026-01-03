@@ -35,7 +35,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
   selectedLanguage,
   onLanguageChange
 }) => {
-  const { t } = useTranslation('social');
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   
   const currentLang = INDIAN_LANGUAGES.find(l => l.code === selectedLanguage) || INDIAN_LANGUAGES[0];
@@ -64,7 +64,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
 
       {/* Auto-translate hint */}
       <span className="ml-2 text-xs text-muted-foreground">
-        ✨ {t('language.auto_translate')}
+        ✨ {t('social.language.auto_translate')}
       </span>
 
       {/* Language Dropdown */}
@@ -90,7 +90,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
             >
               <div className="p-3 border-b border-border">
                 <p className="text-xs text-muted-foreground font-medium">
-                  🌐 {t('language.select_hint')}
+                  🌐 {t('social.language.select_hint')}
                 </p>
               </div>
               
@@ -127,7 +127,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
               <div className="p-3 border-t border-border bg-secondary/30">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Volume2 className="w-3.5 h-3.5" />
-                  <span>{t('language.listen_hint')}</span>
+                  <span>{t('social.language.listen_hint')}</span>
                 </div>
               </div>
             </motion.div>

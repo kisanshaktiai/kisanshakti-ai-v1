@@ -30,7 +30,7 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({
   viewLanguage,
   onLanguageChange
 }) => {
-  const { t } = useTranslation('social');
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [showSearch, setShowSearch] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -87,10 +87,10 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({
             </motion.div>
             <div>
               <h1 className="text-lg font-bold text-foreground tracking-tight">
-                {t('header.title')}
+                {t('social.header.title')}
               </h1>
               <p className="text-xs text-muted-foreground">
-                {t('header.subtitle', { count: 12450 })}
+                {t('social.header.subtitle', { count: 12450 })}
               </p>
             </div>
           </div>
@@ -152,7 +152,7 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t('header.search_placeholder')}
+                placeholder={t('social.header.search_placeholder')}
                 className="flex-1 h-12 rounded-2xl bg-secondary/50 border-0"
                 autoFocus
               />
@@ -171,11 +171,11 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({
               {!searchQuery ? (
                 <div className="text-center py-12">
                   <Search className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
-                  <p className="text-muted-foreground">{t('search.placeholder')}</p>
+                  <p className="text-muted-foreground">{t('social.search.placeholder')}</p>
                 </div>
               ) : (
                 <div className="text-center py-12">
-                  <p className="text-muted-foreground">{t('search.no_results')}</p>
+                  <p className="text-muted-foreground">{t('social.search.no_results')}</p>
                 </div>
               )}
             </div>
@@ -203,7 +203,7 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({
                 >
                   <ArrowLeft className="w-5 h-5" />
                 </Button>
-                <h2 className="text-lg font-semibold">{t('notifications.title')}</h2>
+                <h2 className="text-lg font-semibold">{t('social.notifications.title')}</h2>
               </div>
               {unreadCount > 0 && (
                 <Button 
@@ -212,7 +212,7 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({
                   onClick={handleMarkAllRead}
                   className="text-primary"
                 >
-                  {t('notifications.mark_read')}
+                  {t('social.notifications.mark_read')}
                 </Button>
               )}
             </div>
@@ -220,7 +220,7 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({
               {notifications.length === 0 ? (
                 <div className="text-center py-12">
                   <Bell className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
-                  <p className="text-muted-foreground">{t('notifications.empty')}</p>
+                  <p className="text-muted-foreground">{t('social.notifications.empty')}</p>
                 </div>
               ) : (
                 notifications.map((notification) => (

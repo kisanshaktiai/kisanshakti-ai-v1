@@ -25,7 +25,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
   isOpen,
   onClose
 }) => {
-  const { t } = useTranslation('social');
+  const { t } = useTranslation();
   const { currentLanguage } = useLanguageStore();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -63,7 +63,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
       mediaRecorder.start();
       setIsRecording(true);
     } catch (err) {
-      toast.error(t('post.recording_error'));
+      toast.error(t('social.post.recording_error'));
     }
   };
 
@@ -95,10 +95,10 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
         } else {
           setDescription(prev => prev ? `${prev}\n${data.text}` : data.text);
         }
-        toast.success(t('post.transcribed'));
+        toast.success(t('social.post.transcribed'));
       }
     } catch (err) {
-      toast.error(t('post.transcription_error'));
+      toast.error(t('social.post.transcription_error'));
     } finally {
       setIsTranscribing(false);
       setRecordingField(null);
@@ -107,7 +107,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
 
   const handleSubmit = async () => {
     if (!name.trim()) {
-      toast.error(t('groups.name_required'));
+      toast.error(t('social.groups.name_required'));
       return;
     }
 
@@ -159,7 +159,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               </Button>
               <h2 className="font-semibold text-foreground flex items-center gap-2">
                 <Users className="w-5 h-5 text-primary" />
-                {t('groups.create_title')}
+                {t('social.groups.create_title')}
               </h2>
               <Button
                 onClick={handleSubmit}
@@ -169,7 +169,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                 {createGroupMutation.isPending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  t('groups.create_btn')
+                  t('social.groups.create_btn')
                 )}
               </Button>
             </div>
@@ -179,7 +179,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               {/* Emoji Selector */}
               <div className="mb-6">
                 <label className="text-sm font-medium text-foreground mb-2 block">
-                  {t('groups.select_icon')}
+                  {t('social.groups.select_icon')}
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {GROUP_EMOJIS.map((emoji) => (
@@ -203,13 +203,13 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               {/* Group Name */}
               <div className="mb-4">
                 <label className="text-sm font-medium text-foreground mb-2 block">
-                  {t('groups.name_label')} *
+                  {t('social.groups.name_label')} *
                 </label>
                 <div className="flex gap-2">
                   <Input
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder={t('groups.name_placeholder')}
+                    placeholder={t('social.groups.name_placeholder')}
                     className="flex-1 h-12 rounded-xl"
                   />
                   <motion.button
@@ -242,13 +242,13 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               {/* Description */}
               <div className="mb-6">
                 <label className="text-sm font-medium text-foreground mb-2 block">
-                  {t('groups.description_label')}
+                  {t('social.groups.description_label')}
                 </label>
                 <div className="flex gap-2">
                   <Textarea
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder={t('groups.description_placeholder')}
+                    placeholder={t('social.groups.description_placeholder')}
                     className="flex-1 min-h-[80px] rounded-xl resize-none"
                   />
                   <motion.button
@@ -281,8 +281,8 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
               {/* Voice Hint */}
               <p className="text-center text-xs text-muted-foreground">
                 {isRecording 
-                  ? t('post.release_to_stop')
-                  : t('groups.voice_hint')}
+                  ? t('social.post.release_to_stop')
+                  : t('social.groups.voice_hint')}
               </p>
             </div>
           </motion.div>
