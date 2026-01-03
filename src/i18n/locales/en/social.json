@@ -84,6 +84,8 @@
     "groups": {
       "search": "Search groups...",
       "create": "Create New Group",
+      "create_title": "Create Group",
+      "create_btn": "Create",
       "crop_groups": "Crop Groups",
       "community_groups": "Community Groups",
       "discuss": "Discuss",
@@ -99,7 +101,14 @@
       "send": "Send",
       "you": "You",
       "anonymous": "Anonymous Farmer",
-      "no_messages": "No messages yet. Start the conversation!"
+      "no_messages": "No messages yet. Start the conversation!",
+      "name_required": "Please enter a group name",
+      "select_icon": "Select Group Icon",
+      "name_label": "Group Name",
+      "name_placeholder": "e.g., Rice Farmers of Punjab",
+      "description_label": "Description (Optional)",
+      "description_placeholder": "What is this group about?",
+      "voice_hint": "Hold 🎤 button to speak group name or description"
     },
     "feed": {
       "refreshing": "Refreshing...",
@@ -147,8 +156,10 @@
     },
     "trending": {
       "title": "Trending Topics",
+      "subtitle": "What farmers are discussing",
       "hashtag": "#{{tag}}",
-      "posts_count": "{{count}} posts"
+      "posts_count": "{{count}} posts",
+      "view_all": "View all trending topics"
     },
     "profile": {
       "activity_feed_soon": "Activity feed coming soon"
