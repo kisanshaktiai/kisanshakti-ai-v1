@@ -150,43 +150,58 @@ async function callAIForUnderstanding(message: string): Promise<AIUnderstandingR
     return null;
   }
   
-  const systemPrompt = `You are an expert Agricultural NLU Agent for Indian farmers. 
-Analyze the farmer's message (in Marathi, Hindi, or English) and extract structured information.
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CONTROLLED LANGUAGE ADAPTER CONTRACT - NLU OUTPUT MUST CONFORM TO:
+  // { intent_label, observations, confidence } - NO INTERNAL CODES
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  const systemPrompt = `You are an expert Agricultural NLU Agent for Indian farmers.
+Analyze the farmer's message (in Marathi, Hindi, or English) and extract OBSERVATIONS ONLY.
 
-OUTPUT FORMAT (JSON only, no markdown):
+═══════════════════════════════════════════════════════════════════════════
+CRITICAL CONTRACT - OUTPUT FORMAT (JSON only, no markdown):
+═══════════════════════════════════════════════════════════════════════════
+
 {
   "language": "mr" | "hi" | "en",
-  "intent": "PEST_PROBLEM" | "DISEASE_PROBLEM" | "NUTRIENT_ISSUE" | "WATER_ISSUE" | "WEATHER_QUERY" | "MARKET_QUERY" | "GENERAL_QUERY" | "EMERGENCY" | "GREETING",
-  "intent_confidence": 0.0-1.0,
-  "crop": { "name": "local_name", "code": "CROP_CODE" } or null,
-  "pest": { "name": "local_name", "code": "PEST_CODE" } or null,
-  "disease": { "name": "local_name", "code": "DISEASE_CODE" } or null,
-  "symptoms": ["symptom1", "symptom2"],
+  "intent_label": "<SHORT PLAIN-LANGUAGE DESCRIPTION of what farmer wants - NOT A CODE>",
+  "observations": ["<EXACT farmer observations - color, spots, insects, wilting, etc.>"],
+  "confidence": 0.0-1.0,
   "urgency": "HIGH" | "MEDIUM" | "LOW",
   "emotional_state": "PANIC" | "STRESSED" | "NEUTRAL" | "CONFIDENT",
-  "extracted_context": "brief summary of farmer's issue in same language as input"
+  "extracted_context": "brief summary in farmer's language"
 }
 
-CROP CODES: COTTON, SOYBEAN, TOMATO, ONION, CHILLI, SUGARCANE, WHEAT, RICE, MAIZE, GROUNDNUT, TUR, GRAM
-PEST CODES (use EXACT codes with underscores): WHITEFLY, APHID, BOLLWORM, MEALYBUG, THRIPS, JASSID, ARMYWORM, STEM_BORER, FRUIT_BORER, SHOOT_BORER, ROOT_BORER
-DISEASE CODES: LEAF_CURL, POWDERY_MILDEW, DOWNY_MILDEW, WILT, ROOT_ROT, BACTERIAL_BLIGHT, RUST, ANTHRACNOSE, RED_ROT, SMUT
+═══════════════════════════════════════════════════════════════════════════
+FORBIDDEN - NEVER OUTPUT THESE (CRITICAL):
+═══════════════════════════════════════════════════════════════════════════
 
-CRITICAL SYMPTOM-TO-PEST/DISEASE MAPPING (MUST use these exact codes):
-- "dead heart" / "मधली सुरळी वाळली" / "सुखी सुरळी" / "गाभा सुकला" → pest code: "SHOOT_BORER" (sugarcane)
-- "white powder on leaves" / "पांढरी भुकटी" → disease code: "POWDERY_MILDEW"
-- "yellowing leaves" + "wilting" → disease code: "WILT" or intent: "NUTRIENT_ISSUE"
-- "holes in bolls" / "बोंडातील छिद्र" → pest code: "BOLLWORM" (cotton)
-- "curled leaves" / "पाने वळलेली" → disease code: "LEAF_CURL"
-- "tiny white flies" / "पांढऱ्या माशा" → pest code: "WHITEFLY"
-- "sticky honeydew" / "चिकट पाणी" → pest code: "APHID" or "WHITEFLY"
-- "red/rust spots" / "तांबडे डाग" → disease code: "RUST"
-- "stem borer" / "खोडकिडा" → pest code: "STEM_BORER"
+- NO pest_code, disease_code, crop_code, rule_id, product_id
+- NO internal identifiers or numeric codes
+- NO diagnoses or cause mappings
+- NO recommendations or actions
+- NO percentage effectiveness claims
 
-IMPORTANT RULES:
-1. Detect urgency from words: "dying", "emergency", "urgent", "मरतंय", "वाचवा", "ताबडतोब"
-2. Always try to identify specific pest/disease even from vague symptom descriptions
-3. Use UNDERSCORE format for codes (SHOOT_BORER not SHOOTBORER)
-4. For sugarcane + dead heart symptoms, ALWAYS return pest.code = "SHOOT_BORER"`;
+═══════════════════════════════════════════════════════════════════════════
+OBSERVATION EXTRACTION RULES:
+═══════════════════════════════════════════════════════════════════════════
+
+Preserve farmer's EXACT wording as observations:
+- "मधली सुरळी वाळली" → observation: "मधली सुरळी वाळली" (NOT pest code)
+- "dead heart" → observation: "dead heart in crop"
+- "white flies on leaves" → observation: "white flies on leaves"
+- "पाने पिवळी झाली" → observation: "पाने पिवळी झाली"
+
+For intent_label, use plain language like:
+- "pest problem on crop"
+- "disease issue with leaves"
+- "need irrigation advice"
+- "weather query for spraying"
+- "market price inquiry"
+- "general farming question"
+- "needs clarification" (if confidence < 0.7)
+
+URGENCY INDICATORS: "dying", "emergency", "urgent", "मरतंय", "वाचवा", "ताबडतोब"`;
 
   let geminiError: string | null = null;
   let openaiError: string | null = null;
