@@ -388,7 +388,7 @@ export function EnhancedAIChatInterface() {
             .select('*')
             .in('session_id', allSessionIds)
             .eq('farmer_id', user.id)
-            .order('created_at', { ascending: true })
+            .order('created_at', { ascending: false })
             .limit(200);
           
           if (!messagesError && allMessages && allMessages.length > 0) {
@@ -581,16 +581,20 @@ export function EnhancedAIChatInterface() {
         
         // Load messages for this session from Supabase
         // CRITICAL FIX: Use authClient with proper headers
+        // CRITICAL FIX (2026-01): Fetch MOST RECENT messages first so refresh shows latest conversation
         const { data: previousMessages, error: messagesError } = await authClient
           .from('ai_chat_messages')
           .select('*')
           .eq('session_id', existingSession.id)
           .eq('farmer_id', user?.id)
-          .order('created_at', { ascending: true })
-          .limit(100);
+          .order('created_at', { ascending: false })
+          .limit(200);
 
         if (!messagesError && previousMessages && previousMessages.length > 0) {
-          if (import.meta.env.DEV) console.log(`✅ [Supabase] Loaded ${previousMessages.length} messages for ${sessionKey}`);
+          if (import.meta.env.DEV) console.log(`✅ [Supabase] Loaded ${previousMessages.length} recent messages for ${sessionKey}`);
+
+          // Convert newest-first -> chronological for UI rendering
+          const chronologicalMessages = [...previousMessages].reverse();
           
           // CRITICAL FIX: SMART CONTENT-BASED FILTERING
           const filterDisplayableMessages = (msgs: any[]): any[] => {
@@ -632,11 +636,11 @@ export function EnhancedAIChatInterface() {
             });
           };
           
-          const filteredMessages = filterDisplayableMessages(previousMessages);
-          if (import.meta.env.DEV) console.log(`✅ [Filter] Showing ${filteredMessages.length}/${previousMessages.length} displayable messages`);
+          const filteredMessages = filterDisplayableMessages(chronologicalMessages);
+          if (import.meta.env.DEV) console.log(`✅ [Filter] Showing ${filteredMessages.length}/${chronologicalMessages.length} displayable messages`);
           
           const loadedMessages: Message[] = filteredMessages.map(mapMessageFromDB);
-          
+
           // CRITICAL FIX: Sync Supabase messages TO LocalDB for offline access
           try {
             // Cache session first
