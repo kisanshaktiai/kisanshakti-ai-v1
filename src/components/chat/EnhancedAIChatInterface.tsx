@@ -364,7 +364,48 @@ export function EnhancedAIChatInterface() {
         if (!messagesError && previousMessages && previousMessages.length > 0) {
           console.log(`✅ [Supabase] Loaded ${previousMessages.length} messages for ${sessionKey}`);
           
-          const loadedMessages: Message[] = previousMessages.map(mapMessageFromDB);
+          // CRITICAL FIX: Filter out internal/system messages that shouldn't be displayed
+          const filterDisplayableMessages = (msgs: any[]): any[] => {
+            return msgs.filter(msg => {
+              // Filter 1: Skip empty content messages
+              if (!msg.content || msg.content.trim().length === 0) {
+                console.log('[Filter] Skipping empty message:', msg.id);
+                return false;
+              }
+              
+              // Filter 2: Skip internal orchestrator prompts (user messages that are system-generated)
+              const metadata = msg.metadata as Record<string, any> | null;
+              if (metadata?.source === 'orchestrator_v1' && msg.inferred_intent === 'PROCESSED') {
+                console.log('[Filter] Skipping internal orchestrator prompt:', msg.id);
+                return false;
+              }
+              
+              // Filter 3: Skip messages starting with DECISION BRAIN marker
+              if (msg.content?.includes('🧠 DECISION BRAIN OUTPUT')) {
+                console.log('[Filter] Skipping decision brain system prompt:', msg.id);
+                return false;
+              }
+              
+              // Filter 4: Skip system acknowledgment messages
+              if (msg.content === 'Response generated' || msg.content === 'Processing...') {
+                console.log('[Filter] Skipping system acknowledgment:', msg.id);
+                return false;
+              }
+              
+              // Filter 5: Skip decision_brain_source assistant messages with minimal content
+              if (msg.role === 'assistant' && msg.decision_brain_source === true && msg.content.length < 20) {
+                console.log('[Filter] Skipping minimal decision brain response:', msg.id);
+                return false;
+              }
+              
+              return true;
+            });
+          };
+          
+          const filteredMessages = filterDisplayableMessages(previousMessages);
+          console.log(`✅ [Filter] Showing ${filteredMessages.length}/${previousMessages.length} displayable messages`);
+          
+          const loadedMessages: Message[] = filteredMessages.map(mapMessageFromDB);
           
           // CRITICAL FIX: Sync Supabase messages TO LocalDB for offline access
           try {

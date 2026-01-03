@@ -1314,14 +1314,45 @@ class LocalDatabase {
     
     // Get all messages and filter by session (which already filters by farmer)
     const allMessages = await this.db!.getAll('aiChatMessages');
-    const filteredMessages = allMessages.filter(m => {
+    const sessionFilteredMessages = allMessages.filter(m => {
       const sessionMatch = sessionIds.has(m.session_id);
       // Additional farmer filter for safety
       const farmerMatch = !currentFarmerId || m.farmer_id === currentFarmerId;
       return sessionMatch && farmerMatch;
     });
     
-    console.log(`📱 [LocalDB] getChatMessages: Found ${filteredMessages.length} messages for farmer ${currentFarmerId} and land ${landId || 'general'}`);
+    // CRITICAL FIX: Filter out internal/system messages that shouldn't be displayed
+    const filteredMessages = sessionFilteredMessages.filter(msg => {
+      // Filter 1: Skip empty content messages
+      if (!msg.content || msg.content.trim().length === 0) {
+        return false;
+      }
+      
+      // Filter 2: Skip internal orchestrator prompts
+      const metadata = msg.metadata as Record<string, any> | null;
+      if (metadata?.source === 'orchestrator_v1' && msg.inferred_intent === 'PROCESSED') {
+        return false;
+      }
+      
+      // Filter 3: Skip messages with DECISION BRAIN marker
+      if (msg.content?.includes('🧠 DECISION BRAIN OUTPUT')) {
+        return false;
+      }
+      
+      // Filter 4: Skip system acknowledgment messages
+      if (msg.content === 'Response generated' || msg.content === 'Processing...') {
+        return false;
+      }
+      
+      // Filter 5: Skip minimal decision brain responses
+      if (msg.role === 'assistant' && msg.decision_brain_source === true && msg.content.length < 20) {
+        return false;
+      }
+      
+      return true;
+    });
+    
+    console.log(`📱 [LocalDB] getChatMessages: Found ${filteredMessages.length}/${sessionFilteredMessages.length} displayable messages for farmer ${currentFarmerId} and land ${landId || 'general'}`);
     return filteredMessages;
   }
 
