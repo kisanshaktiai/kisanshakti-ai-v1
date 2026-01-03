@@ -1288,23 +1288,41 @@ class LocalDatabase {
     await this.updatePendingCount();
   }
 
-  async getChatMessages(landId?: string | null): Promise<AIChatMessageData[]> {
+  async getChatMessages(landId?: string | null, farmerId?: string): Promise<AIChatMessageData[]> {
     if (!this.db) await this.initialize();
+    
+    // CRITICAL FIX: Get farmer ID from context if not provided
+    const currentFarmerId = farmerId || tenantIsolationService.getUserId();
+    
+    if (!currentFarmerId) {
+      console.warn('⚠️ [LocalDB] getChatMessages called without farmer context, returning all matching messages');
+    }
     
     // First, get sessions for this land (or general if landId is null)
     const allSessions = await this.db!.getAll('aiChatSessions');
     const relevantSessions = allSessions.filter(s => {
+      // Filter by farmer_id if available
+      const farmerMatch = !currentFarmerId || s.farmer_id === currentFarmerId;
+      
       if (landId === null || landId === undefined) {
-        return s.land_id === null || s.land_id === undefined;
+        return farmerMatch && (s.land_id === null || s.land_id === undefined);
       }
-      return s.land_id === landId;
+      return farmerMatch && s.land_id === landId;
     });
     
     const sessionIds = new Set(relevantSessions.map(s => s.id));
     
-    // Get all messages and filter by session
+    // Get all messages and filter by session (which already filters by farmer)
     const allMessages = await this.db!.getAll('aiChatMessages');
-    return allMessages.filter(m => sessionIds.has(m.session_id));
+    const filteredMessages = allMessages.filter(m => {
+      const sessionMatch = sessionIds.has(m.session_id);
+      // Additional farmer filter for safety
+      const farmerMatch = !currentFarmerId || m.farmer_id === currentFarmerId;
+      return sessionMatch && farmerMatch;
+    });
+    
+    console.log(`📱 [LocalDB] getChatMessages: Found ${filteredMessages.length} messages for farmer ${currentFarmerId} and land ${landId || 'general'}`);
+    return filteredMessages;
   }
 
   async getChatMessagesBySession(sessionId: string): Promise<AIChatMessageData[]> {

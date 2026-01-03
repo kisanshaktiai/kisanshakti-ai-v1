@@ -16,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supabaseWithAuth } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { landsApi } from '@/services/landsApi';
@@ -328,7 +328,10 @@ export function EnhancedAIChatInterface() {
       };
       
       // 1. Try to load from Supabase FIRST (source of truth when online)
-      let sessionQuery = supabase
+      // CRITICAL FIX: Use supabaseWithAuth to pass x-farmer-id and x-tenant-id headers
+      const authClient = supabaseWithAuth(user.id, tenant.id);
+      
+      let sessionQuery = authClient
         .from('ai_chat_sessions')
         .select('id')
         .eq('farmer_id', user.id)
@@ -349,7 +352,8 @@ export function EnhancedAIChatInterface() {
         console.log(`✅ [Supabase] Loaded session for ${sessionKey}:`, existingSession.id);
         
         // Load messages for this session from Supabase
-        const { data: previousMessages, error: messagesError } = await supabase
+        // CRITICAL FIX: Use authClient with proper headers
+        const { data: previousMessages, error: messagesError } = await authClient
           .from('ai_chat_messages')
           .select('*')
           .eq('session_id', existingSession.id)
@@ -548,7 +552,10 @@ export function EnhancedAIChatInterface() {
     // Create new session
     const landId = activeTab !== 'general' ? activeTab : null;
     
-    const { data: newSession, error } = await supabase
+    // CRITICAL FIX: Use supabaseWithAuth for INSERT operations
+    const authClient = supabaseWithAuth(user?.id || '', tenant?.id || '');
+    
+    const { data: newSession, error } = await authClient
       .from('ai_chat_sessions')
       .insert({
         tenant_id: tenant?.id,
@@ -612,8 +619,9 @@ export function EnhancedAIChatInterface() {
         [activeTab]: [...(prev[activeTab] || []), userMessage]
       }));
       
-      // Save user message to database
-      await supabase.from('ai_chat_messages').insert({
+      // Save user message to database - use authClient
+      const authClient = supabaseWithAuth(user.id, tenant.id);
+      await authClient.from('ai_chat_messages').insert({
         id: userMessageId,
         tenant_id: tenant.id,
         farmer_id: user.id,
@@ -663,8 +671,8 @@ export function EnhancedAIChatInterface() {
         
         setPendingVisionAnalysis(null);
         
-        // Save AI response
-        await supabase.from('ai_chat_messages').insert({
+        // Save AI response - use authClient
+        await authClient.from('ai_chat_messages').insert({
           id: aiMessageId,
           tenant_id: tenant.id,
           farmer_id: user.id,
@@ -741,8 +749,9 @@ export function EnhancedAIChatInterface() {
         [activeTab]: [...(prev[activeTab] || []), userMessage]
       }));
       
-      // Save to database
-      await supabase.from('ai_chat_messages').insert({
+      // Save to database - use authClient
+      const authClient = supabaseWithAuth(user.id, tenant.id);
+      await authClient.from('ai_chat_messages').insert({
         id: userMessageId,
         tenant_id: tenant.id,
         farmer_id: user.id,
@@ -814,8 +823,8 @@ export function EnhancedAIChatInterface() {
       
       setPendingVisionAnalysis(null);
       
-      // Save AI response
-      await supabase.from('ai_chat_messages').insert({
+      // Save AI response - use authClient
+      await authClient.from('ai_chat_messages').insert({
         id: aiMessageId,
         tenant_id: tenant.id,
         farmer_id: user.id,
@@ -1114,8 +1123,9 @@ export function EnhancedAIChatInterface() {
         [activeTab]: [...(prev[activeTab] || []), aiMessage]
       }));
       
-      // Save to database
-      await supabase.from('ai_chat_messages').insert({
+      // Save to database - use authClient
+      const insertClient = supabaseWithAuth(user.id, tenant.id);
+      await insertClient.from('ai_chat_messages').insert({
         id: aiMessageId,
         session_id: sessionId,
         tenant_id: tenant.id,
