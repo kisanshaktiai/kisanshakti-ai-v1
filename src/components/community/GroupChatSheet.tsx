@@ -29,7 +29,7 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
   group,
   language,
 }) => {
-  const { t } = useTranslation('social');
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const [inputValue, setInputValue] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -90,7 +90,7 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
       mediaRecorder.start();
       setIsRecording(true);
     } catch (err) {
-      toast.error(t('post.recording_error'));
+      toast.error(t('social.post.recording_error'));
     }
   };
 
@@ -118,10 +118,10 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
       if (error) throw error;
       if (data?.text) {
         setInputValue(prev => prev ? `${prev} ${data.text}` : data.text);
-        toast.success(t('post.transcribed'));
+        toast.success(t('social.post.transcribed'));
       }
     } catch (err) {
-      toast.error(t('post.transcription_error'));
+      toast.error(t('social.post.transcription_error'));
     } finally {
       setIsTranscribing(false);
     }
@@ -141,8 +141,8 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
 
   const getSenderName = (message: GroupMessage) => {
     if (message.message_type === 'system') return 'System';
-    if (isOwnMessage(message)) return t('groups.you');
-    return message.farmer?.farmer_name || t('groups.anonymous');
+    if (isOwnMessage(message)) return t('social.groups.you');
+    return message.farmer?.farmer_name || t('social.groups.anonymous');
   };
 
   return (
@@ -178,7 +178,7 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
                 <h2 className="font-semibold text-foreground">{group.name}</h2>
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <Users className="w-3 h-3" />
-                  {group.memberCount || 0} {t('groups.members')}
+                  {group.memberCount || 0} {t('social.groups.members')}
                 </p>
               </div>
             </div>
@@ -199,7 +199,7 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
               <div className="text-center py-12">
                 <div className="text-4xl mb-3">💬</div>
                 <p className="text-muted-foreground text-sm">
-                  {t('groups.no_messages')}
+                  {t('social.groups.no_messages')}
                 </p>
               </div>
             ) : (
@@ -255,7 +255,7 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
               <Input
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                placeholder={t('groups.type_message')}
+                placeholder={t('social.groups.type_message')}
                 className="flex-1 h-12 rounded-2xl bg-secondary/50 border-0"
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               />

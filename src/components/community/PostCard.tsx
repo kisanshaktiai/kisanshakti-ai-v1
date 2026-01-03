@@ -34,7 +34,7 @@ export const PostCard: React.FC<PostCardProps> = ({
   isLiked: initialIsLiked = false,
   isSaved: initialIsSaved = false
 }) => {
-  const { t } = useTranslation('social');
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
   const [isSaved, setIsSaved] = useState(initialIsSaved);
@@ -148,7 +148,7 @@ export const PostCard: React.FC<PostCardProps> = ({
         });
       } else {
         await navigator.clipboard.writeText(post.originalContent);
-        toast.success(t('post.share_copied'));
+        toast.success(t('social.post.share_copied'));
       }
     } catch (error) {
       console.log('Share cancelled or failed');
@@ -171,7 +171,7 @@ export const PostCard: React.FC<PostCardProps> = ({
       >
         <div className="flex items-center gap-2 text-primary">
           <Bookmark className="w-6 h-6" />
-          <span className="text-sm font-medium">{t('post.save')}</span>
+          <span className="text-sm font-medium">{t('social.post.save')}</span>
         </div>
       </motion.div>
       
@@ -181,7 +181,7 @@ export const PostCard: React.FC<PostCardProps> = ({
       >
         <div className="flex items-center gap-2 text-primary">
           <Globe className="w-6 h-6" />
-          <span className="text-sm font-medium">{t('post.original')}</span>
+          <span className="text-sm font-medium">{t('social.post.original')}</span>
         </div>
       </motion.div>
 
@@ -220,7 +220,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                 {post.hasVoiceNote && (
                   <span className="flex items-center gap-1 px-1.5 py-0.5 bg-primary/10 rounded-full">
                     <Mic className="w-3 h-3 text-primary" />
-                    <span className="text-[10px] text-primary font-medium">{t('post.voice')}</span>
+                    <span className="text-[10px] text-primary font-medium">{t('social.post.voice')}</span>
                   </span>
                 )}
               </div>
@@ -250,7 +250,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                   >
                     <Sparkles className="w-3.5 h-3.5 text-primary" />
                   </motion.div>
-                  <span>{t('post.translating')}</span>
+                  <span>{t('social.post.translating')}</span>
                 </div>
               ) : (
                 <button
@@ -258,7 +258,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                   className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
                 >
                   <Globe className="w-3.5 h-3.5" />
-                  <span>{showOriginal ? t('post.show_translated') : t('post.show_original')}</span>
+                  <span>{showOriginal ? t('social.post.show_translated') : t('social.post.show_original')}</span>
                 </button>
               )}
             </motion.div>
@@ -280,12 +280,12 @@ export const PostCard: React.FC<PostCardProps> = ({
             >
               {isExpanded ? (
                 <>
-                  <span>{t('post.show_less')}</span>
+                  <span>{t('social.post.show_less')}</span>
                   <ChevronUp className="w-4 h-4" />
                 </>
               ) : (
                 <>
-                  <span>{t('post.read_more')}</span>
+                  <span>{t('social.post.read_more')}</span>
                   <ChevronDown className="w-4 h-4" />
                 </>
               )}

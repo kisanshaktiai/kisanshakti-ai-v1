@@ -11,18 +11,18 @@ interface CommunityTabsProps {
 }
 
 const tabs: { id: CommunityTab; icon: React.ElementType; labelKey: string }[] = [
-  { id: 'feed', icon: Home, labelKey: 'tabs.feed' },
-  { id: 'groups', icon: Users, labelKey: 'tabs.groups' },
-  { id: 'trending', icon: TrendingUp, labelKey: 'tabs.trending' },
-  { id: 'saved', icon: Bookmark, labelKey: 'tabs.saved' },
-  { id: 'my-posts', icon: User, labelKey: 'tabs.my_posts' },
+  { id: 'feed', icon: Home, labelKey: 'social.tabs.feed' },
+  { id: 'groups', icon: Users, labelKey: 'social.tabs.groups' },
+  { id: 'trending', icon: TrendingUp, labelKey: 'social.tabs.trending' },
+  { id: 'saved', icon: Bookmark, labelKey: 'social.tabs.saved' },
+  { id: 'my-posts', icon: User, labelKey: 'social.tabs.my_posts' },
 ];
 
 export const CommunityTabs: React.FC<CommunityTabsProps> = ({
   activeTab,
   onTabChange
 }) => {
-  const { t } = useTranslation('social');
+  const { t } = useTranslation();
 
   return (
     <div className="sticky top-[7.5rem] z-30 px-4 py-2 bg-background/80 backdrop-blur-2xl">

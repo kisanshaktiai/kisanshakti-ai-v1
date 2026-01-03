@@ -38,7 +38,7 @@ interface TrendingTopicsProps {
 }
 
 export const TrendingTopics: React.FC<TrendingTopicsProps> = ({ viewLanguage }) => {
-  const { t } = useTranslation('social');
+  const { t } = useTranslation();
 
   return (
     <div className="px-4 py-2">
@@ -49,10 +49,10 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({ viewLanguage }) 
         </div>
         <div>
           <h2 className="font-semibold text-foreground">
-            {t('trending.title')}
+            {t('social.trending.title')}
           </h2>
           <p className="text-xs text-muted-foreground">
-            {t('trending.subtitle')}
+            {t('social.trending.subtitle')}
           </p>
         </div>
       </div>
@@ -136,7 +136,7 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({ viewLanguage }) 
         whileTap={{ scale: 0.98 }}
         className="w-full mt-4 py-3 text-center text-sm text-primary font-medium hover:bg-primary/5 rounded-xl transition-colors"
       >
-        {t('trending.view_all')} →
+        {t('social.trending.view_all')} →
       </motion.button>
     </div>
   );

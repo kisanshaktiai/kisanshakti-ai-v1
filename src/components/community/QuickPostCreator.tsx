@@ -20,7 +20,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
   language,
   onExpandToFull
 }) => {
-  const { t } = useTranslation('social');
+  const { t } = useTranslation();
   const [content, setContent] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -57,7 +57,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
       setIsRecording(true);
       setIsExpanded(true);
     } catch (err) {
-      toast.error(t('post.recording_error'));
+      toast.error(t('social.post.recording_error'));
     }
   };
 
@@ -85,10 +85,10 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
       if (error) throw error;
       if (data?.text) {
         setContent(prev => prev ? `${prev}\n\n${data.text}` : data.text);
-        toast.success(t('post.transcribed'));
+        toast.success(t('social.post.transcribed'));
       }
     } catch (err) {
-      toast.error(t('post.transcription_error'));
+      toast.error(t('social.post.transcription_error'));
     } finally {
       setIsTranscribing(false);
     }
@@ -108,7 +108,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
 
   const handleSubmit = async () => {
     if (!content.trim() && !selectedImage) {
-      toast.error(t('post.empty_error'));
+      toast.error(t('social.post.empty_error'));
       return;
     }
 
@@ -124,7 +124,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
           setContent('');
           setSelectedImage(null);
           setIsExpanded(false);
-          toast.success(t('post.success'));
+          toast.success(t('social.post.success'));
         },
       }
     );
@@ -165,13 +165,13 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
               <textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder={t('post.whats_on_mind')}
+                placeholder={t('social.post.whats_on_mind')}
                 className="w-full bg-transparent border-none outline-none resize-none text-foreground placeholder:text-muted-foreground min-h-[60px]"
                 autoFocus
               />
             ) : (
               <p className="text-muted-foreground">
-                {t('post.tap_or_speak')}
+                {t('social.post.tap_or_speak')}
               </p>
             )}
           </div>
@@ -215,10 +215,10 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
         {/* Voice Hint */}
         <p className="text-center text-xs text-muted-foreground mt-2">
           {isRecording 
-            ? t('post.release_to_stop')
+            ? t('social.post.release_to_stop')
             : isTranscribing
-            ? t('post.converting')
-            : t('post.hold_mic')}
+            ? t('social.post.converting')
+            : t('social.post.hold_mic')}
         </p>
       </div>
 
@@ -278,7 +278,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
                   onClick={handleClear}
                   className="text-muted-foreground"
                 >
-                  {t('post.clear')}
+                  {t('social.post.clear')}
                 </Button>
               </div>
 
@@ -292,7 +292,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
                 ) : (
                   <Send className="w-4 h-4" />
                 )}
-                {t('post.publish')}
+                {t('social.post.publish')}
               </Button>
             </div>
           </motion.div>
