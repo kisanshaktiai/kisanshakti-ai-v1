@@ -244,25 +244,49 @@ serve(async (req) => {
     let conversationHistory: Array<{ role: string; content: string }> = [];
     
     if (currentSessionId) {
-      // Fetch session metadata
+      // Fetch session metadata AND land_id for isolation validation
       const { data: existingSession } = await supabase
         .from('ai_chat_sessions')
-        .select('metadata')
+        .select('metadata, land_id')
         .eq('id', currentSessionId)
         .single();
       
-      if (existingSession?.metadata?.decision_tracking) {
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CRITICAL FIX: LAND ISOLATION - Only use session state if it's for the SAME land
+      // This prevents pest/disease data from other lands contaminating current chat
+      // ═══════════════════════════════════════════════════════════════════════════
+      const sessionLandId = existingSession?.land_id;
+      const requestedLandId = landId || null;
+      const isLandMatch = sessionLandId === requestedLandId;
+      
+      if (existingSession?.metadata?.decision_tracking && isLandMatch) {
         sessionState = existingSession.metadata.decision_tracking;
-        console.log(`📋 [Session] Previous state loaded:`, {
+        console.log(`📋 [Session] Previous state loaded for SAME land (${sessionLandId}):`, {
           decision_state: sessionState?.decision_state,
           last_pest: sessionState?.last_pest,
           last_crop: sessionState?.last_crop,
           pending_action: sessionState?.pending_user_action,
           turn: sessionState?.turn_count
         });
+      } else if (existingSession?.metadata?.decision_tracking && !isLandMatch) {
+        // CRITICAL: Different land - DO NOT inherit pest/disease state
+        console.warn(`⚠️ [Session] LAND MISMATCH - Clearing session state to prevent contamination`);
+        console.warn(`   Session land_id: ${sessionLandId}, Request land_id: ${requestedLandId}`);
+        console.warn(`   NOT inheriting: last_pest=${existingSession.metadata.decision_tracking.last_pest}, last_disease=${existingSession.metadata.decision_tracking.last_disease}`);
+        
+        // Only preserve turn_count, reset all pest/disease/crop state
+        sessionState = {
+          decision_state: 'new_land_context',
+          last_pest: null,
+          last_crop: null,
+          last_disease: null,
+          pending_user_action: false,
+          turn_count: 1,
+          recommendations_count: 0
+        };
       }
       
-      // CRITICAL FIX: Fetch last 6 messages from DB for context
+      // CRITICAL FIX: Fetch last 6 messages from DB for context - ONLY from SAME session
       const { data: previousMessages, error: historyError } = await supabase
         .from('ai_chat_messages')
         .select('role, content')
@@ -276,7 +300,7 @@ serve(async (req) => {
           .reverse()
           .map(m => ({ role: m.role, content: m.content }));
         
-        console.log(`📜 [Session] Loaded ${conversationHistory.length} previous messages for context`);
+        console.log(`📜 [Session] Loaded ${conversationHistory.length} previous messages for context (land_isolated: ${isLandMatch})`);
       }
     }
 
@@ -484,7 +508,21 @@ serve(async (req) => {
     const remainingTime = Math.max(25000 - timeSpentSoFar, 5000); // At least 5s for formatting
     console.log(`   Time budget: ${remainingTime}ms remaining for response formatting`);
     
-    if (allActionsFiltered) {
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: Check if Static Data Gate already handled this query
+    // Static Gate responses should NOT go through LLM formatting
+    // ═══════════════════════════════════════════════════════════════════════════
+    const isStaticGateResponse = 
+      orchestratorResponse.decision_output?.metadata?.template_type === 'STATIC_DIRECT' ||
+      orchestratorResponse.communication?.metadata?.source === 'STATIC_DATA_GATE';
+    
+    if (isStaticGateResponse) {
+      // Static Gate already generated the response - use it directly
+      console.log(`   📊 [StaticGate] Using pre-generated response (NO LLM needed)`);
+      responseContent = orchestratorResponse.communication?.main_message?.full_text?.[detectedLanguage as 'mr' | 'hi' | 'en'] ||
+                        orchestratorResponse.communication?.main_message?.full_text?.mr ||
+                        'माहिती उपलब्ध नाही';
+    } else if (allActionsFiltered) {
       // Special response when all actions were filtered
       console.log(`   ⚠️ ALL actions filtered - generating explanation response`);
       responseContent = generateAllActionsFilteredResponse(actions_filtered_out, detectedLanguage as 'mr' | 'hi' | 'en');
