@@ -811,6 +811,351 @@ export const ACTION_MAPPINGS: ActionMapping[] = [
     justification_key: 'action.insurance.total_loss',
     rule_id: 'A_CRIT_005',
     scientific_source: 'PMFBY Guidelines'
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // IPM LADDER L5/L6 ACTIONS - SELECTIVE & EMERGENCY CHEMICAL (Phase 3)
+  // ─────────────────────────────────────────────────────────────────────────
+  // TOMATO FRUIT BORER L5/L6
+  {
+    cause: Cause.IPM_TOMATO_FRUIT_BORER_L5,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.selective_insecticide.fruit_borer_l5',
+    rule_id: 'A_IPM_TOMATO_FB_L5',
+    scientific_source: 'IRAC + ICAR-IIHR',
+    organic_alternative: Action.APPLY_BT_SPRAY
+  },
+  {
+    cause: Cause.IPM_TOMATO_FRUIT_BORER_L6,
+    action: Action.EMERGENCY_SPRAY,
+    base_priority: 9,
+    urgency: ActionUrgency.IMMEDIATE,
+    justification_key: 'action.emergency_insecticide.fruit_borer_l6',
+    rule_id: 'A_IPM_TOMATO_FB_L6',
+    scientific_source: 'ICAR Emergency Protocol'
+  },
+
+  // COTTON BOLLWORM L5/L6
+  {
+    cause: Cause.IPM_COTTON_BOLLWORM_L5,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.selective_insecticide.bollworm_l5',
+    rule_id: 'A_IPM_COTTON_BW_L5',
+    scientific_source: 'IRAC + ICAR-CICR',
+    organic_alternative: Action.APPLY_BT_SPRAY
+  },
+  {
+    cause: Cause.IPM_COTTON_BOLLWORM_L6,
+    action: Action.EMERGENCY_SPRAY,
+    base_priority: 9,
+    urgency: ActionUrgency.IMMEDIATE,
+    justification_key: 'action.emergency_insecticide.bollworm_l6',
+    rule_id: 'A_IPM_COTTON_BW_L6',
+    scientific_source: 'CICR Emergency Protocol'
+  },
+
+  // COTTON WHITEFLY L5
+  {
+    cause: Cause.IPM_COTTON_WHITEFLY_L5,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.selective_insecticide.whitefly_l5',
+    rule_id: 'A_IPM_COTTON_WF_L5',
+    scientific_source: 'IRAC + CICR',
+    organic_alternative: Action.APPLY_NEEM_OIL
+  },
+
+  // RICE STEM BORER L5
+  {
+    cause: Cause.IPM_RICE_STEM_BORER_L5,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.selective_insecticide.stem_borer_l5',
+    rule_id: 'A_IPM_RICE_SB_L5',
+    scientific_source: 'IRAC + ICAR-NRRI',
+    organic_alternative: Action.RELEASE_BIOAGENT
+  },
+
+  // WHEAT APHID L5
+  {
+    cause: Cause.IPM_WHEAT_APHID_L5,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.selective_insecticide.aphid_l5',
+    rule_id: 'A_IPM_WHEAT_APH_L5',
+    scientific_source: 'IRAC + ICAR-IARI',
+    organic_alternative: Action.APPLY_NEEM_OIL
+  },
+
+  // BRINJAL SHOOT FRUIT BORER L5
+  {
+    cause: Cause.IPM_BRINJAL_SHOOT_FRUIT_BORER_L5,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.selective_insecticide.brinjal_borer_l5',
+    rule_id: 'A_IPM_BRINJAL_SFB_L5',
+    scientific_source: 'ICAR-IIHR',
+    organic_alternative: Action.APPLY_BT_SPRAY
+  },
+
+  // CABBAGE DIAMONDBACK MOTH L5
+  {
+    cause: Cause.IPM_CABBAGE_DIAMONDBACK_MOTH_L5,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.selective_insecticide.dbm_l5',
+    rule_id: 'A_IPM_CABBAGE_DBM_L5',
+    scientific_source: 'ICAR-IIHR',
+    organic_alternative: Action.APPLY_BT_SPRAY
+  },
+
+  // OKRA SHOOT FRUIT BORER L4
+  {
+    cause: Cause.IPM_OKRA_SHOOT_FRUIT_BORER_L4,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.selective_insecticide.okra_borer_l4',
+    rule_id: 'A_IPM_OKRA_SFB_L4',
+    scientific_source: 'ICAR-IIHR',
+    organic_alternative: Action.APPLY_BT_SPRAY
+  },
+
+  // CHILLI THRIPS L5
+  {
+    cause: Cause.IPM_CHILLI_THRIPS_L5,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.selective_insecticide.chilli_thrips_l5',
+    rule_id: 'A_IPM_CHILLI_THR_L5',
+    scientific_source: 'ICAR-IISR',
+    organic_alternative: Action.APPLY_NEEM_OIL
+  },
+
+  // MANGO HOPPER L4
+  {
+    cause: Cause.IPM_MANGO_HOPPER_L4,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.selective_insecticide.mango_hopper_l4',
+    rule_id: 'A_IPM_MANGO_HOP_L4',
+    scientific_source: 'ICAR-CISH',
+    organic_alternative: Action.APPLY_NEEM_OIL
+  },
+
+  // SOYBEAN GIRDLE BEETLE L4
+  {
+    cause: Cause.IPM_SOYBEAN_GIRDLE_BEETLE_L4,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.selective_insecticide.girdle_beetle_l4',
+    rule_id: 'A_IPM_SOYBEAN_GB_L4',
+    scientific_source: 'ICAR-IISR',
+    organic_alternative: Action.APPLY_NEEM_OIL
+  },
+
+  // GROUNDNUT LEAF MINER L3
+  {
+    cause: Cause.IPM_GROUNDNUT_LEAF_MINER_L3,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.selective_insecticide.leaf_miner_l3',
+    rule_id: 'A_IPM_GROUNDNUT_LM_L3',
+    scientific_source: 'ICAR-DGR',
+    organic_alternative: Action.APPLY_NEEM_OIL
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // EMERGENCY ACTIONS - Weather Events & Pest Outbreaks (Phase 9)
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    cause: Cause.LOCUST_SWARM_EMERGENCY,
+    action: Action.EMERGENCY_SPRAY,
+    base_priority: 10,
+    urgency: ActionUrgency.IMMEDIATE,
+    justification_key: 'action.emergency.locust',
+    rule_id: 'A_EMERG_LOCUST_001',
+    scientific_source: 'FAO Desert Locust Guidelines'
+  },
+  {
+    cause: Cause.ARMYWORM_INVASION,
+    action: Action.APPLY_INSECTICIDE,
+    base_priority: 10,
+    urgency: ActionUrgency.IMMEDIATE,
+    justification_key: 'action.emergency.armyworm',
+    rule_id: 'A_EMERG_FAW_001',
+    scientific_source: 'FAO Fall Armyworm Protocol',
+    organic_alternative: Action.APPLY_BT_SPRAY
+  },
+  {
+    cause: Cause.HAILSTORM_EMERGENCY,
+    action: Action.APPLY_FUNGICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.post_hail.fungicide',
+    rule_id: 'A_EMERG_HAIL_001',
+    scientific_source: 'ICAR Post-Hail Management',
+    organic_alternative: Action.APPLY_TRICHODERMA
+  },
+  {
+    cause: Cause.CYCLONE_EMERGENCY,
+    action: Action.DRAIN_EXCESS_WATER,
+    base_priority: 9,
+    urgency: ActionUrgency.IMMEDIATE,
+    justification_key: 'action.post_cyclone.drain',
+    rule_id: 'A_EMERG_CYCLONE_001',
+    scientific_source: 'ICAR Cyclone Recovery'
+  },
+  {
+    cause: Cause.DROUGHT_EMERGENCY,
+    action: Action.EMERGENCY_IRRIGATION,
+    base_priority: 10,
+    urgency: ActionUrgency.IMMEDIATE,
+    justification_key: 'action.emergency.drought',
+    rule_id: 'A_EMERG_DROUGHT_001',
+    scientific_source: 'ICAR-CRIDA Drought Protocol'
+  },
+  {
+    cause: Cause.FLOOD_EMERGENCY,
+    action: Action.DRAIN_EXCESS_WATER,
+    base_priority: 10,
+    urgency: ActionUrgency.IMMEDIATE,
+    justification_key: 'action.emergency.flood',
+    rule_id: 'A_EMERG_FLOOD_001',
+    scientific_source: 'ICAR Flood Recovery'
+  },
+  {
+    cause: Cause.FROST_EMERGENCY,
+    action: Action.FROST_PROTECTION,
+    base_priority: 9,
+    urgency: ActionUrgency.IMMEDIATE,
+    justification_key: 'action.emergency.frost',
+    rule_id: 'A_EMERG_FROST_001',
+    scientific_source: 'ICAR Frost Protection'
+  },
+  {
+    cause: Cause.HEAT_WAVE_EMERGENCY,
+    action: Action.LIGHT_IRRIGATION_COOLING,
+    base_priority: 9,
+    urgency: ActionUrgency.IMMEDIATE,
+    justification_key: 'action.emergency.heat_wave',
+    rule_id: 'A_EMERG_HEAT_001',
+    scientific_source: 'ICAR Heat Wave Protocol'
+  },
+  {
+    cause: Cause.EMERGENCY_CHEMICAL_AUTHORIZED,
+    action: Action.EMERGENCY_SPRAY,
+    base_priority: 10,
+    urgency: ActionUrgency.IMMEDIATE,
+    justification_key: 'action.emergency.chemical_authorized',
+    rule_id: 'A_EMERG_CHEM_001',
+    scientific_source: 'State Agriculture Emergency Protocol'
+  },
+  {
+    cause: Cause.SALVAGE_HARVEST_RECOMMENDED,
+    action: Action.SALVAGE_HARVEST,
+    base_priority: 9,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.salvage.recommended',
+    rule_id: 'A_HARVEST_SALVAGE_001',
+    scientific_source: 'ICAR Salvage Harvest'
+  },
+  {
+    cause: Cause.INSURANCE_CLAIM_ELIGIBLE,
+    action: Action.INSURANCE_CLAIM,
+    base_priority: 7,
+    urgency: ActionUrgency.WITHIN_3DAYS,
+    justification_key: 'action.insurance.eligible',
+    rule_id: 'A_INSURE_001',
+    scientific_source: 'PMFBY Guidelines'
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SUGARCANE-SPECIFIC DISEASE ACTIONS
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    cause: Cause.RED_ROT_SUGARCANE_RISK,
+    action: Action.APPLY_FUNGICIDE,
+    base_priority: 9,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.fungicide.red_rot',
+    rule_id: 'A_DIS_SUGAR_001',
+    scientific_source: 'ICAR-SBI Coimbatore',
+    organic_alternative: Action.APPLY_TRICHODERMA
+  },
+  {
+    cause: Cause.RED_ROT_SUGARCANE,
+    action: Action.APPLY_FUNGICIDE,
+    base_priority: 9,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.fungicide.red_rot',
+    rule_id: 'A_DIS_SUGAR_001B',
+    scientific_source: 'ICAR-SBI Coimbatore',
+    organic_alternative: Action.APPLY_TRICHODERMA
+  },
+  {
+    cause: Cause.SMUT_SUGARCANE,
+    action: Action.REMOVE_AFFECTED_PLANTS,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.remove.smut',
+    rule_id: 'A_DIS_SUGAR_002',
+    scientific_source: 'ICAR-SBI Coimbatore'
+  },
+  {
+    cause: Cause.WILT_SUGARCANE,
+    action: Action.DRAIN_FIELD,
+    base_priority: 9,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.drain.wilt',
+    rule_id: 'A_DIS_SUGAR_003',
+    scientific_source: 'ICAR-SBI Coimbatore'
+  },
+  {
+    cause: Cause.GSD_SUGARCANE,
+    action: Action.REMOVE_AFFECTED_PLANTS,
+    base_priority: 9,
+    urgency: ActionUrgency.IMMEDIATE,
+    justification_key: 'action.remove.grassy_shoot',
+    rule_id: 'A_DIS_SUGAR_004',
+    scientific_source: 'ICAR-SBI Coimbatore'
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ONION/VEGETABLE DISEASE ACTIONS
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    cause: Cause.PURPLE_BLOTCH_RISK,
+    action: Action.APPLY_FUNGICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.fungicide.purple_blotch',
+    rule_id: 'A_DIS_ONION_001',
+    scientific_source: 'ICAR-DOGR Pune',
+    organic_alternative: Action.APPLY_TRICHODERMA
+  },
+  {
+    cause: Cause.DOWNY_MILDEW_RISK,
+    action: Action.APPLY_FUNGICIDE,
+    base_priority: 8,
+    urgency: ActionUrgency.WITHIN_24H,
+    justification_key: 'action.fungicide.downy_mildew',
+    rule_id: 'A_DIS_VEG_003',
+    scientific_source: 'ICAR-IIHR',
+    organic_alternative: Action.APPLY_TRICHODERMA
   }
 ];
 

@@ -16,7 +16,8 @@ import {
   Cause,
   CauseRule,
   CropStage,
-  CropGroup
+  CropGroup,
+  WeatherState
 } from './types';
 
 // Import crop group rules
@@ -36,6 +37,23 @@ import { getAllSafetyRules } from './safety-rules';
 
 // Import intelligence rules (variety recommendations)
 import { VARIETY_RECOMMENDATION_RULES } from './intelligence/variety-recommendation-rules';
+
+// Import advanced layers (Phase 4 - Connect Advanced Layers)
+import { 
+  evaluateAllAdvancedLayers,
+  getAdvancedRuleCount 
+} from './advanced-layers';
+import type { AdvancedDecisionInput, AdvancedCauseRule } from './advanced-layers/types';
+
+// Import intelligence modules (Phase 10 - Connect Intelligence)
+import { 
+  getDiseaseForecast,
+  getAllDiseaseForecastsForCrop
+} from './intelligence/disease-forecasting';
+import { 
+  getIntercroppingRecommendation,
+  INTERCROPPING_PROFILES
+} from './intelligence/intercropping-rules';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GLOBAL FALLBACK RULES - Apply to all crops
@@ -687,6 +705,7 @@ export function inferCauses(
   causes: Cause[];
   rulesApplied: string[];
   executionTrace: RuleExecutionResult[];
+  advancedLayerResults?: AdvancedCauseRule[];
 } {
   const executionTrace: RuleExecutionResult[] = [];
   const matchedCauses: Map<Cause, { priority: number; rule_id: string }> = new Map();
@@ -699,6 +718,89 @@ export function inferCauses(
     ...additionalRules,
     ...GLOBAL_RULES
   ];
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 4: Evaluate Advanced Layers (Plant Demand, Root Dominance, etc.)
+  // ═══════════════════════════════════════════════════════════════════════════
+  let advancedLayerResults: AdvancedCauseRule[] = [];
+  try {
+    // Only evaluate advanced layers if we have NDVI analytics data
+    if (input.metadata?.ndvi_analytics || input.ndvi_state) {
+      // Safely extract metadata with type assertions
+      const meta = input.metadata as Record<string, unknown> | undefined;
+      const ndviAnalytics = meta?.ndvi_analytics as { 
+        growth_rate?: number; 
+        expected_growth_rate?: number; 
+        deviation_percent?: number;
+      } | undefined;
+      
+      const weatherForecast = meta?.weather_forecast as {
+        states?: WeatherState[];
+        rainfall_mm?: number;
+        temp_max?: number;
+        temp_min?: number;
+      } | undefined;
+      
+      const soilBiology = meta?.soil_biology_status as {
+        chemical_efficiency?: number;
+        biological_score?: number;
+      } | undefined;
+      
+      const stressState = meta?.current_stress_state as {
+        active_stresses?: string[];
+        severity?: 'none' | 'mild' | 'moderate' | 'severe';
+      } | undefined;
+      
+      const cropTotalDays = meta?.crop_total_days as number | undefined;
+      
+      const advancedInput: AdvancedDecisionInput = {
+        ...input,
+        ndvi_growth_rate: ndviAnalytics?.growth_rate,
+        ndvi_expected_growth_rate: ndviAnalytics?.expected_growth_rate,
+        ndvi_deviation_percent: ndviAnalytics?.deviation_percent,
+        crop_life_percent: input.days_after_sowing && cropTotalDays 
+          ? (input.days_after_sowing / cropTotalDays) * 100 
+          : undefined,
+        crop_total_days: cropTotalDays,
+        weather_forecast_5day: weatherForecast?.states,
+        rainfall_forecast_mm: weatherForecast?.rainfall_mm,
+        temp_max_forecast: weatherForecast?.temp_max,
+        temp_min_forecast: weatherForecast?.temp_min,
+        chemical_response_efficiency: soilBiology?.chemical_efficiency,
+        biological_activity_score: soilBiology?.biological_score,
+        active_stress: stressState?.active_stresses,
+        stress_severity: stressState?.severity,
+        nutrition_status: meta?.nutrition_status as 'deficient' | 'adequate' | 'optimal' | undefined,
+        recent_fertilizer_days: meta?.recent_fertilizer_days as number | undefined
+      };
+      
+      const advancedResults = evaluateAllAdvancedLayers(advancedInput);
+      advancedLayerResults = advancedResults.all;
+      
+      // Add advanced layer causes to matched causes
+      for (const rule of advancedLayerResults) {
+        const causeCode = rule.cause as unknown as Cause;
+        const existing = matchedCauses.get(causeCode);
+        if (!existing || rule.priority > existing.priority) {
+          matchedCauses.set(causeCode, {
+            priority: rule.priority,
+            rule_id: rule.rule_id || `ADV_${rule.layer}_${rule.category}`
+          });
+        }
+        
+        executionTrace.push({
+          rule_id: rule.rule_id || `ADV_${rule.layer}`,
+          matched: true,
+          cause: causeCode,
+          priority: rule.priority
+        });
+      }
+      
+      console.log(`[cause-inference] Advanced layers evaluated: ${advancedLayerResults.length} causes from ${getAdvancedRuleCount()} rules`);
+    }
+  } catch (advancedError) {
+    console.warn('[cause-inference] Advanced layer evaluation failed:', advancedError);
+  }
 
   // Filter for current crop and stage
   const applicableRules = filterRulesForCrop(

@@ -36,14 +36,101 @@ export interface WithdrawalPeriod {
 }
 
 export const WITHDRAWAL_PERIODS: WithdrawalPeriod[] = [
+  // INSECTICIDES - Neonicotinoids
   { chemical: 'Imidacloprid', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Thiamethoxam', cropCategory: 'vegetables', phiDays: 14, exportPhiDays: 21, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Acetamiprid', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Clothianidin', cropCategory: 'field_crops', phiDays: 21, exportPhiDays: 30, organicAllowed: false, mrlStandard: 'FSSAI' },
+  
+  // INSECTICIDES - Pyrethroids
   { chemical: 'Cypermethrin', cropCategory: 'vegetables', phiDays: 5, exportPhiDays: 10, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Deltamethrin', cropCategory: 'vegetables', phiDays: 5, exportPhiDays: 10, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Lambda-cyhalothrin', cropCategory: 'vegetables', phiDays: 5, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Fenvalerate', cropCategory: 'field_crops', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Permethrin', cropCategory: 'vegetables', phiDays: 3, exportPhiDays: 7, organicAllowed: false, mrlStandard: 'FSSAI' },
+  
+  // INSECTICIDES - Organophosphates
   { chemical: 'Chlorpyrifos', cropCategory: 'vegetables', phiDays: 15, exportPhiDays: 21, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Malathion', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Dimethoate', cropCategory: 'vegetables', phiDays: 14, exportPhiDays: 21, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Profenofos', cropCategory: 'vegetables', phiDays: 14, exportPhiDays: 21, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Quinalphos', cropCategory: 'field_crops', phiDays: 21, exportPhiDays: 30, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Monocrotophos', cropCategory: 'field_crops', phiDays: 21, exportPhiDays: 30, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Acephate', cropCategory: 'vegetables', phiDays: 14, exportPhiDays: 21, organicAllowed: false, mrlStandard: 'FSSAI' },
+  
+  // INSECTICIDES - Diamides
   { chemical: 'Chlorantraniliprole', cropCategory: 'vegetables', phiDays: 3, exportPhiDays: 7, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Flubendiamide', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Cyantraniliprole', cropCategory: 'vegetables', phiDays: 3, exportPhiDays: 7, organicAllowed: false, mrlStandard: 'CODEX' },
+  
+  // INSECTICIDES - Spinosyns (Organic-compatible)
   { chemical: 'Spinosad', cropCategory: 'vegetables', phiDays: 3, exportPhiDays: 5, organicAllowed: true, mrlStandard: 'FSSAI' },
+  { chemical: 'Spinetoram', cropCategory: 'vegetables', phiDays: 3, exportPhiDays: 5, organicAllowed: false, mrlStandard: 'FSSAI' },
+  
+  // INSECTICIDES - Avermectins
+  { chemical: 'Emamectin benzoate', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Abamectin', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'CODEX' },
+  
+  // INSECTICIDES - IGRs & Others
+  { chemical: 'Novaluron', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Buprofezin', cropCategory: 'vegetables', phiDays: 14, exportPhiDays: 21, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Fipronil', cropCategory: 'field_crops', phiDays: 30, exportPhiDays: 45, organicAllowed: false, mrlStandard: 'EU' },
+  { chemical: 'Indoxacarb', cropCategory: 'vegetables', phiDays: 5, exportPhiDays: 10, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Cartap hydrochloride', cropCategory: 'field_crops', phiDays: 14, exportPhiDays: 21, organicAllowed: false, mrlStandard: 'FSSAI' },
+  
+  // FUNGICIDES - Triazoles
+  { chemical: 'Propiconazole', cropCategory: 'field_crops', phiDays: 14, exportPhiDays: 21, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Tebuconazole', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Hexaconazole', cropCategory: 'field_crops', phiDays: 14, exportPhiDays: 21, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Difenoconazole', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'CODEX' },
+  { chemical: 'Tricyclazole', cropCategory: 'field_crops', phiDays: 21, exportPhiDays: 30, organicAllowed: false, mrlStandard: 'FSSAI' },
+  
+  // FUNGICIDES - Strobilurins
+  { chemical: 'Azoxystrobin', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Pyraclostrobin', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'CODEX' },
+  { chemical: 'Trifloxystrobin', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  
+  // FUNGICIDES - Contact
   { chemical: 'Mancozeb', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Chlorothalonil', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Copper oxychloride', cropCategory: 'all', phiDays: 7, exportPhiDays: 14, organicAllowed: true, mrlStandard: 'FSSAI' },
+  { chemical: 'Copper hydroxide', cropCategory: 'all', phiDays: 7, exportPhiDays: 14, organicAllowed: true, mrlStandard: 'FSSAI' },
+  { chemical: 'Carbendazim', cropCategory: 'vegetables', phiDays: 10, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Thiophanate-methyl', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Metalaxyl', cropCategory: 'vegetables', phiDays: 14, exportPhiDays: 21, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Cymoxanil', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'CODEX' },
+  { chemical: 'Iprodione', cropCategory: 'vegetables', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'EU' },
+  { chemical: 'Thiram', cropCategory: 'field_crops', phiDays: 0, exportPhiDays: 0, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Captan', cropCategory: 'fruits', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'CODEX' },
+  { chemical: 'Kasugamycin', cropCategory: 'field_crops', phiDays: 21, exportPhiDays: 30, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Validamycin', cropCategory: 'field_crops', phiDays: 21, exportPhiDays: 30, organicAllowed: false, mrlStandard: 'FSSAI' },
+  
+  // HERBICIDES
+  { chemical: 'Glyphosate', cropCategory: 'field_crops', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Paraquat', cropCategory: 'field_crops', phiDays: 7, exportPhiDays: 14, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: '2,4-D', cropCategory: 'field_crops', phiDays: 14, exportPhiDays: 21, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Pendimethalin', cropCategory: 'field_crops', phiDays: 0, exportPhiDays: 0, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Butachlor', cropCategory: 'field_crops', phiDays: 0, exportPhiDays: 0, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Pretilachlor', cropCategory: 'field_crops', phiDays: 0, exportPhiDays: 0, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Bispyribac sodium', cropCategory: 'field_crops', phiDays: 30, exportPhiDays: 45, organicAllowed: false, mrlStandard: 'FSSAI' },
+  { chemical: 'Oxyfluorfen', cropCategory: 'vegetables', phiDays: 0, exportPhiDays: 0, organicAllowed: false, mrlStandard: 'FSSAI' },
+  
+  // BIOPESTICIDES - Zero/Minimal PHI
   { chemical: 'Neem oil', cropCategory: 'all', phiDays: 0, exportPhiDays: 1, organicAllowed: true, mrlStandard: 'FSSAI' },
+  { chemical: 'Neem extract', cropCategory: 'all', phiDays: 0, exportPhiDays: 1, organicAllowed: true, mrlStandard: 'FSSAI' },
+  { chemical: 'Azadirachtin', cropCategory: 'all', phiDays: 0, exportPhiDays: 1, organicAllowed: true, mrlStandard: 'FSSAI' },
   { chemical: 'Bt kurstaki', cropCategory: 'all', phiDays: 0, exportPhiDays: 0, organicAllowed: true, mrlStandard: 'FSSAI' },
+  { chemical: 'Bt aizawai', cropCategory: 'all', phiDays: 0, exportPhiDays: 0, organicAllowed: true, mrlStandard: 'FSSAI' },
+  { chemical: 'Beauveria bassiana', cropCategory: 'all', phiDays: 0, exportPhiDays: 0, organicAllowed: true, mrlStandard: 'FSSAI' },
+  { chemical: 'Metarhizium anisopliae', cropCategory: 'all', phiDays: 0, exportPhiDays: 0, organicAllowed: true, mrlStandard: 'FSSAI' },
+  { chemical: 'Trichoderma viride', cropCategory: 'all', phiDays: 0, exportPhiDays: 0, organicAllowed: true, mrlStandard: 'FSSAI' },
+  { chemical: 'Trichoderma harzianum', cropCategory: 'all', phiDays: 0, exportPhiDays: 0, organicAllowed: true, mrlStandard: 'FSSAI' },
+  { chemical: 'Pseudomonas fluorescens', cropCategory: 'all', phiDays: 0, exportPhiDays: 0, organicAllowed: true, mrlStandard: 'FSSAI' },
+  { chemical: 'NPV (Nuclear Polyhedrosis Virus)', cropCategory: 'all', phiDays: 0, exportPhiDays: 0, organicAllowed: true, mrlStandard: 'FSSAI' },
+  { chemical: 'Pongamia oil', cropCategory: 'all', phiDays: 0, exportPhiDays: 1, organicAllowed: true, mrlStandard: 'FSSAI' },
+  { chemical: 'Karanja oil', cropCategory: 'all', phiDays: 0, exportPhiDays: 1, organicAllowed: true, mrlStandard: 'FSSAI' },
+  { chemical: 'Garlic extract', cropCategory: 'all', phiDays: 0, exportPhiDays: 0, organicAllowed: true, mrlStandard: 'FSSAI' },
+  { chemical: 'Sulphur', cropCategory: 'all', phiDays: 1, exportPhiDays: 3, organicAllowed: true, mrlStandard: 'FSSAI' },
 ];
 
 export const PHI_WITHDRAWAL_RULES: CauseRule[] = [
