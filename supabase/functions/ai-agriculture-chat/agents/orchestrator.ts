@@ -639,16 +639,78 @@ export class AIAgentOrchestrator {
       }
       
       // ========================================
-      // PHASE 1B: LLM-FIRST CHECK - Skip rule engine for simple questions
+      // PHASE 1A.4: INTENT LOCK - Enforce symbolic-first routing
+      // Once locked, only rules scoped to this intent can be evaluated
       // ========================================
+      console.log('\n🔒 PHASE 1A.4: Intent Lock Enforcement...');
+      
+      const { lockIntent, filterActionsByIntentLock, requiresClarification } = await import('./intent-lock.ts');
+      const { mapObservationsToCauses } = await import('./observation-cause-mapper.ts');
+      const { getAuditLogger } = await import('./audit-logger.ts');
+      
       const detectedIntent = nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY';
+      const intentConfidence = nluOutput?.intent_classification?.intent_confidence || 0.5;
+      
+      // Lock the intent for this turn
+      const intentLock = lockIntent(detectedIntent, intentConfidence);
+      agentsUsed.push('INTENT_LOCK');
+      
+      // Initialize audit logger for this turn
+      const auditLogger = getAuditLogger();
+      auditLogger.startTurn({
+        turn_id: intentLock.turn_id,
+        session_id: sessionId,
+        farmer_id: farmerId,
+        tenant_id: tenantId,
+        trace_id: traceId,
+        farmer_message: farmerMessage,
+        detected_language: (options.language || 'en') as 'mr' | 'hi' | 'en',
+        land_id: options.landId
+      });
+      
+      // Log NLU output in contract format
+      auditLogger.logNLUOutput({
+        intent_label: detectedIntent,
+        observations: nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [],
+        confidence: intentConfidence
+      });
+      
+      // Log the intent lock
+      auditLogger.logIntentLock({
+        locked_intent: intentLock.locked_intent,
+        allowed_scopes: intentLock.allowed_rule_scopes,
+        forbidden_actions: intentLock.forbidden_action_types
+      });
+      
+      // Log crop context
+      if (landContext) {
+        auditLogger.logCropContext({
+          crop_code: landContext.current_crop?.toUpperCase(),
+          growth_stage: landContext.growth_stage
+        });
+      }
+      
+      // Check if clarification is needed (low confidence)
+      if (requiresClarification(intentConfidence)) {
+        console.log(`   ⚠️ Low confidence (${(intentConfidence * 100).toFixed(0)}%) - may need clarification`);
+      }
+      
+      // ========================================
+      // PHASE 1B: LLM-FIRST CHECK - BLOCKED FOR AGRICULTURAL QUERIES WITH LAND CONTEXT
+      // ========================================
       const canDirectAnswer = canAnswerDirectly(detectedIntent, farmerMessage);
       const needsRules = requiresRuleEngine(detectedIntent, farmerMessage);
       
       console.log(`   🔀 Routing decision: canDirectAnswer=${canDirectAnswer}, needsRules=${needsRules}`);
       
-      // If question can be answered directly WITHOUT rule engine
-      if (canDirectAnswer && !needsRules && !options.photoUrl) {
+      // CRITICAL: Block LLM-first path if land context exists (agricultural query)
+      const isNonAgricultural = ['GREETING', 'APP_HELP'].includes(queryRoute.route);
+      if (landContext && !isNonAgricultural && canDirectAnswer) {
+        console.log(`   🚫 LLM-first BLOCKED - land context present, forcing symbolic path`);
+      }
+      
+      // CRITICAL: Only allow LLM-first for NON-agricultural queries
+      if (canDirectAnswer && !needsRules && !options.photoUrl && isNonAgricultural) {
         console.log('   ⚡ Using LLM-FIRST path (skipping rule engine)');
         agentsUsed.push('LLM_Direct');
         
