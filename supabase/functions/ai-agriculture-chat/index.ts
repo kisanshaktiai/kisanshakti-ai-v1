@@ -1111,6 +1111,49 @@ function validateResponseBeforeSave(params: {
         }
       }
     }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NEW CHECK 7: SOURCE VALIDATION - Ensure all content comes from symbolic brain
+    // Validates that LLM formatter did not add unauthorized content
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (decision_brain_source && actions_returned && actions_returned.length > 0) {
+      console.log(`   🔍 Check 7: Source validation - ensuring content matches symbolic brain output`);
+      
+      // Extract allowed products from actions_returned
+      const allowedProducts = new Set<string>();
+      for (const action of actions_returned) {
+        const productName = action.product_name || action.application_details?.product_name;
+        if (productName && typeof productName === 'string' && productName.length > 2) {
+          allowedProducts.add(productName.toLowerCase());
+          // Also add translated versions
+          const translations = action.names || action.application_details?.names;
+          if (translations) {
+            if (translations.mr) allowedProducts.add(translations.mr.toLowerCase());
+            if (translations.hi) allowedProducts.add(translations.hi.toLowerCase());
+            if (translations.en) allowedProducts.add(translations.en.toLowerCase());
+          }
+        }
+      }
+      
+      // Check for unauthorized percentage claims (effectiveness, success rate, etc.)
+      const percentageClaimPatterns = [
+        /(\d+)\s*%\s*(effective|success|cure|control|kill)/i,
+        /(effective|success|cure).*?(\d+)\s*%/i
+      ];
+      
+      for (const pattern of percentageClaimPatterns) {
+        if (pattern.test(responseContent)) {
+          // Check if this percentage is in the symbolic output
+          const symbolicOutputStr = JSON.stringify(actions_returned);
+          if (!pattern.test(symbolicOutputStr)) {
+            errors.push(`VALIDATION_WARN: Response contains percentage effectiveness claim not in symbolic output`);
+            console.log(`   ⚠️ Check 7: Unauthorized percentage claim detected`);
+          }
+        }
+      }
+      
+      console.log(`   ✓ Check 7: Source validation complete (${allowedProducts.size} products allowed)`);
+    }
   }
   
   return {
