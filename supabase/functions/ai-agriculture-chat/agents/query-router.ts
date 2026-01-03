@@ -22,7 +22,8 @@ export type QueryRoute =
   | 'MARKET_PRICE'
   | 'GENERAL_INFO'
   | 'FOLLOW_UP'
-  | 'GREETING';
+  | 'GREETING'
+  | 'CROP_HEALTH';  // P1-A: New route for "how is my crop" queries
 
 export interface QueryRoutingResult {
   route: QueryRoute;
@@ -154,6 +155,30 @@ const GREETING_PATTERNS = [
   /^(जय\s*हिंद|जय\s*श्रीराम|जय\s*जवान)/i
 ];
 
+// P1-A: Crop Health / Status Check patterns
+const CROP_HEALTH_PATTERNS = [
+  // Marathi
+  /माझे?\s*पीक\s*कसे?\s*(आहे|दिसतंय|दिसतय)/i,
+  /पिकाची\s*स्थिती/i,
+  /पीक\s*(काय|कशी)\s*आहे/i,
+  /पिकाची\s*आरोग्य/i,
+  /शेताची?\s*(स्थिती|परिस्थिती)/i,
+  /पीक\s*चांगले\s*आहे\s*का/i,
+  
+  // Hindi  
+  /मेर[ाी]\s*फसल\s*कैस[ाी]/i,
+  /फसल\s*की\s*स्थिति/i,
+  /खेत\s*की\s*(स्थिति|हालत)/i,
+  /फसल\s*ठीक\s*है/i,
+  
+  // English
+  /how\s*(is|are)?\s*my\s*(crop|field|farm)/i,
+  /crop\s*(status|health|condition)/i,
+  /is\s*my\s*crop\s*(ok|fine|healthy|good)/i,
+  /check\s*(my)?\s*(crop|field)/i,
+  /what('?s)?\s*(the)?\s*crop\s*(status|condition)/i
+];
+
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN ROUTING FUNCTION
 // ═══════════════════════════════════════════════════════════════════════════
@@ -218,6 +243,17 @@ export function routeQuery(
     result.route = 'STATIC_DATA';
     result.confidence = Math.min(0.95, 0.7 + staticScore * 0.1);
     result.context_hints.push('DB_LOOKUP_ONLY');
+    return result;
+  }
+  
+  // Priority 3.5: P1-A Crop Health queries (use land context + NDVI + weather)
+  const cropHealthScore = countPatternMatches(message, CROP_HEALTH_PATTERNS);
+  if (cropHealthScore >= 1) {
+    result.route = 'CROP_HEALTH';
+    result.confidence = Math.min(0.95, 0.75 + cropHealthScore * 0.1);
+    result.requires_decision_brain = false;  // Use direct NDVI/soil assessment
+    result.requires_weather_api = true;
+    result.context_hints.push('CROP_HEALTH_ASSESSMENT', 'NDVI_REQUIRED', 'SOIL_REQUIRED');
     return result;
   }
   
@@ -462,6 +498,19 @@ export function getRouteRequirements(route: QueryRoute): {
         needs_decision_brain: false,
         needs_llm: false,
         max_response_time_ms: 100
+      };
+    
+    // P1-A: Crop Health requires land context, NDVI, soil, but NOT decision brain
+    case 'CROP_HEALTH':
+      return {
+        needs_land_context: true,
+        needs_weather: true,
+        needs_soil_data: true,
+        needs_ndvi: true,
+        needs_market_data: false,
+        needs_decision_brain: false,
+        needs_llm: true,
+        max_response_time_ms: 3000
       };
     
     case 'GENERAL_INFO':

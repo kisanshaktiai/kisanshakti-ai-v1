@@ -172,12 +172,43 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // SESSION MANAGEMENT - CRITICAL FIX: Prevent duplicate sessions
+    // P0-A: SESSION MANAGEMENT WITH STRICT LAND ISOLATION
+    // CRITICAL: Enforce sessionId ↔ landId binding to prevent cross-land contamination
     // ═══════════════════════════════════════════════════════════════════════════
     let currentSessionId = sessionId;
+    const requestedLandId = landId || null;
+    
+    if (currentSessionId) {
+      // ═══════════════════════════════════════════════════════════════════════════
+      // P0-A CRITICAL: VALIDATE sessionId belongs to this landId
+      // If mismatch, REJECT the sessionId and find/create correct one
+      // ═══════════════════════════════════════════════════════════════════════════
+      const { data: sessionCheck } = await supabase
+        .from('ai_chat_sessions')
+        .select('id, land_id, farmer_id, tenant_id')
+        .eq('id', currentSessionId)
+        .single();
+      
+      // Security: Also validate farmer/tenant ownership
+      const isValidOwner = sessionCheck?.farmer_id === finalFarmerId && sessionCheck?.tenant_id === finalTenantId;
+      const isLandMatch = sessionCheck?.land_id === requestedLandId;
+      
+      if (!sessionCheck || !isValidOwner || !isLandMatch) {
+        console.warn(`⚠️ [Session] P0-A: Session-Land MISMATCH detected!`);
+        console.warn(`   Provided sessionId: ${currentSessionId}`);
+        console.warn(`   Session land_id: ${sessionCheck?.land_id}, Request land_id: ${requestedLandId}`);
+        console.warn(`   Valid owner: ${isValidOwner}, Land match: ${isLandMatch}`);
+        console.warn(`   → REJECTING sessionId, will find/create correct session for this land`);
+        
+        // REJECT the provided sessionId - set to null to trigger correct session lookup
+        currentSessionId = null;
+      } else {
+        console.log(`✅ [Session] P0-A: SessionId validated - land_id=${requestedLandId}, farmer_id=${finalFarmerId}`);
+      }
+    }
     
     if (!currentSessionId) {
-      // CRITICAL FIX: First try to find existing active session for this land
+      // Find or create session FOR THIS SPECIFIC LAND
       let existingSessionQuery = supabase
         .from('ai_chat_sessions')
         .select('id')
@@ -187,8 +218,8 @@ serve(async (req) => {
         .order('updated_at', { ascending: false })
         .limit(1);
       
-      if (landId) {
-        existingSessionQuery = existingSessionQuery.eq('land_id', landId);
+      if (requestedLandId) {
+        existingSessionQuery = existingSessionQuery.eq('land_id', requestedLandId);
       } else {
         existingSessionQuery = existingSessionQuery.is('land_id', null);
       }
@@ -196,18 +227,18 @@ serve(async (req) => {
       const { data: existingSession } = await existingSessionQuery.maybeSingle();
       
       if (existingSession) {
-        // Reuse existing session instead of creating duplicate
+        // Reuse existing session FOR THIS LAND
         currentSessionId = existingSession.id;
-        console.log('📝 Reusing existing session:', currentSessionId);
+        console.log(`📝 [Session] Reusing existing session for land ${requestedLandId}:`, currentSessionId);
       } else {
-        // Create new session only if none exists
+        // Create new session only if none exists for this land
         const { data: newSession, error: sessionError } = await supabase
           .from('ai_chat_sessions')
           .insert({
             tenant_id: finalTenantId,
             farmer_id: finalFarmerId,
-            land_id: landId || null,
-            session_type: landId ? 'land_specific' : 'general',
+            land_id: requestedLandId,
+            session_type: requestedLandId ? 'land_specific' : 'general',
             is_active: true,
             metadata: { language, source: 'orchestrator_v1' }
           })
@@ -223,7 +254,7 @@ serve(async (req) => {
         }
         
         currentSessionId = newSession.id;
-        console.log('📝 New session created:', currentSessionId);
+        console.log(`📝 [Session] New session created for land ${requestedLandId}:`, currentSessionId);
       }
     }
 
@@ -244,7 +275,7 @@ serve(async (req) => {
     let conversationHistory: Array<{ role: string; content: string }> = [];
     
     if (currentSessionId) {
-      // Fetch session metadata AND land_id for isolation validation
+      // Fetch session metadata - land_id already validated in P0-A above
       const { data: existingSession } = await supabase
         .from('ai_chat_sessions')
         .select('metadata, land_id')
@@ -252,41 +283,21 @@ serve(async (req) => {
         .single();
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // CRITICAL FIX: LAND ISOLATION - Only use session state if it's for the SAME land
-      // This prevents pest/disease data from other lands contaminating current chat
+      // P0-A ENFORCEMENT: Session is ALREADY validated to match this land
+      // Safe to load session state since P0-A rejected mismatched sessions
       // ═══════════════════════════════════════════════════════════════════════════
-      const sessionLandId = existingSession?.land_id;
-      const requestedLandId = landId || null;
-      const isLandMatch = sessionLandId === requestedLandId;
-      
-      if (existingSession?.metadata?.decision_tracking && isLandMatch) {
+      if (existingSession?.metadata?.decision_tracking) {
         sessionState = existingSession.metadata.decision_tracking;
-        console.log(`📋 [Session] Previous state loaded for SAME land (${sessionLandId}):`, {
+        console.log(`📋 [Session] State loaded (P0-A validated, land=${requestedLandId}):`, {
           decision_state: sessionState?.decision_state,
           last_pest: sessionState?.last_pest,
           last_crop: sessionState?.last_crop,
           pending_action: sessionState?.pending_user_action,
           turn: sessionState?.turn_count
         });
-      } else if (existingSession?.metadata?.decision_tracking && !isLandMatch) {
-        // CRITICAL: Different land - DO NOT inherit pest/disease state
-        console.warn(`⚠️ [Session] LAND MISMATCH - Clearing session state to prevent contamination`);
-        console.warn(`   Session land_id: ${sessionLandId}, Request land_id: ${requestedLandId}`);
-        console.warn(`   NOT inheriting: last_pest=${existingSession.metadata.decision_tracking.last_pest}, last_disease=${existingSession.metadata.decision_tracking.last_disease}`);
-        
-        // Only preserve turn_count, reset all pest/disease/crop state
-        sessionState = {
-          decision_state: 'new_land_context',
-          last_pest: null,
-          last_crop: null,
-          last_disease: null,
-          pending_user_action: false,
-          turn_count: 1,
-          recommendations_count: 0
-        };
       }
       
-      // CRITICAL FIX: Fetch last 6 messages from DB for context - ONLY from SAME session
+      // P0-A: Fetch messages ONLY from this validated session (land-isolated by design)
       const { data: previousMessages, error: historyError } = await supabase
         .from('ai_chat_messages')
         .select('role, content')
@@ -300,7 +311,7 @@ serve(async (req) => {
           .reverse()
           .map(m => ({ role: m.role, content: m.content }));
         
-        console.log(`📜 [Session] Loaded ${conversationHistory.length} previous messages for context (land_isolated: ${isLandMatch})`);
+        console.log(`📜 [Session] Loaded ${conversationHistory.length} messages (P0-A land-isolated)`);
       }
     }
 

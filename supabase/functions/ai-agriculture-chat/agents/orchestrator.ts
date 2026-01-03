@@ -54,6 +54,15 @@ import {
   normalizeCropStage 
 } from './type-mappers.ts';
 
+// P0-C: Import entity code mapper for unified code normalization before rule engine
+import {
+  toDecisionGraphPestCode,
+  toDecisionGraphDiseaseCode,
+  toDecisionGraphCropCode,
+  normalizeCodesForRuleEngine,
+  logCodeMapping
+} from './entity-code-mapper.ts';
+
 // Import soil/NDVI state calculator for land-specific recommendations
 import { 
   calculateFieldStates, 
@@ -426,6 +435,75 @@ export class AIAgentOrchestrator {
             processing_time_ms: Date.now() - startTime,
             agents_used: agentsUsed,
             template_type: 'IRRIGATION_SCHEDULE',
+            trace_id: traceId
+          }
+        };
+      }
+      
+      // ========================================
+      // P1-A: CROP HEALTH ASSESSMENT ROUTE (Direct NDVI/Soil/Weather assessment)
+      // Handles "how is my crop" queries without rule engine
+      // ========================================
+      if (queryRoute.route === 'CROP_HEALTH' && landContext) {
+        console.log(`🌱 [${traceId}] CROP_HEALTH query - using direct assessment`);
+        agentsUsed.push('CROP_HEALTH_MODULE');
+        
+        const cropHealthResponse = this.generateCropHealthResponse(landContext, options.language || 'mr');
+        
+        return {
+          type: 'DECISION_PROVIDED',
+          session_id: sessionId,
+          communication: {
+            message_id: crypto.randomUUID(),
+            decision_id: `crop_health_${Date.now()}`,
+            session_id: sessionId,
+            farmer_id: farmerId,
+            language: options.language || 'mr',
+            format: 'RICH_TEXT',
+            tone: 'FRIENDLY',
+            created_at: new Date().toISOString(),
+            main_message: {
+              full_text: {
+                mr: cropHealthResponse.message,
+                hi: cropHealthResponse.message,
+                en: cropHealthResponse.message
+              }
+            },
+            quick_actions: cropHealthResponse.suggestions.map(s => ({
+              label: { mr: s, hi: s, en: s },
+              action: 'ASK_FOLLOWUP',
+              payload: { question: s }
+            })),
+            metadata: {
+              word_count: cropHealthResponse.message.split(/\s+/).length,
+              reading_time_seconds: 10,
+              confidence_score: cropHealthResponse.confidence,
+              source: 'CROP_HEALTH_MODULE',
+              response_type: 'CROP_HEALTH_ASSESSMENT'
+            }
+          } as any,
+          decision_output: {
+            decision_id: `crop_health_${Date.now()}`,
+            session_id: sessionId,
+            status: 'INFORMATION_PROVIDED',
+            decision_brain_source: false,
+            actions_returned: [],
+            metadata: {
+              confidence: cropHealthResponse.confidence,
+              trace_id: traceId,
+              processing_time_ms: Date.now() - startTime,
+              agents_used: agentsUsed,
+              template_type: 'CROP_HEALTH_ASSESSMENT'
+            }
+          } as any,
+          dataAudit: this.buildDataAudit(landContext, null),
+          metadata: {
+            confidence: cropHealthResponse.confidence,
+            safety_status: 'SAFE',
+            rules_applied: 0,
+            processing_time_ms: Date.now() - startTime,
+            agents_used: agentsUsed,
+            template_type: 'CROP_HEALTH_ASSESSMENT',
             trace_id: traceId
           }
         };
@@ -1047,11 +1125,89 @@ export class AIAgentOrchestrator {
         landContext  // CRITICAL FIX: Pass landContext directly
       );
       
-      const decisionOutput = await this.ruleEngine.execute(ruleEngineInput);
+      let decisionOutput = await this.ruleEngine.execute(ruleEngineInput);
       agentsUsed.push('RuleEngine');
       
       console.log('   ✅ Decision generated:', decisionOutput.status);
       console.log('   ✅ Rules applied:', decisionOutput.rules_applied?.length || 0);
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // P0-E: INTENT LOCK ENFORCEMENT - Filter actions by locked intent
+      // CRITICAL: Prevent actions outside the intent scope from reaching the farmer
+      // ═══════════════════════════════════════════════════════════════════════════
+      console.log(`\n🔒 [${traceId}] P0-E: Applying Intent Lock Filter...`);
+      
+      // Collect all actions from decision output
+      const allActions: any[] = [];
+      if (decisionOutput.primary_decision) {
+        allActions.push(decisionOutput.primary_decision);
+      }
+      if (decisionOutput.secondary_actions?.length) {
+        allActions.push(...decisionOutput.secondary_actions);
+      }
+      
+      // Apply intent lock filter
+      const lockValidation = filterActionsByIntentLock(allActions, intentLock);
+      
+      if (!lockValidation.passed) {
+        console.warn(`   ⚠️ P0-E: ${lockValidation.violations.length} actions blocked by intent lock`);
+        lockValidation.violations.forEach(v => console.warn(`      - ${v}`));
+        
+        // Update decision output with filtered actions
+        const filteredPrimary = lockValidation.filtered_actions[0] || null;
+        const filteredSecondary = lockValidation.filtered_actions.slice(1);
+        
+        decisionOutput = {
+          ...decisionOutput,
+          primary_decision: filteredPrimary,
+          secondary_actions: filteredSecondary,
+          blocked_actions: [
+            ...(decisionOutput.blocked_actions || []),
+            ...allActions.filter(a => !lockValidation.filtered_actions.includes(a)).map(a => ({
+              action: a.action_type || a.action || 'UNKNOWN',
+              reason: 'Intent Lock: Action outside allowed scope',
+              blocked_by: 'INTENT_LOCK'
+            }))
+          ]
+        };
+        
+        // Log to audit
+        auditLogger.logSymbolicDecision({
+          decision_id: decisionOutput.decision_id,
+          rules_fired: decisionOutput.rules_applied || [],
+          actions_returned: lockValidation.filtered_actions,
+          actions_filtered_out: decisionOutput.blocked_actions || []
+        });
+        
+        // If ALL actions were filtered, return clarification
+        if (lockValidation.filtered_actions.length === 0 && allActions.length > 0) {
+          console.warn(`   🚫 P0-E: ALL actions filtered by intent lock - returning clarification`);
+          
+          await auditLogger.completeTurn(Date.now() - startTime);
+          
+          return {
+            type: 'CLARIFICATION_QUESTION',
+            session_id: sessionId,
+            question: {
+              question_id: `intent_mismatch_${Date.now()}`,
+              text_mr: `तुमचा प्रश्न "${intentLock.locked_intent}" बद्दल आहे का? कृपया स्पष्ट करा.`,
+              text_hi: `क्या आपका प्रश्न "${intentLock.locked_intent}" के बारे में है? कृपया स्पष्ट करें।`,
+              text_en: `Is your question about "${intentLock.locked_intent}"? Please clarify.`,
+              options: []
+            },
+            metadata: {
+              confidence: intentConfidence,
+              safety_status: 'PENDING',
+              rules_applied: decisionOutput.rules_applied?.length || 0,
+              processing_time_ms: Date.now() - startTime,
+              agents_used: agentsUsed,
+              trace_id: traceId
+            }
+          };
+        }
+      } else {
+        console.log(`   ✅ P0-E: All ${allActions.length} actions passed intent lock filter`);
+      }
       
       // ========================================
       // PHASE 5: SAFETY VERIFICATION (With P0 PHI & Pollinator Enforcement)
@@ -2147,21 +2303,36 @@ export class AIAgentOrchestrator {
         }
       }
       
-      // Fetch recent advisory history
-      const { data: recentAdvisories } = await this.supabase
+      // ═══════════════════════════════════════════════════════════════════════════
+      // P0-B: LAND-FILTER HISTORICAL ADVISORIES
+      // CRITICAL: Only fetch advisories for THIS LAND to prevent cross-land contamination
+      // ═══════════════════════════════════════════════════════════════════════════
+      let advisoryQuery = this.supabase
         .from('advisory_audit_log')
-        .select('advisory_id, causes, actions, risk_level, generated_at')
+        .select('advisory_id, causes, actions, risk_level, generated_at, land_id')
         .eq('farmer_id', farmerId)
         .order('generated_at', { ascending: false })
         .limit(5);
+      
+      // P0-B CRITICAL: Add land_id filter if landId is provided
+      if (landId) {
+        advisoryQuery = advisoryQuery.eq('land_id', landId);
+        console.log(`📋 [P0-B] Historical advisories filtered by land_id=${landId}`);
+      }
+      
+      const { data: recentAdvisories } = await advisoryQuery;
       
       if (recentAdvisories?.length) {
         result.recent_advisories = recentAdvisories;
         result.previous_issues = recentAdvisories.map(a => ({
           issue: a.causes?.[0],
           date: a.generated_at,
-          severity: a.risk_level
+          severity: a.risk_level,
+          land_id: a.land_id  // Include land_id for transparency
         }));
+        console.log(`📋 [P0-B] Loaded ${recentAdvisories.length} land-specific advisories`);
+      } else {
+        console.log(`📋 [P0-B] No previous advisories for this land`);
       }
       
       return result;
@@ -2225,12 +2396,26 @@ export class AIAgentOrchestrator {
                          context.crop_context?.stage || 
                          'VEGETATIVE';
     
-    // Normalize all codes
-    const pestCode = normalizePestCode(rawPestCode);
-    const diseaseCode = normalizeDiseaseCode(rawDiseaseCode);
-    const cropCode = normalizeTypeCropCode(rawCropCode);
+    // ═══════════════════════════════════════════════════════════════════════════
+    // P0-C: UNIFIED CODE NORMALIZATION via entity-code-mapper.ts
+    // This is the SINGLE CHOKE POINT for all entity code normalization
+    // Ensures decision graph receives expected codes (e.g., SHOOT_BORER not SUGARCANE_SHOOT_BORER)
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    // First normalize using type-mappers (basic normalization)
+    const basicCropCode = normalizeTypeCropCode(rawCropCode);
+    const basicPestCode = normalizePestCode(rawPestCode);
+    const basicDiseaseCode = normalizeDiseaseCode(rawDiseaseCode);
     const severity = normalizeSeverity(rawSeverity);
     const cropStage = normalizeCropStage(rawCropStage);
+    
+    // P0-C: Apply decision graph normalization (strip crop prefixes for rule matching)
+    const cropCode = toDecisionGraphCropCode(basicCropCode);
+    const pestCode = rawPestCode ? toDecisionGraphPestCode(basicPestCode, cropCode) : undefined;
+    const diseaseCode = rawDiseaseCode ? toDecisionGraphDiseaseCode(basicDiseaseCode, cropCode) : undefined;
+    
+    // P0-C: Log the code mapping for debugging
+    logCodeMapping(rawPestCode, rawDiseaseCode, rawCropCode, ids.traceId);
     
     // Log crop source for training data quality
     if (landCurrentCrop) {
@@ -2239,9 +2424,9 @@ export class AIAgentOrchestrator {
       console.log(`   [${ids.traceId}] ⚠️ No land current crop - using NLU: ${cropCode}`);
     }
     
-    console.log(`   [${ids.traceId}] 📊 Rule Engine Input:`, {
+    console.log(`   [${ids.traceId}] 📊 Rule Engine Input (P0-C normalized):`, {
       raw: { crop: rawCropCode, pest: rawPestCode, disease: rawDiseaseCode },
-      normalized: { crop: cropCode, pest: pestCode, disease: diseaseCode, stage: cropStage },
+      decision_graph: { crop: cropCode, pest: pestCode, disease: diseaseCode, stage: cropStage },
       source: landCurrentCrop ? 'LAND_CONTEXT' : (nluEntities.crop_code ? 'NLU' : 'FUSION')
     });
     
@@ -3030,6 +3215,138 @@ export class AIAgentOrchestrator {
     }
     
     return decisionOutput;
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P1-A: CROP HEALTH RESPONSE GENERATOR
+  // Generates a crop health assessment using NDVI, soil, and weather data
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  private generateCropHealthResponse(
+    landContext: any,
+    language: 'mr' | 'hi' | 'en'
+  ): { message: string; confidence: number; suggestions: string[] } {
+    const crop = landContext.current_crop || 'पीक';
+    const stage = landContext.growth_stage || 'VEGETATIVE';
+    const das = landContext.days_since_sowing || 0;
+    const ndvi = landContext.ndvi?.value || landContext.ndvi?.ndvi_value;
+    const ndviTrend = landContext.ndvi?.ndvi_trend;
+    const soil = landContext.soil_health;
+    
+    // Determine crop health status
+    let healthStatus: 'excellent' | 'good' | 'moderate' | 'concern' = 'good';
+    let healthIcon = '✅';
+    let healthMessage = '';
+    
+    if (ndvi !== undefined) {
+      if (ndvi >= 0.6) {
+        healthStatus = 'excellent';
+        healthIcon = '🌟';
+      } else if (ndvi >= 0.4) {
+        healthStatus = 'good';
+        healthIcon = '✅';
+      } else if (ndvi >= 0.25) {
+        healthStatus = 'moderate';
+        healthIcon = '⚠️';
+      } else {
+        healthStatus = 'concern';
+        healthIcon = '🔴';
+      }
+    }
+    
+    // Build response based on language
+    if (language === 'mr') {
+      const statusMap = {
+        excellent: 'उत्कृष्ट',
+        good: 'चांगले',
+        moderate: 'मध्यम',
+        concern: 'चिंताजनक'
+      };
+      
+      healthMessage = `${healthIcon} **तुमच्या ${crop} पिकाची स्थिती: ${statusMap[healthStatus]}**\n\n`;
+      healthMessage += `🌱 **पिकाचा टप्पा:** ${stage} (${das} दिवस झाले)\n`;
+      
+      if (ndvi !== undefined) {
+        healthMessage += `📊 **NDVI (पिकाची हिरवळ):** ${ndvi.toFixed(2)}`;
+        if (ndviTrend === 'IMPROVING') {
+          healthMessage += ' 📈 (सुधारत आहे)';
+        } else if (ndviTrend === 'DECLINING') {
+          healthMessage += ' 📉 (कमी होत आहे)';
+        }
+        healthMessage += '\n';
+      }
+      
+      if (soil) {
+        healthMessage += `\n🧪 **जमिनीची स्थिती:**\n`;
+        healthMessage += `   • नत्र (N): ${soil.nitrogen_kg_per_ha || 'N/A'} kg/ha\n`;
+        healthMessage += `   • स्फुरद (P): ${soil.phosphorus_kg_per_ha || 'N/A'} kg/ha\n`;
+        healthMessage += `   • पालाश (K): ${soil.potassium_kg_per_ha || 'N/A'} kg/ha\n`;
+        healthMessage += `   • pH: ${soil.ph_level || 'N/A'}\n`;
+      }
+      
+      // Add recommendations based on status
+      healthMessage += `\n💡 **पुढील कृती:**\n`;
+      if (healthStatus === 'excellent' || healthStatus === 'good') {
+        healthMessage += `• सध्याचे व्यवस्थापन चांगले आहे, चालू ठेवा\n`;
+        healthMessage += `• नियमित पाणी व्यवस्थापन करा\n`;
+      } else if (healthStatus === 'moderate') {
+        healthMessage += `• पिकाची अधिक काळजी घ्या\n`;
+        healthMessage += `• पोषक तत्वांची कमतरता तपासा\n`;
+        healthMessage += `• पाण्याचे प्रमाण तपासा\n`;
+      } else {
+        healthMessage += `• तात्काळ लक्ष द्या\n`;
+        healthMessage += `• किडी-रोग तपासा\n`;
+        healthMessage += `• तज्ञांचा सल्ला घ्या\n`;
+      }
+      
+      healthMessage += `\n❓ **तुम्हाला आणखी माहिती हवी आहे का?**`;
+      
+    } else if (language === 'hi') {
+      const statusMap = {
+        excellent: 'उत्कृष्ट',
+        good: 'अच्छी',
+        moderate: 'मध्यम',
+        concern: 'चिंताजनक'
+      };
+      
+      healthMessage = `${healthIcon} **आपकी ${crop} फसल की स्थिति: ${statusMap[healthStatus]}**\n\n`;
+      healthMessage += `🌱 **फसल की अवस्था:** ${stage} (${das} दिन हुए)\n`;
+      
+      if (ndvi !== undefined) {
+        healthMessage += `📊 **NDVI (फसल की हरियाली):** ${ndvi.toFixed(2)}\n`;
+      }
+      
+      healthMessage += `\n💡 **अगला कदम:** नियमित निगरानी जारी रखें`;
+      
+    } else {
+      const statusMap = {
+        excellent: 'Excellent',
+        good: 'Good',
+        moderate: 'Moderate',
+        concern: 'Needs Attention'
+      };
+      
+      healthMessage = `${healthIcon} **Your ${crop} crop status: ${statusMap[healthStatus]}**\n\n`;
+      healthMessage += `🌱 **Growth Stage:** ${stage} (Day ${das})\n`;
+      
+      if (ndvi !== undefined) {
+        healthMessage += `📊 **NDVI (Vegetation Index):** ${ndvi.toFixed(2)}\n`;
+      }
+      
+      healthMessage += `\n💡 **Next Steps:** Continue regular monitoring`;
+    }
+    
+    const suggestions = language === 'mr' 
+      ? ['किडी समस्या आहे का?', 'पाणी व्यवस्थापन', 'खत शिफारस']
+      : language === 'hi'
+      ? ['कीट समस्या है?', 'पानी प्रबंधन', 'खाद सिफारिश']
+      : ['Any pest issues?', 'Irrigation schedule', 'Fertilizer recommendation'];
+    
+    return {
+      message: healthMessage,
+      confidence: ndvi !== undefined ? 0.85 : 0.65,
+      suggestions
+    };
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
