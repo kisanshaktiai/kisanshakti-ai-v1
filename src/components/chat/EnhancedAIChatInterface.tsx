@@ -142,8 +142,21 @@ export function EnhancedAIChatInterface() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
   const [sessionIds, setSessionIds] = useState<Record<string, string>>({});
+  // CRITICAL FIX: loadedSessionIds should reset when user changes
   const [loadedSessionIds, setLoadedSessionIds] = useState<Set<string>>(new Set());
   const [hasEverHadMessages, setHasEverHadMessages] = useState<Record<string, boolean>>({});
+  
+  // CRITICAL FIX: Reset loaded state when user changes (re-login scenario)
+  useEffect(() => {
+    if (user?.id) {
+      // Reset all loaded states when user changes to force reload
+      setLoadedSessionIds(new Set());
+      setSessionIds({});
+      setMessages({ general: [] });
+      setHasEverHadMessages({});
+      console.log('🔄 [Chat] Reset state for user:', user.id);
+    }
+  }, [user?.id]);
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -185,17 +198,26 @@ export function EnhancedAIChatInterface() {
     language: language
   });
   
+  // CRITICAL FIX: Improved scroll to bottom with proper timing
   const scrollToBottom = useCallback((force = false) => {
     if (!force && isUserScrollingRef.current) return;
     
     const container = scrollAreaRef.current;
     if (!container) return;
     
-    // Use requestAnimationFrame for smoother scrolling
+    // CRITICAL: Use multiple RAF to ensure DOM is fully rendered
     requestAnimationFrame(() => {
-      container.scrollTo({
-        top: container.scrollHeight,
-        behavior: force ? 'auto' : 'smooth'
+      requestAnimationFrame(() => {
+        const scrollHeight = container.scrollHeight;
+        const clientHeight = container.clientHeight;
+        
+        // Only scroll if there's content to scroll to
+        if (scrollHeight > clientHeight) {
+          container.scrollTo({
+            top: scrollHeight,
+            behavior: force ? 'auto' : 'smooth'
+          });
+        }
       });
     });
   }, []);
@@ -226,9 +248,20 @@ export function EnhancedAIChatInterface() {
 
   // Auto-scroll to bottom when messages change or tab changes
   useEffect(() => {
-    // Force scroll to bottom when messages are added
-    const timer = setTimeout(() => scrollToBottom(true), 100);
-    return () => clearTimeout(timer);
+    const currentMsgs = messages[activeTab] || [];
+    if (currentMsgs.length === 0) return;
+    
+    // CRITICAL FIX: Wait for DOM to fully render before scrolling
+    // Use longer timeout and multiple attempts to ensure messages are visible
+    const timer1 = setTimeout(() => scrollToBottom(true), 50);
+    const timer2 = setTimeout(() => scrollToBottom(true), 150);
+    const timer3 = setTimeout(() => scrollToBottom(true), 300);
+    
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+    };
   }, [messages, activeTab, scrollToBottom]);
 
   useEffect(() => {
@@ -1464,9 +1497,10 @@ export function EnhancedAIChatInterface() {
       {/* ═══════════════════════════════════════════════════════════════════════════
           2030 FUTURISTIC MESSAGES AREA - Neural Chat Experience
           ═══════════════════════════════════════════════════════════════════════════ */}
+      {/* CRITICAL FIX: Use pb-36 to ensure content isn't hidden behind fixed footer + safe area */}
       <main 
         ref={scrollAreaRef}
-        className="flex-1 overflow-y-auto overscroll-contain scroll-smooth pb-28"
+        className="flex-1 overflow-y-auto overscroll-contain scroll-smooth pb-36"
       >
         {/* Subtle gradient background pattern */}
         <div className="relative min-h-full">
