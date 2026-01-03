@@ -198,6 +198,12 @@ export class RuleEngineExecutor {
         }
       }
       
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CRITICAL FIX: DEDUPLICATE RECOMMENDATIONS BY PRODUCT NAME
+      // Prevents duplicate products from appearing in farmer's response
+      // ═══════════════════════════════════════════════════════════════════════════
+      this.deduplicateDecisions(decisions, traceId);
+      
       // Enhanced logging for rule execution results
       const totalRulesMatched = Object.values(decisions).reduce((sum, arr) => sum + arr.length, 0);
       console.log(`\n   📊 RULE EXECUTION SUMMARY:`);
@@ -1662,6 +1668,68 @@ export class RuleEngineExecutor {
     if (input.confirmed_hypotheses.length > 0) score += 0.1;
     
     return Math.min(score, 1.0);
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: DEDUPLICATION FUNCTION
+  // Removes duplicate product recommendations to avoid confusing farmers
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  private deduplicateDecisions(decisions: DecisionsByPriority, traceId: string): void {
+    const seenProducts = new Map<string, { priority: string; ruleId: string }>();
+    let duplicatesRemoved = 0;
+    
+    // Process all priority buckets
+    const buckets: (keyof DecisionsByPriority)[] = [
+      'P0_emergency', 'P1_regulatory', 'P2_weather_safety', 
+      'P3_crop_stage', 'P4_economic', 'P5_ipm', 'P6_optimization'
+    ];
+    
+    for (const bucket of buckets) {
+      const originalLength = decisions[bucket].length;
+      
+      decisions[bucket] = decisions[bucket].filter(rule => {
+        // If rule has no recommendation, keep it (it's likely a warning/block)
+        if (!rule.recommendation?.product_name) {
+          return true;
+        }
+        
+        // Normalize product name for comparison
+        const productKey = this.normalizeProductName(rule.recommendation.product_name);
+        
+        // Check if we've seen this product
+        if (seenProducts.has(productKey)) {
+          const existing = seenProducts.get(productKey)!;
+          console.log(`   [${traceId}] 🔄 Duplicate: "${rule.recommendation.product_name}" (${rule.rule_id}) - keeping ${existing.ruleId}`);
+          duplicatesRemoved++;
+          return false;
+        }
+        
+        // First occurrence - keep it
+        seenProducts.set(productKey, { priority: bucket, ruleId: rule.rule_id });
+        return true;
+      });
+      
+      if (decisions[bucket].length !== originalLength) {
+        console.log(`   [${traceId}] ${bucket}: ${originalLength} → ${decisions[bucket].length} (removed ${originalLength - decisions[bucket].length} duplicates)`);
+      }
+    }
+    
+    if (duplicatesRemoved > 0) {
+      console.log(`   [${traceId}] ✅ Total duplicates removed: ${duplicatesRemoved}`);
+    }
+  }
+  
+  private normalizeProductName(name: string): string {
+    // Normalize product name for deduplication
+    // Remove percentages, formulations, and standardize casing
+    return name
+      .toLowerCase()
+      .replace(/\d+(\.\d+)?%/g, '')           // Remove percentages
+      .replace(/\s+(sc|sl|wp|wg|ec|sg|sp|g|gr)\b/gi, '') // Remove formulation codes
+      .replace(/[^\w\s]/g, '')                // Remove special chars
+      .replace(/\s+/g, ' ')                   // Normalize whitespace
+      .trim();
   }
 }
 
