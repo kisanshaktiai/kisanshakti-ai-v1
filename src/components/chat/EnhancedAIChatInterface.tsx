@@ -394,15 +394,42 @@ export function EnhancedAIChatInterface() {
           if (!messagesError && allMessages && allMessages.length > 0) {
             if (import.meta.env.DEV) console.log(`✅ [Supabase] Loaded ${allMessages.length} total general messages`);
             
-            // Apply filter and dedupe
+            // Apply filter and dedupe - SMART CONTENT-BASED FILTERING
             const filterDisplayableMessages = (msgs: any[]): any[] => {
               return msgs.filter(msg => {
+                // Filter 1: Skip empty content messages
                 if (!msg.content || msg.content.trim().length === 0) return false;
-                const metadata = msg.metadata as Record<string, any> | null;
-                if (metadata?.source === 'orchestrator_v1' && msg.inferred_intent === 'PROCESSED') return false;
-                if (msg.content?.includes('🧠 DECISION BRAIN OUTPUT')) return false;
-                if (msg.content === 'Response generated' || msg.content === 'Processing...') return false;
-                if (msg.role === 'assistant' && msg.decision_brain_source === true && msg.content.length < 20) return false;
+                
+                const content = msg.content.trim();
+                
+                // Filter 2: Skip ACTUAL system prompts (NOT farmer messages)
+                // These are internal prompts sent TO the LLM, not real farmer questions
+                const isSystemPrompt = 
+                  content.startsWith('Based on the ') ||
+                  content.startsWith('Based on ') && content.includes('provide') ||
+                  content.startsWith('🧠 DECISION BRAIN OUTPUT') ||
+                  content.startsWith('🧠') ||
+                  content.startsWith('[PREVIOUS_RECOMMENDATIONS') ||
+                  content.startsWith('Analyze this') ||
+                  content.startsWith('Provide ') ||
+                  content.includes('DO NOT CHANGE THE FORMAT') ||
+                  content.includes('DECISION BRAIN OUTPUT');
+                
+                if (msg.role === 'user' && isSystemPrompt) {
+                  return false;
+                }
+                
+                // Filter 3: Skip system acknowledgment messages
+                if (content === 'Response generated' || content === 'Processing...') {
+                  return false;
+                }
+                
+                // Filter 4: Skip minimal decision brain responses (< 20 chars)
+                if (msg.role === 'assistant' && msg.decision_brain_source === true && content.length < 20) {
+                  return false;
+                }
+                
+                // KEEP: All other messages including real farmer questions
                 return true;
               });
             };
@@ -565,25 +592,42 @@ export function EnhancedAIChatInterface() {
         if (!messagesError && previousMessages && previousMessages.length > 0) {
           if (import.meta.env.DEV) console.log(`✅ [Supabase] Loaded ${previousMessages.length} messages for ${sessionKey}`);
           
-          // CRITICAL FIX: Filter out internal/system messages that shouldn't be displayed
+          // CRITICAL FIX: SMART CONTENT-BASED FILTERING
           const filterDisplayableMessages = (msgs: any[]): any[] => {
             return msgs.filter(msg => {
               // Filter 1: Skip empty content messages
               if (!msg.content || msg.content.trim().length === 0) return false;
               
-              // Filter 2: Skip internal orchestrator prompts (user messages that are system-generated)
-              const metadata = msg.metadata as Record<string, any> | null;
-              if (metadata?.source === 'orchestrator_v1' && msg.inferred_intent === 'PROCESSED') return false;
+              const content = msg.content.trim();
               
-              // Filter 3: Skip messages starting with DECISION BRAIN marker
-              if (msg.content?.includes('🧠 DECISION BRAIN OUTPUT')) return false;
+              // Filter 2: Skip ACTUAL system prompts (NOT farmer messages)
+              // These are internal prompts sent TO the LLM, not real farmer questions
+              const isSystemPrompt = 
+                content.startsWith('Based on the ') ||
+                content.startsWith('Based on ') && content.includes('provide') ||
+                content.startsWith('🧠 DECISION BRAIN OUTPUT') ||
+                content.startsWith('🧠') ||
+                content.startsWith('[PREVIOUS_RECOMMENDATIONS') ||
+                content.startsWith('Analyze this') ||
+                content.startsWith('Provide ') ||
+                content.includes('DO NOT CHANGE THE FORMAT') ||
+                content.includes('DECISION BRAIN OUTPUT');
               
-              // Filter 4: Skip system acknowledgment messages
-              if (msg.content === 'Response generated' || msg.content === 'Processing...') return false;
+              if (msg.role === 'user' && isSystemPrompt) {
+                return false;
+              }
               
-              // Filter 5: Skip decision_brain_source assistant messages with minimal content
-              if (msg.role === 'assistant' && msg.decision_brain_source === true && msg.content.length < 20) return false;
+              // Filter 3: Skip system acknowledgment messages
+              if (content === 'Response generated' || content === 'Processing...') {
+                return false;
+              }
               
+              // Filter 4: Skip minimal decision brain responses (< 20 chars)
+              if (msg.role === 'assistant' && msg.decision_brain_source === true && content.length < 20) {
+                return false;
+              }
+              
+              // KEEP: All other messages including real farmer questions
               return true;
             });
           };
