@@ -147,14 +147,17 @@ export function EnhancedAIChatInterface() {
   const [hasEverHadMessages, setHasEverHadMessages] = useState<Record<string, boolean>>({});
   
   // CRITICAL FIX: Reset loaded state when user changes (re-login scenario)
+  const prevUserIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (user?.id) {
+    if (user?.id && user.id !== prevUserIdRef.current) {
       // Reset all loaded states when user changes to force reload
       setLoadedSessionIds(new Set());
       setSessionIds({});
       setMessages({ general: [] });
       setHasEverHadMessages({});
-      console.log('🔄 [Chat] Reset state for user:', user.id);
+      setLands([]);
+      if (import.meta.env.DEV) console.log('🔄 [Chat] Reset state for new user:', user.id);
+      prevUserIdRef.current = user.id;
     }
   }, [user?.id]);
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
@@ -364,6 +367,175 @@ export function EnhancedAIChatInterface() {
       // CRITICAL FIX: Use supabaseWithAuth to pass x-farmer-id and x-tenant-id headers
       const authClient = supabaseWithAuth(user.id, tenant.id);
       
+      // CRITICAL FIX (Phase 2): For General chat, load ALL sessions and their messages
+      if (landId === null) {
+        // Query ALL general chat sessions (not just the latest)
+        const { data: allGeneralSessions, error: sessionsError } = await authClient
+          .from('ai_chat_sessions')
+          .select('id, updated_at')
+          .eq('farmer_id', user.id)
+          .eq('tenant_id', tenant.id)
+          .is('land_id', null)
+          .order('updated_at', { ascending: false });
+        
+        if (!sessionsError && allGeneralSessions && allGeneralSessions.length > 0) {
+          const allSessionIds = allGeneralSessions.map(s => s.id);
+          if (import.meta.env.DEV) console.log(`✅ [Supabase] Found ${allSessionIds.length} general sessions`);
+          
+          // Load messages from ALL general sessions
+          const { data: allMessages, error: messagesError } = await authClient
+            .from('ai_chat_messages')
+            .select('*')
+            .in('session_id', allSessionIds)
+            .eq('farmer_id', user.id)
+            .order('created_at', { ascending: true })
+            .limit(200);
+          
+          if (!messagesError && allMessages && allMessages.length > 0) {
+            if (import.meta.env.DEV) console.log(`✅ [Supabase] Loaded ${allMessages.length} total general messages`);
+            
+            // Apply filter and dedupe
+            const filterDisplayableMessages = (msgs: any[]): any[] => {
+              return msgs.filter(msg => {
+                if (!msg.content || msg.content.trim().length === 0) return false;
+                const metadata = msg.metadata as Record<string, any> | null;
+                if (metadata?.source === 'orchestrator_v1' && msg.inferred_intent === 'PROCESSED') return false;
+                if (msg.content?.includes('🧠 DECISION BRAIN OUTPUT')) return false;
+                if (msg.content === 'Response generated' || msg.content === 'Processing...') return false;
+                if (msg.role === 'assistant' && msg.decision_brain_source === true && msg.content.length < 20) return false;
+                return true;
+              });
+            };
+            
+            const filteredMessages = filterDisplayableMessages(allMessages);
+            
+            // Dedupe by id (in case of duplicates across sessions)
+            const seenIds = new Set<string>();
+            const uniqueMessages = filteredMessages.filter(msg => {
+              if (seenIds.has(msg.id)) return false;
+              seenIds.add(msg.id);
+              return true;
+            });
+            
+            // Sort by created_at ascending
+            uniqueMessages.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+            
+            if (import.meta.env.DEV) console.log(`✅ [Filter] Showing ${uniqueMessages.length} displayable messages`);
+            
+            const loadedMessages: Message[] = uniqueMessages.map(mapMessageFromDB);
+            
+            // Use the most recent active session as the canonical session for new messages
+            const { data: canonicalSession } = await authClient
+              .from('ai_chat_sessions')
+              .select('id')
+              .eq('farmer_id', user.id)
+              .eq('tenant_id', tenant.id)
+              .is('land_id', null)
+              .eq('is_active', true)
+              .order('updated_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            
+            // Cache to LocalDB for offline
+            try {
+              if (canonicalSession) {
+                await localDB.saveChatSession({
+                  id: canonicalSession.id,
+                  tenant_id: tenant.id,
+                  farmer_id: user.id,
+                  land_id: null,
+                  session_type: 'general',
+                  session_title: 'General Agriculture Chat',
+                  is_active: true,
+                  metadata: {},
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString()
+                });
+              }
+              for (const msg of allMessages) {
+                await localDB.saveChatMessage({
+                  id: msg.id,
+                  tenant_id: msg.tenant_id,
+                  farmer_id: msg.farmer_id,
+                  session_id: msg.session_id,
+                  role: msg.role,
+                  content: msg.content || '',
+                  // Context fields
+                  land_context: msg.land_context || null,
+                  crop_context: msg.crop_context || null,
+                  weather_context: msg.weather_context || null,
+                  location_context: msg.location_context || null,
+                  // Zone information
+                  agro_climatic_zone: msg.agro_climatic_zone || null,
+                  soil_zone: msg.soil_zone || null,
+                  rainfall_zone: msg.rainfall_zone || null,
+                  crop_season: msg.crop_season || null,
+                  // AI model info
+                  ai_model: msg.ai_model,
+                  response_time_ms: msg.response_time_ms,
+                  tokens_used: msg.tokens_used,
+                  // Feedback
+                  feedback_rating: msg.feedback_rating,
+                  feedback_text: msg.feedback_text,
+                  feedback_timestamp: msg.feedback_timestamp,
+                  // Attachments
+                  attachments: msg.attachments || null,
+                  image_urls: msg.image_urls,
+                  // Message tracking
+                  status: msg.status || 'sent',
+                  language: msg.language,
+                  message_type: msg.message_type,
+                  error_details: msg.error_details || null,
+                  // Editing
+                  is_edited: msg.is_edited || null,
+                  edited_at: msg.edited_at || null,
+                  parent_message_id: msg.parent_message_id || null,
+                  // Audit fields
+                  user_agent: msg.user_agent || null,
+                  ip_address: msg.ip_address || null,
+                  partition_key: msg.partition_key || null,
+                  // Analysis
+                  word_count: msg.word_count || null,
+                  inferred_intent: msg.inferred_intent,
+                  intent_confidence: msg.intent_confidence,
+                  // Training fields
+                  is_training_candidate: msg.is_training_candidate,
+                  human_verified: msg.human_verified,
+                  correction_notes: msg.correction_notes,
+                  conversation_quality_score: msg.conversation_quality_score,
+                  domain_tags: msg.domain_tags,
+                  complexity_level: msg.complexity_level,
+                  conversation_turn_number: msg.conversation_turn_number,
+                  off_topic: msg.off_topic,
+                  training_processed: msg.training_processed,
+                  preprocessed_content: msg.preprocessed_content,
+                  excluded_reason: msg.excluded_reason,
+                  agricultural_accuracy: msg.agricultural_accuracy,
+                  // Decision brain fields
+                  decision_brain_source: msg.decision_brain_source,
+                  actions_returned: msg.actions_returned,
+                  actions_filtered_out: msg.actions_filtered_out,
+                  // Metadata
+                  metadata: msg.metadata,
+                  // Timestamps
+                  created_at: msg.created_at,
+                  updated_at: msg.updated_at
+                });
+              }
+              if (import.meta.env.DEV) console.log(`💾 [LocalDB] Cached ${allMessages.length} general messages`);
+            } catch (cacheErr) {
+              console.warn('Failed to cache messages to LocalDB:', cacheErr);
+            }
+            
+            return { sessionId: canonicalSession?.id || allGeneralSessions[0].id, messages: loadedMessages };
+          }
+          
+          // Sessions exist but no messages
+          return { sessionId: allGeneralSessions[0].id, messages: [] };
+        }
+      }
+      
+      // For land-specific chats, use original single-session logic
       let sessionQuery = authClient
         .from('ai_chat_sessions')
         .select('id')
@@ -373,16 +545,12 @@ export function EnhancedAIChatInterface() {
         .order('updated_at', { ascending: false })
         .limit(1);
       
-      if (landId === null) {
-        sessionQuery = sessionQuery.is('land_id', null);
-      } else {
-        sessionQuery = sessionQuery.eq('land_id', landId);
-      }
+      sessionQuery = sessionQuery.eq('land_id', landId);
       
       const { data: existingSession, error: sessionError } = await sessionQuery.maybeSingle();
 
       if (!sessionError && existingSession) {
-        console.log(`✅ [Supabase] Loaded session for ${sessionKey}:`, existingSession.id);
+        if (import.meta.env.DEV) console.log(`✅ [Supabase] Loaded session for ${sessionKey}:`, existingSession.id);
         
         // Load messages for this session from Supabase
         // CRITICAL FIX: Use authClient with proper headers
@@ -395,48 +563,33 @@ export function EnhancedAIChatInterface() {
           .limit(100);
 
         if (!messagesError && previousMessages && previousMessages.length > 0) {
-          console.log(`✅ [Supabase] Loaded ${previousMessages.length} messages for ${sessionKey}`);
+          if (import.meta.env.DEV) console.log(`✅ [Supabase] Loaded ${previousMessages.length} messages for ${sessionKey}`);
           
           // CRITICAL FIX: Filter out internal/system messages that shouldn't be displayed
           const filterDisplayableMessages = (msgs: any[]): any[] => {
             return msgs.filter(msg => {
               // Filter 1: Skip empty content messages
-              if (!msg.content || msg.content.trim().length === 0) {
-                console.log('[Filter] Skipping empty message:', msg.id);
-                return false;
-              }
+              if (!msg.content || msg.content.trim().length === 0) return false;
               
               // Filter 2: Skip internal orchestrator prompts (user messages that are system-generated)
               const metadata = msg.metadata as Record<string, any> | null;
-              if (metadata?.source === 'orchestrator_v1' && msg.inferred_intent === 'PROCESSED') {
-                console.log('[Filter] Skipping internal orchestrator prompt:', msg.id);
-                return false;
-              }
+              if (metadata?.source === 'orchestrator_v1' && msg.inferred_intent === 'PROCESSED') return false;
               
               // Filter 3: Skip messages starting with DECISION BRAIN marker
-              if (msg.content?.includes('🧠 DECISION BRAIN OUTPUT')) {
-                console.log('[Filter] Skipping decision brain system prompt:', msg.id);
-                return false;
-              }
+              if (msg.content?.includes('🧠 DECISION BRAIN OUTPUT')) return false;
               
               // Filter 4: Skip system acknowledgment messages
-              if (msg.content === 'Response generated' || msg.content === 'Processing...') {
-                console.log('[Filter] Skipping system acknowledgment:', msg.id);
-                return false;
-              }
+              if (msg.content === 'Response generated' || msg.content === 'Processing...') return false;
               
               // Filter 5: Skip decision_brain_source assistant messages with minimal content
-              if (msg.role === 'assistant' && msg.decision_brain_source === true && msg.content.length < 20) {
-                console.log('[Filter] Skipping minimal decision brain response:', msg.id);
-                return false;
-              }
+              if (msg.role === 'assistant' && msg.decision_brain_source === true && msg.content.length < 20) return false;
               
               return true;
             });
           };
           
           const filteredMessages = filterDisplayableMessages(previousMessages);
-          console.log(`✅ [Filter] Showing ${filteredMessages.length}/${previousMessages.length} displayable messages`);
+          if (import.meta.env.DEV) console.log(`✅ [Filter] Showing ${filteredMessages.length}/${previousMessages.length} displayable messages`);
           
           const loadedMessages: Message[] = filteredMessages.map(mapMessageFromDB);
           
@@ -514,7 +667,7 @@ export function EnhancedAIChatInterface() {
                 updated_at: msg.updated_at
               });
             }
-            console.log(`💾 [LocalDB] Cached ${previousMessages.length} messages for offline`);
+            if (import.meta.env.DEV) console.log(`💾 [LocalDB] Cached ${previousMessages.length} messages`);
           } catch (cacheErr) {
             console.warn('Failed to cache messages to LocalDB:', cacheErr);
           }
@@ -531,14 +684,14 @@ export function EnhancedAIChatInterface() {
         console.warn(`[Supabase] Session query error for ${sessionKey}:`, sessionError);
       }
       
-      console.log(`📴 [LocalDB] Trying offline cache for ${sessionKey}`);
+      if (import.meta.env.DEV) console.log(`📴 [LocalDB] Trying offline cache for ${sessionKey}`);
       try {
         const localMessages = await localDB.getChatMessages(landId);
         if (localMessages && localMessages.length > 0) {
           const cachedMessages = localMessages
             .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
             .map(mapMessageFromDB);
-          console.log(`⚡ [LocalDB] Loaded ${cachedMessages.length} cached messages for ${sessionKey}`);
+          if (import.meta.env.DEV) console.log(`⚡ [LocalDB] Loaded ${cachedMessages.length} cached messages for ${sessionKey}`);
           return { sessionId: null, messages: cachedMessages };
         }
       } catch (localErr) {
@@ -552,19 +705,26 @@ export function EnhancedAIChatInterface() {
     }
   }, [user?.id, tenant?.id]);
 
-  // Fetch lands on mount
+  // CRITICAL FIX (Phase 1): Fetch lands on mount - MERGE instead of overwrite
   useEffect(() => {
     async function fetchLands() {
       try {
         const fetchedLands = await landsApi.fetchLands();
         setLands(fetchedLands);
         
-        // Initialize messages for each land
-        const newMessages: Record<string, Message[]> = { general: [] };
-        fetchedLands.forEach(land => {
-          newMessages[land.id] = [];
+        // CRITICAL: MERGE new land keys into existing messages, don't overwrite
+        setMessages(prev => {
+          const merged = { ...prev };
+          // Ensure general exists
+          if (!merged.general) merged.general = [];
+          // Add empty arrays only for NEW lands (don't overwrite existing)
+          fetchedLands.forEach(land => {
+            if (!merged[land.id]) {
+              merged[land.id] = [];
+            }
+          });
+          return merged;
         });
-        setMessages(newMessages);
       } catch (error) {
         console.error('Error fetching lands:', error);
       }
@@ -615,7 +775,7 @@ export function EnhancedAIChatInterface() {
     loadSession();
   }, [activeTab, user?.id, tenant?.id, loadLandSession]);
 
-  // Get or create session ID
+  // CRITICAL FIX (Phase 3): Get or create session ID - REUSE existing before creating
   const getCurrentSessionId = useCallback(async (): Promise<string> => {
     const sessionKey = activeTab !== 'general' ? activeTab : 'general';
     
@@ -623,12 +783,35 @@ export function EnhancedAIChatInterface() {
       return sessionIds[sessionKey];
     }
     
-    // Create new session
     const landId = activeTab !== 'general' ? activeTab : null;
-    
-    // CRITICAL FIX: Use supabaseWithAuth for INSERT operations
     const authClient = supabaseWithAuth(user?.id || '', tenant?.id || '');
     
+    // PHASE 3: First, try to find an existing active session (prevents duplicates)
+    let existingQuery = authClient
+      .from('ai_chat_sessions')
+      .select('id')
+      .eq('farmer_id', user?.id)
+      .eq('tenant_id', tenant?.id)
+      .eq('is_active', true)
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    
+    if (landId === null) {
+      existingQuery = existingQuery.is('land_id', null);
+    } else {
+      existingQuery = existingQuery.eq('land_id', landId);
+    }
+    
+    const { data: existingSession, error: findError } = await existingQuery.maybeSingle();
+    
+    if (!findError && existingSession) {
+      if (import.meta.env.DEV) console.log(`♻️ [Session] Reusing existing session for ${sessionKey}:`, existingSession.id);
+      setSessionIds(prev => ({ ...prev, [sessionKey]: existingSession.id }));
+      return existingSession.id;
+    }
+    
+    // No existing session found, create new one
+    if (import.meta.env.DEV) console.log(`🆕 [Session] Creating new session for ${sessionKey}`);
     const { data: newSession, error } = await authClient
       .from('ai_chat_sessions')
       .insert({
@@ -1325,7 +1508,7 @@ export function EnhancedAIChatInterface() {
   const quickReplies = dynamicQuickReplies[activeTab] || [];
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-gradient-to-br from-background via-background to-muted/30">
+    <div className="fixed inset-0 flex flex-col min-h-0 bg-gradient-to-br from-background via-background to-muted/30">
       {/* Camera Modal */}
       {showCamera && (
         <WorldClassCamera
@@ -1500,10 +1683,10 @@ export function EnhancedAIChatInterface() {
       {/* CRITICAL FIX: Use pb-36 to ensure content isn't hidden behind fixed footer + safe area */}
       <main 
         ref={scrollAreaRef}
-        className="flex-1 overflow-y-auto overscroll-contain scroll-smooth pb-36"
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-smooth pb-36"
       >
         {/* Subtle gradient background pattern */}
-        <div className="relative min-h-full">
+        <div className="relative">
           <div className="absolute inset-0 opacity-[0.015] pointer-events-none">
             <div className="absolute inset-0" style={{
               backgroundImage: `radial-gradient(circle at 20% 30%, hsl(var(--primary)) 1px, transparent 1px),
