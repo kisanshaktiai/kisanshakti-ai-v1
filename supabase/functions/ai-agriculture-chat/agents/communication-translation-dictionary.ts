@@ -789,3 +789,159 @@ export function getSafetyGearTranslation(
   
   return gear;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CRITICAL FIX: Ensure Full Translation - Scans response for untranslated English
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Common English phrases that should be translated in farmer responses
+ */
+const ENGLISH_FALLBACK_TRANSLATIONS: Record<string, TrilingualText> = {
+  'consult agricultural expert': {
+    mr: 'कृषी तज्ञांचा सल्ला घ्या',
+    hi: 'कृषि विशेषज्ञ से सलाह लें',
+    en: 'Consult agricultural expert'
+  },
+  'wait for weather': {
+    mr: 'हवामान सुधारण्याची वाट पहा',
+    hi: 'मौसम सुधरने की प्रतीक्षा करें',
+    en: 'Wait for weather to improve'
+  },
+  'spray in morning': {
+    mr: 'सकाळी ६-१० वाजता फवारणी करा',
+    hi: 'सुबह 6-10 बजे छिड़काव करें',
+    en: 'Spray in morning 6-10 AM'
+  },
+  'spray in evening': {
+    mr: 'संध्याकाळी ४-७ वाजता फवारणी करा',
+    hi: 'शाम 4-7 बजे छिड़काव करें',
+    en: 'Spray in evening 4-7 PM'
+  },
+  'pre-harvest interval': {
+    mr: 'कापणीपूर्व प्रतीक्षा कालावधी',
+    hi: 'कटाई पूर्व प्रतीक्षा अवधि',
+    en: 'Pre-Harvest Interval (PHI)'
+  },
+  'use protective equipment': {
+    mr: 'संरक्षक साधने वापरा',
+    hi: 'सुरक्षा उपकरण पहनें',
+    en: 'Use protective equipment'
+  },
+  'days after sowing': {
+    mr: 'पेरणीनंतर दिवस',
+    hi: 'बुवाई के बाद दिन',
+    en: 'Days after sowing'
+  },
+  'alternative treatment': {
+    mr: 'पर्यायी उपाय',
+    hi: 'वैकल्पिक उपचार',
+    en: 'Alternative treatment'
+  },
+  'organic option': {
+    mr: 'सेंद्रिय पर्याय',
+    hi: 'जैविक विकल्प',
+    en: 'Organic option'
+  },
+  'chemical option': {
+    mr: 'रासायनिक पर्याय',
+    hi: 'रासायनिक विकल्प',
+    en: 'Chemical option'
+  },
+  'apply immediately': {
+    mr: 'लगेच वापरा',
+    hi: 'तुरंत लगाएं',
+    en: 'Apply immediately'
+  },
+  'monitoring recommended': {
+    mr: 'निरीक्षण सुरू ठेवा',
+    hi: 'निगरानी जारी रखें',
+    en: 'Continue monitoring'
+  },
+  'no action needed': {
+    mr: 'सध्या कोणतीही कृती आवश्यक नाही',
+    hi: 'अभी कोई कार्रवाई आवश्यक नहीं',
+    en: 'No action needed currently'
+  },
+  'foliar spray': {
+    mr: 'पानांवर फवारणी',
+    hi: 'पत्तियों पर छिड़काव',
+    en: 'Foliar spray'
+  },
+  'soil application': {
+    mr: 'जमिनीत वापर',
+    hi: 'मिट्टी में प्रयोग',
+    en: 'Soil application'
+  },
+  'seed treatment': {
+    mr: 'बीजप्रक्रिया',
+    hi: 'बीज उपचार',
+    en: 'Seed treatment'
+  }
+};
+
+/**
+ * CRITICAL FIX: Ensure full translation - replaces common English phrases with target language
+ * Call this on final response before sending to farmer
+ */
+export function ensureFullTranslation(
+  text: string,
+  lang: SupportedLanguage
+): string {
+  if (lang === 'en') {
+    return text; // No translation needed for English
+  }
+  
+  let translatedText = text;
+  
+  // Replace common English phrases with translations
+  for (const [englishPhrase, translations] of Object.entries(ENGLISH_FALLBACK_TRANSLATIONS)) {
+    const regex = new RegExp(englishPhrase, 'gi');
+    if (regex.test(translatedText)) {
+      translatedText = translatedText.replace(regex, translations[lang]);
+    }
+  }
+  
+  // Also check for product-related English that should be translated
+  // Action translations
+  for (const [action, translations] of Object.entries(ACTION_TRANSLATIONS)) {
+    const englishText = translations.en;
+    if (englishText && translatedText.includes(englishText)) {
+      translatedText = translatedText.replace(new RegExp(englishText, 'gi'), translations[lang]);
+    }
+  }
+  
+  // Method translations
+  for (const [method, translations] of Object.entries(METHOD_TRANSLATIONS)) {
+    const englishText = translations.en;
+    if (englishText && translatedText.includes(englishText)) {
+      translatedText = translatedText.replace(new RegExp(englishText, 'gi'), translations[lang]);
+    }
+  }
+  
+  return translatedText;
+}
+
+/**
+ * Check if response contains significant untranslated English text
+ * Returns true if more than 20% of alphabetic characters are ASCII (English)
+ */
+export function hasUntranslatedEnglish(text: string, lang: SupportedLanguage): boolean {
+  if (lang === 'en') return false;
+  
+  // Remove numbers, special characters, and product names (which are OK in English)
+  const cleanText = text
+    .replace(/\d+(\.\d+)?%?/g, '')       // Remove numbers/percentages
+    .replace(/\b[A-Z]{2,}\b/g, '')       // Remove abbreviations (like PHI, NPK)
+    .replace(/₹[\d,]+/g, '')             // Remove prices
+    .replace(/\b(SC|SL|WP|WG|EC|SG|SP|G)\b/gi, ''); // Remove formulation codes
+  
+  const devanagariChars = (cleanText.match(/[\u0900-\u097F]/g) || []).length;
+  const asciiAlphaChars = (cleanText.match(/[a-zA-Z]/g) || []).length;
+  
+  const total = devanagariChars + asciiAlphaChars;
+  if (total < 20) return false; // Too short to determine
+  
+  const englishRatio = asciiAlphaChars / total;
+  return englishRatio > 0.3; // More than 30% English is concerning
+}

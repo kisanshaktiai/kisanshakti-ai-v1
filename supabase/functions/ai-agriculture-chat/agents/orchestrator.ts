@@ -285,6 +285,16 @@ export class AIAgentOrchestrator {
       language?: 'mr' | 'hi' | 'en';
       landId?: string;
       traceId?: string;  // PHASE A: Accept trace_id for observability
+      // PHASE 8: Session context for follow-up awareness
+      conversationHistory?: Array<{ role: string; content: string }>;
+      sessionState?: {
+        hasPreviousRecommendations?: boolean;
+        previousPest?: string;
+        previousDisease?: string;
+        previousCrop?: string;
+        turnCount?: number;
+        decisionState?: string;
+      };
     } = {}
   ): Promise<OrchestratorResponse> {
     
@@ -295,6 +305,11 @@ export class AIAgentOrchestrator {
     console.log(`\n🚀 [${traceId}] Orchestrator: Starting full diagnostic flow...`);
     console.log(`   [${traceId}] Session: ${sessionId}`);
     console.log(`   [${traceId}] Message: ${farmerMessage.substring(0, 50)}...`);
+    
+    // PHASE 8: Log session context for debugging
+    if (options.sessionState?.hasPreviousRecommendations) {
+      console.log(`   [${traceId}] 🔗 Session Context: previousPest=${options.sessionState.previousPest}, previousCrop=${options.sessionState.previousCrop}, turn=${options.sessionState.turnCount}`);
+    }
     
     try {
       // ========================================
@@ -307,6 +322,113 @@ export class AIAgentOrchestrator {
         if (landContext) {
           console.log(`   📊 crop_schedules data: crop=${landContext.current_crop}, sowing=${landContext.sowing_date}, stage=${landContext.growth_stage}`);
         }
+      }
+      
+      // ========================================
+      // PHASE 0.3: UNIFIED QUERY ROUTER (NEW)
+      // Categorizes farmer question into proper handling route
+      // ========================================
+      const { routeQuery, getRouteRequirements } = await import('./query-router.ts');
+      
+      const queryRoute = routeQuery(farmerMessage, {
+        lastPest: options.sessionState?.previousPest,
+        lastDisease: options.sessionState?.previousDisease,
+        lastCrop: options.sessionState?.previousCrop || landContext?.current_crop,
+        turnCount: options.sessionState?.turnCount || 0
+      });
+      
+      console.log(`🛤️ [${traceId}] Query Route: ${queryRoute.route} (confidence: ${(queryRoute.confidence * 100).toFixed(0)}%)`);
+      console.log(`   Detected entities: ${JSON.stringify(queryRoute.detected_entities)}`);
+      console.log(`   Context hints: ${queryRoute.context_hints.join(', ')}`);
+      agentsUsed.push('QUERY_ROUTER');
+      
+      const routeRequirements = getRouteRequirements(queryRoute.route);
+      
+      // ========================================
+      // PHASE 0.4: HANDLE GREETING DIRECTLY (No AI)
+      // ========================================
+      if (queryRoute.route === 'GREETING') {
+        console.log(`✅ [${traceId}] GREETING detected - returning direct response`);
+        return this.generateGreetingResponse(sessionId, options.language || 'mr', startTime, agentsUsed, traceId);
+      }
+      
+      // ========================================
+      // PHASE 0.5: HANDLE IRRIGATION DIRECTLY (NEW)
+      // ========================================
+      if (queryRoute.route === 'IRRIGATION_SCHEDULING' && landContext) {
+        console.log(`💧 [${traceId}] IRRIGATION query - using Irrigation Decision Module`);
+        const { calculateIrrigationRecommendation, formatIrrigationResponse } = await import('./irrigation-decision-module.ts');
+        
+        const irrigationRec = calculateIrrigationRecommendation({
+          crop_code: landContext.current_crop?.toUpperCase() || 'SUGARCANE',
+          growth_stage: landContext.growth_stage || 'VEGETATIVE',
+          days_after_sowing: landContext.days_since_sowing || 30,
+          soil_type: landContext.soil_type,
+          irrigation_type: landContext.irrigation_type?.toUpperCase() as any || 'FLOOD',
+          last_irrigation_date: landContext.last_irrigation_date,
+          area_acres: landContext.area_acres
+        });
+        
+        const irrigationResponse = formatIrrigationResponse(irrigationRec, options.language || 'mr');
+        agentsUsed.push('IRRIGATION_MODULE');
+        
+        return {
+          type: 'DECISION_PROVIDED',
+          session_id: sessionId,
+          communication: {
+            message_id: crypto.randomUUID(),
+            decision_id: `irrigation_${Date.now()}`,
+            session_id: sessionId,
+            farmer_id: farmerId,
+            language: options.language || 'mr',
+            format: 'RICH_TEXT',
+            tone: 'FRIENDLY',
+            created_at: new Date().toISOString(),
+            main_message: {
+              full_text: {
+                mr: irrigationResponse,
+                hi: irrigationResponse,
+                en: irrigationResponse
+              }
+            },
+            quick_actions: [],
+            metadata: {
+              word_count: irrigationResponse.split(/\s+/).length,
+              reading_time_seconds: 10,
+              confidence_score: 0.9,
+              source: 'IRRIGATION_MODULE',
+              response_type: 'IRRIGATION_SCHEDULE'
+            }
+          } as any,
+          decision_output: {
+            decision_id: `irrigation_${Date.now()}`,
+            session_id: sessionId,
+            status: 'INFORMATION_PROVIDED',
+            decision_brain_source: true,
+            actions_returned: [{
+              action_type: 'IRRIGATION',
+              urgency: irrigationRec.urgency,
+              water_amount: `${irrigationRec.water_amount_liters_per_acre} L/acre`,
+              timing: irrigationRec.timing
+            }],
+            metadata: {
+              confidence: 0.9,
+              trace_id: traceId,
+              processing_time_ms: Date.now() - startTime,
+              agents_used: agentsUsed,
+              template_type: 'IRRIGATION_SCHEDULE'
+            }
+          } as any,
+          metadata: {
+            confidence: 0.9,
+            safety_status: 'SAFE',
+            rules_applied: 0,
+            processing_time_ms: Date.now() - startTime,
+            agents_used: agentsUsed,
+            template_type: 'IRRIGATION_SCHEDULE',
+            trace_id: traceId
+          }
+        };
       }
       
       // ========================================
@@ -2803,6 +2925,77 @@ export class AIAgentOrchestrator {
     }
     
     return decisionOutput;
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 8: GREETING RESPONSE GENERATOR
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  private generateGreetingResponse(
+    sessionId: string,
+    language: 'mr' | 'hi' | 'en',
+    startTime: number,
+    agentsUsed: string[],
+    traceId: string
+  ): OrchestratorResponse {
+    const greetings: Record<'mr' | 'hi' | 'en', string> = {
+      mr: '🙏 नमस्कार! मी तुमचा कृषी सल्लागार आहे. तुम्ही तुमच्या पिकाबद्दल, किडी-रोग, पाणी व्यवस्थापन, खत शिफारस किंवा बाजारभाव याबद्दल विचारू शकता. मला कशाबद्दल मदत करू?',
+      hi: '🙏 नमस्ते! मैं आपका कृषि सलाहकार हूं। आप अपनी फसल, कीट-रोग, पानी प्रबंधन, खाद सिफारिश या बाजार भाव के बारे में पूछ सकते हैं। मैं किस बारे में मदद करूं?',
+      en: '🙏 Hello! I am your agricultural advisor. You can ask me about your crop, pests, diseases, irrigation, fertilizer recommendations, or market prices. How can I help you today?'
+    };
+    
+    return {
+      type: 'DECISION_PROVIDED',
+      session_id: sessionId,
+      communication: {
+        message_id: crypto.randomUUID(),
+        decision_id: `greeting_${Date.now()}`,
+        session_id: sessionId,
+        farmer_id: '',
+        language,
+        format: 'RICH_TEXT',
+        tone: 'FRIENDLY',
+        created_at: new Date().toISOString(),
+        main_message: {
+          full_text: greetings
+        },
+        quick_actions: [
+          { label: language === 'mr' ? '🐛 किडी समस्या' : language === 'hi' ? '🐛 कीट समस्या' : '🐛 Pest Problem', action: 'pest_query' },
+          { label: language === 'mr' ? '💧 पाणी' : language === 'hi' ? '💧 पानी' : '💧 Irrigation', action: 'water_query' },
+          { label: language === 'mr' ? '🌾 खत' : language === 'hi' ? '🌾 खाद' : '🌾 Fertilizer', action: 'fertilizer_query' }
+        ],
+        metadata: {
+          word_count: greetings[language].split(/\s+/).length,
+          reading_time_seconds: 5,
+          confidence_score: 1.0,
+          source: 'GREETING',
+          response_type: 'GREETING'
+        }
+      } as any,
+      decision_output: {
+        decision_id: `greeting_${Date.now()}`,
+        session_id: sessionId,
+        status: 'INFORMATION_PROVIDED',
+        decision_brain_source: false,
+        actions_returned: [],
+        metadata: {
+          confidence: 1.0,
+          trace_id: traceId,
+          processing_time_ms: Date.now() - startTime,
+          agents_used: agentsUsed,
+          template_type: 'GREETING'
+        }
+      } as any,
+      metadata: {
+        confidence: 1.0,
+        safety_status: 'SAFE',
+        rules_applied: 0,
+        processing_time_ms: Date.now() - startTime,
+        agents_used: agentsUsed,
+        template_type: 'GREETING',
+        trace_id: traceId
+      }
+    };
   }
 }
 

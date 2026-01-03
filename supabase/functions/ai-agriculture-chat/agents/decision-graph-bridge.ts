@@ -2693,120 +2693,182 @@ function evaluatePestIPM(context: RuleEvaluationContext): EvaluatedRule[] {
   
   console.log(`   🐛 IPM matching: pest="${pestNorm}", crop="${cropNorm}", severity="${severity}"`);
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Severity-to-IPM Level Mapping
+  // HIGH/CRITICAL severity gets BOTH biological AND chemical recommendations
+  // ═══════════════════════════════════════════════════════════════════════════
+  const severityToIPMLevels: Record<string, number[]> = {
+    'LOW': [1, 2, 3],           // Cultural, mechanical, botanical only
+    'MODERATE': [3, 4],         // Botanical, biological
+    'HIGH': [3, 4, 5],          // Botanical, biological + chemical
+    'CRITICAL': [4, 5, 6]       // Biological + chemical (emergency)
+  };
+  
+  const targetIPMLevels = severityToIPMLevels[severity] || [3, 4, 5];
+  console.log(`   📊 Target IPM levels for ${severity} severity: [${targetIPMLevels.join(', ')}]`);
+  
   // Find matching IPM recommendations
+  const matchedIPMs: typeof IPM_DATABASE = [];
+  
   for (const ipm of IPM_DATABASE) {
     const cropMatch = ipm.crop_codes.some(c => codesMatch(cropNorm, c));
     const pestMatch = ipm.pest_codes.some(p => codesMatch(pestNorm, p));
     
     if (!cropMatch || !pestMatch) continue;
     
-    console.log(`   ✅ IPM match found: ${ipm.crop_codes[0]} + ${ipm.pest_codes[0]}, Level ${ipm.ipm_level}`);
+    // CRITICAL FIX: Match IPM level to severity-appropriate range
+    if (targetIPMLevels.includes(ipm.ipm_level)) {
+      matchedIPMs.push(ipm);
+    }
+  }
+  
+  console.log(`   ✅ Matched ${matchedIPMs.length} IPM recommendations for ${cropNorm} + ${pestNorm}`);
+  
+  // CRITICAL FIX: For HIGH/CRITICAL severity, return BOTH biological AND chemical
+  if ((severity === 'HIGH' || severity === 'CRITICAL') && !isOrganic) {
+    // Find biological option (IPM level 3-4)
+    const biologicalIPM = matchedIPMs.find(ipm => ipm.ipm_level >= 3 && ipm.ipm_level <= 4);
+    // Find chemical option (IPM level 5-6)  
+    const chemicalIPM = matchedIPMs.find(ipm => ipm.ipm_level >= 5);
     
-    const severityOrder = { 'LOW': 1, 'MODERATE': 2, 'HIGH': 3, 'CRITICAL': 4 };
-    const currentSeverity = severityOrder[severity] || 2;
-    const thresholdSeverity = severityOrder[ipm.severity_threshold] || 2;
-    
-    if (currentSeverity >= thresholdSeverity) {
-      // ═══════════════════════════════════════════════════════════════════════════
-      // CRITICAL FIX: Use extractProductRecommendation to get COMPLETE product details
-      // ═══════════════════════════════════════════════════════════════════════════
-      const selectedProduct = extractProductRecommendation(
-        context.crop_code || '',
-        context.pest_code,
-        null,
-        severity as SeverityLevel,
-        ipm.ipm_level,
-        isOrganic,
-        'mr'
-      );
+    if (biologicalIPM) {
+      rules.push(buildIPMRecommendation(biologicalIPM, context, severity, isOrganic, true));
+    }
+    if (chemicalIPM) {
+      rules.push(buildIPMRecommendation(chemicalIPM, context, severity, isOrganic, false));
+    }
+  } else {
+    // For LOW/MODERATE severity, return the most appropriate single recommendation
+    for (const ipm of matchedIPMs) {
+      const severityOrder = { 'LOW': 1, 'MODERATE': 2, 'HIGH': 3, 'CRITICAL': 4 };
+      const currentSeverity = severityOrder[severity] || 2;
+      const thresholdSeverity = severityOrder[ipm.severity_threshold] || 2;
       
-      // Build products array with COMPLETE details
-      let products: Array<{
-        name: string;
-        dosage: string;
-        method: string;
-        dosage_per_acre?: string;
-        timing?: string;
-        phi_days?: number;
-        efficacy_percent?: number;
-        water_volume?: string;
-        weather_restrictions?: string;
-        names?: { mr: string; hi: string; en: string };
-      }> | undefined;
-      
-      if (selectedProduct) {
-        products = [{
-          name: selectedProduct.product_name,
-          dosage: selectedProduct.dosage,
-          method: selectedProduct.application_method,
-          dosage_per_acre: selectedProduct.dosage_per_acre,
-          timing: selectedProduct.timing,
-          phi_days: selectedProduct.phi_days,
-          efficacy_percent: selectedProduct.efficacy_percent,
-          water_volume: selectedProduct.water_volume_per_acre,
-          weather_restrictions: selectedProduct.weather_restrictions,
-          names: selectedProduct.names
-        }];
-        console.log(`   📦 Product selected: ${selectedProduct.product_name} @ ${selectedProduct.dosage}, efficacy=${selectedProduct.efficacy_percent}%`);
-      } else if (ipm.recommendations.chemical?.length) {
-        // Fallback to IPM database chemicals
-        products = ipm.recommendations.chemical.map(c => ({
-          name: c.name,
-          dosage: c.dosage,
-          method: 'FOLIAR_SPRAY',
-          phi_days: c.phi_days
-        }));
+      if (currentSeverity >= thresholdSeverity) {
+        rules.push(buildIPMRecommendation(ipm, context, severity, isOrganic, false));
+        break; // Only one recommendation for lower severities
       }
-      
-      let recMr = '', recHi = '', recEn = '';
-      
-      if (ipm.recommendations.cultural?.length) {
-        recEn += `🌾 Cultural: ${ipm.recommendations.cultural.join(', ')}. `;
-        recMr += `🌾 शेती पद्धती: ${ipm.recommendations.cultural.join(', ')}. `;
-        recHi += `🌾 कृषि पद्धति: ${ipm.recommendations.cultural.join(', ')}. `;
-      }
-      if (ipm.recommendations.biological?.length) {
-        recEn += `🦠 Biological: ${ipm.recommendations.biological.join(', ')}. `;
-        recMr += `🦠 जैविक: ${ipm.recommendations.biological.join(', ')}. `;
-        recHi += `🦠 जैविक: ${ipm.recommendations.biological.join(', ')}. `;
-      }
-      if (ipm.recommendations.botanical?.length) {
-        recEn += `🌿 Botanical: ${ipm.recommendations.botanical.join(', ')}. `;
-        recMr += `🌿 वनस्पतिजन्य: ${ipm.recommendations.botanical.join(', ')}. `;
-        recHi += `🌿 वानस्पतिक: ${ipm.recommendations.botanical.join(', ')}. `;
-      }
-      if (products?.length) {
-        const productInfo = products[0];
-        const name = productInfo.names?.mr || productInfo.name;
-        recMr += `💊 रासायनिक: ${name} @ ${productInfo.dosage} (${productInfo.dosage_per_acre || ''}).`;
-        recHi += `💊 रासायनिक: ${productInfo.names?.hi || productInfo.name} @ ${productInfo.dosage}.`;
-        recEn += `💊 Chemical: ${productInfo.names?.en || productInfo.name} @ ${productInfo.dosage} (${productInfo.dosage_per_acre || ''}).`;
-        
-        if (productInfo.timing) {
-          recMr += ` वेळ: ${productInfo.timing}.`;
-        }
-        if (productInfo.phi_days) {
-          recMr += ` PHI: ${productInfo.phi_days} दिवस.`;
-        }
-      }
-      
-      rules.push({
-        rule_id: `IPM_${context.crop_code || 'CROP'}_${context.pest_code}_L${ipm.ipm_level}`,
-        category: 'ipm',
-        priority: ipm.ipm_level <= 2 ? 'P5_IPM' : (ipm.ipm_level <= 4 ? 'P4_ECONOMIC' : 'P3_CROP_STAGE'),
-        fired: true,
-        action: 'RECOMMEND',
-        confidence: selectedProduct ? 0.90 : 0.75,
-        scientific_basis: ipm.scientific_basis,
-        recommendation_mr: recMr,
-        recommendation_hi: recHi,
-        recommendation_en: recEn,
-        products
-      });
     }
   }
   
   return rules;
+}
+
+/**
+ * HELPER: Build IPM recommendation from matched database entry
+ */
+function buildIPMRecommendation(
+  ipm: typeof IPM_DATABASE[0],
+  context: RuleEvaluationContext,
+  severity: string,
+  isOrganic: boolean,
+  isBiologicalOption: boolean
+): EvaluatedRule {
+  // Use extractProductRecommendation to get COMPLETE product details
+  const selectedProduct = extractProductRecommendation(
+    context.crop_code || '',
+    context.pest_code || null,
+    null,
+    severity as SeverityLevel,
+    ipm.ipm_level,
+    isOrganic,
+    'mr'
+  );
+  
+  // Build products array with COMPLETE details
+  let products: Array<{
+    name: string;
+    dosage: string;
+    method: string;
+    dosage_per_acre?: string;
+    timing?: string;
+    phi_days?: number;
+    efficacy_percent?: number;
+    water_volume?: string;
+    weather_restrictions?: string;
+    names?: { mr: string; hi: string; en: string };
+  }> | undefined;
+  
+  if (selectedProduct) {
+    products = [{
+      name: selectedProduct.product_name,
+      dosage: selectedProduct.dosage,
+      method: selectedProduct.application_method,
+      dosage_per_acre: selectedProduct.dosage_per_acre,
+      timing: selectedProduct.timing,
+      phi_days: selectedProduct.phi_days,
+      efficacy_percent: selectedProduct.efficacy_percent,
+      water_volume: selectedProduct.water_volume_per_acre,
+      weather_restrictions: selectedProduct.weather_restrictions,
+      names: selectedProduct.names
+    }];
+    console.log(`   📦 Product selected: ${selectedProduct.product_name} @ ${selectedProduct.dosage}, efficacy=${selectedProduct.efficacy_percent}%`);
+  } else if (ipm.recommendations.chemical?.length && !isBiologicalOption) {
+    // Fallback to IPM database chemicals
+    products = ipm.recommendations.chemical.map(c => ({
+      name: c.name,
+      dosage: c.dosage,
+      method: 'FOLIAR_SPRAY',
+      phi_days: c.phi_days
+    }));
+  }
+  
+  let recMr = '', recHi = '', recEn = '';
+  
+  // Prefix for clarity when both bio and chem options provided
+  if (isBiologicalOption && (severity === 'HIGH' || severity === 'CRITICAL')) {
+    recMr += '🌿 **जैविक पर्याय (Biological Option):** ';
+    recHi += '🌿 **जैविक विकल्प:** ';
+    recEn += '🌿 **Biological Option:** ';
+  } else if (!isBiologicalOption && (severity === 'HIGH' || severity === 'CRITICAL') && ipm.ipm_level >= 5) {
+    recMr += '💊 **रासायनिक पर्याय (Chemical Option):** ';
+    recHi += '💊 **रासायनिक विकल्प:** ';
+    recEn += '💊 **Chemical Option:** ';
+  }
+  
+  if (ipm.recommendations.cultural?.length && (isBiologicalOption || ipm.ipm_level <= 3)) {
+    recEn += `🌾 Cultural: ${ipm.recommendations.cultural.join(', ')}. `;
+    recMr += `🌾 शेती पद्धती: ${ipm.recommendations.cultural.join(', ')}. `;
+    recHi += `🌾 कृषि पद्धति: ${ipm.recommendations.cultural.join(', ')}. `;
+  }
+  if (ipm.recommendations.biological?.length) {
+    recEn += `🦠 Biological: ${ipm.recommendations.biological.join(', ')}. `;
+    recMr += `🦠 जैविक: ${ipm.recommendations.biological.join(', ')}. `;
+    recHi += `🦠 जैविक: ${ipm.recommendations.biological.join(', ')}. `;
+  }
+  if (ipm.recommendations.botanical?.length) {
+    recEn += `🌿 Botanical: ${ipm.recommendations.botanical.join(', ')}. `;
+    recMr += `🌿 वनस्पतिजन्य: ${ipm.recommendations.botanical.join(', ')}. `;
+    recHi += `🌿 वानस्पतिक: ${ipm.recommendations.botanical.join(', ')}. `;
+  }
+  if (products?.length && !isBiologicalOption) {
+    const productInfo = products[0];
+    const name = productInfo.names?.mr || productInfo.name;
+    recMr += `💊 रासायनिक: ${name} @ ${productInfo.dosage} (${productInfo.dosage_per_acre || ''}).`;
+    recHi += `💊 रासायनिक: ${productInfo.names?.hi || productInfo.name} @ ${productInfo.dosage}.`;
+    recEn += `💊 Chemical: ${productInfo.names?.en || productInfo.name} @ ${productInfo.dosage} (${productInfo.dosage_per_acre || ''}).`;
+    
+    if (productInfo.timing) {
+      recMr += ` वेळ: ${productInfo.timing}.`;
+    }
+    if (productInfo.phi_days) {
+      recMr += ` PHI: ${productInfo.phi_days} दिवस.`;
+    }
+  }
+  
+  return {
+    rule_id: `IPM_${context.crop_code || 'CROP'}_${context.pest_code}_L${ipm.ipm_level}${isBiologicalOption ? '_BIO' : ''}`,
+    category: 'ipm',
+    priority: ipm.ipm_level <= 2 ? 'P5_IPM' : (ipm.ipm_level <= 4 ? 'P4_ECONOMIC' : 'P3_CROP_STAGE'),
+    fired: true,
+    action: 'RECOMMEND',
+    confidence: selectedProduct ? 0.90 : 0.75,
+    scientific_basis: ipm.scientific_basis,
+    recommendation_mr: recMr,
+    recommendation_hi: recHi,
+    recommendation_en: recEn,
+    products: isBiologicalOption ? undefined : products
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
