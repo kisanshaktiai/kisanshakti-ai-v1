@@ -216,9 +216,11 @@ const CLARIFICATION_TEMPLATES: Record<ClarificationScope, Record<'mr' | 'hi' | '
 /**
  * FORBIDDEN patterns - if any match, the turn FAILS.
  * This is the HARD SAFETY GATE.
+ * 
+ * PHASE-9 UPDATE: Added additional pest patterns as per Task 8 requirements.
  */
 const FORBIDDEN_PATTERNS: RegExp[] = [
-  // Pest names (Marathi/Hindi/English)
+  // Pest names (Marathi/Hindi/English) - PHASE-9 EXTENDED
   /बोरर|borer|छेदक|stem\s*borer|shoot\s*borer/i,
   /बोंड\s*अळी|bollworm|बॉल\s*वर्म|pink\s*bollworm/i,
   /मावा|माहू|aphid/i,
@@ -228,7 +230,7 @@ const FORBIDDEN_PATTERNS: RegExp[] = [
   /थ्रिप्स|thrips/i,
   /मीली\s*बग|mealybug|mealy\s*bug/i,
   
-  // Disease names
+  // Disease names - PHASE-9 EXTENDED
   /तांबेरा|रतुआ|rust/i,
   /करपा|ब्लास्ट|blast/i,
   /कुज(?!त)|सड़न|rot(?!ting)/i,  // Negative lookahead to allow "rotting" as symptom

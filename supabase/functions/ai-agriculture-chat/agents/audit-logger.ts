@@ -105,6 +105,9 @@ export interface TurnAuditLog {
     source: 'crop_schedules';
   };
   
+  // PHASE-9: Cross-Crop Symptoms
+  cross_crop_symptoms_detected?: string[];
+  
   // Stage 3: Canonical State
   canonical_state?: any;
   canonical_state_snapshot?: {
@@ -319,6 +322,16 @@ export class AuditLogger {
       
       console.log(`📋 [Audit] CropContext: ${cropContext.crop} (${cropContext.stage}, DAS: ${cropContext.days_since_sowing})`);
     }
+  }
+  
+  /**
+   * Log cross-crop symptoms detected (PHASE-9)
+   */
+  logCrossCropSymptoms(symptoms: string[]): void {
+    this.currentTurn.cross_crop_symptoms_detected = symptoms;
+    this.addAgent('CROSS_CROP_SYMPTOM_MAPPER');
+    
+    console.log(`📋 [Audit] CrossCropSymptoms: ${symptoms.length} detected - ${symptoms.slice(0, 5).join(', ')}${symptoms.length > 5 ? '...' : ''}`);
   }
   
   /**

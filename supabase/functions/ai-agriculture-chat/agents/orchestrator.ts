@@ -163,7 +163,13 @@ import {
   type CropContextAuthority 
 } from '../decision/context-authority.ts';
 
-export const ORCHESTRATOR_VERSION = '2.1.0'; // Phase-8.1 update
+// PHASE-9: Cross-Crop Symptom Mapper
+import { 
+  mapToCrossCropSymptoms,
+  serializeCrossCropSymptoms 
+} from './cross-crop-symptom-mapper.ts';
+
+export const ORCHESTRATOR_VERSION = '2.2.0'; // Phase-9 update
 
 // Response types
 export type OrchestratorResponseType = 
@@ -951,6 +957,20 @@ export class AIAgentOrchestrator {
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE-9: CROSS-CROP SYMPTOM MAPPING
+      // Map raw symptoms to canonical CrossCropSymptomKeys for uniform handling
+      // ═══════════════════════════════════════════════════════════════════════════
+      console.log('   🌿 Stage 2.6: Cross-Crop Symptom Mapping...');
+      
+      const crossCropResult = mapToCrossCropSymptoms(observationExtraction.raw_symptom_text);
+      const crossCropSymptoms = crossCropResult.symptoms;
+      
+      agentsUsed.push('CROSS_CROP_SYMPTOM_MAPPER');
+      
+      console.log(`      Symptoms detected: ${crossCropResult.symptom_count}`);
+      console.log(`      Symptoms: ${serializeCrossCropSymptoms(crossCropSymptoms).slice(0, 5).join(', ')}${crossCropResult.symptom_count > 5 ? '...' : ''}`);
+      
+      // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 4: UNDERSTANDING COMPLETENESS CHECK (SYMBOLIC - NO LLM)
       // Determine if we have enough info to proceed or need clarification
       // ═══════════════════════════════════════════════════════════════════════════
@@ -1049,6 +1069,10 @@ export class AIAgentOrchestrator {
             stage: cropContextAuthority.growth_stage,
             days_since_sowing: cropContextAuthority.days_since_sowing
           });
+        }
+        // PHASE-9: Log Cross-Crop Symptoms
+        if (crossCropResult.symptom_count > 0) {
+          auditLoggerEarly.logCrossCropSymptoms(serializeCrossCropSymptoms(crossCropSymptoms));
         }
         auditLoggerEarly.logUnderstandingCheck({
           understanding_confidence: understandingResult.understanding_confidence,
@@ -1297,6 +1321,20 @@ export class AIAgentOrchestrator {
         unknown_count: observationKeyResult.unknown_count,
         had_land_context_crop: !!landContext?.current_crop
       });
+      
+      // PHASE-8.1: Log CropContextAuthority
+      if (hasCropContext && cropContextAuthority) {
+        auditLogger.logCropContextAuthority({
+          crop: cropContextAuthority.crop_name,
+          stage: cropContextAuthority.growth_stage,
+          days_since_sowing: cropContextAuthority.days_since_sowing
+        });
+      }
+      
+      // PHASE-9: Log Cross-Crop Symptoms
+      if (crossCropResult.symptom_count > 0) {
+        auditLogger.logCrossCropSymptoms(serializeCrossCropSymptoms(crossCropSymptoms));
+      }
       
       // Log understanding check (Stage 4)
       auditLogger.logUnderstandingCheck({
