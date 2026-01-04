@@ -42,7 +42,10 @@ import {
 
 import { ObservationKey } from '../decision/observation-ontology.ts';
 
-export const CLARIFICATION_GENERATOR_VERSION = '2.0.0';
+// PHASE-8.1: Import CropContextAuthority
+import type { CropContextAuthority } from '../decision/context-authority.ts';
+
+export const CLARIFICATION_GENERATOR_VERSION = '2.1.0'; // Phase-8.1 update
 
 // Re-export types for convenience
 export { ClarificationScope };
@@ -68,6 +71,10 @@ export interface ScopedClarificationInput {
   hasLandContext: boolean;
   diagnosisRulesFired: boolean;
   clarificationState?: ClarificationState;
+  /** PHASE-8.1: Flag to skip crop clarification when CropContextAuthority exists */
+  hasCropContext?: boolean;
+  /** PHASE-8.1: Crop context for stage-aware framing */
+  cropContext?: CropContextAuthority | null;
 }
 
 export interface ClarificationOutput {
@@ -100,16 +107,19 @@ const ACKNOWLEDGMENT_TEMPLATES: Record<string, string> = {
 export function generateScopedClarification(
   input: ScopedClarificationInput
 ): ClarificationOutput {
-  const { language, observations, understandingResult, hasLandContext, clarificationState } = input;
+  const { language, observations, understandingResult, hasLandContext, clarificationState, hasCropContext, cropContext } = input;
   
-  console.log(`📋 [Clarification] Phase-8 scoped clarification generation...`);
+  console.log(`📋 [Clarification] Phase-8/8.1 scoped clarification generation...`);
+  console.log(`   hasCropContext: ${hasCropContext || false}, cropContext: ${cropContext ? cropContext.crop_name : 'none'}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 1: Map observations to ObservationKeys
+  // STEP 1: Map observations to ObservationKeys (with cropContext)
   // ═══════════════════════════════════════════════════════════════════════════
-  const keyMappingResult = mapToObservationKeys(observations, {
-    current_crop: observations.crop_mentioned
-  });
+  const keyMappingResult = mapToObservationKeys(
+    observations, 
+    { current_crop: observations.crop_mentioned },
+    cropContext // PHASE-8.1: Pass crop context authority
+  );
   
   const observedKeys = keyMappingResult.keys;
   const turnCount = clarificationState?.turn_count || 0;
@@ -119,11 +129,13 @@ export function generateScopedClarification(
   
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 2: Resolve clarification plan (ObservationKey-based, deterministic)
+  // PHASE-8.1: Pass hasCropContext to skip crop clarification
   // ═══════════════════════════════════════════════════════════════════════════
   const clarificationPlan = resolveClarificationPlan(
     observedKeys,
     turnCount,
-    clarificationState?.previous_scopes || []
+    clarificationState?.previous_scopes || [],
+    hasCropContext || false // PHASE-8.1: Skip crop clarification if true
   );
   
   console.log(`   Clarification plan: scope=${clarificationPlan.scope}, reason=${clarificationPlan.reason}`);
@@ -145,6 +157,7 @@ export function generateScopedClarification(
   
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 4: Render clarification using templates (no LLM)
+  // PHASE-8.1: Pass cropContext for stage-aware framing
   // ═══════════════════════════════════════════════════════════════════════════
   const renderResult = renderClarification({
     scope: clarificationPlan.scope,
@@ -156,7 +169,8 @@ export function generateScopedClarification(
       no_diagnosis: true,
       no_treatment: true,
       no_assumptions: true
-    }
+    },
+    cropContext: cropContext // PHASE-8.1: For stage-aware framing
   });
   
   console.log(`   Rendered: validation_passed=${renderResult.validation_passed}`);

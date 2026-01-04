@@ -97,6 +97,14 @@ export interface TurnAuditLog {
   clarification_loop_detected?: boolean;
   escalation_reason?: string;
   
+  // PHASE-8.1: Crop Context Authority
+  crop_context_used?: {
+    crop: string;
+    stage: string;
+    days_since_sowing: number;
+    source: 'crop_schedules';
+  };
+  
   // Stage 3: Canonical State
   canonical_state?: any;
   canonical_state_snapshot?: {
@@ -290,6 +298,27 @@ export class AuditLogger {
     this.currentTurn.clarification_loop_detected = params.loop_detected;
     
     console.log(`📋 [Audit] Clarification: scope=${params.scope}, turn=${params.turn_count}, loop=${params.loop_detected || false}`);
+  }
+  
+  /**
+   * Log CropContextAuthority usage (PHASE-8.1)
+   */
+  logCropContextAuthority(cropContext: {
+    crop: string;
+    stage: string;
+    days_since_sowing: number;
+  } | null | undefined): void {
+    if (cropContext) {
+      this.currentTurn.crop_context_used = {
+        crop: cropContext.crop,
+        stage: cropContext.stage,
+        days_since_sowing: cropContext.days_since_sowing,
+        source: 'crop_schedules'
+      };
+      this.addAgent('CROP_CONTEXT_AUTHORITY');
+      
+      console.log(`📋 [Audit] CropContext: ${cropContext.crop} (${cropContext.stage}, DAS: ${cropContext.days_since_sowing})`);
+    }
   }
   
   /**

@@ -20,8 +20,9 @@
 
 import { ObservationKey, type ObservationKeySet } from '../decision/observation-ontology.ts';
 import type { ObservationExtraction, AffectedPart, SymptomDistribution } from './observation-extractor.ts';
+import type { CropContextAuthority } from '../decision/context-authority.ts';
 
-export const OBSERVATION_KEY_MAPPER_VERSION = '1.0.0';
+export const OBSERVATION_KEY_MAPPER_VERSION = '1.1.0'; // Phase-8.1 update
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAPPING TABLES (Deterministic, No Language)
@@ -59,21 +60,26 @@ export interface ObservationKeyMappingResult {
 /**
  * Map ObservationExtraction to canonical ObservationKeys.
  * This is DETERMINISTIC - same input always produces same output.
+ * 
+ * PHASE-8.1: Now accepts CropContextAuthority for crop schedule integration.
+ * The cropContext takes precedence over landContext for crop identification.
  */
 export function mapToObservationKeys(
   observations: ObservationExtraction,
   landContext?: {
     current_crop?: string;
     growth_stage?: string;
-  }
+  },
+  cropContext?: CropContextAuthority | null
 ): ObservationKeyMappingResult {
   const keys = new Set<ObservationKey>();
   let unknownCount = 0;
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // 1. CROP IDENTIFICATION
+  // 1. CROP IDENTIFICATION (PHASE-8.1: Crop Context Authority Priority)
   // ═══════════════════════════════════════════════════════════════════════════
-  if (observations.crop_mentioned || landContext?.current_crop) {
+  // Priority: cropContext (from crop_schedules) > landContext > farmer mention
+  if (observations.crop_mentioned || cropContext?.crop_name || landContext?.current_crop) {
     keys.add(ObservationKey.CROP_IDENTIFIED);
   } else {
     keys.add(ObservationKey.CROP_UNKNOWN);
