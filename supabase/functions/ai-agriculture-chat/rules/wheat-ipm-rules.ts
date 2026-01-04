@@ -17,13 +17,9 @@
  * - Thrips: 10-15 per ear at flowering
  * - Mite: 10-15% leaf area damage
  * 
+/**
  * ═══════════════════════════════════════════════════════════════════════════
  */
-
-import {
-  Rule,
-  RuleCategory,
-} from '../agents/layered-rule-evaluator.ts';
 
 import {
   CropType,
@@ -37,6 +33,59 @@ import {
 } from '../agents/canonical-state-builder.ts';
 
 import { DiagnosisCategory } from '../agents/diagnosis-conflict-resolver.ts';
+
+// ==================== LOCAL RULE TYPES (avoid circular imports) ====================
+// These are local copies to prevent circular dependency with layered-rule-evaluator.ts
+
+export enum RuleCategory {
+  OBSERVATION = 1,
+  DIAGNOSIS = 2,
+  EXCLUSION = 3,
+  SAFETY = 4,
+  PRESCRIPTION = 5,
+  WARNING = 6
+}
+
+export interface RuleConditions {
+  crop_type?: CropType[];
+  crop_stage?: CropStage[];
+  visual_symptom?: VisualSymptom[];
+  ndvi_level?: NDVILevel[];
+  ndvi_trend?: NDVITrend[];
+  soil_nitrogen?: SoilNitrogen[];
+  data_confidence?: DataConfidence[];
+  severity?: SeverityLevel[];
+  custom?: (state: any) => boolean;
+}
+
+export interface RuleAssertions {
+  observation?: string;
+  observation_confidence?: number;
+  possible_cause?: string;
+  cause_category?: DiagnosisCategory;
+  cause_confidence?: number;
+  exclude_cause?: string;
+  exclusion_reason?: string;
+  block_prescription?: boolean;
+  safety_message?: string;
+  action_type?: string;
+  action_details?: Record<string, any>;
+  product_reference?: string;
+  warning_type?: string;
+  warning_message?: string;
+  warning_severity?: string;
+}
+
+export interface Rule {
+  id: string;
+  category: RuleCategory;
+  priority: number;
+  when: RuleConditions;
+  then: RuleAssertions;
+  scientific_basis?: string;
+  requires_confirmation?: boolean;
+  active: boolean;
+}
 
 export const WHEAT_IPM_VERSION = '1.0.0';
 
