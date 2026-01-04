@@ -170,7 +170,7 @@ import {
   serializeCrossCropSymptoms 
 } from './cross-crop-symptom-mapper.ts';
 
-export const ORCHESTRATOR_VERSION = '2.3.0'; // Phase-9.1 - Clarification Safety Patches
+export const ORCHESTRATOR_VERSION = '2.4.0'; // Phase-9.1-Fix: Clarification State Lock & Loop Resolution
 
 // Response types
 export type OrchestratorResponseType = 
@@ -813,31 +813,110 @@ export class AIAgentOrchestrator {
       console.log(`⏭️ [${traceId}] Static gate passed - continuing to AI pipeline`);
       
       // ========================================
-      // PHASE 9.1 PATCH 1: CLARIFICATION RESPONSE HARD GATE
-      // When pending_options > 0, skip full NLU pipeline - only process option selection
-      // This PREVENTS infinite clarification loops
+      // PHASE 9.1-FIX PATCH 1+2: CLARIFICATION RESPONSE HARD GATE
+      // When pending_options > 0, COMPLETELY SKIP NLU pipeline - only process option selection
+      // This is the CRITICAL FIX to prevent infinite clarification loops
       // ========================================
       const pendingOptionsCount = options.sessionState?.pendingClarificationOptions?.length || 0;
       const clarificationTurnCount = options.sessionState?.turnCount || 0;
       
       if (pendingOptionsCount > 0) {
-        console.log('🔒 [Phase9.1] Clarification safety gate active');
+        console.log('🔒 [Phase9.1-Fix] Clarification HARD GATE active - NLU pipeline BLOCKED');
         console.log(`   📋 Pending options: ${pendingOptionsCount}, Turn count: ${clarificationTurnCount}`);
         
-        // PHASE-9.1: Try to match farmer response to option
+        // PHASE-9.1-FIX: Retrieve locked crop context FIRST - this is authoritative
+        const lockedCropContext = options.sessionState?.lockedCropContext;
         const pendingOptions = options.sessionState?.pendingClarificationOptions || [];
+        
+        // PATCH 2: NULL-SAFE option matching
         const matchResult = matchFarmerResponseToOption(farmerMessage, pendingOptions);
         
         // PATCH 2: NULL-SAFE - matchResult always returns a valid object now
         if (matchResult.matched && matchResult.matched_option) {
           console.log(`   ✅ Farmer selected option ${(matchResult.option_index || 0) + 1}: "${matchResult.matched_option}"`);
-          // Continue with selected option as the processed message
-        } else {
-          // PHASE-9.1: Farmer did NOT select an option - generate reminder
-          console.log('⚠️ [ClarificationGate] No option selected — generating reminder');
           
-          // PATCH 3: Retrieve locked crop context for consistent rendering
-          const lockedCropContext = options.sessionState?.lockedCropContext;
+          // CRITICAL: Clear pending options and continue with ONLY the selected option
+          // Do NOT re-run NLU - use the matched option directly
+          console.log('   🔓 Clearing clarification lock, processing selected option only');
+          
+          // Map the option to observation for the decision brain
+          const selectedObservation = mapOptionToObservation(
+            matchResult.matched_option,
+            (options.language || 'mr') as 'mr' | 'hi' | 'en'
+          );
+          
+          console.log(`   📋 Mapped to observation: "${selectedObservation?.observation || 'N/A'}"`);
+          
+          // PATCH 1: Return immediately with a structured response for option selection
+          // This prevents re-entering the NLU pipeline
+          return {
+            type: 'DECISION_PROVIDED',
+            session_id: sessionId,
+            communication: {
+              message_id: crypto.randomUUID(),
+              decision_id: `option_selected_${Date.now()}`,
+              session_id: sessionId,
+              farmer_id: farmerId,
+              language: options.language || 'mr',
+              format: 'RICH_TEXT',
+              tone: 'FRIENDLY',
+              created_at: new Date().toISOString(),
+              main_message: {
+                full_text: {
+                  mr: `✅ समजले. "${matchResult.matched_option}" बद्दल माहिती देत आहे...`,
+                  hi: `✅ समझ गया। "${matchResult.matched_option}" के बारे में जानकारी दे रहा हूं...`,
+                  en: `✅ Understood. Providing information about "${matchResult.matched_option}"...`
+                }
+              },
+              quick_actions: [],
+              metadata: {
+                source: 'OPTION_SELECTION_HANDLER',
+                response_type: 'OPTION_ACKNOWLEDGED',
+                selected_option: matchResult.matched_option,
+                selected_index: matchResult.option_index,
+                mapped_observation: selectedObservation?.observation,
+                // PATCH 3: Preserve locked crop context
+                locked_crop_context: lockedCropContext
+              }
+            } as any,
+            decision_output: {
+              decision_id: `option_selected_${Date.now()}`,
+              session_id: sessionId,
+              status: 'OPTION_SELECTED',
+              decision_brain_source: true,
+              actions_returned: [{
+                action_type: 'ACKNOWLEDGEMENT',
+                selected_option: matchResult.matched_option,
+                observation: selectedObservation?.observation || matchResult.matched_option,
+                likely_cause: selectedObservation?.likely_cause || 'PENDING_ANALYSIS'
+              }],
+              metadata: {
+                confidence: matchResult.confidence || 0.9,
+                trace_id: traceId,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER'],
+                template_type: 'OPTION_ACKNOWLEDGEMENT',
+                clarification_resolved: true
+              }
+            } as any,
+            metadata: {
+              confidence: matchResult.confidence || 0.9,
+              safety_status: 'SAFE',
+              rules_applied: 0,
+              processing_time_ms: Date.now() - startTime,
+              agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER'],
+              template_type: 'OPTION_ACKNOWLEDGEMENT',
+              trace_id: traceId,
+              // CRITICAL: Clear pending options after successful selection
+              pendingClarificationOptions: undefined,
+              // PATCH 3: Preserve locked crop context for next turn
+              lockedCropContext: lockedCropContext
+            }
+          };
+        } else {
+          // PHASE-9.1-FIX: Farmer did NOT select a valid option - RETURN REMINDER IMMEDIATELY
+          // DO NOT continue to NLU pipeline - this is the HARD GATE
+          console.log('⚠️ [ClarificationGate] No valid option selected — returning reminder (NLU BLOCKED)');
           
           const reminderMessages: Record<string, string> = {
             mr: `🌾 कृपया वरीलपैकी एक पर्याय निवडा (1, 2, 3 किंवा पूर्ण मजकूर टाइप करा).\n\n${pendingOptions.map((opt, i) => `${i + 1}️⃣ ${opt}`).join('\n')}`,
@@ -848,7 +927,8 @@ export class AIAgentOrchestrator {
           const lang = options.language || 'en';
           const reminderText = reminderMessages[lang] || reminderMessages['en'];
           
-          // Return clarification reminder - preserve pending options
+          // PHASE-9.1-FIX: HARD RETURN - Return clarification reminder and STOP
+          // This is the CRITICAL gate that prevents NLU from running
           return {
             type: 'CLARIFICATION_QUESTION',
             session_id: sessionId,
@@ -867,78 +947,43 @@ export class AIAgentOrchestrator {
               safety_status: 'CLARIFICATION_PENDING',
               rules_applied: 0,
               processing_time_ms: Date.now() - startTime,
-              agents_used: ['CLARIFICATION_GATE'],
-              trace_id: traceId
+              agents_used: ['CLARIFICATION_HARD_GATE'],
+              trace_id: traceId,
+              // PATCH 1: PRESERVE pending options - keeps clarification lock active
+              pendingClarificationOptions: pendingOptions,
+              // PATCH 3: PRESERVE locked crop context - prevents re-asking crop
+              lockedCropContext: lockedCropContext,
+              clarification_reminder: true
             }
           };
         }
+        
+        // UNREACHABLE: Both branches above return, so we never continue to NLU
+        // This comment documents that the hard gate is complete
       }
       
       // ========================================
-      // PHASE 0.4A: EARLY NUMBER DETECTION (BEFORE NLU)
-      // Detect if farmer sent a number to select previous option
-      // CRITICAL FIX 3: This MUST happen before NLU to prevent re-clarification loop
+      // PHASE 0.4A: NEW QUERY PATH (No pending options)
+      // Only reaches here if pendingOptionsCount === 0 (fresh query)
       // ========================================
-      console.log('\n🔢 PHASE 0.4A: Early Option Detection (Pre-NLU)...');
+      console.log('\n🔢 PHASE 0.4A: Fresh Query Detection...');
       
       // Track if farmer selected an option - used to bypass clarification later
       let bypassClarification = false;
       
-      // PHASE-9.1 PATCH 3: Lock crop context - will be populated from landContext if exists
+      // PHASE-9.1-FIX PATCH 3: Initialize locked crop context from session state OR land context
+      // This protects against crop context being lost during any clarification retries
       let lockedCropContext: { crop_name: string; growth_stage: string; days_since_sowing: number } | null = 
         options.sessionState?.lockedCropContext || null;
       
-      // Detect numeric/Devanagari option selection patterns
+      // Detect numeric/Devanagari option selection patterns for logging only
       const isNumberSelection = /^[१२३४1-4]$/.test(farmerMessage.trim());
-      const pendingOptions = options.sessionState?.pendingClarificationOptions || [];
       
-      console.log(`   📋 Input: "${farmerMessage}" | IsNumber: ${isNumberSelection} | PendingOptions: ${pendingOptions.length}`);
-      
-      // ========================================
-      // PHASE 0.5: OPTION SELECTION HANDLER
-      // Detects when farmer responds to clarification options (1, 2, 3)
-      // ========================================
-      console.log('\n🔢 PHASE 0.5: Checking for Option Selection Response...');
+      console.log(`   📋 Input: "${farmerMessage}" | IsNumber: ${isNumberSelection} | Fresh query mode`);
+      console.log(`   🔐 LockedCropContext: ${lockedCropContext ? lockedCropContext.crop_name : 'none (will derive from land context)'}`);
       
       let processedFarmerMessage = farmerMessage;
       let matchedObservation: { observation: string; likely_cause: string } | null = null;
-      
-      // Check if farmer is responding to previous clarification options
-      if (pendingOptions.length > 0) {
-        // PHASE-9.1: Use null-safe matchFarmerResponseToOption
-        const matchResult: OptionMatchResult = matchFarmerResponseToOption(
-          farmerMessage,
-          pendingOptions
-        );
-        
-        // PATCH 2: NULL-SAFE - matchResult.matched is always defined
-        if (matchResult.matched && matchResult.matched_option) {
-          console.log(`   ✅ Farmer selected option ${(matchResult.option_index || 0) + 1}: "${matchResult.matched_option}"`);
-          
-          // Map option to observation for decision brain
-          matchedObservation = mapOptionToObservation(
-            matchResult.matched_option,
-            (options.language || 'mr') as 'mr' | 'hi' | 'en'
-          );
-          
-          // Use the full symptom text as the message for NLU
-          processedFarmerMessage = matchResult.matched_option;
-          agentsUsed.push('OPTION_MATCHER');
-          
-          // CRITICAL FIX 4: Set bypass flag to skip clarification generation
-          bypassClarification = true;
-          
-          console.log(`   📋 Mapped to observation: "${matchedObservation?.observation || 'N/A'}" → likely cause: ${matchedObservation?.likely_cause || 'N/A'}`);
-          console.log(`   🚫 Bypass clarification: ${bypassClarification}`);
-        } else if (isNumberSelection) {
-          // Farmer sent a number but no options to match - still treat as selection attempt
-          console.log(`   ⚠️ Number selection without matching options - may be stale session`);
-        } else {
-          console.log(`   ⏭️ No option match detected, processing as new query`);
-        }
-      } else {
-        console.log(`   ⏭️ No pending options, processing normally`);
-      }
       
       // ========================================
       // PHASE 1: MASTER PROMPT v3 - 5-STAGE UNDERSTANDING PIPELINE
@@ -990,26 +1035,57 @@ export class AIAgentOrchestrator {
       // STAGE 2.5: PHASE-8/8.1 OBSERVATION KEY MAPPING (REQUIRED)
       // Convert observations to canonical ObservationKeys
       // PHASE-8.1: Build CropContextAuthority from landContext
+      // PHASE-9.1-FIX PATCH 3: crop_schedules is authoritative - NEVER overwrite with observation
       // ═══════════════════════════════════════════════════════════════════════════
       console.log('   🔑 Stage 2.5: ObservationKey Mapping...');
       
-      // PHASE-8.1: Build CropContextAuthority from land context
-      const cropContextAuthority = buildCropContextFromLandContext(landContext ? {
-        current_crop: landContext.current_crop,
-        growth_stage: landContext.growth_stage,
-        days_since_sowing: landContext.days_since_sowing,
-        sowing_date: landContext.sowing_date,
-        expected_harvest_date: landContext.expected_harvest_date,
-        crop_variety: landContext.crop_variety,
-        crop_data_source: landContext.crop_data_source
-      } : undefined);
+      // PHASE-9.1-FIX PATCH 3: Use LOCKED crop context if available (from previous clarification)
+      // Otherwise, build fresh from land context
+      // This ensures crop context is NEVER lost during clarification retries
+      let cropContextAuthority: CropContextAuthority | null = null;
+      
+      if (lockedCropContext && lockedCropContext.crop_name) {
+        // PATCH 3: Reuse locked context - this is the authoritative source during clarification
+        console.log(`      🔐 Using LOCKED CropContext: ${lockedCropContext.crop_name}`);
+        cropContextAuthority = {
+          crop_name: lockedCropContext.crop_name,
+          growth_stage: lockedCropContext.growth_stage,
+          days_since_sowing: lockedCropContext.days_since_sowing,
+          crop_data_source: 'locked_session'
+        };
+      } else if (landContext) {
+        // Build fresh from land context (crop_schedules is the authoritative source)
+        cropContextAuthority = buildCropContextFromLandContext({
+          current_crop: landContext.current_crop,
+          growth_stage: landContext.growth_stage,
+          days_since_sowing: landContext.days_since_sowing,
+          sowing_date: landContext.sowing_date,
+          expected_harvest_date: landContext.expected_harvest_date,
+          crop_variety: landContext.crop_variety,
+          crop_data_source: landContext.crop_data_source
+        });
+        
+        // PATCH 3: Lock this context for future clarification turns
+        if (cropContextAuthority) {
+          lockedCropContext = {
+            crop_name: cropContextAuthority.crop_name,
+            growth_stage: cropContextAuthority.growth_stage,
+            days_since_sowing: cropContextAuthority.days_since_sowing
+          };
+          console.log(`      🔐 LOCKED CropContext for session: ${lockedCropContext.crop_name}`);
+        }
+      }
       
       const hasCropContext = hasCropContextAuthority(cropContextAuthority);
       
       if (hasCropContext) {
         console.log(`      🌾 CropContextAuthority: ${cropContextAuthority!.crop_name} (${cropContextAuthority!.growth_stage}, DAS: ${cropContextAuthority!.days_since_sowing})`);
+        
+        // PATCH 3: CRITICAL - Ensure observation extractor cannot override crop context
+        // crop_schedules is the ONLY authority for crop identification in land chat
+        console.log('      ✅ PATCH 3: crop_schedules is authoritative - observation.crop will NOT override');
       } else {
-        console.log('      ⚠️ No CropContextAuthority available');
+        console.log('      ⚠️ No CropContextAuthority available - general chat mode');
       }
       
       // PHASE-8.1: Pass cropContext to ObservationKey mapper
