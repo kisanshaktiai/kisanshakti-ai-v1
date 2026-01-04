@@ -130,7 +130,7 @@ import {
   type PhotoperiodResult 
 } from './photoperiod-calculator.ts';
 
-// NEW: Smart Clarification Generator - Farmer-friendly options & photo requests
+// PHASE-8: Smart Clarification Generator - ObservationKey-based
 import {
   generateClarificationResponse,
   generateScopedClarification,
@@ -142,11 +142,19 @@ import {
   type ScopedClarificationInput
 } from './clarification-generator.ts';
 
-// NEW: Clarification Scope Resolver - Prevents diagnosis leakage
+// PHASE-8: ObservationKey-based Clarification Scope Resolver
 import {
-  validateClarificationNoLeakage,
-  DIAGNOSIS_CATEGORIES
+  resolveClarificationPlan,
+  needsClarification,
+  hasSufficientInformation,
+  MAX_CLARIFICATION_TURNS,
+  type ClarificationPlan,
+  type ClarificationState
 } from './clarification-scope-resolver.ts';
+
+// PHASE-8: Observation Key Mapper
+import { mapToObservationKeys, serializeKeys } from './observation-key-mapper.ts';
+import { ObservationKey } from '../decision/observation-ontology.ts';
 
 export const ORCHESTRATOR_VERSION = '2.0.0';
 
