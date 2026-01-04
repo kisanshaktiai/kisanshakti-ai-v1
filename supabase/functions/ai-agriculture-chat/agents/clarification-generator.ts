@@ -223,6 +223,34 @@ function getOptionsForSymptom(
 }
 
 /**
+ * Validate that clarification options are in the correct language
+ * Returns false if options appear to be in wrong language (e.g., English for mr/hi)
+ */
+function validateOptionsLanguage(options: string[], expectedLanguage: 'mr' | 'hi' | 'en'): boolean {
+  if (expectedLanguage === 'en') return true; // English options always OK for English
+  
+  // For Marathi/Hindi, check if options contain Devanagari script
+  const devanagariPattern = /[\u0900-\u097F]/;
+  const englishOnlyPattern = /^[A-Za-z\s\-.,!?]+$/;
+  
+  for (const opt of options) {
+    // If option is purely English (no Devanagari), it's wrong for mr/hi
+    if (englishOnlyPattern.test(opt.trim())) {
+      console.warn(`   ⚠️ Option "${opt.substring(0, 30)}..." is in English but expected ${expectedLanguage}`);
+      return false;
+    }
+  }
+  
+  // Check at least one option has Devanagari
+  const hasDevanagari = options.some(opt => devanagariPattern.test(opt));
+  if (!hasDevanagari && (expectedLanguage === 'mr' || expectedLanguage === 'hi')) {
+    return false;
+  }
+  
+  return true;
+}
+
+/**
  * Generate clarification response for farmer
  */
 export function generateClarificationResponse(input: ClarificationInput): ClarificationOutput {
@@ -241,10 +269,22 @@ export function generateClarificationResponse(input: ClarificationInput): Clarif
   // Get symptom category and options
   const symptomCategory = detectSymptomCategory(observations, farmer_message, crop_code);
   
-  // Use AI-provided options if available, otherwise use database
-  const options = clarification_options?.length 
-    ? clarification_options.slice(0, 3) 
-    : getOptionsForSymptom(symptomCategory, language);
+  // CRITICAL FIX: Always prefer database options in farmer's language
+  // Only use AI-provided options if they are in the correct language (not English for mr/hi)
+  let options: string[] = [];
+  
+  if (clarification_options?.length) {
+    // Validate that options are in the correct language
+    const hasCorrectLanguage = validateOptionsLanguage(clarification_options, language);
+    if (hasCorrectLanguage) {
+      options = clarification_options.slice(0, 3);
+    } else {
+      console.log(`   ⚠️ Clarification options in wrong language, using database fallback`);
+      options = getOptionsForSymptom(symptomCategory, language);
+    }
+  } else {
+    options = getOptionsForSymptom(symptomCategory, language);
+  }
   
   // Build response
   const acknowledgment = ACKNOWLEDGMENT_TEMPLATES[language] || ACKNOWLEDGMENT_TEMPLATES['en'];

@@ -71,6 +71,30 @@ import {
 } from './soil-ndvi-state-calculator.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// P0 CRITICAL: CANONICAL STATE BUILDER & LAYERED RULE EVALUATOR
+// These form the SYMBOLIC DECISION BRAIN - deterministic, auditable
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  buildCanonicalState,
+  checkPrescriptionGate,
+  CanonicalState,
+  DataConfidence,
+  mapCropNameToEnum,
+  mapVisualSymptomToEnum,
+  mapStageToEnum
+} from './canonical-state-builder.ts';
+
+import {
+  evaluateRulesLayered,
+  CORE_RULES,
+  RuleEvaluationResult
+} from './layered-rule-evaluator.ts';
+
+import {
+  resolveConflicts as resolveDiagnosisConflicts
+} from './diagnosis-conflict-resolver.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
 // P0 CRITICAL MODULE IMPORTS - PRODUCTION-READY INTEGRATION
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -660,19 +684,103 @@ export class AIAgentOrchestrator {
       console.log(`⏭️ [${traceId}] Static gate passed - continuing to AI pipeline`);
       
       // ========================================
+      // PHASE 0.5: OPTION SELECTION HANDLER
+      // Detects when farmer responds to clarification options (1, 2, 3)
+      // ========================================
+      console.log('\n🔢 PHASE 0.5: Checking for Option Selection Response...');
+      
+      let processedFarmerMessage = farmerMessage;
+      let matchedObservation: { observation: string; likely_cause: string } | null = null;
+      
+      // Check if farmer is responding to previous clarification options
+      if (options.sessionState?.pendingClarificationOptions?.length > 0) {
+        const matchResult = matchFarmerResponseToOption(
+          farmerMessage,
+          options.sessionState.pendingClarificationOptions
+        );
+        
+        if (matchResult.matched && matchResult.matched_option) {
+          console.log(`   ✅ Farmer selected option ${(matchResult.option_index || 0) + 1}: "${matchResult.matched_option}"`);
+          
+          // Map option to observation for decision brain
+          matchedObservation = mapOptionToObservation(
+            matchResult.matched_option,
+            (options.language || 'mr') as 'mr' | 'hi' | 'en'
+          );
+          
+          // Use the full symptom text as the message for NLU
+          processedFarmerMessage = matchResult.matched_option;
+          agentsUsed.push('OPTION_MATCHER');
+          
+          console.log(`   📋 Mapped to observation: "${matchedObservation.observation}" → likely cause: ${matchedObservation.likely_cause}`);
+        } else {
+          console.log(`   ⏭️ No option match detected, processing as new query`);
+        }
+      } else {
+        console.log(`   ⏭️ No pending options, processing normally`);
+      }
+      
+      // ========================================
       // PHASE 1A: NLU PROCESSING
       // ========================================
       console.log('\n📥 PHASE 1: Processing Inputs...');
       
       let nluOutput: NLUOutput | null = null;
       try {
-        nluOutput = await this.processNLU(farmerMessage, sessionId, options.language, landContext);
+        // Use processed message (could be matched option text) for NLU
+        nluOutput = await this.processNLU(processedFarmerMessage, sessionId, options.language, landContext);
         agentsUsed.push('NLU');
         console.log('   ✅ NLU processed:', nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY');
       } catch (nluError) {
         console.error('   ❌ NLU Agent failed, using fallback:', nluError);
-        nluOutput = this.createFallbackNLUOutput(farmerMessage, options.language, landContext);
+        nluOutput = this.createFallbackNLUOutput(processedFarmerMessage, options.language, landContext);
         agentsUsed.push('NLU_FALLBACK');
+      }
+      
+      // CRITICAL: Inject matched observation into NLU output if farmer selected an option
+      if (matchedObservation && nluOutput) {
+        console.log(`   💉 Injecting matched observation into NLU output: ${matchedObservation.observation}`);
+        
+        // Ensure symptom_extraction exists
+        if (!nluOutput.symptom_extraction) {
+          nluOutput.symptom_extraction = { visual_symptoms: [] };
+        }
+        
+        // Add the matched observation as a high-confidence visual symptom
+        const mappedSymptom = {
+          symptom_code: matchedObservation.observation.toUpperCase().replace(/\s+/g, '_').substring(0, 30),
+          symptom_text: matchedObservation.observation,
+          confidence: 0.95, // High confidence since farmer confirmed
+          affected_area: 'CONFIRMED_BY_FARMER'
+        };
+        
+        nluOutput.symptom_extraction.visual_symptoms = [
+          mappedSymptom,
+          ...(nluOutput.symptom_extraction.visual_symptoms || [])
+        ];
+        
+        // Also set a higher-confidence intent based on the likely cause
+        if (matchedObservation.likely_cause && matchedObservation.likely_cause !== 'UNKNOWN') {
+          const causeToIntent: Record<string, string> = {
+            'SHOOT_BORER': 'PEST_PROBLEM',
+            'STEM_BORER': 'PEST_PROBLEM',
+            'ROOT_ROT': 'DISEASE_PROBLEM',
+            'WATER_LOGGING': 'WATER_ISSUE',
+            'WHITEFLY': 'PEST_PROBLEM',
+            'BOLLWORM': 'PEST_PROBLEM',
+            'LEAF_SPOT': 'DISEASE_PROBLEM',
+            'NITROGEN_DEFICIENCY': 'NUTRIENT_ISSUE'
+          };
+          
+          const mappedIntent = causeToIntent[matchedObservation.likely_cause] || 'PEST_PROBLEM';
+          nluOutput.intent_classification = {
+            ...nluOutput.intent_classification,
+            primary_intent: mappedIntent as any,
+            intent_confidence: 0.9 // High confidence since farmer confirmed
+          };
+          
+          console.log(`   💉 Boosted intent to ${mappedIntent} with confidence 0.9`);
+        }
       }
       
       // ========================================
@@ -879,10 +987,18 @@ export class AIAgentOrchestrator {
               rules_applied: 0,
               processing_time_ms: Date.now() - startTime,
               agents_used: agentsUsed,
-              trace_id: traceId
+              trace_id: traceId,
+              // CRITICAL: Store options for next turn's option selection handler
+              pendingClarificationOptions: clarificationResponse.options
             }
           };
         }
+      }
+      
+      // CRITICAL FIX: Skip clarification if farmer just responded to options
+      // (matchedObservation means they already answered a clarification)
+      if (matchedObservation) {
+        console.log(`   ⏭️ Skipping low-confidence clarification - farmer already selected option`);
       }
       
       // ========================================
@@ -1142,6 +1258,69 @@ export class AIAgentOrchestrator {
         console.error('   ❌ Fusion Engine failed, using fallback:', fusionError);
         fusedIntelligence = this.createFallbackFusedIntelligence(sessionId, farmerMessage, nluOutput!, landContext);
         agentsUsed.push('Fusion_FALLBACK');
+      }
+      
+      // ========================================
+      // PHASE 2.5: BUILD CANONICAL STATE (Single Source of Truth for Decision Brain)
+      // ========================================
+      console.log('\n🧠 PHASE 2.5: Building Canonical State for Symbolic Decision Brain...');
+      
+      let canonicalState: CanonicalState | null = null;
+      let layeredRuleResult: RuleEvaluationResult | null = null;
+      
+      try {
+        // Build the canonical state from all available data sources
+        canonicalState = buildCanonicalState({
+          landContext,
+          soilData: landContext?.soil_health,
+          ndviData: landContext?.ndvi ? {
+            value: landContext.ndvi.value || landContext.ndvi.mean_ndvi,
+            trend: landContext.ndvi.ndvi_trend,
+            captured_at: landContext.ndvi.captured_at
+          } : undefined,
+          weatherData: fusedIntelligence.weather_data,
+          farmerObservations: nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [],
+          nluOutput: nluOutput
+        });
+        
+        agentsUsed.push('CANONICAL_STATE_BUILDER');
+        
+        console.log(`   ✅ Canonical State Built:`);
+        console.log(`      Crop: ${canonicalState.crop_type}, Stage: ${canonicalState.crop_stage}`);
+        console.log(`      Symptom: ${canonicalState.visual_symptom}, Severity: ${canonicalState.severity}`);
+        console.log(`      NDVI: ${canonicalState.ndvi_level} (${canonicalState.ndvi_trend})`);
+        console.log(`      Soil N: ${canonicalState.soil_nitrogen}, P: ${canonicalState.soil_phosphorus}, K: ${canonicalState.soil_potassium}`);
+        console.log(`      Data Confidence: ${canonicalState.data_confidence}`);
+        
+        // Check prescription gate before rule engine
+        const prescriptionGate = checkPrescriptionGate(canonicalState);
+        if (!prescriptionGate.allowed) {
+          console.warn(`   ⚠️ Prescription Gate BLOCKED: ${prescriptionGate.reason}`);
+        } else {
+          console.log(`   ✅ Prescription Gate PASSED`);
+        }
+        
+        // PHASE 2.6: LAYERED RULE EVALUATION (Symbolic Decision Brain)
+        console.log('\n📊 PHASE 2.6: Layered Rule Evaluation (OBSERVATION → DIAGNOSIS → SAFETY → PRESCRIPTION)...');
+        
+        layeredRuleResult = evaluateRulesLayered(CORE_RULES, canonicalState);
+        agentsUsed.push('LAYERED_RULE_EVALUATOR');
+        
+        console.log(`   ✅ Layered Rule Result:`);
+        console.log(`      Rules Evaluated: ${layeredRuleResult.rules_evaluated}`);
+        console.log(`      Rules Matched: ${layeredRuleResult.rules_matched}`);
+        console.log(`      Rules Applied: ${layeredRuleResult.rules_applied.join(', ') || 'none'}`);
+        console.log(`      Observations: ${layeredRuleResult.observations.join(', ') || 'none'}`);
+        console.log(`      Diagnoses: ${layeredRuleResult.diagnoses.map(d => `${d.cause}(${(d.confidence * 100).toFixed(0)}%)`).join(', ') || 'none'}`);
+        console.log(`      Final Diagnosis: ${layeredRuleResult.final_diagnosis?.cause || 'none'}`);
+        console.log(`      Prescription Allowed: ${layeredRuleResult.prescription_allowed}`);
+        
+        if (layeredRuleResult.safety_blocks.length > 0) {
+          console.warn(`   ⚠️ Safety Blocks: ${layeredRuleResult.safety_blocks.map(b => b.message).join(', ')}`);
+        }
+        
+      } catch (canonicalError) {
+        console.error('   ❌ Canonical State Builder failed (non-blocking):', canonicalError);
       }
       
       // ========================================
