@@ -54,6 +54,14 @@ export interface ClarificationState {
   previous_scopes: ClarificationScope[];
   observation_keys_before: string[];
   observation_keys_after: string[];
+  /** PHASE-9.1: Lock pending options to detect when farmer is in clarification flow */
+  pending_options_count?: number;
+  /** PHASE-9.1: Lock crop context during clarification to prevent loss */
+  locked_crop_context?: {
+    crop_name: string;
+    growth_stage: string;
+    days_since_sowing: number;
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
