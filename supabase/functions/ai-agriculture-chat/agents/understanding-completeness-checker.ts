@@ -73,6 +73,11 @@ export interface UnderstandingCheckResult {
    * Priority of missing information (what to ask first)
    */
   clarification_priority: 'crop' | 'symptom' | 'severity' | 'location' | 'timing' | 'none';
+  
+  /**
+   * Whether diagnosis rules have fired (used to gate clarification options)
+   */
+  diagnosis_rules_fired: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -256,7 +261,8 @@ export function checkUnderstandingCompleteness(
     clarification_reason: clarificationReason,
     missing_for_diagnosis: missingForDiagnosis,
     completeness_score: completenessScore,
-    clarification_priority: determineClarificationPriority(unknownCriticalFields)
+    clarification_priority: determineClarificationPriority(unknownCriticalFields),
+    diagnosis_rules_fired: false // Will be updated by orchestrator if rules fire
   };
 }
 

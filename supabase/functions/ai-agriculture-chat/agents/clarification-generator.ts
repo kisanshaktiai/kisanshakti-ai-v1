@@ -7,7 +7,23 @@
  * - Max 3 simple, farmer-friendly options
  * - Optional photo request when visual evidence helps
  * - Single question OR options OR photo request (never all together)
+ * 
+ * SCOPE ENFORCEMENT (v2):
+ * - Uses ClarificationScopeResolver to prevent diagnosis leakage
+ * - Options constrained to what is OBSERVED, not suspected
+ * - Diagnosis-related options blocked until rules fire
  */
+
+import {
+  ClarificationScope,
+  resolveClarificationScope,
+  validateClarificationNoLeakage,
+  getScopedClarificationOptions,
+  type ClarificationScopeResult
+} from './clarification-scope-resolver.ts';
+
+import type { ObservationExtraction } from './observation-extractor.ts';
+import type { UnderstandingCheckResult } from './understanding-completeness-checker.ts';
 
 export interface ClarificationInput {
   language: 'mr' | 'hi' | 'en';
@@ -18,11 +34,21 @@ export interface ClarificationInput {
   clarification_options?: string[];
 }
 
+export interface ScopedClarificationInput {
+  language: 'mr' | 'hi' | 'en';
+  observations: ObservationExtraction;
+  understandingResult: UnderstandingCheckResult;
+  hasLandContext: boolean;
+  diagnosisRulesFired: boolean;
+}
+
 export interface ClarificationOutput {
   response_text: string;
   options: string[];
   photo_requested: boolean;
   clarification_prompt: string;
+  scope?: ClarificationScope;
+  validation_passed?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -903,3 +929,109 @@ export function mapOptionToObservation(
   // Default
   return { observation: option, likely_cause: 'UNKNOWN' };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SCOPE-AWARE CLARIFICATION GENERATOR (v2)
+// Uses ClarificationScopeResolver to prevent diagnosis leakage
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SCOPE_INTRO_TEMPLATES: Record<ClarificationScope, Record<string, string>> = {
+  [ClarificationScope.CROP_IDENTIFICATION]: {
+    mr: 'कृपया सांगा, कोणत्या पिकाबद्दल समस्या आहे?',
+    hi: 'कृपया बताएं, किस फसल में समस्या है?',
+    en: 'Please tell me which crop has the problem?'
+  },
+  [ClarificationScope.LOCATION_DISTRIBUTION]: {
+    mr: 'समस्या कुठे आणि कशी दिसत आहे?',
+    hi: 'समस्या कहां और कैसी दिख रही है?',
+    en: 'Where and how is the problem appearing?'
+  },
+  [ClarificationScope.SEVERITY_TIMING]: {
+    mr: 'हे कधीपासून आहे आणि किती प्रमाणात?',
+    hi: 'यह कब से है और कितना फैला है?',
+    en: 'When did this start and how much is affected?'
+  },
+  [ClarificationScope.OBSERVATION_REFINEMENT]: {
+    mr: 'थोडे अधिक सांगा, नक्की काय दिसते?',
+    hi: 'थोड़ा और बताएं, ठीक से क्या दिख रहा है?',
+    en: 'Tell me a bit more, what exactly do you see?'
+  },
+  [ClarificationScope.ESCALATION_ONLY]: {
+    mr: 'फोटो पाठवल्यास अधिक चांगली मदत होईल.',
+    hi: 'फोटो भेजने से ज्यादा अच्छी मदद मिलेगी.',
+    en: 'Sending a photo will help me assist you better.'
+  }
+};
+
+const SCOPE_PHOTO_MESSAGES: Record<string, string> = {
+  mr: '📷 शक्य असल्यास, प्रभावित भागाचा फोटो पाठवा.',
+  hi: '📷 यदि संभव हो, प्रभावित भाग का फोटो भेजें.',
+  en: '📷 If possible, please send a photo of the affected area.'
+};
+
+/**
+ * Generate scope-aware clarification that prevents diagnosis leakage.
+ * This is the PRIMARY function to use for clarifications.
+ */
+export function generateScopedClarification(input: ScopedClarificationInput): ClarificationOutput {
+  const { language, observations, understandingResult, hasLandContext, diagnosisRulesFired } = input;
+  
+  // Step 1: Resolve the appropriate clarification scope
+  const scopeResult = resolveClarificationScope(
+    observations,
+    understandingResult,
+    hasLandContext,
+    diagnosisRulesFired
+  );
+  
+  console.log(`   🎯 Clarification Scope: ${scopeResult.scope}`);
+  console.log(`   📋 Allowed categories: ${scopeResult.allowed_option_categories.join(', ')}`);
+  console.log(`   🚫 Forbidden categories: ${scopeResult.forbidden_option_categories.length}`);
+  
+  // Step 2: Get scope-appropriate options (observation-only, no diagnosis)
+  const options = getScopedClarificationOptions(scopeResult, language);
+  
+  // Step 3: Validate options for diagnosis leakage
+  const validation = validateClarificationNoLeakage(options, diagnosisRulesFired);
+  if (!validation.valid) {
+    console.error(`   ❌ DIAGNOSIS LEAKAGE DETECTED: ${validation.violations.join('; ')}`);
+    // Clear options if they contain leakage - only request photo
+    options.length = 0;
+  }
+  
+  // Step 4: Build response text
+  const intro = SCOPE_INTRO_TEMPLATES[scopeResult.scope]?.[language] || 
+                SCOPE_INTRO_TEMPLATES[scopeResult.scope]?.['en'] ||
+                CLARIFICATION_INTRO[language] || 
+                CLARIFICATION_INTRO['en'];
+  
+  const acknowledgment = ACKNOWLEDGMENT_TEMPLATES[language] || ACKNOWLEDGMENT_TEMPLATES['en'];
+  
+  let response_text = `${acknowledgment}\n\n${intro}\n\n`;
+  
+  // Add options with numbers
+  if (options.length > 0) {
+    options.forEach((opt, idx) => {
+      const emoji = idx === 0 ? '1️⃣' : idx === 1 ? '2️⃣' : '3️⃣';
+      response_text += `${emoji} ${opt}\n`;
+    });
+  }
+  
+  // Add photo request if appropriate
+  const photoRequested = scopeResult.photo_appropriate || scopeResult.scope === ClarificationScope.ESCALATION_ONLY;
+  if (photoRequested) {
+    response_text += `\n${SCOPE_PHOTO_MESSAGES[language] || SCOPE_PHOTO_MESSAGES['en']}`;
+  }
+  
+  return {
+    response_text: response_text.trim(),
+    options,
+    photo_requested: photoRequested,
+    clarification_prompt: intro,
+    scope: scopeResult.scope,
+    validation_passed: validation.valid
+  };
+}
+
+// Re-export scope types for use by orchestrator
+export { ClarificationScope, type ClarificationScopeResult };
