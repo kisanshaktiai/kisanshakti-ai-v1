@@ -133,11 +133,20 @@ import {
 // NEW: Smart Clarification Generator - Farmer-friendly options & photo requests
 import {
   generateClarificationResponse,
+  generateScopedClarification,
   matchFarmerResponseToOption,
   mapOptionToObservation,
+  ClarificationScope,
   type ClarificationInput,
-  type ClarificationOutput
+  type ClarificationOutput,
+  type ScopedClarificationInput
 } from './clarification-generator.ts';
+
+// NEW: Clarification Scope Resolver - Prevents diagnosis leakage
+import {
+  validateClarificationNoLeakage,
+  DIAGNOSIS_CATEGORIES
+} from './clarification-scope-resolver.ts';
 
 export const ORCHESTRATOR_VERSION = '2.0.0';
 
@@ -896,20 +905,47 @@ export class AIAgentOrchestrator {
       // If understanding is insufficient, ask clarification BEFORE NLU
       // ═══════════════════════════════════════════════════════════════════════════
       if (understandingResult.clarification_required && !bypassClarification) {
-        console.log(`   ⚠️ Understanding insufficient (${understandingResult.understanding_confidence}) - generating rule-based clarification`);
+        console.log(`   ⚠️ Understanding insufficient (${understandingResult.understanding_confidence}) - generating scope-aware clarification`);
         
-        // Get clarification options from database based on what's missing
-        const clarificationInput: ClarificationInput = {
+        // ═══════════════════════════════════════════════════════════════════════════
+        // USE SCOPE-AWARE CLARIFICATION TO PREVENT DIAGNOSIS LEAKAGE
+        // Options are constrained to what is OBSERVED, not suspected
+        // ═══════════════════════════════════════════════════════════════════════════
+        const scopedClarificationInput: ScopedClarificationInput = {
           language: normalizedInput.detected_language,
-          farmer_message: normalizedInput.normalized_text,
-          observations: observationExtraction.raw_symptom_text,
-          crop_code: observationExtraction.crop_mentioned?.toUpperCase() || landContext?.current_crop?.toUpperCase(),
-          clarification_type: understandingResult.clarification_priority === 'crop' ? 'OPTIONS' : 'OPTIONS_PLUS_PHOTO',
-          clarification_options: []
+          observations: observationExtraction,
+          understandingResult: understandingResult,
+          hasLandContext: !!landContext,
+          diagnosisRulesFired: false // No diagnosis rules have fired yet
         };
         
-        const clarificationResponse = generateClarificationResponse(clarificationInput);
-        agentsUsed.push('RULE_BASED_CLARIFICATION');
+        const clarificationResponse = generateScopedClarification(scopedClarificationInput);
+        agentsUsed.push('SCOPED_CLARIFICATION');
+        
+        // VALIDATION: Check for diagnosis leakage
+        if (!clarificationResponse.validation_passed) {
+          console.error(`   ❌ TURN FAILED: Diagnosis leakage detected in clarification options`);
+          // Log the failed turn
+          const { getAuditLogger } = await import('./audit-logger.ts');
+          const auditLoggerFail = getAuditLogger();
+          auditLoggerFail.startTurn({
+            turn_id: `diagnosis_leakage_${Date.now()}`,
+            session_id: sessionId,
+            farmer_id: farmerId,
+            tenant_id: tenantId,
+            trace_id: traceId,
+            farmer_message: farmerMessage,
+            detected_language: normalizedInput.detected_language,
+            land_id: options.landId,
+            raw_text: normalizedInput.original_text,
+            normalized_text: normalizedInput.normalized_text
+          });
+          auditLoggerFail.logDecision('FAILED_DIAGNOSIS_LEAKAGE', 'CLARIFICATION_SCOPE_VALIDATOR');
+          await auditLoggerFail.completeTurn(Date.now() - startTime);
+        }
+        
+        console.log(`   🎯 Clarification Scope: ${clarificationResponse.scope}`);
+        console.log(`   ✅ Validation passed: ${clarificationResponse.validation_passed}`);
         
         // Initialize audit logger and log the understanding gate decision
         const { getAuditLogger } = await import('./audit-logger.ts');
@@ -945,7 +981,7 @@ export class AIAgentOrchestrator {
           type: 'CLARIFICATION_QUESTION',
           session_id: sessionId,
           question: {
-            question_id: `understanding_clarify_${Date.now()}`,
+            question_id: `scoped_clarify_${Date.now()}`,
             text_mr: responseText,
             text_hi: responseText,
             text_en: responseText,
@@ -963,6 +999,8 @@ export class AIAgentOrchestrator {
             trace_id: traceId,
             understanding_confidence: understandingResult.understanding_confidence,
             clarification_reason: understandingResult.clarification_reason,
+            clarification_scope: clarificationResponse.scope,
+            scope_validation_passed: clarificationResponse.validation_passed,
             pendingClarificationOptions: clarificationResponse.options
           }
         };
