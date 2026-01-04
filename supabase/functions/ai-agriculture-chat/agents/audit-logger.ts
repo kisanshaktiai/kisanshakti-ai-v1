@@ -69,11 +69,40 @@ export interface TurnAuditLog {
   tenant_id: string;
   trace_id: string;
   
-  // Original input
-  farmer_message: string;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MASTER PROMPT v3 - COMPLETE FORENSIC AUDIT TRAIL
+  // Missing log = failed turn
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // Stage 1: Raw vs Normalized text
+  raw_text: string;
+  normalized_text: string;
+  farmer_message: string;  // Kept for backward compatibility
   detected_language: 'mr' | 'hi' | 'en';
   
-  // NLU Output (Contract-compliant)
+  // Stage 2: Observation Extraction output
+  extracted_observations?: {
+    crop_mentioned?: string;
+    raw_symptom_text: string[];
+    affected_part: string;
+    symptom_distribution: string;
+    severity_words: string[];
+    time_reference?: string;
+    action_taken: string[];
+    uncertainty_markers: string[];
+  };
+  
+  // Stage 3: Canonical State (from builder)
+  canonical_state?: any;
+  
+  // Stage 4: Understanding Check
+  understanding_confidence?: 'VERY_LOW' | 'LOW' | 'MEDIUM' | 'HIGH';
+  contradiction_detected?: string[];
+  
+  // Stage 5: Data Confidence
+  data_confidence?: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
+  
+  // NLU Output (Contract-compliant) - backward compat
   nlu_output: NLUContractOutput;
   
   // Intent Lock
@@ -81,16 +110,18 @@ export interface TurnAuditLog {
   allowed_scopes: string[];
   forbidden_actions: string[];
   
-  // Rule Engine Trail (NEW)
+  // Rule Engine Trail
   rule_engine_audit?: RuleEngineAudit;
+  rules_evaluated: string[];  // All rules checked
+  rules_applied: string[];    // Rules that fired (alias for rules_fired)
   
   // Symbolic Decision
   symbolic_decision_id?: string;
-  rules_fired: string[];
+  rules_fired: string[];  // Kept for backward compat
   actions_returned: any[];
   actions_filtered_out: any[];
   
-  // LLM Formatter Trail (NEW)
+  // LLM Formatter Trail
   llm_formatter_audit?: LLMFormatterAudit;
   
   // Cause Mapping (Observation → Cause)
@@ -104,7 +135,12 @@ export interface TurnAuditLog {
   // Validation
   validation_passed: boolean;
   validation_errors: string[];
-  source_validation_passed: boolean;  // NEW: LLM output matched symbolic input
+  source_validation_passed: boolean;
+  
+  // Decision tracking
+  decision_type: 'CLARIFY' | 'PRESCRIBE' | 'MONITOR' | 'ESCALATE' | 'INFORM' | 'ERROR';
+  decision_source: 'RULE_ENGINE' | 'UNDERSTANDING_GATE' | 'DATA_GATE' | 'SAFETY_GATE' | 'DIRECT';
+  prescription_gate_passed?: boolean;
   
   // Response
   response_source: 'SYMBOLIC_TEMPLATE' | 'LLM_FORMATTED' | 'CLARIFICATION' | 'ERROR';
@@ -155,19 +191,98 @@ export class AuditLogger {
     farmer_message: string;
     detected_language: 'mr' | 'hi' | 'en';
     land_id?: string;
+    raw_text?: string;
+    normalized_text?: string;
   }): void {
     this.currentTurn = {
       ...params,
+      raw_text: params.raw_text || params.farmer_message,
+      normalized_text: params.normalized_text || params.farmer_message,
       timestamp: new Date().toISOString(),
       agents_used: [],
       rules_fired: [],
+      rules_evaluated: [],
+      rules_applied: [],
       actions_returned: [],
       actions_filtered_out: [],
       validation_errors: [],
-      validation_passed: false
+      validation_passed: false,
+      decision_type: 'INFORM' as const,
+      decision_source: 'DIRECT' as const
     };
     
     console.log(`📋 [Audit] Turn started: ${params.turn_id}`);
+  }
+  
+  /**
+   * Log observation extraction result (Stage 2)
+   */
+  logObservationExtraction(observations: {
+    crop_mentioned?: string;
+    raw_symptom_text: string[];
+    affected_part: string;
+    symptom_distribution: string;
+    severity_words: string[];
+    time_reference?: string;
+    action_taken: string[];
+    uncertainty_markers: string[];
+  }): void {
+    this.currentTurn.extracted_observations = observations;
+    this.addAgent('OBSERVATION_EXTRACTOR');
+    
+    console.log(`📋 [Audit] Observations: ${observations.raw_symptom_text.length} symptoms, crop=${observations.crop_mentioned || 'unknown'}`);
+  }
+  
+  /**
+   * Log understanding check result (Stage 4)
+   */
+  logUnderstandingCheck(result: {
+    understanding_confidence: 'VERY_LOW' | 'LOW' | 'MEDIUM' | 'HIGH';
+    contradiction_detected: string[];
+    clarification_required: boolean;
+  }): void {
+    this.currentTurn.understanding_confidence = result.understanding_confidence;
+    this.currentTurn.contradiction_detected = result.contradiction_detected;
+    this.addAgent('UNDERSTANDING_CHECKER');
+    
+    console.log(`📋 [Audit] Understanding: ${result.understanding_confidence}, contradictions=${result.contradiction_detected.length}, clarify=${result.clarification_required}`);
+  }
+  
+  /**
+   * Log data confidence (Stage 5)
+   */
+  logDataConfidence(confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN'): void {
+    this.currentTurn.data_confidence = confidence;
+    console.log(`📋 [Audit] Data confidence: ${confidence}`);
+  }
+  
+  /**
+   * Log canonical state
+   */
+  logCanonicalState(state: any): void {
+    this.currentTurn.canonical_state = state;
+    this.addAgent('CANONICAL_STATE_BUILDER');
+  }
+  
+  /**
+   * Log prescription gate result
+   */
+  logPrescriptionGate(passed: boolean, reason?: string): void {
+    this.currentTurn.prescription_gate_passed = passed;
+    if (!passed && reason) {
+      this.currentTurn.validation_errors?.push(`Prescription gate blocked: ${reason}`);
+    }
+    this.addAgent('PRESCRIPTION_GATE');
+    console.log(`📋 [Audit] Prescription gate: ${passed ? 'PASSED' : 'BLOCKED'} ${reason || ''}`);
+  }
+  
+  /**
+   * Log decision type and source
+   */
+  logDecision(type: 'CLARIFY' | 'PRESCRIBE' | 'MONITOR' | 'ESCALATE' | 'INFORM' | 'ERROR', source: 'RULE_ENGINE' | 'UNDERSTANDING_GATE' | 'DATA_GATE' | 'SAFETY_GATE' | 'DIRECT'): void {
+    this.currentTurn.decision_type = type;
+    this.currentTurn.decision_source = source;
+    console.log(`📋 [Audit] Decision: ${type} from ${source}`);
   }
   
   /**
