@@ -27,9 +27,14 @@ export interface ClarificationOutput {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SYMPTOM-BASED OPTIONS DATABASE (Farmer-friendly visual symptoms)
+// Comprehensive crop-specific symptoms with local Marathi/Hindi terminology
 // ═══════════════════════════════════════════════════════════════════════════
 
 const SYMPTOM_OPTIONS_DATABASE: Record<string, Record<string, string[]>> = {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GENERAL SYMPTOMS (All crops)
+  // ═══════════════════════════════════════════════════════════════════════════
+  
   // Dead/dying plants - multiple causes
   plant_dying: {
     mr: [
@@ -87,7 +92,9 @@ const SYMPTOM_OPTIONS_DATABASE: Record<string, Record<string, string[]>> = {
     ]
   },
   
-  // Sugarcane specific
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SUGARCANE (ऊस / गन्ना) SPECIFIC
+  // ═══════════════════════════════════════════════════════════════════════════
   sugarcane_issue: {
     mr: [
       'मधली सुरळी वाळली आहे (डेड हार्ट)',
@@ -106,7 +113,45 @@ const SYMPTOM_OPTIONS_DATABASE: Record<string, Record<string, string[]>> = {
     ]
   },
   
-  // Cotton specific
+  sugarcane_borer: {
+    mr: [
+      'आतडी किडा - खोडात भोक दिसतो',
+      'खोड बोरर - आतला भाग खाल्लेला',
+      'मधली सुरळी ओढल्यावर निघते'
+    ],
+    hi: [
+      'तना छेदक - तने में छेद दिखता है',
+      'स्टेम बोरर - अंदर का भाग खाया हुआ',
+      'बीच की पोंगली खींचने पर निकलती है'
+    ],
+    en: [
+      'Internodal borer - holes in stem',
+      'Stem borer - inner part eaten',
+      'Central whorl comes out when pulled'
+    ]
+  },
+  
+  sugarcane_disease: {
+    mr: [
+      'लाल कुज - पाने लालसर होत आहेत',
+      'ऊस कुजलेला वास येतो',
+      'गड्ड्यावर काळे डाग दिसतात'
+    ],
+    hi: [
+      'लाल सड़न - पत्ते लाल हो रहे हैं',
+      'गन्ने से सड़ी हुई गंध आती है',
+      'गांठों पर काले धब्बे दिखते हैं'
+    ],
+    en: [
+      'Red rot - leaves turning reddish',
+      'Rotting smell from sugarcane',
+      'Black spots on nodes'
+    ]
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // COTTON (कापूस / कपास) SPECIFIC
+  // ═══════════════════════════════════════════════════════════════════════════
   cotton_issue: {
     mr: [
       'बोंडावर अळी आहे / बोंड खराब',
@@ -125,7 +170,288 @@ const SYMPTOM_OPTIONS_DATABASE: Record<string, Record<string, string[]>> = {
     ]
   },
   
-  // Rice/Wheat specific
+  cotton_bollworm: {
+    mr: [
+      'गुलाबी बोंड अळी - बोंडात अळी',
+      'अमेरिकन बोंड अळी - मोठी हिरवी अळी',
+      'बोंडे पूर्ण खाल्लेली दिसतात'
+    ],
+    hi: [
+      'गुलाबी बॉल वर्म - बॉल में इल्ली',
+      'अमेरिकन बॉल वर्म - बड़ी हरी इल्ली',
+      'बॉल पूरी खाई हुई दिखती है'
+    ],
+    en: [
+      'Pink bollworm - larvae in boll',
+      'American bollworm - large green larvae',
+      'Bolls appear completely eaten'
+    ]
+  },
+  
+  cotton_sucking_pest: {
+    mr: [
+      'मावा - पानाखाली लहान किडे',
+      'तुडतुडा - पानांवर पिवळे डाग',
+      'पांढरी माशी - चिकट पाने'
+    ],
+    hi: [
+      'माहू - पत्ते के नीचे छोटे कीड़े',
+      'जैसिड - पत्तों पर पीले धब्बे',
+      'सफेद मक्खी - चिपचिपे पत्ते'
+    ],
+    en: [
+      'Aphids - small insects under leaves',
+      'Jassid - yellow spots on leaves',
+      'Whitefly - sticky leaves'
+    ]
+  },
+  
+  cotton_disease: {
+    mr: [
+      'बोंड कुज - बोंड काळे होत आहेत',
+      'पान करपा - पाने वाळत आहेत',
+      'मुळकुज - झाड अचानक सुकते'
+    ],
+    hi: [
+      'बॉल राट - बॉल काली हो रही है',
+      'पत्ता झुलसा - पत्ते सूख रहे हैं',
+      'जड़ गलन - पौधा अचानक सूखता है'
+    ],
+    en: [
+      'Boll rot - bolls turning black',
+      'Leaf blight - leaves drying',
+      'Root rot - plant suddenly wilts'
+    ]
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WHEAT (गहू / गेहूं) SPECIFIC
+  // ═══════════════════════════════════════════════════════════════════════════
+  wheat_issue: {
+    mr: [
+      'तांबेरा - पानावर तपकिरी पट्टे',
+      'करपा - पानांवर काळे डाग',
+      'ओंब्या रिकाम्या राहत आहेत'
+    ],
+    hi: [
+      'रतुआ - पत्तों पर भूरी धारियां',
+      'झुलसा - पत्तों पर काले धब्बे',
+      'बालियां खाली रह रही हैं'
+    ],
+    en: [
+      'Rust - brown stripes on leaves',
+      'Blight - black spots on leaves',
+      'Ears remaining empty'
+    ]
+  },
+  
+  wheat_rust: {
+    mr: [
+      'पिवळा तांबेरा - पिवळ्या पट्ट्या',
+      'तपकिरी तांबेरा - तपकिरी पावडर',
+      'काळा तांबेरा - काळे ठिपके'
+    ],
+    hi: [
+      'पीला रतुआ - पीली धारियां',
+      'भूरा रतुआ - भूरा पाउडर',
+      'काला रतुआ - काले धब्बे'
+    ],
+    en: [
+      'Yellow rust - yellow stripes',
+      'Brown rust - brown powder',
+      'Black rust - black spots'
+    ]
+  },
+  
+  wheat_pest: {
+    mr: [
+      'उंदीर - खोड कुरतडलेले दिसते',
+      'माव्या - ओंब्यांवर किडे',
+      'दाणे खाल्लेले दिसतात'
+    ],
+    hi: [
+      'चूहे - तना कुतरा हुआ दिखता है',
+      'माहू - बालियों पर कीड़े',
+      'दाने खाए हुए दिखते हैं'
+    ],
+    en: [
+      'Rodents - stem appears gnawed',
+      'Aphids - insects on ears',
+      'Grains appear eaten'
+    ]
+  },
+  
+  wheat_nutrient: {
+    mr: [
+      'पान पिवळे - नत्राची कमतरता',
+      'पान जांभळे - स्फुरदाची कमतरता',
+      'पानांच्या टोकांवर जळलेले'
+    ],
+    hi: [
+      'पत्ते पीले - नाइट्रोजन की कमी',
+      'पत्ते बैंगनी - फास्फोरस की कमी',
+      'पत्तों के सिरे जले हुए'
+    ],
+    en: [
+      'Yellow leaves - nitrogen deficiency',
+      'Purple leaves - phosphorus deficiency',
+      'Burnt leaf tips'
+    ]
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RICE (भात / धान) SPECIFIC
+  // ═══════════════════════════════════════════════════════════════════════════
+  rice_issue: {
+    mr: [
+      'करपा - पानावर काळे डाग',
+      'खोडकिडा - वाळलेले कोंब',
+      'तुडतुडा - पान पिवळे होत आहे'
+    ],
+    hi: [
+      'झुलसा - पत्तों पर काले धब्बे',
+      'तना छेदक - सूखी हुई कोंपल',
+      'भूरा फुदका - पत्ते पीले हो रहे हैं'
+    ],
+    en: [
+      'Blast - black spots on leaves',
+      'Stem borer - dried shoots',
+      'Brown planthopper - yellowing leaves'
+    ]
+  },
+  
+  rice_blast: {
+    mr: [
+      'पान करपा - पानावर डोळ्यांसारखे डाग',
+      'खोड करपा - खोड काळे होत आहे',
+      'मानेवर करपा - ओंबी लोंबत आहे'
+    ],
+    hi: [
+      'पत्ता ब्लास्ट - पत्तों पर आंख जैसे धब्बे',
+      'तना ब्लास्ट - तना काला हो रहा है',
+      'गर्दन ब्लास्ट - बाली लटक रही है'
+    ],
+    en: [
+      'Leaf blast - eye-shaped spots on leaves',
+      'Node blast - stem turning black',
+      'Neck blast - panicle hanging'
+    ]
+  },
+  
+  rice_borer: {
+    mr: [
+      'पांढरा कोंब (डेड हार्ट)',
+      'पांढऱ्या ओंब्या (व्हाईट हेड)',
+      'खोडात अळी दिसते'
+    ],
+    hi: [
+      'सफेद कोंपल (डेड हार्ट)',
+      'सफेद बाली (व्हाइट हेड)',
+      'तने में इल्ली दिखती है'
+    ],
+    en: [
+      'White shoot (dead heart)',
+      'White panicle (white head)',
+      'Larvae visible in stem'
+    ]
+  },
+  
+  rice_hopper: {
+    mr: [
+      'तपकिरी तुडतुडा - झाडे जळल्यासारखी',
+      'हिरवा तुडतुडा - पान पिवळट',
+      'पानावर मधासारखा चिकट थर'
+    ],
+    hi: [
+      'भूरा फुदका - पौधे जले हुए जैसे',
+      'हरा फुदका - पत्ते पीलापन लिए',
+      'पत्तों पर शहद जैसी चिपचिपी परत'
+    ],
+    en: [
+      'Brown planthopper - plants look burnt',
+      'Green leafhopper - yellowish leaves',
+      'Honeydew layer on leaves'
+    ]
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SOYBEAN (सोयाबीन) SPECIFIC
+  // ═══════════════════════════════════════════════════════════════════════════
+  soybean_issue: {
+    mr: [
+      'पान खाणारी अळी - पान कापलेले',
+      'खोड माशी - खोड काळे होत आहे',
+      'पान पिवळे होत आहे'
+    ],
+    hi: [
+      'पत्ता खाने वाली इल्ली - पत्ता कटा हुआ',
+      'तना मक्खी - तना काला हो रहा है',
+      'पत्ते पीले हो रहे हैं'
+    ],
+    en: [
+      'Leaf eating caterpillar - leaves cut',
+      'Stem fly - stem turning black',
+      'Leaves turning yellow'
+    ]
+  },
+  
+  soybean_caterpillar: {
+    mr: [
+      'स्पोडोप्टेरा - हिरवी अळी पान खातेय',
+      'चक्री भुंगा - पान गोल कापलेले',
+      'शेंगा पोखरणारी अळी'
+    ],
+    hi: [
+      'स्पोडोप्टेरा - हरी इल्ली पत्ता खा रही है',
+      'गर्डल बीटल - पत्ता गोल कटा हुआ',
+      'फली छेदक इल्ली'
+    ],
+    en: [
+      'Spodoptera - green caterpillar eating leaves',
+      'Girdle beetle - leaves cut in circle',
+      'Pod borer larvae'
+    ]
+  },
+  
+  soybean_stemfly: {
+    mr: [
+      'खोड माशी - खोड काळे, मुळे तपकिरी',
+      'खोड फोडल्यावर अळी दिसते',
+      'झाड पिवळे होऊन वाळते'
+    ],
+    hi: [
+      'तना मक्खी - तना काला, जड़ें भूरी',
+      'तना फाड़ने पर इल्ली दिखती है',
+      'पौधा पीला होकर सूखता है'
+    ],
+    en: [
+      'Stem fly - black stem, brown roots',
+      'Larvae visible inside stem',
+      'Plant yellows and wilts'
+    ]
+  },
+  
+  soybean_disease: {
+    mr: [
+      'चारकोल रॉट - मुळे काळी',
+      'पान करपा - तपकिरी डाग',
+      'बुरशीचा पांढरा थर'
+    ],
+    hi: [
+      'चारकोल राट - जड़ें काली',
+      'पत्ता झुलसा - भूरे धब्बे',
+      'फफूंद की सफेद परत'
+    ],
+    en: [
+      'Charcoal rot - black roots',
+      'Leaf blight - brown spots',
+      'White fungal layer'
+    ]
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CEREAL GENERAL (Rice/Wheat combined)
+  // ═══════════════════════════════════════════════════════════════════════════
   cereal_issue: {
     mr: [
       'दाण्यात किडे आहेत',
@@ -184,14 +510,73 @@ function detectSymptomCategory(
   // Check for crop-specific patterns first
   if (crop_code) {
     const cropUpper = crop_code.toUpperCase();
+    
+    // SUGARCANE
     if (cropUpper.includes('SUGARCANE') || cropUpper.includes('US') || combined.includes('ऊस') || combined.includes('गन्ना')) {
+      // More specific sugarcane symptoms
+      if (combined.includes('बोरर') || combined.includes('किडा') || combined.includes('भोक') || combined.includes('छेद')) {
+        return 'sugarcane_borer';
+      }
+      if (combined.includes('कुज') || combined.includes('सड़') || combined.includes('रॉट') || combined.includes('लाल')) {
+        return 'sugarcane_disease';
+      }
       return 'sugarcane_issue';
     }
+    
+    // COTTON
     if (cropUpper.includes('COTTON') || cropUpper.includes('KAPAS') || combined.includes('कापूस') || combined.includes('कपास')) {
+      if (combined.includes('बोंड') || combined.includes('बॉल') || combined.includes('अळी') || combined.includes('इल्ली')) {
+        return 'cotton_bollworm';
+      }
+      if (combined.includes('माव') || combined.includes('माहू') || combined.includes('तुडतुड') || combined.includes('माशी') || combined.includes('मक्खी')) {
+        return 'cotton_sucking_pest';
+      }
+      if (combined.includes('कुज') || combined.includes('सड़') || combined.includes('करपा') || combined.includes('झुलसा')) {
+        return 'cotton_disease';
+      }
       return 'cotton_issue';
     }
-    if (cropUpper.includes('RICE') || cropUpper.includes('WHEAT') || combined.includes('गहू') || combined.includes('धान') || combined.includes('भात')) {
-      return 'cereal_issue';
+    
+    // WHEAT
+    if (cropUpper.includes('WHEAT') || cropUpper.includes('GAHU') || combined.includes('गहू') || combined.includes('गेहूं')) {
+      if (combined.includes('तांबेरा') || combined.includes('रतुआ') || combined.includes('rust')) {
+        return 'wheat_rust';
+      }
+      if (combined.includes('उंदीर') || combined.includes('चूह') || combined.includes('माव') || combined.includes('किडे')) {
+        return 'wheat_pest';
+      }
+      if (combined.includes('पिवळ') || combined.includes('पीला') || combined.includes('जांभळ') || combined.includes('बैंगनी')) {
+        return 'wheat_nutrient';
+      }
+      return 'wheat_issue';
+    }
+    
+    // RICE
+    if (cropUpper.includes('RICE') || cropUpper.includes('PADDY') || cropUpper.includes('DHAN') || combined.includes('भात') || combined.includes('धान')) {
+      if (combined.includes('करपा') || combined.includes('ब्लास्ट') || combined.includes('blast')) {
+        return 'rice_blast';
+      }
+      if (combined.includes('खोडकिड') || combined.includes('बोरर') || combined.includes('borer') || combined.includes('डेड हार्ट') || combined.includes('व्हाईट')) {
+        return 'rice_borer';
+      }
+      if (combined.includes('तुडतुड') || combined.includes('फुदक') || combined.includes('hopper')) {
+        return 'rice_hopper';
+      }
+      return 'rice_issue';
+    }
+    
+    // SOYBEAN
+    if (cropUpper.includes('SOYBEAN') || cropUpper.includes('SOYA') || combined.includes('सोयाबीन') || combined.includes('सोयाबिन')) {
+      if (combined.includes('अळी') || combined.includes('इल्ली') || combined.includes('चक्री') || combined.includes('गर्डल')) {
+        return 'soybean_caterpillar';
+      }
+      if (combined.includes('खोड माशी') || combined.includes('तना मक्खी') || combined.includes('stem fly')) {
+        return 'soybean_stemfly';
+      }
+      if (combined.includes('कुज') || combined.includes('राट') || combined.includes('rot') || combined.includes('बुरश')) {
+        return 'soybean_disease';
+      }
+      return 'soybean_issue';
     }
   }
   
@@ -206,6 +591,10 @@ function detectSymptomCategory(
   
   // Default based on crop if available
   if (crop_code?.toUpperCase().includes('SUGARCANE')) return 'sugarcane_issue';
+  if (crop_code?.toUpperCase().includes('COTTON')) return 'cotton_issue';
+  if (crop_code?.toUpperCase().includes('WHEAT')) return 'wheat_issue';
+  if (crop_code?.toUpperCase().includes('RICE')) return 'rice_issue';
+  if (crop_code?.toUpperCase().includes('SOYBEAN')) return 'soybean_issue';
   
   return 'plant_dying'; // Safe default
 }
@@ -374,38 +763,135 @@ export function mapOptionToObservation(
 ): { observation: string; likely_cause: string } {
   const optLower = option.toLowerCase();
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SUGARCANE MAPPINGS
+  // ═══════════════════════════════════════════════════════════════════════════
+  
   // Dead heart patterns
-  if (optLower.includes('कोंब वाळ') || optLower.includes('पोंगली सूख') || optLower.includes('dead heart') || optLower.includes('whorl dried')) {
+  if (optLower.includes('कोंब वाळ') || optLower.includes('पोंगली सूख') || optLower.includes('dead heart') || optLower.includes('whorl dried') || optLower.includes('सुरळी') || optLower.includes('पोंगली')) {
     return { observation: 'dead heart / मधली सुरळी वाळली', likely_cause: 'SHOOT_BORER' };
   }
   
+  // Stem borer patterns
+  if (optLower.includes('भोक') || optLower.includes('भुसा') || optLower.includes('छेद') || optLower.includes('बुरादा') || optLower.includes('hole') || optLower.includes('frass') || optLower.includes('आतडी') || optLower.includes('तना छेदक')) {
+    return { observation: 'stem bore holes with frass', likely_cause: 'STEM_BORER' };
+  }
+  
+  // Red rot
+  if (optLower.includes('लाल कुज') || optLower.includes('लाल सड़न') || optLower.includes('red rot') || optLower.includes('लालसर')) {
+    return { observation: 'red rot disease', likely_cause: 'RED_ROT' };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // COTTON MAPPINGS
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // Bollworm patterns
+  if (optLower.includes('बोंड') || optLower.includes('बॉल') || optLower.includes('boll') || optLower.includes('गुलाबी') || optLower.includes('अमेरिकन')) {
+    if (optLower.includes('गुलाबी') || optLower.includes('pink')) {
+      return { observation: 'pink bollworm damage', likely_cause: 'PINK_BOLLWORM' };
+    }
+    return { observation: 'bollworm damage', likely_cause: 'BOLLWORM' };
+  }
+  
+  // Whitefly patterns
+  if (optLower.includes('पांढरी माशी') || optLower.includes('सफेद मक्खी') || optLower.includes('whitefly') || optLower.includes('चिकट') || optLower.includes('चिपचिप')) {
+    return { observation: 'whitefly infestation', likely_cause: 'WHITEFLY' };
+  }
+  
+  // Aphids
+  if (optLower.includes('मावा') || optLower.includes('माहू') || optLower.includes('aphid')) {
+    return { observation: 'aphid infestation', likely_cause: 'APHIDS' };
+  }
+  
+  // Jassid
+  if (optLower.includes('तुडतुडा') || optLower.includes('जैसिड') || optLower.includes('jassid')) {
+    return { observation: 'jassid damage', likely_cause: 'JASSID' };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WHEAT MAPPINGS
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // Rust patterns
+  if (optLower.includes('तांबेरा') || optLower.includes('रतुआ') || optLower.includes('rust')) {
+    if (optLower.includes('पिवळ') || optLower.includes('पीला') || optLower.includes('yellow')) {
+      return { observation: 'yellow rust on wheat', likely_cause: 'YELLOW_RUST' };
+    }
+    if (optLower.includes('काळ') || optLower.includes('काला') || optLower.includes('black')) {
+      return { observation: 'black rust on wheat', likely_cause: 'BLACK_RUST' };
+    }
+    return { observation: 'brown rust on wheat', likely_cause: 'BROWN_RUST' };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RICE MAPPINGS
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // Blast patterns
+  if (optLower.includes('करपा') || optLower.includes('ब्लास्ट') || optLower.includes('blast') || optLower.includes('डोळ्यांसारखे') || optLower.includes('आंख जैसे')) {
+    if (optLower.includes('मान') || optLower.includes('गर्दन') || optLower.includes('neck') || optLower.includes('लोंबत') || optLower.includes('लटक')) {
+      return { observation: 'neck blast on rice', likely_cause: 'NECK_BLAST' };
+    }
+    if (optLower.includes('खोड') || optLower.includes('तना') || optLower.includes('node')) {
+      return { observation: 'node blast on rice', likely_cause: 'NODE_BLAST' };
+    }
+    return { observation: 'leaf blast on rice', likely_cause: 'LEAF_BLAST' };
+  }
+  
+  // Rice borer
+  if (optLower.includes('पांढरा कोंब') || optLower.includes('सफेद कोंपल') || optLower.includes('व्हाईट हेड') || optLower.includes('व्हाइट हेड') || optLower.includes('white head')) {
+    return { observation: 'stem borer damage in rice', likely_cause: 'RICE_STEM_BORER' };
+  }
+  
+  // Planthopper
+  if (optLower.includes('तुडतुड') || optLower.includes('फुदक') || optLower.includes('hopper') || optLower.includes('जळल्यासारख') || optLower.includes('जले हुए')) {
+    if (optLower.includes('तपकिरी') || optLower.includes('भूरा') || optLower.includes('brown')) {
+      return { observation: 'brown planthopper infestation', likely_cause: 'BROWN_PLANTHOPPER' };
+    }
+    return { observation: 'green leafhopper damage', likely_cause: 'GREEN_LEAFHOPPER' };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SOYBEAN MAPPINGS
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // Caterpillar
+  if (optLower.includes('स्पोडोप्टेरा') || optLower.includes('spodoptera') || optLower.includes('पान खाणारी') || optLower.includes('पत्ता खाने')) {
+    return { observation: 'spodoptera caterpillar damage', likely_cause: 'SPODOPTERA' };
+  }
+  
+  // Girdle beetle
+  if (optLower.includes('चक्री') || optLower.includes('गर्डल') || optLower.includes('girdle') || optLower.includes('गोल कापलेल') || optLower.includes('गोल कटा')) {
+    return { observation: 'girdle beetle damage', likely_cause: 'GIRDLE_BEETLE' };
+  }
+  
+  // Stem fly
+  if (optLower.includes('खोड माशी') || optLower.includes('तना मक्खी') || optLower.includes('stem fly')) {
+    return { observation: 'stem fly damage', likely_cause: 'SOYBEAN_STEM_FLY' };
+  }
+  
+  // Charcoal rot
+  if (optLower.includes('चारकोल') || optLower.includes('charcoal') || optLower.includes('मुळे काळी') || optLower.includes('जड़ें काली')) {
+    return { observation: 'charcoal rot disease', likely_cause: 'CHARCOAL_ROT' };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GENERAL MAPPINGS
+  // ═══════════════════════════════════════════════════════════════════════════
+  
   // Root rot patterns
-  if (optLower.includes('मुळासकट') || optLower.includes('जड़ से सड़') || optLower.includes('rotted from root')) {
+  if (optLower.includes('मुळासकट') || optLower.includes('जड़ से सड़') || optLower.includes('rotted from root') || optLower.includes('मुळकुज') || optLower.includes('जड़ गलन')) {
     return { observation: 'root rot / मुळासकट कुजले', likely_cause: 'ROOT_ROT' };
   }
   
   // Water logging patterns
-  if (optLower.includes('पाणी साच') || optLower.includes('पानी भर') || optLower.includes('water log') || optLower.includes('too wet')) {
+  if (optLower.includes('पाणी साच') || optLower.includes('पानी भर') || optLower.includes('water log') || optLower.includes('too wet') || optLower.includes('ओल')) {
     return { observation: 'water logging / पाणी साचणे', likely_cause: 'WATER_LOGGING' };
   }
   
-  // Stem borer patterns
-  if (optLower.includes('भोक') || optLower.includes('भुसा') || optLower.includes('छेद') || optLower.includes('बुरादा') || optLower.includes('hole') || optLower.includes('frass')) {
-    return { observation: 'stem bore holes with frass', likely_cause: 'STEM_BORER' };
-  }
-  
-  // Whitefly patterns
-  if (optLower.includes('पांढरी माशी') || optLower.includes('सफेद मक्खी') || optLower.includes('whitefly')) {
-    return { observation: 'whitefly infestation', likely_cause: 'WHITEFLY' };
-  }
-  
-  // Bollworm patterns
-  if (optLower.includes('बोंड') || optLower.includes('बॉल') || optLower.includes('boll')) {
-    return { observation: 'bollworm damage', likely_cause: 'BOLLWORM' };
-  }
-  
   // Leaf spot/blight patterns
-  if (optLower.includes('डाग') || optLower.includes('धब्बे') || optLower.includes('spot')) {
+  if (optLower.includes('डाग') || optLower.includes('धब्बे') || optLower.includes('spot') || optLower.includes('झुलसा')) {
     return { observation: 'leaf spots', likely_cause: 'LEAF_SPOT' };
   }
   
