@@ -69,15 +69,10 @@ export interface TurnAuditLog {
   tenant_id: string;
   trace_id: string;
   
-  // ═══════════════════════════════════════════════════════════════════════════
-  // MASTER PROMPT v3 - COMPLETE FORENSIC AUDIT TRAIL
-  // Missing log = failed turn
-  // ═══════════════════════════════════════════════════════════════════════════
-  
   // Stage 1: Raw vs Normalized text
   raw_text: string;
   normalized_text: string;
-  farmer_message: string;  // Kept for backward compatibility
+  farmer_message: string;
   detected_language: 'mr' | 'hi' | 'en';
   
   // Stage 2: Observation Extraction output
@@ -92,8 +87,25 @@ export interface TurnAuditLog {
     uncertainty_markers: string[];
   };
   
-  // Stage 3: Canonical State (from builder)
+  // PHASE-8: Observation Keys (before/after clarification)
+  observation_keys_before?: string[];
+  observation_keys_after?: string[];
+  
+  // PHASE-8: Clarification Audit
+  clarification_scope?: string;
+  clarification_turn_count?: number;
+  clarification_loop_detected?: boolean;
+  escalation_reason?: string;
+  
+  // Stage 3: Canonical State
   canonical_state?: any;
+  canonical_state_snapshot?: {
+    crop: string;
+    stage: string;
+    visual_symptoms: string[];
+    soil_state: string;
+    ndvi_state: string;
+  };
   
   // Stage 4: Understanding Check
   understanding_confidence?: 'VERY_LOW' | 'LOW' | 'MEDIUM' | 'HIGH';
@@ -102,7 +114,7 @@ export interface TurnAuditLog {
   // Stage 5: Data Confidence
   data_confidence?: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
   
-  // NLU Output (Contract-compliant) - backward compat
+  // NLU Output
   nlu_output: NLUContractOutput;
   
   // Intent Lock
@@ -112,24 +124,35 @@ export interface TurnAuditLog {
   
   // Rule Engine Trail
   rule_engine_audit?: RuleEngineAudit;
-  rules_evaluated: string[];  // All rules checked
-  rules_applied: string[];    // Rules that fired (alias for rules_fired)
+  rules_evaluated: string[];
+  rules_applied: string[];
   
   // Symbolic Decision
   symbolic_decision_id?: string;
-  rules_fired: string[];  // Kept for backward compat
+  rules_fired: string[];
   actions_returned: any[];
   actions_filtered_out: any[];
   
   // LLM Formatter Trail
   llm_formatter_audit?: LLMFormatterAudit;
   
-  // Cause Mapping (Observation → Cause)
+  // PHASE-8: LLM Integrity Hashes
+  llm_input_hash?: string;
+  llm_output_hash?: string;
+  
+  // Cause Mapping
   observation_mapping?: {
     cause_codes: string[];
     cause_type: string;
     confidence: number;
     matched_patterns: string[];
+  };
+  
+  // PHASE-8: Prescription Gate
+  prescription_gate_result?: {
+    passed: boolean;
+    blocked_reasons: string[];
+    allowed_actions: string[];
   };
   
   // Validation
@@ -138,8 +161,8 @@ export interface TurnAuditLog {
   source_validation_passed: boolean;
   
   // Decision tracking
-  decision_type: 'CLARIFY' | 'PRESCRIBE' | 'MONITOR' | 'ESCALATE' | 'INFORM' | 'ERROR';
-  decision_source: 'RULE_ENGINE' | 'UNDERSTANDING_GATE' | 'DATA_GATE' | 'SAFETY_GATE' | 'DIRECT';
+  decision_type: 'CLARIFY' | 'PRESCRIBE' | 'MONITOR' | 'ESCALATE' | 'INFORM' | 'ERROR' | 'FAILED_DIAGNOSIS_LEAKAGE';
+  decision_source: 'RULE_ENGINE' | 'UNDERSTANDING_GATE' | 'DATA_GATE' | 'SAFETY_GATE' | 'DIRECT' | 'CLARIFICATION_SCOPE_VALIDATOR';
   prescription_gate_passed?: boolean;
   
   // Response
