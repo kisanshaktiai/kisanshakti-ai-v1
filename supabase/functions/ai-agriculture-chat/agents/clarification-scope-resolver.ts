@@ -7,8 +7,12 @@
  * Determine what to ask next using ObservationKeys ONLY.
  * No language strings, no text pattern matching, no diagnosis.
  * 
+ * PHASE-8.1 UPDATE:
+ * - Block crop clarification when CropContextAuthority exists
+ * - Support hasCropContext flag to skip IDENTIFY_CROP scope
+ * 
  * RULES:
- * - Input: Set<ObservationKey> + turn count
+ * - Input: Set<ObservationKey> + turn count + hasCropContext
  * - Output: ClarificationScope (deterministic)
  * - NEVER inspect raw text
  * - NEVER use pest/disease catalogs
@@ -27,7 +31,7 @@ import {
 
 import { ClarificationScope } from './clarification-renderer.ts';
 
-export const CLARIFICATION_SCOPE_RESOLVER_VERSION = '2.0.0';
+export const CLARIFICATION_SCOPE_RESOLVER_VERSION = '2.1.0'; // Phase-8.1 update
 
 // Re-export ClarificationScope for convenience
 export { ClarificationScope };
@@ -88,8 +92,11 @@ const SCOPE_PRIORITY: Record<ClarificationScope, number> = {
  * Resolve clarification plan based on ObservationKeys ONLY.
  * This is DETERMINISTIC - same keys + turn count = same output.
  * 
+ * PHASE-8.1: Added hasCropContext parameter to skip crop clarification
+ * when CropContextAuthority exists from crop_schedules.
+ * 
  * PRIORITY ORDER (immutable):
- * 1. Crop identification
+ * 1. Crop identification (SKIPPED if hasCropContext=true)
  * 2. Affected part (location)
  * 3. Distribution
  * 4. Severity
@@ -101,7 +108,8 @@ const SCOPE_PRIORITY: Record<ClarificationScope, number> = {
 export function resolveClarificationPlan(
   observedKeys: Set<ObservationKey>,
   turnCount: number,
-  previousScopes: ClarificationScope[] = []
+  previousScopes: ClarificationScope[] = [],
+  hasCropContext: boolean = false // PHASE-8.1: Skip crop clarification if true
 ): ClarificationPlan {
   // ═══════════════════════════════════════════════════════════════════════════
   // HARD STOP: Maximum clarification turns reached
@@ -119,8 +127,10 @@ export function resolveClarificationPlan(
   
   // ═══════════════════════════════════════════════════════════════════════════
   // PRIORITY 1: Crop Unknown
+  // PHASE-8.1: SKIP if hasCropContext (CropContextAuthority exists)
   // ═══════════════════════════════════════════════════════════════════════════
-  if (observedKeys.has(ObservationKey.CROP_UNKNOWN) && 
+  if (!hasCropContext && 
+      observedKeys.has(ObservationKey.CROP_UNKNOWN) && 
       !observedKeys.has(ObservationKey.CROP_IDENTIFIED)) {
     return {
       scope: ClarificationScope.IDENTIFY_CROP,

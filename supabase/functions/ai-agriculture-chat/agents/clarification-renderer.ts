@@ -7,8 +7,12 @@
  * Convert ObservationKeys to farmer-friendly language safely.
  * The LLM ONLY translates - it NEVER decides anything.
  * 
+ * PHASE-8.1 UPDATE:
+ * - Stage-aware framing when CropContextAuthority exists
+ * - Prepend crop + stage info to clarification questions (NO DIAGNOSIS)
+ * 
  * RULES:
- * - Input: ClarificationScope + ObservationKeys + Language
+ * - Input: ClarificationScope + ObservationKeys + Language + optional CropContext
  * - Output: Question + Options (validated for safety)
  * - LLM is a RENDERER ONLY - no decisions
  * - Hard validation gate rejects unsafe output
@@ -17,8 +21,9 @@
  */
 
 import { ObservationKey } from '../decision/observation-ontology.ts';
+import { type CropContextAuthority, formatCropContextFrame } from '../decision/context-authority.ts';
 
-export const CLARIFICATION_RENDERER_VERSION = '1.0.0';
+export const CLARIFICATION_RENDERER_VERSION = '1.1.0'; // Phase-8.1 update
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLARIFICATION SCOPE ENUM (PHASE-8)
@@ -50,6 +55,8 @@ export interface ClarificationRenderInput {
     no_treatment: true;
     no_assumptions: true;
   };
+  /** PHASE-8.1: Optional crop context for stage-aware framing */
+  cropContext?: CropContextAuthority | null;
 }
 
 export interface ClarificationRenderOutput {
@@ -60,6 +67,8 @@ export interface ClarificationRenderOutput {
   violations: string[];
   scope: ClarificationScope;
   rendered_by: 'TEMPLATE' | 'LLM';
+  /** PHASE-8.1: Whether crop context framing was applied */
+  crop_framing_applied?: boolean;
 }
 
 export interface SafetyValidationResult {
@@ -289,11 +298,13 @@ export function validateClarificationSafety(
 /**
  * Render clarification using templates (no LLM needed).
  * Templates are pre-validated and safe.
+ * 
+ * PHASE-8.1: Added crop context framing for stage-aware questions.
  */
 export function renderClarification(
   input: ClarificationRenderInput
 ): ClarificationRenderOutput {
-  const { scope, language_code, max_options, turn_count } = input;
+  const { scope, language_code, max_options, turn_count, cropContext } = input;
   
   // Get template for this scope and language
   const template = CLARIFICATION_TEMPLATES[scope]?.[language_code];
@@ -312,27 +323,45 @@ export function renderClarification(
       validation_passed: true, // Templates are pre-validated
       violations: [],
       scope,
-      rendered_by: 'TEMPLATE'
+      rendered_by: 'TEMPLATE',
+      crop_framing_applied: false
     };
   }
   
   // Limit options to max_options
   const limitedOptions = template.options.slice(0, max_options);
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-8.1: Stage-Aware Framing (NO DIAGNOSIS)
+  // If crop context exists, prepend crop + stage info to question
+  // ═══════════════════════════════════════════════════════════════════════════
+  let finalQuestion = template.question;
+  let cropFramingApplied = false;
+  
+  if (cropContext && cropContext.crop_name && scope !== ClarificationScope.IDENTIFY_CROP) {
+    // Prepend crop context frame (e.g., "🌾 तुमच्या गव्हामध्ये (Tillering अवस्था)")
+    const cropFrame = formatCropContextFrame(cropContext, language_code);
+    
+    // Format: "{CropFrame}\n\n{Question}"
+    finalQuestion = `${cropFrame}\n\n${template.question}`;
+    cropFramingApplied = true;
+  }
+  
   // Templates are pre-validated, but run safety check anyway
   const safetyResult = validateClarificationSafety({
-    question: template.question,
+    question: finalQuestion,
     options: limitedOptions
   });
   
   return {
-    question: template.question,
+    question: finalQuestion,
     options: limitedOptions,
     photo_request: scope === ClarificationScope.PHOTO_ONLY,
     validation_passed: safetyResult.valid,
     violations: safetyResult.violations,
     scope,
-    rendered_by: 'TEMPLATE'
+    rendered_by: 'TEMPLATE',
+    crop_framing_applied: cropFramingApplied
   };
 }
 

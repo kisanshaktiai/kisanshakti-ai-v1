@@ -156,7 +156,14 @@ import {
 import { mapToObservationKeys, serializeKeys } from './observation-key-mapper.ts';
 import { ObservationKey } from '../decision/observation-ontology.ts';
 
-export const ORCHESTRATOR_VERSION = '2.0.0';
+// PHASE-8.1: Crop Context Authority
+import { 
+  buildCropContextFromLandContext, 
+  hasCropContextAuthority,
+  type CropContextAuthority 
+} from '../decision/context-authority.ts';
+
+export const ORCHESTRATOR_VERSION = '2.1.0'; // Phase-8.1 update
 
 // Response types
 export type OrchestratorResponseType = 
@@ -887,17 +894,39 @@ export class AIAgentOrchestrator {
       console.log(`      Severity words: ${observationExtraction.severity_words.join(', ') || 'none'}`);
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // STAGE 2.5: PHASE-8 OBSERVATION KEY MAPPING (REQUIRED)
-      // Convert observations to canonical ObservationKeys - MUST pass landContext
+      // STAGE 2.5: PHASE-8/8.1 OBSERVATION KEY MAPPING (REQUIRED)
+      // Convert observations to canonical ObservationKeys
+      // PHASE-8.1: Build CropContextAuthority from landContext
       // ═══════════════════════════════════════════════════════════════════════════
       console.log('   🔑 Stage 2.5: ObservationKey Mapping...');
       
+      // PHASE-8.1: Build CropContextAuthority from land context
+      const cropContextAuthority = buildCropContextFromLandContext(landContext ? {
+        current_crop: landContext.current_crop,
+        growth_stage: landContext.growth_stage,
+        days_since_sowing: landContext.days_since_sowing,
+        sowing_date: landContext.sowing_date,
+        expected_harvest_date: landContext.expected_harvest_date,
+        crop_variety: landContext.crop_variety,
+        crop_data_source: landContext.crop_data_source
+      } : undefined);
+      
+      const hasCropContext = hasCropContextAuthority(cropContextAuthority);
+      
+      if (hasCropContext) {
+        console.log(`      🌾 CropContextAuthority: ${cropContextAuthority!.crop_name} (${cropContextAuthority!.growth_stage}, DAS: ${cropContextAuthority!.days_since_sowing})`);
+      } else {
+        console.log('      ⚠️ No CropContextAuthority available');
+      }
+      
+      // PHASE-8.1: Pass cropContext to ObservationKey mapper
       const observationKeyResult = mapToObservationKeys(
         observationExtraction,
         landContext ? {
           current_crop: landContext.current_crop,
           growth_stage: landContext.growth_stage
-        } : undefined
+        } : undefined,
+        cropContextAuthority // PHASE-8.1: CropContextAuthority
       );
       const observationKeys = observationKeyResult.keys;
       
@@ -908,16 +937,16 @@ export class AIAgentOrchestrator {
       console.log(`      Keys: ${serializeKeys(observationKeys).join(', ')}`);
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // PHASE-8 GUARDRAIL: Prevent CROP_UNKNOWN when landContext has crop
+      // PHASE-8/8.1 GUARDRAIL: Prevent CROP_UNKNOWN when CropContextAuthority exists
       // This invariant prevents regression of the crop identification bug
       // ═══════════════════════════════════════════════════════════════════════════
-      if (landContext?.current_crop && observationKeys.has(ObservationKey.CROP_UNKNOWN)) {
-        console.error('   ❌ PHASE-8 VIOLATION: Land has crop but ObservationKey says CROP_UNKNOWN');
-        console.error(`      landContext.current_crop: ${landContext.current_crop}`);
+      if (hasCropContext && observationKeys.has(ObservationKey.CROP_UNKNOWN)) {
+        console.error('   ❌ PHASE-8.1 VIOLATION: CropContextAuthority exists but ObservationKey says CROP_UNKNOWN');
+        console.error(`      cropContextAuthority.crop_name: ${cropContextAuthority!.crop_name}`);
         console.error(`      observationExtraction.crop_mentioned: ${observationExtraction.crop_mentioned}`);
         throw new Error(
-          `PHASE-8 VIOLATION: Land has crop (${landContext.current_crop}) but ObservationKey says CROP_UNKNOWN. ` +
-          `This indicates a bug in mapToObservationKeys() - it should use landContext.current_crop as fallback.`
+          `PHASE-8.1 VIOLATION: CropContextAuthority has crop (${cropContextAuthority!.crop_name}) but ObservationKey says CROP_UNKNOWN. ` +
+          `This indicates a bug in mapToObservationKeys() - it should use cropContext.crop_name as fallback.`
         );
       }
       
@@ -959,7 +988,9 @@ export class AIAgentOrchestrator {
           observations: observationExtraction,
           understandingResult: understandingResult,
           hasLandContext: !!landContext,
-          diagnosisRulesFired: false // No diagnosis rules have fired yet
+          diagnosisRulesFired: false, // No diagnosis rules have fired yet
+          hasCropContext: hasCropContext, // PHASE-8.1: Skip crop clarification
+          cropContext: cropContextAuthority // PHASE-8.1: For stage-aware framing
         };
         
         const clarificationResponse = generateScopedClarification(scopedClarificationInput);
@@ -1011,6 +1042,14 @@ export class AIAgentOrchestrator {
           unknown_count: observationKeyResult.unknown_count,
           had_land_context_crop: !!landContext?.current_crop
         });
+        // PHASE-8.1: Log CropContextAuthority
+        if (hasCropContext && cropContextAuthority) {
+          auditLoggerEarly.logCropContextAuthority({
+            crop: cropContextAuthority.crop_name,
+            stage: cropContextAuthority.growth_stage,
+            days_since_sowing: cropContextAuthority.days_since_sowing
+          });
+        }
         auditLoggerEarly.logUnderstandingCheck({
           understanding_confidence: understandingResult.understanding_confidence,
           contradiction_detected: understandingResult.contradiction_detected,
