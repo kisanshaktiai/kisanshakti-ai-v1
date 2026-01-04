@@ -684,6 +684,22 @@ export class AIAgentOrchestrator {
       console.log(`⏭️ [${traceId}] Static gate passed - continuing to AI pipeline`);
       
       // ========================================
+      // PHASE 0.4A: EARLY NUMBER DETECTION (BEFORE NLU)
+      // Detect if farmer sent a number to select previous option
+      // CRITICAL FIX 3: This MUST happen before NLU to prevent re-clarification loop
+      // ========================================
+      console.log('\n🔢 PHASE 0.4A: Early Option Detection (Pre-NLU)...');
+      
+      // Track if farmer selected an option - used to bypass clarification later
+      let bypassClarification = false;
+      
+      // Detect numeric/Devanagari option selection patterns
+      const isNumberSelection = /^[१२३1-3]$/.test(farmerMessage.trim());
+      const pendingOptions = options.sessionState?.pendingClarificationOptions || [];
+      
+      console.log(`   📋 Input: "${farmerMessage}" | IsNumber: ${isNumberSelection} | PendingOptions: ${pendingOptions.length}`);
+      
+      // ========================================
       // PHASE 0.5: OPTION SELECTION HANDLER
       // Detects when farmer responds to clarification options (1, 2, 3)
       // ========================================
@@ -693,10 +709,10 @@ export class AIAgentOrchestrator {
       let matchedObservation: { observation: string; likely_cause: string } | null = null;
       
       // Check if farmer is responding to previous clarification options
-      if (options.sessionState?.pendingClarificationOptions?.length > 0) {
+      if (pendingOptions.length > 0) {
         const matchResult = matchFarmerResponseToOption(
           farmerMessage,
-          options.sessionState.pendingClarificationOptions
+          pendingOptions
         );
         
         if (matchResult.matched && matchResult.matched_option) {
@@ -712,7 +728,14 @@ export class AIAgentOrchestrator {
           processedFarmerMessage = matchResult.matched_option;
           agentsUsed.push('OPTION_MATCHER');
           
+          // CRITICAL FIX 4: Set bypass flag to skip clarification generation
+          bypassClarification = true;
+          
           console.log(`   📋 Mapped to observation: "${matchedObservation.observation}" → likely cause: ${matchedObservation.likely_cause}`);
+          console.log(`   🚫 Bypass clarification: ${bypassClarification}`);
+        } else if (isNumberSelection) {
+          // Farmer sent a number but no options to match - still treat as selection attempt
+          console.log(`   ⚠️ Number selection without matching options - may be stale session`);
         } else {
           console.log(`   ⏭️ No option match detected, processing as new query`);
         }
@@ -933,8 +956,14 @@ export class AIAgentOrchestrator {
         });
       }
       
-      // Check if clarification is needed (low confidence)
-      if (requiresClarification(intentConfidence)) {
+      // CRITICAL FIX 4: Check if clarification should be BYPASSED
+      // Skip clarification when farmer already selected an option
+      if (bypassClarification) {
+        console.log(`   🚫 BYPASSING clarification - farmer already selected option, proceeding to Decision Brain`);
+      }
+      
+      // Check if clarification is needed (low confidence) - BUT SKIP IF BYPASS FLAG IS SET
+      if (requiresClarification(intentConfidence) && !bypassClarification) {
         console.log(`   ⚠️ Low confidence (${(intentConfidence * 100).toFixed(0)}%) - generating clarification`);
         
         // Extract NLU clarification hints - CRITICAL FIX: Default to OPTIONS_PLUS_PHOTO for low confidence
@@ -993,12 +1022,9 @@ export class AIAgentOrchestrator {
             }
           };
         }
-      }
-      
-      // CRITICAL FIX: Skip clarification if farmer just responded to options
-      // (matchedObservation means they already answered a clarification)
-      if (matchedObservation) {
-        console.log(`   ⏭️ Skipping low-confidence clarification - farmer already selected option`);
+      } else if (requiresClarification(intentConfidence) && bypassClarification) {
+        // Log that we skipped clarification due to option selection
+        console.log(`   ✅ Clarification SKIPPED (bypass active) - using matched observation for Decision Brain`);
       }
       
       // ========================================
