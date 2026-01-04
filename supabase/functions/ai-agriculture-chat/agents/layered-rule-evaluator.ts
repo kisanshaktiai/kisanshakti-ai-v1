@@ -578,6 +578,584 @@ export const CORE_RULES: Rule[] = [
       warning_severity: 'CRITICAL'
     },
     active: true
+  },
+
+  // ==================== SUGARCANE RULES ====================
+  
+  // --- Sugarcane Pest: Shoot Borer ---
+  {
+    id: 'DIAG_SUGAR_SHOOT_BORER_01',
+    category: RuleCategory.DIAGNOSIS,
+    priority: 85,
+    when: {
+      crop_type: [CropType.SUGARCANE],
+      visual_symptom: [VisualSymptom.DEAD_HEART],
+      crop_stage: [CropStage.TILLERING, CropStage.VEGETATIVE]
+    },
+    then: {
+      possible_cause: 'SHOOT_BORER',
+      cause_category: DiagnosisCategory.PEST,
+      cause_confidence: 0.9
+    },
+    scientific_basis: 'ICAR Sugarcane Research - Dead heart in young canes indicates Chilo infuscatellus',
+    active: true
+  },
+  {
+    id: 'PRESC_SUGAR_SHOOT_BORER_01',
+    category: RuleCategory.PRESCRIPTION,
+    priority: 85,
+    when: {
+      crop_type: [CropType.SUGARCANE],
+      visual_symptom: [VisualSymptom.DEAD_HEART],
+      crop_stage: [CropStage.TILLERING, CropStage.VEGETATIVE],
+      data_confidence: [DataConfidence.MEDIUM, DataConfidence.HIGH]
+    },
+    then: {
+      action_type: 'SPRAY_INSECTICIDE',
+      action_details: {
+        pest: 'SHOOT_BORER',
+        active_ingredient: 'CHLORANTRANILIPROLE',
+        formulation: '18.5% SC',
+        dosage: '0.4 ml/L',
+        method: 'FOLIAR_SPRAY',
+        timing: 'MORNING_EVENING',
+        phi_days: 21
+      },
+      product_reference: 'CORAGEN_CHLORANTRANILIPROLE'
+    },
+    scientific_basis: 'ICAR IPM recommendation for early borer attack',
+    active: true
+  },
+
+  // --- Sugarcane Pest: Stem Borer ---
+  {
+    id: 'DIAG_SUGAR_STEM_BORER_01',
+    category: RuleCategory.DIAGNOSIS,
+    priority: 82,
+    when: {
+      crop_type: [CropType.SUGARCANE],
+      visual_symptom: [VisualSymptom.STEM_BORING, VisualSymptom.HOLES_IN_STEM],
+      crop_stage: [CropStage.GRAND_GROWTH, CropStage.MATURITY]
+    },
+    then: {
+      possible_cause: 'STEM_BORER',
+      cause_category: DiagnosisCategory.PEST,
+      cause_confidence: 0.88
+    },
+    scientific_basis: 'ICAR - Stem tunneling in mature canes indicates Chilo sacchariphagus',
+    active: true
+  },
+  {
+    id: 'PRESC_SUGAR_STEM_BORER_BIO_01',
+    category: RuleCategory.PRESCRIPTION,
+    priority: 80,
+    when: {
+      crop_type: [CropType.SUGARCANE],
+      visual_symptom: [VisualSymptom.STEM_BORING],
+      data_confidence: [DataConfidence.MEDIUM, DataConfidence.HIGH]
+    },
+    then: {
+      action_type: 'RELEASE_BIOCONTROL',
+      action_details: {
+        pest: 'STEM_BORER',
+        bioagent: 'TRICHOGRAMMA_CHILONIS',
+        release_rate: '50000/acre',
+        frequency: '6 releases at weekly interval',
+        method: 'CARD_RELEASE'
+      },
+      product_reference: 'TRICHOGRAMMA_CARDS'
+    },
+    scientific_basis: 'ICAR IPM - Biocontrol as first line for stem borer',
+    active: true
+  },
+
+  // --- Sugarcane Disease: Red Rot ---
+  {
+    id: 'DIAG_SUGAR_RED_ROT_01',
+    category: RuleCategory.DIAGNOSIS,
+    priority: 88,
+    when: {
+      crop_type: [CropType.SUGARCANE],
+      visual_symptom: [VisualSymptom.STEM_DISCOLORATION, VisualSymptom.WILTING],
+      crop_stage: [CropStage.GRAND_GROWTH, CropStage.MATURITY]
+    },
+    then: {
+      possible_cause: 'RED_ROT',
+      cause_category: DiagnosisCategory.DISEASE,
+      cause_confidence: 0.85
+    },
+    scientific_basis: 'ICAR SBI - Red internal tissue with alcohol smell indicates Colletotrichum falcatum',
+    active: true
+  },
+  {
+    id: 'PRESC_SUGAR_RED_ROT_01',
+    category: RuleCategory.PRESCRIPTION,
+    priority: 85,
+    when: {
+      crop_type: [CropType.SUGARCANE],
+      visual_symptom: [VisualSymptom.STEM_DISCOLORATION],
+      data_confidence: [DataConfidence.MEDIUM, DataConfidence.HIGH]
+    },
+    then: {
+      action_type: 'REMOVE_INFECTED',
+      action_details: {
+        disease: 'RED_ROT',
+        method: 'ROGUE_INFECTED_CLUMPS',
+        preventive: 'IMPROVE_DRAINAGE',
+        fungicide: 'CARBENDAZIM_SETT_TREATMENT'
+      }
+    },
+    scientific_basis: 'ICAR - No curative treatment, remove and prevent spread',
+    active: true
+  },
+
+  // --- Sugarcane: Whitefly ---
+  {
+    id: 'DIAG_SUGAR_WHITEFLY_01',
+    category: RuleCategory.DIAGNOSIS,
+    priority: 78,
+    when: {
+      crop_type: [CropType.SUGARCANE],
+      visual_symptom: [VisualSymptom.SOOTY_MOLD, VisualSymptom.GENERAL_YELLOWING]
+    },
+    then: {
+      possible_cause: 'WHITEFLY',
+      cause_category: DiagnosisCategory.PEST,
+      cause_confidence: 0.82
+    },
+    scientific_basis: 'ICAR - Sooty mold on leaves indicates whitefly honeydew',
+    active: true
+  },
+
+  // ==================== WHEAT RULES ====================
+  
+  // --- Wheat Disease: Yellow Rust ---
+  {
+    id: 'DIAG_WHEAT_YELLOW_RUST_01',
+    category: RuleCategory.DIAGNOSIS,
+    priority: 90,
+    when: {
+      crop_type: [CropType.WHEAT],
+      visual_symptom: [VisualSymptom.YELLOW_STRIPES, VisualSymptom.PUSTULES],
+      crop_stage: [CropStage.TILLERING, CropStage.BOOTING, CropStage.HEADING]
+    },
+    then: {
+      possible_cause: 'YELLOW_RUST',
+      cause_category: DiagnosisCategory.DISEASE,
+      cause_confidence: 0.92
+    },
+    scientific_basis: 'ICAR IIWBR - Yellow stripe pattern with uredinia indicates Puccinia striiformis',
+    active: true
+  },
+  {
+    id: 'PRESC_WHEAT_YELLOW_RUST_01',
+    category: RuleCategory.PRESCRIPTION,
+    priority: 88,
+    when: {
+      crop_type: [CropType.WHEAT],
+      visual_symptom: [VisualSymptom.YELLOW_STRIPES, VisualSymptom.PUSTULES],
+      data_confidence: [DataConfidence.MEDIUM, DataConfidence.HIGH]
+    },
+    then: {
+      action_type: 'SPRAY_FUNGICIDE',
+      action_details: {
+        disease: 'YELLOW_RUST',
+        active_ingredient: 'PROPICONAZOLE',
+        formulation: '25% EC',
+        dosage: '1 ml/L',
+        method: 'FOLIAR_SPRAY',
+        timing: 'EARLY_MORNING',
+        repeat_after_days: 15,
+        phi_days: 35
+      },
+      product_reference: 'TILT_PROPICONAZOLE'
+    },
+    scientific_basis: 'ICAR IPM - Immediate triazole spray on rust detection',
+    active: true
+  },
+
+  // --- Wheat Disease: Powdery Mildew ---
+  {
+    id: 'DIAG_WHEAT_POWDERY_MILDEW_01',
+    category: RuleCategory.DIAGNOSIS,
+    priority: 85,
+    when: {
+      crop_type: [CropType.WHEAT],
+      visual_symptom: [VisualSymptom.WHITE_POWDER, VisualSymptom.SPOTS_POWDERY]
+    },
+    then: {
+      possible_cause: 'POWDERY_MILDEW',
+      cause_category: DiagnosisCategory.DISEASE,
+      cause_confidence: 0.9
+    },
+    scientific_basis: 'ICAR - White powdery growth on leaves indicates Blumeria graminis',
+    active: true
+  },
+  {
+    id: 'PRESC_WHEAT_POWDERY_MILDEW_01',
+    category: RuleCategory.PRESCRIPTION,
+    priority: 82,
+    when: {
+      crop_type: [CropType.WHEAT],
+      visual_symptom: [VisualSymptom.WHITE_POWDER],
+      data_confidence: [DataConfidence.MEDIUM, DataConfidence.HIGH]
+    },
+    then: {
+      action_type: 'SPRAY_FUNGICIDE',
+      action_details: {
+        disease: 'POWDERY_MILDEW',
+        active_ingredient: 'SULFUR',
+        formulation: '80% WP',
+        dosage: '2.5 g/L',
+        method: 'FOLIAR_SPRAY',
+        timing: 'AVOID_HOT_HOURS'
+      },
+      product_reference: 'SULFUR_WP'
+    },
+    scientific_basis: 'ICAR - Wettable sulfur effective for powdery mildew',
+    active: true
+  },
+
+  // --- Wheat Pest: Aphid ---
+  {
+    id: 'DIAG_WHEAT_APHID_01',
+    category: RuleCategory.DIAGNOSIS,
+    priority: 80,
+    when: {
+      crop_type: [CropType.WHEAT],
+      visual_symptom: [VisualSymptom.CURLED_LEAVES, VisualSymptom.HONEYDEW],
+      crop_stage: [CropStage.HEADING, CropStage.FLOWERING, CropStage.GRAIN_FILLING]
+    },
+    then: {
+      possible_cause: 'APHID',
+      cause_category: DiagnosisCategory.PEST,
+      cause_confidence: 0.85
+    },
+    scientific_basis: 'ICAR - Curled leaves with sticky residue indicates aphid infestation',
+    active: true
+  },
+  {
+    id: 'PRESC_WHEAT_APHID_01',
+    category: RuleCategory.PRESCRIPTION,
+    priority: 78,
+    when: {
+      crop_type: [CropType.WHEAT],
+      visual_symptom: [VisualSymptom.CURLED_LEAVES, VisualSymptom.HONEYDEW],
+      data_confidence: [DataConfidence.MEDIUM, DataConfidence.HIGH]
+    },
+    then: {
+      action_type: 'SPRAY_INSECTICIDE',
+      action_details: {
+        pest: 'APHID',
+        active_ingredient: 'IMIDACLOPRID',
+        formulation: '17.8% SL',
+        dosage: '0.3 ml/L',
+        method: 'FOLIAR_SPRAY',
+        phi_days: 21
+      },
+      product_reference: 'CONFIDOR_IMIDACLOPRID'
+    },
+    scientific_basis: 'ICAR IPM - Systemic insecticide for heavy aphid pressure',
+    active: true
+  },
+
+  // --- Wheat: Termite ---
+  {
+    id: 'DIAG_WHEAT_TERMITE_01',
+    category: RuleCategory.DIAGNOSIS,
+    priority: 82,
+    when: {
+      crop_type: [CropType.WHEAT],
+      visual_symptom: [VisualSymptom.WILTING, VisualSymptom.ROOT_DAMAGE],
+      crop_stage: [CropStage.SEEDLING, CropStage.VEGETATIVE, CropStage.TILLERING]
+    },
+    then: {
+      possible_cause: 'TERMITE',
+      cause_category: DiagnosisCategory.PEST,
+      cause_confidence: 0.8
+    },
+    scientific_basis: 'ICAR - Sudden wilting with root damage in patches indicates termites',
+    active: true
+  },
+
+  // ==================== COTTON RULES ====================
+  
+  // --- Cotton Pest: Pink Bollworm ---
+  {
+    id: 'DIAG_COTTON_PINK_BOLLWORM_01',
+    category: RuleCategory.DIAGNOSIS,
+    priority: 92,
+    when: {
+      crop_type: [CropType.COTTON],
+      visual_symptom: [VisualSymptom.BOLL_DAMAGE, VisualSymptom.ROSETTE_FLOWER],
+      crop_stage: [CropStage.FLOWERING, CropStage.BOLL_FORMATION, CropStage.BOLL_OPENING]
+    },
+    then: {
+      possible_cause: 'PINK_BOLLWORM',
+      cause_category: DiagnosisCategory.PEST,
+      cause_confidence: 0.93
+    },
+    scientific_basis: 'ICAR CICR - Rosetted flowers and bored bolls indicate Pectinophora gossypiella',
+    active: true
+  },
+  {
+    id: 'PRESC_COTTON_PINK_BOLLWORM_01',
+    category: RuleCategory.PRESCRIPTION,
+    priority: 90,
+    when: {
+      crop_type: [CropType.COTTON],
+      visual_symptom: [VisualSymptom.BOLL_DAMAGE, VisualSymptom.ROSETTE_FLOWER],
+      data_confidence: [DataConfidence.MEDIUM, DataConfidence.HIGH]
+    },
+    then: {
+      action_type: 'SPRAY_INSECTICIDE',
+      action_details: {
+        pest: 'PINK_BOLLWORM',
+        active_ingredient: 'EMAMECTIN_BENZOATE',
+        formulation: '5% SG',
+        dosage: '0.4 g/L',
+        method: 'FOLIAR_SPRAY',
+        timing: 'EVENING',
+        phi_days: 14
+      },
+      product_reference: 'PROCLAIM_EMAMECTIN'
+    },
+    scientific_basis: 'ICAR CICR IPM for bollworm complex',
+    active: true
+  },
+
+  // --- Cotton Pest: American Bollworm ---
+  {
+    id: 'DIAG_COTTON_AMERICAN_BOLLWORM_01',
+    category: RuleCategory.DIAGNOSIS,
+    priority: 90,
+    when: {
+      crop_type: [CropType.COTTON],
+      visual_symptom: [VisualSymptom.BOLL_DAMAGE, VisualSymptom.LARGE_HOLES],
+      crop_stage: [CropStage.FLOWERING, CropStage.BOLL_FORMATION]
+    },
+    then: {
+      possible_cause: 'AMERICAN_BOLLWORM',
+      cause_category: DiagnosisCategory.PEST,
+      cause_confidence: 0.88
+    },
+    scientific_basis: 'ICAR - Large irregular holes in bolls indicate Helicoverpa armigera',
+    active: true
+  },
+  {
+    id: 'PRESC_COTTON_BOLLWORM_BIO_01',
+    category: RuleCategory.PRESCRIPTION,
+    priority: 88,
+    when: {
+      crop_type: [CropType.COTTON],
+      visual_symptom: [VisualSymptom.BOLL_DAMAGE],
+      data_confidence: [DataConfidence.MEDIUM, DataConfidence.HIGH]
+    },
+    then: {
+      action_type: 'SPRAY_BIOPESTICIDE',
+      action_details: {
+        pest: 'BOLLWORM',
+        bioagent: 'NPV_HANPV',
+        dosage: '250 LE/acre',
+        method: 'FOLIAR_SPRAY',
+        timing: 'LATE_EVENING',
+        add_jaggery: '0.5%'
+      },
+      product_reference: 'HANPV_BIOCONTROL'
+    },
+    scientific_basis: 'ICAR IPM - HaNPV as first line for bollworm',
+    active: true
+  },
+
+  // --- Cotton Pest: Whitefly ---
+  {
+    id: 'DIAG_COTTON_WHITEFLY_01',
+    category: RuleCategory.DIAGNOSIS,
+    priority: 85,
+    when: {
+      crop_type: [CropType.COTTON],
+      visual_symptom: [VisualSymptom.STICKY_LEAVES, VisualSymptom.SOOTY_MOLD, VisualSymptom.GENERAL_YELLOWING]
+    },
+    then: {
+      possible_cause: 'WHITEFLY',
+      cause_category: DiagnosisCategory.PEST,
+      cause_confidence: 0.88
+    },
+    scientific_basis: 'ICAR - Sticky leaves with sooty mold indicates Bemisia tabaci',
+    active: true
+  },
+  {
+    id: 'PRESC_COTTON_WHITEFLY_01',
+    category: RuleCategory.PRESCRIPTION,
+    priority: 82,
+    when: {
+      crop_type: [CropType.COTTON],
+      visual_symptom: [VisualSymptom.STICKY_LEAVES, VisualSymptom.SOOTY_MOLD],
+      data_confidence: [DataConfidence.MEDIUM, DataConfidence.HIGH]
+    },
+    then: {
+      action_type: 'SPRAY_INSECTICIDE',
+      action_details: {
+        pest: 'WHITEFLY',
+        active_ingredient: 'SPIROMESIFEN',
+        formulation: '22.9% SC',
+        dosage: '0.8 ml/L',
+        method: 'FOLIAR_SPRAY',
+        target: 'UNDERSURFACE_OF_LEAVES',
+        phi_days: 21
+      },
+      product_reference: 'OBERON_SPIROMESIFEN'
+    },
+    scientific_basis: 'ICAR CICR - Growth regulator effective against whitefly nymphs',
+    active: true
+  },
+
+  // --- Cotton Disease: Bacterial Blight ---
+  {
+    id: 'DIAG_COTTON_BACTERIAL_BLIGHT_01',
+    category: RuleCategory.DIAGNOSIS,
+    priority: 86,
+    when: {
+      crop_type: [CropType.COTTON],
+      visual_symptom: [VisualSymptom.ANGULAR_SPOTS, VisualSymptom.WATER_SOAKED_LESIONS]
+    },
+    then: {
+      possible_cause: 'BACTERIAL_BLIGHT',
+      cause_category: DiagnosisCategory.DISEASE,
+      cause_confidence: 0.87
+    },
+    scientific_basis: 'ICAR - Angular water-soaked spots indicate Xanthomonas citri pv. malvacearum',
+    active: true
+  },
+  {
+    id: 'PRESC_COTTON_BACTERIAL_BLIGHT_01',
+    category: RuleCategory.PRESCRIPTION,
+    priority: 84,
+    when: {
+      crop_type: [CropType.COTTON],
+      visual_symptom: [VisualSymptom.ANGULAR_SPOTS],
+      data_confidence: [DataConfidence.MEDIUM, DataConfidence.HIGH]
+    },
+    then: {
+      action_type: 'SPRAY_BACTERICIDE',
+      action_details: {
+        disease: 'BACTERIAL_BLIGHT',
+        active_ingredient: 'STREPTOCYCLINE',
+        formulation: 'SP',
+        dosage: '0.1 g/L',
+        combine_with: 'COPPER_OXYCHLORIDE_2.5g/L',
+        method: 'FOLIAR_SPRAY'
+      },
+      product_reference: 'STREPTOCYCLINE_COC_MIX'
+    },
+    scientific_basis: 'ICAR - Antibiotic + copper combination for bacterial control',
+    active: true
+  },
+
+  // --- Cotton: Jassid/Leafhopper ---
+  {
+    id: 'DIAG_COTTON_JASSID_01',
+    category: RuleCategory.DIAGNOSIS,
+    priority: 78,
+    when: {
+      crop_type: [CropType.COTTON],
+      visual_symptom: [VisualSymptom.LEAF_CURLING, VisualSymptom.LEAF_EDGE_BURN]
+    },
+    then: {
+      possible_cause: 'JASSID',
+      cause_category: DiagnosisCategory.PEST,
+      cause_confidence: 0.82
+    },
+    scientific_basis: 'ICAR - Leaf curling with marginal burn indicates Amrasca biguttula',
+    active: true
+  },
+
+  // ==================== COMMON CROP RULES ====================
+  
+  // --- Common Pest: Thrips ---
+  {
+    id: 'DIAG_COMMON_THRIPS_01',
+    category: RuleCategory.DIAGNOSIS,
+    priority: 75,
+    when: {
+      visual_symptom: [VisualSymptom.SILVERING, VisualSymptom.LEAF_DISTORTION]
+    },
+    then: {
+      possible_cause: 'THRIPS',
+      cause_category: DiagnosisCategory.PEST,
+      cause_confidence: 0.8
+    },
+    scientific_basis: 'ICAR - Silvery sheen on leaves indicates thrips feeding damage',
+    active: true
+  },
+
+  // --- Common Disease: Root Rot ---
+  {
+    id: 'DIAG_COMMON_ROOT_ROT_01',
+    category: RuleCategory.DIAGNOSIS,
+    priority: 80,
+    when: {
+      visual_symptom: [VisualSymptom.WILTING, VisualSymptom.ROOT_DISCOLORATION],
+      water_stress: [WaterStress.WATERLOGGED]
+    },
+    then: {
+      possible_cause: 'ROOT_ROT',
+      cause_category: DiagnosisCategory.DISEASE,
+      cause_confidence: 0.85
+    },
+    scientific_basis: 'ICAR - Wilting with waterlogging indicates fungal root rot',
+    active: true
+  },
+
+  // --- Safety: Flowering Stage Pollinator Protection ---
+  {
+    id: 'SAFETY_POLLINATOR_PROTECT_01',
+    category: RuleCategory.SAFETY,
+    priority: 98,
+    when: {
+      crop_stage: [CropStage.FLOWERING],
+      custom: (state) => state.severity !== SeverityLevel.CRITICAL
+    },
+    then: {
+      block_prescription: false,
+      safety_message: 'Crop in flowering stage - avoid neonicotinoids and bee-toxic chemicals. Use bio-pesticides or spray in late evening only.'
+    },
+    scientific_basis: 'FAO Pollinator Protection Guidelines',
+    active: true
+  },
+
+  // === WARNING RULES FOR SPECIFIC CONDITIONS ===
+  {
+    id: 'WARN_BOLLWORM_OUTBREAK_01',
+    category: RuleCategory.WARNING,
+    priority: 88,
+    when: {
+      crop_type: [CropType.COTTON],
+      visual_symptom: [VisualSymptom.BOLL_DAMAGE],
+      severity: [SeverityLevel.HIGH, SeverityLevel.CRITICAL]
+    },
+    then: {
+      warning_type: 'BOLLWORM_OUTBREAK',
+      warning_message: 'High bollworm pressure detected. Immediate IPM action required to prevent crop loss.',
+      warning_severity: 'HIGH'
+    },
+    active: true
+  },
+  {
+    id: 'WARN_RUST_SPREAD_01',
+    category: RuleCategory.WARNING,
+    priority: 92,
+    when: {
+      crop_type: [CropType.WHEAT],
+      visual_symptom: [VisualSymptom.YELLOW_STRIPES, VisualSymptom.PUSTULES],
+      ndvi_trend: [NDVITrend.SHARP_DECLINE]
+    },
+    then: {
+      warning_type: 'RUST_EPIDEMIC_RISK',
+      warning_message: 'Yellow rust spreading rapidly. Alert neighboring farmers. Immediate fungicide spray required.',
+      warning_severity: 'CRITICAL'
+    },
+    active: true
   }
 ];
 
