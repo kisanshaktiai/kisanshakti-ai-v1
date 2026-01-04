@@ -27,37 +27,16 @@ import {
   CATEGORY_PRIORITY
 } from './diagnosis-conflict-resolver.ts';
 
-// PHASE-10: Import Wheat IPM Rules
-import { ALL_WHEAT_IPM_RULES, validateWheatBiocontrol } from '../rules/wheat-ipm-rules.ts';
-
-// ==================== RULE CATEGORIES ====================
+// Define Rule types locally to avoid circular imports
+// (wheat-ipm-rules.ts also defines these locally)
 
 export enum RuleCategory {
-  OBSERVATION = 1,    // Interpret raw signals (NDVI decline → vegetation stress)
-  DIAGNOSIS = 2,      // Identify possible causes (yellowing + low N → N deficiency)
-  EXCLUSION = 3,      // Rule out misdiagnosis (not disease if no pathogens)
-  SAFETY = 4,         // Can block all further processing (PHI, pollinator)
-  PRESCRIPTION = 5,   // Actions (ONLY if gates pass)
-  WARNING = 6         // Alerts (weather, disease outbreak)
-}
-
-// ==================== RULE INTERFACE ====================
-
-export interface Rule {
-  id: string;
-  category: RuleCategory;
-  priority: number;  // Higher = more important
-  
-  // Conditions - all must match
-  when: RuleConditions;
-  
-  // Assertions when rule fires
-  then: RuleAssertions;
-  
-  // Metadata
-  scientific_basis?: string;
-  requires_confirmation?: boolean;
-  active: boolean;
+  OBSERVATION = 1,
+  DIAGNOSIS = 2,
+  EXCLUSION = 3,
+  SAFETY = 4,
+  PRESCRIPTION = 5,
+  WARNING = 6
 }
 
 export interface RuleConditions {
@@ -72,39 +51,44 @@ export interface RuleConditions {
   water_stress?: WaterStress[];
   data_confidence?: DataConfidence[];
   severity?: SeverityLevel[];
-  
-  // Custom conditions
   custom?: (state: CanonicalState) => boolean;
 }
 
 export interface RuleAssertions {
-  // For OBSERVATION rules
   observation?: string;
   observation_confidence?: number;
-  
-  // For DIAGNOSIS rules
   possible_cause?: string;
   cause_category?: DiagnosisCategory;
   cause_confidence?: number;
-  
-  // For EXCLUSION rules
   exclude_cause?: string;
   exclusion_reason?: string;
-  
-  // For SAFETY rules
   block_prescription?: boolean;
   safety_message?: string;
-  
-  // For PRESCRIPTION rules
   action_type?: string;
   action_details?: Record<string, any>;
   product_reference?: string;
-  
-  // For WARNING rules
   warning_type?: string;
   warning_message?: string;
   warning_severity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 }
+
+export interface Rule {
+  id: string;
+  category: RuleCategory;
+  priority: number;
+  when: RuleConditions;
+  then: RuleAssertions;
+  scientific_basis?: string;
+  requires_confirmation?: boolean;
+  active: boolean;
+}
+
+// PHASE-10: Import Wheat IPM Rules
+// These are imported AFTER types are defined here (wheat-ipm-rules has its own local copies)
+import { 
+  ALL_WHEAT_IPM_RULES, 
+  validateWheatBiocontrol
+} from '../rules/wheat-ipm-rules.ts';
 
 // ==================== RULE EVALUATION RESULT ====================
 
