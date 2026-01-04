@@ -824,10 +824,154 @@ export class AIAgentOrchestrator {
       }
       
       // ========================================
-      // PHASE 1A: NLU PROCESSING
+      // PHASE 1: MASTER PROMPT v3 - 5-STAGE UNDERSTANDING PIPELINE
+      // Stage 1: Language Normalization
+      // Stage 2: Observation Extraction
+      // Stage 3: Symbol Canonicalization (in Phase 2.5)
+      // Stage 4: Understanding Completeness Check
+      // Stage 5: Diagnosis & Prescription (in Phase 4)
       // ========================================
-      console.log('\n📥 PHASE 1: Processing Inputs...');
+      console.log('\n📥 PHASE 1: 5-Stage Understanding Pipeline...');
       
+      // ═══════════════════════════════════════════════════════════════════════════
+      // STAGE 1: LANGUAGE NORMALIZATION (LLM, FLEXIBLE)
+      // Clean farmer input - remove emotion, filler. NO intent, NO cause, NO codes.
+      // ═══════════════════════════════════════════════════════════════════════════
+      console.log('   📝 Stage 1: Language Normalization...');
+      
+      const { normalizeLanguage } = await import('./language-normalizer.ts');
+      const normalizedInput = normalizeLanguage(processedFarmerMessage);
+      agentsUsed.push('LANGUAGE_NORMALIZER');
+      
+      console.log(`      Original: "${normalizedInput.original_text.substring(0, 50)}..."`);
+      console.log(`      Normalized: "${normalizedInput.normalized_text.substring(0, 50)}..."`);
+      console.log(`      Language: ${normalizedInput.detected_language}, Removed: ${normalizedInput.removed_elements.length} elements`);
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // STAGE 2: OBSERVATION EXTRACTION (LLM, STRICT)
+      // Extract ONLY what farmer explicitly states. NO pest, disease, deficiency.
+      // ═══════════════════════════════════════════════════════════════════════════
+      console.log('   👁️ Stage 2: Observation Extraction...');
+      
+      const { extractObservations, validateObservationExtraction } = await import('./observation-extractor.ts');
+      const observationExtraction = extractObservations(normalizedInput.normalized_text, normalizedInput.detected_language);
+      
+      // Validate that no forbidden fields snuck in
+      const observationValidation = validateObservationExtraction(observationExtraction);
+      if (!observationValidation.valid) {
+        console.error(`      ❌ Observation validation FAILED: ${observationValidation.errors.join(', ')}`);
+      }
+      
+      agentsUsed.push('OBSERVATION_EXTRACTOR');
+      
+      console.log(`      Crop: ${observationExtraction.crop_mentioned || 'unknown'}`);
+      console.log(`      Symptoms: ${observationExtraction.raw_symptom_text.length} extracted`);
+      console.log(`      Affected part: ${observationExtraction.affected_part}, Distribution: ${observationExtraction.symptom_distribution}`);
+      console.log(`      Severity words: ${observationExtraction.severity_words.join(', ') || 'none'}`);
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // STAGE 4: UNDERSTANDING COMPLETENESS CHECK (SYMBOLIC - NO LLM)
+      // Determine if we have enough info to proceed or need clarification
+      // ═══════════════════════════════════════════════════════════════════════════
+      console.log('   🎯 Stage 4: Understanding Completeness Check...');
+      
+      const { checkUnderstandingCompleteness, checkPrescriptionGate: checkUnderstandingPrescriptionGate, UnderstandingConfidence } = await import('./understanding-completeness-checker.ts');
+      
+      const understandingResult = checkUnderstandingCompleteness(observationExtraction, landContext ? {
+        current_crop: landContext.current_crop,
+        growth_stage: landContext.growth_stage,
+        days_since_sowing: landContext.days_since_sowing,
+        area_acres: landContext.area_acres
+      } : undefined);
+      
+      agentsUsed.push('UNDERSTANDING_CHECKER');
+      
+      console.log(`      Confidence: ${understandingResult.understanding_confidence} (score: ${understandingResult.completeness_score})`);
+      console.log(`      Missing fields: ${understandingResult.unknown_critical_fields.join(', ') || 'none'}`);
+      console.log(`      Contradictions: ${understandingResult.contradiction_detected.length}`);
+      console.log(`      Clarification required: ${understandingResult.clarification_required}`);
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // STAGE 4B: UNDERSTANDING-BASED CLARIFICATION GATE
+      // If understanding is insufficient, ask clarification BEFORE NLU
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (understandingResult.clarification_required && !bypassClarification) {
+        console.log(`   ⚠️ Understanding insufficient (${understandingResult.understanding_confidence}) - generating rule-based clarification`);
+        
+        // Get clarification options from database based on what's missing
+        const clarificationInput: ClarificationInput = {
+          language: normalizedInput.detected_language,
+          farmer_message: normalizedInput.normalized_text,
+          observations: observationExtraction.raw_symptom_text,
+          crop_code: observationExtraction.crop_mentioned?.toUpperCase() || landContext?.current_crop?.toUpperCase(),
+          clarification_type: understandingResult.clarification_priority === 'crop' ? 'OPTIONS' : 'OPTIONS_PLUS_PHOTO',
+          clarification_options: []
+        };
+        
+        const clarificationResponse = generateClarificationResponse(clarificationInput);
+        agentsUsed.push('RULE_BASED_CLARIFICATION');
+        
+        // Initialize audit logger and log the understanding gate decision
+        const { getAuditLogger } = await import('./audit-logger.ts');
+        const auditLoggerEarly = getAuditLogger();
+        auditLoggerEarly.startTurn({
+          turn_id: `understanding_gate_${Date.now()}`,
+          session_id: sessionId,
+          farmer_id: farmerId,
+          tenant_id: tenantId,
+          trace_id: traceId,
+          farmer_message: farmerMessage,
+          detected_language: normalizedInput.detected_language,
+          land_id: options.landId,
+          raw_text: normalizedInput.original_text,
+          normalized_text: normalizedInput.normalized_text
+        });
+        auditLoggerEarly.logObservationExtraction(observationExtraction);
+        auditLoggerEarly.logUnderstandingCheck({
+          understanding_confidence: understandingResult.understanding_confidence,
+          contradiction_detected: understandingResult.contradiction_detected,
+          clarification_required: true
+        });
+        auditLoggerEarly.logDecision('CLARIFY', 'UNDERSTANDING_GATE');
+        await auditLoggerEarly.completeTurn(Date.now() - startTime);
+        
+        const responseText = clarificationResponse.response_text || this.generateDefaultClarification(
+          normalizedInput.detected_language,
+          normalizedInput.normalized_text,
+          observationExtraction.crop_mentioned || landContext?.current_crop
+        );
+        
+        return {
+          type: 'CLARIFICATION_QUESTION',
+          session_id: sessionId,
+          question: {
+            question_id: `understanding_clarify_${Date.now()}`,
+            text_mr: responseText,
+            text_hi: responseText,
+            text_en: responseText,
+            options: clarificationResponse.options.map((opt, idx) => ({
+              value: String(idx + 1),
+              label: opt
+            }))
+          },
+          metadata: {
+            confidence: understandingResult.completeness_score / 100,
+            safety_status: 'NEEDS_CLARIFICATION',
+            rules_applied: 0,
+            processing_time_ms: Date.now() - startTime,
+            agents_used: agentsUsed,
+            trace_id: traceId,
+            understanding_confidence: understandingResult.understanding_confidence,
+            clarification_reason: understandingResult.clarification_reason,
+            pendingClarificationOptions: clarificationResponse.options
+          }
+        };
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // Continue with NLU processing for backward compatibility
+      // NLU now ONLY extracts observations, NOT pest/disease codes
+      // ═══════════════════════════════════════════════════════════════════════════
       let nluOutput: NLUOutput | null = null;
       try {
         // Use processed message (could be matched option text) for NLU
@@ -1001,6 +1145,9 @@ export class AIAgentOrchestrator {
       const intentLock = lockIntent(detectedIntent, intentConfidence);
       agentsUsed.push('INTENT_LOCK');
       
+      // ═══════════════════════════════════════════════════════════════════════════
+      // AUDIT LOGGER INITIALIZATION - Include new Stage 1-4 data
+      // ═══════════════════════════════════════════════════════════════════════════
       // Initialize audit logger for this turn
       const auditLogger = getAuditLogger();
       auditLogger.startTurn({
@@ -1010,14 +1157,26 @@ export class AIAgentOrchestrator {
         tenant_id: tenantId,
         trace_id: traceId,
         farmer_message: farmerMessage,
-        detected_language: (options.language || 'en') as 'mr' | 'hi' | 'en',
-        land_id: options.landId
+        detected_language: normalizedInput.detected_language,
+        land_id: options.landId,
+        raw_text: normalizedInput.original_text,
+        normalized_text: normalizedInput.normalized_text
+      });
+      
+      // Log observation extraction (Stage 2)
+      auditLogger.logObservationExtraction(observationExtraction);
+      
+      // Log understanding check (Stage 4)
+      auditLogger.logUnderstandingCheck({
+        understanding_confidence: understandingResult.understanding_confidence,
+        contradiction_detected: understandingResult.contradiction_detected,
+        clarification_required: understandingResult.clarification_required
       });
       
       // Log NLU output in contract format
       auditLogger.logNLUOutput({
         intent_label: detectedIntent,
-        observations: nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [],
+        observations: observationExtraction.raw_symptom_text,
         confidence: intentConfidence
       });
       

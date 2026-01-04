@@ -932,6 +932,13 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
   const processingTime = Date.now() - startTime;
   console.log(`⚡ [NLU] Processed in ${processingTime}ms, AI used: ${!!aiResult}, confidence: ${(overallConfidence * 100).toFixed(1)}%`);
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MASTER PROMPT v3 - NLU OUTPUT (Observations Only, NO pest/disease codes)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL: NLU extracts OBSERVATIONS ONLY - Rule Engine does diagnosis
+  // Fields like pest_code, disease_code are FORBIDDEN in this output
+  // ═══════════════════════════════════════════════════════════════════════════
+  
   return {
     understanding_metadata: {
       nlu_version: NLU_VERSION,
@@ -946,54 +953,36 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
       normalization_applied: true
     },
     intent_classification: {
+      // PLAIN LANGUAGE intent - NOT internal codes
       primary_intent: intentResult.primary,
       intent_confidence: intentResult.primary_confidence,
       secondary_intents: intentResult.secondary,
       urgency_level: urgencyResult.level,
       emotional_state: urgencyResult.emotional_state
     },
+    // Crop comes from CONTEXT (land DB), not from NLU inference
     crop_identification: {
-      crop_code: entityResult.crops[0]?.canonical || input.land_context?.crop_code || 'UNKNOWN',
+      crop_code: input.land_context?.crop_code || entityResult.crops[0]?.canonical || 'UNKNOWN',
       local_name: entityResult.crops[0]?.localTerm,
-      identification_source: entityResult.crops.length > 0 ? 'EXPLICIT' : (input.land_context?.crop_code ? 'INFERRED_FROM_CONTEXT' : 'UNKNOWN'),
-      confidence: entityResult.crops[0]?.confidence || 0.5
+      identification_source: input.land_context?.crop_code ? 'FROM_LAND_CONTEXT' : (entityResult.crops.length > 0 ? 'FARMER_MENTIONED' : 'UNKNOWN'),
+      confidence: input.land_context?.crop_code ? 0.95 : (entityResult.crops[0]?.confidence || 0.5)
     },
+    // OBSERVATIONS ONLY - NO diagnosis
     symptom_extraction: {
       visual_symptoms: entityResult.symptoms,
       behavioral_symptoms: [],
+      // Store raw farmer observations for Rule Engine
+      raw_observations: aiResult?.observations || [input.raw_input],
       temporal_pattern: {
         onset: 'UNKNOWN',
         progression: 'UNKNOWN'
       }
     },
-    pest_disease_hypothesis: {
-      suspected_causes: {
-        primary: entityResult.pests.map(p => ({
-          type: 'PEST' as const,
-          code: p.canonical,
-          confidence: p.confidence,
-          evidence: [p.localTerm]
-        })).concat(entityResult.diseases.map(d => ({
-          type: 'DISEASE' as const,
-          code: d.canonical,
-          confidence: d.confidence,
-          evidence: [d.localTerm]
-        }))),
-        secondary: []
-      }
-    },
-    entities_extracted: {
-      pest_mentioned: entityResult.pests[0] ? {
-        local_term: entityResult.pests[0].localTerm,
-        canonical: entityResult.pests[0].canonical,
-        confidence: entityResult.pests[0].confidence
-      } : undefined,
-      disease_mentioned: entityResult.diseases[0] ? {
-        local_term: entityResult.diseases[0].localTerm,
-        canonical: entityResult.diseases[0].canonical,
-        confidence: entityResult.diseases[0].confidence
-      } : undefined
-    },
+    // ═══════════════════════════════════════════════════════════════════════════
+    // REMOVED: pest_disease_hypothesis - Rule Engine does this, NOT NLU
+    // REMOVED: entities_extracted.pest_mentioned - Rule Engine determines pest
+    // REMOVED: entities_extracted.disease_mentioned - Rule Engine determines disease
+    // ═══════════════════════════════════════════════════════════════════════════
     context_integration: {
       is_follow_up: conversationContext?.session_state !== 'NEW',
       context_from_land: !!input.land_context
@@ -1008,15 +997,12 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
       },
       missing_information: clarificationQuestions.length > 0 ? ['SYMPTOM_DETAILS'] : []
     },
-    clarification_strategy: {
-      clarification_needed: clarificationQuestions.length > 0 && !urgencyResult.requires_immediate_response,
-      clarification_priority: clarificationQuestions.length > 1 ? 'HIGH' : clarificationQuestions.length > 0 ? 'MEDIUM' : 'NONE',
-      questions_to_ask: clarificationQuestions
-    },
-    // NEW: AI-powered clarification fields for farmer-friendly options
-    clarification_type: aiResult?.clarification_type || (overallConfidence < 0.7 ? 'OPTIONS' : 'NONE'),
-    clarification_options: aiResult?.clarification_options || [],
-    response_strategy: aiResult?.response_strategy || (overallConfidence >= 0.7 ? 'ASSESS' : 'CLARIFY'),
+    // ═══════════════════════════════════════════════════════════════════════════
+    // REMOVED: clarification_strategy - Rule Engine decides clarification
+    // REMOVED: clarification_type - Rule Engine decides
+    // REMOVED: clarification_options - Come from database ONLY
+    // REMOVED: response_strategy - Rule Engine decides
+    // ═══════════════════════════════════════════════════════════════════════════
     photo_recommendation: {
       photo_needed: intentResult.primary === 'PEST_PROBLEM' || intentResult.primary === 'DISEASE_PROBLEM',
       photo_priority: overallConfidence < 0.7 ? 'HIGH' : 'MEDIUM',
@@ -1042,7 +1028,7 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
       human_expert_needed: overallConfidence < 0.4
     },
     next_agent_recommendation: {
-      proceed_to: overallConfidence > 0.6 ? 'AGENT_2_DIAGNOSTIC_FLOW' : 'AGENT_3_PHOTO_ANALYSIS',
+      proceed_to: overallConfidence > 0.6 ? 'CANONICAL_STATE_BUILDER' : 'CLARIFICATION_REQUIRED',
       skip_photo_agent: overallConfidence > 0.85,
       escalate_to_expert: urgencyResult.emotional_state === 'PANIC' && overallConfidence < 0.5,
       confidence_sufficient: overallConfidence > 0.7

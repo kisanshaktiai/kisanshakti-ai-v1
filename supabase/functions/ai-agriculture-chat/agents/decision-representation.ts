@@ -21,7 +21,19 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const DECISION_REPRESENTATION_VERSION = '1.0.0';
+export const DECISION_REPRESENTATION_VERSION = '2.0.0';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MASTER PROMPT v3: UNDERSTANDING CONFIDENCE ENUM
+// Stage 4 symbolic check - determines if we have enough info to proceed
+// ═══════════════════════════════════════════════════════════════════════════
+
+export enum UnderstandingConfidence {
+  VERY_LOW = 'VERY_LOW',   // < 2 critical fields known - MUST clarify
+  LOW = 'LOW',             // 2-3 critical fields known - SHOULD clarify
+  MEDIUM = 'MEDIUM',       // 4-5 critical fields known - CAN proceed with caution
+  HIGH = 'HIGH'            // 6+ critical fields known - SAFE to prescribe
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ENUMS FOR DETERMINISTIC STATES
@@ -257,10 +269,20 @@ export interface LLMRenderInput {
 export function validateNLUOutputContract(nluOutput: any): { valid: boolean; violations: string[] } {
   const violations: string[] = [];
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MASTER PROMPT v3 - CRITICAL REMOVALS FROM NLU OUTPUT
+  // NLU must NEVER identify causes - only Rule Engine does diagnosis
+  // ═══════════════════════════════════════════════════════════════════════════
   const forbiddenFields = [
-    'pest_code',
-    'disease_code',
-    'crop_code',
+    // Diagnosis codes - FORBIDDEN in NLU
+    'pest',                   // NLU must NOT identify pests
+    'disease',                // NLU must NOT identify diseases
+    'deficiency',             // NLU must NOT identify deficiencies
+    'pest_code',              // No internal codes
+    'disease_code',           // No internal codes
+    'crop_code',              // Crop comes from DB context, not NLU inference
+    
+    // Action/recommendation fields - Rule Engine only
     'product_name',
     'dosage',
     'action',
@@ -268,9 +290,11 @@ export function validateNLUOutputContract(nluOutput: any): { valid: boolean; vio
     'treatment',
     'rule_id',
     'product_id',
-    'response_strategy',      // AI should not decide behavior
-    'clarification_type',     // AI should not decide behavior
-    'clarification_options',  // AI should not generate options
+    
+    // Behavioral decisions - Rule Engine only
+    'response_strategy',      // Rule Engine decides behavior
+    'clarification_type',     // Rule Engine decides clarification
+    'clarification_options',  // Options come from database only
   ];
   
   const checkObject = (obj: any, path: string = ''): void => {
@@ -281,8 +305,9 @@ export function validateNLUOutputContract(nluOutput: any): { valid: boolean; vio
       
       // Check if key matches forbidden pattern
       for (const forbidden of forbiddenFields) {
-        if (key.toLowerCase().includes(forbidden.toLowerCase())) {
-          violations.push(`Forbidden field found: ${currentPath}`);
+        if (key.toLowerCase() === forbidden.toLowerCase() ||
+            key.toLowerCase().includes(forbidden.toLowerCase() + '_')) {
+          violations.push(`Forbidden field found: ${currentPath} (NLU must not identify causes)`);
         }
       }
       
