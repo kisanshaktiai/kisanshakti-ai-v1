@@ -269,6 +269,8 @@ serve(async (req) => {
       pending_user_action?: boolean;
       turn_count?: number;
       recommendations_count?: number;
+      // CRITICAL FIX 1: Add pending clarification options for option selection
+      pending_clarification_options?: string[];
     } | null = null;
     
     // CRITICAL FIX: Fetch previous messages from DB for conversation continuity
@@ -393,7 +395,9 @@ serve(async (req) => {
           previousDisease: sessionState.last_disease,
           previousCrop: sessionState.last_crop,
           turnCount: sessionState.turn_count || 0,
-          decisionState: sessionState.decision_state
+          decisionState: sessionState.decision_state,
+          // CRITICAL FIX 2: Pass pending clarification options for option matching
+          pendingClarificationOptions: sessionState.pending_clarification_options || []
         } : undefined
       }
     );
@@ -814,9 +818,15 @@ serve(async (req) => {
       null;
     
     // Build decision tracking state
+    // CRITICAL FIX 1: Store pending clarification options for next turn's option selection
+    const isClarificationResponse = orchestratorResponse.type === 'CLARIFICATION_QUESTION' || 
+                                    orchestratorResponse.type === 'CLARIFICATION_NEEDED';
+    const clarificationOptions = orchestratorResponse.question?.options?.map((o: any) => o.label) || 
+                                  orchestratorResponse.metadata?.pendingClarificationOptions || [];
+    
     const decisionTracking = {
       decision_state: recommendationsProvided ? 'recommendations_given' : 
-                      orchestratorResponse.type === 'CLARIFICATION_NEEDED' ? 'awaiting_clarification' : 
+                      isClarificationResponse ? 'awaiting_clarification' : 
                       'no_action_needed',
       last_pest: lastPest,
       last_disease: lastDisease,
@@ -825,7 +835,9 @@ serve(async (req) => {
       turn_count: (sessionState?.turn_count || 0) + 1,
       recommendations_count: actions_returned?.length || 0,
       last_action_types: actions_returned?.map((a: any) => a.action_type || a.action).slice(0, 3) || [],
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      // CRITICAL FIX 1: Store clarification options for option matching in next turn
+      pending_clarification_options: isClarificationResponse ? clarificationOptions : []
     };
     
     try {
