@@ -1,6 +1,8 @@
 // ============= LAYERED RULE EVALUATION PIPELINE =============
 // Evaluates rules in correct order: OBSERVATION → DIAGNOSIS → EXCLUSION → SAFETY → PRESCRIPTION
 // This ensures deterministic, auditable, and safe decision making
+// 
+// PHASE-10 UPDATE: Added Wheat IPM Rules integration
 
 import { 
   CanonicalState, 
@@ -24,6 +26,9 @@ import {
   resolveDiagnosisConflicts as resolveConflicts,
   CATEGORY_PRIORITY
 } from './diagnosis-conflict-resolver.ts';
+
+// PHASE-10: Import Wheat IPM Rules
+import { ALL_WHEAT_IPM_RULES, validateWheatBiocontrol } from '../rules/wheat-ipm-rules.ts';
 
 // ==================== RULE CATEGORIES ====================
 
@@ -1159,11 +1164,24 @@ export const CORE_RULES: Rule[] = [
   }
 ];
 
+// ==================== PHASE-10: MERGE ALL RULES ====================
+
+/**
+ * All rules including core rules and crop-specific IPM modules
+ * PHASE-10: Added Wheat IPM Rules for aphid/thrips/mite
+ */
+export const ALL_RULES: Rule[] = [
+  ...CORE_RULES,
+  ...ALL_WHEAT_IPM_RULES
+];
+
 // ==================== EXPORTS ====================
 
 export const LayeredRuleEvaluator = {
   evaluate: evaluateRulesLayered,
   matchesConditions,
   CORE_RULES,
-  RuleCategory
+  ALL_RULES,
+  RuleCategory,
+  validateWheatBiocontrol
 };

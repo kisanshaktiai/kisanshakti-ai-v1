@@ -87,6 +87,7 @@ import {
 import {
   evaluateRulesLayered,
   CORE_RULES,
+  ALL_RULES, // PHASE-10: Use ALL_RULES which includes wheat IPM rules
   RuleEvaluationResult
 } from './layered-rule-evaluator.ts';
 
@@ -1907,7 +1908,8 @@ export class AIAgentOrchestrator {
         // PHASE 2.6: LAYERED RULE EVALUATION (Symbolic Decision Brain)
         console.log('\n📊 PHASE 2.6: Layered Rule Evaluation (OBSERVATION → DIAGNOSIS → SAFETY → PRESCRIPTION)...');
         
-        layeredRuleResult = evaluateRulesLayered(CORE_RULES, canonicalState);
+        // PHASE-10: Use ALL_RULES which includes wheat IPM rules
+        layeredRuleResult = evaluateRulesLayered(ALL_RULES, canonicalState);
         agentsUsed.push('LAYERED_RULE_EVALUATOR');
         
         console.log(`   ✅ Layered Rule Result:`);
@@ -1921,6 +1923,27 @@ export class AIAgentOrchestrator {
         
         if (layeredRuleResult.safety_blocks.length > 0) {
           console.warn(`   ⚠️ Safety Blocks: ${layeredRuleResult.safety_blocks.map(b => b.message).join(', ')}`);
+        }
+        
+        // PHASE-10: Log warning if no rules matched but we're making a decision
+        if (layeredRuleResult.rules_matched === 0 && canonicalState.visual_symptom !== 'NONE') {
+          console.warn(`
+⚠️ ════════════════════════════════════════════════════════════════════════════
+   [PHASE-10] ZERO RULE MATCH WARNING
+   ════════════════════════════════════════════════════════════════════════════
+   Trace ID: ${traceId}
+   Crop: ${canonicalState.crop_type}
+   Stage: ${canonicalState.crop_stage}
+   Symptom: ${canonicalState.visual_symptom}
+   Severity: ${canonicalState.severity}
+   NDVI: ${canonicalState.ndvi_level} (${canonicalState.ndvi_trend})
+   
+   🚨 ISSUE: Rules did not fire for this symptom/crop combination.
+   This may indicate a gap in the rule engine.
+   
+   ACTION REQUIRED: Add rules for ${canonicalState.crop_type} + ${canonicalState.visual_symptom}
+   ════════════════════════════════════════════════════════════════════════════
+          `);
         }
         
       } catch (canonicalError) {

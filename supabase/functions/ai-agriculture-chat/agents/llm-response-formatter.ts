@@ -265,7 +265,9 @@ export async function formatRecommendationsWithLLM(
   // OUTPUT VALIDATION GATE - Ensure LLM didn't add unauthorized content
   // ═══════════════════════════════════════════════════════════════════════════
   
-  const outputValidation = validateLLMOutput(formattedResponse, allowedProducts, allowedDosages);
+  // PHASE-10: Pass crop type for cross-crop biocontrol validation
+  const cropType = input.land_context?.current_crop;
+  const outputValidation = validateLLMOutput(formattedResponse, allowedProducts, allowedDosages, cropType);
   
   if (!outputValidation.valid) {
     console.error(`
@@ -304,7 +306,8 @@ export async function formatRecommendationsWithLLM(
 function validateLLMOutput(
   llmOutput: string,
   allowedProducts: string[],
-  allowedDosages: string[]
+  allowedDosages: string[],
+  cropType?: string
 ): { valid: boolean; violations: string[] } {
   const violations: string[] = [];
   const lowerOutput = llmOutput.toLowerCase();
@@ -326,6 +329,29 @@ function validateLLMOutput(
   for (const pesticide of commonPesticides) {
     if (lowerOutput.includes(pesticide) && !allowedProducts.includes(pesticide)) {
       violations.push(`Unauthorized product: ${pesticide}`);
+    }
+  }
+  
+  // PHASE-10: Cross-crop biocontrol validation
+  // Block sugarcane/cotton biocontrols for wheat
+  if (cropType && cropType.toLowerCase() === 'wheat') {
+    const invalidBiocontrolsForWheat = [
+      'trichogramma', 'ट्रायकोग्रामा', 'ट्रायकोग्रामा चिलोनिस',
+      'cotesia', 'कोटेशिया',
+      'trichogramma chilonis', 'cotesia flavipes'
+    ];
+    
+    for (const biocontrol of invalidBiocontrolsForWheat) {
+      if (lowerOutput.includes(biocontrol.toLowerCase())) {
+        violations.push(`Invalid biocontrol for wheat: ${biocontrol} (this is for sugarcane/cotton bollworms)`);
+        console.warn(`
+⚠️ [PHASE-10] CROSS-CROP BIOCONTROL ERROR DETECTED
+   Crop: Wheat
+   Invalid Biocontrol: ${biocontrol}
+   Reason: Trichogramma/Cotesia are for Lepidopteran pests (bollworms, stem borers)
+   Correct for Wheat: Ladybird beetles (Coccinella), Green lacewing (Chrysoperla)
+        `);
+      }
     }
   }
   

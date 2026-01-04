@@ -35,6 +35,7 @@ export enum ClarificationScope {
   IDENTIFY_DISTRIBUTION = 'IDENTIFY_DISTRIBUTION',
   IDENTIFY_SEVERITY = 'IDENTIFY_SEVERITY',
   IDENTIFY_TIMING = 'IDENTIFY_TIMING',
+  IDENTIFY_INSECT_TYPE = 'IDENTIFY_INSECT_TYPE',  // PHASE-10: Before distribution for insects
   REFINE_OBSERVATION = 'REFINE_OBSERVATION',
   PHOTO_ONLY = 'PHOTO_ONLY',
   STOP_ESCALATE = 'STOP_ESCALATE'
@@ -160,6 +161,22 @@ const CLARIFICATION_TEMPLATES: Record<ClarificationScope, Record<'mr' | 'hi' | '
     en: {
       question: '⏰ When did you first notice this problem?',
       options: ['Today/Yesterday', 'This week', 'Since last week', 'Long time']
+    }
+  },
+  
+  // PHASE-10: Insect type clarification (before distribution for SMALL_INSECTS_VISIBLE)
+  [ClarificationScope.IDENTIFY_INSECT_TYPE]: {
+    mr: {
+      question: '🐛 किडे कसे दिसतात? (यामुळे योग्य उपाय सांगता येईल)',
+      options: ['हिरवट-पिवळे लहान किडे (मावा)', 'बारीक लांबट काळे किडे (थ्रिप्स)', 'पानांवर जाळी आणि लाल ठिपके (कोळी)']
+    },
+    hi: {
+      question: '🐛 कीड़े कैसे दिखते हैं? (इससे सही इलाज बताना आसान होगा)',
+      options: ['हरे-पीले छोटे कीड़े (माहूं)', 'पतले लंबे काले कीड़े (थ्रिप्स)', 'पत्तों पर जाला और लाल धब्बे (मकड़ी)']
+    },
+    en: {
+      question: '🐛 What do the insects look like? (This helps recommend the right treatment)',
+      options: ['Small green-yellow insects (Aphids)', 'Tiny elongated dark insects (Thrips)', 'Fine webbing with red spots (Mites)']
     }
   },
   
