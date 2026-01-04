@@ -21,9 +21,9 @@ import {
 import { 
   DiagnosisCategory, 
   Diagnosis,
-  ConflictResolver,
-  resolveConflicts
-} from './conflict-resolver.ts';
+  resolveDiagnosisConflicts as resolveConflicts,
+  CATEGORY_PRIORITY
+} from './diagnosis-conflict-resolver.ts';
 
 // ==================== RULE CATEGORIES ====================
 
