@@ -681,6 +681,59 @@ export function logAuditEvent(
 }
 
 /**
+ * PHASE-10: Log warning when no rules match but decision is made
+ * This helps identify gaps in the rule engine
+ */
+export function logZeroRuleMatchWarning(params: {
+  trace_id: string;
+  crop: string;
+  symptoms: string[];
+  canonical_state_snapshot: Record<string, any>;
+  decision_made: string;
+  response_source: string;
+}): void {
+  console.warn(`
+⚠️ ════════════════════════════════════════════════════════════════════════════
+   [PHASE-10 AUDIT] ZERO RULE MATCH WARNING
+   ════════════════════════════════════════════════════════════════════════════
+   Trace ID: ${params.trace_id}
+   Crop: ${params.crop}
+   Symptoms: ${params.symptoms.join(', ')}
+   Decision Made: ${params.decision_made}
+   Response Source: ${params.response_source}
+   
+   🚨 ISSUE: Rules did not fire but a response was generated.
+   This may indicate a gap in the rule engine for this crop/symptom combination.
+   
+   Canonical State Snapshot:
+   ${JSON.stringify(params.canonical_state_snapshot, null, 2)}
+   
+   ACTION REQUIRED: Review and add rules for this scenario.
+   ════════════════════════════════════════════════════════════════════════════
+  `);
+}
+
+/**
+ * PHASE-10: Log when cross-crop biocontrol agent is detected
+ */
+export function logInvalidBiocontrolWarning(params: {
+  trace_id: string;
+  crop: string;
+  bioagent_suggested: string;
+  valid_for_crop: string;
+}): void {
+  console.warn(`
+⚠️ [PHASE-10 AUDIT] INVALID BIOCONTROL WARNING
+   Trace ID: ${params.trace_id}
+   Target Crop: ${params.crop}
+   Bioagent Suggested: ${params.bioagent_suggested}
+   Valid For: ${params.valid_for_crop} (NOT ${params.crop})
+   
+   This biocontrol agent is not effective for the target crop.
+  `);
+}
+
+/**
  * Check if NLU output complies with contract
  * Returns violations if any internal codes are present
  */
