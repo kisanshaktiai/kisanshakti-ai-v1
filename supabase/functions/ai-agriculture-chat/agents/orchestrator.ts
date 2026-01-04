@@ -139,7 +139,8 @@ import {
   ClarificationScope,
   type ClarificationInput,
   type ClarificationOutput,
-  type ScopedClarificationInput
+  type ScopedClarificationInput,
+  type OptionMatchResult // PHASE-9.1: Import null-safe match result type
 } from './clarification-generator.ts';
 
 // PHASE-8: ObservationKey-based Clarification Scope Resolver
@@ -169,7 +170,7 @@ import {
   serializeCrossCropSymptoms 
 } from './cross-crop-symptom-mapper.ts';
 
-export const ORCHESTRATOR_VERSION = '2.2.0'; // Phase-9 update
+export const ORCHESTRATOR_VERSION = '2.3.0'; // Phase-9.1 - Clarification Safety Patches
 
 // Response types
 export type OrchestratorResponseType = 
@@ -307,9 +308,20 @@ export interface OrchestratorResponse {
     rules_applied: number;
     processing_time_ms: number;
     agents_used: string[];
-    template_type?: string;      // NEW: Track template type
-    sections_count?: number;     // NEW: Track sections count
-    trace_id?: string;           // NEW: For observability
+    template_type?: string;      // Track template type
+    sections_count?: number;     // Track sections count
+    trace_id?: string;           // For observability
+    // PHASE-9.1: Clarification state passthrough
+    pendingClarificationOptions?: string[];
+    lockedCropContext?: {
+      crop_name: string;
+      growth_stage: string;
+      days_since_sowing: number;
+    };
+    understanding_confidence?: string;
+    clarification_reason?: string;
+    clarification_scope?: string;
+    scope_validation_passed?: boolean;
   };
 }
 
@@ -408,6 +420,13 @@ export class AIAgentOrchestrator {
         previousCrop?: string;
         turnCount?: number;
         decisionState?: string;
+        // PHASE-9.1: Clarification state fields
+        pendingClarificationOptions?: string[];
+        lockedCropContext?: {
+          crop_name: string;
+          growth_stage: string;
+          days_since_sowing: number;
+        };
       };
     } = {}
   ): Promise<OrchestratorResponse> {
@@ -794,6 +813,68 @@ export class AIAgentOrchestrator {
       console.log(`⏭️ [${traceId}] Static gate passed - continuing to AI pipeline`);
       
       // ========================================
+      // PHASE 9.1 PATCH 1: CLARIFICATION RESPONSE HARD GATE
+      // When pending_options > 0, skip full NLU pipeline - only process option selection
+      // This PREVENTS infinite clarification loops
+      // ========================================
+      const pendingOptionsCount = options.sessionState?.pendingClarificationOptions?.length || 0;
+      const clarificationTurnCount = options.sessionState?.turnCount || 0;
+      
+      if (pendingOptionsCount > 0) {
+        console.log('🔒 [Phase9.1] Clarification safety gate active');
+        console.log(`   📋 Pending options: ${pendingOptionsCount}, Turn count: ${clarificationTurnCount}`);
+        
+        // PHASE-9.1: Try to match farmer response to option
+        const pendingOptions = options.sessionState?.pendingClarificationOptions || [];
+        const matchResult = matchFarmerResponseToOption(farmerMessage, pendingOptions);
+        
+        // PATCH 2: NULL-SAFE - matchResult always returns a valid object now
+        if (matchResult.matched && matchResult.matched_option) {
+          console.log(`   ✅ Farmer selected option ${(matchResult.option_index || 0) + 1}: "${matchResult.matched_option}"`);
+          // Continue with selected option as the processed message
+        } else {
+          // PHASE-9.1: Farmer did NOT select an option - generate reminder
+          console.log('⚠️ [ClarificationGate] No option selected — generating reminder');
+          
+          // PATCH 3: Retrieve locked crop context for consistent rendering
+          const lockedCropContext = options.sessionState?.lockedCropContext;
+          
+          const reminderMessages: Record<string, string> = {
+            mr: `🌾 कृपया वरीलपैकी एक पर्याय निवडा (1, 2, 3 किंवा पूर्ण मजकूर टाइप करा).\n\n${pendingOptions.map((opt, i) => `${i + 1}️⃣ ${opt}`).join('\n')}`,
+            hi: `🌾 कृपया ऊपर दिए गए विकल्पों में से एक चुनें (1, 2, 3 या पूरा पाठ टाइप करें).\n\n${pendingOptions.map((opt, i) => `${i + 1}️⃣ ${opt}`).join('\n')}`,
+            en: `🌾 Please select one of the options above (type 1, 2, 3 or the full text).\n\n${pendingOptions.map((opt, i) => `${i + 1}️⃣ ${opt}`).join('\n')}`
+          };
+          
+          const lang = options.language || 'en';
+          const reminderText = reminderMessages[lang] || reminderMessages['en'];
+          
+          // Return clarification reminder - preserve pending options
+          return {
+            type: 'CLARIFICATION_QUESTION',
+            session_id: sessionId,
+            question: {
+              question_id: `clarification_reminder_${Date.now()}`,
+              text_mr: reminderMessages['mr'],
+              text_hi: reminderMessages['hi'],
+              text_en: reminderMessages['en'],
+              options: pendingOptions.map((opt, idx) => ({
+                value: String(idx + 1),
+                label: opt
+              }))
+            },
+            metadata: {
+              confidence: 0.5,
+              safety_status: 'CLARIFICATION_PENDING',
+              rules_applied: 0,
+              processing_time_ms: Date.now() - startTime,
+              agents_used: ['CLARIFICATION_GATE'],
+              trace_id: traceId
+            }
+          };
+        }
+      }
+      
+      // ========================================
       // PHASE 0.4A: EARLY NUMBER DETECTION (BEFORE NLU)
       // Detect if farmer sent a number to select previous option
       // CRITICAL FIX 3: This MUST happen before NLU to prevent re-clarification loop
@@ -803,8 +884,12 @@ export class AIAgentOrchestrator {
       // Track if farmer selected an option - used to bypass clarification later
       let bypassClarification = false;
       
+      // PHASE-9.1 PATCH 3: Lock crop context - will be populated from landContext if exists
+      let lockedCropContext: { crop_name: string; growth_stage: string; days_since_sowing: number } | null = 
+        options.sessionState?.lockedCropContext || null;
+      
       // Detect numeric/Devanagari option selection patterns
-      const isNumberSelection = /^[१२३1-3]$/.test(farmerMessage.trim());
+      const isNumberSelection = /^[१२३४1-4]$/.test(farmerMessage.trim());
       const pendingOptions = options.sessionState?.pendingClarificationOptions || [];
       
       console.log(`   📋 Input: "${farmerMessage}" | IsNumber: ${isNumberSelection} | PendingOptions: ${pendingOptions.length}`);
@@ -820,11 +905,13 @@ export class AIAgentOrchestrator {
       
       // Check if farmer is responding to previous clarification options
       if (pendingOptions.length > 0) {
-        const matchResult = matchFarmerResponseToOption(
+        // PHASE-9.1: Use null-safe matchFarmerResponseToOption
+        const matchResult: OptionMatchResult = matchFarmerResponseToOption(
           farmerMessage,
           pendingOptions
         );
         
+        // PATCH 2: NULL-SAFE - matchResult.matched is always defined
         if (matchResult.matched && matchResult.matched_option) {
           console.log(`   ✅ Farmer selected option ${(matchResult.option_index || 0) + 1}: "${matchResult.matched_option}"`);
           
@@ -841,7 +928,7 @@ export class AIAgentOrchestrator {
           // CRITICAL FIX 4: Set bypass flag to skip clarification generation
           bypassClarification = true;
           
-          console.log(`   📋 Mapped to observation: "${matchedObservation.observation}" → likely cause: ${matchedObservation.likely_cause}`);
+          console.log(`   📋 Mapped to observation: "${matchedObservation?.observation || 'N/A'}" → likely cause: ${matchedObservation?.likely_cause || 'N/A'}`);
           console.log(`   🚫 Bypass clarification: ${bypassClarification}`);
         } else if (isNumberSelection) {
           // Farmer sent a number but no options to match - still treat as selection attempt
@@ -1112,7 +1199,13 @@ export class AIAgentOrchestrator {
             clarification_reason: understandingResult.clarification_reason,
             clarification_scope: clarificationResponse.scope,
             scope_validation_passed: clarificationResponse.validation_passed,
-            pendingClarificationOptions: clarificationResponse.options
+            pendingClarificationOptions: clarificationResponse.options,
+            // PHASE-9.1 PATCH 3: Lock crop context during clarification
+            lockedCropContext: cropContextAuthority ? {
+              crop_name: cropContextAuthority.crop_name,
+              growth_stage: cropContextAuthority.growth_stage,
+              days_since_sowing: cropContextAuthority.days_since_sowing
+            } : undefined
           }
         };
       }

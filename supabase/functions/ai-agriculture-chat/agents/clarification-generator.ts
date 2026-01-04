@@ -268,28 +268,56 @@ export interface MatchedOption {
 }
 
 /**
+ * PHASE-9.1: Standardized match result interface
+ * Used by orchestrator to handle option matching safely
+ */
+export interface OptionMatchResult {
+  /** Whether a match was found */
+  matched: boolean;
+  /** The matched option text */
+  matched_option?: string;
+  /** Index of the matched option (0-based) */
+  option_index?: number;
+  /** Match confidence (0-1) */
+  match_confidence: number;
+}
+
+/**
  * Match farmer's response to a clarification option.
  * Used when farmer selects from options or types something similar.
+ * 
+ * PHASE-9.1: Returns standardized OptionMatchResult with NULL-SAFE design.
  */
 export function matchFarmerResponseToOption(
   farmerResponse: string,
   pendingOptions: string[]
-): MatchedOption | null {
+): OptionMatchResult {
+  // PHASE-9.1: NULL-SAFE - Always return a valid object
   if (!pendingOptions || pendingOptions.length === 0) {
-    return null;
+    return {
+      matched: false,
+      match_confidence: 0
+    };
   }
   
   const response = farmerResponse.trim().toLowerCase();
   
-  // Check for numeric selection (1, 2, 3, 4)
-  const numMatch = response.match(/^[1-4]$/);
-  if (numMatch) {
-    const index = parseInt(numMatch[0]) - 1;
+  // PHASE-9.1: NULL-SAFE option parsing with guard
+  // Check for numeric selection (1, 2, 3, 4 or Devanagari १, २, ३, ४)
+  const numMatch = response.match(/^[१२३४1-4]$/);
+  
+  // PATCH 2: NULL-SAFE - Check if match exists before accessing properties
+  if (numMatch && numMatch[0]) {
+    // Convert Devanagari numerals to Arabic
+    const devanagariMap: Record<string, string> = { '१': '1', '२': '2', '३': '3', '४': '4' };
+    const numStr = devanagariMap[numMatch[0]] || numMatch[0];
+    const index = parseInt(numStr) - 1;
+    
     if (index >= 0 && index < pendingOptions.length) {
       return {
-        original_option: pendingOptions[index],
-        observation: pendingOptions[index],
-        likely_cause: 'UNKNOWN', // Do not infer cause here
+        matched: true,
+        matched_option: pendingOptions[index],
+        option_index: index,
         match_confidence: 1.0
       };
     }
@@ -301,15 +329,19 @@ export function matchFarmerResponseToOption(
     // Exact or partial match
     if (response === option || response.includes(option) || option.includes(response)) {
       return {
-        original_option: pendingOptions[i],
-        observation: pendingOptions[i],
-        likely_cause: 'UNKNOWN',
+        matched: true,
+        matched_option: pendingOptions[i],
+        option_index: i,
         match_confidence: response === option ? 1.0 : 0.8
       };
     }
   }
   
-  return null;
+  // PHASE-9.1: No match - return safe default
+  return {
+    matched: false,
+    match_confidence: 0
+  };
 }
 
 /**
@@ -390,3 +422,6 @@ export default {
   ClarificationScope,
   CLARIFICATION_GENERATOR_VERSION
 };
+
+// PHASE-9.1: Named exports for type usage
+export type { OptionMatchResult };
