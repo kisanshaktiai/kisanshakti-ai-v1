@@ -171,7 +171,58 @@ import {
   serializeCrossCropSymptoms 
 } from './cross-crop-symptom-mapper.ts';
 
-export const ORCHESTRATOR_VERSION = '2.4.0'; // Phase-9.1-Fix: Clarification State Lock & Loop Resolution
+export const ORCHESTRATOR_VERSION = '2.5.0'; // Phase-10-Fix: Option selection runs rule engine
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-10: Helper function to map clarification answer to visual symptom
+// ═══════════════════════════════════════════════════════════════════════════
+function mapDistributionToSymptom(optionText: string, scope: ClarificationScope): string {
+  // Based on the clarification scope, map the answer to a symptom
+  switch (scope) {
+    case ClarificationScope.IDENTIFY_DISTRIBUTION:
+      // Distribution options map to symptom patterns
+      if (optionText.includes('सगळीकडे') || optionText.includes('हर जगह') || optionText.toLowerCase().includes('uniform')) {
+        return 'GENERAL_YELLOWING'; // Uniform = likely nutrient issue
+      }
+      if (optionText.includes('ठिकठिकाणी') || optionText.includes('जगह-जगह') || optionText.toLowerCase().includes('patch')) {
+        return 'SPOTS_IRREGULAR'; // Patchy = likely pest/disease
+      }
+      if (optionText.includes('कडे') || optionText.includes('किनार') || optionText.toLowerCase().includes('edge')) {
+        return 'LEAF_EDGE_BURN'; // Edge = water/wind stress
+      }
+      return 'UNKNOWN';
+      
+    case ClarificationScope.IDENTIFY_SEVERITY:
+      // Severity doesn't change symptom type, just intensity
+      return 'UNKNOWN';
+      
+    case ClarificationScope.IDENTIFY_LOCATION:
+      // Location affects what symptom to look for
+      if (optionText.includes('पान') || optionText.includes('पत्त') || optionText.toLowerCase().includes('leaf')) {
+        return 'CURLED_LEAVES';
+      }
+      if (optionText.includes('खोड') || optionText.includes('तना') || optionText.toLowerCase().includes('stem')) {
+        return 'STEM_DISCOLORATION';
+      }
+      return 'UNKNOWN';
+      
+    case ClarificationScope.IDENTIFY_INSECT_TYPE:
+      // PHASE-10: Wheat pest identification
+      if (optionText.includes('माव') || optionText.toLowerCase().includes('aphid') || optionText.includes('हिरव') || optionText.includes('पिवळ')) {
+        return 'CURLED_LEAVES'; // Aphid symptoms
+      }
+      if (optionText.includes('थ्रिप्स') || optionText.toLowerCase().includes('thrips') || optionText.includes('पातळ') || optionText.includes('लांब')) {
+        return 'SILVERING'; // Thrips symptoms
+      }
+      if (optionText.includes('कोळी') || optionText.toLowerCase().includes('mite') || optionText.includes('जाळी')) {
+        return 'WEBBING'; // Mite symptoms
+      }
+      return 'CURLED_LEAVES'; // Default to aphid if unclear
+      
+    default:
+      return 'UNKNOWN';
+  }
+}
 
 // Response types
 export type OrchestratorResponseType = 
@@ -828,6 +879,7 @@ export class AIAgentOrchestrator {
         // PHASE-9.1-FIX: Retrieve locked crop context FIRST - this is authoritative
         const lockedCropContext = options.sessionState?.lockedCropContext;
         const pendingOptions = options.sessionState?.pendingClarificationOptions || [];
+        const pendingScope = options.sessionState?.pendingClarificationScope as ClarificationScope || ClarificationScope.IDENTIFY_DISTRIBUTION;
         
         // PATCH 2: NULL-SAFE option matching
         const matchResult = matchFarmerResponseToOption(farmerMessage, pendingOptions);
@@ -837,67 +889,111 @@ export class AIAgentOrchestrator {
           console.log(`   ✅ Farmer selected option ${(matchResult.option_index || 0) + 1}: "${matchResult.matched_option}"`);
           
           // CRITICAL: Clear pending options and continue with ONLY the selected option
-          // Do NOT re-run NLU - use the matched option directly
           console.log('   🔓 Clearing clarification lock, processing selected option only');
           
-          // Map the option to observation for the decision brain
-          const selectedObservation = mapOptionToObservation(
-            matchResult.matched_option,
-            (options.language || 'mr') as 'mr' | 'hi' | 'en'
-          );
+          // PHASE-10 FIX: Map the option to observation using CORRECT parameters (option, scope)
+          const mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
+          console.log(`   📋 Mapped to ObservationKey: "${mappedObservationKey || 'UNKNOWN'}"`);
           
-          console.log(`   📋 Mapped to observation: "${selectedObservation?.observation || 'N/A'}"`);
+          // PHASE-10 FIX: Build canonical state with the selected observation and run rule engine
+          // Do NOT return a placeholder acknowledgement - run the full symbolic brain
           
-          // PATCH 1: Return immediately with a structured response for option selection
-          // This prevents re-entering the NLU pipeline
+          // Get land context for rule evaluation
+          const landContext = options.landContext;
+          const cropName = lockedCropContext?.crop_name || landContext?.current_crop || 'UNKNOWN';
+          const growthStage = lockedCropContext?.growth_stage || landContext?.growth_stage || 'VEGETATIVE';
+          
+          // Map the selected option to a visual symptom for the canonical state
+          const visualSymptom = mapDistributionToSymptom(matchResult.matched_option, pendingScope);
+          
+          console.log(`   🌾 Building canonical state: crop=${cropName}, stage=${growthStage}, symptom=${visualSymptom}`);
+          
+          // Build canonical state with the clarification answer
+          const canonicalState = buildCanonicalState({
+            crop_type: mapCropNameToEnum(cropName),
+            crop_stage: mapStageToEnum(growthStage),
+            visual_symptom: mapVisualSymptomToEnum(visualSymptom),
+            data_confidence: DataConfidence.MEDIUM,
+            // Include previous observations from session if available
+            ndvi_level: options.sessionState?.ndvi_level,
+            ndvi_trend: options.sessionState?.ndvi_trend,
+            soil_nitrogen: options.sessionState?.soil_nitrogen
+          });
+          
+          console.log(`   📊 Canonical state built, running layered rule evaluation...`);
+          
+          // PHASE-10 FIX: Run the rule engine with ALL_RULES (includes wheat IPM)
+          const ruleResult = evaluateRulesLayered(ALL_RULES, canonicalState);
+          
+          console.log(`   ✅ Rules matched: ${ruleResult.rules_matched}, Applied: ${ruleResult.rules_applied.length}`);
+          console.log(`   📋 Diagnoses: ${ruleResult.diagnoses.length}, Prescriptions: ${ruleResult.prescriptions.length}`);
+          
+          // If we got rule matches, return them for LLM formatting
+          if (ruleResult.rules_matched > 0 && (ruleResult.diagnoses.length > 0 || ruleResult.prescriptions.length > 0)) {
+            return {
+              type: 'DECISION_PROVIDED',
+              session_id: sessionId,
+              decision_output: {
+                decision_id: `rule_${Date.now()}`,
+                session_id: sessionId,
+                status: 'DIAGNOSIS_COMPLETE',
+                decision_brain_source: true,
+                primary_decision: ruleResult.final_diagnosis?.cause || ruleResult.diagnoses[0]?.cause,
+                actions_returned: ruleResult.prescriptions.map(p => ({
+                  action_type: p.action_type,
+                  action_details: p.action_details,
+                  product_reference: p.product_reference,
+                  rule_id: 'RULE_ENGINE'
+                })),
+                warnings: ruleResult.warnings,
+                metadata: {
+                  confidence: ruleResult.confidence_in_result,
+                  trace_id: traceId,
+                  processing_time_ms: Date.now() - startTime,
+                  agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'LAYERED_RULE_EVALUATOR'],
+                  rules_applied: ruleResult.rules_applied,
+                  clarification_resolved: true,
+                  selected_option: matchResult.matched_option,
+                  mapped_observation: mappedObservationKey
+                }
+              } as any,
+              metadata: {
+                confidence: ruleResult.confidence_in_result,
+                safety_status: ruleResult.safety_blocks.length > 0 ? 'BLOCKED' : 'SAFE',
+                rules_applied: ruleResult.rules_matched,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'LAYERED_RULE_EVALUATOR'],
+                trace_id: traceId,
+                // CRITICAL: Clear pending options after successful selection
+                pendingClarificationOptions: undefined,
+                pendingClarificationScope: undefined,
+                // PATCH 3: Preserve locked crop context for next turn
+                lockedCropContext: lockedCropContext
+              }
+            };
+          }
+          
+          // If no rules matched, return acknowledgement and let LLM formatter handle it
           return {
             type: 'DECISION_PROVIDED',
             session_id: sessionId,
-            communication: {
-              message_id: crypto.randomUUID(),
-              decision_id: `option_selected_${Date.now()}`,
-              session_id: sessionId,
-              farmer_id: farmerId,
-              language: options.language || 'mr',
-              format: 'RICH_TEXT',
-              tone: 'FRIENDLY',
-              created_at: new Date().toISOString(),
-              main_message: {
-                full_text: {
-                  mr: `✅ समजले. "${matchResult.matched_option}" बद्दल माहिती देत आहे...`,
-                  hi: `✅ समझ गया। "${matchResult.matched_option}" के बारे में जानकारी दे रहा हूं...`,
-                  en: `✅ Understood. Providing information about "${matchResult.matched_option}"...`
-                }
-              },
-              quick_actions: [],
-              metadata: {
-                source: 'OPTION_SELECTION_HANDLER',
-                response_type: 'OPTION_ACKNOWLEDGED',
-                selected_option: matchResult.matched_option,
-                selected_index: matchResult.option_index,
-                mapped_observation: selectedObservation?.observation,
-                // PATCH 3: Preserve locked crop context
-                locked_crop_context: lockedCropContext
-              }
-            } as any,
             decision_output: {
               decision_id: `option_selected_${Date.now()}`,
               session_id: sessionId,
               status: 'OPTION_SELECTED',
               decision_brain_source: true,
-              actions_returned: [{
-                action_type: 'ACKNOWLEDGEMENT',
-                selected_option: matchResult.matched_option,
-                observation: selectedObservation?.observation || matchResult.matched_option,
-                likely_cause: selectedObservation?.likely_cause || 'PENDING_ANALYSIS'
-              }],
+              actions_returned: [],
               metadata: {
                 confidence: matchResult.confidence || 0.9,
                 trace_id: traceId,
                 processing_time_ms: Date.now() - startTime,
                 agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER'],
-                template_type: 'OPTION_ACKNOWLEDGEMENT',
-                clarification_resolved: true
+                clarification_resolved: true,
+                selected_option: matchResult.matched_option,
+                mapped_observation: mappedObservationKey,
+                rules_evaluated: ruleResult.rules_evaluated,
+                rules_matched: ruleResult.rules_matched,
+                no_rules_matched_reason: 'No matching rules for the given canonical state'
               }
             } as any,
             metadata: {
@@ -906,11 +1002,9 @@ export class AIAgentOrchestrator {
               rules_applied: 0,
               processing_time_ms: Date.now() - startTime,
               agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER'],
-              template_type: 'OPTION_ACKNOWLEDGEMENT',
               trace_id: traceId,
-              // CRITICAL: Clear pending options after successful selection
               pendingClarificationOptions: undefined,
-              // PATCH 3: Preserve locked crop context for next turn
+              pendingClarificationScope: undefined,
               lockedCropContext: lockedCropContext
             }
           };

@@ -98,7 +98,17 @@ export enum ObservationKey {
   // PHOTO AVAILABILITY
   // ═══════════════════════════════════════════════════════════════════════════
   PHOTO_PROVIDED = 'PHOTO_PROVIDED',
-  PHOTO_NOT_PROVIDED = 'PHOTO_NOT_PROVIDED'
+  PHOTO_NOT_PROVIDED = 'PHOTO_NOT_PROVIDED',
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-10: INSECT TYPE OBSERVATIONS (diagnosis-neutral visual patterns)
+  // These are based on WHAT THE FARMER SEES - not diagnoses
+  // ═══════════════════════════════════════════════════════════════════════════
+  PEST_TYPE_APHID = 'PEST_TYPE_APHID',       // Small, soft-bodied, greenish-yellow insects
+  PEST_TYPE_THRIPS = 'PEST_TYPE_THRIPS',     // Tiny, elongated, slender insects
+  PEST_TYPE_MITE = 'PEST_TYPE_MITE',         // Very small with webbing
+  PEST_TYPE_CATERPILLAR = 'PEST_TYPE_CATERPILLAR', // Larvae with visible body segments
+  PEST_TYPE_UNKNOWN = 'PEST_TYPE_UNKNOWN'    // Cannot identify insect type
 }
 
 /**
