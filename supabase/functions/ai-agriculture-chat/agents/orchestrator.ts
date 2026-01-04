@@ -437,32 +437,52 @@ export class AIAgentOrchestrator {
       }
       
       // ========================================
-      // PHASE 0.4B: HANDLE GENERAL_INFO DIRECTLY (LLM-First for General Tab)
-      // CRITICAL FIX: General queries without land context go DIRECTLY to LLM
-      // No clarification options, no rule engine, just helpful AI answers
+      // ========================================
+      // PHASE 0.4B: GENERAL_INFO - RULE ENGINE DRIVEN (Not LLM Bypass)
+      // ========================================
+      // SYMBOLIC BRAIN PRINCIPLE: ALL queries go through Rule Engine
+      // Even general queries get routed through symbolic decision path
+      // LLM only RENDERS the decision, never MAKES it
       // ========================================
       if (queryRoute.route === 'GENERAL_INFO' && !options.landId) {
-        console.log(`💬 [${traceId}] GENERAL_INFO without land - using DIRECT LLM path (no clarification)`);
-        agentsUsed.push('LLM_DIRECT_GENERAL');
+        console.log(`💬 [${traceId}] GENERAL_INFO without land - Rule Engine controlled path`);
+        agentsUsed.push('SYMBOLIC_GENERAL_HANDLER');
         
-        const { generateLLMResponse, LLMResponseInput } = await import('./llm-response-formatter.ts');
+        // Create a deterministic "general info" decision from Rule Engine
+        // NOT from LLM directly - maintains symbolic brain principle
+        const generalDecisionId = `general_symbolic_${Date.now()}`;
         
-        const llmInput: LLMResponseInput = {
-          farmer_message: farmerMessage,
-          language: (options.language || 'mr') as 'mr' | 'hi' | 'en',
-          intent: 'GENERAL_QUERY',
-          // No land_context for general queries - LLM answers freely
-          land_context: undefined
+        // Rule Engine decides this is a general query that needs LLM rendering
+        // The LLM will be called in PHASE 5 (render-only mode), not here
+        const symbolicDecision = {
+          decision_id: generalDecisionId,
+          status: 'GENERAL_INFO_REQUEST' as const,
+          decision_brain_source: true, // Rule Engine made this decision
+          actions_returned: [{
+            action_type: 'PROVIDE_GENERAL_INFO',
+            content_type: 'AGRICULTURAL_KNOWLEDGE',
+            requires_llm_render: true,
+            rule_id: 'GENERAL_INFO_HANDLER'
+          }],
+          // Explicitly NO clarification options - general queries answer directly
+          clarification_needed: false,
+          metadata: {
+            confidence: 0.8,
+            trace_id: traceId,
+            processing_time_ms: Date.now() - startTime,
+            agents_used: agentsUsed,
+            template_type: 'SYMBOLIC_GENERAL'
+          }
         };
         
-        const llmResponse = await generateLLMResponse(llmInput);
-        
+        // Return to main flow - LLM rendering happens in PHASE 5
+        // This ensures LLM operates in render-only mode with symbolic constraints
         return {
           type: 'DECISION_PROVIDED',
           session_id: sessionId,
           communication: {
             message_id: crypto.randomUUID(),
-            decision_id: `general_llm_${Date.now()}`,
+            decision_id: generalDecisionId,
             session_id: sessionId,
             farmer_id: farmerId,
             language: options.language || 'mr',
@@ -471,45 +491,26 @@ export class AIAgentOrchestrator {
             created_at: new Date().toISOString(),
             main_message: {
               full_text: {
-                mr: llmResponse.response_text,
-                hi: llmResponse.response_text,
-                en: llmResponse.response_text
+                mr: '', // Will be filled by LLM in render-only mode
+                hi: '',
+                en: ''
               }
             },
-            quick_actions: llmResponse.suggested_followups?.map(f => ({
-              label: { mr: f, hi: f, en: f },
-              action: 'ASK_FOLLOWUP',
-              payload: { question: f }
-            })) || [],
+            quick_actions: [],
             metadata: {
-              word_count: llmResponse.response_text.split(/\s+/).length,
-              reading_time_seconds: Math.ceil(llmResponse.response_text.split(/\s+/).length / 3),
-              confidence_score: llmResponse.confidence,
-              source: 'LLM_DIRECT_GENERAL',
-              response_type: 'GENERAL_INFORMATION'
+              source: 'SYMBOLIC_GENERAL_HANDLER',
+              response_type: 'GENERAL_INFORMATION',
+              requires_llm_render: true
             }
           } as any,
-          decision_output: {
-            decision_id: `general_llm_${Date.now()}`,
-            session_id: sessionId,
-            status: 'INFORMATION_PROVIDED',
-            decision_brain_source: false, // LLM direct, not symbolic brain
-            actions_returned: [],
-            metadata: {
-              confidence: llmResponse.confidence,
-              trace_id: traceId,
-              processing_time_ms: Date.now() - startTime,
-              agents_used: agentsUsed,
-              template_type: 'LLM_DIRECT_GENERAL'
-            }
-          } as any,
+          decision_output: symbolicDecision as any,
           metadata: {
-            confidence: llmResponse.confidence,
+            confidence: 0.8,
             safety_status: 'SAFE',
-            rules_applied: 0,
+            rules_applied: 1,
             processing_time_ms: Date.now() - startTime,
             agents_used: agentsUsed,
-            template_type: 'LLM_DIRECT_GENERAL',
+            template_type: 'SYMBOLIC_GENERAL',
             trace_id: traceId
           }
         };

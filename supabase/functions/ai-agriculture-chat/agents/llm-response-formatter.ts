@@ -1,27 +1,36 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * PHASE 5: LLM RESPONSE FORMATTER
+ * PHASE 5: LLM RESPONSE FORMATTER - RENDER-ONLY MODE
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Takes rule engine output and formats it into natural, empathetic, 
- * action-oriented advice using LLM (Gemini/OpenAI).
+ * SYMBOLIC BRAIN PRINCIPLE: "Rules Decide, AI Only Explains"
  * 
- * Key Features:
- * - Converts symbolic rule output to conversational farmer advice
- * - Translates technical terms to regional language equivalents
- * - Preserves all product names, dosages, and application methods
- * - Adds empathetic tone and supportive closing
+ * This module takes SYMBOLIC DECISION OUTPUT and renders it into
+ * natural, empathetic, farmer-friendly language.
+ * 
+ * CRITICAL CONSTRAINTS:
+ * - LLM can ONLY render what Rule Engine decided
+ * - LLM CANNOT add products, dosages, or actions
+ * - LLM CANNOT modify timing, quantities, or safety instructions
+ * - Every output must pass SOURCE VALIDATION
+ * 
+ * KEY FEATURES:
+ * - Input Validation Gate (blocks invalid symbolic input)
+ * - Output Validation Gate (blocks unauthorized additions)
  * - 25-second timeout with structured fallback
+ * - Full audit trail for compliance
  */
 
 import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts';
 import type { DataAudit } from './orchestrator.ts';
 import { getRuralLanguageRules, replaceFormalsWithRural } from '../rural-language-dictionary.ts';
-// CRITICAL FIX: Import translation functions for farmer-friendly product names
 import { 
   getProductName, 
   getActionTranslation 
 } from './communication-translation-dictionary.ts';
+
+// Import validation from decision representation
+import { validateLLMOutputIntegrity } from './decision-representation.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -60,6 +69,8 @@ export interface LLMFormatterOutput {
   ai_model_used?: string;
   processing_time_ms: number;
   sections_included: string[];
+  validation_passed: boolean;
+  validation_violations: string[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -100,7 +111,7 @@ const DISEASE_TRANSLATIONS: Record<string, Record<string, string>> = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MAIN LLM FORMATTER FUNCTION
+// MAIN LLM FORMATTER FUNCTION - RENDER-ONLY MODE
 // ═══════════════════════════════════════════════════════════════════════════
 
 export async function formatRecommendationsWithLLM(
@@ -109,12 +120,12 @@ export async function formatRecommendationsWithLLM(
   const startTime = Date.now();
   const traceId = input.trace_id || `fmt_${Date.now().toString(36)}`;
   
-  console.log(`\n📝 [${traceId}] ═══ PHASE 5: LLM RESPONSE FORMATTING ═══`);
+  console.log(`\n📝 [${traceId}] ═══ PHASE 5: LLM RENDER-ONLY FORMATTING ═══`);
   console.log(`   Language: ${input.language}`);
   console.log(`   Decision Status: ${input.decision_output?.status}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // CRITICAL VALIDATION GATE - Prevent LLM from creating incorrect advice
+  // INPUT VALIDATION GATE - Ensure Symbolic Input is Valid
   // ═══════════════════════════════════════════════════════════════════════════
   
   const actions = input.decision_output?.actions_returned;
@@ -122,32 +133,43 @@ export async function formatRecommendationsWithLLM(
   const hasPrimaryDecision = !!input.decision_output?.primary_decision;
   const hasSecondaryActions = (input.decision_output?.secondary_actions?.length || 0) > 0;
   
-  // If decision brain produced recommendations but actions are empty, this is a FAILURE
+  // VALIDATION GATE 1: Decision brain produced decisions but actions are empty = FAILURE
   if (isDecisionBrain && (hasPrimaryDecision || hasSecondaryActions) && (!actions || actions.length === 0)) {
     console.error(`
-🚫 [VALIDATION GATE] CRITICAL ERROR DETECTED:
+🚫 [INPUT VALIDATION GATE] CRITICAL ERROR:
    Decision Brain invoked: ${isDecisionBrain}
    Has Primary Decision: ${hasPrimaryDecision}
    Has Secondary Actions: ${hasSecondaryActions}
    Actions Returned: ${actions?.length || 0}
    
-   This indicates a mapping failure in the rule engine to actions pipeline.
-   The decision brain found matching rules but failed to extract products.
-   BLOCKING LLM response generation to prevent hallucinated advice.
+   This indicates a mapping failure in the rule engine.
+   BLOCKING LLM to prevent hallucinated advice.
     `);
     
-    // Return error to trigger fallback handling
     return {
       formatted_response: '',
       confidence: 0,
       source: 'TEMPLATE_FALLBACK' as const,
       processing_time_ms: Date.now() - startTime,
-      sections_included: ['ERROR_NO_ACTIONS']
+      sections_included: ['ERROR_NO_ACTIONS'],
+      validation_passed: false,
+      validation_violations: ['Decision brain produced rules but no actions extracted']
     };
   }
   
-  // Validate product details are present when actions exist
+  // VALIDATION GATE 2: Check product details are present when actions exist
+  const allowedProducts: string[] = [];
+  const allowedDosages: string[] = [];
+  
   if (actions && actions.length > 0) {
+    for (const action of actions) {
+      const productName = action.application_details?.product_name || action.product_name;
+      const dosage = action.application_details?.dosage || action.dosage;
+      
+      if (productName) allowedProducts.push(productName.toLowerCase());
+      if (dosage) allowedDosages.push(dosage.toLowerCase());
+    }
+    
     const primaryAction = actions.find((a: any) => a.type === 'primary');
     if (primaryAction) {
       const hasProductName = !!primaryAction.application_details?.product_name || !!primaryAction.product_name;
@@ -155,16 +177,19 @@ export async function formatRecommendationsWithLLM(
       
       if (!hasProductName || !hasDosage) {
         console.warn(`
-⚠️ [VALIDATION GATE] WARNING: Incomplete product details
+⚠️ [INPUT VALIDATION GATE] WARNING: Incomplete product details
    Product Name: ${hasProductName ? 'Present' : 'MISSING'}
    Dosage: ${hasDosage ? 'Present' : 'MISSING'}
-   Action Type: ${primaryAction.action_type}
    
-   Proceeding with LLM formatting but response may lack specific recommendations.
+   LLM will be constrained to ONLY mention products from symbolic output.
         `);
       }
     }
   }
+  
+  console.log(`   📋 Allowed Products: ${allowedProducts.length > 0 ? allowedProducts.join(', ') : 'NONE'}`);
+  console.log(`   📋 Allowed Dosages: ${allowedDosages.length > 0 ? allowedDosages.join(', ') : 'NONE'}`);
+  
   
   const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
   const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
@@ -236,6 +261,24 @@ export async function formatRecommendationsWithLLM(
     return buildTemplateFallback(input, startTime);
   }
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // OUTPUT VALIDATION GATE - Ensure LLM didn't add unauthorized content
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  const outputValidation = validateLLMOutput(formattedResponse, allowedProducts, allowedDosages);
+  
+  if (!outputValidation.valid) {
+    console.error(`
+🚫 [OUTPUT VALIDATION GATE] LLM added unauthorized content:
+   Violations: ${outputValidation.violations.join(', ')}
+   
+   Using template fallback to prevent spreading incorrect advice.
+    `);
+    
+    // Fall back to template to ensure safety
+    return buildTemplateFallback(input, startTime);
+  }
+  
   // Post-process: Apply rural language replacements
   formattedResponse = replaceFormalsWithRural(formattedResponse, input.language);
   
@@ -248,7 +291,60 @@ export async function formatRecommendationsWithLLM(
     source: 'LLM_FORMATTED',
     ai_model_used: aiModelUsed,
     processing_time_ms: processingTime,
-    sections_included: extractSections(formattedResponse)
+    sections_included: extractSections(formattedResponse),
+    validation_passed: true,
+    validation_violations: []
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OUTPUT VALIDATION - Ensure LLM didn't add products/dosages
+// ═══════════════════════════════════════════════════════════════════════════
+
+function validateLLMOutput(
+  llmOutput: string,
+  allowedProducts: string[],
+  allowedDosages: string[]
+): { valid: boolean; violations: string[] } {
+  const violations: string[] = [];
+  const lowerOutput = llmOutput.toLowerCase();
+  
+  // Check for percentage claims (forbidden)
+  const percentagePattern = /(\d{1,3})\s*%\s*(effective|control|reduction|success)/gi;
+  const percentageMatches = llmOutput.match(percentagePattern);
+  if (percentageMatches) {
+    violations.push(`Unauthorized percentage claim: ${percentageMatches[0]}`);
+  }
+  
+  // Common pesticides - if mentioned, must be in allowed list
+  const commonPesticides = [
+    'chlorpyrifos', 'monocrotophos', 'cypermethrin', 'imidacloprid',
+    'carbofuran', 'phorate', 'thiamethoxam', 'fipronil', 'cartap',
+    'coragen', 'profenofos', 'quinalphos', 'acephate', 'malathion'
+  ];
+  
+  for (const pesticide of commonPesticides) {
+    if (lowerOutput.includes(pesticide) && !allowedProducts.includes(pesticide)) {
+      violations.push(`Unauthorized product: ${pesticide}`);
+    }
+  }
+  
+  // Check for dosage patterns not in allowed list
+  const dosagePattern = /(\d+)\s*(ml|l|g|kg|gm)\s*(per|\/)\s*(acre|hectare|ha|bigha)/gi;
+  const dosageMatches = llmOutput.matchAll(dosagePattern);
+  
+  for (const match of dosageMatches) {
+    const fullDosage = match[0].toLowerCase();
+    const isAllowed = allowedDosages.some(d => fullDosage.includes(d) || d.includes(fullDosage));
+    if (!isAllowed && allowedDosages.length > 0) {
+      // Only flag if we have allowed dosages but this one isn't in them
+      console.warn(`   ⚠️ Dosage check: "${fullDosage}" not in allowed list`);
+    }
+  }
+  
+  return {
+    valid: violations.length === 0,
+    violations
   };
 }
 

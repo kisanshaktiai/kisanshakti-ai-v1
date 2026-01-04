@@ -29,6 +29,9 @@ import {
   getUrgencyTranslation
 } from './agents/communication-translation-dictionary.ts';
 
+// SYMBOLIC BRAIN: Import validation from decision representation
+import { validateLLMOutputIntegrity } from './agents/decision-representation.ts';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id, x-session-token',
@@ -634,6 +637,27 @@ serve(async (req) => {
         
         console.log(`   ✅ LLM formatting complete: ${llmFormatterOutput.source} (${llmFormatterOutput.processing_time_ms}ms)`);
         console.log(`   📊 Sections: ${llmFormatterOutput.sections_included.join(', ')}`);
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // SOURCE VALIDATION GATE - Final check before response delivery
+        // Ensures LLM didn't add products/dosages not in symbolic output
+        // ═══════════════════════════════════════════════════════════════════════════
+        if (llmFormatterOutput.validation_passed === false) {
+          console.error(`🚫 [SOURCE VALIDATION] LLM output validation failed!`);
+          console.error(`   Violations: ${llmFormatterOutput.validation_violations?.join(', ')}`);
+          
+          // Use template fallback instead of potentially incorrect LLM output
+          console.log(`   📋 Falling back to template-based response for safety`);
+          
+          if (orchestratorResponse.decision_output?.primary_decision) {
+            responseContent = buildFormattedRecommendationsList(
+              orchestratorResponse.decision_output, 
+              detectedLanguage as 'mr' | 'hi' | 'en'
+            );
+          } else {
+            responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
+          }
+        }
         
       } catch (formatterError) {
         console.error(`   ❌ LLM formatter failed:`, formatterError);

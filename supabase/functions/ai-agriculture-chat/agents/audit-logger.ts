@@ -1,26 +1,65 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * AUDIT LOGGER - Complete Turn Logging for Debugging & Compliance
+ * FORENSIC AUDIT LOGGER - Complete Decision Trail
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Logs every turn for debugging and compliance verification.
- * Captures: NLU output, locked intent, symbolic decision, validation results.
+ * SYMBOLIC BRAIN PRINCIPLE: "Rules Decide, AI Only Explains"
+ * This logger captures the COMPLETE decision trail for forensic analysis.
  * 
- * Philosophy: "Symbolic Brain decides, AI only explains" - AUDIT TRAIL
+ * Captures:
+ * - NLU output (observations only, no decisions)
+ * - Intent lock (what actions are allowed)
+ * - Rule engine input/output (the actual decisions)
+ * - LLM formatter input/output (render-only verification)
+ * - Validation gate results (source integrity)
+ * 
+ * Philosophy: 100% auditability - every recommendation traceable to rules
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { NLUDecisionGraphInput, SymbolicDecisionOutput } from './decision-representation.ts';
 
-export const AUDIT_LOGGER_VERSION = '1.0.0';
+export const AUDIT_LOGGER_VERSION = '2.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TYPE DEFINITIONS
+// TYPE DEFINITIONS - Extended for Full Forensic Trail
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface NLUContractOutput {
   intent_label: string;
   observations: string[];
   confidence: number;
+  // FORBIDDEN fields (logged if present = violation)
+  has_forbidden_fields: boolean;
+  forbidden_field_names?: string[];
+}
+
+export interface RuleEngineAudit {
+  input: {
+    nlu_observations: string[];
+    land_context_present: boolean;
+    soil_data_present: boolean;
+    ndvi_data_present: boolean;
+  };
+  output: {
+    rules_fired: string[];
+    causes_identified: string[];
+    actions_generated: string[];
+    clarification_needed: boolean;
+  };
+}
+
+export interface LLMFormatterAudit {
+  input: {
+    symbolic_actions_count: number;
+    product_names: string[];
+    dosages: string[];
+  };
+  output: {
+    response_length: number;
+    validation_passed: boolean;
+    violations: string[];
+  };
 }
 
 export interface TurnAuditLog {
@@ -42,11 +81,17 @@ export interface TurnAuditLog {
   allowed_scopes: string[];
   forbidden_actions: string[];
   
+  // Rule Engine Trail (NEW)
+  rule_engine_audit?: RuleEngineAudit;
+  
   // Symbolic Decision
   symbolic_decision_id?: string;
   rules_fired: string[];
   actions_returned: any[];
   actions_filtered_out: any[];
+  
+  // LLM Formatter Trail (NEW)
+  llm_formatter_audit?: LLMFormatterAudit;
   
   // Cause Mapping (Observation → Cause)
   observation_mapping?: {
@@ -59,6 +104,7 @@ export interface TurnAuditLog {
   // Validation
   validation_passed: boolean;
   validation_errors: string[];
+  source_validation_passed: boolean;  // NEW: LLM output matched symbolic input
   
   // Response
   response_source: 'SYMBOLIC_TEMPLATE' | 'LLM_FORMATTED' | 'CLARIFICATION' | 'ERROR';
@@ -186,19 +232,29 @@ export class AuditLogger {
   }
   
   /**
-   * Log validation result
+   * Log Rule Engine audit trail (NEW)
    */
-  logValidation(result: {
-    passed: boolean;
-    errors: string[];
-  }): void {
-    this.currentTurn.validation_passed = result.passed;
-    this.currentTurn.validation_errors = result.errors;
-    this.addAgent('VALIDATION_GATE');
+  logRuleEngineAudit(audit: RuleEngineAudit): void {
+    this.currentTurn.rule_engine_audit = audit;
+    this.addAgent('RULE_ENGINE');
     
-    console.log(`📋 [Audit] Validation: ${result.passed ? 'PASSED' : 'FAILED'}`);
-    if (!result.passed) {
-      console.log(`   Errors: ${result.errors.join(', ')}`);
+    console.log(`📋 [Audit] Rule Engine:`);
+    console.log(`   Inputs: land=${audit.input.land_context_present}, soil=${audit.input.soil_data_present}, ndvi=${audit.input.ndvi_data_present}`);
+    console.log(`   Outputs: rules=${audit.output.rules_fired.length}, actions=${audit.output.actions_generated.length}`);
+  }
+  
+  /**
+   * Log LLM Formatter audit trail (NEW)
+   */
+  logLLMFormatterAudit(audit: LLMFormatterAudit): void {
+    this.currentTurn.llm_formatter_audit = audit;
+    this.addAgent('LLM_FORMATTER');
+    
+    console.log(`📋 [Audit] LLM Formatter:`);
+    console.log(`   Input: ${audit.input.symbolic_actions_count} actions, products: ${audit.input.product_names.join(', ') || 'none'}`);
+    console.log(`   Output: ${audit.output.response_length} chars, validation: ${audit.output.validation_passed ? 'PASSED' : 'FAILED'}`);
+    if (!audit.output.validation_passed) {
+      console.log(`   Violations: ${audit.output.violations.join(', ')}`);
     }
   }
   
