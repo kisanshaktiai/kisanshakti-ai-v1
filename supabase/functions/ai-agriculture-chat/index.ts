@@ -290,11 +290,35 @@ serve(async (req) => {
       // ═══════════════════════════════════════════════════════════════════════════
       if (existingSession?.metadata?.decision_tracking) {
         sessionState = existingSession.metadata.decision_tracking;
-        console.log(`📋 [Session] State loaded (P0-A validated, land=${requestedLandId}):`, {
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CRITICAL FIX: Session Isolation - Clear pending options for GENERAL queries
+        // Prevents land-specific clarification options from leaking to General tab
+        // ═══════════════════════════════════════════════════════════════════════════
+        const isGeneralSession = !requestedLandId;
+        const sessionHasLand = existingSession.land_id !== null;
+        
+        if (isGeneralSession && sessionState?.pending_clarification_options?.length > 0) {
+          console.log(`🔒 [Session] ISOLATION: Clearing ${sessionState.pending_clarification_options.length} pending options for General session`);
+          sessionState.pending_clarification_options = [];
+        }
+        
+        // Also clear land-specific context for general sessions
+        if (isGeneralSession) {
+          if (sessionState?.last_pest || sessionState?.last_disease || sessionState?.last_crop) {
+            console.log(`🔒 [Session] ISOLATION: Clearing land context (pest/disease/crop) for General session`);
+            sessionState.last_pest = undefined;
+            sessionState.last_disease = undefined;
+            sessionState.last_crop = undefined;
+          }
+        }
+        
+        console.log(`📋 [Session] State loaded (P0-A validated, land=${requestedLandId}, isGeneral=${isGeneralSession}):`, {
           decision_state: sessionState?.decision_state,
           last_pest: sessionState?.last_pest,
           last_crop: sessionState?.last_crop,
           pending_action: sessionState?.pending_user_action,
+          pending_options: sessionState?.pending_clarification_options?.length || 0,
           turn: sessionState?.turn_count
         });
       }
