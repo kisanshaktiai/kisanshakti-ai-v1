@@ -408,6 +408,19 @@ export function mapOptionToObservation(
         return ObservationKey.TIMING_LONG;
       }
       return ObservationKey.TIMING_WEEK;
+    
+    // PHASE-10: Insect type identification for wheat pests
+    case ClarificationScope.IDENTIFY_INSECT_TYPE:
+      if (option.includes('माव') || option.toLowerCase().includes('aphid') || option.includes('हिरव') || option.includes('पिवळ')) {
+        return ObservationKey.PEST_TYPE_APHID;
+      }
+      if (option.includes('थ्रिप्स') || option.toLowerCase().includes('thrips') || option.includes('पातळ') || option.includes('लांब')) {
+        return ObservationKey.PEST_TYPE_THRIPS;
+      }
+      if (option.includes('कोळी') || option.toLowerCase().includes('mite') || option.includes('जाळी')) {
+        return ObservationKey.PEST_TYPE_MITE;
+      }
+      return ObservationKey.PEST_TYPE_UNKNOWN;
       
     default:
       return null;

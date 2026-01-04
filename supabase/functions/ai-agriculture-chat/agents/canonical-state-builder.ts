@@ -599,6 +599,47 @@ export function mapObservationsToSymptom(observations: string[]): { primary: Vis
   return { primary: detected[0], secondary: detected.slice(1) };
 }
 
+/**
+ * PHASE-10: Map a symptom string to VisualSymptom enum
+ * Used when option selection provides a symptom name as string
+ */
+export function mapVisualSymptomToEnum(symptom: string | undefined): VisualSymptom {
+  if (!symptom) return VisualSymptom.UNKNOWN;
+  
+  const normalized = symptom.toUpperCase().replace(/-/g, '_').replace(/\s+/g, '_');
+  
+  // Direct enum match
+  if (normalized in VisualSymptom) {
+    return VisualSymptom[normalized as keyof typeof VisualSymptom];
+  }
+  
+  // Partial matching for common patterns
+  const symptomMappings: Record<string, VisualSymptom> = {
+    'YELLOWING': VisualSymptom.GENERAL_YELLOWING,
+    'YELLOW': VisualSymptom.GENERAL_YELLOWING,
+    'CURLED': VisualSymptom.CURLED_LEAVES,
+    'CURLING': VisualSymptom.LEAF_CURLING,
+    'SPOTS': VisualSymptom.SPOTS_IRREGULAR,
+    'SILVERING': VisualSymptom.SILVERING,
+    'WEBBING': VisualSymptom.WEBBING,
+    'WILTING': VisualSymptom.WILTING,
+    'HOLES': VisualSymptom.HOLES_IN_LEAVES,
+    'HONEYDEW': VisualSymptom.HONEYDEW,
+    'STICKY': VisualSymptom.STICKY_LEAVES,
+    'EDGE_BURN': VisualSymptom.LEAF_EDGE_BURN,
+    'STEM': VisualSymptom.STEM_DISCOLORATION,
+    'POWDER': VisualSymptom.POWDERY_COATING
+  };
+  
+  for (const [key, value] of Object.entries(symptomMappings)) {
+    if (normalized.includes(key)) {
+      return value;
+    }
+  }
+  
+  return VisualSymptom.UNKNOWN;
+}
+
 // ==================== MAIN STATE BUILDER ====================
 
 export interface BuildCanonicalStateInput {
