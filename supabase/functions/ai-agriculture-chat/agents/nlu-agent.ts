@@ -50,21 +50,66 @@ const NLU_VERSION = '4.1.0'; // Updated to include centralized entity normalizat
 // AI-POWERED SEMANTIC UNDERSTANDING (Gemini/OpenAI)
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SYMBOLIC BRAIN CONTRACT: NLU OUTPUT MUST CONFORM TO THIS SCHEMA
+// AI extracts OBSERVATIONS ONLY - NO decisions, NO codes, NO recommendations
+// ═══════════════════════════════════════════════════════════════════════════
+
 interface AIUnderstandingResult {
   language: 'mr' | 'hi' | 'en';
-  intent: PrimaryIntent;
-  intent_confidence: number;
-  crop?: { name: string; code: string };
-  pest?: { name: string; code: string };
-  disease?: { name: string; code: string };
-  symptoms: string[];
+  
+  /**
+   * PLAIN LANGUAGE intent description - NOT internal codes
+   * Examples: "pest problem on crop", "disease issue", "general question"
+   */
+  intent_label: string;
+  
+  /**
+   * EXACT farmer observations - verbatim words
+   * Examples: ["मधली सुरळी वाळली", "dead heart", "पाने पिवळी"]
+   */
+  observations: string[];
+  
+  /**
+   * Confidence 0.0 - 1.0
+   */
+  confidence: number;
+  
+  /**
+   * What's missing to understand the problem
+   */
+  missing_inputs: string[];
+  
+  /**
+   * Safety flags only - URGENT, CROP_DYING
+   */
+  safety_flags: string[];
+  
+  /**
+   * Urgency assessment
+   */
   urgency: 'HIGH' | 'MEDIUM' | 'LOW';
+  
+  /**
+   * Emotional state for tone
+   */
   emotional_state: 'PANIC' | 'STRESSED' | 'NEUTRAL' | 'CONFIDENT';
+  
+  /**
+   * Brief context summary in farmer's language
+   */
   extracted_context: string;
-  // NEW: Clarification fields for farmer-friendly options
-  response_strategy?: 'ACKNOWLEDGE' | 'CLARIFY' | 'ASSESS';
-  clarification_type?: 'NONE' | 'OPTIONS' | 'PHOTO' | 'OPTIONS_PLUS_PHOTO';
-  clarification_options?: string[];
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LEGACY FIELDS (for backward compatibility during transition)
+  // These will be DEPRECATED - Rule Engine decides, not NLU
+  // ═══════════════════════════════════════════════════════════════════════════
+  intent?: PrimaryIntent;  // DEPRECATED: Use intent_label
+  intent_confidence?: number;  // DEPRECATED: Use confidence
+  symptoms?: string[];  // DEPRECATED: Use observations
+  crop?: { name: string; code: string };  // DEPRECATED: Context from DB
+  pest?: { name: string; code: string };  // DEPRECATED: Rule Engine decides
+  disease?: { name: string; code: string };  // DEPRECATED: Rule Engine decides
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -155,97 +200,77 @@ async function callAIForUnderstanding(message: string): Promise<AIUnderstandingR
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // CONTROLLED LANGUAGE ADAPTER CONTRACT - NLU OUTPUT MUST CONFORM TO:
-  // { intent_label, observations, confidence } - NO INTERNAL CODES
+  // SYMBOLIC BRAIN CONTRACT - NLU EXTRACTS OBSERVATIONS ONLY
+  // CRITICAL: AI does NOT decide actions, clarifications, or recommendations
+  // Those decisions belong EXCLUSIVELY to the Rule Engine
   // ═══════════════════════════════════════════════════════════════════════════
   
-  const systemPrompt = `You are an expert Agricultural NLU Agent for Indian farmers.
-Analyze the farmer's message (in Marathi, Hindi, or English) and extract OBSERVATIONS ONLY.
+  const systemPrompt = `You are a Symbolic Agricultural NLU Agent.
 
 ═══════════════════════════════════════════════════════════════════════════
-CRITICAL CONTRACT - OUTPUT FORMAT (JSON only, no markdown):
+CORE PRINCIPLE: YOU DO NOT DECIDE. YOU ONLY OBSERVE.
+═══════════════════════════════════════════════════════════════════════════
+
+Your ONLY job is to:
+1. Extract EXACT observations from farmer's message (verbatim words)
+2. Assess confidence in understanding
+3. Flag urgency and safety concerns
+4. Detect language
+
+The RULE ENGINE decides:
+- What pest/disease/problem this is
+- What actions to take
+- Whether clarification is needed
+- What clarification options to show
+
+═══════════════════════════════════════════════════════════════════════════
+OUTPUT FORMAT (JSON only, no markdown):
 ═══════════════════════════════════════════════════════════════════════════
 
 {
   "language": "mr" | "hi" | "en",
-  "intent_label": "<SHORT PLAIN-LANGUAGE DESCRIPTION of what farmer wants - NOT A CODE>",
-  "observations": ["<EXACT farmer observations - color, spots, insects, wilting, etc.>"],
+  "intent_label": "<PLAIN LANGUAGE: 'pest problem', 'disease issue', 'general question'>",
+  "observations": ["<EXACT farmer words - colors, symptoms, what they see>"],
   "confidence": 0.0-1.0,
+  "missing_inputs": ["<what info would help: 'symptom_location', 'affected_area'>"],
+  "safety_flags": ["URGENT" if dying/emergency, otherwise empty],
   "urgency": "HIGH" | "MEDIUM" | "LOW",
   "emotional_state": "PANIC" | "STRESSED" | "NEUTRAL" | "CONFIDENT",
-  "extracted_context": "brief summary in farmer's language",
-  "response_strategy": "ACKNOWLEDGE" | "CLARIFY" | "ASSESS",
-  "clarification_type": "NONE" | "OPTIONS" | "PHOTO" | "OPTIONS_PLUS_PHOTO",
-  "clarification_options": ["<max 3 farmer-friendly options IF clarification needed>"]
+  "extracted_context": "brief summary in farmer's language"
 }
 
 ═══════════════════════════════════════════════════════════════════════════
-CLARIFICATION RULES (CRITICAL):
+ABSOLUTELY FORBIDDEN - NEVER OUTPUT THESE:
 ═══════════════════════════════════════════════════════════════════════════
 
-When confidence < 0.7 OR farmer's symptom is ambiguous:
-1. Prefer SIMPLE OPTIONS over free-text questions (max 3 options)
-2. Options must be CONCRETE and FARMER-FRIENDLY (visual symptoms they can see)
-3. Request photo ONLY if visual evidence would significantly improve accuracy
-4. If both options and photo helpful: ask options FIRST, mention photo can help further
-
-NEVER ask both multiple questions AND many options together.
-Max: 1 question OR 1 option set OR 1 photo request.
-
-═══════════════════════════════════════════════════════════════════════════
-LANGUAGE ENFORCEMENT FOR CLARIFICATION (ABSOLUTELY CRITICAL):
-═══════════════════════════════════════════════════════════════════════════
-
-The clarification_options MUST be in the SAME language as the input message:
-- If input is Marathi (mr): clarification_options MUST be in Marathi (Devanagari script)
-- If input is Hindi (hi): clarification_options MUST be in Hindi (Devanagari script)
-- If input is English (en): clarification_options MUST be in English
-
-NEVER return English options for Marathi/Hindi input. This confuses rural farmers.
-
-Example for Marathi input "काही ठिकाणी लावण केलेला ऊस मेलाआहे" (Some planted sugarcane died):
-- language: "mr"
-- response_strategy: "CLARIFY"
-- clarification_type: "OPTIONS_PLUS_PHOTO"
-- clarification_options: ["मधोमध कोंब वाळलेला आहे", "झाड मुळासकट कुजलेले दिसते", "पाणी साचते / फार ओल आहे"]
-
-Example for Hindi input "गन्ना मर रहा है":
-- language: "hi"
-- clarification_options: ["बीच का कोंपल सूख गया", "जड़ से सड़ा दिखता है", "पानी भर जाता है"]
-
-WRONG (Never do this for Marathi/Hindi input):
-- clarification_options: ["Dead heart in central shoot", "Root rot visible", "Waterlogging issue"]
+❌ pest_code, disease_code, crop_code, rule_id, product_id
+❌ response_strategy (Rule Engine decides)
+❌ clarification_type (Rule Engine decides)  
+❌ clarification_options (Rule Engine provides from database)
+❌ recommendations, actions, treatments
+❌ product names, dosages
+❌ percentage claims (80% effective, etc.)
 
 ═══════════════════════════════════════════════════════════════════════════
-FORBIDDEN - NEVER OUTPUT THESE (CRITICAL):
+OBSERVATION EXTRACTION - PRESERVE FARMER'S EXACT WORDS:
 ═══════════════════════════════════════════════════════════════════════════
 
-- NO pest_code, disease_code, crop_code, rule_id, product_id
-- NO internal identifiers or numeric codes
-- NO diagnoses or cause mappings
-- NO recommendations or actions
-- NO percentage effectiveness claims
+Examples of CORRECT observation extraction:
+- "मधली सुरळी वाळली" → observations: ["मधली सुरळी वाळली"]
+- "dead heart in my sugarcane" → observations: ["dead heart in sugarcane"]
+- "पाने पिवळी झाली आणि काळे डाग" → observations: ["पाने पिवळी झाली", "काळे डाग"]
+- "white flies everywhere" → observations: ["white flies visible"]
 
-═══════════════════════════════════════════════════════════════════════════
-OBSERVATION EXTRACTION RULES:
-═══════════════════════════════════════════════════════════════════════════
+For intent_label, use PLAIN LANGUAGE only:
+✅ "pest problem on crop"
+✅ "disease symptoms on leaves"
+✅ "crop dying - urgent"
+✅ "general farming question"
+✅ "irrigation query"
 
-Preserve farmer's EXACT wording as observations:
-- "मधली सुरळी वाळली" → observation: "मधली सुरळी वाळली" (NOT pest code)
-- "dead heart" → observation: "dead heart in crop"
-- "white flies on leaves" → observation: "white flies on leaves"
-- "पाने पिवळी झाली" → observation: "पाने पिवळी झाली"
+❌ NOT: "PEST_PROBLEM", "SHOOT_BORER_ATTACK", "P-001"
 
-For intent_label, use plain language like:
-- "pest problem on crop"
-- "disease issue with leaves"
-- "need irrigation advice"
-- "weather query for spraying"
-- "market price inquiry"
-- "general farming question"
-- "needs clarification" (if confidence < 0.7)
-
-URGENCY INDICATORS: "dying", "emergency", "urgent", "मरतंय", "वाचवा", "ताबडतोब"`;
+URGENCY INDICATORS: "dying", "emergency", "मरतंय", "वाचवा", "ताबडतोब"`;
 
   let geminiError: string | null = null;
   let openaiError: string | null = null;
