@@ -257,6 +257,42 @@ export class AuditLogger {
   }
   
   /**
+   * Log ObservationKeys mapping result (Stage 2.5 - PHASE-8)
+   * This is REQUIRED for Phase-8 audit trail
+   */
+  logObservationKeys(params: {
+    before: string[];
+    after?: string[];
+    unknown_count: number;
+    had_land_context_crop: boolean;
+  }): void {
+    this.currentTurn.observation_keys_before = params.before;
+    if (params.after) {
+      this.currentTurn.observation_keys_after = params.after;
+    }
+    this.addAgent('OBSERVATION_KEY_MAPPER');
+    
+    console.log(`📋 [Audit] ObservationKeys: ${params.before.length} keys, ${params.unknown_count} unknown, land_crop=${params.had_land_context_crop}`);
+  }
+  
+  /**
+   * Log clarification turn for loop safety tracking (PHASE-8)
+   */
+  logClarificationTurn(params: {
+    scope: string;
+    turn_count: number;
+    escalation_reason?: string;
+    loop_detected?: boolean;
+  }): void {
+    this.currentTurn.clarification_scope = params.scope;
+    this.currentTurn.clarification_turn_count = params.turn_count;
+    this.currentTurn.escalation_reason = params.escalation_reason;
+    this.currentTurn.clarification_loop_detected = params.loop_detected;
+    
+    console.log(`📋 [Audit] Clarification: scope=${params.scope}, turn=${params.turn_count}, loop=${params.loop_detected || false}`);
+  }
+  
+  /**
    * Log understanding check result (Stage 4)
    */
   logUnderstandingCheck(result: {

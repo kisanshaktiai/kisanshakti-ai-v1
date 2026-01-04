@@ -887,6 +887,41 @@ export class AIAgentOrchestrator {
       console.log(`      Severity words: ${observationExtraction.severity_words.join(', ') || 'none'}`);
       
       // ═══════════════════════════════════════════════════════════════════════════
+      // STAGE 2.5: PHASE-8 OBSERVATION KEY MAPPING (REQUIRED)
+      // Convert observations to canonical ObservationKeys - MUST pass landContext
+      // ═══════════════════════════════════════════════════════════════════════════
+      console.log('   🔑 Stage 2.5: ObservationKey Mapping...');
+      
+      const observationKeyResult = mapToObservationKeys(
+        observationExtraction,
+        landContext ? {
+          current_crop: landContext.current_crop,
+          growth_stage: landContext.growth_stage
+        } : undefined
+      );
+      const observationKeys = observationKeyResult.keys;
+      
+      agentsUsed.push('OBSERVATION_KEY_MAPPER');
+      
+      console.log(`      Keys mapped: ${observationKeyResult.key_count}`);
+      console.log(`      Unknown keys: ${observationKeyResult.unknown_count}`);
+      console.log(`      Keys: ${serializeKeys(observationKeys).join(', ')}`);
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE-8 GUARDRAIL: Prevent CROP_UNKNOWN when landContext has crop
+      // This invariant prevents regression of the crop identification bug
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (landContext?.current_crop && observationKeys.has(ObservationKey.CROP_UNKNOWN)) {
+        console.error('   ❌ PHASE-8 VIOLATION: Land has crop but ObservationKey says CROP_UNKNOWN');
+        console.error(`      landContext.current_crop: ${landContext.current_crop}`);
+        console.error(`      observationExtraction.crop_mentioned: ${observationExtraction.crop_mentioned}`);
+        throw new Error(
+          `PHASE-8 VIOLATION: Land has crop (${landContext.current_crop}) but ObservationKey says CROP_UNKNOWN. ` +
+          `This indicates a bug in mapToObservationKeys() - it should use landContext.current_crop as fallback.`
+        );
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 4: UNDERSTANDING COMPLETENESS CHECK (SYMBOLIC - NO LLM)
       // Determine if we have enough info to proceed or need clarification
       // ═══════════════════════════════════════════════════════════════════════════
@@ -971,6 +1006,11 @@ export class AIAgentOrchestrator {
           normalized_text: normalizedInput.normalized_text
         });
         auditLoggerEarly.logObservationExtraction(observationExtraction);
+        auditLoggerEarly.logObservationKeys({
+          before: serializeKeys(observationKeys),
+          unknown_count: observationKeyResult.unknown_count,
+          had_land_context_crop: !!landContext?.current_crop
+        });
         auditLoggerEarly.logUnderstandingCheck({
           understanding_confidence: understandingResult.understanding_confidence,
           contradiction_detected: understandingResult.contradiction_detected,
@@ -1211,6 +1251,13 @@ export class AIAgentOrchestrator {
       
       // Log observation extraction (Stage 2)
       auditLogger.logObservationExtraction(observationExtraction);
+      
+      // Log ObservationKeys (Stage 2.5 - PHASE-8)
+      auditLogger.logObservationKeys({
+        before: serializeKeys(observationKeys),
+        unknown_count: observationKeyResult.unknown_count,
+        had_land_context_crop: !!landContext?.current_crop
+      });
       
       // Log understanding check (Stage 4)
       auditLogger.logUnderstandingCheck({
