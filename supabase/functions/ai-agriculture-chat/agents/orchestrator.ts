@@ -291,6 +291,48 @@ export class AIAgentOrchestrator {
   }
   
   /**
+   * Generate default clarification message when clarification generator returns empty
+   * CRITICAL: Never expose internal intent names to farmers
+   */
+  private generateDefaultClarification(
+    language: string,
+    farmerMessage: string,
+    cropName?: string
+  ): string {
+    const lang = language as 'mr' | 'hi' | 'en';
+    
+    const templates: Record<string, string> = {
+      mr: `🌾 समजले.\n\nतुमच्या ${cropName || 'पिकाच्या'} समस्येबद्दल मला अधिक माहिती हवी आहे.\n\nकृपया खालीलपैकी एक निवडा:\n\n1️⃣ पान पिवळे पडत आहे\n2️⃣ कीड/रोग दिसत आहे\n3️⃣ वाढ थांबली आहे\n\n👉 शक्य असल्यास प्रभावित भागाचा फोटो पाठवा.`,
+      hi: `🌾 समझ गया.\n\nआपकी ${cropName || 'फसल की'} समस्या के बारे में मुझे अधिक जानकारी चाहिए.\n\nकृपया नीचे से एक चुनें:\n\n1️⃣ पत्ते पीले पड़ रहे हैं\n2️⃣ कीट/रोग दिख रहा है\n3️⃣ बढ़वार रुक गई है\n\n👉 यदि संभव हो तो प्रभावित भाग की फोटो भेजें.`,
+      en: `🌾 Understood.\n\nI need more information about your ${cropName || 'crop'} problem.\n\nPlease select one:\n\n1️⃣ Leaves turning yellow\n2️⃣ Pest/disease visible\n3️⃣ Growth stopped\n\n👉 If possible, send a photo of the affected area.`
+    };
+    
+    return templates[lang] || templates['en'];
+  }
+  
+  /**
+   * Generate farmer-friendly clarification for intent lock mismatch
+   * CRITICAL: Never expose internal intent names like "GENERAL_QUERY" to farmers
+   */
+  private generateIntentMismatchClarification(
+    language: string,
+    cropName?: string
+  ): { text_mr: string; text_hi: string; text_en: string; options: Array<{ value: string; label: string }> } {
+    const cropLabel = cropName || 'पीक';
+    
+    return {
+      text_mr: `🌾 समजले.\n\n${cropLabel} बद्दल अधिक माहिती द्या. तुम्हाला कोणत्या प्रकारची मदत हवी आहे?\n\n1️⃣ रोग/कीड समस्या\n2️⃣ खत/पाणी व्यवस्थापन\n3️⃣ सामान्य सल्ला`,
+      text_hi: `🌾 समझ गया.\n\n${cropLabel} के बारे में अधिक जानकारी दें. आपको किस प्रकार की मदद चाहिए?\n\n1️⃣ रोग/कीट समस्या\n2️⃣ खाद/पानी प्रबंधन\n3️⃣ सामान्य सलाह`,
+      text_en: `🌾 Understood.\n\nPlease tell me more about your ${cropLabel}. What kind of help do you need?\n\n1️⃣ Disease/pest problem\n2️⃣ Fertilizer/water management\n3️⃣ General advice`,
+      options: [
+        { value: '1', label: language === 'mr' ? 'रोग/कीड समस्या' : language === 'hi' ? 'रोग/कीट समस्या' : 'Disease/pest problem' },
+        { value: '2', label: language === 'mr' ? 'खत/पाणी व्यवस्थापन' : language === 'hi' ? 'खाद/पानी प्रबंधन' : 'Fertilizer/water management' },
+        { value: '3', label: language === 'mr' ? 'सामान्य सल्ला' : language === 'hi' ? 'सामान्य सलाह' : 'General advice' }
+      ]
+    };
+  }
+  
+  /**
    * Main orchestration function - coordinates all agents
    */
   async orchestrate(
@@ -787,8 +829,8 @@ export class AIAgentOrchestrator {
       if (requiresClarification(intentConfidence)) {
         console.log(`   ⚠️ Low confidence (${(intentConfidence * 100).toFixed(0)}%) - generating clarification`);
         
-        // Extract NLU clarification hints
-        const nluClarificationType = (nluOutput as any)?.clarification_type || 'OPTIONS';
+        // Extract NLU clarification hints - CRITICAL FIX: Default to OPTIONS_PLUS_PHOTO for low confidence
+        const nluClarificationType = (nluOutput as any)?.clarification_type || 'OPTIONS_PLUS_PHOTO';
         const nluClarificationOptions = (nluOutput as any)?.clarification_options || [];
         
         // Generate farmer-friendly clarification
@@ -801,9 +843,20 @@ export class AIAgentOrchestrator {
           clarification_options: nluClarificationOptions
         };
         
+        console.log(`   📋 Clarification input: type=${nluClarificationType}, crop=${clarificationInput.crop_code}, observations=${clarificationInput.observations.length}`);
+        
         const clarificationResponse = generateClarificationResponse(clarificationInput);
         
-        if (clarificationResponse.response_text) {
+        console.log(`   📋 Clarification output: has_text=${!!clarificationResponse.response_text}, options=${clarificationResponse.options.length}`);
+        
+        // CRITICAL FIX: Always return clarification when confidence is low, even if response_text is empty
+        if (clarificationResponse.response_text || intentConfidence < 0.5) {
+          const responseText = clarificationResponse.response_text || this.generateDefaultClarification(
+            options.language || 'mr',
+            farmerMessage,
+            landContext?.current_crop
+          );
+          
           console.log(`   📋 Returning clarification with ${clarificationResponse.options.length} options`);
           agentsUsed.push('CLARIFICATION_GENERATOR');
           
@@ -812,9 +865,9 @@ export class AIAgentOrchestrator {
             session_id: sessionId,
             question: {
               question_id: `clarify_${Date.now()}`,
-              text_mr: clarificationResponse.response_text,
-              text_hi: clarificationResponse.response_text,
-              text_en: clarificationResponse.response_text,
+              text_mr: responseText,
+              text_hi: responseText,
+              text_en: responseText,
               options: clarificationResponse.options.map((opt, idx) => ({
                 value: String(idx + 1),
                 label: opt
@@ -1238,21 +1291,28 @@ export class AIAgentOrchestrator {
           actions_filtered_out: decisionOutput.blocked_actions || []
         });
         
-        // If ALL actions were filtered, return clarification
+        // If ALL actions were filtered, return farmer-friendly clarification
+        // CRITICAL FIX: Never expose internal intent names like "GENERAL_QUERY" to farmers
         if (lockValidation.filtered_actions.length === 0 && allActions.length > 0) {
-          console.warn(`   🚫 P0-E: ALL actions filtered by intent lock - returning clarification`);
+          console.warn(`   🚫 P0-E: ALL actions filtered by intent lock - returning farmer-friendly clarification`);
           
           await auditLogger.completeTurn(Date.now() - startTime);
+          
+          // Use farmer-friendly clarification instead of exposing internal intent names
+          const clarification = this.generateIntentMismatchClarification(
+            options.language || 'mr',
+            landContext?.current_crop
+          );
           
           return {
             type: 'CLARIFICATION_QUESTION',
             session_id: sessionId,
             question: {
               question_id: `intent_mismatch_${Date.now()}`,
-              text_mr: `तुमचा प्रश्न "${intentLock.locked_intent}" बद्दल आहे का? कृपया स्पष्ट करा.`,
-              text_hi: `क्या आपका प्रश्न "${intentLock.locked_intent}" के बारे में है? कृपया स्पष्ट करें।`,
-              text_en: `Is your question about "${intentLock.locked_intent}"? Please clarify.`,
-              options: []
+              text_mr: clarification.text_mr,
+              text_hi: clarification.text_hi,
+              text_en: clarification.text_en,
+              options: clarification.options
             },
             metadata: {
               confidence: intentConfidence,
