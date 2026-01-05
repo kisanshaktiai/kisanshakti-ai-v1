@@ -9,6 +9,7 @@ import {
   CauseRule,
   Cause,
   CropStage,
+  CropGroup,
   SoilNState,
   SoilPState,
   SoilKState,
@@ -69,7 +70,7 @@ const ORGANIC_PEST_MANAGEMENT_RULES: CauseRule[] = [
     stage_applicable: [CropStage.VEGETATIVE],
     conditions: (input) =>
       input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      (input.crop_group === 'VEGETABLES' || input.crop_code?.includes('vegetable')),
+      (input.crop_group === CropGroup.VEGETABLES || input.crop_code?.includes('vegetable')),
     cause: Cause.IPM_BIOLOGICAL_PREFERRED,
     priority: 5,
     scientific_source: 'Botanical pesticides for vegetable crops',
@@ -119,7 +120,7 @@ const ORGANIC_PEST_MANAGEMENT_RULES: CauseRule[] = [
     stage_applicable: [CropStage.REPRODUCTIVE, CropStage.MATURITY],
     conditions: (input) =>
       input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      input.crop_group === 'FRUITS',
+      input.crop_group === CropGroup.FRUITS,
     cause: Cause.IPM_BIOLOGICAL_PREFERRED,
     priority: 5,
     scientific_source: 'Pheromone-based pest monitoring and mass trapping',
@@ -379,7 +380,7 @@ const ORGANIC_NUTRIENT_MANAGEMENT_RULES: CauseRule[] = [
     stage_applicable: [CropStage.LAND_PREPARATION, CropStage.SOWING],
     conditions: (input) =>
       input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      input.soil_states?.nitrogen === SoilNState.LOW_N,
+      input.soil_states?.n === SoilNState.LOW_N,
     cause: Cause.NITROGEN_DEFICIENCY,
     priority: 5,
     scientific_source: 'Organic nitrogen sources for crop nutrition',
@@ -392,7 +393,7 @@ const ORGANIC_NUTRIENT_MANAGEMENT_RULES: CauseRule[] = [
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
       input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      input.soil_states?.nitrogen === SoilNState.LOW_N,
+      input.soil_states?.n === SoilNState.LOW_N,
     cause: Cause.NITROGEN_DEFICIENCY,
     priority: 5,
     scientific_source: 'Legume residue nitrogen contribution',
@@ -405,7 +406,7 @@ const ORGANIC_NUTRIENT_MANAGEMENT_RULES: CauseRule[] = [
     stage_applicable: [CropStage.LAND_PREPARATION, CropStage.SOWING],
     conditions: (input) =>
       input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      input.soil_states?.phosphorus === SoilPState.LOW_P,
+      input.soil_states?.p === SoilPState.LOW_P,
     cause: Cause.PHOSPHORUS_DEFICIENCY,
     priority: 5,
     scientific_source: 'Rock phosphate and PSB for organic P nutrition',
@@ -418,7 +419,7 @@ const ORGANIC_NUTRIENT_MANAGEMENT_RULES: CauseRule[] = [
     stage_applicable: [CropStage.SOWING, CropStage.REPRODUCTIVE],
     conditions: (input) =>
       input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      input.soil_states?.potassium === SoilKState.LOW_K,
+      input.soil_states?.k === SoilKState.LOW_K,
     cause: Cause.POTASSIUM_DEFICIENCY,
     priority: 5,
     scientific_source: 'Organic potassium sources',
@@ -443,76 +444,75 @@ const ORGANIC_NUTRIENT_MANAGEMENT_RULES: CauseRule[] = [
     stage_applicable: [CropStage.SOWING, CropStage.VEGETATIVE],
     conditions: (input) =>
       input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      input.crop_group === 'CEREALS',
+      input.crop_group === CropGroup.CEREALS,
     cause: Cause.NITROGEN_DEFICIENCY,
     priority: 5,
-    scientific_source: 'Azospirillum for cereal nitrogen',
-    scientific_basis: 'Apply Azospirillum brasilense at 5 kg/ha as seed treatment and soil application at sowing + 30 DAS.',
+    scientific_source: 'Azotobacter for cereal nitrogen nutrition',
+    scientific_basis: 'Apply Azotobacter chroococcum at 5 kg/ha as seed treatment + soil application for non-symbiotic N fixation.',
   },
   {
     rule_id: 'ORG_NUT_007',
     category: 'biological',
-    crop_code: 'legumes',
+    crop_code: 'pulses',
     stage_applicable: [CropStage.SOWING],
     conditions: (input) =>
       input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      input.crop_group === 'PULSES',
+      input.crop_group === CropGroup.PULSES,
     cause: Cause.NITROGEN_DEFICIENCY,
     priority: 4,
-    scientific_source: 'Rhizobium for legume nitrogen fixation',
-    scientific_basis: 'Inoculate seeds with crop-specific Rhizobium at 200g/10kg seed just before sowing. Shade-dry after treatment.',
+    scientific_source: 'Rhizobium inoculation for legume N fixation',
+    scientific_basis: 'Apply crop-specific Rhizobium at 200g/10kg seed as seed treatment. Can fix 50-100 kg N/ha.',
   },
   {
     rule_id: 'ORG_NUT_008',
-    category: 'biological',
+    category: 'nutrient',
     crop_code: 'all',
-    stage_applicable: [CropStage.SOWING],
+    stage_applicable: [CropStage.VEGETATIVE],
     conditions: (input) =>
       input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      input.soil_states?.phosphorus === SoilPState.LOW_P,
+      input.soil_states?.p === SoilPState.LOW_P,
     cause: Cause.PHOSPHORUS_DEFICIENCY,
     priority: 5,
-    scientific_source: 'VAM fungi for phosphorus mobilization',
-    scientific_basis: 'Apply VAM (Glomus sp.) at 5 kg/ha in planting hole or root zone at transplanting or sowing.',
+    scientific_source: 'Bone meal for organic phosphorus',
+    scientific_basis: 'Apply steamed bone meal at 500 kg/ha for slow-release organic P. Basal application preferred.',
   },
   {
     rule_id: 'ORG_NUT_009',
-    category: 'biological',
-    crop_code: 'fruits',
-    stage_applicable: [CropStage.REPRODUCTIVE],
+    category: 'nutrient',
+    crop_code: 'all',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
     conditions: (input) =>
       input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      input.soil_states?.potassium === SoilKState.LOW_K,
+      input.soil_states?.k === SoilKState.LOW_K,
     cause: Cause.POTASSIUM_DEFICIENCY,
     priority: 5,
-    scientific_source: 'KMB for potassium mobilization',
-    scientific_basis: 'Apply Frateuria aurantia (KMB) at 5 kg/ha + wood ash 300 kg/ha at flowering and fruit development.',
+    scientific_source: 'Seaweed extract for organic potassium',
+    scientific_basis: 'Apply seaweed extract foliar spray at 2-3% concentration for K and micronutrient supply. Repeat fortnightly.',
   },
   {
     rule_id: 'ORG_NUT_010',
-    category: 'nutrient',
-    crop_code: 'all',
-    stage_applicable: [CropStage.LAND_PREPARATION],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      input.soil_states?.oc === SoilOCState.LOW_OC,
-    cause: Cause.ORGANIC_MATTER_LOW,
-    priority: 4,
-    scientific_source: 'Building soil organic matter',
-    scientific_basis: 'Apply FYM 10-15 t/ha or compost 5 t/ha + green manure incorporation 3-4 weeks before sowing.',
-  },
-  {
-    rule_id: 'ORG_NUT_011',
     category: 'nutrient',
     crop_code: 'oilseeds',
     stage_applicable: [CropStage.SOWING],
     conditions: (input) =>
       input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      input.crop_group === 'OILSEEDS',
+      input.crop_group === CropGroup.OILSEEDS,
     cause: Cause.MICRONUTRIENT_DEFICIENCY,
     priority: 5,
-    scientific_source: 'Organic sulfur sources',
-    scientific_basis: 'Apply gypsum 400 kg/ha for oilseeds. Full basal, essential for oil quality.',
+    scientific_source: 'Sulfur nutrition for oilseeds',
+    scientific_basis: 'Apply gypsum at 200-400 kg/ha for organic sulfur supply critical for oil synthesis.',
+  },
+  {
+    rule_id: 'ORG_NUT_011',
+    category: 'nutrient',
+    crop_code: 'all',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.MICRONUTRIENT_DEFICIENCY,
+    priority: 6,
+    scientific_source: 'Panchagavya for organic micronutrient supply',
+    scientific_basis: 'Apply Panchagavya (5-cow preparation) at 3% foliar spray for micronutrients and growth promotion.',
   },
   {
     rule_id: 'ORG_NUT_012',
@@ -523,8 +523,8 @@ const ORGANIC_NUTRIENT_MANAGEMENT_RULES: CauseRule[] = [
       input.farming_mode === FarmingMode.ORGANIC_ONLY,
     cause: Cause.MICRONUTRIENT_DEFICIENCY,
     priority: 6,
-    scientific_source: 'Seaweed extract for micronutrient supply',
-    scientific_basis: 'Apply seaweed extract (Kappaphycus/Ascophyllum) at 2-3 ml/L as foliar spray at vegetative growth and pre-flowering.',
+    scientific_source: 'Jeevamrutha for soil biological activation',
+    scientific_basis: 'Apply Jeevamrutha at 500 L/ha through irrigation for microbial activation and nutrient availability.',
   },
   {
     rule_id: 'ORG_NUT_013',
@@ -536,296 +536,264 @@ const ORGANIC_NUTRIENT_MANAGEMENT_RULES: CauseRule[] = [
       input.soil_states?.oc === SoilOCState.LOW_OC,
     cause: Cause.ORGANIC_MATTER_LOW,
     priority: 4,
-    scientific_source: 'Vermicompost production and application',
-    scientific_basis: 'Prepare and apply vermicompost at 5 t/ha using Eisenia fetida 2-3 weeks before sowing.',
+    scientific_source: 'FYM for organic soil health',
+    scientific_basis: 'Apply well-decomposed FYM at 10-15 t/ha as basal for soil organic matter and slow nutrient release.',
   },
   {
     rule_id: 'ORG_NUT_014',
     category: 'nutrient',
     crop_code: 'all',
-    stage_applicable: [CropStage.VEGETATIVE],
+    stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
       input.farming_mode === FarmingMode.ORGANIC_ONLY,
     cause: Cause.ORGANIC_MATTER_LOW,
     priority: 5,
-    scientific_source: 'Jeevamrut and other liquid organic fertilizers',
-    scientific_basis: 'Prepare and apply Jeevamrut (200L/acre) or Panchagavya (3%) as soil drench every 15 days.',
+    scientific_source: 'Green manuring for nitrogen and organic matter',
+    scientific_basis: 'Grow and incorporate Sesbania/Dhaincha at 45-60 DAS before main crop for 60-80 kg N/ha equivalent.',
   },
   {
     rule_id: 'ORG_NUT_015',
-    category: 'nutrient',
-    crop_code: 'all',
-    stage_applicable: [CropStage.LAND_PREPARATION],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      input.soil_states?.oc === SoilOCState.LOW_OC,
-    cause: Cause.ORGANIC_MATTER_LOW,
-    priority: 4,
-    scientific_source: 'Green manuring for soil organic matter',
-    scientific_basis: 'Grow and incorporate Dhaincha/Sunhemp at flowering (45 DAS) during summer fallow, 3 weeks before main crop.',
-  },
-  {
-    rule_id: 'ORG_NUT_016',
-    category: 'nutrient',
-    crop_code: 'all',
-    stage_applicable: [CropStage.VEGETATIVE],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.ORGANIC_MATTER_LOW,
-    priority: 6,
-    scientific_source: 'Organic mulching for soil health',
-    scientific_basis: 'Apply organic mulch (straw, leaves) at 5 t/ha after crop establishment to conserve moisture and add OM.',
-  },
-  {
-    rule_id: 'ORG_NUT_017',
-    category: 'nutrient',
-    crop_code: 'all',
-    stage_applicable: [CropStage.LAND_PREPARATION],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.ORGANIC_MATTER_LOW,
-    priority: 5,
-    scientific_source: 'Biochar for long-term carbon sequestration',
-    scientific_basis: 'Apply biochar at 2-5 t/ha to improve soil carbon and water retention. One-time basal application.',
-  },
-  {
-    rule_id: 'ORG_NUT_018',
-    category: 'nutrient',
-    crop_code: 'all',
-    stage_applicable: [CropStage.HARVEST],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      input.crop_stage === CropStage.HARVEST,
-    cause: Cause.ORGANIC_MATTER_LOW,
-    priority: 6,
-    scientific_source: 'Crop residue recycling',
-    scientific_basis: 'Shred and incorporate crop residue instead of burning. Add decomposer culture for faster decomposition.',
-  },
-];
-
-// ============================================================================
-// CROP ROTATION AND CERTIFICATION RULES (15 rules)
-// ============================================================================
-
-const CROP_ROTATION_CERTIFICATION_RULES: CauseRule[] = [
-  {
-    rule_id: 'ORG_ROT_001',
-    category: 'cultural',
-    crop_code: 'all',
-    stage_applicable: [CropStage.PLANNING],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.IPM_CULTURAL_SUFFICIENT,
-    priority: 5,
-    scientific_source: 'Crop rotation for pest and disease break',
-    scientific_basis: 'Follow 3-4 year rotation: Cereal → Legume → Oilseed → Vegetable to break pest cycles. Maintain rotation records.',
-  },
-  {
-    rule_id: 'ORG_ROT_002',
-    category: 'cultural',
-    crop_code: 'all',
-    stage_applicable: [CropStage.PLANNING],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      input.soil_states?.nitrogen === SoilNState.LOW_N,
-    cause: Cause.NITROGEN_DEFICIENCY,
-    priority: 5,
-    scientific_source: 'Legume inclusion in rotation for N building',
-    scientific_basis: 'Include legume crop in rotation to fix 50-100 kg N/ha for subsequent crop. Plan legume every 2-3 seasons.',
-  },
-  {
-    rule_id: 'ORG_ROT_003',
-    category: 'cultural',
-    crop_code: 'all',
-    stage_applicable: [CropStage.PLANNING],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.FUNGAL_DISEASE_RISK,
-    priority: 5,
-    scientific_source: 'Avoid same family crops in succession',
-    scientific_basis: 'Avoid planting same family crops (e.g., Solanaceae) for 3+ years in same field. Maintain field history records.',
-  },
-  {
-    rule_id: 'ORG_CERT_001',
-    category: 'harvest',
-    crop_code: 'all',
-    stage_applicable: [CropStage.PLANNING, CropStage.HARVEST],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.EXPORT_GRADE_REQUIREMENTS,
-    priority: 4,
-    scientific_source: 'NPOP organic certification compliance',
-    scientific_basis: 'Maintain complete input records, field history, and avoid prohibited substances for NPOP compliance. 36-month conversion period.',
-  },
-  {
-    rule_id: 'ORG_CERT_002',
-    category: 'harvest',
-    crop_code: 'all',
-    stage_applicable: [CropStage.PLANNING],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.EXPORT_GRADE_REQUIREMENTS,
-    priority: 5,
-    scientific_source: 'PGS-India organic certification',
-    scientific_basis: 'Join local organic cluster, participate in peer inspections, maintain farm diary for ongoing PGS participation.',
-  },
-  {
-    rule_id: 'ORG_CERT_003',
-    category: 'cultural',
-    crop_code: 'all',
-    stage_applicable: [CropStage.PLANNING, CropStage.LAND_PREPARATION],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.ORGANIC_CERTIFICATION_BLOCK,
-    priority: 4,
-    scientific_source: 'Buffer zone management for organic certification',
-    scientific_basis: 'Maintain 7.5m buffer zone from conventional fields. Plant hedgerow as barrier at conversion start.',
-  },
-  {
-    rule_id: 'ORG_CERT_004',
-    category: 'harvest',
-    crop_code: 'all',
-    stage_applicable: [CropStage.HARVEST, CropStage.POST_HARVEST],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.ORGANIC_CERTIFICATION_VIOLATION,
-    priority: 3,
-    scientific_source: 'Contamination prevention in organic systems',
-    scientific_basis: 'Use dedicated organic equipment, clean storage, separate processing to prevent contamination. Maintain traceability.',
-  },
-  {
-    rule_id: 'ORG_CERT_005',
-    category: 'cultural',
-    crop_code: 'all',
-    stage_applicable: [CropStage.PLANNING, CropStage.SOWING],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.ORGANIC_CERTIFICATION_BLOCK,
-    priority: 5,
-    scientific_source: 'Organic seed sourcing requirements',
-    scientific_basis: 'Use organic/untreated seeds. Maintain seed production plot if organic seeds unavailable. Pre-season procurement planning.',
-  },
-  {
-    rule_id: 'ORG_CERT_006',
-    category: 'cultural',
-    crop_code: 'all',
-    stage_applicable: [CropStage.PLANNING],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.IPM_CULTURAL_SUFFICIENT,
-    priority: 5,
-    scientific_source: 'Cover cropping for soil health',
-    scientific_basis: 'Grow cover crops (legume-grass mix) during fallow to prevent erosion and add OM. Terminate before main crop planting.',
-  },
-  {
-    rule_id: 'ORG_CERT_007',
-    category: 'biological',
-    crop_code: 'all',
-    stage_applicable: [CropStage.LAND_PREPARATION],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.ORGANIC_MATTER_LOW,
-    priority: 5,
-    scientific_source: 'Biodynamic preparations',
-    scientific_basis: 'Apply BD 500 (cow horn manure) in evening and BD 501 (horn silica) in morning as per biodynamic calendar.',
-  },
-  {
-    rule_id: 'ORG_CERT_008',
-    category: 'nutrient',
-    crop_code: 'all',
-    stage_applicable: [CropStage.LAND_PREPARATION],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.ORGANIC_MATTER_LOW,
-    priority: 5,
-    scientific_source: 'NADEP composting method',
-    scientific_basis: 'Prepare NADEP compost using crop residue, soil, and cow dung layering. 90-120 days before use, apply 10 t/ha.',
-  },
-  {
-    rule_id: 'ORG_CERT_009',
-    category: 'nutrient',
-    crop_code: 'all',
-    stage_applicable: [CropStage.LAND_PREPARATION],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      input.soil_states?.phosphorus === SoilPState.LOW_P,
-    cause: Cause.PHOSPHORUS_DEFICIENCY,
-    priority: 5,
-    scientific_source: 'Enriched compost preparation',
-    scientific_basis: 'Prepare enriched compost with rock phosphate, neem cake, and Trichoderma during composting process.',
-  },
-  {
-    rule_id: 'ORG_CERT_010',
-    category: 'cultural',
-    crop_code: 'all',
-    stage_applicable: [CropStage.PLANNING],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.PEST_OUTBREAK_DETECTED,
-    priority: 5,
-    scientific_source: 'Intercropping for pest management',
-    scientific_basis: 'Practice intercropping with trap crops and repellent plants to reduce pest pressure naturally.',
-  },
-  {
-    rule_id: 'ORG_CERT_011',
-    category: 'biological',
-    crop_code: 'all',
-    stage_applicable: [CropStage.VEGETATIVE],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.IPM_BIOLOGICAL_PREFERRED,
-    priority: 6,
-    scientific_source: 'Beneficial insect conservation',
-    scientific_basis: 'Maintain habitat for beneficial insects. Avoid broad-spectrum treatments even if organically approved.',
-  },
-  {
-    rule_id: 'ORG_CERT_012',
-    category: 'harvest',
-    crop_code: 'all',
-    stage_applicable: [CropStage.PLANNING],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.EXPORT_GRADE_REQUIREMENTS,
-    priority: 5,
-    scientific_source: 'Organic record keeping',
-    scientific_basis: 'Maintain detailed farm diary documenting all inputs, practices, and yields for certification audit.',
-  },
-  {
-    rule_id: 'ORG_CERT_013',
-    category: 'cultural',
-    crop_code: 'all',
-    stage_applicable: [CropStage.PLANNING],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.IPM_CULTURAL_SUFFICIENT,
-    priority: 5,
-    scientific_source: 'Agroforestry integration',
-    scientific_basis: 'Integrate trees for microclimate, nutrient cycling, and biodiversity. Essential for long-term organic sustainability.',
-  },
-  {
-    rule_id: 'ORG_CERT_014',
-    category: 'nutrient',
-    crop_code: 'groundnut',
-    stage_applicable: [CropStage.REPRODUCTIVE],
-    conditions: (input) =>
-      input.farming_mode === FarmingMode.ORGANIC_ONLY &&
-      input.crop_code === 'groundnut',
-    cause: Cause.MICRONUTRIENT_DEFICIENCY,
-    priority: 5,
-    scientific_source: 'Organic calcium for groundnut',
-    scientific_basis: 'Apply gypsum 500 kg/ha at pegging for groundnut. Ensure calcium in pod zone for proper development.',
-  },
-  {
-    rule_id: 'ORG_CERT_015',
     category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.SOWING],
     conditions: (input) =>
       input.farming_mode === FarmingMode.ORGANIC_ONLY,
-    cause: Cause.ROOT_ROT_RISK,
+    cause: Cause.PHOSPHORUS_DEFICIENCY,
     priority: 5,
-    scientific_source: 'Seed treatment with bioagents',
-    scientific_basis: 'Treat seeds with Trichoderma viride 4g/kg + Pseudomonas fluorescens 10g/kg for comprehensive protection.',
+    scientific_source: 'VAM for enhanced P uptake',
+    scientific_basis: 'Apply VAM (Glomus species) at 5 kg/ha for enhanced phosphorus uptake especially in P-fixing soils.',
+  },
+  {
+    rule_id: 'ORG_NUT_016',
+    category: 'nutrient',
+    crop_code: 'all',
+    stage_applicable: [CropStage.LAND_PREPARATION],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.ORGANIC_MATTER_LOW,
+    priority: 5,
+    scientific_source: 'Biochar for long-term soil carbon',
+    scientific_basis: 'Apply biochar at 2-5 t/ha for long-term carbon sequestration and improved nutrient retention.',
+  },
+  {
+    rule_id: 'ORG_NUT_017',
+    category: 'biological',
+    crop_code: 'all',
+    stage_applicable: [CropStage.SOWING, CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.POTASSIUM_DEFICIENCY,
+    priority: 5,
+    scientific_source: 'KMB for potassium mobilization',
+    scientific_basis: 'Apply Frateuria aurantia (KMB) at 5 kg/ha for potassium mobilization from soil minerals.',
+  },
+  {
+    rule_id: 'ORG_NUT_018',
+    category: 'nutrient',
+    crop_code: 'all',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.MICRONUTRIENT_DEFICIENCY,
+    priority: 6,
+    scientific_source: 'Humic acid for nutrient availability',
+    scientific_basis: 'Apply humic acid at 2-3 kg/ha through fertigation for enhanced nutrient availability and root growth.',
+  },
+];
+
+// ============================================================================
+// COMPOSTING AND SOIL HEALTH RULES (8 rules)
+// ============================================================================
+
+const COMPOSTING_SOIL_HEALTH_RULES: CauseRule[] = [
+  {
+    rule_id: 'ORG_COMP_001',
+    category: 'biological',
+    crop_code: 'all',
+    stage_applicable: [CropStage.POST_HARVEST],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY &&
+      input.crop_stage === CropStage.POST_HARVEST,
+    cause: Cause.ORGANIC_MATTER_LOW,
+    priority: 5,
+    scientific_source: 'Crop residue composting protocols',
+    scientific_basis: 'Compost crop residues with Trichoderma/PUSA decomposer. 25:1 C:N ratio, maintain 60% moisture.',
+  },
+  {
+    rule_id: 'ORG_COMP_002',
+    category: 'biological',
+    crop_code: 'all',
+    stage_applicable: [CropStage.PLANNING, CropStage.LAND_PREPARATION],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY &&
+      input.soil_states?.oc === SoilOCState.LOW_OC,
+    cause: Cause.ORGANIC_MATTER_LOW,
+    priority: 4,
+    scientific_source: 'Vermicomposting for quality organic manure',
+    scientific_basis: 'Establish vermicompost unit with Eisenia fetida. Apply 5 t/ha of mature vermicompost.',
+  },
+  {
+    rule_id: 'ORG_COMP_003',
+    category: 'biological',
+    crop_code: 'all',
+    stage_applicable: [CropStage.PLANNING],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.ORGANIC_MATTER_LOW,
+    priority: 5,
+    scientific_source: 'NADEP composting method',
+    scientific_basis: 'Use NADEP method for aerobic composting of farm waste. 90-120 days for mature compost.',
+  },
+  {
+    rule_id: 'ORG_COMP_004',
+    category: 'biological',
+    crop_code: 'all',
+    stage_applicable: [CropStage.PLANNING, CropStage.POST_HARVEST],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.ORGANIC_MATTER_LOW,
+    priority: 5,
+    scientific_source: 'Bokashi fermentation for rapid composting',
+    scientific_basis: 'Use Bokashi (EM-based fermentation) for kitchen/farm waste. 2-week fermentation + 2-week curing.',
+  },
+  {
+    rule_id: 'ORG_COMP_005',
+    category: 'biological',
+    crop_code: 'all',
+    stage_applicable: [CropStage.LAND_PREPARATION],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.SOIL_HEALTH_DEGRADATION,
+    priority: 4,
+    scientific_source: 'Cover cropping for soil protection',
+    scientific_basis: 'Grow cover crops during fallow. Sun hemp, cowpea or mixed cover for erosion control and soil biology.',
+  },
+  {
+    rule_id: 'ORG_COMP_006',
+    category: 'biological',
+    crop_code: 'all',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.ORGANIC_MATTER_LOW,
+    priority: 6,
+    scientific_source: 'Living mulch for continuous soil cover',
+    scientific_basis: 'Establish living mulch (clovers, grasses) in orchards/plantations for continuous organic matter input.',
+  },
+  {
+    rule_id: 'ORG_COMP_007',
+    category: 'biological',
+    crop_code: 'all',
+    stage_applicable: [CropStage.PLANNING],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.SOIL_HEALTH_DEGRADATION,
+    priority: 5,
+    scientific_source: 'Crop rotation for organic systems',
+    scientific_basis: 'Follow legume-cereal-vegetable rotation. Include deep-rooted crops for subsoil nutrient cycling.',
+  },
+  {
+    rule_id: 'ORG_COMP_008',
+    category: 'biological',
+    crop_code: 'all',
+    stage_applicable: [CropStage.LAND_PREPARATION],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.SOIL_HEALTH_DEGRADATION,
+    priority: 5,
+    scientific_source: 'Reduced tillage for organic systems',
+    scientific_basis: 'Minimize tillage to protect soil biology. Use surface mulching and biological soil loosening.',
+  },
+];
+
+// ============================================================================
+// ORGANIC CERTIFICATION COMPLIANCE RULES (7 rules)
+// ============================================================================
+
+const ORGANIC_CERTIFICATION_RULES: CauseRule[] = [
+  {
+    rule_id: 'ORG_CERT_001',
+    category: 'regulatory',
+    crop_code: 'all',
+    stage_applicable: [CropStage.PLANNING],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.OPTIMAL_GROWTH,
+    priority: 3,
+    scientific_source: 'NPOP organic certification standards',
+    scientific_basis: 'Maintain 3-year conversion period records. Document all inputs used with receipts and invoices.',
+  },
+  {
+    rule_id: 'ORG_CERT_002',
+    category: 'regulatory',
+    crop_code: 'all',
+    stage_applicable: [CropStage.PLANNING, CropStage.LAND_PREPARATION],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.OPTIMAL_GROWTH,
+    priority: 3,
+    scientific_source: 'Buffer zone requirements',
+    scientific_basis: 'Maintain 7.5m buffer zone from conventional fields. Plant hedgerow barrier if adjacent to non-organic.',
+  },
+  {
+    rule_id: 'ORG_CERT_003',
+    category: 'regulatory',
+    crop_code: 'all',
+    stage_applicable: [CropStage.SOWING],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.OPTIMAL_GROWTH,
+    priority: 4,
+    scientific_source: 'Organic seed requirements',
+    scientific_basis: 'Use certified organic or untreated seeds. Document source. Non-GMO declaration required.',
+  },
+  {
+    rule_id: 'ORG_CERT_004',
+    category: 'regulatory',
+    crop_code: 'all',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.OPTIMAL_GROWTH,
+    priority: 3,
+    scientific_source: 'Input documentation requirements',
+    scientific_basis: 'Record all organic inputs with date, quantity, source. Use only NPOP-approved inputs.',
+  },
+  {
+    rule_id: 'ORG_CERT_005',
+    category: 'harvest',
+    crop_code: 'all',
+    stage_applicable: [CropStage.HARVEST, CropStage.POST_HARVEST],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.OPTIMAL_GROWTH,
+    priority: 4,
+    scientific_source: 'Organic harvest and storage protocols',
+    scientific_basis: 'Use clean, dedicated equipment for harvest. Separate storage from conventional produce.',
+  },
+  {
+    rule_id: 'ORG_CERT_006',
+    category: 'regulatory',
+    crop_code: 'all',
+    stage_applicable: [CropStage.PLANNING],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.OPTIMAL_GROWTH,
+    priority: 5,
+    scientific_source: 'Internal control system requirements',
+    scientific_basis: 'Maintain farm diary with all activities. Map organic fields. Keep records for 5 years.',
+  },
+  {
+    rule_id: 'ORG_CERT_007',
+    category: 'regulatory',
+    crop_code: 'all',
+    stage_applicable: [CropStage.PLANNING],
+    conditions: (input) =>
+      input.farming_mode === FarmingMode.ORGANIC_ONLY,
+    cause: Cause.OPTIMAL_GROWTH,
+    priority: 5,
+    scientific_source: 'Traceability requirements',
+    scientific_basis: 'Implement lot/batch tracking from field to sale. Maintain chain of custody documentation.',
   },
 ];
 
@@ -837,14 +805,16 @@ export const ORGANIC_FARMING_RULES: CauseRule[] = [
   ...ORGANIC_PEST_MANAGEMENT_RULES,
   ...ORGANIC_DISEASE_MANAGEMENT_RULES,
   ...ORGANIC_NUTRIENT_MANAGEMENT_RULES,
-  ...CROP_ROTATION_CERTIFICATION_RULES,
+  ...COMPOSTING_SOIL_HEALTH_RULES,
+  ...ORGANIC_CERTIFICATION_RULES,
 ];
 
 export {
   ORGANIC_PEST_MANAGEMENT_RULES,
   ORGANIC_DISEASE_MANAGEMENT_RULES,
   ORGANIC_NUTRIENT_MANAGEMENT_RULES,
-  CROP_ROTATION_CERTIFICATION_RULES,
+  COMPOSTING_SOIL_HEALTH_RULES,
+  ORGANIC_CERTIFICATION_RULES,
 };
 
 export default ORGANIC_FARMING_RULES;
