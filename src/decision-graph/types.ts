@@ -1295,7 +1295,28 @@ export enum Cause {
   CUCUMBER_ANTHRACNOSE_RISK = 'CUCUMBER_ANTHRACNOSE_RISK',                 // Colletotrichum
   CUCUMBER_ANGULAR_LEAF_SPOT_RISK = 'CUCUMBER_ANGULAR_LEAF_SPOT_RISK',     // Pseudomonas syringae
   OKRA_FRUIT_BORER_RISK = 'OKRA_FRUIT_BORER_RISK',                         // Earias vittella
-  OKRA_ROOT_KNOT_NEMATODE_RISK = 'OKRA_ROOT_KNOT_NEMATODE_RISK'            // Meloidogyne incognita
+  OKRA_ROOT_KNOT_NEMATODE_RISK = 'OKRA_ROOT_KNOT_NEMATODE_RISK',           // Meloidogyne incognita
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ORGANIC FARMING & SOIL HEALTH CAUSES
+  // ─────────────────────────────────────────────────────────────────────────
+  ORGANIC_CERTIFICATION_COMPLIANCE = 'ORGANIC_CERTIFICATION_COMPLIANCE',   // Organic certification compliance requirement
+  SOIL_HEALTH_DEGRADED = 'SOIL_HEALTH_DEGRADED',                           // General soil health degradation
+  SOIL_COMPACTION_RISK = 'SOIL_COMPACTION_RISK',                           // Soil compaction detected
+  SOIL_EROSION_RISK = 'SOIL_EROSION_RISK',                                 // Soil erosion risk
+  SOIL_SALINITY_RISK = 'SOIL_SALINITY_RISK',                               // Soil salinity/sodicity risk
+  SOIL_DRAINAGE_POOR = 'SOIL_DRAINAGE_POOR',                               // Poor drainage conditions
+  SOIL_DRAINAGE_EXCESSIVE = 'SOIL_DRAINAGE_EXCESSIVE',                     // Excessive drainage (sandy soils)
+  SOIL_BIOLOGICAL_ACTIVITY_LOW = 'SOIL_BIOLOGICAL_ACTIVITY_LOW',           // Low microbial activity
+  SOIL_ORGANIC_MATTER_LOW = 'SOIL_ORGANIC_MATTER_LOW',                     // Low organic matter content
+  SOIL_STRUCTURE_DEGRADED = 'SOIL_STRUCTURE_DEGRADED',                     // Poor soil structure/aggregation
+  COMPOSTING_RECOMMENDED = 'COMPOSTING_RECOMMENDED',                       // Composting intervention needed
+  GREEN_MANURE_RECOMMENDED = 'GREEN_MANURE_RECOMMENDED',                   // Green manuring recommended
+  CROP_ROTATION_NEEDED = 'CROP_ROTATION_NEEDED',                           // Crop rotation for soil health
+  COVER_CROP_RECOMMENDED = 'COVER_CROP_RECOMMENDED',                       // Cover cropping recommended
+  MULCHING_RECOMMENDED = 'MULCHING_RECOMMENDED',                           // Mulching for soil health
+  BIOFERTILIZER_RECOMMENDED = 'BIOFERTILIZER_RECOMMENDED',                 // Bio-fertilizer application needed
+  VERMICOMPOST_RECOMMENDED = 'VERMICOMPOST_RECOMMENDED'                    // Vermicompost application needed
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
