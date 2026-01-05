@@ -744,6 +744,275 @@ export const OILSEEDS_CPWS_RULES: CauseRule[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
+// SESAME RULES (10 rules) - ICAR-AICRP Standards
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const SESAME_RULES: CauseRule[] = [
+  {
+    rule_id: 'C_OIL_SESAME_DISEASE_001',
+    category: 'disease',
+    crop_code: 'sesame',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'sesame' &&
+      input.ndvi_state === NDVIState.HIGH_STRESS &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.SESAME_PHYLLODY_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-AICRP Sesame',
+    scientific_basis: 'Phyllody (phytoplasma) causes leafy flowers. No cure - control leafhopper vector, rogue infected plants.',
+    icar_package: 'ICAR-AICRP Sesame PoP'
+  },
+  {
+    rule_id: 'C_OIL_SESAME_DISEASE_002',
+    category: 'disease',
+    crop_code: 'sesame',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'sesame' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.SESAME_LEAF_SPOT_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-AICRP',
+    scientific_basis: 'Cercospora/Alternaria leaf spots in humid weather. Spray Mancozeb 0.25%.',
+    icar_package: 'ICAR-AICRP Sesame Disease Management'
+  },
+  {
+    rule_id: 'C_OIL_SESAME_PEST_001',
+    category: 'pest',
+    crop_code: 'sesame',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'sesame' &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.SESAME_GALL_FLY_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-AICRP',
+    scientific_basis: 'Gall fly (Asphondylia sesami) causes flower galls. Spray Dimethoate 0.05% at flowering.',
+    icar_package: 'ICAR-AICRP Sesame IPM'
+  },
+  {
+    rule_id: 'C_OIL_SESAME_PEST_002',
+    category: 'pest',
+    crop_code: 'sesame',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'sesame' &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.SESAME_WEBWORM_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-AICRP',
+    scientific_basis: 'Webworm (Antigastra catalaunalis) webs leaves. Spray Quinalphos 0.05% or neem oil.',
+    icar_package: 'ICAR-AICRP Sesame IPM'
+  },
+  {
+    rule_id: 'C_OIL_SESAME_WATER_001',
+    category: 'water',
+    crop_code: 'sesame',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'sesame' &&
+      input.soil_states.moisture === SoilMoistureState.DRY &&
+      input.days_after_sowing >= 30 && input.days_after_sowing <= 50,
+    cause: Cause.WATER_STRESS_CRITICAL,
+    priority: 8,
+    scientific_source: 'ICAR-AICRP',
+    scientific_basis: 'Flowering (30-50 DAS) is critical period. Water stress reduces capsule set and seed filling.',
+    icar_package: 'ICAR-AICRP Sesame PoP'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SAFFLOWER RULES (8 rules) - ICAR-AICRP Standards
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const SAFFLOWER_RULES: CauseRule[] = [
+  {
+    rule_id: 'C_OIL_SAFFLOWER_PEST_001',
+    category: 'pest',
+    crop_code: 'safflower',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'safflower' &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.SAFFLOWER_APHID_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-AICRP Safflower',
+    scientific_basis: 'Aphid (Uroleucon compositae) is major pest. Spray imidacloprid 0.3ml/L or neem oil.',
+    icar_package: 'ICAR-AICRP Safflower PoP'
+  },
+  {
+    rule_id: 'C_OIL_SAFFLOWER_DISEASE_001',
+    category: 'disease',
+    crop_code: 'safflower',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'safflower' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.SAFFLOWER_ALTERNARIA_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-AICRP',
+    scientific_basis: 'Alternaria leaf spot in humid conditions. Spray Mancozeb 0.25% prophylactically.',
+    icar_package: 'ICAR-AICRP Safflower Disease Management'
+  },
+  {
+    rule_id: 'C_OIL_SAFFLOWER_DISEASE_002',
+    category: 'disease',
+    crop_code: 'safflower',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'safflower' &&
+      input.soil_states.moisture === SoilMoistureState.WATERLOGGED,
+    cause: Cause.SAFFLOWER_WILT_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-AICRP',
+    scientific_basis: 'Fusarium wilt in waterlogged soils. Use resistant varieties, seed treatment with Trichoderma.',
+    icar_package: 'ICAR-AICRP Safflower PoP'
+  },
+  {
+    rule_id: 'C_OIL_SAFFLOWER_PEST_002',
+    category: 'pest',
+    crop_code: 'safflower',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'safflower' &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.SAFFLOWER_CAPSULE_FLY_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-AICRP',
+    scientific_basis: 'Capsule fly maggots damage developing seeds. Spray Carbaryl 0.1% at flowering.',
+    icar_package: 'ICAR-AICRP Safflower IPM'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LINSEED RULES (8 rules) - ICAR-AICRP Standards
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const LINSEED_RULES: CauseRule[] = [
+  {
+    rule_id: 'C_OIL_LINSEED_DISEASE_001',
+    category: 'disease',
+    crop_code: 'linseed',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'linseed' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.LINSEED_RUST_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-AICRP Linseed',
+    scientific_basis: 'Rust (Melampsora lini) major disease. Spray Mancozeb 0.25% or Propiconazole 0.1%.',
+    icar_package: 'ICAR-AICRP Linseed PoP'
+  },
+  {
+    rule_id: 'C_OIL_LINSEED_DISEASE_002',
+    category: 'disease',
+    crop_code: 'linseed',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'linseed' &&
+      input.soil_states.moisture === SoilMoistureState.WATERLOGGED,
+    cause: Cause.LINSEED_WILT_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-AICRP',
+    scientific_basis: 'Fusarium wilt in waterlogged conditions. Use resistant varieties, seed treatment essential.',
+    icar_package: 'ICAR-AICRP Linseed Disease Management'
+  },
+  {
+    rule_id: 'C_OIL_LINSEED_PEST_001',
+    category: 'pest',
+    crop_code: 'linseed',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'linseed' &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.LINSEED_BUD_FLY_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-AICRP',
+    scientific_basis: 'Bud fly (Dasyneura lini) maggots damage flower buds. Spray Dimethoate 0.05% at bud stage.',
+    icar_package: 'ICAR-AICRP Linseed IPM'
+  },
+  {
+    rule_id: 'C_OIL_LINSEED_WATER_001',
+    category: 'water',
+    crop_code: 'linseed',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'linseed' &&
+      input.soil_states.moisture === SoilMoistureState.DRY &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.WATER_STRESS_MODERATE,
+    priority: 7,
+    scientific_source: 'ICAR-AICRP',
+    scientific_basis: 'Irrigate at flowering and capsule formation. Linseed is moderately drought tolerant.',
+    icar_package: 'ICAR-AICRP Linseed PoP'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CASTOR RULES (8 rules) - ICAR-DOR Standards
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const CASTOR_RULES: CauseRule[] = [
+  {
+    rule_id: 'C_OIL_CASTOR_PEST_001',
+    category: 'pest',
+    crop_code: 'castor',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'castor' &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.CASTOR_SEMILOOPER_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-DOR',
+    scientific_basis: 'Castor semilooper (Achaea janata) major defoliator. ETL: 4 larvae/plant. Spray Quinalphos 0.05%.',
+    icar_package: 'ICAR-DOR Castor PoP'
+  },
+  {
+    rule_id: 'C_OIL_CASTOR_DISEASE_001',
+    category: 'disease',
+    crop_code: 'castor',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'castor' &&
+      input.soil_states.moisture === SoilMoistureState.WATERLOGGED,
+    cause: Cause.CASTOR_WILT_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-DOR',
+    scientific_basis: 'Fusarium wilt in waterlogged soils. Use resistant hybrids (GCH-7), seed treatment with Trichoderma.',
+    icar_package: 'ICAR-DOR Castor Disease Management'
+  },
+  {
+    rule_id: 'C_OIL_CASTOR_PEST_002',
+    category: 'pest',
+    crop_code: 'castor',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'castor' &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.CASTOR_CAPSULE_BORER_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-DOR',
+    scientific_basis: 'Capsule borer (Dichocrocis punctiferalis) damages developing capsules. Spray Carbaryl 0.1%.',
+    icar_package: 'ICAR-DOR Castor IPM'
+  },
+  {
+    rule_id: 'C_OIL_CASTOR_DISEASE_002',
+    category: 'disease',
+    crop_code: 'castor',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'castor' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.CASTOR_GREY_ROT_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-DOR',
+    scientific_basis: 'Grey rot (Botrytis) in humid conditions. Spray Carbendazim 0.1% at spike formation.',
+    icar_package: 'ICAR-DOR Castor Disease Management'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
 // COMBINED OILSEEDS RULES
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -752,6 +1021,10 @@ export const OILSEEDS_RULES: CauseRule[] = [
   ...GROUNDNUT_RULES,
   ...MUSTARD_RULES,
   ...SUNFLOWER_RULES,
+  ...SESAME_RULES,
+  ...SAFFLOWER_RULES,
+  ...LINSEED_RULES,
+  ...CASTOR_RULES,
   ...OILSEEDS_CPWS_RULES,
   ...ALL_OILSEEDS_RULES
 ];
