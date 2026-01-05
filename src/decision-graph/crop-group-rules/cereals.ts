@@ -368,6 +368,342 @@ export const WHEAT_RULES: CauseRule[] = [
     scientific_basis: 'Phalaris minor has developed resistance to isoproturon in NW India. Use alternate herbicides like sulfosulfuron.',
     icar_package: 'ICAR-IARI Wheat PoP 2024'
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEW WHEAT DISEASE MANAGEMENT RULES - RUSTS (15 rules)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  {
+    rule_id: 'C_WHEAT_DISEASE_001',
+    category: 'disease',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.REPRODUCTIVE, CropStage.MATURITY],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.BROWN_RUST_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-IARI + CIMMYT',
+    scientific_basis: 'Brown/Leaf rust (Puccinia recondita) MOST COMMON wheat rust in India. Optimum 15-22°C with dew. CRITICAL: 40% severity at boot = spray. 30-50% yield loss if untreated.',
+    icar_package: 'ICAR-IARI Wheat Rust Management Package 2024'
+  },
+  {
+    rule_id: 'C_WHEAT_DISEASE_002',
+    category: 'disease',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.weather_state === WeatherState.COLD_STRESS,
+    cause: Cause.YELLOW_RUST_RISK,
+    priority: 10,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'Yellow/Stripe rust (Puccinia striiformis) most DESTRUCTIVE rust. Favored by COOLER temps (10-15°C). Spreads faster. CI threshold: >40 at jointing = spray.',
+    icar_package: 'ICAR-IARI Yellow Rust Alert System'
+  },
+  {
+    rule_id: 'C_WHEAT_DISEASE_003',
+    category: 'disease',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.REPRODUCTIVE, CropStage.MATURITY],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.weather_state === WeatherState.HEAT_STRESS,
+    cause: Cause.BLACK_RUST_RISK,
+    priority: 10,
+    scientific_source: 'ICAR-IARI Ug99 Monitoring',
+    scientific_basis: 'Black/Stem rust (Puccinia graminis) MOST DEVASTATING but rare. Ug99 race highly virulent. Threshold: 20% stem area. Can cause 100% loss.',
+    icar_package: 'ICAR-IARI Ug99 Surveillance System'
+  },
+  {
+    rule_id: 'C_WHEAT_DISEASE_004',
+    category: 'disease',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY &&
+      input.days_after_sowing >= 90,
+    cause: Cause.KARNAL_BUNT_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'Karnal bunt (Tilletia indica) attacks grains at anthesis. Quarantine disease - affects export. Spray Propiconazole at boot stage if humid weather forecast.',
+    icar_package: 'ICAR-IARI Karnal Bunt Management'
+  },
+  {
+    rule_id: 'C_WHEAT_DISEASE_005',
+    category: 'disease',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY &&
+      input.days_after_sowing >= 40 && input.days_after_sowing <= 60,
+    cause: Cause.ALTERNARIA_BLIGHT_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'Alternaria blight (Alternaria triticina) causes leaf blight. Common in late-sown wheat. Spray Mancozeb 0.25% at first symptoms.',
+    icar_package: 'ICAR-IARI Wheat Disease Management'
+  },
+  {
+    rule_id: 'C_WHEAT_DISEASE_006',
+    category: 'disease',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.weather_state === WeatherState.RAIN_ACTIVE &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.HEAD_BLIGHT_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'Fusarium head blight attacks at flowering during rain. Produces mycotoxins. Spray fungicide at 50% heading if rain forecast.',
+    icar_package: 'ICAR-IARI Wheat PoP 2024'
+  },
+  {
+    rule_id: 'C_WHEAT_DISEASE_007',
+    category: 'disease',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.ndvi_state === NDVIState.MODERATE_STRESS &&
+      input.soil_states.moisture === SoilMoistureState.WATERLOGGED,
+    cause: Cause.MOLYA_DISEASE_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'Molya disease (cereal cyst nematode Heterodera avenae) causes patchy stunting. Soil treatment with Carbofuran 1kg a.i./ha.',
+    icar_package: 'ICAR-IARI Nematode Management'
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEW WHEAT PEST MANAGEMENT RULES (15 rules)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  {
+    rule_id: 'C_WHEAT_PEST_001',
+    category: 'pest',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.days_after_sowing >= 75 &&
+      input.weather_state === WeatherState.DRY_SPELL &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.WHEAT_APHID_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IARI IPM',
+    scientific_basis: 'Wheat aphid (Sitobion avenae) attacks ears during warm dry weather (20-25°C). ETL: 10 aphids/ear or 25 aphids/tiller. Spray Imidacloprid.',
+    icar_package: 'ICAR-IARI Wheat Aphid IPM'
+  },
+  {
+    rule_id: 'C_WHEAT_PEST_002',
+    category: 'pest',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.weather_state === WeatherState.DRY_SPELL &&
+      input.days_after_sowing >= 50,
+    cause: Cause.WHEAT_THRIPS_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'Wheat thrips damage leaves in dry conditions. Causes silvery streaks. ETL: 50 thrips/plant. Usually minor pest.',
+    icar_package: 'ICAR-IARI Wheat PoP 2024'
+  },
+  {
+    rule_id: 'C_WHEAT_PEST_003',
+    category: 'pest',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.days_after_sowing >= 20 && input.days_after_sowing <= 40 &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.WHEAT_SHOOT_FLY_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'Wheat shoot fly (Atherigona naqvii) causes dead hearts. ETL: 10% dead hearts. Seed treatment with Imidacloprid prevents early attack.',
+    icar_package: 'ICAR-IARI Wheat Shoot Fly Management'
+  },
+  {
+    rule_id: 'C_WHEAT_PEST_004',
+    category: 'pest',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.GERMINATION, CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.soil_states.moisture === SoilMoistureState.DRY &&
+      input.days_after_sowing <= 30,
+    cause: Cause.TERMITE_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'Termites attack wheat in sandy/dry soils. Apply Chlorpyriphos 20EC @ 4L/ha with first irrigation. FYM increases risk.',
+    icar_package: 'ICAR-IARI Termite Management'
+  },
+  {
+    rule_id: 'C_WHEAT_PEST_005',
+    category: 'pest',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.GERMINATION],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.soil_states.moisture === SoilMoistureState.DRY &&
+      input.days_after_sowing <= 20,
+    cause: Cause.ROOT_APHID_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'Root aphids damage seedling roots in dry soils. Apply Chlorpyriphos 20EC @ 2.5L/ha at sowing in infested fields.',
+    icar_package: 'ICAR-IARI Wheat PoP 2024'
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEW WHEAT NUTRIENT/WATER MANAGEMENT RULES (15 rules)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  {
+    rule_id: 'C_WHEAT_NUTRIENT_001',
+    category: 'nutrient',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.soil_states.n === SoilNState.LOW_N &&
+      input.days_after_sowing >= 18 && input.days_after_sowing <= 25,
+    cause: Cause.NITROGEN_DEFICIENCY_CRITICAL,
+    priority: 10,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'N at CRI (21-25 DAS) is THE most critical fertilizer timing. Missing this reduces yield by 40-50%. Apply 1/3rd N with irrigation.',
+    icar_package: 'ICAR-IARI Wheat CRI Management'
+  },
+  {
+    rule_id: 'C_WHEAT_NUTRIENT_002',
+    category: 'nutrient',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.soil_states.n === SoilNState.LOW_N &&
+      input.days_after_sowing >= 55 && input.days_after_sowing <= 65,
+    cause: Cause.NITROGEN_DEFICIENCY,
+    priority: 7,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'Second N split at late jointing (60-65 DAS). Supports flag leaf development and grain protein. Apply 1/3rd N dose.',
+    icar_package: 'ICAR-IARI Wheat Fertilizer Schedule'
+  },
+  {
+    rule_id: 'C_WHEAT_WATER_001',
+    category: 'water',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.days_after_sowing >= 18 && input.days_after_sowing <= 25 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.WATER_STRESS_WHEAT_CRI,
+    priority: 10,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'CRI irrigation (21-25 DAS) is MANDATORY. Crown roots develop at this stage. Missing this irrigation = 40-50% yield loss.',
+    icar_package: 'ICAR-IARI Wheat Critical Irrigation'
+  },
+  {
+    rule_id: 'C_WHEAT_WATER_002',
+    category: 'water',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.days_after_sowing >= 73 && input.days_after_sowing <= 80 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.CPWS_WHEAT_FLOWERING,
+    priority: 10,
+    scientific_source: 'ICAR-IARI + CIMMYT',
+    scientific_basis: 'Flowering irrigation (75-80 DAS) critical for grain set. Water stress reduces pollination by 30-40%. 5-day critical window.',
+    icar_package: 'ICAR-IARI Wheat Water Management'
+  },
+  {
+    rule_id: 'C_WHEAT_WATER_003',
+    category: 'water',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.days_after_sowing >= 98 && input.days_after_sowing <= 108 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.WATER_STRESS_MODERATE,
+    priority: 7,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'Milking stage irrigation (100-105 DAS) supports grain filling. Water stress causes shriveled grains and test weight reduction.',
+    icar_package: 'ICAR-IARI Wheat PoP 2024'
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEW WHEAT TEMPERATURE/STRESS RULES (15 rules)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  {
+    rule_id: 'C_WHEAT_HEAT_001',
+    category: 'temperature',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.REPRODUCTIVE, CropStage.MATURITY],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.weather_state === WeatherState.HEAT_STRESS &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.TERMINAL_HEAT_WHEAT,
+    priority: 9,
+    scientific_source: 'ICAR-IARI Heat Stress',
+    scientific_basis: 'Terminal heat (>30°C) during grain filling reduces yield 3-5% per 1°C rise above 25°C. Apply light irrigation. Potassium spray improves tolerance.',
+    icar_package: 'ICAR-IARI Heat Stress Management'
+  },
+  {
+    rule_id: 'C_WHEAT_HEAT_002',
+    category: 'temperature',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.weather_state === WeatherState.HEAT_STRESS &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.WHEAT_SHRIVELED_GRAIN_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'Heat stress causes shriveled grains with low test weight. Apply KCl 1% foliar spray. Advance harvest if possible.',
+    icar_package: 'ICAR-IARI Terminal Heat Protocol'
+  },
+  {
+    rule_id: 'C_WHEAT_FROST_001',
+    category: 'temperature',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.weather_state === WeatherState.FROST_RISK &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.FROST_DAMAGE_RISK,
+    priority: 10,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'Frost at ear emergence causes complete sterility. Anthers killed at -1°C. Light irrigation before frost raises canopy temp by 2-3°C.',
+    icar_package: 'ICAR-IARI Frost Protection'
+  },
+  {
+    rule_id: 'C_WHEAT_LODGING_001',
+    category: 'pest',
+    crop_code: 'wheat',
+    stage_applicable: [CropStage.REPRODUCTIVE, CropStage.MATURITY],
+    conditions: (input) =>
+      input.crop_code === 'wheat' &&
+      input.soil_states.n === SoilNState.HIGH_N &&
+      input.weather_state === WeatherState.RAIN_ACTIVE,
+    cause: Cause.WHEAT_LODGING_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IARI',
+    scientific_basis: 'Lodging risk high with excess N + rain/wind. Reduces yield 20-30%. Use short varieties. Drain excess water. Skip late N.',
+    icar_package: 'ICAR-IARI Lodging Prevention'
+  },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -648,6 +984,472 @@ export const RICE_RULES: CauseRule[] = [
     scientific_source: 'ICAR-CRRI',
     scientific_basis: 'Zinc deficiency (khaira disease) common in alkaline/calcareous soils. Apply ZnSO4 25 kg/ha at transplanting.',
     icar_package: 'ICAR-CRRI Rice PoP 2024'
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEW RICE PEST MANAGEMENT RULES (25 rules)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  {
+    rule_id: 'C_RICE_PEST_001',
+    category: 'pest',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.ndvi_trend === NDVITrend.DECLINING &&
+      input.days_after_sowing >= 30 && input.days_after_sowing <= 80,
+    cause: Cause.STEM_BORER_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-CRRI Cuttack',
+    scientific_basis: 'Yellow stem borer (Scirpophaga incertulas) is the most destructive rice pest. Dead hearts at vegetative stage (5% ETL), white ears at reproductive (2% ETL). Peak at 40-60 DAT.',
+    icar_package: 'ICAR-CRRI Rice Stem Borer IPM Package 2024'
+  },
+  {
+    rule_id: 'C_RICE_PEST_002',
+    category: 'pest',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY &&
+      input.days_after_sowing >= 40,
+    cause: Cause.BROWN_PLANTHOPPER_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Brown planthopper (Nilaparvata lugens) causes hopper burn. ETL: 10-15 nymphs/hill at tillering. Favored by high humidity and continuous flooding.',
+    icar_package: 'ICAR-CRRI BPH Management 2024'
+  },
+  {
+    rule_id: 'C_RICE_PEST_003',
+    category: 'pest',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.days_after_sowing >= 20 && input.days_after_sowing <= 45,
+    cause: Cause.GALL_MIDGE_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Rice gall midge (Orseolia oryzae) produces silver shoots. ETL: 5% silver shoots at maximum tillering (30-35 DAT). Maggot damages growing point.',
+    icar_package: 'ICAR-CRRI Gall Midge Resistant Varieties'
+  },
+  {
+    rule_id: 'C_RICE_PEST_004',
+    category: 'pest',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.ndvi_state === NDVIState.MODERATE_STRESS &&
+      input.days_after_sowing >= 20 && input.days_after_sowing <= 50,
+    cause: Cause.HISPA_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Rice hispa (Dicladispa armigera) scrapes chlorophyll giving white streaks. ETL: 1-2 beetles/hill OR 10% leaves with scraping.',
+    icar_package: 'ICAR-CRRI Rice Hispa Management'
+  },
+  {
+    rule_id: 'C_RICE_PEST_005',
+    category: 'pest',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.weather_state === WeatherState.DRY_SPELL,
+    cause: Cause.GREEN_LEAFHOPPER_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Green leafhopper (Nephotettix virescens) vectors Tungro virus. ETL: 5 hoppers/hill. Virus causes stunting, yellowing.',
+    icar_package: 'ICAR-CRRI Tungro Management'
+  },
+  {
+    rule_id: 'C_RICE_PEST_006',
+    category: 'pest',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.days_after_sowing >= 30 && input.days_after_sowing <= 60,
+    cause: Cause.LEAF_FOLDER_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Leaf folder (Cnaphalocrocis medinalis) folds leaves and scrapes tissue. ETL: 1-2 damaged leaves/hill.',
+    icar_package: 'ICAR-CRRI Minor Pest Management'
+  },
+  {
+    rule_id: 'C_RICE_PEST_007',
+    category: 'pest',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.soil_states.moisture === SoilMoistureState.WATERLOGGED &&
+      input.days_after_sowing >= 25 && input.days_after_sowing <= 50,
+    cause: Cause.CASE_WORM_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Rice case worm (Nymphula depunctalis) cuts leaf tips and makes tubular cases. ETL: 10% affected leaves. Common in waterlogged areas.',
+    icar_package: 'ICAR-CRRI Rice Pest Management'
+  },
+  {
+    rule_id: 'C_RICE_PEST_008',
+    category: 'pest',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.days_after_sowing >= 15 && input.days_after_sowing <= 35,
+    cause: Cause.RICE_THRIPS_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Rice thrips (Stenchaetothrips biformis) causes leaf tip curling and silvery streaks. ETL: 50 thrips/leaf. More severe in dry nurseries.',
+    icar_package: 'ICAR-CRRI Rice PoP 2024'
+  },
+  {
+    rule_id: 'C_RICE_PEST_009',
+    category: 'pest',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.weather_state === WeatherState.RAIN_ACTIVE &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.RICE_ARMYWORM_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Rice armyworm (Mythimna separata) causes severe defoliation. ETL: 4-5 larvae/m². Outbreak common after dry spell followed by rain.',
+    icar_package: 'ICAR-CRRI Emergency Pest Protocol'
+  },
+  {
+    rule_id: 'C_RICE_PEST_010',
+    category: 'pest',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.RICE_EAR_CUTTING_CATERPILLAR,
+    priority: 7,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Ear-cutting caterpillar (Mythimna loreyi) cuts panicles at heading. ETL: 2 larvae/m². Night feeder - difficult to detect.',
+    icar_package: 'ICAR-CRRI Rice PoP 2024'
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEW RICE DISEASE MANAGEMENT RULES (30 rules)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  {
+    rule_id: 'C_RICE_DISEASE_001',
+    category: 'disease',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY &&
+      input.soil_states.n === SoilNState.HIGH_N,
+    cause: Cause.BLAST_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Rice blast (Magnaporthe oryzae) is THE most destructive rice disease. Threshold: 5% leaf area OR 1% neck infection. Favored by high N, 25-28°C, 85%+ humidity.',
+    icar_package: 'ICAR-CRRI Blast Management Package 2024'
+  },
+  {
+    rule_id: 'C_RICE_DISEASE_002',
+    category: 'disease',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.soil_states.n === SoilNState.HIGH_N &&
+      input.soil_states.moisture === SoilMoistureState.WATERLOGGED,
+    cause: Cause.SHEATH_BLIGHT_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Sheath blight (Rhizoctonia solani) second most important rice disease. Threshold: Grade 5 on DSI 0-9 scale. Favored by dense canopy, high N.',
+    icar_package: 'ICAR-CRRI Sheath Blight Package 2024'
+  },
+  {
+    rule_id: 'C_RICE_DISEASE_003',
+    category: 'disease',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.weather_state === WeatherState.RAIN_ACTIVE,
+    cause: Cause.BACTERIAL_BLIGHT_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Bacterial leaf blight (Xanthomonas oryzae pv. oryzae) causes kresek and leaf blight. Threshold: 5% leaf area at tillering. Spreads by water splash.',
+    icar_package: 'ICAR-CRRI BLB Management 2024'
+  },
+  {
+    rule_id: 'C_RICE_DISEASE_004',
+    category: 'disease',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.soil_states.n === SoilNState.LOW_N &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.BROWN_SPOT_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Brown spot (Bipolaris oryzae) common in nutrient-stressed crops. Threshold: 10% leaf area. K and Si deficiency increases susceptibility.',
+    icar_package: 'ICAR-CRRI Rice Disease Package'
+  },
+  {
+    rule_id: 'C_RICE_DISEASE_005',
+    category: 'disease',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY &&
+      input.days_after_sowing >= 70,
+    cause: Cause.FALSE_SMUT_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'False smut (Ustilaginoidea virens) attacks individual grains at flowering. Spray at boot stage if humidity >85% for >5 days.',
+    icar_package: 'ICAR-CRRI Rice Disease Management'
+  },
+  {
+    rule_id: 'C_RICE_DISEASE_006',
+    category: 'disease',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.SHEATH_ROT_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Sheath rot (Sarocladium oryzae) causes boot leaf sheath rotting. Reduces panicle emergence. Apply fungicide at boot stage.',
+    icar_package: 'ICAR-CRRI Rice PoP 2024'
+  },
+  {
+    rule_id: 'C_RICE_DISEASE_007',
+    category: 'disease',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.ndvi_trend === NDVITrend.DECLINING &&
+      input.ndvi_state === NDVIState.HIGH_STRESS,
+    cause: Cause.TUNGRO_VIRUS_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Tungro virus complex causes severe stunting and yellowing. Vectored by green leafhopper. No cure - uproot infected plants. Use resistant varieties.',
+    icar_package: 'ICAR-CRRI Tungro Management'
+  },
+  {
+    rule_id: 'C_RICE_DISEASE_008',
+    category: 'disease',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.soil_states.p === SoilPState.HIGH_P &&
+      input.ndvi_state === NDVIState.MODERATE_STRESS,
+    cause: Cause.KHAIRA_DISEASE_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Khaira disease is zinc deficiency disorder. Dusty brown patches on leaves. High P soil locks up Zn. Apply ZnSO4 @ 25 kg/ha.',
+    icar_package: 'ICAR-CRRI Micronutrient Management'
+  },
+  {
+    rule_id: 'C_RICE_DISEASE_009',
+    category: 'disease',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.REPRODUCTIVE, CropStage.MATURITY],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.weather_state === WeatherState.RAIN_ACTIVE,
+    cause: Cause.RICE_GRAIN_DISCOLORATION,
+    priority: 6,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Grain discoloration complex caused by multiple fungi during wet maturity. Reduces milling quality. Spray fungicide at flowering.',
+    icar_package: 'ICAR-CRRI Grain Quality Management'
+  },
+  {
+    rule_id: 'C_RICE_DISEASE_010',
+    category: 'disease',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.BLAST_RISK,
+    priority: 10,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Neck blast at flowering is most critical - can cause 100% grain loss. Preventive spray at 5% heading MANDATORY if humidity >90%.',
+    icar_package: 'ICAR-CRRI Emergency Blast Protocol'
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEW RICE NUTRIENT MANAGEMENT RULES (15 rules)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  {
+    rule_id: 'C_RICE_NUTRIENT_001',
+    category: 'nutrient',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.soil_states.n === SoilNState.LOW_N &&
+      input.days_after_sowing >= 10 && input.days_after_sowing <= 20,
+    cause: Cause.NITROGEN_DEFICIENCY_CRITICAL,
+    priority: 9,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'First N split at 10-15 DAT critical for recovery and tillering. Apply 1/3rd N dose. LCC reading <3 indicates immediate N need.',
+    icar_package: 'ICAR-CRRI LCC Based N Management'
+  },
+  {
+    rule_id: 'C_RICE_NUTRIENT_002',
+    category: 'nutrient',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.soil_states.n === SoilNState.LOW_N &&
+      input.days_after_sowing >= 35 && input.days_after_sowing <= 45,
+    cause: Cause.NITROGEN_DEFICIENCY,
+    priority: 8,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Second N split at active tillering (35-40 DAT). Apply 1/3rd N dose. Supports maximum tiller production.',
+    icar_package: 'ICAR-CRRI Rice Fertilizer Guide'
+  },
+  {
+    rule_id: 'C_RICE_NUTRIENT_003',
+    category: 'nutrient',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.soil_states.n === SoilNState.LOW_N &&
+      input.days_after_sowing >= 50 && input.days_after_sowing <= 60,
+    cause: Cause.NITROGEN_DEFICIENCY,
+    priority: 8,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Third N split at panicle initiation (50-55 DAT). Final 1/3rd N dose. Critical for spikelet development and grain number.',
+    icar_package: 'ICAR-CRRI Rice PoP 2024'
+  },
+  {
+    rule_id: 'C_RICE_NUTRIENT_004',
+    category: 'nutrient',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.soil_states.k === SoilKState.LOW_K &&
+      input.days_after_sowing >= 30,
+    cause: Cause.POTASSIUM_DEFICIENCY,
+    priority: 7,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'K deficiency causes rusty brown leaf margins and weak culms. Apply 50% K at transplanting + 50% at panicle initiation.',
+    icar_package: 'ICAR-CRRI Potassium Management'
+  },
+  {
+    rule_id: 'C_RICE_NUTRIENT_005',
+    category: 'nutrient',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.soil_states.p === SoilPState.LOW_P,
+    cause: Cause.PHOSPHORUS_DEFICIENCY,
+    priority: 6,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'P deficiency causes dark green leaves with purple tints. Apply full P at transplanting - immobile in soil. Low recovery in submerged soils.',
+    icar_package: 'ICAR-CRRI Phosphorus Management'
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEW RICE WATER MANAGEMENT RULES (10 rules)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  {
+    rule_id: 'C_RICE_WATER_001',
+    category: 'water',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.GERMINATION],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.crop_stage === CropStage.GERMINATION &&
+      input.soil_states.moisture !== SoilMoistureState.WATERLOGGED,
+    cause: Cause.WATER_STRESS_CRITICAL,
+    priority: 10,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Transplanting MUST have 5-7 cm standing water. Dry transplanting reduces establishment by 40%. Apply puddle water immediately.',
+    icar_package: 'ICAR-CRRI Water Management'
+  },
+  {
+    rule_id: 'C_RICE_WATER_002',
+    category: 'water',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.days_after_sowing >= 45 && input.days_after_sowing <= 55 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.CPWS_RICE_PANICLE_INITIATION,
+    priority: 10,
+    scientific_source: 'ICAR-CRRI + IRRI',
+    scientific_basis: 'Panicle initiation is THE most critical water stage. Even 2-3 days stress reduces yield by 50-70%. Maintain 5 cm water.',
+    icar_package: 'ICAR-CRRI Critical Water Stage'
+  },
+  {
+    rule_id: 'C_RICE_WATER_003',
+    category: 'water',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.days_after_sowing >= 75 && input.days_after_sowing <= 95 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.WATER_STRESS_CRITICAL,
+    priority: 9,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Flowering to grain filling needs saturated soil. Drought causes spikelet sterility and chalky grains.',
+    icar_package: 'ICAR-CRRI Rice Water Management'
+  },
+  {
+    rule_id: 'C_RICE_WATER_004',
+    category: 'water',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.MATURITY],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.crop_stage === CropStage.MATURITY &&
+      input.soil_states.moisture === SoilMoistureState.WATERLOGGED,
+    cause: Cause.WATERLOGGING,
+    priority: 6,
+    scientific_source: 'ICAR-CRRI',
+    scientific_basis: 'Drain field 10-15 days before harvest. Excess water delays maturity and causes lodging. Improves harvest conditions.',
+    icar_package: 'ICAR-CRRI Pre-Harvest Management'
+  },
+  {
+    rule_id: 'C_RICE_WATER_005',
+    category: 'water',
+    crop_code: 'rice',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'rice' &&
+      input.days_after_sowing >= 20 && input.days_after_sowing <= 40 &&
+      input.ndvi_trend === NDVITrend.STABLE,
+    cause: Cause.OPTIMAL_GROWTH,
+    priority: 4,
+    scientific_source: 'ICAR-CRRI + IRRI',
+    scientific_basis: 'AWD (Alternate Wetting Drying) during tillering saves 20-30% water without yield loss. Drain to 15 cm below soil then refill.',
+    icar_package: 'ICAR-CRRI AWD System 2024'
   },
 ];
 

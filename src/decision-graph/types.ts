@@ -1053,7 +1053,105 @@ export enum Cause {
   VARIETY_QUALITY_SUPERIOR_AVAILABLE = 'VARIETY_QUALITY_SUPERIOR_AVAILABLE',
   VARIETY_BIOFORTIFIED_AVAILABLE = 'VARIETY_BIOFORTIFIED_AVAILABLE',
   VARIETY_REGION_SPECIFIC_RECOMMENDED = 'VARIETY_REGION_SPECIFIC_RECOMMENDED',
-  VARIETY_SUBOPTIMAL_CURRENT = 'VARIETY_SUBOPTIMAL_CURRENT'
+  VARIETY_SUBOPTIMAL_CURRENT = 'VARIETY_SUBOPTIMAL_CURRENT',
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RICE ADDITIONAL PESTS/DISEASES (Extended for 80 rules)
+  // ─────────────────────────────────────────────────────────────────────────
+  BROWN_PLANTHOPPER_RISK = 'BROWN_PLANTHOPPER_RISK',               // BPH - hopper burn
+  GALL_MIDGE_RISK = 'GALL_MIDGE_RISK',                             // Silver shoots
+  HISPA_RISK = 'HISPA_RISK',                                       // Rice hispa - white streaks
+  GREEN_LEAFHOPPER_RISK = 'GREEN_LEAFHOPPER_RISK',                 // Tungro vector
+  LEAF_FOLDER_RISK = 'LEAF_FOLDER_RISK',                           // Leaf folder pest
+  CASE_WORM_RISK = 'CASE_WORM_RISK',                               // Rice case worm
+  BLAST_RISK = 'BLAST_RISK',                                       // Rice blast - most destructive
+  SHEATH_BLIGHT_RISK = 'SHEATH_BLIGHT_RISK',                       // Rhizoctonia solani
+  BACTERIAL_BLIGHT_RISK = 'BACTERIAL_BLIGHT_RISK',                 // BLB - Xanthomonas
+  BROWN_SPOT_RISK = 'BROWN_SPOT_RISK',                             // Helminthosporium
+  FALSE_SMUT_RISK = 'FALSE_SMUT_RISK',                             // Rice false smut
+  SHEATH_ROT_RISK = 'SHEATH_ROT_RISK',                             // Sarocladium oryzae
+  TUNGRO_VIRUS_RISK = 'TUNGRO_VIRUS_RISK',                         // Tungro disease
+  KHAIRA_DISEASE_RISK = 'KHAIRA_DISEASE_RISK',                     // Zinc deficiency induced
+  RICE_THRIPS_RISK = 'RICE_THRIPS_RISK',                           // Rice thrips
+  RICE_ARMYWORM_RISK = 'RICE_ARMYWORM_RISK',                       // Army worm in rice
+  RICE_EAR_CUTTING_CATERPILLAR = 'RICE_EAR_CUTTING_CATERPILLAR',   // Ear cutting pest
+  RICE_GRAIN_DISCOLORATION = 'RICE_GRAIN_DISCOLORATION',           // Grain discoloration complex
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // WHEAT ADDITIONAL PESTS/DISEASES (Extended for 60 rules)
+  // ─────────────────────────────────────────────────────────────────────────
+  BROWN_RUST_RISK = 'BROWN_RUST_RISK',                             // Puccinia recondita - most common
+  YELLOW_RUST_RISK = 'YELLOW_RUST_RISK',                           // Puccinia striiformis - most destructive
+  BLACK_RUST_RISK = 'BLACK_RUST_RISK',                             // Ug99 stem rust
+  KARNAL_BUNT_RISK = 'KARNAL_BUNT_RISK',                           // Tilletia indica - quarantine
+  WHEAT_APHID_RISK = 'WHEAT_APHID_RISK',                           // Sitobion avenae
+  WHEAT_THRIPS_RISK = 'WHEAT_THRIPS_RISK',                         // Wheat thrips
+  WHEAT_MITE_RISK = 'WHEAT_MITE_RISK',                             // Wheat mite pest
+  ROOT_APHID_RISK = 'ROOT_APHID_RISK',                             // Root aphid
+  HEAD_BLIGHT_RISK = 'HEAD_BLIGHT_RISK',                           // Fusarium head blight
+  FLAG_SMUT_RISK = 'FLAG_SMUT_RISK',                               // Urocystis agropyri
+  ALTERNARIA_BLIGHT_RISK = 'ALTERNARIA_BLIGHT_RISK',               // Alternaria triticina
+  MOLYA_DISEASE_RISK = 'MOLYA_DISEASE_RISK',                       // Cereal cyst nematode
+  WHEAT_SHOOT_FLY_RISK = 'WHEAT_SHOOT_FLY_RISK',                   // Atherigona naqvii
+  WHEAT_LODGING_RISK = 'WHEAT_LODGING_RISK',                       // Pre-harvest lodging
+  WHEAT_SHRIVELED_GRAIN_RISK = 'WHEAT_SHRIVELED_GRAIN_RISK',       // Heat stress grain
+  WHEAT_EARHEAD_DAMAGE_RISK = 'WHEAT_EARHEAD_DAMAGE_RISK',         // Bird/rodent damage
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MAIZE ADDITIONAL PESTS/DISEASES (Extended for 40 rules)
+  // ─────────────────────────────────────────────────────────────────────────
+  FALL_ARMYWORM_RISK = 'FALL_ARMYWORM_RISK',                       // FAW - invasive pest
+  MAIZE_PINK_BORER_RISK = 'MAIZE_PINK_BORER_RISK',                 // Pink stem borer
+  MAIZE_SHOOT_FLY_RISK = 'MAIZE_SHOOT_FLY_RISK',                   // Atherigona spp
+  MAIZE_TURCICUM_BLIGHT_RISK = 'MAIZE_TURCICUM_BLIGHT_RISK',       // Northern corn leaf blight
+  MAIZE_STALK_ROT_RISK = 'MAIZE_STALK_ROT_RISK',                   // Fusarium stalk rot
+  MAIZE_EAR_ROT_RISK = 'MAIZE_EAR_ROT_RISK',                       // Ear rot complex
+  MAIZE_DOWNY_MILDEW_RISK = 'MAIZE_DOWNY_MILDEW_RISK',             // SDM - Peronosclerospora
+  MAIZE_BANDED_LEAF_BLIGHT_RISK = 'MAIZE_BANDED_LEAF_BLIGHT_RISK', // Rhizoctonia solani
+  MAIZE_CUTWORM_RISK = 'MAIZE_CUTWORM_RISK',                       // Agrotis spp
+  MAIZE_CUT_WORM_RISK = 'MAIZE_CUT_WORM_RISK',                     // Alternative spelling
+  MAIZE_COB_BORER_RISK = 'MAIZE_COB_BORER_RISK',                   // Cob borer damage
+  MAIZE_APHID_RISK = 'MAIZE_APHID_RISK',                           // Rhopalosiphum maidis
+  MAIZE_POST_FLOWERING_STALK_ROT = 'MAIZE_POST_FLOWERING_STALK_ROT', // PFSR
+  MAIZE_CHARCOAL_ROT_RISK = 'MAIZE_CHARCOAL_ROT_RISK',             // Macrophomina
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SPICES DISEASES/PESTS - Turmeric, Ginger, Black Pepper, Cardamom
+  // ─────────────────────────────────────────────────────────────────────────
+  RHIZOME_ROT_RISK = 'RHIZOME_ROT_RISK',                           // Pythium - turmeric/ginger
+  TURMERIC_LEAF_SPOT_RISK = 'TURMERIC_LEAF_SPOT_RISK',             // Colletotrichum capsici
+  TURMERIC_LEAF_BLOTCH_RISK = 'TURMERIC_LEAF_BLOTCH_RISK',         // Taphrina maculans
+  TURMERIC_SCALE_INSECT_RISK = 'TURMERIC_SCALE_INSECT_RISK',       // Aspidiella hartii
+  TURMERIC_SHOOT_BORER_RISK = 'TURMERIC_SHOOT_BORER_RISK',         // Conogethes punctiferalis
+  TURMERIC_THRIPS_RISK = 'TURMERIC_THRIPS_RISK',                   // Panchaetothrips indicus
+  TURMERIC_RHIZOME_FLY_RISK = 'TURMERIC_RHIZOME_FLY_RISK',         // Mimegralla coeruleifrons
+  GINGER_SOFT_ROT_RISK = 'GINGER_SOFT_ROT_RISK',                   // Pythium - soft rot
+  GINGER_BACTERIAL_WILT_RISK = 'GINGER_BACTERIAL_WILT_RISK',       // Ralstonia solanacearum
+  GINGER_SHOOT_BORER_RISK = 'GINGER_SHOOT_BORER_RISK',             // Conogethes punctiferalis
+  GINGER_LEAF_SPOT_RISK = 'GINGER_LEAF_SPOT_RISK',                 // Phyllosticta zingiberi
+  GINGER_STORAGE_ROT_RISK = 'GINGER_STORAGE_ROT_RISK',             // Fusarium oxysporum
+  PEPPER_FOOT_ROT_RISK = 'PEPPER_FOOT_ROT_RISK',                   // Phytophthora capsici
+  PEPPER_QUICK_WILT_RISK = 'PEPPER_QUICK_WILT_RISK',               // Quick wilt complex
+  PEPPER_POLLU_BEETLE_RISK = 'PEPPER_POLLU_BEETLE_RISK',           // Longitarsus nigripennis
+  PEPPER_ANTHRACNOSE_RISK = 'PEPPER_ANTHRACNOSE_RISK',             // Colletotrichum gloeosporioides
+  PEPPER_SCALE_INSECT_RISK = 'PEPPER_SCALE_INSECT_RISK',           // Lepidosaphes piperis
+  PEPPER_STUNT_DISEASE_RISK = 'PEPPER_STUNT_DISEASE_RISK',         // Viral stunt
+  CARDAMOM_THRIPS_RISK = 'CARDAMOM_THRIPS_RISK',                   // Sciothrips cardamomi
+  CARDAMOM_SHOOT_BORER_RISK = 'CARDAMOM_SHOOT_BORER_RISK',         // Conogethes punctiferalis
+  CARDAMOM_AZHUKAL_RISK = 'CARDAMOM_AZHUKAL_RISK',                 // Capsule rot - Phytophthora
+  CARDAMOM_CAPSULE_BORER_RISK = 'CARDAMOM_CAPSULE_BORER_RISK',     // Fruit borer
+  CARDAMOM_KATTE_DISEASE_RISK = 'CARDAMOM_KATTE_DISEASE_RISK',     // Viral mosaic
+  CARDAMOM_WHITEFLY_RISK = 'CARDAMOM_WHITEFLY_RISK',               // Katte virus vector
+  CUMIN_BLIGHT_RISK = 'CUMIN_BLIGHT_RISK',                         // Alternaria burnsii
+  CUMIN_WILT_RISK = 'CUMIN_WILT_RISK',                             // Fusarium oxysporum
+  CUMIN_APHID_RISK = 'CUMIN_APHID_RISK',                           // Myzus persicae
+  CORIANDER_WILT_RISK = 'CORIANDER_WILT_RISK',                     // Fusarium oxysporum
+  CORIANDER_POWDERY_MILDEW_RISK = 'CORIANDER_POWDERY_MILDEW_RISK', // Erysiphe polygoni
+  CORIANDER_APHID_RISK = 'CORIANDER_APHID_RISK',                   // Hyadaphis coriandri
+  CHILLI_ANTHRACNOSE_RISK = 'CHILLI_ANTHRACNOSE_RISK',             // Die-back
+  CHILLI_MURDA_COMPLEX_RISK = 'CHILLI_MURDA_COMPLEX_RISK',         // Leaf curl complex
+  CHILLI_FRUIT_ROT_RISK = 'CHILLI_FRUIT_ROT_RISK',                 // Colletotrichum
+  CHILLI_MITE_RISK = 'CHILLI_MITE_RISK'                            // Polyphagotarsonemus latus
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
