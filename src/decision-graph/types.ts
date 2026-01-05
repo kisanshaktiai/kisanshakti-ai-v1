@@ -196,13 +196,14 @@ export enum SugarcaneSubStage {
 export enum CropGroup {
   CEREALS = 'cereals',       // Wheat, Rice, Maize, Barley, Millets
   PULSES = 'pulses',         // Gram, Lentil, Moong, Urad, Arhar
-  OILSEEDS = 'oilseeds',     // Soybean, Groundnut, Mustard, Sunflower
+  OILSEEDS = 'oilseeds',     // Soybean, Groundnut, Mustard, Sunflower, Sesame, Safflower, Linseed
   FIBER = 'fiber',           // Cotton, Jute, Mesta
   SUGARCANE = 'sugarcane',   // Sugarcane
-  VEGETABLES = 'vegetables', // Tomato, Onion, Potato, Brinjal, etc.
-  FRUITS = 'fruits',         // Mango, Citrus, Banana, Grapes, etc.
-  SPICES = 'spices',         // Turmeric, Ginger, Chilli, etc.
-  FODDER = 'fodder'          // Berseem, Lucerne, Napier, etc.
+  VEGETABLES = 'vegetables', // Tomato, Onion, Potato, Brinjal, Cabbage, Cauliflower, Cucumber, Okra
+  FRUITS = 'fruits',         // Mango, Citrus, Banana, Grapes, Pomegranate, Papaya, Guava, Apple
+  SPICES = 'spices',         // Turmeric, Ginger, Chilli, Black Pepper, Cardamom, Cumin, Coriander
+  FODDER = 'fodder',         // Berseem, Lucerne, Napier, Oat
+  PLANTATION = 'plantation'  // Coconut, Coffee, Tea, Rubber, Arecanut, Cashew
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1151,7 +1152,150 @@ export enum Cause {
   CHILLI_ANTHRACNOSE_RISK = 'CHILLI_ANTHRACNOSE_RISK',             // Die-back
   CHILLI_MURDA_COMPLEX_RISK = 'CHILLI_MURDA_COMPLEX_RISK',         // Leaf curl complex
   CHILLI_FRUIT_ROT_RISK = 'CHILLI_FRUIT_ROT_RISK',                 // Colletotrichum
-  CHILLI_MITE_RISK = 'CHILLI_MITE_RISK'                            // Polyphagotarsonemus latus
+  CHILLI_MITE_RISK = 'CHILLI_MITE_RISK',                           // Polyphagotarsonemus latus
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PLANTATION CROPS - Coconut, Coffee, Tea, Rubber, Arecanut, Cashew
+  // ─────────────────────────────────────────────────────────────────────────
+  // COCONUT PESTS/DISEASES
+  COCONUT_RHINOCEROS_BEETLE_RISK = 'COCONUT_RHINOCEROS_BEETLE_RISK',       // Oryctes rhinoceros
+  COCONUT_RED_PALM_WEEVIL_RISK = 'COCONUT_RED_PALM_WEEVIL_RISK',           // Rhynchophorus ferrugineus
+  COCONUT_ERIOPHYID_MITE_RISK = 'COCONUT_ERIOPHYID_MITE_RISK',             // Aceria guerreronis
+  COCONUT_BLACK_HEADED_CATERPILLAR_RISK = 'COCONUT_BLACK_HEADED_CATERPILLAR_RISK', // Opisina arenosella
+  COCONUT_BUD_ROT_RISK = 'COCONUT_BUD_ROT_RISK',                           // Phytophthora palmivora
+  COCONUT_ROOT_WILT_RISK = 'COCONUT_ROOT_WILT_RISK',                       // Phytoplasma
+  COCONUT_STEM_BLEEDING_RISK = 'COCONUT_STEM_BLEEDING_RISK',               // Thielaviopsis paradoxa
+  COCONUT_GREY_LEAF_BLIGHT_RISK = 'COCONUT_GREY_LEAF_BLIGHT_RISK',         // Pestalotiopsis palmarum
+  COCONUT_LEAF_ROT_RISK = 'COCONUT_LEAF_ROT_RISK',                         // Bipolaris incurvata
+  COCONUT_BASAL_STEM_ROT_RISK = 'COCONUT_BASAL_STEM_ROT_RISK',             // Ganoderma applanatum
+
+  // COFFEE PESTS/DISEASES
+  COFFEE_BERRY_BORER_RISK = 'COFFEE_BERRY_BORER_RISK',                     // Hypothenemus hampei - most destructive
+  COFFEE_WHITE_STEM_BORER_RISK = 'COFFEE_WHITE_STEM_BORER_RISK',           // Xylotrechus quadripes
+  COFFEE_SHOT_HOLE_BORER_RISK = 'COFFEE_SHOT_HOLE_BORER_RISK',             // Xylosandrus compactus
+  COFFEE_MEALYBUG_RISK = 'COFFEE_MEALYBUG_RISK',                           // Planococcus citri
+  COFFEE_GREEN_SCALE_RISK = 'COFFEE_GREEN_SCALE_RISK',                     // Coccus viridis
+  COFFEE_LEAF_RUST_RISK = 'COFFEE_LEAF_RUST_RISK',                         // Hemileia vastatrix
+  COFFEE_BLACK_ROT_RISK = 'COFFEE_BLACK_ROT_RISK',                         // Koleroga noxia
+  COFFEE_BROWN_EYE_SPOT_RISK = 'COFFEE_BROWN_EYE_SPOT_RISK',               // Cercospora coffeicola
+  COFFEE_ROOT_DISEASE_RISK = 'COFFEE_ROOT_DISEASE_RISK',                   // Rosellinia bunodes
+  COFFEE_BERRY_BLOTCH_RISK = 'COFFEE_BERRY_BLOTCH_RISK',                   // Cercospora
+
+  // TEA PESTS/DISEASES
+  TEA_MOSQUITO_BUG_RISK = 'TEA_MOSQUITO_BUG_RISK',                         // Helopeltis theivora
+  TEA_THRIPS_RISK = 'TEA_THRIPS_RISK',                                     // Scirtothrips dorsalis
+  TEA_RED_SPIDER_MITE_RISK = 'TEA_RED_SPIDER_MITE_RISK',                   // Oligonychus coffeae
+  TEA_JASSID_RISK = 'TEA_JASSID_RISK',                                     // Empoasca flavescens
+  TEA_LOOPER_CATERPILLAR_RISK = 'TEA_LOOPER_CATERPILLAR_RISK',             // Hyposidra talaca
+  TEA_BLISTER_BLIGHT_RISK = 'TEA_BLISTER_BLIGHT_RISK',                     // Exobasidium vexans - major disease
+  TEA_GREY_BLIGHT_RISK = 'TEA_GREY_BLIGHT_RISK',                           // Pestalotiopsis theae
+  TEA_RED_RUST_RISK = 'TEA_RED_RUST_RISK',                                 // Cephaleuros parasiticus
+  TEA_BLACK_ROT_RISK = 'TEA_BLACK_ROT_RISK',                               // Corticium theae
+  TEA_BROWN_BLIGHT_RISK = 'TEA_BROWN_BLIGHT_RISK',                         // Glomerella cingulata
+
+  // RUBBER PESTS/DISEASES
+  RUBBER_ABNORMAL_LEAF_FALL_RISK = 'RUBBER_ABNORMAL_LEAF_FALL_RISK',       // Phytophthora - major disease
+  RUBBER_POWDERY_MILDEW_RISK = 'RUBBER_POWDERY_MILDEW_RISK',               // Oidium heveae
+  RUBBER_PINK_DISEASE_RISK = 'RUBBER_PINK_DISEASE_RISK',                   // Corticium salmonicolor
+  RUBBER_BLACK_STRIPE_RISK = 'RUBBER_BLACK_STRIPE_RISK',                   // Phytophthora palmivora
+  RUBBER_SCALE_INSECT_RISK = 'RUBBER_SCALE_INSECT_RISK',                   // Saissetia nigra
+  RUBBER_MEALYBUG_RISK = 'RUBBER_MEALYBUG_RISK',                           // Ferrisia virgata
+  RUBBER_BARK_ROT_RISK = 'RUBBER_BARK_ROT_RISK',                           // Fusarium/Pythium complex
+  RUBBER_BROWN_BAST_RISK = 'RUBBER_BROWN_BAST_RISK',                       // Physiological disorder
+
+  // ARECANUT PESTS/DISEASES
+  ARECANUT_YELLOW_LEAF_DISEASE_RISK = 'ARECANUT_YELLOW_LEAF_DISEASE_RISK', // Phytoplasma - devastating
+  ARECANUT_KOLEROGA_RISK = 'ARECANUT_KOLEROGA_RISK',                       // Phytophthora arecae
+  ARECANUT_FRUIT_ROT_RISK = 'ARECANUT_FRUIT_ROT_RISK',                     // Colletotrichum
+  ARECANUT_INFLORESCENCE_DIE_BACK_RISK = 'ARECANUT_INFLORESCENCE_DIE_BACK_RISK', // Phytophthora
+  ARECANUT_SPINDLE_BUG_RISK = 'ARECANUT_SPINDLE_BUG_RISK',                 // Carvalhoia arecae
+  ARECANUT_MITE_RISK = 'ARECANUT_MITE_RISK',                               // Raoiella indica
+  ARECANUT_ROOT_GRUB_RISK = 'ARECANUT_ROOT_GRUB_RISK',                     // Leucopholis spp
+
+  // CASHEW PESTS/DISEASES
+  CASHEW_TEA_MOSQUITO_BUG_RISK = 'CASHEW_TEA_MOSQUITO_BUG_RISK',           // Helopeltis antonii - major pest
+  CASHEW_STEM_BORER_RISK = 'CASHEW_STEM_BORER_RISK',                       // Plocaederus ferrugineus
+  CASHEW_SHOOT_BORER_RISK = 'CASHEW_SHOOT_BORER_RISK',                     // Alcides bubo
+  CASHEW_ANTHRACNOSE_RISK = 'CASHEW_ANTHRACNOSE_RISK',                     // Colletotrichum gloeosporioides
+  CASHEW_DIE_BACK_RISK = 'CASHEW_DIE_BACK_RISK',                           // Lasiodiplodia theobromae
+  CASHEW_POWDERY_MILDEW_RISK = 'CASHEW_POWDERY_MILDEW_RISK',               // Oidium anacardii
+  CASHEW_INFLORESCENCE_BLIGHT_RISK = 'CASHEW_INFLORESCENCE_BLIGHT_RISK',   // Colletotrichum
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ADDITIONAL OILSEEDS - Sesame, Safflower, Linseed, Castor
+  // ─────────────────────────────────────────────────────────────────────────
+  SESAME_PHYLLODY_RISK = 'SESAME_PHYLLODY_RISK',                           // Phytoplasma - major disease
+  SESAME_LEAF_SPOT_RISK = 'SESAME_LEAF_SPOT_RISK',                         // Cercospora/Alternaria
+  SESAME_GALL_FLY_RISK = 'SESAME_GALL_FLY_RISK',                           // Asphondylia sesami
+  SESAME_SPHINX_MOTH_RISK = 'SESAME_SPHINX_MOTH_RISK',                     // Acherontia styx
+  SESAME_WEBWORM_RISK = 'SESAME_WEBWORM_RISK',                             // Antigastra catalaunalis
+  SESAME_ROOT_ROT_RISK = 'SESAME_ROOT_ROT_RISK',                           // Macrophomina phaseolina
+  SAFFLOWER_APHID_RISK = 'SAFFLOWER_APHID_RISK',                           // Uroleucon compositae
+  SAFFLOWER_ALTERNARIA_RISK = 'SAFFLOWER_ALTERNARIA_RISK',                 // Alternaria carthami
+  SAFFLOWER_WILT_RISK = 'SAFFLOWER_WILT_RISK',                             // Fusarium oxysporum
+  SAFFLOWER_CAPSULE_FLY_RISK = 'SAFFLOWER_CAPSULE_FLY_RISK',               // Acanthophilus helianthi
+  LINSEED_RUST_RISK = 'LINSEED_RUST_RISK',                                 // Melampsora lini
+  LINSEED_WILT_RISK = 'LINSEED_WILT_RISK',                                 // Fusarium oxysporum f.sp. lini
+  LINSEED_BUD_FLY_RISK = 'LINSEED_BUD_FLY_RISK',                           // Dasyneura lini
+  LINSEED_ALTERNARIA_RISK = 'LINSEED_ALTERNARIA_RISK',                     // Alternaria linicola
+  CASTOR_SEMILOOPER_RISK = 'CASTOR_SEMILOOPER_RISK',                       // Achaea janata
+  CASTOR_WILT_RISK = 'CASTOR_WILT_RISK',                                   // Fusarium oxysporum f.sp. ricini
+  CASTOR_CAPSULE_BORER_RISK = 'CASTOR_CAPSULE_BORER_RISK',                 // Dichocrocis punctiferalis
+  CASTOR_GREY_ROT_RISK = 'CASTOR_GREY_ROT_RISK',                           // Botrytis ricini
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ADDITIONAL FRUITS - Pomegranate, Papaya, Guava, Apple
+  // ─────────────────────────────────────────────────────────────────────────
+  POMEGRANATE_BACTERIAL_BLIGHT_RISK = 'POMEGRANATE_BACTERIAL_BLIGHT_RISK', // Xanthomonas axonopodis - oily spot
+  POMEGRANATE_WILT_RISK = 'POMEGRANATE_WILT_RISK',                         // Ceratocystis fimbriata
+  POMEGRANATE_FRUIT_BORER_RISK = 'POMEGRANATE_FRUIT_BORER_RISK',           // Deudorix isocrates
+  POMEGRANATE_APHID_RISK = 'POMEGRANATE_APHID_RISK',                       // Aphis punicae
+  POMEGRANATE_THRIPS_RISK = 'POMEGRANATE_THRIPS_RISK',                     // Rhipiphorothrips cruentatus
+  POMEGRANATE_MITE_RISK = 'POMEGRANATE_MITE_RISK',                         // Brevipalpus phoenicis
+  POMEGRANATE_ANTHRACNOSE_RISK = 'POMEGRANATE_ANTHRACNOSE_RISK',           // Colletotrichum
+  POMEGRANATE_SHOT_HOLE_RISK = 'POMEGRANATE_SHOT_HOLE_RISK',               // Cercospora
+  PAPAYA_RING_SPOT_VIRUS_RISK = 'PAPAYA_RING_SPOT_VIRUS_RISK',             // PRSV - devastating
+  PAPAYA_MEALYBUG_RISK = 'PAPAYA_MEALYBUG_RISK',                           // Paracoccus marginatus
+  PAPAYA_STEM_ROT_RISK = 'PAPAYA_STEM_ROT_RISK',                           // Phytophthora palmivora
+  PAPAYA_ANTHRACNOSE_RISK = 'PAPAYA_ANTHRACNOSE_RISK',                     // Colletotrichum
+  PAPAYA_FRUIT_FLY_RISK = 'PAPAYA_FRUIT_FLY_RISK',                         // Bactrocera papayae
+  PAPAYA_POWDERY_MILDEW_RISK = 'PAPAYA_POWDERY_MILDEW_RISK',               // Oidium caricae
+  GUAVA_WILT_RISK = 'GUAVA_WILT_RISK',                                     // Fusarium oxysporum f.sp. psidii
+  GUAVA_FRUIT_FLY_RISK = 'GUAVA_FRUIT_FLY_RISK',                           // Bactrocera dorsalis
+  GUAVA_ANTHRACNOSE_RISK = 'GUAVA_ANTHRACNOSE_RISK',                       // Colletotrichum gloeosporioides
+  GUAVA_STYLAR_END_ROT_RISK = 'GUAVA_STYLAR_END_ROT_RISK',                 // Phomopsis
+  GUAVA_BARK_EATING_CATERPILLAR_RISK = 'GUAVA_BARK_EATING_CATERPILLAR_RISK', // Indarbela quadrinotata
+  GUAVA_MEALYBUG_RISK = 'GUAVA_MEALYBUG_RISK',                             // Ferrisia virgata
+  APPLE_SCAB_RISK = 'APPLE_SCAB_RISK',                                     // Venturia inaequalis
+  APPLE_WOOLLY_APHID_RISK = 'APPLE_WOOLLY_APHID_RISK',                     // Eriosoma lanigerum
+  APPLE_BITTER_PIT_RISK = 'APPLE_BITTER_PIT_RISK',                         // Calcium deficiency
+  APPLE_FIRE_BLIGHT_RISK = 'APPLE_FIRE_BLIGHT_RISK',                       // Erwinia amylovora
+  APPLE_CODLING_MOTH_RISK = 'APPLE_CODLING_MOTH_RISK',                     // Cydia pomonella
+  APPLE_POWDERY_MILDEW_RISK = 'APPLE_POWDERY_MILDEW_RISK',                 // Podosphaera leucotricha
+  APPLE_SAN_JOSE_SCALE_RISK = 'APPLE_SAN_JOSE_SCALE_RISK',                 // Quadraspidiotus perniciosus
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ADDITIONAL VEGETABLES - Brinjal, Cabbage, Cauliflower, Cucumber, Okra
+  // ─────────────────────────────────────────────────────────────────────────
+  BRINJAL_SHOOT_FRUIT_BORER_RISK = 'BRINJAL_SHOOT_FRUIT_BORER_RISK',       // Leucinodes orbonalis - major pest
+  BRINJAL_WILT_RISK = 'BRINJAL_WILT_RISK',                                 // Fusarium/Verticillium/Ralstonia
+  BRINJAL_PHOMOPSIS_BLIGHT_RISK = 'BRINJAL_PHOMOPSIS_BLIGHT_RISK',         // Phomopsis vexans
+  BRINJAL_LITTLE_LEAF_RISK = 'BRINJAL_LITTLE_LEAF_RISK',                   // Phytoplasma
+  BRINJAL_JASSID_RISK = 'BRINJAL_JASSID_RISK',                             // Amrasca biguttula
+  BRINJAL_MITE_RISK = 'BRINJAL_MITE_RISK',                                 // Tetranychus urticae
+  CABBAGE_DIAMOND_BACK_MOTH_RISK = 'CABBAGE_DIAMOND_BACK_MOTH_RISK',       // Plutella xylostella
+  CABBAGE_CLUB_ROOT_RISK = 'CABBAGE_CLUB_ROOT_RISK',                       // Plasmodiophora brassicae
+  CABBAGE_HEAD_BORER_RISK = 'CABBAGE_HEAD_BORER_RISK',                     // Hellula undalis
+  CAULIFLOWER_STALK_ROT_RISK = 'CAULIFLOWER_STALK_ROT_RISK',               // Sclerotinia sclerotiorum
+  CAULIFLOWER_CURD_BORER_RISK = 'CAULIFLOWER_CURD_BORER_RISK',             // Hellula undalis
+  CAULIFLOWER_WHIPTAIL_RISK = 'CAULIFLOWER_WHIPTAIL_RISK',                 // Molybdenum deficiency
+  CUCUMBER_DOWNY_MILDEW_RISK = 'CUCUMBER_DOWNY_MILDEW_RISK',               // Pseudoperonospora cubensis
+  CUCUMBER_MOSAIC_VIRUS_RISK = 'CUCUMBER_MOSAIC_VIRUS_RISK',               // CMV
+  CUCUMBER_FRUIT_FLY_RISK = 'CUCUMBER_FRUIT_FLY_RISK',                     // Bactrocera cucurbitae
+  CUCUMBER_ANTHRACNOSE_RISK = 'CUCUMBER_ANTHRACNOSE_RISK',                 // Colletotrichum
+  CUCUMBER_ANGULAR_LEAF_SPOT_RISK = 'CUCUMBER_ANGULAR_LEAF_SPOT_RISK',     // Pseudomonas syringae
+  OKRA_FRUIT_BORER_RISK = 'OKRA_FRUIT_BORER_RISK',                         // Earias vittella
+  OKRA_ROOT_KNOT_NEMATODE_RISK = 'OKRA_ROOT_KNOT_NEMATODE_RISK'            // Meloidogyne incognita
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
