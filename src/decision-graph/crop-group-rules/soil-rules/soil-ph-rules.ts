@@ -8,6 +8,7 @@ import {
   CauseRule,
   Cause,
   CropStage,
+  CropGroup,
   SoilPHState,
   SoilNState,
   SoilPState,
@@ -50,7 +51,7 @@ const ACIDIC_SOIL_RULES: CauseRule[] = [
     stage_applicable: [CropStage.LAND_PREPARATION, CropStage.SOWING],
     conditions: (input) =>
       input.soil_states?.ph === SoilPHState.ACIDIC &&
-      input.soil_states?.phosphorus === SoilPState.LOW_P,
+      input.soil_states?.p === SoilPState.LOW_P,
     cause: Cause.PHOSPHORUS_DEFICIENCY,
     priority: 4,
     scientific_source: 'P is fixed by Al/Fe in acidic soils',
@@ -87,7 +88,7 @@ const ACIDIC_SOIL_RULES: CauseRule[] = [
     stage_applicable: [CropStage.SOWING],
     conditions: (input) =>
       input.soil_states?.ph === SoilPHState.ACIDIC &&
-      input.crop_group === 'PULSES',
+      input.crop_group === CropGroup.PULSES,
     cause: Cause.MICRONUTRIENT_DEFICIENCY,
     priority: 5,
     scientific_source: 'Mo availability decreases sharply below pH 5.5',
@@ -100,7 +101,7 @@ const ACIDIC_SOIL_RULES: CauseRule[] = [
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
       input.soil_states?.ph === SoilPHState.ACIDIC &&
-      input.crop_group === 'PULSES',
+      input.crop_group === CropGroup.PULSES,
     cause: Cause.NITROGEN_DEFICIENCY,
     priority: 4,
     scientific_source: 'Rhizobium activity is severely reduced below pH 5.5',
@@ -217,7 +218,7 @@ const ALKALINE_SOIL_RULES: CauseRule[] = [
     stage_applicable: [CropStage.SOWING],
     conditions: (input) =>
       input.soil_states?.ph === SoilPHState.ALKALINE &&
-      input.soil_states?.phosphorus === SoilPState.LOW_P,
+      input.soil_states?.p === SoilPState.LOW_P,
     cause: Cause.PHOSPHORUS_DEFICIENCY,
     priority: 5,
     scientific_source: 'P precipitates as Ca-P in calcareous soils',
@@ -298,7 +299,7 @@ const OPTIMAL_PH_MANAGEMENT_RULES: CauseRule[] = [
     stage_applicable: [CropStage.PLANNING],
     conditions: (input) =>
       input.soil_states?.ph === SoilPHState.NEUTRAL &&
-      input.crop_group === 'CEREALS',
+      input.crop_group === CropGroup.CEREALS,
     cause: Cause.OPTIMAL_GROWTH,
     priority: 8,
     scientific_source: 'Cereals perform well in neutral pH range',
@@ -311,7 +312,7 @@ const OPTIMAL_PH_MANAGEMENT_RULES: CauseRule[] = [
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
       input.soil_states?.ph === SoilPHState.NEUTRAL &&
-      input.soil_states?.nitrogen === SoilNState.LOW_N,
+      input.soil_states?.n === SoilNState.LOW_N,
     cause: Cause.NITROGEN_DEFICIENCY,
     priority: 5,
     scientific_source: 'Good pH but low N',
@@ -324,7 +325,7 @@ const OPTIMAL_PH_MANAGEMENT_RULES: CauseRule[] = [
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
       input.soil_states?.ph === SoilPHState.NEUTRAL &&
-      input.soil_states?.phosphorus === SoilPState.LOW_P,
+      input.soil_states?.p === SoilPState.LOW_P,
     cause: Cause.PHOSPHORUS_DEFICIENCY,
     priority: 5,
     scientific_source: 'Good pH but low P',
@@ -375,7 +376,7 @@ const SALINITY_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_SAL_002',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.PLANNING],
     conditions: (input) =>
@@ -387,7 +388,7 @@ const SALINITY_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_SAL_003',
-    category: 'cultural',
+    category: 'water',
     crop_code: 'all',
     stage_applicable: [CropStage.VEGETATIVE],
     conditions: (input) =>
@@ -399,7 +400,7 @@ const SALINITY_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_SAL_004',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.PLANNING],
     conditions: (input) =>
@@ -411,7 +412,7 @@ const SALINITY_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_SAL_005',
-    category: 'cultural',
+    category: 'water',
     crop_code: 'all',
     stage_applicable: [CropStage.VEGETATIVE],
     conditions: (input) =>

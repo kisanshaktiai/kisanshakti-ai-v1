@@ -8,6 +8,7 @@ import {
   CauseRule,
   Cause,
   CropStage,
+  CropGroup,
   SoilNState,
   SoilPState,
   SoilKState,
@@ -26,7 +27,7 @@ const MACRONUTRIENT_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION, CropStage.SOWING],
     conditions: (input) =>
-      input.soil_states?.nitrogen === SoilNState.LOW_N,
+      input.soil_states?.n === SoilNState.LOW_N,
     cause: Cause.NITROGEN_DEFICIENCY_CRITICAL,
     priority: 4,
     scientific_source: 'Severe N deficiency requires immediate correction',
@@ -38,7 +39,7 @@ const MACRONUTRIENT_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.VEGETATIVE],
     conditions: (input) =>
-      input.soil_states?.nitrogen === SoilNState.LOW_N,
+      input.soil_states?.n === SoilNState.LOW_N,
     cause: Cause.NITROGEN_DEFICIENCY,
     priority: 5,
     scientific_source: 'Low N requires adequate fertilization',
@@ -50,7 +51,7 @@ const MACRONUTRIENT_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
     conditions: (input) =>
-      input.soil_states?.nitrogen === SoilNState.HIGH_N,
+      input.soil_states?.n === SoilNState.HIGH_N,
     cause: Cause.EXCESS_NITROGEN,
     priority: 5,
     scientific_source: 'Excess N causes lodging and disease susceptibility',
@@ -62,7 +63,7 @@ const MACRONUTRIENT_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION, CropStage.SOWING],
     conditions: (input) =>
-      input.soil_states?.phosphorus === SoilPState.LOW_P,
+      input.soil_states?.p === SoilPState.LOW_P,
     cause: Cause.PHOSPHORUS_DEFICIENCY_CRITICAL,
     priority: 4,
     scientific_source: 'Severe P deficiency limits root development',
@@ -74,7 +75,7 @@ const MACRONUTRIENT_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.SOWING],
     conditions: (input) =>
-      input.soil_states?.phosphorus === SoilPState.LOW_P,
+      input.soil_states?.p === SoilPState.LOW_P,
     cause: Cause.PHOSPHORUS_DEFICIENCY,
     priority: 5,
     scientific_source: 'Low P requires correction for optimal growth',
@@ -86,7 +87,7 @@ const MACRONUTRIENT_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION, CropStage.SOWING],
     conditions: (input) =>
-      input.soil_states?.potassium === SoilKState.LOW_K,
+      input.soil_states?.k === SoilKState.LOW_K,
     cause: Cause.POTASSIUM_DEFICIENCY_CRITICAL,
     priority: 4,
     scientific_source: 'Severe K deficiency affects quality and stress tolerance',
@@ -98,7 +99,7 @@ const MACRONUTRIENT_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.SOWING, CropStage.REPRODUCTIVE],
     conditions: (input) =>
-      input.soil_states?.potassium === SoilKState.LOW_K,
+      input.soil_states?.k === SoilKState.LOW_K,
     cause: Cause.POTASSIUM_DEFICIENCY,
     priority: 5,
     scientific_source: 'Low K affects fruit quality and disease resistance',
@@ -122,7 +123,7 @@ const MACRONUTRIENT_RULES: CauseRule[] = [
     crop_code: 'oilseeds',
     stage_applicable: [CropStage.SOWING],
     conditions: (input) =>
-      input.crop_group === 'OILSEEDS',
+      input.crop_group === CropGroup.OILSEEDS,
     cause: Cause.MICRONUTRIENT_DEFICIENCY,
     priority: 4,
     scientific_source: 'Oilseeds have high S requirement for oil synthesis',
@@ -159,9 +160,9 @@ const MACRONUTRIENT_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
-      input.soil_states?.nitrogen === SoilNState.LOW_N &&
-      input.soil_states?.phosphorus === SoilPState.LOW_P &&
-      input.soil_states?.potassium === SoilKState.LOW_K,
+      input.soil_states?.n === SoilNState.LOW_N &&
+      input.soil_states?.p === SoilPState.LOW_P &&
+      input.soil_states?.k === SoilKState.LOW_K,
     cause: Cause.SEVERE_NUTRIENT_DEPLETION,
     priority: 3,
     scientific_source: 'Multiple deficiencies require integrated soil fertility management',
@@ -265,7 +266,7 @@ const MICRONUTRIENT_RULES: CauseRule[] = [
     crop_code: 'legumes',
     stage_applicable: [CropStage.SOWING, CropStage.REPRODUCTIVE],
     conditions: (input) =>
-      input.crop_group === 'PULSES',
+      input.crop_group === CropGroup.PULSES,
     cause: Cause.MICRONUTRIENT_DEFICIENCY,
     priority: 5,
     scientific_source: 'Mo essential for N fixation in legumes',
@@ -369,8 +370,8 @@ const NUTRIENT_IMBALANCE_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.VEGETATIVE],
     conditions: (input) =>
-      input.soil_states?.nitrogen === SoilNState.HIGH_N &&
-      input.soil_states?.potassium === SoilKState.LOW_K,
+      input.soil_states?.n === SoilNState.HIGH_N &&
+      input.soil_states?.k === SoilKState.LOW_K,
     cause: Cause.POTASSIUM_DEFICIENCY,
     priority: 5,
     scientific_source: 'High N:K ratio causes K-induced deficiency',
@@ -382,7 +383,7 @@ const NUTRIENT_IMBALANCE_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.VEGETATIVE],
     conditions: (input) =>
-      input.soil_states?.phosphorus === SoilPState.HIGH_P &&
+      input.soil_states?.p === SoilPState.HIGH_P &&
       input.soil_states?.zinc === SoilZincState.LOW_ZN,
     cause: Cause.ZINC_DEFICIENCY,
     priority: 5,
@@ -407,7 +408,7 @@ const NUTRIENT_IMBALANCE_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.VEGETATIVE],
     conditions: (input) =>
-      input.soil_states?.potassium === SoilKState.HIGH_K,
+      input.soil_states?.k === SoilKState.HIGH_K,
     cause: Cause.MICRONUTRIENT_DEFICIENCY,
     priority: 5,
     scientific_source: 'High K antagonizes Mg uptake',
@@ -419,8 +420,8 @@ const NUTRIENT_IMBALANCE_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.VEGETATIVE],
     conditions: (input) =>
-      input.soil_states?.nitrogen === SoilNState.LOW_N &&
-      input.soil_states?.phosphorus === SoilPState.HIGH_P,
+      input.soil_states?.n === SoilNState.LOW_N &&
+      input.soil_states?.p === SoilPState.HIGH_P,
     cause: Cause.NITROGEN_DEFICIENCY,
     priority: 5,
     scientific_source: 'P excess with low N limits growth',
@@ -433,7 +434,7 @@ const NUTRIENT_IMBALANCE_RULES: CauseRule[] = [
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
       input.soil_states?.oc === SoilOCState.LOW_OC &&
-      input.soil_states?.nitrogen === SoilNState.LOW_N,
+      input.soil_states?.n === SoilNState.LOW_N,
     cause: Cause.NITROGEN_DEFICIENCY,
     priority: 4,
     scientific_source: 'Low OC limits N mineralization',
@@ -445,7 +446,7 @@ const NUTRIENT_IMBALANCE_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.REPRODUCTIVE],
     conditions: (input) =>
-      input.soil_states?.nitrogen === SoilNState.HIGH_N,
+      input.soil_states?.n === SoilNState.HIGH_N,
     cause: Cause.EXCESS_NITROGEN_LODGING,
     priority: 5,
     scientific_source: 'Excess N causes lodging risk',
@@ -455,13 +456,13 @@ const NUTRIENT_IMBALANCE_RULES: CauseRule[] = [
     rule_id: 'SOIL_IMB_HIGH_N_002',
     category: 'nutrient',
     crop_code: 'all',
-    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    stage_applicable: [CropStage.VEGETATIVE],
     conditions: (input) =>
-      input.soil_states?.nitrogen === SoilNState.HIGH_N,
-    cause: Cause.EXCESS_NITROGEN_DISEASE,
+      input.soil_states?.n === SoilNState.HIGH_N,
+    cause: Cause.EXCESS_NITROGEN,
     priority: 5,
-    scientific_source: 'Excess N increases disease susceptibility',
-    scientific_basis: 'Monitor for fungal diseases. Prophylactic fungicide application may be needed.',
+    scientific_source: 'Excess N delays maturity',
+    scientific_basis: 'Avoid further N application. Increase K if needed. Monitor for disease due to lush growth.',
   },
 ];
 

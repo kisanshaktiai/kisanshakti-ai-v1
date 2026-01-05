@@ -8,6 +8,7 @@ import {
   CauseRule,
   Cause,
   CropStage,
+  CropGroup,
   SoilMoistureState,
   SoilOCState,
   SoilTexture
@@ -24,7 +25,7 @@ const SOIL_TEXTURE_STRUCTURE_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
-      input.soil_texture === SoilTexture.SANDY,
+      input.soil_states?.texture === SoilTexture.SANDY,
     cause: Cause.ORGANIC_MATTER_LOW,
     priority: 5,
     scientific_source: 'Sandy soils have low water and nutrient retention',
@@ -32,11 +33,11 @@ const SOIL_TEXTURE_STRUCTURE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_PHY_TEX_002',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
-      input.soil_texture === SoilTexture.CLAY,
+      input.soil_states?.texture === SoilTexture.CLAY,
     cause: Cause.SOIL_HEALTH_DEGRADATION,
     priority: 5,
     scientific_source: 'Heavy clay soils have drainage and workability issues',
@@ -44,7 +45,7 @@ const SOIL_TEXTURE_STRUCTURE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_PHY_TEX_003',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
@@ -56,7 +57,7 @@ const SOIL_TEXTURE_STRUCTURE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_PHY_TEX_004',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.SOWING, CropStage.GERMINATION],
     conditions: (input) =>
@@ -68,11 +69,11 @@ const SOIL_TEXTURE_STRUCTURE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_PHY_TEX_005',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
-      input.soil_texture === SoilTexture.SANDY_LOAM,
+      input.soil_states?.texture === SoilTexture.SANDY_LOAM,
     cause: Cause.SOIL_HEALTH_DEGRADATION,
     priority: 6,
     scientific_source: 'Silty soils compact easily and are erosion-prone',
@@ -80,7 +81,7 @@ const SOIL_TEXTURE_STRUCTURE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_PHY_STR_001',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
@@ -92,11 +93,11 @@ const SOIL_TEXTURE_STRUCTURE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_PHY_STR_002',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
-      input.soil_texture === SoilTexture.CLAY,
+      input.soil_states?.texture === SoilTexture.CLAY,
     cause: Cause.SOIL_HEALTH_DEGRADATION,
     priority: 5,
     scientific_source: 'Low porosity limits root growth and water infiltration',
@@ -104,11 +105,11 @@ const SOIL_TEXTURE_STRUCTURE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_PHY_STR_003',
-    category: 'cultural',
+    category: 'water',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
-      input.soil_texture === SoilTexture.SANDY,
+      input.soil_states?.texture === SoilTexture.SANDY,
     cause: Cause.WATER_STRESS_MILD,
     priority: 5,
     scientific_source: 'Hydrophobic soils resist wetting, causing uneven irrigation',
@@ -116,11 +117,11 @@ const SOIL_TEXTURE_STRUCTURE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_PHY_STR_004',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
-      input.soil_texture === SoilTexture.CLAY,
+      input.soil_states?.texture === SoilTexture.CLAY,
     cause: Cause.SOIL_HEALTH_DEGRADATION,
     priority: 5,
     scientific_source: 'Vertisols crack when dry, swell when wet',
@@ -147,12 +148,12 @@ const SOIL_TEXTURE_STRUCTURE_RULES: CauseRule[] = [
 const SOIL_COMPACTION_RULES: CauseRule[] = [
   {
     rule_id: 'SOIL_COMP_001',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
-      input.soil_texture === SoilTexture.CLAY ||
-      input.soil_texture === SoilTexture.CLAY_LOAM,
+      input.soil_states?.texture === SoilTexture.CLAY ||
+      input.soil_states?.texture === SoilTexture.CLAY_LOAM,
     cause: Cause.SOIL_HEALTH_DEGRADATION,
     priority: 4,
     scientific_source: 'Surface compaction limits infiltration and emergence',
@@ -160,7 +161,7 @@ const SOIL_COMPACTION_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_COMP_002',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
@@ -172,7 +173,7 @@ const SOIL_COMPACTION_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_COMP_003',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
@@ -184,11 +185,11 @@ const SOIL_COMPACTION_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_COMP_004',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.PLANNING],
     conditions: (input) =>
-      input.soil_texture === SoilTexture.CLAY,
+      input.soil_states?.texture === SoilTexture.CLAY,
     cause: Cause.SOIL_HEALTH_DEGRADATION,
     priority: 5,
     scientific_source: 'Wheel traffic causes localized compaction',
@@ -196,7 +197,7 @@ const SOIL_COMPACTION_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_COMP_005',
-    category: 'cultural',
+    category: 'water',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
@@ -208,7 +209,7 @@ const SOIL_COMPACTION_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_COMP_006',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
@@ -220,11 +221,11 @@ const SOIL_COMPACTION_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_COMP_007',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'orchard',
     stage_applicable: [CropStage.VEGETATIVE],
     conditions: (input) =>
-      input.crop_group === 'FRUITS',
+      input.crop_group === CropGroup.FRUITS,
     cause: Cause.SOIL_HEALTH_DEGRADATION,
     priority: 5,
     scientific_source: 'Repeated orchard traffic compacts interrows',
@@ -232,7 +233,7 @@ const SOIL_COMPACTION_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_COMP_008',
-    category: 'cultural',
+    category: 'water',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
@@ -251,7 +252,7 @@ const SOIL_COMPACTION_RULES: CauseRule[] = [
 const SOIL_DRAINAGE_RULES: CauseRule[] = [
   {
     rule_id: 'SOIL_DRAIN_001',
-    category: 'cultural',
+    category: 'water',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
@@ -263,7 +264,7 @@ const SOIL_DRAINAGE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_DRAIN_002',
-    category: 'cultural',
+    category: 'water',
     crop_code: 'all',
     stage_applicable: [CropStage.VEGETATIVE],
     conditions: (input) =>
@@ -275,11 +276,11 @@ const SOIL_DRAINAGE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_DRAIN_003',
-    category: 'cultural',
+    category: 'water',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
-      input.soil_texture === SoilTexture.CLAY,
+      input.soil_states?.texture === SoilTexture.CLAY,
     cause: Cause.WATERLOGGING,
     priority: 4,
     scientific_source: 'Impermeable layer creates temporary water table',
@@ -291,7 +292,7 @@ const SOIL_DRAINAGE_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
-      input.soil_texture === SoilTexture.SANDY,
+      input.soil_states?.texture === SoilTexture.SANDY,
     cause: Cause.WATER_STRESS_MILD,
     priority: 5,
     scientific_source: 'Rapid drainage causes nutrient leaching',
@@ -299,7 +300,7 @@ const SOIL_DRAINAGE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_DRAIN_005',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
@@ -324,7 +325,7 @@ const SOIL_DRAINAGE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_DRAIN_007',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'rice',
     stage_applicable: [CropStage.VEGETATIVE],
     conditions: (input) =>
@@ -337,7 +338,7 @@ const SOIL_DRAINAGE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_DRAIN_008',
-    category: 'cultural',
+    category: 'water',
     crop_code: 'rice',
     stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
     conditions: (input) =>
@@ -361,7 +362,7 @@ const SOIL_DRAINAGE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_DRAIN_010',
-    category: 'cultural',
+    category: 'water',
     crop_code: 'all',
     stage_applicable: [CropStage.PLANNING],
     conditions: (input) =>
@@ -373,7 +374,7 @@ const SOIL_DRAINAGE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_DRAIN_011',
-    category: 'cultural',
+    category: 'water',
     crop_code: 'all',
     stage_applicable: [CropStage.PLANNING],
     conditions: (input) =>
@@ -385,7 +386,7 @@ const SOIL_DRAINAGE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_DRAIN_012',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
@@ -397,11 +398,11 @@ const SOIL_DRAINAGE_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_DRAIN_013',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.HARVEST],
     conditions: (input) =>
-      input.soil_texture === SoilTexture.SANDY &&
+      input.soil_states?.texture === SoilTexture.SANDY &&
       input.soil_states?.oc === SoilOCState.LOW_OC,
     cause: Cause.SOIL_HEALTH_DEGRADATION,
     priority: 5,
@@ -414,7 +415,7 @@ const SOIL_DRAINAGE_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
-      input.soil_texture === SoilTexture.SANDY,
+      input.soil_states?.texture === SoilTexture.SANDY,
     cause: Cause.WATER_STRESS_MILD,
     priority: 5,
     scientific_source: 'Low WHC requires frequent irrigation',

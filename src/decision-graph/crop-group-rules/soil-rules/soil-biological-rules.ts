@@ -8,6 +8,7 @@ import {
   CauseRule,
   Cause,
   CropStage,
+  CropGroup,
   SoilOCState,
   SoilNState,
   SoilPState,
@@ -58,7 +59,7 @@ const SOIL_ORGANIC_MATTER_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_BIO_OM_004',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
@@ -87,7 +88,7 @@ const SOIL_ORGANIC_MATTER_RULES: CauseRule[] = [
     stage_applicable: [CropStage.LAND_PREPARATION],
     conditions: (input) =>
       input.soil_states?.oc === SoilOCState.LOW_OC &&
-      input.soil_states?.nitrogen === SoilNState.LOW_N,
+      input.soil_states?.n === SoilNState.LOW_N,
     cause: Cause.NITROGEN_DEFICIENCY,
     priority: 5,
     scientific_source: 'High C:N ratio causes N immobilization',
@@ -95,7 +96,7 @@ const SOIL_ORGANIC_MATTER_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_BIO_OM_007',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.HARVEST],
     conditions: (input) =>
@@ -107,7 +108,7 @@ const SOIL_ORGANIC_MATTER_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_BIO_OM_008',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.PLANNING],
     conditions: (input) =>
@@ -131,7 +132,7 @@ const SOIL_ORGANIC_MATTER_RULES: CauseRule[] = [
   },
   {
     rule_id: 'SOIL_BIO_OM_010',
-    category: 'cultural',
+    category: 'biological',
     crop_code: 'all',
     stage_applicable: [CropStage.PLANNING],
     conditions: (input) =>
@@ -190,7 +191,7 @@ const SOIL_MICROBIAL_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.SOWING],
     conditions: (input) =>
-      input.soil_states?.phosphorus === SoilPState.LOW_P,
+      input.soil_states?.p === SoilPState.LOW_P,
     cause: Cause.PHOSPHORUS_DEFICIENCY,
     priority: 5,
     scientific_source: 'Low AMF colonization limits P uptake and stress tolerance',
@@ -202,7 +203,7 @@ const SOIL_MICROBIAL_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.VEGETATIVE],
     conditions: (input) =>
-      input.soil_states?.nitrogen === SoilNState.LOW_N,
+      input.soil_states?.n === SoilNState.LOW_N,
     cause: Cause.NITROGEN_DEFICIENCY,
     priority: 5,
     scientific_source: 'Cold soils have slow N release from organic matter',
@@ -214,7 +215,7 @@ const SOIL_MICROBIAL_RULES: CauseRule[] = [
     crop_code: 'legumes',
     stage_applicable: [CropStage.SOWING],
     conditions: (input) =>
-      input.crop_group === 'PULSES',
+      input.crop_group === CropGroup.PULSES,
     cause: Cause.NITROGEN_DEFICIENCY,
     priority: 4,
     scientific_source: 'Poor nodulation wastes legume N-fixing potential',
@@ -226,7 +227,7 @@ const SOIL_MICROBIAL_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.SOWING],
     conditions: (input) =>
-      input.soil_states?.phosphorus === SoilPState.LOW_P,
+      input.soil_states?.p === SoilPState.LOW_P,
     cause: Cause.PHOSPHORUS_DEFICIENCY,
     priority: 5,
     scientific_source: 'PSB can release fixed P from soil',
@@ -262,7 +263,7 @@ const SOIL_MICROBIAL_RULES: CauseRule[] = [
     crop_code: 'all',
     stage_applicable: [CropStage.VEGETATIVE],
     conditions: (input) =>
-      input.soil_states?.nitrogen === SoilNState.LOW_N,
+      input.soil_states?.n === SoilNState.LOW_N,
     cause: Cause.NITROGEN_DEFICIENCY,
     priority: 5,
     scientific_source: 'Low urease reduces urea fertilizer efficiency',
