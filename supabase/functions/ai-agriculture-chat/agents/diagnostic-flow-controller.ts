@@ -27,6 +27,16 @@ import {
   SafetyComplianceStatus,
 } from './rule-module-types.ts';
 
+import {
+  resolveDecisionAuthority,
+  shouldSkipCropRules,
+  buildAuthorityAuditEntry,
+  DecisionAuthority,
+  AuthorityInput,
+  AuthorityDecision,
+  AuthorityAuditEntry
+} from '../decision/authority-resolver.ts';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // DIAGNOSTIC SESSION STATE
 // ═══════════════════════════════════════════════════════════════════════════
@@ -42,6 +52,8 @@ export interface DiagnosticSession {
   evaluation_result?: RuleEvaluationResult;
   status: DiagnosticStatus;
   pending_questions: string[];
+  /** Authority decision audit trail */
+  authority_audit?: AuthorityAuditEntry;
 }
 
 export type DiagnosticStatus = 
@@ -49,10 +61,12 @@ export type DiagnosticStatus =
   | 'GATHERING_CONTEXT'
   | 'AWAITING_PHOTO'
   | 'AWAITING_CLARIFICATION'
+  | 'RESOLVING_AUTHORITY'
   | 'EVALUATING_RULES'
   | 'READY_TO_RECOMMEND'
   | 'COMPLETE'
-  | 'ESCALATED';
+  | 'ESCALATED'
+  | 'AUTHORITY_BLOCKED';
 
 export interface LoadedModule {
   reference: RuleModuleReference;
@@ -228,7 +242,7 @@ export class DiagnosticFlowController {
   // ═══════════════════════════════════════════════════════════════════════
   
   async evaluateRules(): Promise<DiagnosticFlowResponse> {
-    this.session.status = 'EVALUATING_RULES';
+    this.session.status = 'RESOLVING_AUTHORITY';
     
     const nlu = this.session.nlu_output;
     
@@ -245,6 +259,44 @@ export class DiagnosticFlowController {
       severity: context.severity,
       crop_stage: context.crop_stage
     });
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DECISION AUTHORITY RESOLUTION (Land-First Governance)
+    // Must run BEFORE any diagnostic rules are evaluated
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    const authorityInput: AuthorityInput = {
+      detected_causes: this.extractDetectedCauses(nlu, context),
+      cross_crop_symptoms: nlu.entities?.symptom_codes || [],
+      land_context: context.land_id ? {
+        has_soil_health: !!(context as any).soil_health,
+        soil_ec: (context as any).soil_ec,
+        waterlogging: (context as any).waterlogging
+      } : undefined
+    };
+    
+    const authorityDecision = resolveDecisionAuthority(authorityInput);
+    
+    // Store audit trail
+    this.session.authority_audit = buildAuthorityAuditEntry(authorityInput, authorityDecision);
+    
+    console.log('⚖️ [DiagnosticFlow] Authority resolved:', {
+      authority: authorityDecision.authority,
+      blocked_domains: authorityDecision.blocked_domains,
+      reason: authorityDecision.reason
+    });
+    
+    // Check if crop rules should be skipped
+    const skipCropRules = shouldSkipCropRules(authorityDecision);
+    
+    if (skipCropRules) {
+      console.log('🚫 [DiagnosticFlow] Crop rules BLOCKED by higher authority:', authorityDecision.authority);
+      this.session.status = 'AUTHORITY_BLOCKED';
+      
+      return this.handleAuthorityBlock(authorityDecision, context);
+    }
+    
+    this.session.status = 'EVALUATING_RULES';
     
     const result: RuleEvaluationResult = {
       blocked: false,
@@ -497,6 +549,146 @@ export class DiagnosticFlowController {
   }
   
   // ═══════════════════════════════════════════════════════════════════════
+  // AUTHORITY RESOLUTION HELPERS
+  // ═══════════════════════════════════════════════════════════════════════
+  
+  /**
+   * Extract detected causes from NLU output and context.
+   * Maps to cause codes used by the authority resolver.
+   */
+  private extractDetectedCauses(
+    nlu: NLUOutputWithRuleMapping,
+    context: RuleEvaluationContext
+  ): string[] {
+    const causes: string[] = [];
+    
+    // From NLU entities
+    if (nlu.entities?.pest_code) causes.push(nlu.entities.pest_code);
+    if (nlu.entities?.disease_code) causes.push(nlu.entities.disease_code);
+    
+    // From safety alerts
+    if (nlu.safety_alerts?.banned_substance_mentioned) {
+      causes.push('BANNED_SUBSTANCE');
+    }
+    if (nlu.safety_alerts?.emergency_detected) {
+      causes.push('EMERGENCY_ESCALATION');
+    }
+    
+    // From symptom codes that map to causes
+    const symptomCodes = nlu.entities?.symptom_codes || [];
+    for (const symptom of symptomCodes) {
+      // Map critical symptoms to authority-level causes
+      if (symptom.includes('WATERLOG')) causes.push('WATERLOGGING');
+      if (symptom.includes('SALIN') || symptom.includes('SALT')) causes.push('SALINITY');
+      if (symptom.includes('FROST')) causes.push('FROST');
+      if (symptom.includes('HEAT') || symptom.includes('SCORCH')) causes.push('HEAT_STRESS');
+      if (symptom.includes('FLOOD')) causes.push('FLOOD_DAMAGE');
+      if (symptom.includes('IRRIGATION')) causes.push('IRRIGATION_FAILURE');
+    }
+    
+    return [...new Set(causes)]; // Deduplicate
+  }
+  
+  /**
+   * Handle cases where crop rules are blocked by higher authority.
+   * Returns appropriate response for LAND, CLIMATE, or SYSTEM authority.
+   */
+  private handleAuthorityBlock(
+    decision: AuthorityDecision,
+    context: RuleEvaluationContext
+  ): DiagnosticFlowResponse {
+    const messages = this.getAuthorityBlockMessages(decision);
+    
+    return {
+      action: 'BLOCK',
+      blocked_reason: `AUTHORITY_${decision.authority}`,
+      message_mr: messages.mr,
+      message_hi: messages.hi,
+      message_en: messages.en,
+      alternatives: this.getAuthorityAlternatives(decision),
+      session_state: this.session
+    };
+  }
+  
+  /**
+   * Get localized messages for authority blocks.
+   */
+  private getAuthorityBlockMessages(decision: AuthorityDecision): {
+    mr: string;
+    hi: string;
+    en: string;
+  } {
+    switch (decision.authority) {
+      case DecisionAuthority.LAND:
+        return {
+          mr: '🌱 जमिनीची समस्या आधी सोडवणे आवश्यक आहे. लवण किंवा पाणी साचल्याचे निराकरण करा, त्यानंतरच कीड/रोग उपचार शक्य आहे.',
+          hi: '🌱 पहले मिट्टी की समस्या को हल करना आवश्यक है। लवणता या जल भराव का समाधान करें, उसके बाद ही कीट/रोग उपचार संभव है।',
+          en: '🌱 Soil issue must be addressed first. Resolve salinity or waterlogging before pest/disease treatment can be effective.'
+        };
+      
+      case DecisionAuthority.CLIMATE:
+        return {
+          mr: '🌦️ हवामान तणावामुळे पीक प्रभावित आहे. प्रथम हवामान-संबंधित उपाय करा.',
+          hi: '🌦️ जलवायु तनाव से फसल प्रभावित है। पहले जलवायु-संबंधी उपाय करें।',
+          en: '🌦️ Crop is affected by climate stress. Address weather-related measures first.'
+        };
+      
+      case DecisionAuthority.SYSTEM:
+        return {
+          mr: '⚙️ सिंचन किंवा यंत्रणा बिघाड आधी दुरुस्त करा.',
+          hi: '⚙️ सिंचाई या यंत्र की खराबी पहले ठीक करें।',
+          en: '⚙️ Fix irrigation or equipment failure first.'
+        };
+      
+      case DecisionAuthority.SAFETY:
+        return {
+          mr: '⚠️ सुरक्षा प्राधान्य! कृपया प्रथम सुरक्षा मार्गदर्शक तत्त्वांचे पालन करा.',
+          hi: '⚠️ सुरक्षा प्राथमिकता! कृपया पहले सुरक्षा दिशानिर्देशों का पालन करें।',
+          en: '⚠️ Safety priority! Please follow safety guidelines first.'
+        };
+      
+      default:
+        return {
+          mr: 'कृपया प्रथम मूळ कारण शोधा.',
+          hi: 'कृपया पहले मूल कारण खोजें।',
+          en: 'Please address root cause first.'
+        };
+    }
+  }
+  
+  /**
+   * Get alternatives based on authority domain.
+   */
+  private getAuthorityAlternatives(decision: AuthorityDecision): string[] {
+    switch (decision.authority) {
+      case DecisionAuthority.LAND:
+        return [
+          'Soil testing / माती परीक्षण',
+          'Gypsum application for salinity / लवण निवारणासाठी जिप्सम',
+          'Drainage improvement / निचरा सुधारणा',
+          'Consult KVK soil specialist / KVK माती तज्ञाशी संपर्क'
+        ];
+      
+      case DecisionAuthority.CLIMATE:
+        return [
+          'Protective irrigation / संरक्षणात्मक सिंचन',
+          'Mulching for temperature control / तापमान नियंत्रणासाठी आच्छादन',
+          'Wait for weather improvement / हवामान सुधारण्याची प्रतीक्षा करा'
+        ];
+      
+      case DecisionAuthority.SYSTEM:
+        return [
+          'Repair irrigation system / सिंचन प्रणाली दुरुस्त करा',
+          'Check pump and motor / पंप आणि मोटर तपासा',
+          'Manual watering if critical / गरज असल्यास हाताने पाणी द्या'
+        ];
+      
+      default:
+        return ['Contact agriculture officer / कृषी अधिकाऱ्याशी संपर्क'];
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
   // SESSION MANAGEMENT
   // ═══════════════════════════════════════════════════════════════════════
   
@@ -525,7 +717,7 @@ export class DiagnosticFlowController {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface DiagnosticFlowResponse {
-  action: 'ASK_CLARIFICATION' | 'REQUEST_PHOTO' | 'RECOMMEND' | 'BLOCK' | 'ESCALATE';
+  action: 'ASK_CLARIFICATION' | 'REQUEST_PHOTO' | 'RECOMMEND' | 'BLOCK' | 'ESCALATE' | 'AUTHORITY_BLOCK';
   questions?: NLUOutputWithRuleMapping['questions'];
   photo_instructions?: PhotoInstructions;
   evaluation_result?: RuleEvaluationResult;

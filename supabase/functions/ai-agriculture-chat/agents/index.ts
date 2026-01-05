@@ -47,6 +47,17 @@ export { resolveRuleModules, buildNLUOutputWithRuleMapping } from './rule-module
 export * from './decision-graph-bridge.ts';
 export { evaluateDecisionGraph } from './decision-graph-bridge.ts';
 
+// Decision Authority Resolver (Land-First Governance Layer)
+export * from '../decision/authority-resolver.ts';
+export { 
+  resolveDecisionAuthority,
+  shouldSkipCropRules,
+  isDomainAllowed,
+  buildAuthorityAuditEntry,
+  DecisionAuthority,
+  AUTHORITY_RESOLVER_VERSION
+} from '../decision/authority-resolver.ts';
+
 // Type Mappers (Enum conversions and trace ID generation)
 export * from './type-mappers.ts';
 export { generateTraceId, mapPriorityToAgent, mapAgentPriorityToGraph } from './type-mappers.ts';
