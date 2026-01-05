@@ -579,7 +579,8 @@ const CROP_GROUP_RULES: Record<CropGroup, CauseRule[]> = {
   [CropGroup.VEGETABLES]: VEGETABLES_RULES,
   [CropGroup.FRUITS]: FRUITS_RULES,
   [CropGroup.SPICES]: SPICES_RULES,
-  [CropGroup.FODDER]: FODDER_RULES
+  [CropGroup.FODDER]: FODDER_RULES,
+  [CropGroup.PLANTATION]: [] // Plantation rules loaded dynamically
 };
 
 /**

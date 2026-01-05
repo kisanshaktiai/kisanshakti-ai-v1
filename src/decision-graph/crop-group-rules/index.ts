@@ -16,6 +16,7 @@ import { FRUITS_RULES } from './fruits';
 import { SPICES_RULES } from './spices';
 import { FODDER_RULES } from './fodder';
 import MICRONUTRIENT_RULES from './micronutrients';
+import { PLANTATION_RULES } from './plantation';
 
 // Map of crop group to rules
 export const CROP_GROUP_RULES: Map<CropGroup, CauseRule[]> = new Map([
@@ -28,6 +29,7 @@ export const CROP_GROUP_RULES: Map<CropGroup, CauseRule[]> = new Map([
   [CropGroup.FRUITS, FRUITS_RULES],
   [CropGroup.SPICES, SPICES_RULES],
   [CropGroup.FODDER, FODDER_RULES],
+  [CropGroup.PLANTATION, PLANTATION_RULES],
 ]);
 
 // Get rules for a specific crop group
@@ -59,4 +61,5 @@ export {
   SPICES_RULES,
   FODDER_RULES,
   MICRONUTRIENT_RULES,
+  PLANTATION_RULES,
 };
