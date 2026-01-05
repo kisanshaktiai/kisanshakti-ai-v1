@@ -23,7 +23,7 @@
 import { ObservationKey } from '../decision/observation-ontology.ts';
 import { type CropContextAuthority, formatCropContextFrame } from '../decision/context-authority.ts';
 
-export const CLARIFICATION_RENDERER_VERSION = '1.1.0'; // Phase-8.1 update
+export const CLARIFICATION_RENDERER_VERSION = '2.0.0'; // Phase-11: Insect-first clarification
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLARIFICATION SCOPE ENUM (PHASE-8)
@@ -36,6 +36,13 @@ export enum ClarificationScope {
   IDENTIFY_SEVERITY = 'IDENTIFY_SEVERITY',
   IDENTIFY_TIMING = 'IDENTIFY_TIMING',
   IDENTIFY_INSECT_TYPE = 'IDENTIFY_INSECT_TYPE',  // PHASE-10: Before distribution for insects
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-11: Insect-First Clarification (Agronomically Correct Order)
+  // When farmer reports insect presence, ask about behavior and plant response
+  // BEFORE asking about field distribution (which is biologically premature)
+  // ═══════════════════════════════════════════════════════════════════════════
+  IDENTIFY_INSECT_BEHAVIOR = 'IDENTIFY_INSECT_BEHAVIOR',   // Flying vs crawling
+  IDENTIFY_PLANT_RESPONSE = 'IDENTIFY_PLANT_RESPONSE',     // Curling, yellowing, sticky, holes
   REFINE_OBSERVATION = 'REFINE_OBSERVATION',
   PHOTO_ONLY = 'PHOTO_ONLY',
   STOP_ESCALATE = 'STOP_ESCALATE'
@@ -164,19 +171,57 @@ const CLARIFICATION_TEMPLATES: Record<ClarificationScope, Record<'mr' | 'hi' | '
     }
   },
   
-  // PHASE-10: Insect type clarification (before distribution for SMALL_INSECTS_VISIBLE)
+  // PHASE-10: Insect type clarification (deferred - after behavior/density confirmed)
   [ClarificationScope.IDENTIFY_INSECT_TYPE]: {
     mr: {
-      question: '🐛 किडे कसे दिसतात? (यामुळे योग्य उपाय सांगता येईल)',
-      options: ['हिरवट-पिवळे लहान किडे (मावा)', 'बारीक लांबट काळे किडे (थ्रिप्स)', 'पानांवर जाळी आणि लाल ठिपके (कोळी)']
+      question: '🐛 किडे कसे दिसतात?',
+      options: ['हिरवट-पिवळे लहान किडे', 'बारीक लांबट काळे किडे', 'पानांवर जाळी आणि लाल ठिपके']
     },
     hi: {
-      question: '🐛 कीड़े कैसे दिखते हैं? (इससे सही इलाज बताना आसान होगा)',
-      options: ['हरे-पीले छोटे कीड़े (माहूं)', 'पतले लंबे काले कीड़े (थ्रिप्स)', 'पत्तों पर जाला और लाल धब्बे (मकड़ी)']
+      question: '🐛 कीड़े कैसे दिखते हैं?',
+      options: ['हरे-पीले छोटे कीड़े', 'पतले लंबे काले कीड़े', 'पत्तों पर जाला और लाल धब्बे']
     },
     en: {
-      question: '🐛 What do the insects look like? (This helps recommend the right treatment)',
-      options: ['Small green-yellow insects (Aphids)', 'Tiny elongated dark insects (Thrips)', 'Fine webbing with red spots (Mites)']
+      question: '🐛 What do the insects look like?',
+      options: ['Small green-yellow insects', 'Tiny elongated dark insects', 'Fine webbing with red spots']
+    }
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-11: INSECT BEHAVIOR CLARIFICATION (First-Order for Insect Presence)
+  // Agronomically valid: Ask about behavior BEFORE field distribution
+  // ═══════════════════════════════════════════════════════════════════════════
+  [ClarificationScope.IDENTIFY_INSECT_BEHAVIOR]: {
+    mr: {
+      question: '🔍 तुम्हाला पानांवर छोटे किडे दिसत आहेत.\n\nपरिस्थिती नीट समजून घेण्यासाठी, कृपया सांगा:\nहे किडे उडतात का चालतात?',
+      options: ['उडतात', 'चालतात / रांगतात', 'सांगता येत नाही']
+    },
+    hi: {
+      question: '🔍 आपको पत्तों पर छोटे कीड़े दिख रहे हैं.\n\nस्थिति समझने के लिए बताएं:\nये कीड़े उड़ते हैं या रेंगते हैं?',
+      options: ['उड़ते हैं', 'चलते / रेंगते हैं', 'पता नहीं']
+    },
+    en: {
+      question: '🔍 You are noticing small insects on the leaves.\n\nTo understand the situation better, please tell me:\nAre these insects flying or crawling?',
+      options: ['Flying', 'Crawling', 'Cannot tell']
+    }
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-11: PLANT RESPONSE CLARIFICATION (First-Order for Insect Presence)
+  // Ask about visible plant damage indicators - NOT field distribution
+  // ═══════════════════════════════════════════════════════════════════════════
+  [ClarificationScope.IDENTIFY_PLANT_RESPONSE]: {
+    mr: {
+      question: '🌿 पानांवर काही बदल दिसतात का?\n\nखालीलपैकी काय दिसते?',
+      options: ['पाने वळलेली / मुडलेली', 'पाने पिवळी होत आहेत', 'पानांवर चिकटपणा', 'पानांवर छिद्र / भोक', 'असे काहीही दिसत नाही']
+    },
+    hi: {
+      question: '🌿 पत्तों पर कोई बदलाव दिखता है?\n\nनीचे में से क्या दिखता है?',
+      options: ['पत्ते मुड़े हुए', 'पत्ते पीले हो रहे हैं', 'पत्तों पर चिपचिपाहट', 'पत्तों पर छेद', 'ऐसा कुछ नहीं दिखता']
+    },
+    en: {
+      question: '🌿 Do you notice any changes in the leaves?\n\nWhich of the following do you see?',
+      options: ['Leaves curling', 'Leaves yellowing', 'Sticky substance on leaves', 'Holes or bite marks', 'No such changes visible']
     }
   },
   

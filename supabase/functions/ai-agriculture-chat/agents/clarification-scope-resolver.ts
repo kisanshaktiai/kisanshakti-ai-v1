@@ -31,7 +31,7 @@ import {
 
 import { ClarificationScope } from './clarification-renderer.ts';
 
-export const CLARIFICATION_SCOPE_RESOLVER_VERSION = '2.1.0'; // Phase-8.1 update
+export const CLARIFICATION_SCOPE_RESOLVER_VERSION = '3.0.0'; // Phase-11: Insect-first clarification
 
 // Re-export ClarificationScope for convenience
 export { ClarificationScope };
@@ -80,13 +80,21 @@ export const MIN_DIMENSIONS_FOR_DIAGNOSIS = 2; // crop + affected_part minimum
 
 /**
  * Priority order for clarification scopes (lower = higher priority)
+ * 
+ * PHASE-11 UPDATE: Insect behavior/plant response BEFORE distribution
+ * When farmer reports insect presence, distribution is biologically premature.
+ * Correct agronomic sequence: behavior → plant response → distribution (if needed)
  */
 const SCOPE_PRIORITY: Record<ClarificationScope, number> = {
   [ClarificationScope.IDENTIFY_CROP]: 1,
   [ClarificationScope.IDENTIFY_LOCATION]: 2,
-  [ClarificationScope.IDENTIFY_DISTRIBUTION]: 3,
+  // PHASE-11: Insect-first clarification (before distribution)
+  [ClarificationScope.IDENTIFY_INSECT_BEHAVIOR]: 2.5,   // Flying vs crawling
+  [ClarificationScope.IDENTIFY_PLANT_RESPONSE]: 2.6,    // Curling, yellowing, sticky, holes
+  [ClarificationScope.IDENTIFY_DISTRIBUTION]: 3,        // DEFERRED for insect-only observations
   [ClarificationScope.IDENTIFY_SEVERITY]: 4,
   [ClarificationScope.IDENTIFY_TIMING]: 5,
+  [ClarificationScope.IDENTIFY_INSECT_TYPE]: 5.5,       // After behavior/response confirmed
   [ClarificationScope.REFINE_OBSERVATION]: 6,
   [ClarificationScope.PHOTO_ONLY]: 7,
   [ClarificationScope.STOP_ESCALATE]: 8
@@ -103,10 +111,18 @@ const SCOPE_PRIORITY: Record<ClarificationScope, number> = {
  * PHASE-8.1: Added hasCropContext parameter to skip crop clarification
  * when CropContextAuthority exists from crop_schedules.
  * 
- * PRIORITY ORDER (immutable):
+ * PHASE-11 UPDATE: Insect-First Clarification (Agronomically Correct)
+ * When INSECT_PRESENT is detected:
+ * - FIRST ask about behavior (flying/crawling) and plant response
+ * - DEFER distribution questions until damage is confirmed or density is high
+ * - This follows real agronomic reasoning: insect visibility ≠ infestation
+ * 
+ * PRIORITY ORDER:
  * 1. Crop identification (SKIPPED if hasCropContext=true)
  * 2. Affected part (location)
- * 3. Distribution
+ * 2.5. Insect behavior (if insect present) - PHASE-11
+ * 2.6. Plant response (if insect present) - PHASE-11
+ * 3. Distribution (DEFERRED if insect-only without damage)
  * 4. Severity
  * 5. Timing
  * 6. Observation refinement
@@ -183,7 +199,84 @@ export function resolveClarificationPlan(
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-11: INSECT-FIRST CLARIFICATION (Priority 2.5 & 2.6)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // When farmer reports insect presence (SMALL_INSECTS_VISIBLE, INSECT_PRESENT),
+  // ask about behavior and plant response BEFORE field distribution.
+  // 
+  // Agronomic Principle:
+  // - Insect visibility ≠ infestation
+  // - Insect visibility ≠ field-level problem
+  // - Field distribution is biologically premature at this stage
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  const hasInsectPresence = observedKeys.has(ObservationKey.INSECT_PRESENT);
+  
+  if (hasInsectPresence) {
+    // PRIORITY 2.5: Insect Behavior Unknown
+    // Ask flying vs crawling FIRST - this is agronomically valid
+    const hasInsectBehavior = [
+      ObservationKey.INSECT_BEHAVIOR_FLYING,
+      ObservationKey.INSECT_BEHAVIOR_CRAWLING,
+      ObservationKey.INSECT_BEHAVIOR_UNKNOWN
+    ].some(k => observedKeys.has(k));
+    
+    if (!hasInsectBehavior && turnCount < 2) {
+      return {
+        scope: ClarificationScope.IDENTIFY_INSECT_BEHAVIOR,
+        target_keys: [
+          ObservationKey.INSECT_BEHAVIOR_FLYING,
+          ObservationKey.INSECT_BEHAVIOR_CRAWLING
+        ],
+        turn_count: turnCount,
+        should_stop: false,
+        reason: 'Insect behavior not identified - first-order clarification for insect presence',
+        priority: SCOPE_PRIORITY[ClarificationScope.IDENTIFY_INSECT_BEHAVIOR]
+      };
+    }
+    
+    // PRIORITY 2.6: Plant Response Unknown
+    // After behavior, ask about visible plant damage indicators
+    const hasPlantResponse = [
+      ObservationKey.PLANT_RESPONSE_CURLING,
+      ObservationKey.PLANT_RESPONSE_YELLOWING,
+      ObservationKey.PLANT_RESPONSE_STICKY,
+      ObservationKey.PLANT_RESPONSE_HOLES,
+      ObservationKey.PLANT_RESPONSE_NONE,
+      ObservationKey.PLANT_RESPONSE_UNKNOWN,
+      // Also check cross-mapped symptoms that indicate plant response
+      ObservationKey.SYMPTOM_CURLING,
+      ObservationKey.SYMPTOM_YELLOWING,
+      ObservationKey.SYMPTOM_STICKY,
+      ObservationKey.SYMPTOM_HOLES
+    ].some(k => observedKeys.has(k));
+    
+    if (!hasPlantResponse && turnCount < 2) {
+      return {
+        scope: ClarificationScope.IDENTIFY_PLANT_RESPONSE,
+        target_keys: [
+          ObservationKey.PLANT_RESPONSE_CURLING,
+          ObservationKey.PLANT_RESPONSE_YELLOWING,
+          ObservationKey.PLANT_RESPONSE_STICKY,
+          ObservationKey.PLANT_RESPONSE_HOLES,
+          ObservationKey.PLANT_RESPONSE_NONE
+        ],
+        turn_count: turnCount,
+        should_stop: false,
+        reason: 'Plant response to insects not identified - agronomically valid before distribution',
+        priority: SCOPE_PRIORITY[ClarificationScope.IDENTIFY_PLANT_RESPONSE]
+      };
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
   // PRIORITY 3: Distribution Unknown
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-11: Distribution is DEFERRED for insect-only observations.
+  // Only ask about field distribution if:
+  // - Plant damage is confirmed (curling, yellowing, holes, etc.)
+  // - OR high insect density is confirmed
+  // - OR insect behavior/response has been answered
   // ═══════════════════════════════════════════════════════════════════════════
   if (observedKeys.has(ObservationKey.DISTRIBUTION_UNKNOWN)) {
     const hasDistribution = [
@@ -194,7 +287,50 @@ export function resolveClarificationPlan(
       ObservationKey.DISTRIBUTION_SPREADING
     ].some(k => observedKeys.has(k));
     
-    if (!hasDistribution && turnCount < 2) {
+    // Check if distribution question should be deferred (insect-only without damage)
+    const hasPlantDamageConfirmed = [
+      ObservationKey.PLANT_RESPONSE_CURLING,
+      ObservationKey.PLANT_RESPONSE_YELLOWING,
+      ObservationKey.PLANT_RESPONSE_STICKY,
+      ObservationKey.PLANT_RESPONSE_HOLES,
+      ObservationKey.SYMPTOM_CURLING,
+      ObservationKey.SYMPTOM_YELLOWING,
+      ObservationKey.SYMPTOM_STICKY,
+      ObservationKey.SYMPTOM_HOLES,
+      ObservationKey.SYMPTOM_SPOTS,
+      ObservationKey.SYMPTOM_BROWNING,
+      ObservationKey.SYMPTOM_DRYING
+    ].some(k => observedKeys.has(k));
+    
+    const hasHighInsectDensity = observedKeys.has(ObservationKey.INSECT_DENSITY_MANY);
+    
+    const hasInsectBehaviorAnswered = [
+      ObservationKey.INSECT_BEHAVIOR_FLYING,
+      ObservationKey.INSECT_BEHAVIOR_CRAWLING,
+      ObservationKey.INSECT_BEHAVIOR_UNKNOWN
+    ].some(k => observedKeys.has(k));
+    
+    const hasPlantResponseAnswered = [
+      ObservationKey.PLANT_RESPONSE_CURLING,
+      ObservationKey.PLANT_RESPONSE_YELLOWING,
+      ObservationKey.PLANT_RESPONSE_STICKY,
+      ObservationKey.PLANT_RESPONSE_HOLES,
+      ObservationKey.PLANT_RESPONSE_NONE,
+      ObservationKey.PLANT_RESPONSE_UNKNOWN
+    ].some(k => observedKeys.has(k));
+    
+    // Allow distribution question only if:
+    // - No insect presence (non-insect problem) OR
+    // - Plant damage is confirmed OR
+    // - High density confirmed OR
+    // - Both behavior and response have been answered
+    const canAskDistribution = 
+      !hasInsectPresence || 
+      hasPlantDamageConfirmed || 
+      hasHighInsectDensity ||
+      (hasInsectBehaviorAnswered && hasPlantResponseAnswered);
+    
+    if (!hasDistribution && turnCount < 2 && canAskDistribution) {
       return {
         scope: ClarificationScope.IDENTIFY_DISTRIBUTION,
         target_keys: [
@@ -205,7 +341,9 @@ export function resolveClarificationPlan(
         ],
         turn_count: turnCount,
         should_stop: false,
-        reason: 'Symptom distribution not identified',
+        reason: hasInsectPresence 
+          ? 'Plant damage confirmed - now asking about field distribution' 
+          : 'Symptom distribution not identified',
         priority: SCOPE_PRIORITY[ClarificationScope.IDENTIFY_DISTRIBUTION]
       };
     }
