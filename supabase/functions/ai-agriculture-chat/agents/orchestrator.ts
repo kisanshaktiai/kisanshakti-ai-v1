@@ -218,6 +218,41 @@ function mapDistributionToSymptom(optionText: string, scope: ClarificationScope)
         return 'WEBBING'; // Mite symptoms
       }
       return 'CURLED_LEAVES'; // Default to aphid if unclear
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE-11: Insect Behavior Clarification (First-Order)
+    // ═══════════════════════════════════════════════════════════════════════════
+    case ClarificationScope.IDENTIFY_INSECT_BEHAVIOR:
+      // Map flying/crawling behavior - this informs but doesn't diagnose
+      if (optionText.includes('उडत') || optionText.includes('उड़') || optionText.toLowerCase().includes('fly')) {
+        return 'FLYING_INSECTS_VISIBLE';
+      }
+      if (optionText.includes('चालत') || optionText.includes('रांग') || optionText.includes('रेंग') || optionText.toLowerCase().includes('crawl')) {
+        return 'CRAWLING_INSECTS_VISIBLE';
+      }
+      return 'SMALL_INSECTS_VISIBLE'; // Default to generic insect presence
+      
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE-11: Plant Response Clarification (First-Order)
+    // ═══════════════════════════════════════════════════════════════════════════
+    case ClarificationScope.IDENTIFY_PLANT_RESPONSE:
+      // Map visible plant responses to insect presence
+      if (optionText.includes('वळ') || optionText.includes('मुड') || optionText.toLowerCase().includes('curl')) {
+        return 'CURLED_LEAVES'; // Curling observed
+      }
+      if (optionText.includes('पिवळ') || optionText.includes('पीला') || optionText.toLowerCase().includes('yellow')) {
+        return 'GENERAL_YELLOWING'; // Yellowing observed
+      }
+      if (optionText.includes('चिकट') || optionText.includes('चिपचिप') || optionText.toLowerCase().includes('sticky')) {
+        return 'HONEYDEW_PRESENT'; // Sticky substance (honeydew)
+      }
+      if (optionText.includes('छिद्र') || optionText.includes('भोक') || optionText.includes('छेद') || optionText.toLowerCase().includes('hole')) {
+        return 'LEAF_HOLES'; // Holes/bite marks
+      }
+      if (optionText.includes('काहीही नाही') || optionText.includes('कुछ नहीं') || optionText.toLowerCase().includes('no such') || optionText.toLowerCase().includes('nothing')) {
+        return 'INSECT_PRESENT_NO_DAMAGE'; // No visible damage - monitoring only
+      }
+      return 'UNKNOWN';
       
     default:
       return 'UNKNOWN';

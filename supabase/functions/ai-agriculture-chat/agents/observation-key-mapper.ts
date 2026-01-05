@@ -22,7 +22,7 @@ import { ObservationKey, type ObservationKeySet } from '../decision/observation-
 import type { ObservationExtraction, AffectedPart, SymptomDistribution } from './observation-extractor.ts';
 import type { CropContextAuthority } from '../decision/context-authority.ts';
 
-export const OBSERVATION_KEY_MAPPER_VERSION = '1.1.0'; // Phase-8.1 update
+export const OBSERVATION_KEY_MAPPER_VERSION = '2.0.0'; // Phase-11: Insect-first clarification
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAPPING TABLES (Deterministic, No Language)
@@ -225,6 +225,69 @@ function mapSymptomsToPhenomena(rawSymptoms: string[]): ObservationKey[] {
       combined.includes('worm') || combined.includes('larvae') ||
       combined.includes('किड') || combined.includes('अळी') || combined.includes('कीड')) {
     phenomena.push(ObservationKey.INSECT_PRESENT);
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-11: Insect Behavior Detection (from clarification answers)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Flying insects
+  if (combined.includes('उडत') || combined.includes('उड़') || combined.includes('flying') ||
+      combined.includes('fly') || combined.includes('उडण')) {
+    phenomena.push(ObservationKey.INSECT_BEHAVIOR_FLYING);
+  }
+  
+  // Crawling insects
+  if (combined.includes('चालत') || combined.includes('रांगत') || combined.includes('रेंग') ||
+      combined.includes('crawl') || combined.includes('चलत')) {
+    phenomena.push(ObservationKey.INSECT_BEHAVIOR_CRAWLING);
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-11: Insect Density Detection
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Few insects
+  if (combined.includes('थोड') || combined.includes('काही') || combined.includes('कुछ') ||
+      combined.includes('few') || combined.includes('scattered')) {
+    phenomena.push(ObservationKey.INSECT_DENSITY_FEW);
+  }
+  
+  // Many insects
+  if (combined.includes('खूप') || combined.includes('भरपूर') || combined.includes('बहुत') ||
+      combined.includes('many') || combined.includes('lots') || combined.includes('heavy')) {
+    phenomena.push(ObservationKey.INSECT_DENSITY_MANY);
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-11: Plant Response Detection (from clarification answers)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Curling response
+  if (combined.includes('वळ') || combined.includes('मुड') || combined.includes('curl') ||
+      combined.includes('गुंडाळ')) {
+    phenomena.push(ObservationKey.PLANT_RESPONSE_CURLING);
+    phenomena.push(ObservationKey.SYMPTOM_CURLING);
+  }
+  
+  // Yellowing response
+  if (combined.includes('पिवळ') || combined.includes('पीला') || combined.includes('yellow')) {
+    phenomena.push(ObservationKey.PLANT_RESPONSE_YELLOWING);
+  }
+  
+  // Sticky response
+  if (combined.includes('चिकट') || combined.includes('चिपचिप') || combined.includes('sticky')) {
+    phenomena.push(ObservationKey.PLANT_RESPONSE_STICKY);
+    phenomena.push(ObservationKey.SYMPTOM_STICKY);
+  }
+  
+  // Holes response
+  if (combined.includes('छिद्र') || combined.includes('भोक') || combined.includes('छेद') ||
+      combined.includes('hole') || combined.includes('bite')) {
+    phenomena.push(ObservationKey.PLANT_RESPONSE_HOLES);
+  }
+  
+  // No visible damage response
+  if (combined.includes('काहीही नाही') || combined.includes('कुछ नहीं') || 
+      combined.includes('no such') || combined.includes('nothing')) {
+    phenomena.push(ObservationKey.PLANT_RESPONSE_NONE);
   }
   
   // Yellowing

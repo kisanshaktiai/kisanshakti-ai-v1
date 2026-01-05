@@ -108,7 +108,33 @@ export enum ObservationKey {
   PEST_TYPE_THRIPS = 'PEST_TYPE_THRIPS',     // Tiny, elongated, slender insects
   PEST_TYPE_MITE = 'PEST_TYPE_MITE',         // Very small with webbing
   PEST_TYPE_CATERPILLAR = 'PEST_TYPE_CATERPILLAR', // Larvae with visible body segments
-  PEST_TYPE_UNKNOWN = 'PEST_TYPE_UNKNOWN'    // Cannot identify insect type
+  PEST_TYPE_UNKNOWN = 'PEST_TYPE_UNKNOWN',   // Cannot identify insect type
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-11: INSECT BEHAVIOR OBSERVATIONS (agronomically valid first-order)
+  // These capture insect behavior BEFORE field distribution (biologically correct)
+  // ═══════════════════════════════════════════════════════════════════════════
+  INSECT_BEHAVIOR_FLYING = 'INSECT_BEHAVIOR_FLYING',       // Insects are flying
+  INSECT_BEHAVIOR_CRAWLING = 'INSECT_BEHAVIOR_CRAWLING',   // Insects are crawling
+  INSECT_BEHAVIOR_UNKNOWN = 'INSECT_BEHAVIOR_UNKNOWN',     // Behavior not observed
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-11: INSECT DENSITY OBSERVATIONS (few vs many)
+  // ═══════════════════════════════════════════════════════════════════════════
+  INSECT_DENSITY_FEW = 'INSECT_DENSITY_FEW',     // Scattered, few insects
+  INSECT_DENSITY_MANY = 'INSECT_DENSITY_MANY',   // Many insects visible
+  INSECT_DENSITY_UNKNOWN = 'INSECT_DENSITY_UNKNOWN', // Density not specified
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-11: PLANT RESPONSE TO INSECTS (visible damage indicators)
+  // These are observed plant reactions - NOT diagnoses
+  // ═══════════════════════════════════════════════════════════════════════════
+  PLANT_RESPONSE_CURLING = 'PLANT_RESPONSE_CURLING',     // Leaf curling observed
+  PLANT_RESPONSE_YELLOWING = 'PLANT_RESPONSE_YELLOWING', // Yellowing near insects
+  PLANT_RESPONSE_STICKY = 'PLANT_RESPONSE_STICKY',       // Sticky substance on leaves
+  PLANT_RESPONSE_HOLES = 'PLANT_RESPONSE_HOLES',         // Bite marks or holes
+  PLANT_RESPONSE_NONE = 'PLANT_RESPONSE_NONE',           // No visible plant damage
+  PLANT_RESPONSE_UNKNOWN = 'PLANT_RESPONSE_UNKNOWN'      // Plant response not specified
 }
 
 /**

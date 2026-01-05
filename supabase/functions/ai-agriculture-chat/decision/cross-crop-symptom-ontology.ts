@@ -17,7 +17,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const CROSS_CROP_SYMPTOM_ONTOLOGY_VERSION = '1.0.0';
+export const CROSS_CROP_SYMPTOM_ONTOLOGY_VERSION = '2.0.0'; // Phase-11: Insect-first clarification
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CROSS-CROP SYMPTOM KEYS
@@ -67,6 +67,23 @@ export enum CrossCropSymptomKey {
   LARVAE_VISIBLE = 'LARVAE_VISIBLE',
   EGGS_VISIBLE = 'EGGS_VISIBLE',
   WEBBING_VISIBLE = 'WEBBING_VISIBLE',
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-11: INSECT DENSITY OBSERVATIONS (few vs many)
+  // Agronomically relevant first-order classification
+  // ═══════════════════════════════════════════════════════════════════════════
+  INSECT_DENSITY_FEW = 'INSECT_DENSITY_FEW',
+  INSECT_DENSITY_MANY = 'INSECT_DENSITY_MANY',
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-11: PLANT RESPONSE TO INSECTS (visible damage indicators)
+  // These are observed plant reactions when insects are present
+  // ═══════════════════════════════════════════════════════════════════════════
+  PLANT_RESPONSE_CURLING = 'PLANT_RESPONSE_CURLING',
+  PLANT_RESPONSE_YELLOWING = 'PLANT_RESPONSE_YELLOWING',
+  PLANT_RESPONSE_STICKY = 'PLANT_RESPONSE_STICKY',
+  PLANT_RESPONSE_HOLES = 'PLANT_RESPONSE_HOLES',
+  PLANT_RESPONSE_NONE = 'PLANT_RESPONSE_NONE',
   
   // ═══════════════════════════════════════════════════════════════════════════
   // GROWTH ABNORMALITIES
