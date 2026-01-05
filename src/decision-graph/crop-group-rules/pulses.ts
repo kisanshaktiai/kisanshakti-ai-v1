@@ -643,6 +643,267 @@ export const PULSES_CPWS_RULES: CauseRule[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
+// COWPEA (LOBIA) RULES (8 rules)
+// Reference: ICAR-IIPR Kanpur
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const COWPEA_RULES: CauseRule[] = [
+  // Pod borer
+  {
+    rule_id: 'C_PULSES_COWPEA_PEST_001',
+    category: 'pest',
+    crop_code: 'cowpea',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cowpea' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.POD_BORER_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IIPR Kanpur',
+    scientific_basis: 'Maruca vitrata and Helicoverpa cause significant pod damage. ETL: 5% pod damage or 1 larva/plant.',
+    icar_package: 'ICAR-IIPR Cowpea PoP 2024'
+  },
+
+  // Aphid
+  {
+    rule_id: 'C_PULSES_COWPEA_PEST_002',
+    category: 'pest',
+    crop_code: 'cowpea',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cowpea' &&
+      input.weather_state === WeatherState.DRY_SPELL,
+    cause: Cause.APHID_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IIPR',
+    scientific_basis: 'Aphis craccivora colonizes cowpea and transmits mosaic viruses. ETL: 20 aphids/plant.',
+    icar_package: 'ICAR-IIPR Cowpea PoP 2024'
+  },
+
+  // Cowpea mosaic virus
+  {
+    rule_id: 'C_PULSES_COWPEA_DISEASE_001',
+    category: 'disease',
+    crop_code: 'cowpea',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'cowpea' &&
+      input.ndvi_trend === NDVITrend.DECLINING &&
+      input.weather_state === WeatherState.DRY_SPELL,
+    cause: Cause.VIRAL_DISEASE_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IIPR',
+    scientific_basis: 'Cowpea mosaic virus transmitted by aphids. Causes mottling and distortion of leaves.',
+    icar_package: 'ICAR-IIPR Cowpea PoP 2024'
+  },
+
+  // Anthracnose
+  {
+    rule_id: 'C_PULSES_COWPEA_DISEASE_002',
+    category: 'disease',
+    crop_code: 'cowpea',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cowpea' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.EARLY_BLIGHT_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IIPR',
+    scientific_basis: 'Colletotrichum lindemuthianum causes sunken lesions on pods. Favored by humid weather.',
+    icar_package: 'ICAR-IIPR Cowpea PoP 2024'
+  },
+
+  // Root rot
+  {
+    rule_id: 'C_PULSES_COWPEA_DISEASE_003',
+    category: 'disease',
+    crop_code: 'cowpea',
+    stage_applicable: [CropStage.GERMINATION, CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'cowpea' &&
+      input.soil_states.moisture === SoilMoistureState.WATERLOGGED,
+    cause: Cause.ROOT_ROT_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IIPR',
+    scientific_basis: 'Fusarium and Rhizoctonia root rot in waterlogged soils. Causes seedling mortality.',
+    icar_package: 'ICAR-IIPR Cowpea PoP 2024'
+  },
+
+  // Flowering irrigation
+  {
+    rule_id: 'C_PULSES_COWPEA_WATER_001',
+    category: 'water',
+    crop_code: 'cowpea',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cowpea' &&
+      input.crop_stage === CropStage.REPRODUCTIVE &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.WATER_STRESS_MODERATE,
+    priority: 7,
+    scientific_source: 'ICAR-IIPR',
+    scientific_basis: 'Water stress at flowering causes poor pod set. One irrigation at flowering if dry spell.',
+    icar_package: 'ICAR-IIPR Cowpea PoP 2024'
+  },
+
+  // Heat stress
+  {
+    rule_id: 'C_PULSES_COWPEA_HEAT_001',
+    category: 'temperature',
+    crop_code: 'cowpea',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cowpea' &&
+      input.weather_state === WeatherState.HEAT_STRESS &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.HEAT_STRESS,
+    priority: 7,
+    scientific_source: 'ICAR-IIPR',
+    scientific_basis: 'Cowpea is heat tolerant but >40°C at flowering causes flower abortion.',
+    icar_package: 'ICAR-IIPR Cowpea PoP 2024'
+  },
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FIELD PEA RULES (8 rules)
+// Reference: ICAR-IIPR Kanpur
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const FIELD_PEA_RULES: CauseRule[] = [
+  // Powdery mildew - major disease
+  {
+    rule_id: 'C_PULSES_PEA_DISEASE_001',
+    category: 'disease',
+    crop_code: 'pea',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'pea' &&
+      input.weather_state === WeatherState.DRY_SPELL,
+    cause: Cause.POWDERY_MILDEW_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-IIPR Kanpur',
+    scientific_basis: 'Erysiphe pisi is most destructive pea disease. Favored by dry weather and moderate temp (15-25°C). Can cause 50% yield loss.',
+    icar_package: 'ICAR-IIPR Pea PoP 2024'
+  },
+
+  // Rust
+  {
+    rule_id: 'C_PULSES_PEA_DISEASE_002',
+    category: 'disease',
+    crop_code: 'pea',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'pea' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.RUST_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IIPR',
+    scientific_basis: 'Uromyces viciae-fabae causes rust pustules on leaves. Spreads rapidly in humid weather.',
+    icar_package: 'ICAR-IIPR Pea PoP 2024'
+  },
+
+  // Root rot
+  {
+    rule_id: 'C_PULSES_PEA_DISEASE_003',
+    category: 'disease',
+    crop_code: 'pea',
+    stage_applicable: [CropStage.GERMINATION, CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'pea' &&
+      input.soil_states.moisture === SoilMoistureState.WATERLOGGED,
+    cause: Cause.ROOT_ROT_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IIPR',
+    scientific_basis: 'Fusarium root rot and wilt in waterlogged conditions. Yellowing from lower leaves.',
+    icar_package: 'ICAR-IIPR Pea PoP 2024'
+  },
+
+  // Aphid
+  {
+    rule_id: 'C_PULSES_PEA_PEST_001',
+    category: 'pest',
+    crop_code: 'pea',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'pea' &&
+      input.weather_state === WeatherState.DRY_SPELL,
+    cause: Cause.APHID_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IIPR',
+    scientific_basis: 'Acyrthosiphon pisum (pea aphid) colonizes growing tips and pods. ETL: 15-20 aphids/plant.',
+    icar_package: 'ICAR-IIPR Pea PoP 2024'
+  },
+
+  // Pod borer
+  {
+    rule_id: 'C_PULSES_PEA_PEST_002',
+    category: 'pest',
+    crop_code: 'pea',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'pea' &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.POD_BORER_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IIPR',
+    scientific_basis: 'Pod borer complex damages developing pods. ETL: 5% pod damage.',
+    icar_package: 'ICAR-IIPR Pea PoP 2024'
+  },
+
+  // Pre-flowering irrigation
+  {
+    rule_id: 'C_PULSES_PEA_WATER_001',
+    category: 'water',
+    crop_code: 'pea',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'pea' &&
+      input.days_after_sowing >= 40 && input.days_after_sowing <= 50 &&
+      input.soil_states.moisture === SoilMoistureState.DRY,
+    cause: Cause.WATER_STRESS_MODERATE,
+    priority: 7,
+    scientific_source: 'ICAR-IIPR',
+    scientific_basis: 'Pre-flowering irrigation (45 DAS) supports flower initiation. Light irrigation only.',
+    icar_package: 'ICAR-IIPR Pea PoP 2024'
+  },
+
+  // Frost at flowering
+  {
+    rule_id: 'C_PULSES_PEA_COLD_001',
+    category: 'temperature',
+    crop_code: 'pea',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'pea' &&
+      input.weather_state === WeatherState.FROST_RISK &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.FROST_DAMAGE_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IIPR',
+    scientific_basis: 'Pea tolerates cold but frost at flowering damages open flowers. Light irrigation provides protection.',
+    icar_package: 'ICAR-IIPR Pea PoP 2024'
+  },
+
+  // Cold tolerance advantage
+  {
+    rule_id: 'C_PULSES_PEA_COLD_002',
+    category: 'temperature',
+    crop_code: 'pea',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'pea' &&
+      input.weather_state === WeatherState.COLD_STRESS &&
+      input.crop_stage === CropStage.VEGETATIVE,
+    cause: Cause.COLD_STRESS,
+    priority: 5,
+    scientific_source: 'ICAR-IIPR',
+    scientific_basis: 'Field pea is cold tolerant (down to 5°C) during vegetative stage. Cold slows growth but is not damaging.',
+    icar_package: 'ICAR-IIPR Pea PoP 2024'
+  },
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
 // COMBINED PULSES RULES
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -651,6 +912,8 @@ export const PULSES_RULES: CauseRule[] = [
   ...LENTIL_RULES,
   ...ARHAR_RULES,
   ...MOONG_URAD_RULES,
+  ...COWPEA_RULES,
+  ...FIELD_PEA_RULES,
   ...PULSES_CPWS_RULES,
   ...ALL_PULSES_RULES
 ];
