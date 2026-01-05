@@ -17,6 +17,7 @@ import { SPICES_RULES } from './spices';
 import { FODDER_RULES } from './fodder';
 import MICRONUTRIENT_RULES from './micronutrients';
 import { PLANTATION_RULES } from './plantation';
+import { POST_HARVEST_RULES } from './post-harvest';
 
 // Map of crop group to rules
 export const CROP_GROUP_RULES: Map<CropGroup, CauseRule[]> = new Map([
@@ -39,7 +40,7 @@ export function getRulesForCropGroup(group: CropGroup): CauseRule[] {
 
 // Get total rule count
 export function getTotalRuleCount(): number {
-  let count = MICRONUTRIENT_RULES.length;
+  let count = MICRONUTRIENT_RULES.length + POST_HARVEST_RULES.length;
   for (const rules of CROP_GROUP_RULES.values()) {
     count += rules.length;
   }
@@ -47,7 +48,7 @@ export function getTotalRuleCount(): number {
 }
 
 // Universal rules that apply across all crops
-export const UNIVERSAL_RULES = MICRONUTRIENT_RULES;
+export const UNIVERSAL_RULES = [...MICRONUTRIENT_RULES, ...POST_HARVEST_RULES];
 
 // Re-export individual rule sets
 export {
@@ -62,4 +63,5 @@ export {
   FODDER_RULES,
   MICRONUTRIENT_RULES,
   PLANTATION_RULES,
+  POST_HARVEST_RULES,
 };
