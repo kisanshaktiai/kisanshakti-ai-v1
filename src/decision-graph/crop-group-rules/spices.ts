@@ -671,6 +671,182 @@ export const ALL_SPICES_RULES: CauseRule[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CUMIN RULES (8 rules) - ICAR-NRCSS Standards
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const CUMIN_RULES: CauseRule[] = [
+  {
+    rule_id: 'C_SPICE_CUMIN_DISEASE_001',
+    category: 'disease',
+    crop_code: 'cumin',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cumin' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.CUMIN_BLIGHT_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-NRCSS',
+    scientific_basis: 'Alternaria blight (Alternaria burnsii) causes severe damage in humid conditions. Spray Mancozeb 0.25%.',
+    icar_package: 'ICAR-NRCSS Cumin PoP'
+  },
+  {
+    rule_id: 'C_SPICE_CUMIN_DISEASE_002',
+    category: 'disease',
+    crop_code: 'cumin',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'cumin' &&
+      input.soil_states.moisture === SoilMoistureState.WATERLOGGED,
+    cause: Cause.CUMIN_WILT_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-NRCSS',
+    scientific_basis: 'Fusarium wilt in waterlogged soils. Seed treatment with Trichoderma, crop rotation.',
+    icar_package: 'ICAR-NRCSS Cumin Disease Management'
+  },
+  {
+    rule_id: 'C_SPICE_CUMIN_PEST_001',
+    category: 'pest',
+    crop_code: 'cumin',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'cumin' &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.CUMIN_APHID_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-NRCSS',
+    scientific_basis: 'Aphids cause leaf curling and honeydew. Spray imidacloprid 0.3ml/L or neem oil.',
+    icar_package: 'ICAR-NRCSS Cumin IPM'
+  },
+  {
+    rule_id: 'C_SPICE_CUMIN_WATER_001',
+    category: 'water',
+    crop_code: 'cumin',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cumin' &&
+      input.soil_states.moisture === SoilMoistureState.DRY &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.WATER_STRESS_CRITICAL,
+    priority: 8,
+    scientific_source: 'ICAR-NRCSS',
+    scientific_basis: 'Flowering stage water stress reduces seed set. Irrigate at flowering and seed formation.',
+    icar_package: 'ICAR-NRCSS Cumin PoP'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CORIANDER RULES (8 rules) - ICAR-NRCSS Standards
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const CORIANDER_RULES: CauseRule[] = [
+  {
+    rule_id: 'C_SPICE_CORIANDER_DISEASE_001',
+    category: 'disease',
+    crop_code: 'coriander',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'coriander' &&
+      input.soil_states.moisture === SoilMoistureState.WATERLOGGED,
+    cause: Cause.CORIANDER_WILT_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-NRCSS',
+    scientific_basis: 'Wilt (Fusarium oxysporum) in waterlogged conditions. Seed treatment with Trichoderma essential.',
+    icar_package: 'ICAR-NRCSS Coriander PoP'
+  },
+  {
+    rule_id: 'C_SPICE_CORIANDER_DISEASE_002',
+    category: 'disease',
+    crop_code: 'coriander',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'coriander' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.CORIANDER_POWDERY_MILDEW_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-NRCSS',
+    scientific_basis: 'Powdery mildew in late season. Spray wettable sulfur 0.25% or Karathane 0.1%.',
+    icar_package: 'ICAR-NRCSS Coriander Disease Management'
+  },
+  {
+    rule_id: 'C_SPICE_CORIANDER_PEST_001',
+    category: 'pest',
+    crop_code: 'coriander',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'coriander' &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.CORIANDER_APHID_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-NRCSS',
+    scientific_basis: 'Aphids (Hyadaphis coriandri) cause leaf curling. Spray neem oil 0.3% or imidacloprid.',
+    icar_package: 'ICAR-NRCSS Coriander IPM'
+  },
+  {
+    rule_id: 'C_SPICE_CORIANDER_NUTRIENT_001',
+    category: 'nutrient',
+    crop_code: 'coriander',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'coriander' &&
+      input.soil_states.n === SoilNState.LOW_N,
+    cause: Cause.NITROGEN_DEFICIENCY,
+    priority: 6,
+    scientific_source: 'ICAR-NRCSS',
+    scientific_basis: 'Apply 40-60 kg N/ha for leaf type, 30-40 kg N/ha for seed type coriander.',
+    icar_package: 'ICAR-NRCSS Coriander Nutrition'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FENUGREEK RULES (6 rules) - ICAR-NRCSS Standards
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const FENUGREEK_RULES: CauseRule[] = [
+  {
+    rule_id: 'C_SPICE_FENUGREEK_DISEASE_001',
+    category: 'disease',
+    crop_code: 'fenugreek',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'fenugreek' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.POWDERY_MILDEW_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-NRCSS',
+    scientific_basis: 'Powdery mildew major disease. Spray wettable sulfur 0.25% or Karathane 0.1%.',
+    icar_package: 'ICAR-NRCSS Fenugreek PoP'
+  },
+  {
+    rule_id: 'C_SPICE_FENUGREEK_DISEASE_002',
+    category: 'disease',
+    crop_code: 'fenugreek',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'fenugreek' &&
+      input.soil_states.moisture === SoilMoistureState.WATERLOGGED,
+    cause: Cause.ROOT_ROT_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-NRCSS',
+    scientific_basis: 'Root rot in waterlogged conditions. Ensure drainage, seed treatment with Trichoderma.',
+    icar_package: 'ICAR-NRCSS Fenugreek Disease Management'
+  },
+  {
+    rule_id: 'C_SPICE_FENUGREEK_PEST_001',
+    category: 'pest',
+    crop_code: 'fenugreek',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'fenugreek' &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.APHID_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-NRCSS',
+    scientific_basis: 'Aphids attack tender growth. Spray neem oil 0.3% for safe control.',
+    icar_package: 'ICAR-NRCSS Fenugreek IPM'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
 // COMBINED SPICES RULES
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -680,6 +856,9 @@ export const SPICES_RULES: CauseRule[] = [
   ...CHILLI_RULES,
   ...BLACK_PEPPER_RULES,
   ...CARDAMOM_RULES,
+  ...CUMIN_RULES,
+  ...CORIANDER_RULES,
+  ...FENUGREEK_RULES,
   ...ALL_SPICES_RULES
 ];
 

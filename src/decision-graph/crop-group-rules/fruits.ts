@@ -806,6 +806,211 @@ export const ALL_FRUITS_RULES: CauseRule[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PAPAYA RULES (10 rules) - ICAR-IIHR Standards
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const PAPAYA_RULES: CauseRule[] = [
+  {
+    rule_id: 'C_FRUIT_PAPAYA_DISEASE_001',
+    category: 'disease',
+    crop_code: 'papaya',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'papaya' &&
+      input.ndvi_state === NDVIState.HIGH_STRESS &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.PAPAYA_RING_SPOT_VIRUS_RISK,
+    priority: 10,
+    scientific_source: 'ICAR-IIHR',
+    scientific_basis: 'Papaya Ring Spot Virus (PRSV) is devastating with no cure. Control aphid vectors, rogue infected plants.',
+    icar_package: 'ICAR-IIHR Papaya PoP'
+  },
+  {
+    rule_id: 'C_FRUIT_PAPAYA_PEST_001',
+    category: 'pest',
+    crop_code: 'papaya',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'papaya' &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.PAPAYA_MEALYBUG_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IIHR',
+    scientific_basis: 'Papaya mealybug (Paracoccus marginatus) causes stunting. Release Acerophagus papayae parasitoid.',
+    icar_package: 'ICAR-IIHR Papaya IPM'
+  },
+  {
+    rule_id: 'C_FRUIT_PAPAYA_DISEASE_002',
+    category: 'disease',
+    crop_code: 'papaya',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'papaya' &&
+      input.soil_states.moisture === SoilMoistureState.WATERLOGGED,
+    cause: Cause.PAPAYA_STEM_ROT_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-IIHR',
+    scientific_basis: 'Phytophthora stem rot in waterlogged conditions. Ensure drainage, apply Metalaxyl drenching.',
+    icar_package: 'ICAR-IIHR Papaya Disease Management'
+  },
+  {
+    rule_id: 'C_FRUIT_PAPAYA_PEST_002',
+    category: 'pest',
+    crop_code: 'papaya',
+    stage_applicable: [CropStage.REPRODUCTIVE, CropStage.MATURITY],
+    conditions: (input) =>
+      input.crop_code === 'papaya' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.PAPAYA_FRUIT_FLY_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IIHR',
+    scientific_basis: 'Fruit fly attacks ripening fruits. Use methyl eugenol traps, bagging fruits.',
+    icar_package: 'ICAR-IIHR Papaya IPM'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GUAVA RULES (10 rules) - ICAR-CISH Standards
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const GUAVA_RULES: CauseRule[] = [
+  {
+    rule_id: 'C_FRUIT_GUAVA_DISEASE_001',
+    category: 'disease',
+    crop_code: 'guava',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE, CropStage.MATURITY],
+    conditions: (input) =>
+      input.crop_code === 'guava' &&
+      input.ndvi_state === NDVIState.CRITICAL &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.GUAVA_WILT_RISK,
+    priority: 10,
+    scientific_source: 'ICAR-CISH',
+    scientific_basis: 'Guava wilt (Fusarium oxysporum f.sp. psidii) is devastating. No cure - use resistant rootstocks, soil solarization.',
+    icar_package: 'ICAR-CISH Guava Wilt Management'
+  },
+  {
+    rule_id: 'C_FRUIT_GUAVA_PEST_001',
+    category: 'pest',
+    crop_code: 'guava',
+    stage_applicable: [CropStage.REPRODUCTIVE, CropStage.MATURITY],
+    conditions: (input) =>
+      input.crop_code === 'guava' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.GUAVA_FRUIT_FLY_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-CISH',
+    scientific_basis: 'Fruit fly (Bactrocera dorsalis) causes major post-harvest losses. Use methyl eugenol traps, fruit bagging.',
+    icar_package: 'ICAR-CISH Guava IPM'
+  },
+  {
+    rule_id: 'C_FRUIT_GUAVA_DISEASE_002',
+    category: 'disease',
+    crop_code: 'guava',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'guava' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.GUAVA_ANTHRACNOSE_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-CISH',
+    scientific_basis: 'Anthracnose causes fruit rot in rainy season. Spray Carbendazim 0.1% before and after flowering.',
+    icar_package: 'ICAR-CISH Guava Disease Management'
+  },
+  {
+    rule_id: 'C_FRUIT_GUAVA_PEST_002',
+    category: 'pest',
+    crop_code: 'guava',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'guava' &&
+      input.ndvi_state === NDVIState.MODERATE_STRESS,
+    cause: Cause.GUAVA_BARK_EATING_CATERPILLAR_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-CISH',
+    scientific_basis: 'Bark eating caterpillar damages trunk. Clean galleries, inject Dichlorvos, plug holes.',
+    icar_package: 'ICAR-CISH Guava IPM'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// APPLE RULES (10 rules) - ICAR-CITH Srinagar Standards
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const APPLE_RULES: CauseRule[] = [
+  {
+    rule_id: 'C_FRUIT_APPLE_DISEASE_001',
+    category: 'disease',
+    crop_code: 'apple',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'apple' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.APPLE_SCAB_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-CITH Srinagar',
+    scientific_basis: 'Apple scab (Venturia inaequalis) major disease in humid conditions. Spray Mancozeb+Carbendazim prophylactically.',
+    icar_package: 'ICAR-CITH Apple PoP'
+  },
+  {
+    rule_id: 'C_FRUIT_APPLE_PEST_001',
+    category: 'pest',
+    crop_code: 'apple',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'apple' &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.APPLE_WOOLLY_APHID_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-CITH',
+    scientific_basis: 'Woolly aphid causes galls on roots and shoots. Use resistant rootstocks (MM series), release Aphelinus mali.',
+    icar_package: 'ICAR-CITH Apple IPM'
+  },
+  {
+    rule_id: 'C_FRUIT_APPLE_DISEASE_002',
+    category: 'disease',
+    crop_code: 'apple',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'apple' &&
+      input.weather_state === WeatherState.HEAT_STRESS,
+    cause: Cause.APPLE_FIRE_BLIGHT_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-CITH',
+    scientific_basis: 'Fire blight (Erwinia amylovora) bacterial disease. Prune infected shoots, spray Streptocycline.',
+    icar_package: 'ICAR-CITH Apple Disease Management'
+  },
+  {
+    rule_id: 'C_FRUIT_APPLE_NUTRIENT_001',
+    category: 'nutrient',
+    crop_code: 'apple',
+    stage_applicable: [CropStage.REPRODUCTIVE, CropStage.MATURITY],
+    conditions: (input) =>
+      input.crop_code === 'apple' &&
+      input.soil_states.k === SoilKState.LOW_K,
+    cause: Cause.APPLE_BITTER_PIT_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-CITH',
+    scientific_basis: 'Bitter pit is calcium deficiency disorder. Spray Calcium Chloride 0.5% at fruit development.',
+    icar_package: 'ICAR-CITH Apple Nutrition'
+  },
+  {
+    rule_id: 'C_FRUIT_APPLE_PEST_002',
+    category: 'pest',
+    crop_code: 'apple',
+    stage_applicable: [CropStage.REPRODUCTIVE, CropStage.MATURITY],
+    conditions: (input) =>
+      input.crop_code === 'apple' &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.APPLE_CODLING_MOTH_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-CITH',
+    scientific_basis: 'Codling moth larvae bore into fruits. Use pheromone traps, spray Carbaryl at petal fall.',
+    icar_package: 'ICAR-CITH Apple IPM'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
 // COMBINED FRUITS RULES
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -815,6 +1020,9 @@ export const FRUITS_RULES: CauseRule[] = [
   ...CITRUS_RULES,
   ...GRAPES_RULES,
   ...POMEGRANATE_RULES,
+  ...PAPAYA_RULES,
+  ...GUAVA_RULES,
+  ...APPLE_RULES,
   ...ALL_FRUITS_RULES
 ];
 

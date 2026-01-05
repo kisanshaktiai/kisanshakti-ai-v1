@@ -1223,6 +1223,133 @@ export const BEANS_RULES: CauseRule[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CUCUMBER RULES (12 rules) - ICAR-IIVR Standards
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const CUCUMBER_RULES: CauseRule[] = [
+  {
+    rule_id: 'C_VEG_CUCUMBER_DISEASE_001',
+    category: 'disease',
+    crop_code: 'cucumber',
+    stage_applicable: [CropStage.VEGETATIVE, CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cucumber' &&
+      input.weather_state === WeatherState.HIGH_HUMIDITY,
+    cause: Cause.DOWNY_MILDEW_RISK,
+    priority: 9,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Downy mildew (Pseudoperonospora cubensis) causes angular yellow spots. Spray Metalaxyl+Mancozeb 0.25%.',
+    icar_package: 'ICAR-IIVR Cucurbit PoP'
+  },
+  {
+    rule_id: 'C_VEG_CUCUMBER_DISEASE_002',
+    category: 'disease',
+    crop_code: 'cucumber',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'cucumber' &&
+      input.ndvi_state === NDVIState.HIGH_STRESS,
+    cause: Cause.POWDERY_MILDEW_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Powdery mildew causes white powdery growth on leaves. Spray wettable sulfur 0.25% or Karathane 0.1%.',
+    icar_package: 'ICAR-IIVR Cucurbit PoP'
+  },
+  {
+    rule_id: 'C_VEG_CUCUMBER_PEST_001',
+    category: 'pest',
+    crop_code: 'cucumber',
+    stage_applicable: [CropStage.REPRODUCTIVE, CropStage.MATURITY],
+    conditions: (input) =>
+      input.crop_code === 'cucumber' &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.FRUIT_FLY_RISK,
+    priority: 8,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Fruit fly (Bactrocera cucurbitae) maggots damage fruits. Use cuelure traps at 25/ha. Spray Malathion 0.1% as bait spray.',
+    icar_package: 'ICAR-IIVR Cucurbit IPM'
+  },
+  {
+    rule_id: 'C_VEG_CUCUMBER_PEST_002',
+    category: 'pest',
+    crop_code: 'cucumber',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      input.crop_code === 'cucumber' &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.APHID_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Aphids transmit cucumber mosaic virus. Spray imidacloprid 0.3ml/L or neem oil 0.3%.',
+    icar_package: 'ICAR-IIVR Cucurbit IPM'
+  },
+  {
+    rule_id: 'C_VEG_CUCUMBER_WATER_001',
+    category: 'water',
+    crop_code: 'cucumber',
+    stage_applicable: [CropStage.REPRODUCTIVE],
+    conditions: (input) =>
+      input.crop_code === 'cucumber' &&
+      input.soil_states.moisture === SoilMoistureState.DRY &&
+      input.crop_stage === CropStage.REPRODUCTIVE,
+    cause: Cause.WATER_STRESS_CRITICAL,
+    priority: 9,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Flowering and fruit development requires consistent moisture. Water stress causes bitter fruits and flower drop.',
+    icar_package: 'ICAR-IIVR Cucurbit PoP'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LEAFY VEGETABLES RULES (8 rules) - ICAR Standards
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const LEAFY_VEGETABLES_RULES: CauseRule[] = [
+  {
+    rule_id: 'C_VEG_LEAFY_PEST_001',
+    category: 'pest',
+    crop_code: 'spinach',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      (input.crop_code === 'spinach' || input.crop_code === 'amaranthus' || input.crop_code === 'fenugreek') &&
+      input.ndvi_trend === NDVITrend.DECLINING,
+    cause: Cause.APHID_RISK,
+    priority: 7,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Aphids congregate on tender leaves. Use neem-based pesticides for food safety.',
+    icar_package: 'ICAR-IIVR Leafy Vegetables PoP'
+  },
+  {
+    rule_id: 'C_VEG_LEAFY_PEST_002',
+    category: 'pest',
+    crop_code: 'spinach',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      (input.crop_code === 'spinach' || input.crop_code === 'amaranthus') &&
+      input.weather_state === WeatherState.DRY_SPELL,
+    cause: Cause.MITE_RISK,
+    priority: 6,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Spider mites attack during dry weather. Spray dicofol 0.05% or wettable sulfur.',
+    icar_package: 'ICAR-IIVR Pest Control'
+  },
+  {
+    rule_id: 'C_VEG_LEAFY_NUTRIENT_001',
+    category: 'nutrient',
+    crop_code: 'spinach',
+    stage_applicable: [CropStage.VEGETATIVE],
+    conditions: (input) =>
+      (input.crop_code === 'spinach' || input.crop_code === 'amaranthus') &&
+      input.soil_states.n === SoilNState.LOW_N,
+    cause: Cause.NITROGEN_DEFICIENCY,
+    priority: 8,
+    scientific_source: 'ICAR-IIVR',
+    scientific_basis: 'Leafy vegetables need high N for leaf growth. Apply 25 kg N/ha every 15 days as urea spray 1%.',
+    icar_package: 'ICAR-IIVR Nutrition Schedule'
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
 // COMBINED VEGETABLES RULES
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1235,6 +1362,8 @@ export const VEGETABLES_RULES: CauseRule[] = [
   ...CAULIFLOWER_RULES,
   ...OKRA_RULES,
   ...BEANS_RULES,
+  ...CUCUMBER_RULES,
+  ...LEAFY_VEGETABLES_RULES,
   ...VEGETABLES_CPWS_RULES,
   ...ALL_VEGETABLES_RULES
 ];
