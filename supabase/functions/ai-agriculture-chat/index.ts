@@ -32,6 +32,15 @@ import {
 // SYMBOLIC BRAIN: Import validation from decision representation
 import { validateLLMOutputIntegrity } from './agents/decision-representation.ts';
 
+// PHASE 11: Import Prescription Gate Enforcer for symbolic-only output control
+import { 
+  enforcePrescriptionGate,
+  ResponseMode,
+  generateObservationOnlyResponse,
+  generateYoungCropMonitoringResponse
+} from './decision/prescription-gate-enforcer.ts';
+
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id, x-session-token',
@@ -591,73 +600,120 @@ serve(async (req) => {
           } : undefined
         } : undefined;
         
-        // SANITY CHECK: Prevent impossible stage calculations before LLM formatting
-        const daysAfterSowing = orchestratorResponse.dataAudit?.land?.days_since_sowing;
-        const currentGrowthStage = landContext?.growth_stage?.toUpperCase();
-        
-        if (daysAfterSowing !== undefined && currentGrowthStage) {
-          const impossibleHarvest = 
-            (currentGrowthStage === 'HARVEST' || currentGrowthStage === 'MATURITY') && 
-            daysAfterSowing < 100; // No crop harvests before 100 DAS
-          
-          if (impossibleHarvest) {
-            console.error(`🚨 SANITY CHECK FAILED: ${currentGrowthStage} stage for ${daysAfterSowing} DAS crop`);
-            console.error(`   Overriding to GERMINATION stage in landContext`);
-            
-            // Override to safe stage in landContext for LLM
-            if (landContext) {
-              landContext.growth_stage = 'GERMINATION';
-            }
-            
-            // Also fix in dataAudit if present
-            if (orchestratorResponse.dataAudit?.land) {
-              orchestratorResponse.dataAudit.land.growth_stage = 'GERMINATION';
-            }
-          }
-        }
-        
-        const formatterInput: LLMFormatterInput = {
-          farmer_message: userMessageContent,
-          language: detectedLanguage as 'mr' | 'hi' | 'en',
-          decision_output: orchestratorResponse.decision_output,
-          land_context: landContext,
-          data_audit: orchestratorResponse.dataAudit,
-          trace_id: traceId
-        };
-        
-        // Call LLM formatter with timeout protection
-        const formatterPromise = formatRecommendationsWithLLM(formatterInput);
-        const timeoutPromise = new Promise<LLMFormatterOutput>((_, reject) => {
-          setTimeout(() => reject(new Error('LLM formatter timeout')), remainingTime - 2000);
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PHASE 11: PRESCRIPTION GATE ENFORCEMENT - Before LLM Formatting
+        // Ensures LLM only renders what symbolic brain has approved
+        // ═══════════════════════════════════════════════════════════════════════════
+        const prescriptionGateResult = enforcePrescriptionGate({
+          symbolic_decision: orchestratorResponse.decision_output as any,
+          crop_stage: landContext?.growth_stage,
+          days_since_sowing: landContext?.days_since_sowing,
+          crop_name: landContext?.current_crop,
+          has_confirmed_diagnosis: !!orchestratorResponse.decision_output?.primary_decision?.target,
+          land_id: landId
         });
         
-        llmFormatterOutput = await Promise.race([formatterPromise, timeoutPromise]);
-        responseContent = llmFormatterOutput.formatted_response;
-        aiModelUsed = llmFormatterOutput.ai_model_used;
+        console.log(`   🚦 [PrescriptionGate] ${prescriptionGateResult.allowed ? '✅ ALLOWED' : '🚫 BLOCKED'}`);
+        console.log(`      Response Mode: ${prescriptionGateResult.response_mode}`);
+        console.log(`      Authority: ${prescriptionGateResult.authority_confirmation}`);
+        console.log(`      Reason: ${prescriptionGateResult.reason}`);
         
-        console.log(`   ✅ LLM formatting complete: ${llmFormatterOutput.source} (${llmFormatterOutput.processing_time_ms}ms)`);
-        console.log(`   📊 Sections: ${llmFormatterOutput.sections_included.join(', ')}`);
-        
-        // ═══════════════════════════════════════════════════════════════════════════
-        // SOURCE VALIDATION GATE - Final check before response delivery
-        // Ensures LLM didn't add products/dosages not in symbolic output
-        // ═══════════════════════════════════════════════════════════════════════════
-        if (llmFormatterOutput.validation_passed === false) {
-          console.error(`🚫 [SOURCE VALIDATION] LLM output validation failed!`);
-          console.error(`   Violations: ${llmFormatterOutput.validation_violations?.join(', ')}`);
+        // If prescription gate blocks treatments, use observation-only response
+        if (!prescriptionGateResult.allowed) {
+          console.log(`   ⚠️ Prescription gate blocked treatments - using observation-only response`);
           
-          // Use template fallback instead of potentially incorrect LLM output
-          console.log(`   📋 Falling back to template-based response for safety`);
-          
-          if (orchestratorResponse.decision_output?.primary_decision) {
-            responseContent = buildFormattedRecommendationsList(
-              orchestratorResponse.decision_output, 
-              detectedLanguage as 'mr' | 'hi' | 'en'
+          if (prescriptionGateResult.stage_gate_triggered) {
+            // Young crop - use monitoring response
+            responseContent = generateYoungCropMonitoringResponse(
+              detectedLanguage as 'mr' | 'hi' | 'en',
+              landContext?.current_crop,
+              landContext?.growth_stage,
+              landContext?.days_since_sowing
             );
           } else {
-            responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
+            // No confirmed diagnosis - use observation response
+            responseContent = generateObservationOnlyResponse(
+              detectedLanguage as 'mr' | 'hi' | 'en',
+              landContext?.current_crop,
+              prescriptionGateResult.reason
+            );
           }
-        }
+          
+          // Skip LLM formatting - use gate-generated response
+          console.log(`   📋 Using prescription gate fallback response (no LLM)`);
+        } else {
+          // ═══════════════════════════════════════════════════════════════════════════
+          // PRESCRIPTION GATE PASSED - Continue with LLM formatting
+          // ═══════════════════════════════════════════════════════════════════════════
+          
+          // SANITY CHECK: Prevent impossible stage calculations before LLM formatting
+          const daysAfterSowing = orchestratorResponse.dataAudit?.land?.days_since_sowing;
+          const currentGrowthStage = landContext?.growth_stage?.toUpperCase();
+          
+          if (daysAfterSowing !== undefined && currentGrowthStage) {
+            const impossibleHarvest = 
+              (currentGrowthStage === 'HARVEST' || currentGrowthStage === 'MATURITY') && 
+              daysAfterSowing < 100; // No crop harvests before 100 DAS
+            
+            if (impossibleHarvest) {
+              console.error(`🚨 SANITY CHECK FAILED: ${currentGrowthStage} stage for ${daysAfterSowing} DAS crop`);
+              console.error(`   Overriding to GERMINATION stage in landContext`);
+              
+              // Override to safe stage in landContext for LLM
+              if (landContext) {
+                landContext.growth_stage = 'GERMINATION';
+              }
+              
+              // Also fix in dataAudit if present
+              if (orchestratorResponse.dataAudit?.land) {
+                orchestratorResponse.dataAudit.land.growth_stage = 'GERMINATION';
+              }
+            }
+          }
+        
+          const formatterInput: LLMFormatterInput = {
+            farmer_message: userMessageContent,
+            language: detectedLanguage as 'mr' | 'hi' | 'en',
+            decision_output: orchestratorResponse.decision_output,
+            land_context: landContext,
+            data_audit: orchestratorResponse.dataAudit,
+            trace_id: traceId
+          };
+          
+          // Call LLM formatter with timeout protection
+          const formatterPromise = formatRecommendationsWithLLM(formatterInput);
+          const timeoutPromise = new Promise<LLMFormatterOutput>((_, reject) => {
+            setTimeout(() => reject(new Error('LLM formatter timeout')), remainingTime - 2000);
+          });
+          
+          llmFormatterOutput = await Promise.race([formatterPromise, timeoutPromise]);
+          responseContent = llmFormatterOutput.formatted_response;
+          aiModelUsed = llmFormatterOutput.ai_model_used;
+          
+          console.log(`   ✅ LLM formatting complete: ${llmFormatterOutput.source} (${llmFormatterOutput.processing_time_ms}ms)`);
+          console.log(`   📊 Sections: ${llmFormatterOutput.sections_included.join(', ')}`);
+          
+          // ═══════════════════════════════════════════════════════════════════════════
+          // SOURCE VALIDATION GATE - Final check before response delivery
+          // Ensures LLM didn't add products/dosages not in symbolic output
+          // ═══════════════════════════════════════════════════════════════════════════
+          if (llmFormatterOutput.validation_passed === false) {
+            console.error(`🚫 [SOURCE VALIDATION] LLM output validation failed!`);
+            console.error(`   Violations: ${llmFormatterOutput.validation_violations?.join(', ')}`);
+            
+            // Use template fallback instead of potentially incorrect LLM output
+            console.log(`   📋 Falling back to template-based response for safety`);
+            
+            if (orchestratorResponse.decision_output?.primary_decision) {
+              responseContent = buildFormattedRecommendationsList(
+                orchestratorResponse.decision_output, 
+                detectedLanguage as 'mr' | 'hi' | 'en'
+              );
+            } else {
+              responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
+            }
+          }
+        } // End of prescription gate allowed block
         
       } catch (formatterError) {
         console.error(`   ❌ LLM formatter failed:`, formatterError);

@@ -125,7 +125,8 @@ export async function formatRecommendationsWithLLM(
   console.log(`   Decision Status: ${input.decision_output?.status}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // INPUT VALIDATION GATE - Ensure Symbolic Input is Valid
+  // PHASE 11: SYMBOLIC-ONLY ENFORCEMENT GATE
+  // The LLM MUST NEVER compensate for missing symbolic decisions
   // ═══════════════════════════════════════════════════════════════════════════
   
   const actions = input.decision_output?.actions_returned;
@@ -133,7 +134,28 @@ export async function formatRecommendationsWithLLM(
   const hasPrimaryDecision = !!input.decision_output?.primary_decision;
   const hasSecondaryActions = (input.decision_output?.secondary_actions?.length || 0) > 0;
   
-  // VALIDATION GATE 1: Decision brain produced decisions but actions are empty = FAILURE
+  // CRITICAL SAFETY CHECK: No symbolic decision = NO treatment recommendations
+  // This is the core enforcement that prevents LLM from inventing agronomy actions
+  if (!isDecisionBrain) {
+    console.warn(`
+⚠️ [SYMBOLIC-ONLY GATE] No decision_brain_source = true
+   LLM is restricted to INFORMATION ONLY mode.
+   Cannot recommend treatments, sprays, or biological agents.
+    `);
+    
+    // Return a render-only response that explicitly blocks treatment content
+    return {
+      formatted_response: '',
+      confidence: 0,
+      source: 'TEMPLATE_FALLBACK' as const,
+      processing_time_ms: Date.now() - startTime,
+      sections_included: ['INFORMATION_ONLY'],
+      validation_passed: false,
+      validation_violations: ['No symbolic brain decision - LLM blocked from treatment recommendations']
+    };
+  }
+  
+  // VALIDATION GATE 1: Decision brain invoked but no actions = mapping failure
   if (isDecisionBrain && (hasPrimaryDecision || hasSecondaryActions) && (!actions || actions.length === 0)) {
     console.error(`
 🚫 [INPUT VALIDATION GATE] CRITICAL ERROR:
@@ -155,6 +177,15 @@ export async function formatRecommendationsWithLLM(
       validation_passed: false,
       validation_violations: ['Decision brain produced rules but no actions extracted']
     };
+  }
+  
+  // VALIDATION GATE 2: If no primary decision and no actions, restrict to information
+  if (!hasPrimaryDecision && (!actions || actions.length === 0)) {
+    console.warn(`
+⚠️ [SYMBOLIC-ONLY GATE] No primary decision and no actions
+   LLM restricted to rendering general information only.
+   TREATMENT RECOMMENDATIONS ARE BLOCKED.
+    `);
   }
   
   // VALIDATION GATE 2: Check product details are present when actions exist

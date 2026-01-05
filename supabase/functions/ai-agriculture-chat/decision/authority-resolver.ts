@@ -29,7 +29,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const AUTHORITY_RESOLVER_VERSION = '1.0.0';
+export const AUTHORITY_RESOLVER_VERSION = '1.1.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STRICT DOMAIN ENUM (No aliases, no extensions)
@@ -40,7 +40,19 @@ export enum DecisionAuthority {
   CLIMATE = 'CLIMATE',   // rainfall, frost, heatwave
   SYSTEM = 'SYSTEM',     // irrigation failure, mechanical damage
   CROP = 'CROP',         // pests, diseases, nutrient stress
-  SAFETY = 'SAFETY'      // human / livestock risk
+  SAFETY = 'SAFETY',     // human / livestock risk
+  NONE = 'NONE'          // No authority confirmed - observation only mode
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUTHORITY CONFIRMATION STATUS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export enum AuthorityStatus {
+  CONFIRMED = 'CONFIRMED',                   // Authority explicitly confirmed by diagnosis
+  UNCONFIRMED = 'UNCONFIRMED',               // No diagnosis yet
+  PENDING_CLARIFICATION = 'PENDING_CLARIFICATION', // Awaiting farmer input
+  BLOCKED = 'BLOCKED'                        // Higher authority blocking this domain
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -70,6 +82,9 @@ export interface AuthorityDecision {
   /** The single domain with legal authority to decide */
   authority: DecisionAuthority;
   
+  /** Confirmation status of the authority */
+  authority_status: AuthorityStatus;
+  
   /** Domains that are BLOCKED from rule evaluation */
   blocked_domains: DecisionAuthority[];
   
@@ -78,6 +93,12 @@ export interface AuthorityDecision {
   
   /** Human-readable reason for the authority decision */
   reason: string;
+  
+  /** Whether treatments are allowed (only when authority is CONFIRMED) */
+  treatments_allowed: boolean;
+  
+  /** Response mode constraint */
+  response_mode: 'TREATMENT' | 'OBSERVATION' | 'INFORMATION' | 'CLARIFICATION';
   
   /** Resolver version for audit trail */
   resolver_version: string;
@@ -203,6 +224,24 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
   const resolvedAt = new Date().toISOString();
   
   // ═══════════════════════════════════════════════════════════════════════
+  // RULE 0: NO CAUSES = NONE AUTHORITY (Observation/Information Only)
+  // ═══════════════════════════════════════════════════════════════════════
+  
+  if (causes.size === 0 && symptoms.size === 0) {
+    return {
+      authority: DecisionAuthority.NONE,
+      authority_status: AuthorityStatus.UNCONFIRMED,
+      blocked_domains: [DecisionAuthority.CROP],
+      allowed_domains: [DecisionAuthority.NONE],
+      reason: 'No causes or symptoms detected - observation only mode',
+      treatments_allowed: false,
+      response_mode: 'OBSERVATION',
+      resolver_version: AUTHORITY_RESOLVER_VERSION,
+      resolved_at: resolvedAt
+    };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
   // RULE 1: SAFETY (Overrides Everything)
   // ═══════════════════════════════════════════════════════════════════════
   
@@ -211,6 +250,7 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
   if (safetyCauseDetected) {
     return {
       authority: DecisionAuthority.SAFETY,
+      authority_status: AuthorityStatus.CONFIRMED,
       blocked_domains: [
         DecisionAuthority.LAND,
         DecisionAuthority.CLIMATE,
@@ -219,6 +259,8 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
       ],
       allowed_domains: [DecisionAuthority.SAFETY],
       reason: 'Safety concern detected - all other domains blocked pending safety resolution',
+      treatments_allowed: false, // Safety blocks treatments, escalates
+      response_mode: 'INFORMATION',
       resolver_version: AUTHORITY_RESOLVER_VERSION,
       resolved_at: resolvedAt
     };
@@ -235,6 +277,7 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
   if (landCauseDetected || landSymptomDetected || landContextTrigger) {
     return {
       authority: DecisionAuthority.LAND,
+      authority_status: AuthorityStatus.CONFIRMED,
       blocked_domains: [
         DecisionAuthority.CROP,
         DecisionAuthority.CLIMATE,
@@ -242,6 +285,8 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
       ],
       allowed_domains: [DecisionAuthority.LAND, DecisionAuthority.SAFETY],
       reason: 'Land/soil stress detected - pest, disease, and spray logic blocked',
+      treatments_allowed: false, // Land issues don't get spray treatments
+      response_mode: 'INFORMATION',
       resolver_version: AUTHORITY_RESOLVER_VERSION,
       resolved_at: resolvedAt
     };
@@ -257,6 +302,7 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
   if (climateCauseDetected || climateSymptomDetected) {
     return {
       authority: DecisionAuthority.CLIMATE,
+      authority_status: AuthorityStatus.CONFIRMED,
       blocked_domains: [DecisionAuthority.CROP],
       allowed_domains: [
         DecisionAuthority.CLIMATE,
@@ -264,6 +310,8 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
         DecisionAuthority.SAFETY
       ],
       reason: 'Climate stress detected - pest and disease logic blocked',
+      treatments_allowed: false, // Climate issues don't get spray treatments
+      response_mode: 'INFORMATION',
       resolver_version: AUTHORITY_RESOLVER_VERSION,
       resolved_at: resolvedAt
     };
@@ -278,6 +326,7 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
   if (systemCauseDetected) {
     return {
       authority: DecisionAuthority.SYSTEM,
+      authority_status: AuthorityStatus.CONFIRMED,
       blocked_domains: [DecisionAuthority.CROP],
       allowed_domains: [
         DecisionAuthority.SYSTEM,
@@ -285,17 +334,27 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
         DecisionAuthority.SAFETY
       ],
       reason: 'System/infrastructure failure detected - pest and disease logic blocked',
+      treatments_allowed: false, // System issues don't get spray treatments
+      response_mode: 'INFORMATION',
       resolver_version: AUTHORITY_RESOLVER_VERSION,
       resolved_at: resolvedAt
     };
   }
   
   // ═══════════════════════════════════════════════════════════════════════
-  // RULE 5: DEFAULT - CROP (Pests, diseases, nutrient stress)
+  // RULE 5: CROP (Pests, diseases, nutrient stress)
+  // Check if confirmed or just potential
   // ═══════════════════════════════════════════════════════════════════════
+  
+  const hasPestCause = [...causes].some(c => c.includes('PEST') || c.includes('BORER') || c.includes('APHID') || c.includes('WHITEFLY'));
+  const hasDiseaseCause = [...causes].some(c => c.includes('DISEASE') || c.includes('RUST') || c.includes('BLIGHT') || c.includes('WILT'));
+  const hasNutrientCause = [...causes].some(c => c.includes('NUTRIENT') || c.includes('DEFICIENCY') || c.includes('NITROGEN') || c.includes('PHOSPHORUS'));
+  
+  const isConfirmed = hasPestCause || hasDiseaseCause || hasNutrientCause;
   
   return {
     authority: DecisionAuthority.CROP,
+    authority_status: isConfirmed ? AuthorityStatus.CONFIRMED : AuthorityStatus.UNCONFIRMED,
     blocked_domains: [],
     allowed_domains: [
       DecisionAuthority.CROP,
@@ -304,7 +363,11 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
       DecisionAuthority.SYSTEM,
       DecisionAuthority.SAFETY
     ],
-    reason: 'No higher-authority causes detected - crop-level rules may proceed',
+    reason: isConfirmed 
+      ? 'Crop-level issue confirmed - treatments allowed' 
+      : 'Potential crop issue - clarification may be needed before treatment',
+    treatments_allowed: isConfirmed,
+    response_mode: isConfirmed ? 'TREATMENT' : 'CLARIFICATION',
     resolver_version: AUTHORITY_RESOLVER_VERSION,
     resolved_at: resolvedAt
   };
@@ -344,6 +407,11 @@ function detectLandContextTrigger(landContext?: AuthorityInput['land_context']):
  * Returns true if crop-level rules (pest/disease/nutrient) should be skipped.
  */
 export function shouldSkipCropRules(decision: AuthorityDecision): boolean {
+  // NONE authority means observation only - skip all treatment rules
+  if (decision.authority === DecisionAuthority.NONE) {
+    return true;
+  }
+  
   return decision.authority !== DecisionAuthority.CROP &&
          decision.blocked_domains.includes(DecisionAuthority.CROP);
 }
@@ -353,6 +421,13 @@ export function shouldSkipCropRules(decision: AuthorityDecision): boolean {
  */
 export function isDomainAllowed(decision: AuthorityDecision, domain: DecisionAuthority): boolean {
   return decision.allowed_domains.includes(domain);
+}
+
+/**
+ * Helper function to check if treatments are allowed.
+ */
+export function areTreatmentsAllowed(decision: AuthorityDecision): boolean {
+  return decision.treatments_allowed && decision.authority_status === AuthorityStatus.CONFIRMED;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

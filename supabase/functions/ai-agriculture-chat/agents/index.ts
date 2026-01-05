@@ -53,10 +53,24 @@ export {
   resolveDecisionAuthority,
   shouldSkipCropRules,
   isDomainAllowed,
+  areTreatmentsAllowed,
   buildAuthorityAuditEntry,
   DecisionAuthority,
+  AuthorityStatus,
   AUTHORITY_RESOLVER_VERSION
 } from '../decision/authority-resolver.ts';
+
+// Prescription Gate Enforcer (Symbolic-Only Output Control)
+export * from '../decision/prescription-gate-enforcer.ts';
+export {
+  enforcePrescriptionGate,
+  generateObservationOnlyResponse,
+  generateYoungCropMonitoringResponse,
+  buildPrescriptionGateAudit,
+  ResponseMode,
+  AuthorityConfirmation,
+  PRESCRIPTION_GATE_VERSION
+} from '../decision/prescription-gate-enforcer.ts';
 
 // Type Mappers (Enum conversions and trace ID generation)
 export * from './type-mappers.ts';
