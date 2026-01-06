@@ -39,14 +39,12 @@ import {
 // Import validation from decision representation
 import { validateLLMOutputIntegrity } from './decision-representation.ts';
 
-// Import Decision Readiness Gate for hard safety validation
-import { 
-  checkDecisionReadiness,
+// P1-4: Import unified types (gate check moved to index.ts - single gate)
+import {
   GateStatus,
   GateAction,
-  validateOutputBeforeSend,
-  type DecisionReadinessInput
-} from '../decision/decision-readiness-gate.ts';
+  ResponseMode
+} from '../decision/authority-types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -146,73 +144,18 @@ export async function formatRecommendationsWithLLM(
   console.log(`   Decision Status: ${input.decision_output?.status}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE 12: DECISION READINESS GATE CHECK (HARD SAFETY)
-  // Validate that system has sufficient information before treatment
+  // P1-4: GATE CHECK REMOVED - NOW HAPPENS IN index.ts VIA evaluateUnifiedGate()
+  // The LLM formatter only runs AFTER the unified gate has already passed.
+  // This prevents double-gate conflicts.
   // ═══════════════════════════════════════════════════════════════════════════
   
-  const gateInput: DecisionReadinessInput = {
-    crop_name: input.land_context?.current_crop,
-    crop_source: input.land_context?.current_crop ? 'LAND_CONTEXT' : 'UNKNOWN',
-    growth_stage: input.land_context?.growth_stage,
-    days_since_sowing: input.land_context?.days_since_sowing,
-    stage_source: input.land_context?.days_since_sowing ? 'CROP_SCHEDULES' : 'UNKNOWN',
-    symptom_description: input.farmer_message,
-    symptom_keys: [],
-    is_specific_symptom: input.decision_output?.primary_decision?.target !== undefined,
-    authority_confirmed: input.decision_output?.decision_brain_source === true,
-    authority_level: input.decision_output?.primary_decision ? 'CROP' : 'NONE',
-    confirmed_diagnosis: {
-      pest_code: (input.decision_output?.primary_decision?.target as any)?.pest_code,
-      disease_code: (input.decision_output?.primary_decision?.target as any)?.disease_code,
-      nutrient_deficiency: (input.decision_output?.primary_decision?.target as any)?.nutrient_deficiency
-    },
-    clarification_turn_count: 0,
-    pending_clarification: input.decision_output?.clarification_needed || false,
-    has_emergency_indicators: false,
-    has_land_context: !!input.land_context
-  };
+  console.log(`   📋 [LLM Formatter] Gate pre-validated by index.ts - proceeding with formatting`);
   
-  const gateResult = checkDecisionReadiness(gateInput);
-  
-  console.log(`   📋 Decision Readiness Gate: ${gateResult.gate_status} (${gateResult.gate_action})`);
-  console.log(`   Missing criteria: ${gateResult.missing_criteria.join(', ') || 'none'}`);
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE 11: SYMBOLIC-ONLY ENFORCEMENT GATE
-  // The LLM MUST NEVER compensate for missing symbolic decisions
-  // ═══════════════════════════════════════════════════════════════════════════
-  
+  // Extract decision properties for validation and formatting
   const actions = input.decision_output?.actions_returned;
   const isDecisionBrain = input.decision_output?.decision_brain_source === true;
   const hasPrimaryDecision = !!input.decision_output?.primary_decision;
   const hasSecondaryActions = (input.decision_output?.secondary_actions?.length || 0) > 0;
-  
-  // CRITICAL SAFETY CHECK: Gate FAIL = NO treatment recommendations
-  if (gateResult.gate_status === GateStatus.FAIL) {
-    console.warn(`
-⚠️ [DECISION READINESS GATE] Gate FAILED
-   Status: ${gateResult.gate_status}
-   Action: ${gateResult.gate_action}
-   Reason: ${gateResult.reason}
-   LLM is restricted to: ${gateResult.allowed_response_types.join(', ')}
-   Blocked: ${gateResult.blocked_response_types.join(', ')}
-    `);
-    
-    // Return a gate-blocked response
-    return {
-      formatted_response: '',
-      confidence: 0,
-      source: 'TEMPLATE_FALLBACK' as const,
-      processing_time_ms: Date.now() - startTime,
-      sections_included: gateResult.allowed_response_types,
-      validation_passed: false,
-      validation_violations: [`Decision Readiness Gate FAILED: ${gateResult.reason}`],
-      gate_status: gateResult.gate_status,
-      gate_action: gateResult.gate_action,
-      reasoning_included: false,
-      symbolic_decision_id: input.decision_output?.decision_id
-    };
-  }
   
   // CRITICAL SAFETY CHECK: No symbolic decision = NO treatment recommendations
   // This is the core enforcement that prevents LLM from inventing agronomy actions
