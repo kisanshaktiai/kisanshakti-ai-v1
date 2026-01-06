@@ -32,10 +32,17 @@ import {
 // SYMBOLIC BRAIN: Import validation from decision representation
 import { validateLLMOutputIntegrity } from './agents/decision-representation.ts';
 
-// PHASE 11: Import Prescription Gate Enforcer for symbolic-only output control
+// PHASE 11: Import Unified Decision Gate (P1-4 fix - single gate)
 import { 
-  enforcePrescriptionGate,
+  evaluateUnifiedGate,
+  type UnifiedGateInput
+} from './decision/unified-decision-gate.ts';
+import {
   ResponseMode,
+  GateStatus,
+  GateAction
+} from './decision/authority-types.ts';
+import {
   generateObservationOnlyResponse,
   generateYoungCropMonitoringResponse
 } from './decision/prescription-gate-enforcer.ts';
@@ -624,28 +631,41 @@ serve(async (req) => {
         }
         
         // ═══════════════════════════════════════════════════════════════════════════
-        // PHASE 11: PRESCRIPTION GATE ENFORCEMENT - Before LLM Formatting
-        // Ensures LLM only renders what symbolic brain has approved
+        // PHASE 11 + P1-4: UNIFIED DECISION GATE - Single point of treatment validation
+        // Replaces dual prescription-gate and decision-readiness-gate
         // ═══════════════════════════════════════════════════════════════════════════
-        const prescriptionGateResult = enforcePrescriptionGate({
+        const unifiedGateInput: UnifiedGateInput = {
+          authority_decision: orchestratorResponse.decision_output?.authority_decision || {
+            authority: 'NONE',
+            authority_status: 'UNCONFIRMED',
+            treatments_allowed: false,
+            reason: 'No authority resolved'
+          },
           symbolic_decision: orchestratorResponse.decision_output as any,
-          crop_stage: landContext?.growth_stage,
-          days_since_sowing: landContext?.days_since_sowing,
           crop_name: landContext?.current_crop,
-          has_confirmed_diagnosis: !!orchestratorResponse.decision_output?.primary_decision?.target,
+          growth_stage: landContext?.growth_stage,
+          days_since_sowing: landContext?.days_since_sowing,
+          stage_source: orchestratorResponse.metadata?.stageSource || 'UNKNOWN',
+          symptom_keys: orchestratorResponse.metadata?.symptomKeys || [],
+          is_specific_symptom: !!orchestratorResponse.decision_output?.primary_decision?.target,
+          clarification_turn_count: orchestratorResponse.metadata?.clarificationTurnCount || 0,
+          pending_clarification: orchestratorResponse.decision_output?.clarification_needed || false,
+          has_emergency_indicators: orchestratorResponse.metadata?.isEmergency || false,
           land_id: landId
-        });
+        };
         
-        console.log(`   🚦 [PrescriptionGate] ${prescriptionGateResult.allowed ? '✅ ALLOWED' : '🚫 BLOCKED'}`);
-        console.log(`      Response Mode: ${prescriptionGateResult.response_mode}`);
-        console.log(`      Authority: ${prescriptionGateResult.authority_confirmation}`);
-        console.log(`      Reason: ${prescriptionGateResult.reason}`);
+        const unifiedGateResult = evaluateUnifiedGate(unifiedGateInput);
         
-        // If prescription gate blocks treatments, use observation-only response
-        if (!prescriptionGateResult.allowed) {
-          console.log(`   ⚠️ Prescription gate blocked treatments - using observation-only response`);
+        console.log(`   🚦 [UnifiedGate] ${unifiedGateResult.gate_status === 'PASS' ? '✅ PASS' : unifiedGateResult.gate_status === 'EMERGENCY_BYPASS' ? '🚨 EMERGENCY' : '🚫 ' + unifiedGateResult.gate_status}`);
+        console.log(`      Response Mode: ${unifiedGateResult.response_mode}`);
+        console.log(`      Action: ${unifiedGateResult.gate_action}`);
+        console.log(`      Reason: ${unifiedGateResult.reason}`);
+        
+        // If unified gate blocks treatments, use appropriate fallback response
+        if (!unifiedGateResult.treatments_allowed) {
+          console.log(`   ⚠️ Unified gate blocked treatments - using ${unifiedGateResult.response_mode} response`);
           
-          if (prescriptionGateResult.stage_gate_triggered) {
+          if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
             // Young crop - use monitoring response
             responseContent = generateYoungCropMonitoringResponse(
               detectedLanguage as 'mr' | 'hi' | 'en',
@@ -654,16 +674,16 @@ serve(async (req) => {
               landContext?.days_since_sowing
             );
           } else {
-            // No confirmed diagnosis - use observation response
+            // No confirmed diagnosis or authority block - use observation response
             responseContent = generateObservationOnlyResponse(
               detectedLanguage as 'mr' | 'hi' | 'en',
               landContext?.current_crop,
-              prescriptionGateResult.reason
+              unifiedGateResult.reason
             );
           }
           
           // Skip LLM formatting - use gate-generated response
-          console.log(`   📋 Using prescription gate fallback response (no LLM)`);
+          console.log(`   📋 Using unified gate fallback response (no LLM)`);
         } else {
           // ═══════════════════════════════════════════════════════════════════════════
           // PRESCRIPTION GATE PASSED - Continue with LLM formatting

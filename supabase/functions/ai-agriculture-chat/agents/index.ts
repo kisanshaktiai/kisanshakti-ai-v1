@@ -154,9 +154,10 @@ export { SafetyGuardian, safetyGuardian, SAFETY_GUARDIAN_VERSION } from './safet
 export { AIAgentOrchestrator, orchestrator, ORCHESTRATOR_VERSION } from './orchestrator.ts';
 export type { OrchestratorResponse, OrchestratorResponseType } from './orchestrator.ts';
 
-// Crop Knowledge Base (Fallback advice)
-export * from './crop-knowledge-base.ts';
-export { CROP_KNOWLEDGE, getCropAdvice, getStageAdvice, getClarifyingQuestions } from './crop-knowledge-base.ts';
+// DEPRECATED P1-3: Non-symbolic advice is banned
+// Crop Knowledge Base exports have been removed for safety compliance
+// export * from './crop-knowledge-base.ts';
+// export { CROP_KNOWLEDGE, getCropAdvice, getStageAdvice, getClarifyingQuestions } from './crop-knowledge-base.ts';
 
 // Fallback Response Generator (Error recovery)
 export * from './fallback-response-generator.ts';
