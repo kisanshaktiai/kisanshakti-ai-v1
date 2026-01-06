@@ -249,6 +249,18 @@ async function loadCropGroupRules(): Promise<Record<string, BundledRule[]>> {
       console.log(`  ✓ POST_HARVEST: ${cropGroupIndex.POST_HARVEST_RULES.length} rules`);
     }
     
+    // Add organic farming rules (60 rules)
+    if (cropGroupIndex.ORGANIC_FARMING_RULES) {
+      result['organic_farming'] = cropGroupIndex.ORGANIC_FARMING_RULES.map(bundleRule);
+      console.log(`  ✓ ORGANIC_FARMING: ${cropGroupIndex.ORGANIC_FARMING_RULES.length} rules`);
+    }
+    
+    // Add soil management rules (130 rules: pH, nutrient, physical, biological)
+    if (cropGroupIndex.ALL_SOIL_RULES) {
+      result['soil_management'] = cropGroupIndex.ALL_SOIL_RULES.map(bundleRule);
+      console.log(`  ✓ SOIL_MANAGEMENT: ${cropGroupIndex.ALL_SOIL_RULES.length} rules`);
+    }
+    
   } catch (error) {
     console.error('Error loading crop group rules:', error);
   }
