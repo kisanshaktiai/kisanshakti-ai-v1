@@ -11,7 +11,7 @@
  * OUTPUT: Structured JSON message in farmer's language
  */
 
-import type { UnifiedAdvisory, Action, Cause } from '@/decision-graph';
+import type { UnifiedAdvisory, Action, Cause } from '@/decision-graph/types-only';
 import type { LandContext } from '@/services/decisionBrainChatService';
 
 // ═══════════════════════════════════════════════════════════════════════════

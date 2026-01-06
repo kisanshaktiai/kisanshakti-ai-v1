@@ -21,8 +21,8 @@
 import type { FieldContextSnapshot, DataCertaintyLevel } from './fieldContextSnapshot';
 import type { MessageClassification } from './farmerMessageClassifier';
 import type { ActionItem, ConfidenceInfo, BlockedAction } from '@/components/chat/DecisionBrainCards';
-import type { UnifiedAdvisory, Cause } from '@/decision-graph';
-import { Action } from '@/decision-graph';
+import type { UnifiedAdvisory, Cause } from '@/decision-graph/types-only';
+import { Action } from '@/decision-graph/types-only';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
