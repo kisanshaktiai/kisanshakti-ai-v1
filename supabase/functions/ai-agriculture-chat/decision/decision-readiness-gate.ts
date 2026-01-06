@@ -20,27 +20,21 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const DECISION_READINESS_GATE_VERSION = '1.0.0';
+export const DECISION_READINESS_GATE_VERSION = '1.1.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// GATE STATUS ENUM
+// P1-1 FIX: Import canonical types from authority-types.ts
+// GateStatus and GateAction are now centralized
 // ═══════════════════════════════════════════════════════════════════════════
 
-export enum GateStatus {
-  PASS = 'PASS',                           // All criteria met, treatment allowed
-  FAIL = 'FAIL',                           // Criteria not met, treatment blocked
-  PARTIAL = 'PARTIAL',                     // Some criteria met, general guidance only
-  EMERGENCY_BYPASS = 'EMERGENCY_BYPASS'    // Emergency symptoms fast-tracked
-}
+import {
+  GateStatus,
+  GateAction,
+  ResponseMode
+} from './authority-types.ts';
 
-export enum GateAction {
-  ALLOW_TREATMENT = 'ALLOW_TREATMENT',
-  REQUIRE_CLARIFICATION = 'REQUIRE_CLARIFICATION',
-  PROVIDE_GENERAL_GUIDANCE = 'PROVIDE_GENERAL_GUIDANCE',
-  PROVIDE_INFORMATION_ONLY = 'PROVIDE_INFORMATION_ONLY',
-  ESCALATE_TO_EXPERT = 'ESCALATE_TO_EXPERT',
-  REQUEST_PHOTO = 'REQUEST_PHOTO'
-}
+// Re-export for backward compatibility
+export { GateStatus, GateAction, ResponseMode };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INPUT CONTRACT

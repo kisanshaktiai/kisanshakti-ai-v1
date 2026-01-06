@@ -29,31 +29,23 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const AUTHORITY_RESOLVER_VERSION = '1.1.0';
+export const AUTHORITY_RESOLVER_VERSION = '1.2.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// STRICT DOMAIN ENUM (No aliases, no extensions)
+// P1-1 FIX: Import canonical types from authority-types.ts
+// All authority-related types are now centralized
 // ═══════════════════════════════════════════════════════════════════════════
 
-export enum DecisionAuthority {
-  LAND = 'LAND',         // soil, salinity, waterlogging, structure
-  CLIMATE = 'CLIMATE',   // rainfall, frost, heatwave
-  SYSTEM = 'SYSTEM',     // irrigation failure, mechanical damage
-  CROP = 'CROP',         // pests, diseases, nutrient stress
-  SAFETY = 'SAFETY',     // human / livestock risk
-  NONE = 'NONE'          // No authority confirmed - observation only mode
-}
+import {
+  DecisionAuthority,
+  AuthorityStatus,
+  ResponseMode,
+  type AuthorityDecision
+} from './authority-types.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
-// AUTHORITY CONFIRMATION STATUS
-// ═══════════════════════════════════════════════════════════════════════════
-
-export enum AuthorityStatus {
-  CONFIRMED = 'CONFIRMED',                   // Authority explicitly confirmed by diagnosis
-  UNCONFIRMED = 'UNCONFIRMED',               // No diagnosis yet
-  PENDING_CLARIFICATION = 'PENDING_CLARIFICATION', // Awaiting farmer input
-  BLOCKED = 'BLOCKED'                        // Higher authority blocking this domain
-}
+// Re-export for backward compatibility
+export { DecisionAuthority, AuthorityStatus, ResponseMode };
+export type { AuthorityDecision };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INPUT CONTRACT (Immutable - from existing symbolic layers)
@@ -72,39 +64,6 @@ export interface AuthorityInput {
     soil_ec?: number;           // Electrical conductivity (dS/m)
     waterlogging?: boolean;
   };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// OUTPUT CONTRACT (Explicit Authority Decision)
-// ═══════════════════════════════════════════════════════════════════════════
-
-export interface AuthorityDecision {
-  /** The single domain with legal authority to decide */
-  authority: DecisionAuthority;
-  
-  /** Confirmation status of the authority */
-  authority_status: AuthorityStatus;
-  
-  /** Domains that are BLOCKED from rule evaluation */
-  blocked_domains: DecisionAuthority[];
-  
-  /** Domains that are ALLOWED for rule evaluation */
-  allowed_domains: DecisionAuthority[];
-  
-  /** Human-readable reason for the authority decision */
-  reason: string;
-  
-  /** Whether treatments are allowed (only when authority is CONFIRMED) */
-  treatments_allowed: boolean;
-  
-  /** Response mode constraint */
-  response_mode: 'TREATMENT' | 'OBSERVATION' | 'INFORMATION' | 'CLARIFICATION';
-  
-  /** Resolver version for audit trail */
-  resolver_version: string;
-  
-  /** Timestamp of resolution */
-  resolved_at: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -235,7 +194,7 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
       allowed_domains: [DecisionAuthority.NONE],
       reason: 'No causes or symptoms detected - observation only mode',
       treatments_allowed: false,
-      response_mode: 'OBSERVATION',
+      response_mode: ResponseMode.OBSERVATION,
       resolver_version: AUTHORITY_RESOLVER_VERSION,
       resolved_at: resolvedAt
     };
@@ -260,7 +219,7 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
       allowed_domains: [DecisionAuthority.SAFETY],
       reason: 'Safety concern detected - all other domains blocked pending safety resolution',
       treatments_allowed: false, // Safety blocks treatments, escalates
-      response_mode: 'INFORMATION',
+      response_mode: ResponseMode.INFORMATION,
       resolver_version: AUTHORITY_RESOLVER_VERSION,
       resolved_at: resolvedAt
     };
@@ -286,7 +245,7 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
       allowed_domains: [DecisionAuthority.LAND, DecisionAuthority.SAFETY],
       reason: 'Land/soil stress detected - pest, disease, and spray logic blocked',
       treatments_allowed: false, // Land issues don't get spray treatments
-      response_mode: 'INFORMATION',
+      response_mode: ResponseMode.INFORMATION,
       resolver_version: AUTHORITY_RESOLVER_VERSION,
       resolved_at: resolvedAt
     };
@@ -311,7 +270,7 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
       ],
       reason: 'Climate stress detected - pest and disease logic blocked',
       treatments_allowed: false, // Climate issues don't get spray treatments
-      response_mode: 'INFORMATION',
+      response_mode: ResponseMode.INFORMATION,
       resolver_version: AUTHORITY_RESOLVER_VERSION,
       resolved_at: resolvedAt
     };
@@ -335,7 +294,7 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
       ],
       reason: 'System/infrastructure failure detected - pest and disease logic blocked',
       treatments_allowed: false, // System issues don't get spray treatments
-      response_mode: 'INFORMATION',
+      response_mode: ResponseMode.INFORMATION,
       resolver_version: AUTHORITY_RESOLVER_VERSION,
       resolved_at: resolvedAt
     };
@@ -367,7 +326,7 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
       ? 'Crop-level issue confirmed - treatments allowed' 
       : 'Potential crop issue - clarification may be needed before treatment',
     treatments_allowed: isConfirmed,
-    response_mode: isConfirmed ? 'TREATMENT' : 'CLARIFICATION',
+    response_mode: isConfirmed ? ResponseMode.TREATMENT : ResponseMode.CLARIFICATION,
     resolver_version: AUTHORITY_RESOLVER_VERSION,
     resolved_at: resolvedAt
   };

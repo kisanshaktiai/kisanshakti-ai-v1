@@ -596,10 +596,85 @@ export class AIAgentOrchestrator {
       }
       
       // ========================================
-      // PHASE 0.5: HANDLE IRRIGATION DIRECTLY (NEW)
+      // PHASE 0.5: HANDLE IRRIGATION DIRECTLY (WITH AUTHORITY CHECK)
+      // P1-2 FIX: Authority must be resolved before generating irrigation advice
       // ========================================
       if (queryRoute.route === 'IRRIGATION_SCHEDULING' && landContext) {
-        console.log(`💧 [${traceId}] IRRIGATION query - using Irrigation Decision Module`);
+        console.log(`💧 [${traceId}] IRRIGATION query - checking authority first`);
+        
+        // P1-2: Resolve authority BEFORE generating irrigation advice
+        const { resolveDecisionAuthority, DecisionAuthority } = await import('../decision/authority-resolver.ts');
+        
+        const irrigationAuthority = resolveDecisionAuthority({
+          detected_causes: [], // No causes detected yet for irrigation query
+          cross_crop_symptoms: [],
+          land_context: {
+            has_soil_health: !!landContext.soil_health,
+            soil_ec: landContext.soil_health?.ec,
+            waterlogging: landContext.waterlogging || false
+          }
+        });
+        
+        console.log(`   🚦 Authority: ${irrigationAuthority.authority} (${irrigationAuthority.authority_status})`);
+        
+        // If authority blocks irrigation (e.g., LAND due to waterlogging/salinity)
+        if (irrigationAuthority.authority === DecisionAuthority.LAND || 
+            irrigationAuthority.authority === DecisionAuthority.SAFETY) {
+          console.log(`   🚫 IRRIGATION BLOCKED by ${irrigationAuthority.authority} authority`);
+          
+          const blockMessage = this.generateAuthorityBlockMessage(
+            irrigationAuthority.authority,
+            irrigationAuthority.reason,
+            options.language || 'mr'
+          );
+          
+          return {
+            type: 'DECISION_PROVIDED',
+            session_id: sessionId,
+            communication: {
+              message_id: crypto.randomUUID(),
+              decision_id: `irrigation_blocked_${Date.now()}`,
+              session_id: sessionId,
+              farmer_id: farmerId,
+              language: options.language || 'mr',
+              format: 'RICH_TEXT',
+              tone: 'CAUTIONARY',
+              created_at: new Date().toISOString(),
+              main_message: { full_text: { mr: blockMessage, hi: blockMessage, en: blockMessage } },
+              quick_actions: [],
+              metadata: {
+                word_count: blockMessage.split(/\s+/).length,
+                reading_time_seconds: 10,
+                confidence_score: 0.9,
+                source: 'AUTHORITY_RESOLVER',
+                response_type: 'AUTHORITY_BLOCK'
+              }
+            } as any,
+            decision_output: {
+              decision_id: `irrigation_blocked_${Date.now()}`,
+              session_id: sessionId,
+              status: 'AUTHORITY_BLOCKED',
+              decision_brain_source: false,
+              authority_decision: irrigationAuthority,
+              metadata: {
+                confidence: 0.9,
+                trace_id: traceId,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: ['AUTHORITY_RESOLVER']
+              }
+            } as any,
+            metadata: {
+              confidence: 0.9,
+              safety_status: 'BLOCKED',
+              rules_applied: 0,
+              processing_time_ms: Date.now() - startTime,
+              agents_used: ['AUTHORITY_RESOLVER'],
+              trace_id: traceId
+            }
+          };
+        }
+        
+        // Authority allows irrigation - proceed with scheduling
         const { calculateIrrigationRecommendation, formatIrrigationResponse } = await import('./irrigation-decision-module.ts');
         
         const irrigationRec = calculateIrrigationRecommendation({
@@ -613,7 +688,7 @@ export class AIAgentOrchestrator {
         });
         
         const irrigationResponse = formatIrrigationResponse(irrigationRec, options.language || 'mr');
-        agentsUsed.push('IRRIGATION_MODULE');
+        agentsUsed.push('AUTHORITY_RESOLVER', 'IRRIGATION_MODULE');
         
         return {
           type: 'DECISION_PROVIDED',
@@ -648,6 +723,7 @@ export class AIAgentOrchestrator {
             session_id: sessionId,
             status: 'INFORMATION_PROVIDED',
             decision_brain_source: true,
+            authority_decision: irrigationAuthority,
             actions_returned: [{
               action_type: 'IRRIGATION',
               urgency: irrigationRec.urgency,
@@ -675,18 +751,46 @@ export class AIAgentOrchestrator {
       }
       
       // ========================================
-      // P1-A: CROP HEALTH ASSESSMENT ROUTE (Direct NDVI/Soil/Weather assessment)
-      // Handles "how is my crop" queries without rule engine
+      // P1-A: CROP HEALTH ASSESSMENT ROUTE (WITH AUTHORITY CHECK)
+      // P1-2 FIX: Authority must be resolved before generating crop health advice
+      // Handles "how is my crop" queries with land context
       // ========================================
       if (queryRoute.route === 'CROP_HEALTH' && landContext) {
-        console.log(`🌱 [${traceId}] CROP_HEALTH query - using direct assessment`);
-        agentsUsed.push('CROP_HEALTH_MODULE');
+        console.log(`🌱 [${traceId}] CROP_HEALTH query - checking authority first`);
         
+        // P1-2: Resolve authority BEFORE generating crop health advice
+        const { resolveDecisionAuthority, DecisionAuthority } = await import('../decision/authority-resolver.ts');
+        
+        const cropHealthAuthority = resolveDecisionAuthority({
+          detected_causes: [], // No causes detected yet for health query
+          cross_crop_symptoms: [],
+          land_context: {
+            has_soil_health: !!landContext.soil_health,
+            soil_ec: landContext.soil_health?.ec,
+            waterlogging: landContext.waterlogging || false
+          }
+        });
+        
+        console.log(`   🚦 Authority: ${cropHealthAuthority.authority} (${cropHealthAuthority.authority_status})`);
+        agentsUsed.push('AUTHORITY_RESOLVER', 'CROP_HEALTH_MODULE');
+        
+        // Generate crop health response
         const cropHealthResponse = this.generateCropHealthResponse(landContext, options.language || 'mr');
+        
+        // If authority is LAND (salinity/waterlogging), include that in the assessment
+        if (cropHealthAuthority.authority === DecisionAuthority.LAND) {
+          console.log(`   ⚠️ LAND authority detected - including soil stress in assessment`);
+          cropHealthResponse.message = this.prependLandStressWarning(
+            cropHealthResponse.message,
+            cropHealthAuthority.reason,
+            options.language || 'mr'
+          );
+          cropHealthResponse.isCritical = true;
+        }
         
         // Log critical status
         if (cropHealthResponse.isCritical) {
-          console.log(`🚨 [${traceId}] NDVI CRITICAL ALERT - actions: ${cropHealthResponse.actions.length}`);
+          console.log(`🚨 [${traceId}] CRITICAL ALERT - actions: ${cropHealthResponse.actions.length}`);
         }
         
         return {
@@ -725,7 +829,8 @@ export class AIAgentOrchestrator {
             decision_id: `crop_health_${Date.now()}`,
             session_id: sessionId,
             status: cropHealthResponse.isCritical ? 'URGENT_ACTION_REQUIRED' : 'INFORMATION_PROVIDED',
-            decision_brain_source: true, // Now includes actions based on actual signals
+            decision_brain_source: true,
+            authority_decision: cropHealthAuthority,
             actions_returned: cropHealthResponse.actions,
             metadata: {
               confidence: cropHealthResponse.confidence,
@@ -4686,6 +4791,79 @@ export class AIAgentOrchestrator {
         trace_id: traceId
       }
     };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P1-2: AUTHORITY BLOCK MESSAGE GENERATOR
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  private generateAuthorityBlockMessage(
+    authority: string,
+    reason: string,
+    language: string
+  ): string {
+    const messages: Record<string, Record<string, string>> = {
+      LAND: {
+        mr: `⚠️ **जमिनीची समस्या आढळली**\n\n${reason}\n\n` +
+            `🚫 सध्या सिंचन/स्प्रे करू नका.\n\n` +
+            `💡 **पुढचे पाऊल:**\n` +
+            `• मातीची EC तपासणी करा\n` +
+            `• जास्त पाणी देणे टाळा\n` +
+            `• कृषी अधिकाऱ्यांचा सल्ला घ्या`,
+        hi: `⚠️ **जमीन की समस्या पाई गई**\n\n${reason}\n\n` +
+            `🚫 अभी सिंचाई/स्प्रे न करें।\n\n` +
+            `💡 **अगला कदम:**\n` +
+            `• मिट्टी की EC जांच करें\n` +
+            `• अधिक पानी देना बंद करें\n` +
+            `• कृषि अधिकारी से सलाह लें`,
+        en: `⚠️ **Land Issue Detected**\n\n${reason}\n\n` +
+            `🚫 Do not irrigate or spray now.\n\n` +
+            `💡 **Next Steps:**\n` +
+            `• Check soil EC level\n` +
+            `• Avoid overwatering\n` +
+            `• Consult agricultural officer`
+      },
+      SAFETY: {
+        mr: `🚨 **सुरक्षितता चिंता**\n\n${reason}\n\n` +
+            `⛔ कोणतीही फवारणी करू नका.\n` +
+            `📞 कृपया तज्ञांशी संपर्क साधा.`,
+        hi: `🚨 **सुरक्षा चिंता**\n\n${reason}\n\n` +
+            `⛔ कोई स्प्रे न करें।\n` +
+            `📞 कृपया विशेषज्ञ से संपर्क करें।`,
+        en: `🚨 **Safety Concern**\n\n${reason}\n\n` +
+            `⛔ Do not spray anything.\n` +
+            `📞 Please contact an expert.`
+      },
+      CLIMATE: {
+        mr: `🌧️ **हवामान चेतावणी**\n\n${reason}\n\n` +
+            `⏳ हवामान सुधारल्यानंतर कार्यवाही करा.`,
+        hi: `🌧️ **मौसम चेतावनी**\n\n${reason}\n\n` +
+            `⏳ मौसम ठीक होने पर कार्रवाई करें।`,
+        en: `🌧️ **Weather Warning**\n\n${reason}\n\n` +
+            `⏳ Wait for weather to improve before taking action.`
+      }
+    };
+    
+    const authorityMessages = messages[authority] || messages['LAND'];
+    return authorityMessages[language] || authorityMessages['mr'];
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P1-2: LAND STRESS WARNING PREPENDER FOR CROP HEALTH
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  private prependLandStressWarning(
+    originalMessage: string,
+    reason: string,
+    language: string
+  ): string {
+    const warnings: Record<string, string> = {
+      mr: `⚠️ **जमिनीची समस्या आढळली:** ${reason}\n\n`,
+      hi: `⚠️ **जमीन समस्या पाई गई:** ${reason}\n\n`,
+      en: `⚠️ **Land Issue Detected:** ${reason}\n\n`
+    };
+    
+    return (warnings[language] || warnings['mr']) + originalMessage;
   }
 }
 
