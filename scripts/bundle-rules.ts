@@ -17,7 +17,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -218,7 +218,8 @@ async function loadCropGroupRules(): Promise<Record<string, BundledRule[]>> {
   
   try {
     // Import the crop group index
-    const cropGroupIndex = await import(path.join(ROOT_DIR, 'src/decision-graph/crop-group-rules/index.ts'));
+    const importPath = pathToFileURL(path.join(ROOT_DIR, 'src/decision-graph/crop-group-rules/index.ts')).href;
+    const cropGroupIndex = await import(importPath);
     
     // Process each crop group
     const cropGroups = ['CEREALS', 'PULSES', 'VEGETABLES', 'FIBER', 'OILSEEDS', 'FRUITS', 'SPICES', 'FODDER', 'PLANTATION'];
@@ -273,7 +274,8 @@ async function loadSafetyRules(): Promise<Record<string, BundledRule[]>> {
   
   try {
     // Import the safety rules index
-    const safetyIndex = await import(path.join(ROOT_DIR, 'src/decision-graph/safety-rules/index.ts'));
+    const importPath = pathToFileURL(path.join(ROOT_DIR, 'src/decision-graph/safety-rules/index.ts')).href;
+    const safetyIndex = await import(importPath);
     
     const safetyCategories = [
       { key: 'CHEMICAL_SAFETY_RULES', name: 'chemical_safety' },
@@ -311,7 +313,8 @@ async function loadAdvancedRules(): Promise<BundledRule[]> {
   const result: BundledRule[] = [];
   
   try {
-    const advancedIndex = await import(path.join(ROOT_DIR, 'src/decision-graph/advanced-rules/index.ts'));
+    const importPath = pathToFileURL(path.join(ROOT_DIR, 'src/decision-graph/advanced-rules/index.ts')).href;
+    const advancedIndex = await import(importPath);
     
     if (advancedIndex.ALL_ADVANCED_RULES) {
       const rules = advancedIndex.ALL_ADVANCED_RULES;
@@ -332,7 +335,8 @@ async function loadIntelligenceRules(): Promise<BundledRule[]> {
   const result: BundledRule[] = [];
   
   try {
-    const intelligenceIndex = await import(path.join(ROOT_DIR, 'src/decision-graph/intelligence/index.ts'));
+    const importPath = pathToFileURL(path.join(ROOT_DIR, 'src/decision-graph/intelligence/index.ts')).href;
+    const intelligenceIndex = await import(importPath);
     
     if (intelligenceIndex.ALL_INTELLIGENCE_RULES) {
       const rules = intelligenceIndex.ALL_INTELLIGENCE_RULES;
