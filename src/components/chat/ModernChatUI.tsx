@@ -14,6 +14,44 @@ import { SuggestionTypeSelector, type SuggestionType } from './SuggestionTypeSel
 import { DecisionBrainCards, type DecisionBrainResponse } from './DecisionBrainCards';
 import { DataAuditCards, type DataAudit } from './DataAuditCards';
 import { ClarificationOptionsUI } from './ClarificationOptionsUI';
+import { DiagnosticEscalationUI } from './DiagnosticEscalationUI';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DIAGNOSTIC ESCALATION TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface DiagnosticHypothesis {
+  cause_code: string;
+  cause_name: string;
+  category: 'PEST' | 'DISEASE' | 'NUTRIENT' | 'WATER' | 'WEATHER' | 'OTHER';
+  confidence: number;
+  supporting_evidence: string[];
+  confirming_evidence: string[];
+  ruling_out_evidence: string[];
+  explanation?: string;
+}
+
+interface RequiredInput {
+  type: 'PHOTO' | 'SEVERITY' | 'DISTRIBUTION' | 'SYMPTOM_DETAIL';
+  target: string;
+  rationale: string;
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  photo_guidance?: {
+    what_to_capture: string;
+    angle: string;
+    lighting: string;
+  };
+}
+
+export interface DiagnosticEscalationData {
+  hypotheses: DiagnosticHypothesis[];
+  required_inputs: RequiredInput[];
+  current_confidence: number;
+  threshold_for_treatment: number;
+  diagnostic_summary?: string;
+  interim_monitoring?: string[];
+  photo_recommended?: boolean;
+}
 
 interface Message {
   id: string;
@@ -68,7 +106,9 @@ interface Message {
     selectionType?: 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE';
   };
   // Orchestrator type for detecting clarification questions
-  orchestratorType?: 'DECISION_PROVIDED' | 'CLARIFICATION_QUESTION' | 'PHOTO_REQUEST' | 'SAFETY_BLOCKED' | 'ESCALATION_REQUIRED';
+  orchestratorType?: 'DECISION_PROVIDED' | 'CLARIFICATION_QUESTION' | 'PHOTO_REQUEST' | 'SAFETY_BLOCKED' | 'ESCALATION_REQUIRED' | 'DIAGNOSTIC_ESCALATION';
+  // ✅ NEW: Diagnostic Escalation data for expert-quality intermediate responses
+  diagnosticEscalationData?: DiagnosticEscalationData;
 }
 
 interface ModernChatUIProps {
@@ -79,6 +119,7 @@ interface ModernChatUIProps {
   onPlay: (messageId: string, content: string) => void;
   onSuggestionSelect?: (messageId: string, type: SuggestionType) => void;
   onClarificationSelect?: (selectedOptions: string[]) => void;
+  onTakePhoto?: () => void;
   isLoadingSuggestion?: boolean;
 }
 
@@ -128,7 +169,7 @@ const isUsableImageUrl = (url: string | undefined): boolean => {
   return isValidStorageUrl(url) || isBase64Image(url);
 };
 
-export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSuggestionSelect, onClarificationSelect, isLoadingSuggestion }: ModernChatUIProps) {
+export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSuggestionSelect, onClarificationSelect, onTakePhoto, isLoadingSuggestion }: ModernChatUIProps) {
   const { i18n } = useTranslation();
   const isUser = message.role === 'user';
   const currentLanguage = i18n.language || 'hi';
@@ -338,6 +379,9 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
     
     return null;
   }, [hasClarificationOptions, message.clarificationOptions, message.content, message.id]);
+  
+  // ✅ NEW: Check for Diagnostic Escalation state
+  const hasDiagnosticEscalation = message.orchestratorType === 'DIAGNOSTIC_ESCALATION' && message.diagnosticEscalationData;
   
   // ✅ Check if this is a targeted solution (user already selected suggestion type)
   const isTargetedSolution = message.messageType === 'targeted_solution' && message.suggestionType;
