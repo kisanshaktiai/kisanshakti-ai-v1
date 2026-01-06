@@ -65,6 +65,7 @@ export enum DaysAfterSowingBucket {
 }
 
 // Visual symptoms - ONLY what is SEEN, not interpreted
+// PHASE-12: Added generic insect observation symptoms that work across ALL crops
 export enum VisualSymptom {
   NONE = 'NONE',
   GENERAL_YELLOWING = 'GENERAL_YELLOWING',
@@ -98,6 +99,7 @@ export enum VisualSymptom {
   WHITE_EAR = 'WHITE_EAR',
   WEBBING = 'WEBBING',
   HOLES_IN_LEAVES = 'HOLES_IN_LEAVES',
+  LEAF_HOLES = 'LEAF_HOLES',  // PHASE-12: Generic leaf holes - works for any crop
   DEFOLIATION = 'DEFOLIATION',
   SOOTY_MOLD = 'SOOTY_MOLD',
   STICKY_LEAVES = 'STICKY_LEAVES',
@@ -107,6 +109,19 @@ export enum VisualSymptom {
   WATER_SOAKED_LESIONS = 'WATER_SOAKED_LESIONS',
   SILVERING = 'SILVERING',
   LEAF_DISTORTION = 'LEAF_DISTORTION',
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-12: GENERIC INSECT OBSERVATION SYMPTOMS (Crop-Agnostic)
+  // These work for ALL crops, vegetables, fruits - no hardcoded crop logic
+  // ═══════════════════════════════════════════════════════════════════════════
+  SMALL_INSECTS_VISIBLE = 'SMALL_INSECTS_VISIBLE',       // Generic - visible small insects
+  FLYING_INSECTS_VISIBLE = 'FLYING_INSECTS_VISIBLE',     // Behavior observed - flying
+  CRAWLING_INSECTS_VISIBLE = 'CRAWLING_INSECTS_VISIBLE', // Behavior observed - crawling
+  JUMPING_INSECTS_VISIBLE = 'JUMPING_INSECTS_VISIBLE',   // Behavior observed - jumping
+  INSECT_PRESENT_NO_DAMAGE = 'INSECT_PRESENT_NO_DAMAGE', // Insects seen but no plant damage
+  INSECT_EGGS_VISIBLE = 'INSECT_EGGS_VISIBLE',           // Egg masses visible
+  LARVAE_VISIBLE = 'LARVAE_VISIBLE',                      // Caterpillars/grubs/larvae
+  
   UNKNOWN = 'UNKNOWN'
 }
 
@@ -600,8 +615,9 @@ export function mapObservationsToSymptom(observations: string[]): { primary: Vis
 }
 
 /**
- * PHASE-10: Map a symptom string to VisualSymptom enum
+ * PHASE-12: Map a symptom string to VisualSymptom enum
  * Used when option selection provides a symptom name as string
+ * UPDATED: Added all new insect observation symptoms
  */
 export function mapVisualSymptomToEnum(symptom: string | undefined): VisualSymptom {
   if (!symptom) return VisualSymptom.UNKNOWN;
@@ -613,22 +629,73 @@ export function mapVisualSymptomToEnum(symptom: string | undefined): VisualSympt
     return VisualSymptom[normalized as keyof typeof VisualSymptom];
   }
   
-  // Partial matching for common patterns
+  // PHASE-12: Extended partial matching for common patterns
   const symptomMappings: Record<string, VisualSymptom> = {
+    // Yellowing patterns
     'YELLOWING': VisualSymptom.GENERAL_YELLOWING,
     'YELLOW': VisualSymptom.GENERAL_YELLOWING,
+    'पिवळ': VisualSymptom.GENERAL_YELLOWING,
+    'पीला': VisualSymptom.GENERAL_YELLOWING,
+    
+    // Curling patterns
     'CURLED': VisualSymptom.CURLED_LEAVES,
     'CURLING': VisualSymptom.LEAF_CURLING,
+    'वळ': VisualSymptom.CURLED_LEAVES,
+    'मुड': VisualSymptom.CURLED_LEAVES,
+    
+    // Spots and damage
     'SPOTS': VisualSymptom.SPOTS_IRREGULAR,
     'SILVERING': VisualSymptom.SILVERING,
     'WEBBING': VisualSymptom.WEBBING,
     'WILTING': VisualSymptom.WILTING,
-    'HOLES': VisualSymptom.HOLES_IN_LEAVES,
+    
+    // Holes
+    'HOLES': VisualSymptom.LEAF_HOLES,
+    'LEAF_HOLES': VisualSymptom.LEAF_HOLES,
+    'छिद्र': VisualSymptom.LEAF_HOLES,
+    'भोक': VisualSymptom.LEAF_HOLES,
+    'छेद': VisualSymptom.LEAF_HOLES,
+    
+    // Honeydew and sticky
     'HONEYDEW': VisualSymptom.HONEYDEW,
     'STICKY': VisualSymptom.STICKY_LEAVES,
+    'चिकट': VisualSymptom.STICKY_LEAVES,
+    'चिपचिप': VisualSymptom.STICKY_LEAVES,
+    
+    // Burns
     'EDGE_BURN': VisualSymptom.LEAF_EDGE_BURN,
+    'TIP_BURN': VisualSymptom.LEAF_TIP_BURN,
+    
+    // Stem and structure
     'STEM': VisualSymptom.STEM_DISCOLORATION,
-    'POWDER': VisualSymptom.POWDERY_COATING
+    'POWDER': VisualSymptom.POWDERY_COATING,
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE-12: New insect observation mappings
+    // ═══════════════════════════════════════════════════════════════════════════
+    'FLYING_INSECTS': VisualSymptom.FLYING_INSECTS_VISIBLE,
+    'FLYING': VisualSymptom.FLYING_INSECTS_VISIBLE,
+    'उडत': VisualSymptom.FLYING_INSECTS_VISIBLE,
+    'उड़': VisualSymptom.FLYING_INSECTS_VISIBLE,
+    
+    'CRAWLING_INSECTS': VisualSymptom.CRAWLING_INSECTS_VISIBLE,
+    'CRAWLING': VisualSymptom.CRAWLING_INSECTS_VISIBLE,
+    'चालत': VisualSymptom.CRAWLING_INSECTS_VISIBLE,
+    'रांग': VisualSymptom.CRAWLING_INSECTS_VISIBLE,
+    'रेंग': VisualSymptom.CRAWLING_INSECTS_VISIBLE,
+    
+    'JUMPING': VisualSymptom.JUMPING_INSECTS_VISIBLE,
+    'उड्या': VisualSymptom.JUMPING_INSECTS_VISIBLE,
+    
+    'SMALL_INSECTS': VisualSymptom.SMALL_INSECTS_VISIBLE,
+    'INSECTS_VISIBLE': VisualSymptom.SMALL_INSECTS_VISIBLE,
+    'किडे': VisualSymptom.SMALL_INSECTS_VISIBLE,
+    'कीड़े': VisualSymptom.SMALL_INSECTS_VISIBLE,
+    
+    'NO_DAMAGE': VisualSymptom.INSECT_PRESENT_NO_DAMAGE,
+    'MONITORING': VisualSymptom.INSECT_PRESENT_NO_DAMAGE,
+    'काहीही_नाही': VisualSymptom.INSECT_PRESENT_NO_DAMAGE,
+    'कुछ_नहीं': VisualSymptom.INSECT_PRESENT_NO_DAMAGE
   };
   
   for (const [key, value] of Object.entries(symptomMappings)) {
