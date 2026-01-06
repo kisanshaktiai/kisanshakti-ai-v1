@@ -1230,7 +1230,7 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             weather: {},
             symptom: state.visual_symptom || 'UNKNOWN'
           };
-          return bundled.condition(input);
+          return bundled.conditions(input);
         } catch {
           return false;
         }

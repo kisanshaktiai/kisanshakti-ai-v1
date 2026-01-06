@@ -18,6 +18,8 @@ import { FODDER_RULES } from './fodder';
 import MICRONUTRIENT_RULES from './micronutrients';
 import { PLANTATION_RULES } from './plantation';
 import { POST_HARVEST_RULES } from './post-harvest';
+import { ORGANIC_FARMING_RULES } from './organic-farming';
+import { ALL_SOIL_RULES } from './soil-rules';
 
 // Map of crop group to rules
 export const CROP_GROUP_RULES: Map<CropGroup, CauseRule[]> = new Map([
@@ -64,4 +66,6 @@ export {
   MICRONUTRIENT_RULES,
   PLANTATION_RULES,
   POST_HARVEST_RULES,
+  ORGANIC_FARMING_RULES,
+  ALL_SOIL_RULES,
 };
