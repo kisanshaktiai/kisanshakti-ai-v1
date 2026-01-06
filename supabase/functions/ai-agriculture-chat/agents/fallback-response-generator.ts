@@ -1,21 +1,23 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * FALLBACK RESPONSE GENERATOR
+ * FALLBACK RESPONSE GENERATOR - SYMBOLIC-SAFE MODE
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Generates helpful responses when the main orchestration pipeline fails
- * or when rule engine has no matching rules.
+ * P1-3 GOVERNANCE FIX: Removed all non-symbolic advice paths.
  * 
- * PRINCIPLE: Never show "माफ करा" (sorry) if we have ANY context.
- * Always provide SOMETHING useful to the farmer.
+ * This module now ONLY generates:
+ * - Observation-only responses
+ * - Monitoring advice (no treatments)
+ * - Clarification requests
+ * 
+ * ❌ REMOVED: getCropAdvice, getFertilizerAdvice, getWateringAdvice
+ * ❌ REMOVED: Advice based on crop-knowledge-base.ts
+ * 
+ * PRINCIPLE: Never provide treatment advice outside symbolic rules.
  */
 
-import { 
-  getCropAdvice, 
-  getFertilizerAdvice, 
-  getWateringAdvice,
-  getClarifyingQuestions 
-} from './crop-knowledge-base.ts';
+// P1-3: REMOVED crop-knowledge-base imports - non-symbolic advice is banned
+// import { getCropAdvice, getFertilizerAdvice, getWateringAdvice, getClarifyingQuestions } from './crop-knowledge-base.ts';
 
 export interface FallbackContext {
   cropCode?: string;
@@ -36,11 +38,13 @@ export interface FallbackResponse {
   language: 'mr' | 'hi' | 'en';
   clarification_questions: string[];
   confidence: number;
-  source: 'fallback_knowledge_base' | 'generic_advice';
+  source: 'observation_only' | 'monitoring_only' | 'clarification_required';
 }
 
 /**
  * Generate fallback response based on available context
+ * P1-3 FIX: Now ONLY generates observation/monitoring responses
+ * NO fertilizer doses, NO crop-specific treatment advice
  */
 export function generateFallbackResponse(
   context: FallbackContext,
@@ -48,56 +52,45 @@ export function generateFallbackResponse(
 ): FallbackResponse {
   const parts: string[] = [];
   let confidence = 0.5;
-  let source: FallbackResponse['source'] = 'generic_advice';
+  let source: FallbackResponse['source'] = 'observation_only';
   
   // Add greeting
   parts.push(getGreeting(language));
   
-  // Detect query type from message
-  const queryType = context.queryType || detectQueryType(context.farmerMessage || '');
-  
-  // If we have crop context, provide crop-specific advice
+  // If we have crop context, acknowledge it but DO NOT provide treatment advice
   if (context.cropCode) {
-    source = 'fallback_knowledge_base';
-    confidence = 0.7;
+    confidence = 0.6;
+    source = 'monitoring_only';
     
-    // Add land context if available
+    // Add land context acknowledgment if available
     if (context.landName) {
       parts.push(getLandAcknowledgment(context.landName, context.cropCode, language));
     }
     
-    // Add query-specific advice
-    if (queryType === 'fertilizer') {
-      parts.push(getFertilizerAdvice(context.cropCode, context.cropStage || 'vegetative', language));
-      
-      // Add soil-specific info if available
-      if (context.soilNitrogen !== undefined || context.soilPhosphorus !== undefined) {
-        parts.push(getSoilStatusMessage(context, language));
-      }
-    } else if (queryType === 'watering') {
-      parts.push(getWateringAdvice(context.cropCode, context.cropStage || 'vegetative', language));
-    } else {
-      // General - provide full crop advice
-      parts.push(getCropAdvice(context.cropCode, context.cropStage || 'vegetative', language));
-    }
+    // P1-3: REPLACED crop advice with observation-only guidance
+    parts.push(getObservationOnlyGuidance(context.cropCode, context.cropStage || 'vegetative', language));
     
-    // Add NDVI status if available
+    // Add NDVI status if available (informational only, no treatment)
     if (context.ndviValue !== undefined) {
       parts.push(getNDVIStatusMessage(context.ndviValue, language));
     }
+    
+    // Add soil status if available (informational only, no fertilizer recommendation)
+    if (context.soilNitrogen !== undefined || context.soilPhosphorus !== undefined) {
+      parts.push(getSoilStatusMessage(context, language));
+    }
   } else {
-    // No crop context - provide generic advice and ask clarifying questions
+    // No crop context - request clarification
     parts.push(getNoContextMessage(language));
+    source = 'clarification_required';
     confidence = 0.3;
   }
   
   // Add closing
   parts.push(getClosing(language));
   
-  // Get clarifying questions
-  const clarification_questions = context.cropCode 
-    ? getFollowUpQuestions(queryType, language)
-    : getClarifyingQuestions(language);
+  // Get clarifying questions (observation-focused, not treatment-focused)
+  const clarification_questions = getObservationQuestions(language);
   
   return {
     message: parts.filter(Boolean).join('\n\n'),
@@ -110,6 +103,7 @@ export function generateFallbackResponse(
 
 /**
  * Generate partial response when orchestration partially fails
+ * P1-3 FIX: Returns observation-only response
  */
 export function generatePartialResponse(
   farmerMessage: string,
@@ -283,6 +277,88 @@ Please provide:
 With this information, I can give you proper advice.`
   };
   return messages[language];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// P1-3: NEW OBSERVATION-ONLY FUNCTIONS (Replace treatment advice)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * P1-3: Observation-only guidance - NO treatment recommendations
+ * Replaces getCropAdvice, getFertilizerAdvice, getWateringAdvice
+ */
+function getObservationOnlyGuidance(
+  cropCode: string,
+  cropStage: string,
+  language: 'mr' | 'hi' | 'en'
+): string {
+  const messages = {
+    mr: `👀 **निरीक्षण सल्ला** (${cropCode} - ${cropStage} अवस्था):
+
+📋 **पिकाचे निरीक्षण करा:**
+• पानांचा रंग तपासा
+• कीड किंवा रोगाची चिन्हे पहा
+• मातीचा ओलावा तपासा
+
+📸 **समस्या आढळल्यास:**
+• फोटो पाठवा
+• नेमकी लक्षणे सांगा
+
+⚠️ उपचार सल्ला देण्यासाठी अधिक माहिती आवश्यक आहे.`,
+    
+    hi: `👀 **निरीक्षण सलाह** (${cropCode} - ${cropStage} अवस्था):
+
+📋 **फसल की जांच करें:**
+• पत्तों का रंग देखें
+• कीट या रोग के लक्षण खोजें
+• मिट्टी की नमी जांचें
+
+📸 **समस्या मिलने पर:**
+• फोटो भेजें
+• सटीक लक्षण बताएं
+
+⚠️ उपचार सलाह के लिए और जानकारी चाहिए।`,
+    
+    en: `👀 **Observation Guidance** (${cropCode} - ${cropStage} stage):
+
+📋 **Check your crop:**
+• Observe leaf color
+• Look for pest or disease signs
+• Check soil moisture
+
+📸 **If you find a problem:**
+• Send a photo
+• Describe exact symptoms
+
+⚠️ More information needed for treatment advice.`
+  };
+  
+  return messages[language];
+}
+
+/**
+ * P1-3: Observation-focused questions (no treatment prompts)
+ */
+function getObservationQuestions(language: 'mr' | 'hi' | 'en'): string[] {
+  const questions = {
+    mr: [
+      '📸 पिकाचा फोटो पाठवा',
+      '🔍 कोणती लक्षणे दिसत आहेत?',
+      '📅 समस्या कधी सुरू झाली?'
+    ],
+    hi: [
+      '📸 फसल का फोटो भेजें',
+      '🔍 कौन से लक्षण दिख रहे हैं?',
+      '📅 समस्या कब शुरू हुई?'
+    ],
+    en: [
+      '📸 Send a crop photo',
+      '🔍 What symptoms are visible?',
+      '📅 When did the problem start?'
+    ]
+  };
+  
+  return questions[language];
 }
 
 /**

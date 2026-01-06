@@ -47,40 +47,60 @@ export { resolveRuleModules, buildNLUOutputWithRuleMapping } from './rule-module
 export * from './decision-graph-bridge.ts';
 export { evaluateDecisionGraph } from './decision-graph-bridge.ts';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// P1-1: CANONICAL AUTHORITY TYPES (Single Source of Truth)
+// ═══════════════════════════════════════════════════════════════════════════
+export * from '../decision/authority-types.ts';
+export {
+  DecisionAuthority,
+  AuthorityStatus,
+  ResponseMode,
+  GateStatus,
+  GateAction,
+  isTreatmentAuthority,
+  blocksCtopTreatments,
+  getResponseModeFromAuthority,
+  AUTHORITY_TYPES_VERSION
+} from '../decision/authority-types.ts';
+export type { AuthorityDecision, UnifiedGateResult } from '../decision/authority-types.ts';
+
 // Decision Authority Resolver (Land-First Governance Layer)
-export * from '../decision/authority-resolver.ts';
 export { 
   resolveDecisionAuthority,
   shouldSkipCropRules,
   isDomainAllowed,
   areTreatmentsAllowed,
   buildAuthorityAuditEntry,
-  DecisionAuthority,
-  AuthorityStatus,
   AUTHORITY_RESOLVER_VERSION
 } from '../decision/authority-resolver.ts';
+export type { AuthorityInput } from '../decision/authority-resolver.ts';
 
-// Prescription Gate Enforcer (Symbolic-Only Output Control)
-export * from '../decision/prescription-gate-enforcer.ts';
+// ═══════════════════════════════════════════════════════════════════════════
+// P1-4: UNIFIED DECISION GATE (Single Gate for All Treatment Validation)
+// ═══════════════════════════════════════════════════════════════════════════
+export * from '../decision/unified-decision-gate.ts';
+export {
+  evaluateUnifiedGate,
+  UNIFIED_GATE_VERSION
+} from '../decision/unified-decision-gate.ts';
+export type { UnifiedGateInput } from '../decision/unified-decision-gate.ts';
+
+// Prescription Gate Enforcer (Legacy - use UnifiedDecisionGate for new code)
 export {
   enforcePrescriptionGate,
   generateObservationOnlyResponse,
   generateYoungCropMonitoringResponse,
   buildPrescriptionGateAudit,
-  ResponseMode,
   AuthorityConfirmation,
   PRESCRIPTION_GATE_VERSION
 } from '../decision/prescription-gate-enforcer.ts';
 
-// Decision Readiness Gate (Hard Safety Gate - Phase 12)
-export * from '../decision/decision-readiness-gate.ts';
+// Decision Readiness Gate (Legacy - use UnifiedDecisionGate for new code)
 export {
   checkDecisionReadiness,
   detectEmergencyIndicators,
   validateClarificationReEntry,
   validateOutputBeforeSend,
-  GateStatus,
-  GateAction,
   DECISION_READINESS_GATE_VERSION
 } from '../decision/decision-readiness-gate.ts';
 

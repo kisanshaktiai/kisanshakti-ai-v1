@@ -18,12 +18,27 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const PRESCRIPTION_GATE_VERSION = '1.0.0';
+export const PRESCRIPTION_GATE_VERSION = '1.1.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// AUTHORITY CONFIRMATION STATUS
+// P1-1 FIX: Import canonical types from authority-types.ts
+// AuthorityConfirmation enum is DEPRECATED - use unified types
 // ═══════════════════════════════════════════════════════════════════════════
 
+import {
+  AuthorityStatus,
+  ResponseMode,
+  GateStatus,
+  GateAction
+} from './authority-types.ts';
+
+// Re-export for backward compatibility
+export { AuthorityStatus, ResponseMode, GateStatus, GateAction };
+
+/**
+ * @deprecated Use AuthorityStatus from authority-types.ts instead
+ * Kept for backward compatibility with existing code
+ */
 export enum AuthorityConfirmation {
   CONFIRMED_PEST = 'CONFIRMED_PEST',           // Pest diagnosis confirmed
   CONFIRMED_DISEASE = 'CONFIRMED_DISEASE',     // Disease diagnosis confirmed
@@ -35,7 +50,10 @@ export enum AuthorityConfirmation {
   PENDING_CLARIFICATION = 'PENDING_CLARIFICATION' // Awaiting farmer input
 }
 
-export enum ResponseMode {
+/**
+ * @deprecated Use ResponseMode from authority-types.ts instead
+ */
+export enum LegacyResponseMode {
   TREATMENT_ALLOWED = 'TREATMENT_ALLOWED',     // Can provide treatments
   OBSERVATION_ONLY = 'OBSERVATION_ONLY',       // Can only observe/monitor
   INFORMATION_ONLY = 'INFORMATION_ONLY',       // Can only provide info
