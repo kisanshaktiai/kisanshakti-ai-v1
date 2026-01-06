@@ -399,6 +399,30 @@ async function generateBundle(): Promise<RuleBundle> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CHECKSUM GENERATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+function generateChecksum(bundle: RuleBundle): string {
+  // Create a deterministic string from rule IDs
+  const allRuleIds = [
+    ...Object.values(bundle.cropGroupRules).flat().map(r => r.rule_id),
+    ...Object.values(bundle.safetyRules).flat().map(r => r.rule_id),
+    ...bundle.advancedRules.map(r => r.rule_id),
+    ...bundle.intelligenceRules.map(r => r.rule_id),
+  ].sort().join('|');
+  
+  // Simple hash function
+  let hash = 0;
+  for (let i = 0; i < allRuleIds.length; i++) {
+    const char = allRuleIds.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  
+  return Math.abs(hash).toString(16);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // FILE WRITING
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -410,10 +434,14 @@ function writeBundle(bundle: RuleBundle): void {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   }
   
-  // Write JSON file (for reference/debugging)
+  // Generate checksum
+  const checksum = generateChecksum(bundle);
+  console.log(`\n🔒 Bundle checksum: ${checksum}`);
+  
+  // Write JSON file (for reference/debugging - GITIGNORED)
   const jsonPath = path.join(OUTPUT_DIR, 'all-rules.json');
   fs.writeFileSync(jsonPath, JSON.stringify(bundle, null, 2));
-  console.log(`\n📄 Written: ${jsonPath}`);
+  console.log(`📄 Written: ${jsonPath} (GITIGNORED - do not commit)`);
   
   // Write TypeScript file
   const tsContent = generateTypeScriptBundle(bundle);
@@ -421,12 +449,27 @@ function writeBundle(bundle: RuleBundle): void {
   fs.writeFileSync(tsPath, tsContent);
   console.log(`📄 Written: ${tsPath}`);
   
-  // Write metadata file
+  // Write metadata file (GITIGNORED)
   const metadataPath = path.join(OUTPUT_DIR, 'metadata.json');
-  fs.writeFileSync(metadataPath, JSON.stringify(bundle.metadata, null, 2));
-  console.log(`📄 Written: ${metadataPath}`);
+  fs.writeFileSync(metadataPath, JSON.stringify({
+    ...bundle.metadata,
+    checksum,
+  }, null, 2));
+  console.log(`📄 Written: ${metadataPath} (GITIGNORED - do not commit)`);
   
-  console.log('\n🎉 Rule bundling complete!\n');
+  // Write checksum file (GITIGNORED)
+  const checksumPath = path.join(OUTPUT_DIR, '.checksum');
+  fs.writeFileSync(checksumPath, checksum);
+  console.log(`🔐 Written: ${checksumPath} (GITIGNORED - do not commit)`);
+  
+  console.log('\n🎉 Rule bundling complete!');
+  console.log(`   Total rules: ${bundle.metadata.totalRules}`);
+  console.log(`   Version: ${bundle.metadata.version}`);
+  console.log(`   Checksum: ${checksum}`);
+  console.log('\n⚠️  SECURITY REMINDER:');
+  console.log('   - all-rules.json, metadata.json, and .checksum are GITIGNORED');
+  console.log('   - Never commit generated rule files to version control');
+  console.log('   - Rules are regenerated at deploy time\n');
 }
 
 function generateTypeScriptBundle(bundle: RuleBundle): string {
