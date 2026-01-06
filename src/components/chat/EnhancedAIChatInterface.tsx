@@ -119,6 +119,12 @@ interface Message {
     };
     queryComplexity?: string;
   };
+  // Clarification options for Decision Brain interactive UI
+  clarificationOptions?: {
+    question?: string;
+    options?: Array<{ label: string; value?: string; description?: string }>;
+    selectionType?: 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE';
+  };
 }
 
 export function EnhancedAIChatInterface() {
@@ -1308,6 +1314,16 @@ export function EnhancedAIChatInterface() {
         traceId: data.metadata?.trace_id,
         // Include data audit for debugging cards
         dataAudit: data.dataAudit,
+        // Include clarification options for interactive UI
+        clarificationOptions: data.metadata?.type === 'clarification' && data.metadata?.options ? {
+          question: responseText,
+          options: data.metadata.options.map((o: any) => ({
+            label: typeof o === 'string' ? o : o.label,
+            value: typeof o === 'string' ? o : o.value,
+            description: typeof o === 'object' ? o.description : undefined
+          })),
+          selectionType: 'SINGLE_CHOICE'
+        } : undefined,
         analytics: {
           responseTime: data.responseTime,
           queryComplexity: 'orchestrator'
@@ -1349,7 +1365,15 @@ export function EnhancedAIChatInterface() {
     }
   };
 
-  // Handle suggestion type selection (for vision analysis flow)
+  // Handle clarification option selection (Decision Brain UI)
+  const handleClarificationSelect = useCallback((selectedOptions: string[]) => {
+    if (selectedOptions.length === 0) return;
+    
+    // Send the selected option(s) as a message
+    const message = selectedOptions.join(', ');
+    sendMessage(message);
+  }, [sendMessage]);
+
   const handleSuggestionSelect = async (messageId: string, type: 'organic' | 'fertilizer' | 'pesticide' | 'hybrid') => {
     if (!user?.id || !tenant?.id) return;
     
@@ -1801,6 +1825,7 @@ export function EnhancedAIChatInterface() {
                     onShare={handleShare}
                     onPlay={handlePlayMessage}
                     onSuggestionSelect={handleSuggestionSelect}
+                    onClarificationSelect={handleClarificationSelect}
                     isLoadingSuggestion={isLoadingSuggestion}
                   />
                 ))}
