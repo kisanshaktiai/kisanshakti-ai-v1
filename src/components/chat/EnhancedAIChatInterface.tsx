@@ -107,7 +107,36 @@ interface Message {
   feedback?: 'like' | 'dislike' | null;
   isCopied?: boolean;
   // Orchestrator response metadata
-  orchestratorType?: 'DECISION_PROVIDED' | 'CLARIFICATION_QUESTION' | 'PHOTO_REQUEST' | 'SAFETY_BLOCKED' | 'ESCALATION_REQUIRED';
+  orchestratorType?: 'DECISION_PROVIDED' | 'CLARIFICATION_QUESTION' | 'PHOTO_REQUEST' | 'SAFETY_BLOCKED' | 'ESCALATION_REQUIRED' | 'DIAGNOSTIC_ESCALATION';
+  // ✅ NEW: Diagnostic Escalation data for expert-quality intermediate responses
+  diagnosticEscalationData?: {
+    hypotheses: Array<{
+      cause_code: string;
+      cause_name: string;
+      category: 'PEST' | 'DISEASE' | 'NUTRIENT' | 'WATER' | 'WEATHER' | 'OTHER';
+      confidence: number;
+      supporting_evidence: string[];
+      confirming_evidence: string[];
+      ruling_out_evidence: string[];
+      explanation?: string;
+    }>;
+    required_inputs: Array<{
+      type: 'PHOTO' | 'SEVERITY' | 'DISTRIBUTION' | 'SYMPTOM_DETAIL';
+      target: string;
+      rationale: string;
+      priority: 'HIGH' | 'MEDIUM' | 'LOW';
+      photo_guidance?: {
+        what_to_capture: string;
+        angle: string;
+        lighting: string;
+      };
+    }>;
+    current_confidence: number;
+    threshold_for_treatment: number;
+    diagnostic_summary?: string;
+    interim_monitoring?: string[];
+    photo_recommended?: boolean;
+  };
   // PHASE 5: Add trace_id for debugging
   traceId?: string;
   analytics?: {
@@ -1838,6 +1867,7 @@ export function EnhancedAIChatInterface() {
                     onPlay={handlePlayMessage}
                     onSuggestionSelect={handleSuggestionSelect}
                     onClarificationSelect={handleClarificationSelect}
+                    onTakePhoto={() => setShowCamera(true)}
                     isLoadingSuggestion={isLoadingSuggestion}
                   />
                 ))}
