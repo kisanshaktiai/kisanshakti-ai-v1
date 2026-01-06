@@ -25,9 +25,15 @@ import {
   GateAction,
   type AuthorityDecision,
   type UnifiedGateResult,
+  type DiagnosticEscalationData,
   isTreatmentAuthority,
   blocksCtopTreatments
 } from './authority-types.ts';
+
+import {
+  generateDiagnosticEscalationData,
+  type DiagnosticEscalationInput
+} from './diagnostic-escalation-generator.ts';
 
 export const UNIFIED_GATE_VERSION = '1.0.0';
 
@@ -337,8 +343,54 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   console.log(`   Stage Source: ${input.stage_source}`);
   console.log(`   Has Confirmed Diagnosis: ${hasConfirmedDiagnosis}`);
   
-  // If young crop without confirmed diagnosis → observation only
+  // If young crop without confirmed diagnosis → check for DIAGNOSTIC_ESCALATION
   if (isYoungCrop && !hasConfirmedDiagnosis && !input.has_emergency_indicators) {
+    // Check if we have symptoms that warrant diagnostic escalation (not just observation)
+    const hasSpecificSymptoms = input.symptom_keys && input.symptom_keys.length > 0 && 
+      !input.symptom_keys.every(s => VAGUE_SYMPTOM_PATTERNS.has(s.toUpperCase()));
+    
+    if (hasSpecificSymptoms && input.crop_name && input.growth_stage) {
+      console.log(`   🔬 DIAGNOSTIC ESCALATION - Expert-level response with hypotheses`);
+      
+      // Generate diagnostic escalation data
+      const escalationData = generateDiagnosticEscalationData({
+        language: 'en', // Will be overridden at render time
+        crop_name: input.crop_name,
+        growth_stage: input.growth_stage,
+        days_since_sowing: input.days_since_sowing || undefined,
+        symptom_keys: input.symptom_keys || [],
+        matched_rules: [], // Will be populated by orchestrator
+        current_confidence: 0.4,
+        treatment_threshold: 0.7
+      });
+      
+      return {
+        gate_status: GateStatus.PARTIAL,
+        gate_action: GateAction.DIAGNOSTIC_ESCALATION,
+        treatments_allowed: false,
+        allowed_actions: [...OBSERVATION_ACTIONS, 'PROVIDE_INFO', 'REQUEST_PHOTO', 'DIAGNOSTIC_EXPLANATION'],
+        blocked_actions: [...TREATMENT_ACTIONS],
+        allowed_products: [],
+        allowed_dosages: [],
+        response_mode: ResponseMode.DIAGNOSTIC_ESCALATION,
+        authority_decision,
+        criteria_results: {
+          authority_resolved: { passed: authorityResolved, reason: authority_decision.reason },
+          crop_identified: { passed: true, reason: `Crop: ${input.crop_name}` },
+          stage_determined: { passed: true, reason: `Stage: ${input.growth_stage}` },
+          symptom_specific: { passed: true, reason: `Symptoms: ${input.symptom_keys?.join(', ')}` },
+          symbolic_decision_valid: { passed: false, reason: 'Confidence below treatment threshold' }
+        },
+        missing_criteria: ['PHOTO_CONFIRMATION', 'SEVERITY_ASSESSMENT'],
+        reason: `Diagnostic escalation: symptoms identified but confidence below treatment threshold. Photo recommended.`,
+        confidence_level: 'MEDIUM',
+        gate_version: UNIFIED_GATE_VERSION,
+        checked_at: checkedAt,
+        diagnostic_escalation: escalationData
+      };
+    }
+    
+    // Fallback to observation-only for vague symptoms
     console.log(`   ⚠️ YOUNG CROP PROTECTION - Observation only`);
     
     return {
