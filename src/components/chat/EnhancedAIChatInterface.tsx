@@ -1303,27 +1303,39 @@ export function EnhancedAIChatInterface() {
       
       // Create AI response message - use responseText which has fallback
       const aiMessageId = crypto.randomUUID();
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CLARIFICATION DETECTION: Map backend 'clarification' to 'CLARIFICATION_QUESTION'
+      // Also extract options from multiple possible locations
+      // ═══════════════════════════════════════════════════════════════════════════
+      const isClarification = data.metadata?.type === 'clarification' || 
+                              data.metadata?.orchestrator_type === 'CLARIFICATION_QUESTION';
+      
+      const clarificationOptions = isClarification && data.metadata?.options?.length ? {
+        question: responseText,
+        options: data.metadata.options.map((o: any) => ({
+          label: typeof o === 'string' ? o : o.label,
+          value: typeof o === 'string' ? o : (o.value || o.label),
+          description: typeof o === 'object' ? o.description : undefined
+        })),
+        selectionType: (data.metadata?.selectionType || 'SINGLE_CHOICE') as 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE'
+      } : undefined;
+      
       const aiMessage: Message = {
         id: aiMessageId,
         role: 'assistant',
         content: responseText,
         timestamp: new Date(),
         messageType: 'orchestrator',
-        orchestratorType: data.metadata?.type || 'DECISION_PROVIDED',
+        // Map 'clarification' to 'CLARIFICATION_QUESTION' for UI detection
+        orchestratorType: isClarification ? 'CLARIFICATION_QUESTION' : 
+                          (data.metadata?.orchestrator_type || 'DECISION_PROVIDED'),
         // PHASE 5: Include trace_id for debugging
         traceId: data.metadata?.trace_id,
         // Include data audit for debugging cards
         dataAudit: data.dataAudit,
         // Include clarification options for interactive UI
-        clarificationOptions: data.metadata?.type === 'clarification' && data.metadata?.options ? {
-          question: responseText,
-          options: data.metadata.options.map((o: any) => ({
-            label: typeof o === 'string' ? o : o.label,
-            value: typeof o === 'string' ? o : o.value,
-            description: typeof o === 'object' ? o.description : undefined
-          })),
-          selectionType: 'SINGLE_CHOICE'
-        } : undefined,
+        clarificationOptions,
         analytics: {
           responseTime: data.responseTime,
           queryComplexity: 'orchestrator'
