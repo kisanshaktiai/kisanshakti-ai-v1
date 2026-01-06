@@ -66,10 +66,11 @@ export enum AuthorityStatus {
  * authority status and gate validation.
  */
 export enum ResponseMode {
-  TREATMENT = 'TREATMENT',         // Full treatment recommendations allowed
-  OBSERVATION = 'OBSERVATION',     // Observation/monitoring only
-  INFORMATION = 'INFORMATION',     // Information only, no actions
-  CLARIFICATION = 'CLARIFICATION'  // Must ask clarification questions
+  TREATMENT = 'TREATMENT',                       // Full treatment recommendations allowed
+  OBSERVATION = 'OBSERVATION',                   // Observation/monitoring only
+  INFORMATION = 'INFORMATION',                   // Information only, no actions
+  CLARIFICATION = 'CLARIFICATION',               // Must ask clarification questions
+  DIAGNOSTIC_ESCALATION = 'DIAGNOSTIC_ESCALATION' // Expert-level diagnostic with hypotheses
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -101,7 +102,8 @@ export enum GateAction {
   PROVIDE_OBSERVATION_ONLY = 'PROVIDE_OBSERVATION_ONLY',
   PROVIDE_INFORMATION_ONLY = 'PROVIDE_INFORMATION_ONLY',
   REQUEST_PHOTO = 'REQUEST_PHOTO',
-  ESCALATE_TO_EXPERT = 'ESCALATE_TO_EXPERT'
+  ESCALATE_TO_EXPERT = 'ESCALATE_TO_EXPERT',
+  DIAGNOSTIC_ESCALATION = 'DIAGNOSTIC_ESCALATION' // Expert-level response with hypotheses
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -200,6 +202,106 @@ export interface UnifiedGateResult {
   
   /** Timestamp */
   checked_at: string;
+  
+  /** NEW: Diagnostic escalation data - when symptoms match but need confirmation */
+  diagnostic_escalation?: DiagnosticEscalationData;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DIAGNOSTIC ESCALATION TYPES (NEW)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Hypothesis represents a possible cause identified by symptom matching
+ * but not yet confirmed with sufficient evidence.
+ */
+export interface DiagnosticHypothesis {
+  /** Cause code from symbolic brain (e.g., 'APHID_INFESTATION', 'NITROGEN_DEFICIENCY') */
+  cause_code: string;
+  
+  /** Human-readable name */
+  cause_name: string;
+  
+  /** Category: PEST, DISEASE, NUTRIENT, ENVIRONMENTAL */
+  category: 'PEST' | 'DISEASE' | 'NUTRIENT' | 'ENVIRONMENTAL' | 'MULTIPLE';
+  
+  /** Confidence score (0-1) based on symptom match strength */
+  confidence: number;
+  
+  /** Key supporting evidence (symptoms that match this hypothesis) */
+  supporting_evidence: string[];
+  
+  /** What evidence would CONFIRM this hypothesis */
+  confirming_evidence: string[];
+  
+  /** What evidence would RULE OUT this hypothesis */
+  ruling_out_evidence: string[];
+  
+  /** Brief scientific explanation suitable for expert farmer */
+  explanation: string;
+  
+  /** Potential treatments (for display only - not executable until confirmed) */
+  potential_treatments?: string[];
+}
+
+/**
+ * Required input specifies what specific data is needed to increase confidence
+ */
+export interface RequiredInput {
+  /** Type of input needed */
+  type: 'PHOTO' | 'SEVERITY_ASSESSMENT' | 'DISTRIBUTION_PATTERN' | 'TIMING' | 'HISTORY' | 'LAB_TEST';
+  
+  /** What specifically to capture/report */
+  target: string;
+  
+  /** Why this input helps (farmer education) */
+  rationale: string;
+  
+  /** Priority: HIGH = most discriminating, MEDIUM = helpful, LOW = nice to have */
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  
+  /** UI hint for rendering (e.g., 'camera', 'selector', 'input') */
+  ui_hint?: string;
+  
+  /** Photo guidance if type is PHOTO */
+  photo_guidance?: {
+    what_to_capture: string;
+    angle_suggestion: string;
+    lighting_tip: string;
+    examples?: string[];
+  };
+}
+
+/**
+ * DiagnosticEscalationData - the complete structure for expert-level responses
+ */
+export interface DiagnosticEscalationData {
+  /** All possible causes ranked by likelihood */
+  hypotheses: DiagnosticHypothesis[];
+  
+  /** Specific inputs needed to confirm/rule out hypotheses */
+  required_inputs: RequiredInput[];
+  
+  /** Current confidence level overall */
+  current_confidence: number;
+  
+  /** Confidence needed for treatment authorization */
+  threshold_for_treatment: number;
+  
+  /** Expert-quality summary for farmer */
+  diagnostic_summary: string;
+  
+  /** What the farmer should monitor meanwhile */
+  interim_monitoring: string[];
+  
+  /** Escalation metadata */
+  escalation_reason: string;
+  
+  /** Whether photo is the primary next step */
+  photo_recommended: boolean;
+  
+  /** Timestamp */
+  created_at: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
