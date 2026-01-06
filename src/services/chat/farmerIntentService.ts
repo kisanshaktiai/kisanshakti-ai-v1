@@ -20,7 +20,7 @@
  * ✅ Must be deterministic and auditable
  */
 
-import { Action, Cause, UnifiedAdvisory, RiskLevel } from '@/decision-graph';
+import { Action, Cause, UnifiedAdvisory, RiskLevel } from '@/decision-graph/types-only';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FARMER INTENT TYPES

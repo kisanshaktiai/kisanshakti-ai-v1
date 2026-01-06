@@ -16,10 +16,9 @@
  * Based on Israeli, Dutch, and Brazilian advisory system safety standards.
  */
 
-import { Action, Cause, CropStage, ActionUrgency } from '@/decision-graph';
+import { Action, Cause, CropStage, ActionUrgency, UnifiedAdvisory, PrioritizedAction } from '@/decision-graph/types-only';
 import { DiagnosticDecision, DiagnosticMode } from './diagnosticModeController';
 import { FieldContextSnapshot, DataCertaintyLevel } from './fieldContextSnapshot';
-import { UnifiedAdvisory, PrioritizedAction } from '@/decision-graph';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS

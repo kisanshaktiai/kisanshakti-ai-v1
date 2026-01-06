@@ -21,7 +21,7 @@
 
 import { PhotoRequest, DiagnosticDecision } from './diagnosticModeController';
 import { PossibleCause } from './symptomPatternRecognizer';
-import { Cause } from '@/decision-graph';
+import { Cause } from '@/decision-graph/types-only';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS

@@ -19,7 +19,7 @@
  * Based on Israeli, Dutch, and Brazilian advisory systems.
  */
 
-import { Cause, CropStage } from '@/decision-graph';
+import { Cause, CropStage } from '@/decision-graph/types-only';
 import { 
   FieldContextSnapshot, 
   DataCertaintyLevel,

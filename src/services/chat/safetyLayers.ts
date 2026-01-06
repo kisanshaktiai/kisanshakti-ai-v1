@@ -15,7 +15,7 @@
  * - Confidence Honesty Patch
  */
 
-import { Action, CropStage, UnifiedAdvisory, PrioritizedAction } from '@/decision-graph';
+import { Action, CropStage, UnifiedAdvisory, PrioritizedAction } from '@/decision-graph/types-only';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS

@@ -21,7 +21,7 @@
  * NON-NEGOTIABLE: All mappings based on ICAR scientific literature
  */
 
-import { Cause, CropStage } from '@/decision-graph';
+import { Cause, CropStage } from '@/decision-graph/types-only';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
