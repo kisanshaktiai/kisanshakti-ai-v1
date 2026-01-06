@@ -586,76 +586,13 @@ export class AIAgentOrchestrator {
       // Even general queries get routed through symbolic decision path
       // LLM only RENDERS the decision, never MAKES it
       // ========================================
+      // P0-5 FIX: GENERAL_INFO now continues to full symbolic pipeline
+      // REMOVED: Early return with decision_brain_source=true without actual rule evaluation
+      // General queries without land context now flow through the normal NLU + Rule Engine path
       if (queryRoute.route === 'GENERAL_INFO' && !options.landId) {
-        console.log(`💬 [${traceId}] GENERAL_INFO without land - Rule Engine controlled path`);
-        agentsUsed.push('SYMBOLIC_GENERAL_HANDLER');
-        
-        // Create a deterministic "general info" decision from Rule Engine
-        // NOT from LLM directly - maintains symbolic brain principle
-        const generalDecisionId = `general_symbolic_${Date.now()}`;
-        
-        // Rule Engine decides this is a general query that needs LLM rendering
-        // The LLM will be called in PHASE 5 (render-only mode), not here
-        const symbolicDecision = {
-          decision_id: generalDecisionId,
-          status: 'GENERAL_INFO_REQUEST' as const,
-          decision_brain_source: true, // Rule Engine made this decision
-          actions_returned: [{
-            action_type: 'PROVIDE_GENERAL_INFO',
-            content_type: 'AGRICULTURAL_KNOWLEDGE',
-            requires_llm_render: true,
-            rule_id: 'GENERAL_INFO_HANDLER'
-          }],
-          // Explicitly NO clarification options - general queries answer directly
-          clarification_needed: false,
-          metadata: {
-            confidence: 0.8,
-            trace_id: traceId,
-            processing_time_ms: Date.now() - startTime,
-            agents_used: agentsUsed,
-            template_type: 'SYMBOLIC_GENERAL'
-          }
-        };
-        
-        // Return to main flow - LLM rendering happens in PHASE 5
-        // This ensures LLM operates in render-only mode with symbolic constraints
-        return {
-          type: 'DECISION_PROVIDED',
-          session_id: sessionId,
-          communication: {
-            message_id: crypto.randomUUID(),
-            decision_id: generalDecisionId,
-            session_id: sessionId,
-            farmer_id: farmerId,
-            language: options.language || 'mr',
-            format: 'RICH_TEXT',
-            tone: 'FRIENDLY',
-            created_at: new Date().toISOString(),
-            main_message: {
-              full_text: {
-                mr: '', // Will be filled by LLM in render-only mode
-                hi: '',
-                en: ''
-              }
-            },
-            quick_actions: [],
-            metadata: {
-              source: 'SYMBOLIC_GENERAL_HANDLER',
-              response_type: 'GENERAL_INFORMATION',
-              requires_llm_render: true
-            }
-          } as any,
-          decision_output: symbolicDecision as any,
-          metadata: {
-            confidence: 0.8,
-            safety_status: 'SAFE',
-            rules_applied: 1,
-            processing_time_ms: Date.now() - startTime,
-            agents_used: agentsUsed,
-            template_type: 'SYMBOLIC_GENERAL',
-            trace_id: traceId
-          }
-        };
+        console.log(`💬 [${traceId}] GENERAL_INFO without land - continuing to full symbolic pipeline (P0-5)`);
+        agentsUsed.push('SYMBOLIC_GENERAL_PIPELINE');
+        // No early return - continue to NLU and rule evaluation for proper symbolic decisions
       }
       
       // ========================================
@@ -941,20 +878,49 @@ export class AIAgentOrchestrator {
           
           // Get land context for rule evaluation
           const landContext = options.landContext;
+          
+          // P0-2 FIX: Determine crop and stage with source tracking
+          // Priority: lockedCropContext > landContext > fallback
           const cropName = lockedCropContext?.crop_name || landContext?.current_crop || 'UNKNOWN';
+          const hasAuthorativeStage = !!(lockedCropContext?.growth_stage || landContext?.growth_stage);
           const growthStage = lockedCropContext?.growth_stage || landContext?.growth_stage || 'VEGETATIVE';
+          const stageSource = lockedCropContext?.growth_stage ? 'LOCKED_CONTEXT' : 
+                              landContext?.growth_stage ? 'LAND_CONTEXT' : 'DEFAULT';
+          
+          // P0-2: Log warning if using default stage (potential incorrect treatment gating)
+          if (stageSource === 'DEFAULT') {
+            console.warn(`   ⚠️ [P0-2] Using DEFAULT stage (VEGETATIVE) - no authoritative source available`);
+          } else {
+            console.log(`   ✅ [P0-2] Stage source: ${stageSource}, value: ${growthStage}`);
+          }
           
           // Map the selected option to a visual symptom for the canonical state
           const visualSymptom = mapDistributionToSymptom(matchResult.matched_option, pendingScope);
           
-          console.log(`   🌾 Building canonical state: crop=${cropName}, stage=${growthStage}, symptom=${visualSymptom}`);
+          console.log(`   🌾 Building canonical state: crop=${cropName}, stage=${growthStage} (${stageSource}), symptom=${visualSymptom}`);
+          
+          // P0-1 FIX: Call authority resolver BEFORE rule evaluation
+          const { resolveDecisionAuthority } = await import('../decision/authority-resolver.ts');
+          const authorityInput = {
+            detected_causes: [],  // Will be populated by rule engine
+            cross_crop_symptoms: visualSymptom ? [visualSymptom] : [],
+            land_context: landContext ? {
+              has_soil_health: !!landContext.soil_health,
+              soil_ec: landContext.soil_health?.ec,
+              waterlogging: landContext.waterlogging
+            } : undefined
+          };
+          const authorityDecision = resolveDecisionAuthority(authorityInput);
+          
+          console.log(`   🔐 [P0-1] Authority resolved: ${authorityDecision.authority}, Status: ${authorityDecision.authority_status}`);
+          console.log(`   📋 Treatments allowed: ${authorityDecision.treatments_allowed}, Response mode: ${authorityDecision.response_mode}`);
           
           // Build canonical state with the clarification answer
           const canonicalState = buildCanonicalState({
             crop_type: mapCropNameToEnum(cropName),
             crop_stage: mapStageToEnum(growthStage),
             visual_symptom: mapVisualSymptomToEnum(visualSymptom),
-            data_confidence: DataConfidence.MEDIUM,
+            data_confidence: hasAuthorativeStage ? DataConfidence.MEDIUM : DataConfidence.LOW,
             // Include previous observations from session if available
             ndvi_level: options.sessionState?.ndvi_level,
             ndvi_trend: options.sessionState?.ndvi_trend,
