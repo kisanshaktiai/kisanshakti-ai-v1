@@ -13,6 +13,7 @@ import { DiagnosisOnlyCard } from './DiagnosisOnlyCard';
 import { SuggestionTypeSelector, type SuggestionType } from './SuggestionTypeSelector';
 import { DecisionBrainCards, type DecisionBrainResponse } from './DecisionBrainCards';
 import { DataAuditCards, type DataAudit } from './DataAuditCards';
+import { ClarificationOptionsUI } from './ClarificationOptionsUI';
 
 interface Message {
   id: string;
@@ -60,6 +61,14 @@ interface Message {
     };
     queryComplexity?: string;
   };
+  // Clarification options from Decision Brain
+  clarificationOptions?: {
+    question?: string;
+    options?: Array<{ label: string; value?: string; description?: string }>;
+    selectionType?: 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE';
+  };
+  // Orchestrator type for detecting clarification questions
+  orchestratorType?: 'DECISION_PROVIDED' | 'CLARIFICATION_QUESTION' | 'PHOTO_REQUEST' | 'SAFETY_BLOCKED' | 'ESCALATION_REQUIRED';
 }
 
 interface ModernChatUIProps {
@@ -69,6 +78,7 @@ interface ModernChatUIProps {
   onShare: (content: string) => void;
   onPlay: (messageId: string, content: string) => void;
   onSuggestionSelect?: (messageId: string, type: SuggestionType) => void;
+  onClarificationSelect?: (selectedOptions: string[]) => void;
   isLoadingSuggestion?: boolean;
 }
 
@@ -118,7 +128,7 @@ const isUsableImageUrl = (url: string | undefined): boolean => {
   return isValidStorageUrl(url) || isBase64Image(url);
 };
 
-export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSuggestionSelect, isLoadingSuggestion }: ModernChatUIProps) {
+export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSuggestionSelect, onClarificationSelect, isLoadingSuggestion }: ModernChatUIProps) {
   const { i18n } = useTranslation();
   const isUser = message.role === 'user';
   const currentLanguage = i18n.language || 'hi';
@@ -255,6 +265,51 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
   const hasDecisionBrainResponse = !isUser && message.decisionBrainResponse;
   const hasDataAudit = !isUser && message.dataAudit;
   
+  // ✅ NEW: Check if this is a clarification question with options
+  const hasClarificationOptions = !isUser && 
+    (message.orchestratorType === 'CLARIFICATION_QUESTION' || message.clarificationOptions?.options?.length);
+  
+  // Extract clarification options from message content or metadata
+  const clarificationData = useMemo(() => {
+    if (!hasClarificationOptions) return null;
+    
+    // If options are in metadata
+    if (message.clarificationOptions?.options?.length) {
+      return {
+        question: message.clarificationOptions.question || message.content,
+        options: message.clarificationOptions.options,
+        selectionType: message.clarificationOptions.selectionType || 'SINGLE_CHOICE'
+      };
+    }
+    
+    // Parse from content - look for options pattern
+    // Content like: "हे किडे उडतात का चालतात?" often has implicit options
+    const content = message.content || '';
+    const optionPatterns = [
+      /उडतात\s*(का|किंवा)\s*चालतात/i,  // Flying or crawling
+      /एक\s*जागी\s*(का|किंवा)\s*पूर्ण/i,  // One place or whole
+      /कडा\s*(का|किंवा)\s*मध्य/i,  // Edge or center
+    ];
+    
+    for (const pattern of optionPatterns) {
+      if (pattern.test(content)) {
+        // Extract options based on pattern
+        if (/उडतात/.test(content)) {
+          return {
+            question: content,
+            options: [
+              { label: 'किडे उडतात', value: 'flying' },
+              { label: 'किडे चालतात', value: 'crawling' }
+            ],
+            selectionType: 'SINGLE_CHOICE' as const
+          };
+        }
+      }
+    }
+    
+    return null;
+  }, [hasClarificationOptions, message.clarificationOptions, message.content]);
+  
   // ✅ Check if this is a targeted solution (user already selected suggestion type)
   const isTargetedSolution = message.messageType === 'targeted_solution' && message.suggestionType;
   
@@ -371,8 +426,36 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
             </div>
           )}
           
-          {/* ✅ NEW FLOW: Diagnosis Only + Suggestion Selector (awaiting user choice) */}
-          {awaitingSuggestion ? (
+          {/* ═══════════════════════════════════════════════════════════════════════════
+              2030-READY CLARIFICATION OPTIONS UI
+              Shows interactive buttons/checkboxes for Decision Brain clarification questions
+              ═══════════════════════════════════════════════════════════════════════════ */}
+          {clarificationData && onClarificationSelect ? (
+            <div className="p-4">
+              <ClarificationOptionsUI
+                question={clarificationData.question}
+                options={clarificationData.options}
+                selectionType={clarificationData.selectionType}
+                language={currentLanguage}
+                onSelect={onClarificationSelect}
+              />
+              
+              {/* Timestamp */}
+              <div className="flex items-center justify-between text-xs mt-3 opacity-60 text-muted-foreground">
+                <span>
+                  {new Date(message.timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </span>
+                {message.traceId && (
+                  <span className="font-mono text-[10px] text-muted-foreground/50">
+                    {message.traceId.slice(-8)}
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : awaitingSuggestion ? (
             <>
               {/* Diagnosis Only Card (no recommendations) */}
               <div className="p-3">
