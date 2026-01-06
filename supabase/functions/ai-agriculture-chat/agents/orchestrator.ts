@@ -981,16 +981,23 @@ export class AIAgentOrchestrator {
           // PHASE-10 FIX: Build canonical state with the selected observation and run rule engine
           // Do NOT return a placeholder acknowledgement - run the full symbolic brain
           
-          // Get land context for rule evaluation
-          const landContext = options.landContext;
+          // FIX B (CRITICAL): Get land context for rule evaluation - use pre-fetched landContext
+          // DO NOT use options.landContext as it may be undefined
+          // The landContext variable is already defined in the outer scope from fetchComprehensiveLandContext
+          // We need to access it properly - in this scope, use the landId to re-fetch if needed
+          let landContextForOptionSelection = landContext;
+          if (!landContextForOptionSelection && options.landId) {
+            console.log(`   🔄 [FIX B] Re-fetching landContext for OPTION_SELECTED path`);
+            landContextForOptionSelection = await this.fetchComprehensiveLandContext(options.landId, farmerId) || undefined;
+          }
           
           // P0-2 FIX: Determine crop and stage with source tracking
-          // Priority: lockedCropContext > landContext > fallback
-          const cropName = lockedCropContext?.crop_name || landContext?.current_crop || 'UNKNOWN';
-          const hasAuthorativeStage = !!(lockedCropContext?.growth_stage || landContext?.growth_stage);
-          const growthStage = lockedCropContext?.growth_stage || landContext?.growth_stage || 'VEGETATIVE';
+          // Priority: lockedCropContext > landContextForOptionSelection > fallback
+          const cropName = lockedCropContext?.crop_name || landContextForOptionSelection?.current_crop || 'UNKNOWN';
+          const hasAuthorativeStage = !!(lockedCropContext?.growth_stage || landContextForOptionSelection?.growth_stage);
+          const growthStage = lockedCropContext?.growth_stage || landContextForOptionSelection?.growth_stage || 'VEGETATIVE';
           const stageSource = lockedCropContext?.growth_stage ? 'LOCKED_CONTEXT' : 
-                              landContext?.growth_stage ? 'LAND_CONTEXT' : 'DEFAULT';
+                              landContextForOptionSelection?.growth_stage ? 'LAND_CONTEXT' : 'DEFAULT';
           
           // P0-2: Log warning if using default stage (potential incorrect treatment gating)
           if (stageSource === 'DEFAULT') {
@@ -1009,10 +1016,10 @@ export class AIAgentOrchestrator {
           const authorityInput = {
             detected_causes: [],  // Will be populated by rule engine
             cross_crop_symptoms: visualSymptom ? [visualSymptom] : [],
-            land_context: landContext ? {
-              has_soil_health: !!landContext.soil_health,
-              soil_ec: landContext.soil_health?.ec,
-              waterlogging: landContext.waterlogging
+            land_context: landContextForOptionSelection ? {
+              has_soil_health: !!landContextForOptionSelection.soil_health,
+              soil_ec: landContextForOptionSelection.soil_health?.ec,
+              waterlogging: landContextForOptionSelection.waterlogging
             } : undefined
           };
           const authorityDecision = resolveDecisionAuthority(authorityInput);
@@ -1043,7 +1050,14 @@ export class AIAgentOrchestrator {
           // If we got rule matches, return them for LLM formatting
           if (ruleResult.rules_matched > 0 && (ruleResult.diagnoses.length > 0 || ruleResult.prescriptions.length > 0)) {
             // FIX: Build dataAudit for OPTION_SELECTED path to preserve land context
-            const dataAuditForOption = this.buildDataAudit(landContext, null);
+            const dataAuditForOption = this.buildDataAudit(landContextForOptionSelection, null);
+            
+            // FIX A (CRITICAL): Build proper lockedCropContext for return
+            const finalLockedCropContext = lockedCropContext || {
+              crop_name: cropName,
+              growth_stage: growthStage,
+              days_since_sowing: landContextForOptionSelection?.days_since_sowing
+            };
             
             return {
               type: 'DECISION_PROVIDED',
@@ -1053,6 +1067,8 @@ export class AIAgentOrchestrator {
                 session_id: sessionId,
                 status: 'DIAGNOSIS_COMPLETE',
                 decision_brain_source: true,
+                // FIX A (CRITICAL): Include authority_decision to prevent default to NONE
+                authority_decision: authorityDecision,
                 primary_decision: ruleResult.final_diagnosis?.cause || ruleResult.diagnoses[0]?.cause,
                 actions_returned: ruleResult.prescriptions.map(p => ({
                   action_type: p.action_type,
@@ -1071,11 +1087,7 @@ export class AIAgentOrchestrator {
                   selected_option: matchResult.matched_option,
                   mapped_observation: mappedObservationKey,
                   // FIX: Include locked crop context in metadata
-                  lockedCropContext: lockedCropContext || {
-                    crop_name: cropName,
-                    growth_stage: growthStage,
-                    days_since_sowing: landContext?.days_since_sowing
-                  }
+                  lockedCropContext: finalLockedCropContext
                 }
               } as any,
               // FIX: Include dataAudit to preserve land context
@@ -1091,18 +1103,21 @@ export class AIAgentOrchestrator {
                 pendingClarificationOptions: undefined,
                 pendingClarificationScope: undefined,
                 // PATCH 3: Preserve locked crop context for next turn
-                lockedCropContext: lockedCropContext || {
-                  crop_name: cropName,
-                  growth_stage: growthStage,
-                  days_since_sowing: landContext?.days_since_sowing
-                }
+                lockedCropContext: finalLockedCropContext
               }
             };
           }
           
           // If no rules matched, return acknowledgement and let LLM formatter handle it
           // FIX: Build dataAudit for OPTION_SELECTED path to preserve land context
-          const dataAuditNoRules = this.buildDataAudit(landContext, null);
+          const dataAuditNoRules = this.buildDataAudit(landContextForOptionSelection, null);
+          
+          // FIX A (CRITICAL): Build proper lockedCropContext for no-rules path
+          const finalLockedCropContextNoRules = lockedCropContext || {
+            crop_name: cropName,
+            growth_stage: growthStage,
+            days_since_sowing: landContextForOptionSelection?.days_since_sowing
+          };
           
           return {
             type: 'DECISION_PROVIDED',
@@ -1112,6 +1127,8 @@ export class AIAgentOrchestrator {
               session_id: sessionId,
               status: 'OPTION_SELECTED',
               decision_brain_source: true,
+              // FIX A (CRITICAL): Include authority_decision to prevent default to NONE
+              authority_decision: authorityDecision,
               actions_returned: [],
               metadata: {
                 confidence: matchResult.confidence || 0.9,
@@ -1125,11 +1142,7 @@ export class AIAgentOrchestrator {
                 rules_matched: ruleResult.rules_matched,
                 no_rules_matched_reason: 'No matching rules for the given canonical state',
                 // FIX: Include locked crop context in metadata
-                lockedCropContext: lockedCropContext || {
-                  crop_name: cropName,
-                  growth_stage: growthStage,
-                  days_since_sowing: landContext?.days_since_sowing
-                }
+                lockedCropContext: finalLockedCropContextNoRules
               }
             } as any,
             // FIX: Include dataAudit to preserve land context
@@ -1143,11 +1156,7 @@ export class AIAgentOrchestrator {
               trace_id: traceId,
               pendingClarificationOptions: undefined,
               pendingClarificationScope: undefined,
-              lockedCropContext: lockedCropContext || {
-                crop_name: cropName,
-                growth_stage: growthStage,
-                days_since_sowing: landContext?.days_since_sowing
-              }
+              lockedCropContext: finalLockedCropContextNoRules
             }
           };
         } else {
