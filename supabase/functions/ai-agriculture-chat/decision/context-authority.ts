@@ -176,10 +176,155 @@ export function formatCropContextFrame(
   return templates[language];
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CONTEXT AUTHORITY RECONCILIATION (PHASE-11.1)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Render Context - Final resolved context for response generation.
+ * Combines authoritative sources with fallback defaults.
+ */
+export interface RenderContext {
+  crop_name?: string;
+  growth_stage?: string;
+  days_since_sowing?: number;
+  area_acres?: number;
+  soil_health?: {
+    nitrogen_kg_per_ha?: number;
+    phosphorus_kg_per_ha?: number;
+    potassium_kg_per_ha?: number;
+    ph_level?: number;
+  };
+  ndvi?: {
+    value?: number;
+    trend?: string;
+  };
+  /** Source of crop context resolution */
+  context_source: 'dataAudit' | 'lockedCropContext' | 'canonical' | 'none';
+  /** Whether authority override was applied */
+  authority_override_applied: boolean;
+}
+
+/**
+ * resolveFinalRenderContext - Context Authority Reconciliation
+ * 
+ * PURPOSE:
+ * Ensures authoritative context (lockedCropContext) takes precedence
+ * over canonical defaults during response rendering.
+ * 
+ * PRIORITY ORDER:
+ * 1. dataAudit.land (freshly fetched data)
+ * 2. lockedCropContext (session-persisted authority)
+ * 3. landContext (already built from above)
+ * 4. UNKNOWN/VEGETATIVE defaults
+ * 
+ * CRITICAL RULE:
+ * If lockedCropContext exists and current context shows UNKNOWN/defaults,
+ * OVERRIDE with lockedCropContext values.
+ * 
+ * @param landContext - Already built land context from index.ts
+ * @param lockedCropContext - Session-persisted crop context authority
+ * @param dataAudit - Fresh data audit from orchestrator
+ * @returns Reconciled render context with source tracking
+ */
+export function resolveFinalRenderContext(
+  landContext: {
+    current_crop?: string;
+    growth_stage?: string;
+    days_since_sowing?: number;
+    area_acres?: number;
+    soil_health?: {
+      nitrogen_kg_per_ha?: number;
+      phosphorus_kg_per_ha?: number;
+      potassium_kg_per_ha?: number;
+      ph_level?: number;
+    };
+    ndvi?: {
+      value?: number;
+      trend?: string;
+    };
+  } | undefined,
+  lockedCropContext: CropContextAuthority | null | undefined,
+  dataAudit?: {
+    land?: { found?: boolean; current_crop?: string; growth_stage?: string; days_since_sowing?: number };
+  }
+): RenderContext {
+  
+  // Default result
+  const result: RenderContext = {
+    crop_name: undefined,
+    growth_stage: undefined,
+    days_since_sowing: undefined,
+    area_acres: undefined,
+    context_source: 'none',
+    authority_override_applied: false
+  };
+  
+  // Priority 1: Fresh dataAudit (already captured in landContext if found)
+  if (dataAudit?.land?.found && landContext?.current_crop) {
+    result.crop_name = landContext.current_crop;
+    result.growth_stage = landContext.growth_stage;
+    result.days_since_sowing = landContext.days_since_sowing;
+    result.area_acres = landContext.area_acres;
+    result.soil_health = landContext.soil_health;
+    result.ndvi = landContext.ndvi;
+    result.context_source = 'dataAudit';
+    
+    console.log(`   🔒 [RenderContext] Using dataAudit: ${result.crop_name} / ${result.growth_stage}`);
+    return result;
+  }
+  
+  // Priority 2: lockedCropContext authority override
+  if (hasCropContextAuthority(lockedCropContext)) {
+    const needsOverride = 
+      !landContext?.current_crop ||
+      landContext.current_crop.toUpperCase() === 'UNKNOWN' ||
+      landContext.current_crop.toUpperCase() === 'DEFAULT' ||
+      !landContext.growth_stage ||
+      landContext.growth_stage.toUpperCase() === 'VEGETATIVE' && lockedCropContext.growth_stage !== 'VEGETATIVE';
+    
+    if (needsOverride) {
+      console.log(`   🔒 [RenderContext] AUTHORITY OVERRIDE: canonical (${landContext?.current_crop || 'UNKNOWN'}/${landContext?.growth_stage || 'UNKNOWN'}) → lockedCropContext (${lockedCropContext.crop_name}/${lockedCropContext.growth_stage})`);
+      
+      result.crop_name = lockedCropContext.crop_name;
+      result.growth_stage = lockedCropContext.growth_stage;
+      result.days_since_sowing = lockedCropContext.days_since_sowing;
+      result.context_source = 'lockedCropContext';
+      result.authority_override_applied = true;
+      
+      // Preserve soil/ndvi from landContext if available
+      result.soil_health = landContext?.soil_health;
+      result.ndvi = landContext?.ndvi;
+      result.area_acres = landContext?.area_acres;
+      
+      return result;
+    }
+  }
+  
+  // Priority 3: Use landContext as-is
+  if (landContext?.current_crop) {
+    result.crop_name = landContext.current_crop;
+    result.growth_stage = landContext.growth_stage;
+    result.days_since_sowing = landContext.days_since_sowing;
+    result.area_acres = landContext.area_acres;
+    result.soil_health = landContext.soil_health;
+    result.ndvi = landContext.ndvi;
+    result.context_source = 'canonical';
+    
+    console.log(`   🔒 [RenderContext] Using landContext as-is: ${result.crop_name} / ${result.growth_stage}`);
+    return result;
+  }
+  
+  // Priority 4: No context available
+  console.log(`   🔒 [RenderContext] No crop context available for rendering`);
+  return result;
+}
+
 export default {
   buildCropContextAuthority,
   buildCropContextFromLandContext,
   hasCropContextAuthority,
   formatCropContextFrame,
+  resolveFinalRenderContext,
   CONTEXT_AUTHORITY_VERSION
 };

@@ -47,6 +47,12 @@ import {
   generateYoungCropMonitoringResponse
 } from './decision/prescription-gate-enforcer.ts';
 
+// PHASE 11.1: Context Authority Reconciliation
+import { 
+  resolveFinalRenderContext,
+  type CropContextAuthority
+} from './decision/context-authority.ts';
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -631,6 +637,29 @@ serve(async (req) => {
         }
         
         // ═══════════════════════════════════════════════════════════════════════════
+        // PHASE 11.1: CONTEXT AUTHORITY RECONCILIATION
+        // Ensures lockedCropContext overrides canonical defaults before rendering
+        // ═══════════════════════════════════════════════════════════════════════════
+        const renderContext = resolveFinalRenderContext(
+          landContext,
+          lockedCropCtx as CropContextAuthority | null | undefined,
+          orchestratorResponse.dataAudit
+        );
+        
+        // If authority override was applied, update landContext for downstream usage
+        if (renderContext.authority_override_applied && landContext) {
+          console.log(`   🔄 [Reconciliation] Updating landContext with authority values`);
+          landContext.current_crop = renderContext.crop_name;
+          landContext.growth_stage = renderContext.growth_stage;
+          landContext.days_since_sowing = renderContext.days_since_sowing;
+        }
+        
+        // Use renderContext values for response generation (authority-reconciled)
+        const finalCropName = renderContext.crop_name;
+        const finalGrowthStage = renderContext.growth_stage;
+        const finalDaysSinceSowing = renderContext.days_since_sowing;
+        
+        // ═══════════════════════════════════════════════════════════════════════════
         // PHASE 11 + P1-4: UNIFIED DECISION GATE - Single point of treatment validation
         // Replaces dual prescription-gate and decision-readiness-gate
         // ═══════════════════════════════════════════════════════════════════════════
@@ -642,9 +671,9 @@ serve(async (req) => {
             reason: 'No authority resolved'
           },
           symbolic_decision: orchestratorResponse.decision_output as any,
-          crop_name: landContext?.current_crop,
-          growth_stage: landContext?.growth_stage,
-          days_since_sowing: landContext?.days_since_sowing,
+          crop_name: finalCropName,
+          growth_stage: finalGrowthStage,
+          days_since_sowing: finalDaysSinceSowing,
           stage_source: orchestratorResponse.metadata?.stageSource || 'UNKNOWN',
           symptom_keys: orchestratorResponse.metadata?.symptomKeys || [],
           is_specific_symptom: !!orchestratorResponse.decision_output?.primary_decision?.target,
@@ -666,32 +695,36 @@ serve(async (req) => {
           console.log(`   ⚠️ Unified gate blocked treatments - using ${unifiedGateResult.response_mode} response`);
           
           if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
-            // Young crop - use monitoring response
+            // Young crop - use monitoring response with authority-reconciled values
             responseContent = generateYoungCropMonitoringResponse(
               detectedLanguage as 'mr' | 'hi' | 'en',
-              landContext?.current_crop,
-              landContext?.growth_stage,
-              landContext?.days_since_sowing
+              finalCropName,
+              finalGrowthStage,
+              finalDaysSinceSowing
             );
           } else {
             // No confirmed diagnosis or authority block - use observation response
             responseContent = generateObservationOnlyResponse(
               detectedLanguage as 'mr' | 'hi' | 'en',
-              landContext?.current_crop,
+              finalCropName,
               unifiedGateResult.reason
             );
           }
           
           // Skip LLM formatting - use gate-generated response
           console.log(`   📋 Using unified gate fallback response (no LLM)`);
+          if (renderContext.authority_override_applied) {
+            console.log(`   ✅ Authority override ensured correct crop context in fallback response`);
+          }
         } else {
           // ═══════════════════════════════════════════════════════════════════════════
           // PRESCRIPTION GATE PASSED - Continue with LLM formatting
           // ═══════════════════════════════════════════════════════════════════════════
           
           // SANITY CHECK: Prevent impossible stage calculations before LLM formatting
-          const daysAfterSowing = orchestratorResponse.dataAudit?.land?.days_since_sowing;
-          const currentGrowthStage = landContext?.growth_stage?.toUpperCase();
+          // Uses reconciled values from renderContext
+          const daysAfterSowing = finalDaysSinceSowing;
+          const currentGrowthStage = finalGrowthStage?.toUpperCase();
           
           if (daysAfterSowing !== undefined && currentGrowthStage) {
             const impossibleHarvest = 
