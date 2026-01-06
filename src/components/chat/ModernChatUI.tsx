@@ -265,16 +265,17 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
   const hasDecisionBrainResponse = !isUser && message.decisionBrainResponse;
   const hasDataAudit = !isUser && message.dataAudit;
   
-  // ✅ NEW: Check if this is a clarification question with options
+  // ✅ Enhanced: Check if this is a clarification question with options
+  // Also check for 'clarification' type from backend (mapped to CLARIFICATION_QUESTION)
   const hasClarificationOptions = !isUser && 
-    (message.orchestratorType === 'CLARIFICATION_QUESTION' || message.clarificationOptions?.options?.length);
+    (message.orchestratorType === 'CLARIFICATION_QUESTION' || 
+     message.clarificationOptions?.options?.length > 0);
   
-  // Extract clarification options from message content or metadata
+  // Extract clarification options from message metadata (primary) or parse from content (fallback)
   const clarificationData = useMemo(() => {
-    if (!hasClarificationOptions) return null;
-    
-    // If options are in metadata
+    // First priority: Use options from metadata
     if (message.clarificationOptions?.options?.length) {
+      console.log(`[ClarificationUI] Using metadata options for message ${message.id}:`, message.clarificationOptions);
       return {
         question: message.clarificationOptions.question || message.content,
         options: message.clarificationOptions.options,
@@ -282,33 +283,61 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
       };
     }
     
-    // Parse from content - look for options pattern
-    // Content like: "हे किडे उडतात का चालतात?" often has implicit options
+    // Only try to parse from content if orchestratorType indicates clarification
+    if (!hasClarificationOptions) return null;
+    
+    // Fallback: Parse from content for implicit question patterns
     const content = message.content || '';
-    const optionPatterns = [
-      /उडतात\s*(का|किंवा)\s*चालतात/i,  // Flying or crawling
-      /एक\s*जागी\s*(का|किंवा)\s*पूर्ण/i,  // One place or whole
-      /कडा\s*(का|किंवा)\s*मध्य/i,  // Edge or center
+    
+    // Enhanced pattern detection for multi-language questions
+    const optionPatterns: Array<{ pattern: RegExp; options: Array<{ label: string; value: string }> }> = [
+      // Flying vs crawling (Marathi)
+      { 
+        pattern: /उडतात\s*(का|किंवा)\s*चालतात/i,
+        options: [
+          { label: 'किडे उडतात', value: 'flying' },
+          { label: 'किडे चालतात / रेंगतात', value: 'crawling' }
+        ]
+      },
+      // Distribution patterns (Marathi)
+      { 
+        pattern: /एक\s*जाग(ी|ेवर)|एका\s*ठिकाणी\s*(का|किंवा)\s*पूर्ण|संपूर्ण/i,
+        options: [
+          { label: 'एका जागी / एका ठिकाणी', value: 'localized' },
+          { label: 'संपूर्ण शेतात', value: 'widespread' }
+        ]
+      },
+      // Edge vs center (Marathi)
+      { 
+        pattern: /कड(ा|े)\s*(का|किंवा)\s*मध्य/i,
+        options: [
+          { label: 'कडेला / बाहेरून', value: 'edge' },
+          { label: 'मध्यभागी', value: 'center' }
+        ]
+      },
+      // Hindi patterns
+      { 
+        pattern: /उड़ते\s*(हैं|है)\s*(या|अथवा)\s*चलते/i,
+        options: [
+          { label: 'कीड़े उड़ते हैं', value: 'flying' },
+          { label: 'कीड़े चलते / रेंगते हैं', value: 'crawling' }
+        ]
+      }
     ];
     
-    for (const pattern of optionPatterns) {
+    for (const { pattern, options } of optionPatterns) {
       if (pattern.test(content)) {
-        // Extract options based on pattern
-        if (/उडतात/.test(content)) {
-          return {
-            question: content,
-            options: [
-              { label: 'किडे उडतात', value: 'flying' },
-              { label: 'किडे चालतात', value: 'crawling' }
-            ],
-            selectionType: 'SINGLE_CHOICE' as const
-          };
-        }
+        console.log(`[ClarificationUI] Parsed options from content pattern for message ${message.id}`);
+        return {
+          question: content,
+          options,
+          selectionType: 'SINGLE_CHOICE' as const
+        };
       }
     }
     
     return null;
-  }, [hasClarificationOptions, message.clarificationOptions, message.content]);
+  }, [hasClarificationOptions, message.clarificationOptions, message.content, message.id]);
   
   // ✅ Check if this is a targeted solution (user already selected suggestion type)
   const isTargetedSolution = message.messageType === 'targeted_solution' && message.suggestionType;
