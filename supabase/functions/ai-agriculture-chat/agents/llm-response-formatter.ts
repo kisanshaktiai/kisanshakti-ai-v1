@@ -17,8 +17,15 @@
  * KEY FEATURES:
  * - Input Validation Gate (blocks invalid symbolic input)
  * - Output Validation Gate (blocks unauthorized additions)
+ * - Decision Readiness Gate Integration (blocks treatments when gate fails)
  * - 25-second timeout with structured fallback
  * - Full audit trail for compliance
+ * 
+ * PHASE-12 GOVERNANCE UPDATE:
+ * - Hard enforcement of render-only mode
+ * - Integration with Decision Readiness Gate
+ * - Clarification state awareness (never treat clarification as task complete)
+ * - Reasoning-for-result requirement
  */
 
 import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts';
@@ -31,6 +38,15 @@ import {
 
 // Import validation from decision representation
 import { validateLLMOutputIntegrity } from './decision-representation.ts';
+
+// Import Decision Readiness Gate for hard safety validation
+import { 
+  checkDecisionReadiness,
+  GateStatus,
+  GateAction,
+  validateOutputBeforeSend,
+  type DecisionReadinessInput
+} from '../decision/decision-readiness-gate.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -71,6 +87,11 @@ export interface LLMFormatterOutput {
   sections_included: string[];
   validation_passed: boolean;
   validation_violations: string[];
+  // PHASE-12: Enhanced audit fields
+  gate_status?: GateStatus;
+  gate_action?: GateAction;
+  reasoning_included: boolean;
+  symbolic_decision_id?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -125,6 +146,38 @@ export async function formatRecommendationsWithLLM(
   console.log(`   Decision Status: ${input.decision_output?.status}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 12: DECISION READINESS GATE CHECK (HARD SAFETY)
+  // Validate that system has sufficient information before treatment
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  const gateInput: DecisionReadinessInput = {
+    crop_name: input.land_context?.current_crop,
+    crop_source: input.land_context?.current_crop ? 'LAND_CONTEXT' : 'UNKNOWN',
+    growth_stage: input.land_context?.growth_stage,
+    days_since_sowing: input.land_context?.days_since_sowing,
+    stage_source: input.land_context?.days_since_sowing ? 'CROP_SCHEDULES' : 'UNKNOWN',
+    symptom_description: input.farmer_message,
+    symptom_keys: [],
+    is_specific_symptom: input.decision_output?.primary_decision?.target !== undefined,
+    authority_confirmed: input.decision_output?.decision_brain_source === true,
+    authority_level: input.decision_output?.primary_decision ? 'CROP' : 'NONE',
+    confirmed_diagnosis: {
+      pest_code: (input.decision_output?.primary_decision?.target as any)?.pest_code,
+      disease_code: (input.decision_output?.primary_decision?.target as any)?.disease_code,
+      nutrient_deficiency: (input.decision_output?.primary_decision?.target as any)?.nutrient_deficiency
+    },
+    clarification_turn_count: 0,
+    pending_clarification: input.decision_output?.clarification_needed || false,
+    has_emergency_indicators: false,
+    has_land_context: !!input.land_context
+  };
+  
+  const gateResult = checkDecisionReadiness(gateInput);
+  
+  console.log(`   📋 Decision Readiness Gate: ${gateResult.gate_status} (${gateResult.gate_action})`);
+  console.log(`   Missing criteria: ${gateResult.missing_criteria.join(', ') || 'none'}`);
+  
+  // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 11: SYMBOLIC-ONLY ENFORCEMENT GATE
   // The LLM MUST NEVER compensate for missing symbolic decisions
   // ═══════════════════════════════════════════════════════════════════════════
@@ -133,6 +186,33 @@ export async function formatRecommendationsWithLLM(
   const isDecisionBrain = input.decision_output?.decision_brain_source === true;
   const hasPrimaryDecision = !!input.decision_output?.primary_decision;
   const hasSecondaryActions = (input.decision_output?.secondary_actions?.length || 0) > 0;
+  
+  // CRITICAL SAFETY CHECK: Gate FAIL = NO treatment recommendations
+  if (gateResult.gate_status === GateStatus.FAIL) {
+    console.warn(`
+⚠️ [DECISION READINESS GATE] Gate FAILED
+   Status: ${gateResult.gate_status}
+   Action: ${gateResult.gate_action}
+   Reason: ${gateResult.reason}
+   LLM is restricted to: ${gateResult.allowed_response_types.join(', ')}
+   Blocked: ${gateResult.blocked_response_types.join(', ')}
+    `);
+    
+    // Return a gate-blocked response
+    return {
+      formatted_response: '',
+      confidence: 0,
+      source: 'TEMPLATE_FALLBACK' as const,
+      processing_time_ms: Date.now() - startTime,
+      sections_included: gateResult.allowed_response_types,
+      validation_passed: false,
+      validation_violations: [`Decision Readiness Gate FAILED: ${gateResult.reason}`],
+      gate_status: gateResult.gate_status,
+      gate_action: gateResult.gate_action,
+      reasoning_included: false,
+      symbolic_decision_id: input.decision_output?.decision_id
+    };
+  }
   
   // CRITICAL SAFETY CHECK: No symbolic decision = NO treatment recommendations
   // This is the core enforcement that prevents LLM from inventing agronomy actions
@@ -151,7 +231,11 @@ export async function formatRecommendationsWithLLM(
       processing_time_ms: Date.now() - startTime,
       sections_included: ['INFORMATION_ONLY'],
       validation_passed: false,
-      validation_violations: ['No symbolic brain decision - LLM blocked from treatment recommendations']
+      validation_violations: ['No symbolic brain decision - LLM blocked from treatment recommendations'],
+      gate_status: GateStatus.FAIL,
+      gate_action: GateAction.PROVIDE_INFORMATION_ONLY,
+      reasoning_included: false,
+      symbolic_decision_id: undefined
     };
   }
   
@@ -326,7 +410,12 @@ export async function formatRecommendationsWithLLM(
     processing_time_ms: processingTime,
     sections_included: extractSections(formattedResponse),
     validation_passed: true,
-    validation_violations: []
+    validation_violations: [],
+    // PHASE-12: Enhanced audit fields
+    gate_status: gateResult.gate_status,
+    gate_action: gateResult.gate_action,
+    reasoning_included: formattedResponse.includes('कारण:') || formattedResponse.includes('कारण') || formattedResponse.includes('reason'),
+    symbolic_decision_id: input.decision_output?.decision_id
   };
 }
 

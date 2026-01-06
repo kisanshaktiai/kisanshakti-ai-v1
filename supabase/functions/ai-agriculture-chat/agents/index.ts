@@ -72,6 +72,38 @@ export {
   PRESCRIPTION_GATE_VERSION
 } from '../decision/prescription-gate-enforcer.ts';
 
+// Decision Readiness Gate (Hard Safety Gate - Phase 12)
+export * from '../decision/decision-readiness-gate.ts';
+export {
+  checkDecisionReadiness,
+  detectEmergencyIndicators,
+  validateClarificationReEntry,
+  validateOutputBeforeSend,
+  GateStatus,
+  GateAction,
+  DECISION_READINESS_GATE_VERSION
+} from '../decision/decision-readiness-gate.ts';
+
+// Clarification Re-Entry Controller (State Preservation - Phase 12)
+export * from '../decision/clarification-reentry-controller.ts';
+export {
+  validateStatePreservation,
+  processClarificationAnswer,
+  checkClarificationExitStrategy,
+  createCanonicalSessionState,
+  CLARIFICATION_REENTRY_VERSION
+} from '../decision/clarification-reentry-controller.ts';
+
+// UI Selection Contract (Decision Brain Controlled UI - Phase 12)
+export * from '../decision/ui-selection-contract.ts';
+export {
+  getSelectionTypeForScope,
+  validateMultiSelectResponse,
+  validateUIResponse,
+  SelectionType,
+  UI_SELECTION_CONTRACT_VERSION
+} from '../decision/ui-selection-contract.ts';
+
 // Type Mappers (Enum conversions and trace ID generation)
 export * from './type-mappers.ts';
 export { generateTraceId, mapPriorityToAgent, mapAgentPriorityToGraph } from './type-mappers.ts';

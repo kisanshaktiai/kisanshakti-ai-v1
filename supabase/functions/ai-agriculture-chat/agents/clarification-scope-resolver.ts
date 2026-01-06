@@ -62,6 +62,10 @@ export interface ClarificationState {
     growth_stage: string;
     days_since_sowing: number;
   };
+  /** PHASE-12: Track "Not Sure" responses */
+  not_sure_count?: number;
+  /** PHASE-12: Track consecutive "Not Sure" on same topic */
+  consecutive_not_sure?: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -560,6 +564,101 @@ export function updateClarificationState(
   };
 }
 
+/**
+ * PHASE-12: Handle "Not Sure" responses with limits
+ * 
+ * Limit Definition:
+ * - Maximum 2 consecutive "Not sure" responses on the same clarification topic
+ * - Maximum 3 total "Not sure" responses across the entire diagnostic session
+ * 
+ * After Limit Reached, redirect to:
+ * - Image upload request
+ * - Guided field observation
+ * - Expert escalation
+ * - General guidance mode
+ */
+export function handleNotSureResponse(
+  state: ClarificationState,
+  currentScope: ClarificationScope
+): {
+  shouldContinue: boolean;
+  redirectAction: 'CONTINUE' | 'PHOTO_REQUEST' | 'EXPERT_ESCALATION' | 'GENERAL_GUIDANCE';
+  updatedState: ClarificationState;
+  message?: {
+    mr: string;
+    hi: string;
+    en: string;
+  };
+} {
+  const MAX_CONSECUTIVE_NOT_SURE = 2;
+  const MAX_TOTAL_NOT_SURE = 3;
+  
+  // Update counts
+  const newTotalNotSure = (state.not_sure_count || 0) + 1;
+  const lastScope = state.previous_scopes[state.previous_scopes.length - 1];
+  const isConsecutiveSameTopic = lastScope === currentScope;
+  const newConsecutiveNotSure = isConsecutiveSameTopic 
+    ? (state.consecutive_not_sure || 0) + 1 
+    : 1;
+  
+  const updatedState: ClarificationState = {
+    ...state,
+    not_sure_count: newTotalNotSure,
+    consecutive_not_sure: newConsecutiveNotSure
+  };
+  
+  // Check limits
+  if (newConsecutiveNotSure >= MAX_CONSECUTIVE_NOT_SURE) {
+    return {
+      shouldContinue: false,
+      redirectAction: 'PHOTO_REQUEST',
+      updatedState,
+      message: {
+        mr: 'तुम्ही पिकाचा फोटो पाठवू शकता का? किंवा सामान्य काळजी उपाय पहायचे आहेत?',
+        hi: 'क्या आप फसल की फोटो भेज सकते हैं? या सामान्य देखभाल उपाय देखना चाहते हैं?',
+        en: 'Can you send a photo of the crop? Or would you like to see general care measures?'
+      }
+    };
+  }
+  
+  if (newTotalNotSure >= MAX_TOTAL_NOT_SURE) {
+    return {
+      shouldContinue: false,
+      redirectAction: 'GENERAL_GUIDANCE',
+      updatedState,
+      message: {
+        mr: `तुमच्या उपलब्ध माहितीच्या आधारे मी सामान्य सल्ला देऊ शकतो.\n\nकृपया लक्षात ठेवा: ही विशिष्ट उपचार योजना नाही. नेमके निदान करण्यासाठी फोटो पाठवा किंवा तज्ञाशी संपर्क साधा.`,
+        hi: `उपलब्ध जानकारी के आधार पर मैं सामान्य सलाह दे सकता हूं.\n\nकृपया ध्यान दें: यह विशिष्ट उपचार योजना नहीं है। सटीक निदान के लिए फोटो भेजें या विशेषज्ञ से संपर्क करें।`,
+        en: `Based on available information, I can provide general advice.\n\nPlease note: This is not a specific treatment plan. For accurate diagnosis, send a photo or contact an expert.`
+      }
+    };
+  }
+  
+  // Can continue with next question
+  return {
+    shouldContinue: true,
+    redirectAction: 'CONTINUE',
+    updatedState
+  };
+}
+
+/**
+ * PHASE-12: Detect if a farmer response is a "Not Sure" answer
+ */
+export function isNotSureResponse(text: string): boolean {
+  const notSurePatterns = [
+    // Marathi
+    'माहित नाही', 'कळत नाही', 'समजत नाही', 'नक्की नाही', 'कल्पना नाही',
+    // Hindi  
+    'पता नहीं', 'नहीं पता', 'मालूम नहीं', 'समझ नहीं', 'निश्चित नहीं',
+    // English
+    'not sure', 'don\'t know', 'do not know', 'unsure', 'can\'t say', 'cannot say', 'no idea'
+  ];
+  
+  const lowerText = text.toLowerCase();
+  return notSurePatterns.some(pattern => lowerText.includes(pattern.toLowerCase()));
+}
+
 export default {
   ClarificationScope,
   resolveClarificationPlan,
@@ -567,6 +666,8 @@ export default {
   hasSufficientInformation,
   initializeClarificationState,
   updateClarificationState,
+  handleNotSureResponse,
+  isNotSureResponse,
   MAX_CLARIFICATION_TURNS,
   MIN_DIMENSIONS_FOR_DIAGNOSIS,
   CLARIFICATION_SCOPE_RESOLVER_VERSION
