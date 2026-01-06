@@ -171,10 +171,11 @@ import {
   serializeCrossCropSymptoms 
 } from './cross-crop-symptom-mapper.ts';
 
-export const ORCHESTRATOR_VERSION = '2.5.0'; // Phase-10-Fix: Option selection runs rule engine
+export const ORCHESTRATOR_VERSION = '2.6.0'; // Phase-12: Universal observation rules + proper symptom mapping
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PHASE-10: Helper function to map clarification answer to visual symptom
+// PHASE-12: Helper function to map clarification answer to visual symptom
+// UPDATED: Now maps to actual VisualSymptom enum values from canonical-state-builder
 // ═══════════════════════════════════════════════════════════════════════════
 function mapDistributionToSymptom(optionText: string, scope: ClarificationScope): string {
   // Based on the clarification scope, map the answer to a symptom
@@ -220,39 +221,44 @@ function mapDistributionToSymptom(optionText: string, scope: ClarificationScope)
       return 'CURLED_LEAVES'; // Default to aphid if unclear
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // PHASE-11: Insect Behavior Clarification (First-Order)
+    // PHASE-12: Insect Behavior Clarification (First-Order)
+    // Maps to VisualSymptom enum values that exist in canonical-state-builder
     // ═══════════════════════════════════════════════════════════════════════════
     case ClarificationScope.IDENTIFY_INSECT_BEHAVIOR:
-      // Map flying/crawling behavior - this informs but doesn't diagnose
+      // Map flying/crawling behavior to proper VisualSymptom enum
       if (optionText.includes('उडत') || optionText.includes('उड़') || optionText.toLowerCase().includes('fly')) {
         return 'FLYING_INSECTS_VISIBLE';
       }
       if (optionText.includes('चालत') || optionText.includes('रांग') || optionText.includes('रेंग') || optionText.toLowerCase().includes('crawl')) {
         return 'CRAWLING_INSECTS_VISIBLE';
       }
+      if (optionText.includes('उड्या') || optionText.toLowerCase().includes('jump')) {
+        return 'JUMPING_INSECTS_VISIBLE';
+      }
       return 'SMALL_INSECTS_VISIBLE'; // Default to generic insect presence
       
     // ═══════════════════════════════════════════════════════════════════════════
-    // PHASE-11: Plant Response Clarification (First-Order)
+    // PHASE-12: Plant Response Clarification (First-Order)
+    // Maps to VisualSymptom enum values that exist in canonical-state-builder
     // ═══════════════════════════════════════════════════════════════════════════
     case ClarificationScope.IDENTIFY_PLANT_RESPONSE:
-      // Map visible plant responses to insect presence
+      // Map visible plant responses to proper VisualSymptom enum
       if (optionText.includes('वळ') || optionText.includes('मुड') || optionText.toLowerCase().includes('curl')) {
-        return 'CURLED_LEAVES'; // Curling observed
+        return 'CURLED_LEAVES';
       }
       if (optionText.includes('पिवळ') || optionText.includes('पीला') || optionText.toLowerCase().includes('yellow')) {
-        return 'GENERAL_YELLOWING'; // Yellowing observed
+        return 'GENERAL_YELLOWING';
       }
       if (optionText.includes('चिकट') || optionText.includes('चिपचिप') || optionText.toLowerCase().includes('sticky')) {
-        return 'HONEYDEW_PRESENT'; // Sticky substance (honeydew)
+        return 'HONEYDEW'; // Maps to HONEYDEW which is diagnostic
       }
       if (optionText.includes('छिद्र') || optionText.includes('भोक') || optionText.includes('छेद') || optionText.toLowerCase().includes('hole')) {
-        return 'LEAF_HOLES'; // Holes/bite marks
+        return 'LEAF_HOLES'; // Maps to proper enum
       }
       if (optionText.includes('काहीही नाही') || optionText.includes('कुछ नहीं') || optionText.toLowerCase().includes('no such') || optionText.toLowerCase().includes('nothing')) {
         return 'INSECT_PRESENT_NO_DAMAGE'; // No visible damage - monitoring only
       }
-      return 'UNKNOWN';
+      return 'SMALL_INSECTS_VISIBLE'; // Default
       
     default:
       return 'UNKNOWN';

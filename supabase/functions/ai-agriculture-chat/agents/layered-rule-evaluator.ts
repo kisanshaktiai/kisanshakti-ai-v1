@@ -90,6 +90,11 @@ import {
   validateWheatBiocontrol
 } from '../rules/wheat-ipm-rules.ts';
 
+// PHASE-12: Import Universal Observation Rules (crop-agnostic)
+import { 
+  ALL_UNIVERSAL_RULES 
+} from '../rules/universal-observation-rules.ts';
+
 // ==================== RULE EVALUATION RESULT ====================
 
 export interface RuleEvaluationResult {
@@ -1148,15 +1153,21 @@ export const CORE_RULES: Rule[] = [
   }
 ];
 
-// ==================== PHASE-10: MERGE ALL RULES ====================
+// ==================== PHASE-12: MERGE ALL RULES ====================
 
 /**
- * All rules including core rules and crop-specific IPM modules
- * PHASE-10: Added Wheat IPM Rules for aphid/thrips/mite
+ * All rules including:
+ * - Core rules (crop-specific diagnosis)
+ * - Wheat IPM Rules (ICAR-IIWBR aligned)
+ * - Universal Observation Rules (work for ALL crops)
+ * 
+ * PHASE-12: Universal rules are evaluated FIRST (higher priority)
+ * to provide base observations for any crop
  */
 export const ALL_RULES: Rule[] = [
-  ...CORE_RULES,
-  ...ALL_WHEAT_IPM_RULES
+  ...ALL_UNIVERSAL_RULES,  // PHASE-12: Universal crop-agnostic rules FIRST
+  ...CORE_RULES,           // Crop-specific diagnosis rules
+  ...ALL_WHEAT_IPM_RULES   // Wheat-specific IPM rules
 ];
 
 // ==================== EXPORTS ====================
