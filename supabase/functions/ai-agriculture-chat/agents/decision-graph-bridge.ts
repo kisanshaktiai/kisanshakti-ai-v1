@@ -1,17 +1,19 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * DECISION GRAPH BRIDGE - Connect 800+ ICAR Rules to Edge Function
+ * DECISION GRAPH BRIDGE - Connect 2000+ ICAR Rules to Edge Function
  * ═══════════════════════════════════════════════════════════════════════════
  * 
+ * PHASE-13 UPDATE: Now loads bundled rules from src/decision-graph/
  * This module bridges the NLU/Context output to actual rule evaluation.
  * Instead of just keyword matching, it evaluates CONDITIONS programmatically.
  * 
  * ARCHITECTURE:
  * - Takes RuleEvaluationContext from orchestrator
+ * - Loads bundled rules from src/decision-graph/ via bundled-rules/loader.ts
  * - Evaluates rules based on actual conditions (not just keywords)
  * - Returns RuleEvaluationResult with recommendations, warnings, blocks
  * 
- * VERSION: 1.0.0 - Production bridge implementation
+ * VERSION: 2.0.0 - Production bridge with bundled rules integration
  */
 
 import type {
@@ -27,6 +29,17 @@ import type {
   CropStageCode
 } from './rule-module-types.ts';
 import type { RuleResult, RuleExecutionInput } from './rule-engine-types.ts';
+
+// PHASE-13: Import bundled rules loader
+import {
+  loadAllRules,
+  loadSafetyRules,
+  loadCropGroupRules,
+  loadRulesForCrop,
+  evaluateRules as evaluateBundledRules,
+  getRuleCount,
+  type ExecutableRule
+} from '../bundled-rules/loader.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // RULE EVALUATION INTERFACE

@@ -35,20 +35,9 @@ import {
 // Re-export for backward compatibility
 export { AuthorityStatus, ResponseMode, GateStatus, GateAction };
 
-/**
- * @deprecated Use AuthorityStatus from authority-types.ts instead
- * Kept for backward compatibility with existing code
- */
-export enum AuthorityConfirmation {
-  CONFIRMED_PEST = 'CONFIRMED_PEST',           // Pest diagnosis confirmed
-  CONFIRMED_DISEASE = 'CONFIRMED_DISEASE',     // Disease diagnosis confirmed
-  CONFIRMED_NUTRIENT = 'CONFIRMED_NUTRIENT',   // Nutrient deficiency confirmed
-  CONFIRMED_LAND = 'CONFIRMED_LAND',           // Land issue confirmed
-  CONFIRMED_CLIMATE = 'CONFIRMED_CLIMATE',     // Climate stress confirmed
-  CONFIRMED_SAFETY = 'CONFIRMED_SAFETY',       // Safety concern confirmed
-  UNCONFIRMED = 'UNCONFIRMED',                 // No diagnosis confirmed
-  PENDING_CLARIFICATION = 'PENDING_CLARIFICATION' // Awaiting farmer input
-}
+// NOTE: AuthorityConfirmation enum has been REMOVED (was deprecated)
+// Use AuthorityStatus from authority-types.ts instead
+// Legacy code should migrate to use AuthorityStatus
 
 /**
  * @deprecated Use ResponseMode from authority-types.ts instead

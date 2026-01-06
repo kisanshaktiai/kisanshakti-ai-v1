@@ -86,12 +86,12 @@ export {
 export type { UnifiedGateInput } from '../decision/unified-decision-gate.ts';
 
 // Prescription Gate Enforcer (Legacy - use UnifiedDecisionGate for new code)
+// NOTE: AuthorityConfirmation enum removed in PHASE-13 - use AuthorityStatus instead
 export {
   enforcePrescriptionGate,
   generateObservationOnlyResponse,
   generateYoungCropMonitoringResponse,
   buildPrescriptionGateAudit,
-  AuthorityConfirmation,
   PRESCRIPTION_GATE_VERSION
 } from '../decision/prescription-gate-enforcer.ts';
 
@@ -103,6 +103,16 @@ export {
   validateOutputBeforeSend,
   DECISION_READINESS_GATE_VERSION
 } from '../decision/decision-readiness-gate.ts';
+
+// PHASE-13: Bundled Rules Loader (2,000+ ICAR rules from src/decision-graph)
+export {
+  loadAllRules,
+  loadCropGroupRules,
+  loadSafetyRules,
+  loadRulesForCrop,
+  getRuleCount,
+  evaluateRules as evaluateBundledRules
+} from '../bundled-rules/loader.ts';
 
 // Clarification Re-Entry Controller (State Preservation - Phase 12)
 export * from '../decision/clarification-reentry-controller.ts';

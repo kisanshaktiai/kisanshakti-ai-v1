@@ -95,6 +95,17 @@ import {
   ALL_UNIVERSAL_RULES 
 } from '../rules/universal-observation-rules.ts';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-13: Import Bundled Rules (2,000+ ICAR rules from src/decision-graph)
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  loadAllRules,
+  loadRulesForCrop,
+  evaluateRules as evaluateBundledRules,
+  getRuleCount,
+  type ExecutableRule
+} from '../bundled-rules/loader.ts';
+
 // ==================== RULE EVALUATION RESULT ====================
 
 export interface RuleEvaluationResult {
@@ -1160,15 +1171,118 @@ export const CORE_RULES: Rule[] = [
  * - Core rules (crop-specific diagnosis)
  * - Wheat IPM Rules (ICAR-IIWBR aligned)
  * - Universal Observation Rules (work for ALL crops)
+ * - BUNDLED RULES from src/decision-graph/ (2,000+ ICAR rules)
  * 
  * PHASE-12: Universal rules are evaluated FIRST (higher priority)
  * to provide base observations for any crop
+ * 
+ * PHASE-13: Bundled rules from src/decision-graph/ are now included
+ * providing complete ICAR agricultural intelligence
  */
 export const ALL_RULES: Rule[] = [
   ...ALL_UNIVERSAL_RULES,  // PHASE-12: Universal crop-agnostic rules FIRST
   ...CORE_RULES,           // Crop-specific diagnosis rules
   ...ALL_WHEAT_IPM_RULES   // Wheat-specific IPM rules
 ];
+
+/**
+ * PHASE-13: Get complete rule set including bundled rules
+ * This provides access to all 2,000+ ICAR rules
+ */
+export function getAllRulesWithBundled(): Rule[] {
+  const bundledRules = loadAllRules();
+  console.log(`📦 Loaded ${bundledRules.length} bundled rules from decision-graph`);
+  
+  // Convert bundled rules to Rule format and combine
+  const convertedBundled = bundledRules.map(br => convertBundledToRule(br));
+  
+  return [
+    ...ALL_UNIVERSAL_RULES,
+    ...CORE_RULES,
+    ...ALL_WHEAT_IPM_RULES,
+    ...convertedBundled
+  ];
+}
+
+/**
+ * Convert ExecutableRule from bundled format to Rule format
+ */
+function convertBundledToRule(bundled: ExecutableRule): Rule {
+  return {
+    id: bundled.rule_id,
+    category: mapBundledCategory(bundled.category),
+    priority: bundled.priority || 50,
+    when: {
+      custom: (state: CanonicalState) => {
+        try {
+          // Create input for bundled rule evaluation
+          const input = {
+            crop_code: state.crop_type?.toLowerCase() || '',
+            crop_stage: state.crop_stage?.toLowerCase() || '',
+            days_after_sowing: 0, // Would need from context
+            ndvi_state: state.ndvi_level || 'UNKNOWN',
+            soil_states: {
+              nitrogen: state.soil_nitrogen || 'UNKNOWN',
+              phosphorus: state.soil_phosphorus || 'UNKNOWN',
+              potassium: state.soil_potassium || 'UNKNOWN',
+              moisture: state.water_stress || 'UNKNOWN'
+            },
+            weather: {},
+            symptom: state.visual_symptom || 'UNKNOWN'
+          };
+          return bundled.condition(input);
+        } catch {
+          return false;
+        }
+      }
+    },
+    then: {
+      possible_cause: bundled.cause,
+      cause_confidence: bundled.cause_confidence || 0.7
+    },
+    scientific_basis: bundled.scientific_basis || bundled.scientific_source,
+    active: true
+  };
+}
+
+/**
+ * Map bundled category string to RuleCategory enum
+ */
+function mapBundledCategory(category: string): RuleCategory {
+  const categoryMap: Record<string, RuleCategory> = {
+    'observation': RuleCategory.OBSERVATION,
+    'diagnosis': RuleCategory.DIAGNOSIS,
+    'exclusion': RuleCategory.EXCLUSION,
+    'safety': RuleCategory.SAFETY,
+    'prescription': RuleCategory.PRESCRIPTION,
+    'warning': RuleCategory.WARNING
+  };
+  return categoryMap[category?.toLowerCase()] || RuleCategory.DIAGNOSIS;
+}
+
+/**
+ * PHASE-13: Evaluate bundled rules for a specific crop
+ */
+export function evaluateBundledRulesForCrop(
+  cropCode: string,
+  input: Record<string, any>
+): { ruleId: string; cause: string; confidence: number }[] {
+  const rules = loadRulesForCrop(cropCode);
+  return evaluateBundledRules(rules, input);
+}
+
+/**
+ * PHASE-13: Get total rule count including bundled
+ */
+export function getTotalRuleCount(): { core: number; bundled: number; total: number } {
+  const bundledCount = getRuleCount();
+  const coreCount = ALL_RULES.length;
+  return {
+    core: coreCount,
+    bundled: bundledCount,
+    total: coreCount + bundledCount
+  };
+}
 
 // ==================== EXPORTS ====================
 
@@ -1177,6 +1291,18 @@ export const LayeredRuleEvaluator = {
   matchesConditions,
   CORE_RULES,
   ALL_RULES,
+  getAllRulesWithBundled,
+  evaluateBundledRulesForCrop,
+  getTotalRuleCount,
   RuleCategory,
   validateWheatBiocontrol
 };
+
+// Log rule counts on load
+console.log(`✅ Layered Rule Evaluator loaded: ${ALL_RULES.length} core rules`);
+try {
+  const bundledCount = getRuleCount();
+  console.log(`   📦 Bundled rules available: ${bundledCount}`);
+} catch (e) {
+  console.log(`   📦 Bundled rules: not yet generated (run npm run bundle-rules)`);
+}

@@ -1,9 +1,9 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * SYMBOLIC RULES BRIDGE - Connect 800+ ICAR Rules to Edge Function
+ * SYMBOLIC RULES BRIDGE - Connect 2000+ ICAR Rules to Edge Function
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * EXPANDED to include ALL rules from src/decision-graph/safety-rules/
+ * PHASE-13 UPDATE: Now loads bundled rules from src/decision-graph/
  * This module bridges the frontend CauseRule format to the edge function
  * RuleResult format, enabling comprehensive rule evaluation.
  * 
@@ -21,10 +21,25 @@
  * - Regional/Seasonal (P3): Kharif/Rabi adaptations
  * - Harvest/Quality (P3): Maturity indicators, timing
  * - Pest Management (P3/P4): Pest-specific treatment
+ * 
+ * PHASE-13: Bundled Rules Integration
+ * - Loads 2,000+ rules from bundled-rules/loader.ts
+ * - Combines with hardcoded safety rules for complete coverage
  */
 
 import type { RuleResult, RuleExecutionInput } from './rule-engine-types.ts';
 import type { RulePriority } from './rule-module-types.ts';
+
+// PHASE-13: Import bundled rules loader
+import {
+  loadAllRules,
+  loadSafetyRules,
+  loadCropGroupRules,
+  loadRulesForCrop,
+  getRuleCount,
+  findRulesForCause,
+  type ExecutableRule
+} from '../bundled-rules/loader.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -1764,11 +1779,33 @@ export function getRuleCountByCategory(): Record<string, number> {
 }
 
 /**
- * Get total rule count
+ * PHASE-13: Get total rule count including bundled rules
  */
 export function getTotalRuleCount(): number {
-  return SYMBOLIC_RULES_REGISTRY.length;
+  const hardcodedCount = SYMBOLIC_RULES_REGISTRY.length;
+  const bundledCount = getRuleCount();
+  return hardcodedCount + bundledCount;
 }
 
-console.log(`✅ Symbolic Rules Bridge loaded: ${getTotalRuleCount()} rules`);
+/**
+ * PHASE-13: Get bundled rules for a specific crop
+ */
+export function getBundledRulesForCrop(cropCode: string): ExecutableRule[] {
+  return loadRulesForCrop(cropCode);
+}
+
+/**
+ * PHASE-13: Find rules matching a specific cause
+ */
+export function findRulesMatchingCause(cause: string): ExecutableRule[] {
+  return findRulesForCause(cause);
+}
+
+console.log(`✅ Symbolic Rules Bridge loaded: ${SYMBOLIC_RULES_REGISTRY.length} hardcoded rules`);
 console.log('   Rule counts by category:', JSON.stringify(getRuleCountByCategory()));
+try {
+  const bundledCount = getRuleCount();
+  console.log(`   📦 Bundled rules available: ${bundledCount}`);
+} catch (e) {
+  console.log(`   📦 Bundled rules: not yet generated (run npm run bundle-rules)`);
+}

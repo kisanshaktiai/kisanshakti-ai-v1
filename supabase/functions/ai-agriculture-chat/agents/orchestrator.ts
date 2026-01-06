@@ -571,11 +571,13 @@ export class AIAgentOrchestrator {
       const routeRequirements = getRouteRequirements(queryRoute.route);
       
       // ========================================
-      // PHASE 0.4: HANDLE GREETING DIRECTLY (No AI)
+      // PHASE-13: ROUTE GREETING THROUGH SYMBOLIC PIPELINE
+      // No more early return - let greeting queries go through rule engine
       // ========================================
       if (queryRoute.route === 'GREETING') {
-        console.log(`✅ [${traceId}] GREETING detected - returning direct response`);
-        return this.generateGreetingResponse(sessionId, options.language || 'mr', startTime, agentsUsed, traceId);
+        console.log(`✅ [${traceId}] GREETING detected - routing through symbolic pipeline (PHASE-13)`);
+        agentsUsed.push('SYMBOLIC_GREETING_PIPELINE');
+        // Continue to full symbolic pipeline - will match greeting-specific rules
       }
       
       // ========================================
@@ -596,17 +598,18 @@ export class AIAgentOrchestrator {
       }
       
       // ========================================
-      // PHASE 0.5: HANDLE IRRIGATION DIRECTLY (WITH AUTHORITY CHECK)
-      // P1-2 FIX: Authority must be resolved before generating irrigation advice
+      // PHASE-13: ROUTE IRRIGATION THROUGH SYMBOLIC PIPELINE
+      // Previously: Early return with inline irrigation logic
+      // Now: Authority check + continue to rule engine for CPWS rules
       // ========================================
       if (queryRoute.route === 'IRRIGATION_SCHEDULING' && landContext) {
-        console.log(`💧 [${traceId}] IRRIGATION query - checking authority first`);
+        console.log(`💧 [${traceId}] IRRIGATION query - routing through symbolic pipeline with authority check`);
         
-        // P1-2: Resolve authority BEFORE generating irrigation advice
+        // P1-2: Resolve authority BEFORE proceeding
         const { resolveDecisionAuthority, DecisionAuthority } = await import('../decision/authority-resolver.ts');
         
         const irrigationAuthority = resolveDecisionAuthority({
-          detected_causes: [], // No causes detected yet for irrigation query
+          detected_causes: [],
           cross_crop_symptoms: [],
           land_context: {
             has_soil_health: !!landContext.soil_health,
@@ -616,6 +619,7 @@ export class AIAgentOrchestrator {
         });
         
         console.log(`   🚦 Authority: ${irrigationAuthority.authority} (${irrigationAuthority.authority_status})`);
+        agentsUsed.push('AUTHORITY_RESOLVER');
         
         // If authority blocks irrigation (e.g., LAND due to waterlogging/salinity)
         if (irrigationAuthority.authority === DecisionAuthority.LAND || 
@@ -654,13 +658,13 @@ export class AIAgentOrchestrator {
               decision_id: `irrigation_blocked_${Date.now()}`,
               session_id: sessionId,
               status: 'AUTHORITY_BLOCKED',
-              decision_brain_source: false,
+              decision_brain_source: true,
               authority_decision: irrigationAuthority,
               metadata: {
                 confidence: 0.9,
                 trace_id: traceId,
                 processing_time_ms: Date.now() - startTime,
-                agents_used: ['AUTHORITY_RESOLVER']
+                agents_used: agentsUsed
               }
             } as any,
             metadata: {
@@ -668,101 +672,32 @@ export class AIAgentOrchestrator {
               safety_status: 'BLOCKED',
               rules_applied: 0,
               processing_time_ms: Date.now() - startTime,
-              agents_used: ['AUTHORITY_RESOLVER'],
+              agents_used: agentsUsed,
               trace_id: traceId
             }
           };
         }
         
-        // Authority allows irrigation - proceed with scheduling
-        const { calculateIrrigationRecommendation, formatIrrigationResponse } = await import('./irrigation-decision-module.ts');
-        
-        const irrigationRec = calculateIrrigationRecommendation({
-          crop_code: landContext.current_crop?.toUpperCase() || 'SUGARCANE',
-          growth_stage: landContext.growth_stage || 'VEGETATIVE',
-          days_after_sowing: landContext.days_since_sowing || 30,
-          soil_type: landContext.soil_type,
-          irrigation_type: landContext.irrigation_type?.toUpperCase() as any || 'FLOOD',
-          last_irrigation_date: landContext.last_irrigation_date,
-          area_acres: landContext.area_acres
-        });
-        
-        const irrigationResponse = formatIrrigationResponse(irrigationRec, options.language || 'mr');
-        agentsUsed.push('AUTHORITY_RESOLVER', 'IRRIGATION_MODULE');
-        
-        return {
-          type: 'DECISION_PROVIDED',
-          session_id: sessionId,
-          communication: {
-            message_id: crypto.randomUUID(),
-            decision_id: `irrigation_${Date.now()}`,
-            session_id: sessionId,
-            farmer_id: farmerId,
-            language: options.language || 'mr',
-            format: 'RICH_TEXT',
-            tone: 'FRIENDLY',
-            created_at: new Date().toISOString(),
-            main_message: {
-              full_text: {
-                mr: irrigationResponse,
-                hi: irrigationResponse,
-                en: irrigationResponse
-              }
-            },
-            quick_actions: [],
-            metadata: {
-              word_count: irrigationResponse.split(/\s+/).length,
-              reading_time_seconds: 10,
-              confidence_score: 0.9,
-              source: 'IRRIGATION_MODULE',
-              response_type: 'IRRIGATION_SCHEDULE'
-            }
-          } as any,
-          decision_output: {
-            decision_id: `irrigation_${Date.now()}`,
-            session_id: sessionId,
-            status: 'INFORMATION_PROVIDED',
-            decision_brain_source: true,
-            authority_decision: irrigationAuthority,
-            actions_returned: [{
-              action_type: 'IRRIGATION',
-              urgency: irrigationRec.urgency,
-              water_amount: `${irrigationRec.water_amount_liters_per_acre} L/acre`,
-              timing: irrigationRec.timing
-            }],
-            metadata: {
-              confidence: 0.9,
-              trace_id: traceId,
-              processing_time_ms: Date.now() - startTime,
-              agents_used: agentsUsed,
-              template_type: 'IRRIGATION_SCHEDULE'
-            }
-          } as any,
-          metadata: {
-            confidence: 0.9,
-            safety_status: 'SAFE',
-            rules_applied: 0,
-            processing_time_ms: Date.now() - startTime,
-            agents_used: agentsUsed,
-            template_type: 'IRRIGATION_SCHEDULE',
-            trace_id: traceId
-          }
-        };
+        // Authority allows irrigation - continue to symbolic pipeline
+        // Water rules from bundled rules will be evaluated
+        console.log(`   ✅ Authority allows irrigation - continuing to symbolic pipeline for CPWS rules`);
+        agentsUsed.push('SYMBOLIC_IRRIGATION_PIPELINE');
+        // No early return - continue to NLU + Rule Engine
       }
       
       // ========================================
-      // P1-A: CROP HEALTH ASSESSMENT ROUTE (WITH AUTHORITY CHECK)
-      // P1-2 FIX: Authority must be resolved before generating crop health advice
-      // Handles "how is my crop" queries with land context
+      // PHASE-13: ROUTE CROP_HEALTH THROUGH SYMBOLIC PIPELINE
+      // Previously: Early return with inline generateCropHealthResponse
+      // Now: Authority check + continue to rule engine for nutrient/water rules
       // ========================================
       if (queryRoute.route === 'CROP_HEALTH' && landContext) {
-        console.log(`🌱 [${traceId}] CROP_HEALTH query - checking authority first`);
+        console.log(`🌱 [${traceId}] CROP_HEALTH query - routing through symbolic pipeline with authority check`);
         
-        // P1-2: Resolve authority BEFORE generating crop health advice
+        // P1-2: Resolve authority BEFORE proceeding
         const { resolveDecisionAuthority, DecisionAuthority } = await import('../decision/authority-resolver.ts');
         
         const cropHealthAuthority = resolveDecisionAuthority({
-          detected_causes: [], // No causes detected yet for health query
+          detected_causes: [],
           cross_crop_symptoms: [],
           land_context: {
             has_soil_health: !!landContext.soil_health,
@@ -772,86 +707,11 @@ export class AIAgentOrchestrator {
         });
         
         console.log(`   🚦 Authority: ${cropHealthAuthority.authority} (${cropHealthAuthority.authority_status})`);
-        agentsUsed.push('AUTHORITY_RESOLVER', 'CROP_HEALTH_MODULE');
+        agentsUsed.push('AUTHORITY_RESOLVER', 'SYMBOLIC_CROP_HEALTH_PIPELINE');
         
-        // Generate crop health response
-        const cropHealthResponse = this.generateCropHealthResponse(landContext, options.language || 'mr');
-        
-        // If authority is LAND (salinity/waterlogging), include that in the assessment
-        if (cropHealthAuthority.authority === DecisionAuthority.LAND) {
-          console.log(`   ⚠️ LAND authority detected - including soil stress in assessment`);
-          cropHealthResponse.message = this.prependLandStressWarning(
-            cropHealthResponse.message,
-            cropHealthAuthority.reason,
-            options.language || 'mr'
-          );
-          cropHealthResponse.isCritical = true;
-        }
-        
-        // Log critical status
-        if (cropHealthResponse.isCritical) {
-          console.log(`🚨 [${traceId}] CRITICAL ALERT - actions: ${cropHealthResponse.actions.length}`);
-        }
-        
-        return {
-          type: 'DECISION_PROVIDED',
-          session_id: sessionId,
-          communication: {
-            message_id: crypto.randomUUID(),
-            decision_id: `crop_health_${Date.now()}`,
-            session_id: sessionId,
-            farmer_id: farmerId,
-            language: options.language || 'mr',
-            format: 'RICH_TEXT',
-            tone: cropHealthResponse.isCritical ? 'URGENT' : 'FRIENDLY',
-            created_at: new Date().toISOString(),
-            main_message: {
-              full_text: {
-                mr: cropHealthResponse.message,
-                hi: cropHealthResponse.message,
-                en: cropHealthResponse.message
-              }
-            },
-            quick_actions: cropHealthResponse.suggestions.map(s => ({
-              label: { mr: s, hi: s, en: s },
-              action: 'ASK_FOLLOWUP',
-              payload: { question: s }
-            })),
-            metadata: {
-              word_count: cropHealthResponse.message.split(/\s+/).length,
-              reading_time_seconds: 10,
-              confidence_score: cropHealthResponse.confidence,
-              source: cropHealthResponse.isCritical ? 'NDVI_CRITICAL_MODULE' : 'CROP_HEALTH_MODULE',
-              response_type: cropHealthResponse.isCritical ? 'NDVI_CRITICAL_ALERT' : 'CROP_HEALTH_ASSESSMENT'
-            }
-          } as any,
-          decision_output: {
-            decision_id: `crop_health_${Date.now()}`,
-            session_id: sessionId,
-            status: cropHealthResponse.isCritical ? 'URGENT_ACTION_REQUIRED' : 'INFORMATION_PROVIDED',
-            decision_brain_source: true,
-            authority_decision: cropHealthAuthority,
-            actions_returned: cropHealthResponse.actions,
-            metadata: {
-              confidence: cropHealthResponse.confidence,
-              trace_id: traceId,
-              processing_time_ms: Date.now() - startTime,
-              agents_used: agentsUsed,
-              template_type: cropHealthResponse.isCritical ? 'NDVI_CRITICAL_ALERT' : 'CROP_HEALTH_ASSESSMENT',
-              ndvi_critical: cropHealthResponse.isCritical
-            }
-          } as any,
-          dataAudit: this.buildDataAudit(landContext, null),
-          metadata: {
-            confidence: cropHealthResponse.confidence,
-            safety_status: cropHealthResponse.isCritical ? 'URGENT' : 'SAFE',
-            rules_applied: cropHealthResponse.actions.length,
-            processing_time_ms: Date.now() - startTime,
-            agents_used: agentsUsed,
-            template_type: cropHealthResponse.isCritical ? 'NDVI_CRITICAL_ALERT' : 'CROP_HEALTH_ASSESSMENT',
-            trace_id: traceId
-          }
-        };
+        // Continue to full symbolic pipeline - bundled nutrient/water rules will be evaluated
+        console.log(`   ✅ Continuing to symbolic pipeline for NDVI + soil + weather rule evaluation`);
+        // No early return - continue to NLU + Rule Engine
       }
       
       // ========================================
