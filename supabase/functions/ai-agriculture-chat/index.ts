@@ -46,6 +46,10 @@ import {
   generateObservationOnlyResponse,
   generateYoungCropMonitoringResponse
 } from './decision/prescription-gate-enforcer.ts';
+import {
+  generateDiagnosticEscalationResponse,
+  type DiagnosticEscalationInput
+} from './decision/diagnostic-escalation-generator.ts';
 
 // PHASE 11.1: Context Authority Reconciliation
 import { 
@@ -696,7 +700,34 @@ serve(async (req) => {
         if (!unifiedGateResult.treatments_allowed) {
           console.log(`   ⚠️ Unified gate blocked treatments - using ${unifiedGateResult.response_mode} response`);
           
-          if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
+          if (unifiedGateResult.response_mode === ResponseMode.DIAGNOSTIC_ESCALATION) {
+            // NEW: Expert-quality diagnostic escalation response
+            console.log(`   🔬 DIAGNOSTIC_ESCALATION - generating expert response with hypotheses`);
+            
+            const escalationInput: DiagnosticEscalationInput = {
+              language: detectedLanguage as 'mr' | 'hi' | 'en',
+              crop_name: finalCropName || 'Unknown',
+              growth_stage: finalGrowthStage || 'Unknown',
+              days_since_sowing: finalDaysSinceSowing,
+              symptom_keys: orchestratorResponse.metadata?.symptomKeys || [],
+              matched_rules: orchestratorResponse.metadata?.matchedRules || [],
+              current_confidence: unifiedGateResult.diagnostic_escalation?.current_confidence || 0.4,
+              treatment_threshold: unifiedGateResult.diagnostic_escalation?.threshold_for_treatment || 0.7
+            };
+            
+            responseContent = generateDiagnosticEscalationResponse(
+              unifiedGateResult.diagnostic_escalation!,
+              escalationInput
+            );
+            
+            // Mark orchestrator response as DIAGNOSTIC_ESCALATION for frontend
+            orchestratorResponse.type = 'DIAGNOSTIC_ESCALATION' as any;
+            orchestratorResponse.metadata = {
+              ...orchestratorResponse.metadata,
+              diagnostic_escalation: unifiedGateResult.diagnostic_escalation,
+              orchestrator_type: 'DIAGNOSTIC_ESCALATION'
+            };
+          } else if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
             // Young crop - use monitoring response with authority-reconciled values
             responseContent = generateYoungCropMonitoringResponse(
               detectedLanguage as 'mr' | 'hi' | 'en',
