@@ -283,6 +283,12 @@ serve(async (req) => {
       recommendations_count?: number;
       // CRITICAL FIX 1: Add pending clarification options for option selection
       pending_clarification_options?: string[];
+      // P0-3 FIX: Add lockedCropContext for multi-turn context continuity
+      lockedCropContext?: {
+        crop_name?: string;
+        growth_stage?: string;
+        days_since_sowing?: number;
+      };
     } | null = null;
     
     // CRITICAL FIX: Fetch previous messages from DB for conversation continuity
@@ -945,6 +951,16 @@ serve(async (req) => {
     const clarificationOptions = orchestratorResponse.question?.options?.map((o: any) => o.label) || 
                                   orchestratorResponse.metadata?.pendingClarificationOptions || [];
     
+    // P0-3 FIX: Extract lockedCropContext for session persistence
+    const lockedCropContextForSession = 
+      orchestratorResponse.decision_output?.metadata?.lockedCropContext ||
+      orchestratorResponse.metadata?.lockedCropContext ||
+      (orchestratorResponse.dataAudit?.land?.found ? {
+        crop_name: orchestratorResponse.dataAudit.land.current_crop,
+        growth_stage: orchestratorResponse.dataAudit.land.growth_stage,
+        days_since_sowing: orchestratorResponse.dataAudit.land.days_since_sowing
+      } : null);
+    
     const decisionTracking = {
       decision_state: recommendationsProvided ? 'recommendations_given' : 
                       isClarificationResponse ? 'awaiting_clarification' : 
@@ -958,7 +974,9 @@ serve(async (req) => {
       last_action_types: actions_returned?.map((a: any) => a.action_type || a.action).slice(0, 3) || [],
       timestamp: new Date().toISOString(),
       // CRITICAL FIX 1: Store clarification options for option matching in next turn
-      pending_clarification_options: isClarificationResponse ? clarificationOptions : []
+      pending_clarification_options: isClarificationResponse ? clarificationOptions : [],
+      // P0-3 FIX: Persist lockedCropContext for multi-turn context continuity
+      lockedCropContext: lockedCropContextForSession
     };
     
     try {
