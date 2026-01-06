@@ -971,6 +971,9 @@ export class AIAgentOrchestrator {
           
           // If we got rule matches, return them for LLM formatting
           if (ruleResult.rules_matched > 0 && (ruleResult.diagnoses.length > 0 || ruleResult.prescriptions.length > 0)) {
+            // FIX: Build dataAudit for OPTION_SELECTED path to preserve land context
+            const dataAuditForOption = this.buildDataAudit(landContext, null);
+            
             return {
               type: 'DECISION_PROVIDED',
               session_id: sessionId,
@@ -995,9 +998,17 @@ export class AIAgentOrchestrator {
                   rules_applied: ruleResult.rules_applied,
                   clarification_resolved: true,
                   selected_option: matchResult.matched_option,
-                  mapped_observation: mappedObservationKey
+                  mapped_observation: mappedObservationKey,
+                  // FIX: Include locked crop context in metadata
+                  lockedCropContext: lockedCropContext || {
+                    crop_name: cropName,
+                    growth_stage: growthStage,
+                    days_since_sowing: landContext?.days_since_sowing
+                  }
                 }
               } as any,
+              // FIX: Include dataAudit to preserve land context
+              dataAudit: dataAuditForOption,
               metadata: {
                 confidence: ruleResult.confidence_in_result,
                 safety_status: ruleResult.safety_blocks.length > 0 ? 'BLOCKED' : 'SAFE',
@@ -1009,12 +1020,19 @@ export class AIAgentOrchestrator {
                 pendingClarificationOptions: undefined,
                 pendingClarificationScope: undefined,
                 // PATCH 3: Preserve locked crop context for next turn
-                lockedCropContext: lockedCropContext
+                lockedCropContext: lockedCropContext || {
+                  crop_name: cropName,
+                  growth_stage: growthStage,
+                  days_since_sowing: landContext?.days_since_sowing
+                }
               }
             };
           }
           
           // If no rules matched, return acknowledgement and let LLM formatter handle it
+          // FIX: Build dataAudit for OPTION_SELECTED path to preserve land context
+          const dataAuditNoRules = this.buildDataAudit(landContext, null);
+          
           return {
             type: 'DECISION_PROVIDED',
             session_id: sessionId,
@@ -1034,9 +1052,17 @@ export class AIAgentOrchestrator {
                 mapped_observation: mappedObservationKey,
                 rules_evaluated: ruleResult.rules_evaluated,
                 rules_matched: ruleResult.rules_matched,
-                no_rules_matched_reason: 'No matching rules for the given canonical state'
+                no_rules_matched_reason: 'No matching rules for the given canonical state',
+                // FIX: Include locked crop context in metadata
+                lockedCropContext: lockedCropContext || {
+                  crop_name: cropName,
+                  growth_stage: growthStage,
+                  days_since_sowing: landContext?.days_since_sowing
+                }
               }
             } as any,
+            // FIX: Include dataAudit to preserve land context
+            dataAudit: dataAuditNoRules,
             metadata: {
               confidence: matchResult.confidence || 0.9,
               safety_status: 'SAFE',
@@ -1046,7 +1072,11 @@ export class AIAgentOrchestrator {
               trace_id: traceId,
               pendingClarificationOptions: undefined,
               pendingClarificationScope: undefined,
-              lockedCropContext: lockedCropContext
+              lockedCropContext: lockedCropContext || {
+                crop_name: cropName,
+                growth_stage: growthStage,
+                days_since_sowing: landContext?.days_since_sowing
+              }
             }
           };
         } else {

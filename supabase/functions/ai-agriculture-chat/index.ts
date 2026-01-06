@@ -582,7 +582,13 @@ serve(async (req) => {
       console.log(`   🤖 Using LLM formatter for natural language generation`);
       
       try {
-        // Build land context for LLM from orchestrator response
+        // FIX: Build land context for LLM with fallback chain
+        // Priority 1: From dataAudit (normal path)
+        // Priority 2: From decision_output metadata lockedCropContext (OPTION_SELECTED path)
+        // Priority 3: From metadata lockedCropContext (fallback)
+        const lockedCropCtx = orchestratorResponse.decision_output?.metadata?.lockedCropContext ||
+                              orchestratorResponse.metadata?.lockedCropContext;
+        
         const landContext = orchestratorResponse.dataAudit?.land?.found ? {
           current_crop: orchestratorResponse.dataAudit.land.current_crop,
           growth_stage: orchestratorResponse.dataAudit.land.growth_stage,
@@ -598,7 +604,18 @@ serve(async (req) => {
             value: orchestratorResponse.dataAudit.ndvi.latest_value,
             trend: orchestratorResponse.dataAudit.ndvi.trend
           } : undefined
+        } : lockedCropCtx ? {
+          // FIX: Fallback to lockedCropContext when dataAudit is missing (OPTION_SELECTED path)
+          current_crop: lockedCropCtx.crop_name,
+          growth_stage: lockedCropCtx.growth_stage,
+          days_since_sowing: lockedCropCtx.days_since_sowing,
+          area_acres: lockedCropCtx.area_acres
         } : undefined;
+        
+        console.log(`   📊 [LandContext] Built from ${orchestratorResponse.dataAudit?.land?.found ? 'dataAudit' : lockedCropCtx ? 'lockedCropContext' : 'NONE'}`);
+        if (landContext) {
+          console.log(`      Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage}, Days: ${landContext.days_since_sowing}`);
+        }
         
         // ═══════════════════════════════════════════════════════════════════════════
         // PHASE 11: PRESCRIPTION GATE ENFORCEMENT - Before LLM Formatting
