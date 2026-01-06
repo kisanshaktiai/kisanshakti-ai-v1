@@ -503,7 +503,38 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
               2030-READY CLARIFICATION OPTIONS UI
               Shows interactive buttons/checkboxes for Decision Brain clarification questions
               ═══════════════════════════════════════════════════════════════════════════ */}
-          {clarificationData && onClarificationSelect ? (
+          {/* ═══════════════════════════════════════════════════════════════════════════
+              DIAGNOSTIC ESCALATION UI - Expert-level intermediate state
+              Shows hypotheses, required inputs (photo CTA), and interim advice
+              ═══════════════════════════════════════════════════════════════════════════ */}
+          {hasDiagnosticEscalation && message.diagnosticEscalationData ? (
+            <div className="p-4">
+              <DiagnosticEscalationUI
+                escalationData={message.diagnosticEscalationData}
+                language={currentLanguage}
+                onTakePhoto={onTakePhoto || (() => console.warn('[DiagnosticEscalation] onTakePhoto not provided'))}
+                onSelectOption={(input, value) => {
+                  console.log('[DiagnosticEscalation] Input selected:', input.type, value);
+                  // TODO: Wire to orchestrator for follow-up handling
+                }}
+              />
+              
+              {/* Timestamp */}
+              <div className="flex items-center justify-between text-xs mt-3 opacity-60 text-muted-foreground">
+                <span>
+                  {new Date(message.timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </span>
+                {message.traceId && (
+                  <span className="font-mono text-[10px] text-muted-foreground/50">
+                    {message.traceId.slice(-8)}
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : clarificationData && onClarificationSelect ? (
             <div className="p-4">
               <ClarificationOptionsUI
                 question={clarificationData.question}
