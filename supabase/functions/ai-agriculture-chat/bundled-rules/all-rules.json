@@ -1,0 +1,13 @@
+{
+  "cropGroupRules": {},
+  "safetyRules": {},
+  "advancedRules": [],
+  "intelligenceRules": [],
+  "metadata": {
+    "totalRules": 0,
+    "generatedAt": "2026-01-06T19:13:54.147Z",
+    "version": "1.0.0",
+    "rulesByCategory": {},
+    "rulesByCropGroup": {}
+  }
+}
