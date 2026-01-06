@@ -303,13 +303,35 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
   // ═══════════════════════════════════════════════════════════════════════
   // RULE 5: CROP (Pests, diseases, nutrient stress)
   // Check if confirmed or just potential
+  // FIX: Also check cross_crop_symptoms for insect/pest indicators
   // ═══════════════════════════════════════════════════════════════════════
   
   const hasPestCause = [...causes].some(c => c.includes('PEST') || c.includes('BORER') || c.includes('APHID') || c.includes('WHITEFLY'));
   const hasDiseaseCause = [...causes].some(c => c.includes('DISEASE') || c.includes('RUST') || c.includes('BLIGHT') || c.includes('WILT'));
   const hasNutrientCause = [...causes].some(c => c.includes('NUTRIENT') || c.includes('DEFICIENCY') || c.includes('NITROGEN') || c.includes('PHOSPHORUS'));
   
-  const isConfirmed = hasPestCause || hasDiseaseCause || hasNutrientCause;
+  // FIX: Check symptoms for pest/disease indicators (from clarification answers)
+  const hasPestSymptom = [...symptoms].some(s => 
+    s.includes('INSECT') || s.includes('FLYING') || s.includes('CRAWLING') || 
+    s.includes('JUMPING') || s.includes('APHID') || s.includes('THRIPS') ||
+    s.includes('MITE') || s.includes('LARVAE') || s.includes('WEBBING') ||
+    s.includes('HONEYDEW') || s.includes('CURLED_LEAVES')
+  );
+  const hasDiseaseSymptom = [...symptoms].some(s => 
+    s.includes('SPOTS') || s.includes('POWDERY') || s.includes('RUST') || 
+    s.includes('BLIGHT') || s.includes('WILT') || s.includes('LESION')
+  );
+  const hasNutrientSymptom = [...symptoms].some(s => 
+    s.includes('YELLOWING') || s.includes('CHLOROSIS') || s.includes('BURN') ||
+    s.includes('STUNTED')
+  );
+  
+  // Confirmed if we have cause OR diagnostic symptom
+  const isConfirmed = hasPestCause || hasDiseaseCause || hasNutrientCause || 
+                      hasPestSymptom || hasDiseaseSymptom;
+  
+  // Potential if we have any symptoms at all
+  const hasPotential = symptoms.size > 0 || hasNutrientSymptom;
   
   return {
     authority: DecisionAuthority.CROP,
@@ -324,9 +346,11 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
     ],
     reason: isConfirmed 
       ? 'Crop-level issue confirmed - treatments allowed' 
-      : 'Potential crop issue - clarification may be needed before treatment',
-    treatments_allowed: isConfirmed,
-    response_mode: isConfirmed ? ResponseMode.TREATMENT : ResponseMode.CLARIFICATION,
+      : hasPotential
+        ? 'Potential crop issue - treatments may proceed with monitoring'
+        : 'Potential crop issue - clarification may be needed before treatment',
+    treatments_allowed: isConfirmed || hasPotential, // Allow treatments if we have any symptoms
+    response_mode: isConfirmed ? ResponseMode.TREATMENT : (hasPotential ? ResponseMode.TREATMENT : ResponseMode.CLARIFICATION),
     resolver_version: AUTHORITY_RESOLVER_VERSION,
     resolved_at: resolvedAt
   };
