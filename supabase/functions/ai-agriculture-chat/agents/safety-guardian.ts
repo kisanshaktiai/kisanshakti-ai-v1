@@ -3,7 +3,7 @@
  * Final safety checkpoint before agricultural advice reaches farmers
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import type {
   SafetyCheck,
   SafetyStatus,
