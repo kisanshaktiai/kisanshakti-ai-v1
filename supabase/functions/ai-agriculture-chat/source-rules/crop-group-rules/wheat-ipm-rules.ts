@@ -30,9 +30,9 @@ import {
   SoilNitrogen,
   DataConfidence,
   SeverityLevel
-} from '../agents/canonical-state-builder.ts';
+} from '../../agents/canonical-state-builder.ts';
 
-import { DiagnosisCategory } from '../agents/diagnosis-conflict-resolver.ts';
+import { DiagnosisCategory } from '../../agents/diagnosis-conflict-resolver.ts';
 
 // ==================== LOCAL RULE TYPES (avoid circular imports) ====================
 // These are local copies to prevent circular dependency with layered-rule-evaluator.ts

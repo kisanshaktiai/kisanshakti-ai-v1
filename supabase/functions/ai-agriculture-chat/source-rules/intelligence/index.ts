@@ -34,6 +34,9 @@ export * from './outcome-tracking.ts';
 // Combined Intelligence Rules
 import { VARIETY_RECOMMENDATION_RULES } from './variety-recommendation-rules.ts';
 
+// Universal observation rules (different Rule interface - for layered evaluator)
+export * from './universal-observation-rules.ts';
+
 export const ALL_INTELLIGENCE_RULES = [
   ...VARIETY_RECOMMENDATION_RULES
 ];
