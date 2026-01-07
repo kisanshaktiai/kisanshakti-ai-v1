@@ -63,6 +63,20 @@ import {
   logCodeMapping
 } from './entity-code-mapper.ts';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// STATIC IMPORTS FOR EDGE FUNCTION COMPATIBILITY
+// All modules must be statically imported (no await import() allowed)
+// ═══════════════════════════════════════════════════════════════════════════
+import { routeQuery, getRouteRequirements } from './query-router.ts';
+import { resolveDecisionAuthority, DecisionAuthority } from '../decision/authority-resolver.ts';
+import { checkStaticDataGate } from './static-data-gate.ts';
+import { normalizeLanguage } from './language-normalizer.ts';
+import { extractObservations, validateObservationExtraction } from './observation-extractor.ts';
+import { checkUnderstandingCompleteness, checkPrescriptionGate as checkUnderstandingPrescriptionGate, UnderstandingConfidence } from './understanding-completeness-checker.ts';
+import { getAuditLogger } from './audit-logger.ts';
+import { lockIntent, filterActionsByIntentLock, requiresClarification } from './intent-lock.ts';
+import { mapObservationsToCauses } from './observation-cause-mapper.ts';
+
 // Import soil/NDVI state calculator for land-specific recommendations
 import { 
   calculateFieldStates, 
@@ -554,7 +568,7 @@ export class AIAgentOrchestrator {
       // PHASE 0.3: UNIFIED QUERY ROUTER (NEW)
       // Categorizes farmer question into proper handling route
       // ========================================
-      const { routeQuery, getRouteRequirements } = await import('./query-router.ts');
+      // Static import at top of file
       
       const queryRoute = routeQuery(farmerMessage, {
         lastPest: options.sessionState?.previousPest,
@@ -605,8 +619,7 @@ export class AIAgentOrchestrator {
       if (queryRoute.route === 'IRRIGATION_SCHEDULING' && landContext) {
         console.log(`💧 [${traceId}] IRRIGATION query - routing through symbolic pipeline with authority check`);
         
-        // P1-2: Resolve authority BEFORE proceeding
-        const { resolveDecisionAuthority, DecisionAuthority } = await import('../decision/authority-resolver.ts');
+        // P1-2: Resolve authority BEFORE proceeding (static import at top)
         
         const irrigationAuthority = resolveDecisionAuthority({
           detected_causes: [],
@@ -693,8 +706,7 @@ export class AIAgentOrchestrator {
       if (queryRoute.route === 'CROP_HEALTH' && landContext) {
         console.log(`🌱 [${traceId}] CROP_HEALTH query - routing through symbolic pipeline with authority check`);
         
-        // P1-2: Resolve authority BEFORE proceeding
-        const { resolveDecisionAuthority, DecisionAuthority } = await import('../decision/authority-resolver.ts');
+        // P1-2: Resolve authority BEFORE proceeding (static import at top)
         
         const cropHealthAuthority = resolveDecisionAuthority({
           detected_causes: [],
@@ -717,8 +729,7 @@ export class AIAgentOrchestrator {
       // ========================================
       // PHASE 0.5: STATIC DATA GATE (CRITICAL - BEFORE AI)
       // ========================================
-      // Check if query is about static land attributes - answer WITHOUT AI
-      const { checkStaticDataGate } = await import('./static-data-gate.ts');
+      // Check if query is about static land attributes - answer WITHOUT AI (static import at top)
       
       const staticGateResult = checkStaticDataGate({
         farmer_message: farmerMessage,
@@ -871,8 +882,7 @@ export class AIAgentOrchestrator {
           
           console.log(`   🌾 Building canonical state: crop=${cropName}, stage=${growthStage} (${stageSource}), symptom=${visualSymptom}`);
           
-          // P0-1 FIX: Call authority resolver BEFORE rule evaluation
-          const { resolveDecisionAuthority } = await import('../decision/authority-resolver.ts');
+          // P0-1 FIX: Call authority resolver BEFORE rule evaluation (static import at top)
           const authorityInput = {
             detected_causes: [],  // Will be populated by rule engine
             cross_crop_symptoms: visualSymptom ? [visualSymptom] : [],
@@ -1107,7 +1117,7 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       console.log('   📝 Stage 1: Language Normalization...');
       
-      const { normalizeLanguage } = await import('./language-normalizer.ts');
+      // Static import at top of file
       const normalizedInput = normalizeLanguage(processedFarmerMessage);
       agentsUsed.push('LANGUAGE_NORMALIZER');
       
@@ -1121,7 +1131,7 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       console.log('   👁️ Stage 2: Observation Extraction...');
       
-      const { extractObservations, validateObservationExtraction } = await import('./observation-extractor.ts');
+      // Static import at top of file
       const observationExtraction = extractObservations(normalizedInput.normalized_text, normalizedInput.detected_language);
       
       // Validate that no forbidden fields snuck in
@@ -1245,7 +1255,7 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       console.log('   🎯 Stage 4: Understanding Completeness Check...');
       
-      const { checkUnderstandingCompleteness, checkPrescriptionGate: checkUnderstandingPrescriptionGate, UnderstandingConfidence } = await import('./understanding-completeness-checker.ts');
+      // Static import at top of file
       
       const understandingResult = checkUnderstandingCompleteness(observationExtraction, landContext ? {
         current_crop: landContext.current_crop,
@@ -1288,8 +1298,7 @@ export class AIAgentOrchestrator {
         // VALIDATION: Check for diagnosis leakage
         if (!clarificationResponse.validation_passed) {
           console.error(`   ❌ TURN FAILED: Diagnosis leakage detected in clarification options`);
-          // Log the failed turn
-          const { getAuditLogger } = await import('./audit-logger.ts');
+          // Log the failed turn (static import at top)
           const auditLoggerFail = getAuditLogger();
           auditLoggerFail.startTurn({
             turn_id: `diagnosis_leakage_${Date.now()}`,
@@ -1310,8 +1319,7 @@ export class AIAgentOrchestrator {
         console.log(`   🎯 Clarification Scope: ${clarificationResponse.scope}`);
         console.log(`   ✅ Validation passed: ${clarificationResponse.validation_passed}`);
         
-        // Initialize audit logger and log the understanding gate decision
-        const { getAuditLogger } = await import('./audit-logger.ts');
+        // Initialize audit logger and log the understanding gate decision (static import at top)
         const auditLoggerEarly = getAuditLogger();
         auditLoggerEarly.startTurn({
           turn_id: `understanding_gate_${Date.now()}`,
@@ -1558,9 +1566,7 @@ export class AIAgentOrchestrator {
       // ========================================
       console.log('\n🔒 PHASE 1A.4: Intent Lock Enforcement...');
       
-      const { lockIntent, filterActionsByIntentLock, requiresClarification } = await import('./intent-lock.ts');
-      const { mapObservationsToCauses } = await import('./observation-cause-mapper.ts');
-      const { getAuditLogger } = await import('./audit-logger.ts');
+      // Static imports at top of file
       
       const detectedIntent = nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY';
       const intentConfidence = nluOutput?.intent_classification?.intent_confidence || 0.5;
