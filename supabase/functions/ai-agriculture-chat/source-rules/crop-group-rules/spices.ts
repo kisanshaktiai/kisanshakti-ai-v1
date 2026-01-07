@@ -17,7 +17,7 @@ import {
   SoilPState,
   SoilMoistureState,
   WeatherState
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TURMERIC RULES (10+ rules)

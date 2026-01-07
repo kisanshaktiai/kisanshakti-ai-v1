@@ -17,7 +17,7 @@ import {
   SoilMoistureState,
   WeatherState,
   SoilPHState
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // WHEAT RULES (25 rules)

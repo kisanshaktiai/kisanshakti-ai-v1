@@ -21,7 +21,7 @@ import {
   Cause,
   CropStage,
   SoilMoistureState,
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TOMATO PRECISION FERTIGATION (Israel/Netherlands Greenhouse)

@@ -17,7 +17,7 @@ import {
   PRIORITY_LEVEL_TO_NUMERIC,
   PriorityLevel,
   DecisionInput 
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE-SAFE METADATA HELPERS

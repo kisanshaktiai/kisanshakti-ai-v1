@@ -15,7 +15,7 @@ import {
   CropStage,
   DecisionInput,
   PriorityLevel
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DISEASE-RESISTANT VARIETY RECOMMENDATIONS

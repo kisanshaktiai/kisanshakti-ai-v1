@@ -16,7 +16,7 @@ import {
   SoilKState,
   SoilMoistureState,
   WeatherState
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SOYBEAN RULES (12 rules)

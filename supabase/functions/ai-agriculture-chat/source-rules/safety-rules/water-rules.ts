@@ -22,7 +22,7 @@ import {
   SoilTexture,
   IrrigationMethod,
   DecisionInput 
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE-SAFE HELPERS

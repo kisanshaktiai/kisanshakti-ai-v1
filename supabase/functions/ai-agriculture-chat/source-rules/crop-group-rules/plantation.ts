@@ -19,7 +19,7 @@ import {
   SoilMoistureState,
   SoilNState,
   SoilKState
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COCONUT RULES (10 rules) - ICAR-CPCRI Standards

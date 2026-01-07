@@ -12,7 +12,7 @@ import {
   SoilMoistureState,
   SoilOCState,
   SoilTexture
-} from '../../types';
+} from '../../types.ts';
 
 // ============================================================================
 // SOIL TEXTURE AND STRUCTURE RULES (10 rules)

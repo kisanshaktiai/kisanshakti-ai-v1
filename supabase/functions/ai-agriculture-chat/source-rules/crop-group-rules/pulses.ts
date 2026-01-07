@@ -16,7 +16,7 @@ import {
   SoilKState,
   SoilMoistureState,
   WeatherState
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GRAM (CHICKPEA) RULES (12 rules)

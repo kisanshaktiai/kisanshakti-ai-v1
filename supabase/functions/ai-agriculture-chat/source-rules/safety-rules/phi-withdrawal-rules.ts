@@ -11,7 +11,7 @@ import {
   PRIORITY_LEVEL_TO_NUMERIC,
   PriorityLevel,
   DecisionInput 
-} from '../types';
+} from '../types.ts';
 
 // Type-safe helpers
 function num(value: unknown, defaultValue: number = 0): number {

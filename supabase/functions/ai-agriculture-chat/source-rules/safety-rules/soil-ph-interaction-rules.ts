@@ -20,7 +20,7 @@ import {
   DecisionInput,
   PriorityLevel,
   NDVIState
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // pH-CROP FAILURE RULES (Priority: P3 - Critical for crop selection)

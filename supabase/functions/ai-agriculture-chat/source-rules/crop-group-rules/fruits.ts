@@ -16,7 +16,7 @@ import {
   SoilPState,
   SoilMoistureState,
   WeatherState
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MANGO RULES (12+ rules)

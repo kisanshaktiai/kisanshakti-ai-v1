@@ -22,7 +22,7 @@ import {
   FungicideGroup,
   DiseaseSeverityIndex,
   DecisionInput 
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE-SAFE HELPERS

@@ -16,7 +16,7 @@ import {
   SoilKState,
   SoilMoistureState,
   WeatherState
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TOMATO RULES (14 rules)

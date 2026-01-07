@@ -13,7 +13,7 @@ import {
   NDVITrend,
   SoilMoistureState,
   WeatherState
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STORED GRAIN PEST RULES (15 rules)

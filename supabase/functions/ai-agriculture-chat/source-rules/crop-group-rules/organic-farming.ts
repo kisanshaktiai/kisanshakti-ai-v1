@@ -17,7 +17,7 @@ import {
   SoilMoistureState,
   WeatherState,
   FarmingMode
-} from '../types';
+} from '../types.ts';
 
 // ============================================================================
 // ORGANIC PEST MANAGEMENT RULES (15 rules)
