@@ -20,7 +20,7 @@
  * Version: 2.0.0 (Production)
  */
 
-import { CropStage, FarmingMode, WeatherState, SoilMoistureState } from '../types';
+import { CropStage, FarmingMode, WeatherState, SoilMoistureState } from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HERBICIDE RESISTANCE GROUPS (HRAC Classification)
