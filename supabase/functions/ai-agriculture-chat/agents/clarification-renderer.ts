@@ -92,22 +92,30 @@ export interface SafetyValidationResult {
  * Pre-defined safe templates for each clarification scope.
  * These are diagnosis-neutral and safe to use without validation.
  */
-const CLARIFICATION_TEMPLATES: Record<ClarificationScope, Record<'mr' | 'hi' | 'en', {
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * DYNAMIC CLARIFICATION TEMPLATES v3.0
+ * Templates are now CONTEXT-AWARE based on crop type and land data
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+
+// Base templates - used when no context-specific template exists
+const BASE_TEMPLATES: Record<ClarificationScope, Record<'mr' | 'hi' | 'en', {
   question: string;
   options: string[];
 }>> = {
   [ClarificationScope.IDENTIFY_CROP]: {
     mr: {
       question: '🌾 कोणत्या पिकाबद्दल तुम्ही विचारत आहात?',
-      options: ['ऊस', 'कापूस', 'सोयाबीन', 'इतर पीक']
+      options: ['ऊस', 'कापूस', 'सोयाबीन', 'गहू', 'भात', 'इतर पीक']
     },
     hi: {
       question: '🌾 आप किस फसल के बारे में पूछ रहे हैं?',
-      options: ['गन्ना', 'कपास', 'सोयाबीन', 'अन्य फसल']
+      options: ['गन्ना', 'कपास', 'सोयाबीन', 'गेहूं', 'धान', 'अन्य फसल']
     },
     en: {
       question: '🌾 Which crop are you asking about?',
-      options: ['Sugarcane', 'Cotton', 'Soybean', 'Other crop']
+      options: ['Sugarcane', 'Cotton', 'Soybean', 'Wheat', 'Rice', 'Other crop']
     }
   },
   
@@ -171,7 +179,6 @@ const CLARIFICATION_TEMPLATES: Record<ClarificationScope, Record<'mr' | 'hi' | '
     }
   },
   
-  // PHASE-10: Insect type clarification (deferred - after behavior/density confirmed)
   [ClarificationScope.IDENTIFY_INSECT_TYPE]: {
     mr: {
       question: '🐛 किडे कसे दिसतात?',
@@ -187,40 +194,32 @@ const CLARIFICATION_TEMPLATES: Record<ClarificationScope, Record<'mr' | 'hi' | '
     }
   },
   
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE-11: INSECT BEHAVIOR CLARIFICATION (First-Order for Insect Presence)
-  // Agronomically valid: Ask about behavior BEFORE field distribution
-  // ═══════════════════════════════════════════════════════════════════════════
   [ClarificationScope.IDENTIFY_INSECT_BEHAVIOR]: {
     mr: {
-      question: '🔍 तुम्हाला पानांवर छोटे किडे दिसत आहेत.\n\nपरिस्थिती नीट समजून घेण्यासाठी, कृपया सांगा:\nहे किडे उडतात का चालतात?',
+      question: '🔍 हे किडे उडतात का चालतात?',
       options: ['उडतात', 'चालतात / रांगतात', 'सांगता येत नाही']
     },
     hi: {
-      question: '🔍 आपको पत्तों पर छोटे कीड़े दिख रहे हैं.\n\nस्थिति समझने के लिए बताएं:\nये कीड़े उड़ते हैं या रेंगते हैं?',
+      question: '🔍 ये कीड़े उड़ते हैं या रेंगते हैं?',
       options: ['उड़ते हैं', 'चलते / रेंगते हैं', 'पता नहीं']
     },
     en: {
-      question: '🔍 You are noticing small insects on the leaves.\n\nTo understand the situation better, please tell me:\nAre these insects flying or crawling?',
+      question: '🔍 Are these insects flying or crawling?',
       options: ['Flying', 'Crawling', 'Cannot tell']
     }
   },
   
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE-11: PLANT RESPONSE CLARIFICATION (First-Order for Insect Presence)
-  // Ask about visible plant damage indicators - NOT field distribution
-  // ═══════════════════════════════════════════════════════════════════════════
   [ClarificationScope.IDENTIFY_PLANT_RESPONSE]: {
     mr: {
-      question: '🌿 पानांवर काही बदल दिसतात का?\n\nखालीलपैकी काय दिसते?',
+      question: '🌿 पानांवर काही बदल दिसतात का?',
       options: ['पाने वळलेली / मुडलेली', 'पाने पिवळी होत आहेत', 'पानांवर चिकटपणा', 'पानांवर छिद्र / भोक', 'असे काहीही दिसत नाही']
     },
     hi: {
-      question: '🌿 पत्तों पर कोई बदलाव दिखता है?\n\nनीचे में से क्या दिखता है?',
+      question: '🌿 पत्तों पर कोई बदलाव दिखता है?',
       options: ['पत्ते मुड़े हुए', 'पत्ते पीले हो रहे हैं', 'पत्तों पर चिपचिपाहट', 'पत्तों पर छेद', 'ऐसा कुछ नहीं दिखता']
     },
     en: {
-      question: '🌿 Do you notice any changes in the leaves?\n\nWhich of the following do you see?',
+      question: '🌿 Do you notice any changes in the leaves?',
       options: ['Leaves curling', 'Leaves yellowing', 'Sticky substance on leaves', 'Holes or bite marks', 'No such changes visible']
     }
   },
@@ -270,6 +269,168 @@ const CLARIFICATION_TEMPLATES: Record<ClarificationScope, Record<'mr' | 'hi' | '
     }
   }
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CROP-SPECIFIC TEMPLATES - Different options for different crops
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface CropSpecificTemplate {
+  [ClarificationScope.IDENTIFY_LOCATION]?: Record<'mr' | 'hi' | 'en', { question: string; options: string[] }>;
+  [ClarificationScope.REFINE_OBSERVATION]?: Record<'mr' | 'hi' | 'en', { question: string; options: string[] }>;
+}
+
+const CROP_SPECIFIC_TEMPLATES: Record<string, CropSpecificTemplate> = {
+  'SUGARCANE': {
+    [ClarificationScope.IDENTIFY_LOCATION]: {
+      mr: {
+        question: '🎋 उसाच्या कोणत्या भागावर समस्या दिसते?',
+        options: ['पान', 'खोड / सुरळी', 'मूळ / बुडखा', 'संपूर्ण झाड']
+      },
+      hi: {
+        question: '🎋 गन्ने के किस हिस्से पर समस्या है?',
+        options: ['पत्ते', 'तना / गड्डी', 'जड़ / गांठ', 'पूरा पौधा']
+      },
+      en: {
+        question: '🎋 Which part of the sugarcane is affected?',
+        options: ['Leaves', 'Stem / Whorl', 'Root / Sett', 'Whole plant']
+      }
+    },
+    [ClarificationScope.REFINE_OBSERVATION]: {
+      mr: {
+        question: '🔍 उसामध्ये नेमके काय दिसते?',
+        options: ['सुरळी वाळली (Dead Heart)', 'खोडात छिद्र', 'पाने पिवळी', 'पाने लाल झाली', 'खोड तुटते']
+      },
+      hi: {
+        question: '🔍 गन्ने में क्या दिख रहा है?',
+        options: ['गोभ सूख गई (Dead Heart)', 'तने में छेद', 'पत्ते पीले', 'पत्ते लाल', 'तना टूट रहा']
+      },
+      en: {
+        question: '🔍 What exactly do you see in sugarcane?',
+        options: ['Dead Heart (dried whorl)', 'Holes in stem', 'Yellow leaves', 'Red leaves', 'Stem breaking']
+      }
+    }
+  },
+  
+  'WHEAT': {
+    [ClarificationScope.IDENTIFY_LOCATION]: {
+      mr: {
+        question: '🌾 गव्हाच्या कोणत्या भागावर समस्या दिसते?',
+        options: ['पान', 'खोड / देठ', 'ओंबी / कणीस', 'मूळ']
+      },
+      hi: {
+        question: '🌾 गेहूं के किस हिस्से पर समस्या है?',
+        options: ['पत्ते', 'तना', 'बाली', 'जड़']
+      },
+      en: {
+        question: '🌾 Which part of wheat is affected?',
+        options: ['Leaves', 'Stem', 'Ear/Spike', 'Roots']
+      }
+    },
+    [ClarificationScope.REFINE_OBSERVATION]: {
+      mr: {
+        question: '🔍 गव्हामध्ये नेमके काय दिसते?',
+        options: ['पानांवर तांबेरा (तपकिरी ठिपके)', 'पाने पिवळी', 'पाने वाळत आहेत', 'ओंबी पांढरी (White Ear)', 'खोड कुजतंय']
+      },
+      hi: {
+        question: '🔍 गेहूं में क्या दिख रहा है?',
+        options: ['पत्तों पर रतुआ (भूरे धब्बे)', 'पत्ते पीले', 'पत्ते सूख रहे', 'बाली सफेद (White Ear)', 'तना सड़ रहा']
+      },
+      en: {
+        question: '🔍 What exactly do you see in wheat?',
+        options: ['Rust on leaves (brown spots)', 'Yellow leaves', 'Drying leaves', 'White Ear', 'Stem rotting']
+      }
+    }
+  },
+  
+  'COTTON': {
+    [ClarificationScope.IDENTIFY_LOCATION]: {
+      mr: {
+        question: '🪺 कापसाच्या कोणत्या भागावर समस्या दिसते?',
+        options: ['पान', 'खोड', 'बोंड', 'फुले', 'मूळ']
+      },
+      hi: {
+        question: '🪺 कपास के किस हिस्से पर समस्या है?',
+        options: ['पत्ते', 'तना', 'बॉल', 'फूल', 'जड़']
+      },
+      en: {
+        question: '🪺 Which part of cotton is affected?',
+        options: ['Leaves', 'Stem', 'Boll', 'Flowers', 'Roots']
+      }
+    },
+    [ClarificationScope.REFINE_OBSERVATION]: {
+      mr: {
+        question: '🔍 कापसात नेमके काय दिसते?',
+        options: ['पानांवर पांढरे कीटक (पांढरी माशी)', 'बोंडात अळी', 'पाने लाल झाली', 'पाने वळली/कुरळी', 'झाड वाळतंय']
+      },
+      hi: {
+        question: '🔍 कपास में क्या दिख रहा है?',
+        options: ['पत्तों पर सफेद कीट (सफेद मक्खी)', 'बॉल में इल्ली', 'पत्ते लाल', 'पत्ते मुड़े/कर्ली', 'पौधा सूख रहा']
+      },
+      en: {
+        question: '🔍 What exactly do you see in cotton?',
+        options: ['White insects on leaves (whitefly)', 'Larvae in boll', 'Red leaves', 'Curled/twisted leaves', 'Plant drying']
+      }
+    }
+  },
+  
+  'RICE': {
+    [ClarificationScope.IDENTIFY_LOCATION]: {
+      mr: {
+        question: '🌾 भाताच्या कोणत्या भागावर समस्या दिसते?',
+        options: ['पान', 'खोड / देठ', 'कणीस', 'मूळ', 'संपूर्ण झाड']
+      },
+      hi: {
+        question: '🌾 धान के किस हिस्से पर समस्या है?',
+        options: ['पत्ते', 'तना', 'बाली', 'जड़', 'पूरा पौधा']
+      },
+      en: {
+        question: '🌾 Which part of rice is affected?',
+        options: ['Leaves', 'Stem', 'Panicle', 'Roots', 'Whole plant']
+      }
+    }
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONTEXT-AWARE TEMPLATE RESOLVER
+// Returns appropriate template based on crop type and land data
+// ═══════════════════════════════════════════════════════════════════════════
+
+function getContextAwareTemplate(
+  scope: ClarificationScope,
+  language: 'mr' | 'hi' | 'en',
+  cropContext?: CropContextAuthority | null,
+  landData?: { soil_n?: string; ndvi_trend?: string } | null
+): { question: string; options: string[] } {
+  // 1. Try crop-specific template first
+  if (cropContext?.crop_name) {
+    const cropKey = cropContext.crop_name.toUpperCase();
+    const cropTemplates = CROP_SPECIFIC_TEMPLATES[cropKey];
+    
+    if (cropTemplates && cropTemplates[scope]) {
+      const template = cropTemplates[scope]![language];
+      if (template) {
+        console.log(`   📋 Using crop-specific template for ${cropKey} / ${scope}`);
+        return template;
+      }
+    }
+  }
+  
+  // 2. Fall back to base template
+  const baseTemplate = BASE_TEMPLATES[scope]?.[language];
+  if (baseTemplate) {
+    return baseTemplate;
+  }
+  
+  // 3. Final fallback to English
+  return BASE_TEMPLATES[scope]?.en || {
+    question: 'Please provide more details about your crop issue.',
+    options: []
+  };
+}
+
+// Export the old name for backward compatibility
+const CLARIFICATION_TEMPLATES = BASE_TEMPLATES;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SAFETY VALIDATION (HARD GATE)
@@ -370,27 +531,10 @@ export function renderClarification(
 ): ClarificationRenderOutput {
   const { scope, language_code, max_options, turn_count, cropContext } = input;
   
-  // Get template for this scope and language
-  const template = CLARIFICATION_TEMPLATES[scope]?.[language_code];
+  // Get CONTEXT-AWARE template (crop-specific if available)
+  const template = getContextAwareTemplate(scope, language_code, cropContext);
   
-  if (!template) {
-    // Fallback to English
-    const fallbackTemplate = CLARIFICATION_TEMPLATES[scope]?.en || {
-      question: 'Please provide more details about your crop issue.',
-      options: []
-    };
-    
-    return {
-      question: fallbackTemplate.question,
-      options: fallbackTemplate.options.slice(0, max_options),
-      photo_request: scope === ClarificationScope.PHOTO_ONLY,
-      validation_passed: true, // Templates are pre-validated
-      violations: [],
-      scope,
-      rendered_by: 'TEMPLATE',
-      crop_framing_applied: false
-    };
-  }
+  console.log(`   🎯 [Renderer] Scope: ${scope}, Crop: ${cropContext?.crop_name || 'none'}, Options: ${template.options.length}`);
   
   // Limit options to max_options
   const limitedOptions = template.options.slice(0, max_options);
