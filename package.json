@@ -123,6 +123,5 @@
   "lint": "eslint .",
   "preview": "vite preview",
   "bundle-rules": "npx tsx scripts/bundle-rules.ts"
-}
-
+  }
 }
