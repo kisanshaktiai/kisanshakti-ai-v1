@@ -6227,9 +6227,13 @@ export type Database = {
       }
       decision_rules: {
         Row: {
+          action_type: string | null
+          alternatives: Json | null
+          canonical_group: string | null
           category: string
           cause: string
           conditions_json: Json
+          confidence_score: number | null
           created_at: string | null
           crop_code: string | null
           crop_group: string
@@ -6237,16 +6241,26 @@ export type Database = {
           id: string
           is_active: boolean | null
           priority: number
+          response_en: string | null
+          response_hi: string | null
+          response_mr: string | null
+          risk_level: string | null
           rule_id: string
           scientific_source: string | null
           stage_applicable: string[]
+          trigger_keywords: string[] | null
           updated_at: string | null
+          verification_status: string | null
           version: string | null
         }
         Insert: {
+          action_type?: string | null
+          alternatives?: Json | null
+          canonical_group?: string | null
           category: string
           cause: string
           conditions_json: Json
+          confidence_score?: number | null
           created_at?: string | null
           crop_code?: string | null
           crop_group: string
@@ -6254,16 +6268,26 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           priority: number
+          response_en?: string | null
+          response_hi?: string | null
+          response_mr?: string | null
+          risk_level?: string | null
           rule_id: string
           scientific_source?: string | null
           stage_applicable: string[]
+          trigger_keywords?: string[] | null
           updated_at?: string | null
+          verification_status?: string | null
           version?: string | null
         }
         Update: {
+          action_type?: string | null
+          alternatives?: Json | null
+          canonical_group?: string | null
           category?: string
           cause?: string
           conditions_json?: Json
+          confidence_score?: number | null
           created_at?: string | null
           crop_code?: string | null
           crop_group?: string
@@ -6271,10 +6295,16 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           priority?: number
+          response_en?: string | null
+          response_hi?: string | null
+          response_mr?: string | null
+          risk_level?: string | null
           rule_id?: string
           scientific_source?: string | null
           stage_applicable?: string[]
+          trigger_keywords?: string[] | null
           updated_at?: string | null
+          verification_status?: string | null
           version?: string | null
         }
         Relationships: []
