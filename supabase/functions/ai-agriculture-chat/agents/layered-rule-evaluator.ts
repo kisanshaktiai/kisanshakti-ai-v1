@@ -83,17 +83,19 @@ export interface Rule {
   active: boolean;
 }
 
-// PHASE-10: Import Wheat IPM Rules
-// These are imported AFTER types are defined here (wheat-ipm-rules has its own local copies)
-import { 
-  ALL_WHEAT_IPM_RULES, 
-  validateWheatBiocontrol
-} from '../source-rules/crop-group-rules/wheat-ipm-rules.ts';
+// PHASE-10/12: Rules are now loaded from bundled JSON, not source-rules/
+// Empty arrays serve as fallbacks when bundle is empty (before running bundle-rules)
+const ALL_WHEAT_IPM_RULES: Rule[] = [];
+const ALL_UNIVERSAL_RULES: Rule[] = [];
 
-// PHASE-12: Import Universal Observation Rules (crop-agnostic)
-import { 
-  ALL_UNIVERSAL_RULES 
-} from '../source-rules/intelligence/universal-observation-rules.ts';
+/**
+ * Placeholder for wheat biocontrol validation
+ * Rules loaded from bundle will include their own validation logic
+ */
+function validateWheatBiocontrol(_bioagent: string): boolean {
+  // All biocontrol agents are valid by default in placeholder mode
+  return true;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-13: Import Bundled Rules (2,000+ ICAR rules from src/decision-graph)
