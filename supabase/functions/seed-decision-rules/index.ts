@@ -119,16 +119,21 @@ Deno.serve(async (req: Request) => {
       const batch = CANONICAL_RULES.slice(i, i + batchSize);
       
       // Format rules for database
+      // Priority must be 1-10 per database constraint, so normalize from 0-100 scale
+      const normalizePriority = (p: number): number => Math.min(10, Math.max(1, Math.round(p / 10)));
+      
       const formattedRules = batch.map(rule => ({
         rule_id: rule.rule_id,
+        crop_group: rule.crop_code || 'all', // Required NOT NULL field
         crop_code: rule.crop_code,
         category: rule.category,
         stage_applicable: rule.stage_applicable,
+        conditions_json: { code: rule.conditionCode }, // Required NOT NULL field
         condition_code: rule.conditionCode,
         cause: rule.cause,
-        priority: rule.priority,
+        priority: normalizePriority(rule.priority),
         scientific_source: rule.scientific_source,
-        scientific_basis: rule.scientific_basis,
+        scientific_basis: rule.scientific_basis || rule.scientific_source || '',
         trigger_keywords: rule.trigger_keywords,
         response_mr: rule.response_mr,
         response_hi: rule.response_hi,
@@ -136,7 +141,7 @@ Deno.serve(async (req: Request) => {
         action_type: rule.action_type,
         canonical_group: rule.canonical_group,
         is_active: true,
-        version: 1
+        version: '1.0.0'
       }));
 
       const { data, error } = await supabase
