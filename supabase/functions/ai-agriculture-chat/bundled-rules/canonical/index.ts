@@ -1,95 +1,75 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * CANONICAL RULES INDEX - All 13 Rule Groups
+ * CANONICAL RULES INDEX - LIGHTWEIGHT STUB
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * This index consolidates all 13 canonical rule groups for the agricultural
- * decision brain. Each group handles a specific domain of agricultural knowledge.
- * 
- * IMPORTANT: All imports use static .ts extensions for Deno compatibility.
+ * Minimal stub to prevent bundle timeout.
+ * Rules are loaded from database at runtime via loader.ts.
  */
 
 import { type BundledRule } from '../all-rules.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// IMPORTS FROM ALL 13 CANONICAL GROUPS
+// STUB EXPORTS - Empty arrays (rules loaded at runtime from database)
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { CROP_IDENTITY_RULES, CROP_IDENTITY_RULE_COUNT } from './01_crop_identity.ts';
-import { GROWTH_STAGE_RULES, GROWTH_STAGE_RULE_COUNT } from './02_growth_stage.ts';
-import { OBSERVATION_RULES, OBSERVATION_RULE_COUNT } from './03_observation.ts';
-import { NUTRIENT_RULES, NUTRIENT_RULE_COUNT } from './04_nutrient.ts';
-import { PEST_RULES, PEST_RULE_COUNT } from './05_pest.ts';
-import { DISEASE_RULES, DISEASE_RULE_COUNT } from './06_disease.ts';
-import { WEED_RULES, WEED_RULE_COUNT } from './07_weed.ts';
-import { SOIL_RULES, SOIL_RULE_COUNT } from './08_soil.ts';
-import { WEATHER_RULES, WEATHER_RULE_COUNT } from './09_weather.ts';
-import { IRRIGATION_RULES, IRRIGATION_RULE_COUNT } from './10_irrigation.ts';
-import { FERTILIZER_RULES, FERTILIZER_RULE_COUNT } from './11_fertilizer.ts';
-import { CROPPING_SYSTEM_RULES, CROPPING_SYSTEM_RULE_COUNT } from './12_cropping_system.ts';
-import { RISK_SAFETY_RULES, RISK_SAFETY_RULE_COUNT } from './13_risk_safety.ts';
+export const CROP_IDENTITY_RULES: BundledRule[] = [];
+export const CROP_IDENTITY_RULE_COUNT = 0;
 
-// ═══════════════════════════════════════════════════════════════════════════
-// RE-EXPORTS FOR EXTERNAL USE
-// ═══════════════════════════════════════════════════════════════════════════
+export const GROWTH_STAGE_RULES: BundledRule[] = [];
+export const GROWTH_STAGE_RULE_COUNT = 0;
 
-export { CROP_IDENTITY_RULES, CROP_IDENTITY_RULE_COUNT } from './01_crop_identity.ts';
-export { GROWTH_STAGE_RULES, GROWTH_STAGE_RULE_COUNT } from './02_growth_stage.ts';
-export { OBSERVATION_RULES, OBSERVATION_RULE_COUNT } from './03_observation.ts';
-export { NUTRIENT_RULES, NUTRIENT_RULE_COUNT } from './04_nutrient.ts';
-export { PEST_RULES, PEST_RULE_COUNT } from './05_pest.ts';
-export { DISEASE_RULES, DISEASE_RULE_COUNT } from './06_disease.ts';
-export { WEED_RULES, WEED_RULE_COUNT } from './07_weed.ts';
-export { SOIL_RULES, SOIL_RULE_COUNT } from './08_soil.ts';
-export { WEATHER_RULES, WEATHER_RULE_COUNT } from './09_weather.ts';
-export { IRRIGATION_RULES, IRRIGATION_RULE_COUNT } from './10_irrigation.ts';
-export { FERTILIZER_RULES, FERTILIZER_RULE_COUNT } from './11_fertilizer.ts';
-export { CROPPING_SYSTEM_RULES, CROPPING_SYSTEM_RULE_COUNT } from './12_cropping_system.ts';
-export { RISK_SAFETY_RULES, RISK_SAFETY_RULE_COUNT } from './13_risk_safety.ts';
+export const OBSERVATION_RULES: BundledRule[] = [];
+export const OBSERVATION_RULE_COUNT = 0;
 
-// ═══════════════════════════════════════════════════════════════════════════
-// COMBINED CANONICAL RULES ARRAY
-// ═══════════════════════════════════════════════════════════════════════════
+export const NUTRIENT_RULES: BundledRule[] = [];
+export const NUTRIENT_RULE_COUNT = 0;
 
-/** All canonical rules combined from 13 groups */
-export const ALL_CANONICAL_RULES: BundledRule[] = [
-  ...CROP_IDENTITY_RULES,
-  ...GROWTH_STAGE_RULES,
-  ...OBSERVATION_RULES,
-  ...NUTRIENT_RULES,
-  ...PEST_RULES,
-  ...DISEASE_RULES,
-  ...WEED_RULES,
-  ...SOIL_RULES,
-  ...WEATHER_RULES,
-  ...IRRIGATION_RULES,
-  ...FERTILIZER_RULES,
-  ...CROPPING_SYSTEM_RULES,
-  ...RISK_SAFETY_RULES
-];
+export const PEST_RULES: BundledRule[] = [];
+export const PEST_RULE_COUNT = 0;
 
-/** Total count of all canonical rules */
-export const CANONICAL_RULE_COUNT = ALL_CANONICAL_RULES.length;
+export const DISEASE_RULES: BundledRule[] = [];
+export const DISEASE_RULE_COUNT = 0;
 
-// ═══════════════════════════════════════════════════════════════════════════
-// CANONICAL GROUP COUNTS METADATA
-// ═══════════════════════════════════════════════════════════════════════════
+export const WEED_RULES: BundledRule[] = [];
+export const WEED_RULE_COUNT = 0;
+
+export const SOIL_RULES: BundledRule[] = [];
+export const SOIL_RULE_COUNT = 0;
+
+export const WEATHER_RULES: BundledRule[] = [];
+export const WEATHER_RULE_COUNT = 0;
+
+export const IRRIGATION_RULES: BundledRule[] = [];
+export const IRRIGATION_RULE_COUNT = 0;
+
+export const FERTILIZER_RULES: BundledRule[] = [];
+export const FERTILIZER_RULE_COUNT = 0;
+
+export const CROPPING_SYSTEM_RULES: BundledRule[] = [];
+export const CROPPING_SYSTEM_RULE_COUNT = 0;
+
+export const RISK_SAFETY_RULES: BundledRule[] = [];
+export const RISK_SAFETY_RULE_COUNT = 0;
+
+/** All canonical rules - loaded at runtime */
+export const ALL_CANONICAL_RULES: BundledRule[] = [];
+export const CANONICAL_RULE_COUNT = 0;
 
 export const CANONICAL_GROUP_COUNTS = {
-  crop_identity: CROP_IDENTITY_RULE_COUNT,
-  growth_stage: GROWTH_STAGE_RULE_COUNT,
-  observation: OBSERVATION_RULE_COUNT,
-  nutrient: NUTRIENT_RULE_COUNT,
-  pest: PEST_RULE_COUNT,
-  disease: DISEASE_RULE_COUNT,
-  weed: WEED_RULE_COUNT,
-  soil: SOIL_RULE_COUNT,
-  weather: WEATHER_RULE_COUNT,
-  irrigation: IRRIGATION_RULE_COUNT,
-  fertilizer: FERTILIZER_RULE_COUNT,
-  cropping_system: CROPPING_SYSTEM_RULE_COUNT,
-  risk_safety: RISK_SAFETY_RULE_COUNT,
+  crop_identity: 0,
+  growth_stage: 0,
+  observation: 0,
+  nutrient: 0,
+  pest: 0,
+  disease: 0,
+  weed: 0,
+  soil: 0,
+  weather: 0,
+  irrigation: 0,
+  fertilizer: 0,
+  cropping_system: 0,
+  risk_safety: 0,
 };
 
-console.log(`✅ Canonical Rules loaded: ${CANONICAL_RULE_COUNT} rules across 13 groups`);
-console.log(`   📊 Groups:`, JSON.stringify(CANONICAL_GROUP_COUNTS));
+console.log('📦 Canonical Rules: Using stub - rules loaded from database at runtime');
