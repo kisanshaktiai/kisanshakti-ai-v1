@@ -33,7 +33,7 @@ import {
 import type { RuleModuleReference, RulePriority } from './rule-module-types.ts';
 import { resolveConflicts, checkTreatmentCompatibility } from './conflict-resolver.ts';
 import { calculateEconomicViability } from './economic-calculator.ts';
-import { createHash } from 'https://deno.land/std@0.177.0/crypto/mod.ts';
+// Use Web Crypto API instead of Deno std lib for compatibility
 import { 
   SYMBOLIC_RULES_REGISTRY, 
   matchRulesByKeywords, 

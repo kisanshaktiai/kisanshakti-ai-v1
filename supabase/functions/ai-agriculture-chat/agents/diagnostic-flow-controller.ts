@@ -37,6 +37,9 @@ import {
   AuthorityAuditEntry
 } from '../decision/authority-resolver.ts';
 
+// Static import for decision graph bridge (CRITICAL: No dynamic imports allowed in edge functions)
+import { evaluateDecisionGraph } from './decision-graph-bridge.ts';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // DIAGNOSTIC SESSION STATE
 // ═══════════════════════════════════════════════════════════════════════════
@@ -316,8 +319,6 @@ export class DiagnosticFlowController {
     // CRITICAL FIX: Evaluate decision graph ONCE, not per module (major latency fix)
     // ═══════════════════════════════════════════════════════════════════════════
     
-    const { evaluateDecisionGraph } = await import('./decision-graph-bridge.ts');
-    
     console.log('🔬 [DiagnosticFlow] Evaluating decision graph ONCE for all modules');
     
     try {
@@ -377,8 +378,7 @@ export class DiagnosticFlowController {
     moduleRef: RuleModuleReference,
     context: RuleEvaluationContext
   ): Promise<Partial<RuleEvaluationResult>> {
-    // CRITICAL FIX: Use the decision-graph-bridge for actual rule evaluation
-    const { evaluateDecisionGraph } = await import('./decision-graph-bridge.ts');
+    // CRITICAL FIX: Use the decision-graph-bridge for actual rule evaluation (static import at top)
     
     console.log(`🔬 [DiagnosticFlow] Evaluating module: ${moduleRef.moduleFile}`);
     

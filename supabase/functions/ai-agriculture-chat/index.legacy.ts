@@ -15,6 +15,8 @@ import { compressConversationMemory, buildOptimizedMessages, estimateTotalTokens
 import { buildSmartContext, estimateContextTokens } from './smart-context-builder.ts';
 // ============= RURAL LANGUAGE POST-PROCESSING =============
 import { localizeResponse } from './response-localizer.ts';
+// ============= DYNAMIC FOLLOW-UP GENERATOR =============
+import { parseAIGeneratedFollowUps, generateFollowUpQuestions } from './followup-generator.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -2634,9 +2636,7 @@ NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
       })
       .eq('id', currentSessionId);
 
-    // ✅ NEW: Import and use dynamic follow-up generator
-    const { parseAIGeneratedFollowUps, generateFollowUpQuestions } = await import('./followup-generator.ts');
-    
+    // Use static import from top of file
     // Parse AI-generated follow-ups from response (if included)
     const { cleanedResponse, followUpQuestions } = parseAIGeneratedFollowUps(aiMessage, language);
     
