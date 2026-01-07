@@ -84,10 +84,10 @@ export interface ExecutableRule extends BundledRule {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Expected minimum rule count (security check)
-const MINIMUM_EXPECTED_RULES = 100; // Lower threshold for placeholder, raise to 1900 in production
+const MINIMUM_EXPECTED_RULES = 1000; // Production threshold for 2100+ rules
 
 // Bundle version compatibility
-const COMPATIBLE_VERSIONS = ['1.0.0', '1.0.0-stub', '1.1.0', '0.0.0-placeholder'];
+const COMPATIBLE_VERSIONS = ['1.0.0', '1.0.0-stub', '1.1.0', '2.0.0', '3.0.0', '0.0.0-placeholder'];
 
 /**
  * Validate bundle integrity before loading
