@@ -16,7 +16,7 @@
  * Philosophy: 100% auditability - every recommendation traceable to rules
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { NLUDecisionGraphInput, SymbolicDecisionOutput } from './decision-representation.ts';
 
 export const AUDIT_LOGGER_VERSION = '2.0.0';

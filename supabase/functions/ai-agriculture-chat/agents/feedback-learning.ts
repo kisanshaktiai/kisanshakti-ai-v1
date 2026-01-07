@@ -3,7 +3,7 @@
  * Continuously learns from farmer outcomes to improve system accuracy
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import type {
   TreatmentOutcome,
   IdentificationAccuracy,
