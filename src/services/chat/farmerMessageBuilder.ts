@@ -378,7 +378,7 @@ export function buildFarmerMessage(
   const templates = TEMPLATES[lang] || TEMPLATES.en;
   
   const cropName = landContext?.current_crop || landContext?.crop_name || 'crop';
-  const areaAcres = landContext?.area_acres || landContext?.area_hectares ? (landContext.area_hectares! * 2.47) : 1;
+  const areaAcres = landContext?.area_acres || (landContext?.area_hectares ? (landContext.area_hectares * 2.47) : 1);
   
   // Determine primary cause and action
   const primaryCause = advisory.causes[0];
