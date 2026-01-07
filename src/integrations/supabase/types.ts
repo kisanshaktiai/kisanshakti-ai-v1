@@ -6232,6 +6232,7 @@ export type Database = {
           canonical_group: string | null
           category: string
           cause: string
+          condition_code: string | null
           conditions_json: Json
           confidence_score: number | null
           created_at: string | null
@@ -6246,6 +6247,7 @@ export type Database = {
           response_mr: string | null
           risk_level: string | null
           rule_id: string
+          scientific_basis: string | null
           scientific_source: string | null
           stage_applicable: string[]
           trigger_keywords: string[] | null
@@ -6259,6 +6261,7 @@ export type Database = {
           canonical_group?: string | null
           category: string
           cause: string
+          condition_code?: string | null
           conditions_json: Json
           confidence_score?: number | null
           created_at?: string | null
@@ -6273,6 +6276,7 @@ export type Database = {
           response_mr?: string | null
           risk_level?: string | null
           rule_id: string
+          scientific_basis?: string | null
           scientific_source?: string | null
           stage_applicable: string[]
           trigger_keywords?: string[] | null
@@ -6286,6 +6290,7 @@ export type Database = {
           canonical_group?: string | null
           category?: string
           cause?: string
+          condition_code?: string | null
           conditions_json?: Json
           confidence_score?: number | null
           created_at?: string | null
@@ -6300,6 +6305,7 @@ export type Database = {
           response_mr?: string | null
           risk_level?: string | null
           rule_id?: string
+          scientific_basis?: string | null
           scientific_source?: string | null
           stage_applicable?: string[]
           trigger_keywords?: string[] | null
