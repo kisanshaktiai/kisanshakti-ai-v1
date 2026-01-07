@@ -19,6 +19,7 @@
 import type { ObservationExtraction } from './observation-extractor.ts';
 import type { UnderstandingCheckResult } from './understanding-completeness-checker.ts';
 import { UnderstandingConfidence } from './understanding-completeness-checker.ts';
+import {
   ClarificationScope,
   resolveClarificationPlan,
   needsClarification,
