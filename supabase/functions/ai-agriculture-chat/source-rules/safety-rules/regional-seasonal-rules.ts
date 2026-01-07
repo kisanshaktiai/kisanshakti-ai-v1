@@ -21,7 +21,7 @@ import {
   Season,
   AgroClimaticZone,
   DecisionInput 
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE-SAFE HELPERS

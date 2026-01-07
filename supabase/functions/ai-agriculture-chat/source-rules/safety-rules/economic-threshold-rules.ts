@@ -16,7 +16,7 @@ import {
   PriorityLevel,
   CropStage,
   DecisionInput 
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ECONOMIC THRESHOLD DATA STRUCTURES

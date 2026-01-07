@@ -18,7 +18,7 @@ import {
   CropStage,
   DecisionInput,
   PriorityLevel
-} from '../types';
+} from '../types.ts';
 
 // Type helpers
 function num(value: unknown, defaultValue: number = 0): number {

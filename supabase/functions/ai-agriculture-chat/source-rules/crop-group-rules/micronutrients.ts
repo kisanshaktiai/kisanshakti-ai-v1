@@ -15,7 +15,7 @@ import {
   SoilPState,
   SoilMoistureState,
   WeatherState
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ZINC DEFICIENCY RULES (6 rules)

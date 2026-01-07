@@ -16,7 +16,7 @@ import {
   SoilPState,
   SoilMoistureState,
   WeatherState
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // BERSEEM (EGYPTIAN CLOVER) RULES (8+ rules)

@@ -16,7 +16,7 @@ import {
   SoilPState,
   SoilMoistureState,
   WeatherState
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COTTON RULES (25+ rules)

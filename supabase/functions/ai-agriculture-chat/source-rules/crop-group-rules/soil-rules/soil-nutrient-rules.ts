@@ -14,7 +14,7 @@ import {
   SoilKState,
   SoilZincState,
   SoilOCState
-} from '../../types';
+} from '../../types.ts';
 
 // ============================================================================
 // MACRONUTRIENT DEFICIENCY RULES (12 rules)

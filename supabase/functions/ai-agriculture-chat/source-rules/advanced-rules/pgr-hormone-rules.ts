@@ -26,7 +26,7 @@ import {
   NDVITrend,
   SoilNState,
   WeatherState
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TOMATO PGR RULES (Israel/Netherlands Greenhouse Technology)

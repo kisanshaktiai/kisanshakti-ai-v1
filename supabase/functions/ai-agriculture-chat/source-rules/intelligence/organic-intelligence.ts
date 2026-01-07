@@ -22,7 +22,7 @@
  * Version: 2.0.0 (Production)
  */
 
-import { Action, FarmingMode } from '../types';
+import { Action, FarmingMode } from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ORGANIC ALTERNATIVE CLASSIFICATION

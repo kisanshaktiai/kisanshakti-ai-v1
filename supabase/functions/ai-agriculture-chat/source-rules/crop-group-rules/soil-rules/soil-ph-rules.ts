@@ -13,7 +13,7 @@ import {
   SoilNState,
   SoilPState,
   SoilMoistureState
-} from '../../types';
+} from '../../types.ts';
 
 // ============================================================================
 // ACIDIC SOIL CORRECTION RULES (10 rules)

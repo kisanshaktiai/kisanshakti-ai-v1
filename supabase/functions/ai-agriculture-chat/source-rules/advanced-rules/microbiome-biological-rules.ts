@@ -28,7 +28,7 @@ import {
   NDVIState,
   NDVITrend,
   WeatherState
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NITROGEN FIXATION RULES (Biofertilizers)

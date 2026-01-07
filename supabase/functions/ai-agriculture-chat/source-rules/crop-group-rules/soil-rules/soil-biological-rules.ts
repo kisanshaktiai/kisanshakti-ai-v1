@@ -14,7 +14,7 @@ import {
   SoilPState,
   SoilMoistureState,
   FarmingMode
-} from '../../types';
+} from '../../types.ts';
 
 // ============================================================================
 // SOIL ORGANIC MATTER RULES (10 rules)

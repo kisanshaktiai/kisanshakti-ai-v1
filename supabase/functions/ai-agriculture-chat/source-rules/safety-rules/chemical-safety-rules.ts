@@ -16,7 +16,7 @@ import {
   WHOToxicityClass,
   CropStage,
   DecisionInput 
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // BANNED PESTICIDES IN INDIA (COMPLETELY BANNED)
