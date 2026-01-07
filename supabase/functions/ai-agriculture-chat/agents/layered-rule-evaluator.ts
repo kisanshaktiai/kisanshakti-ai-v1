@@ -1208,6 +1208,8 @@ export function getAllRulesWithBundled(): Rule[] {
 
 /**
  * Convert ExecutableRule from bundled format to Rule format
+ * PHASE-13 ENHANCED: Now passes user_query for keyword-based matching
+ * and includes multilingual responses in the rule output
  */
 function convertBundledToRule(bundled: ExecutableRule): Rule {
   return {
@@ -1215,22 +1217,27 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
     category: mapBundledCategory(bundled.category),
     priority: bundled.priority || 50,
     when: {
-      custom: (state: CanonicalState) => {
+      // CRITICAL: Extended custom function that supports BOTH enum-based AND keyword-based matching
+      custom: (state: CanonicalState & { user_query?: string; days_after_sowing?: number }) => {
         try {
-          // Create input for bundled rule evaluation
+          // Create input for bundled rule evaluation with user_query for keyword matching
           const input = {
             crop_code: state.crop_type?.toLowerCase() || '',
             crop_stage: state.crop_stage?.toLowerCase() || '',
-            days_after_sowing: 0, // Would need from context
+            days_after_sowing: state.days_after_sowing || 0,
             ndvi_state: state.ndvi_level || 'UNKNOWN',
+            ndvi_trend: state.ndvi_trend || 'UNKNOWN',
             soil_states: {
-              nitrogen: state.soil_nitrogen || 'UNKNOWN',
-              phosphorus: state.soil_phosphorus || 'UNKNOWN',
-              potassium: state.soil_potassium || 'UNKNOWN',
+              n: state.soil_nitrogen || 'UNKNOWN',
+              p: state.soil_phosphorus || 'UNKNOWN',
+              k: state.soil_potassium || 'UNKNOWN',
               moisture: state.water_stress || 'UNKNOWN'
             },
             weather: {},
-            symptom: state.visual_symptom || 'UNKNOWN'
+            weather_forecast: {},
+            symptom: state.visual_symptom || 'UNKNOWN',
+            // CRITICAL: Pass user_query for keyword-based trigger matching
+            user_query: state.user_query || ''
           };
           return bundled.conditions(input);
         } catch {
@@ -1240,7 +1247,16 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
     },
     then: {
       possible_cause: bundled.cause,
-      cause_confidence: bundled.cause_confidence || 0.7
+      cause_confidence: bundled.cause_confidence || 0.7,
+      // PHASE-13: Include multilingual responses for LLM formatter
+      action_type: bundled.action_type || 'RECOMMEND',
+      action_details: {
+        response_mr: bundled.response_mr,
+        response_hi: bundled.response_hi,
+        response_en: bundled.response_en,
+        alternatives: bundled.alternatives,
+        trigger_keywords: bundled.trigger_keywords
+      }
     },
     scientific_basis: bundled.scientific_basis || bundled.scientific_source,
     active: true
@@ -1249,17 +1265,80 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
 
 /**
  * Map bundled category string to RuleCategory enum
+ * PHASE-13 ENHANCED: Covers all 13 canonical group categories
  */
 function mapBundledCategory(category: string): RuleCategory {
   const categoryMap: Record<string, RuleCategory> = {
+    // Standard categories
     'observation': RuleCategory.OBSERVATION,
     'diagnosis': RuleCategory.DIAGNOSIS,
     'exclusion': RuleCategory.EXCLUSION,
     'safety': RuleCategory.SAFETY,
     'prescription': RuleCategory.PRESCRIPTION,
-    'warning': RuleCategory.WARNING
+    'warning': RuleCategory.WARNING,
+    // Canonical group categories → map to appropriate rule phase
+    'crop_identity': RuleCategory.OBSERVATION,
+    'growth_stage': RuleCategory.OBSERVATION,
+    'pest': RuleCategory.DIAGNOSIS,
+    'disease': RuleCategory.DIAGNOSIS,
+    'nutrient': RuleCategory.DIAGNOSIS,
+    'weed': RuleCategory.DIAGNOSIS,
+    'soil': RuleCategory.OBSERVATION,
+    'weather': RuleCategory.WARNING,
+    'weather_safety': RuleCategory.SAFETY,
+    'irrigation': RuleCategory.PRESCRIPTION,
+    'water': RuleCategory.DIAGNOSIS,
+    'fertilizer': RuleCategory.PRESCRIPTION,
+    'cropping_system': RuleCategory.OBSERVATION,
+    'rotation': RuleCategory.OBSERVATION,
+    'intercrop': RuleCategory.OBSERVATION,
+    'risk_safety': RuleCategory.SAFETY,
+    'regulatory': RuleCategory.SAFETY,
+    'ipm': RuleCategory.PRESCRIPTION
   };
   return categoryMap[category?.toLowerCase()] || RuleCategory.DIAGNOSIS;
+}
+
+/**
+ * PHASE-13: Evaluate bundled rules using keyword matching as fallback
+ * Called when enum-based rules fail to match
+ */
+export function evaluateBundledKeywordRules(
+  userQuery: string,
+  state: CanonicalState
+): { ruleId: string; cause: string; confidence: number; response: { mr?: string; hi?: string; en?: string } }[] {
+  const allBundled = loadAllRules();
+  const queryLower = userQuery.toLowerCase();
+  const matches: { ruleId: string; cause: string; confidence: number; response: { mr?: string; hi?: string; en?: string } }[] = [];
+  
+  for (const rule of allBundled) {
+    // Check if any trigger keyword matches the user query
+    if (rule.trigger_keywords && rule.trigger_keywords.length > 0) {
+      const keywordMatch = rule.trigger_keywords.some(kw => queryLower.includes(kw.toLowerCase()));
+      if (keywordMatch) {
+        // Also check crop code compatibility
+        const cropMatch = rule.crop_code === 'all' || 
+                         rule.crop_code === '*' ||
+                         rule.crop_code.toLowerCase() === state.crop_type?.toLowerCase();
+        
+        if (cropMatch) {
+          matches.push({
+            ruleId: rule.rule_id,
+            cause: rule.cause,
+            confidence: (rule.cause_confidence || 0.7),
+            response: {
+              mr: rule.response_mr,
+              hi: rule.response_hi,
+              en: rule.response_en
+            }
+          });
+        }
+      }
+    }
+  }
+  
+  // Sort by priority (higher first) and return top matches
+  return matches.sort((a, b) => b.confidence - a.confidence).slice(0, 5);
 }
 
 /**
