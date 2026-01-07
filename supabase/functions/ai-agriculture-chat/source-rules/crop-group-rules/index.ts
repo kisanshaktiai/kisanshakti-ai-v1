@@ -61,6 +61,9 @@ export function getTotalRuleCount(): number {
 // Universal rules that apply across all crops
 export const UNIVERSAL_RULES = [...MICRONUTRIENT_RULES, ...POST_HARVEST_RULES];
 
+// Wheat IPM rules (different Rule interface - for layered evaluator)
+export * from './wheat-ipm-rules.ts';
+
 // Re-export individual rule sets
 export {
   CEREALS_RULES,

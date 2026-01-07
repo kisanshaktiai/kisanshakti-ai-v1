@@ -27,9 +27,9 @@ import {
   DataConfidence,
   SeverityLevel,
   WaterStress
-} from '../agents/canonical-state-builder.ts';
+} from '../../agents/canonical-state-builder.ts';
 
-import { DiagnosisCategory } from '../agents/diagnosis-conflict-resolver.ts';
+import { DiagnosisCategory } from '../../agents/diagnosis-conflict-resolver.ts';
 
 // ==================== LOCAL RULE TYPES ====================
 
