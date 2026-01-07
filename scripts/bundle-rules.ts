@@ -4,15 +4,15 @@
  * RULE BUNDLER - Bundle 2000+ Rules for Edge Function
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * This script reads all rules from src/decision-graph/ and bundles them
- * into a format that can be loaded by the Supabase Edge Function.
+ * This script reads all rules from supabase/functions/ai-agriculture-chat/source-rules/
+ * and bundles them into a format that can be loaded by the Supabase Edge Function.
  * 
  * Key transformations:
  * 1. Serialize condition functions to strings
  * 2. Convert TypeScript enums to string literals
  * 3. Generate metadata about rule counts
  * 
- * Usage: npx tsx scripts/bundle-rules.ts
+ * Usage: npm run bundle-rules
  */
 
 import * as fs from 'fs';
@@ -22,6 +22,9 @@ import { fileURLToPath, pathToFileURL } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, '..');
+
+// Backend source rules directory
+const SOURCE_RULES_DIR = path.join(ROOT_DIR, 'supabase/functions/ai-agriculture-chat/source-rules');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -210,15 +213,15 @@ function bundleRule(rule: any): BundledRule {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// RULE LOADING
+// RULE LOADING - FROM BACKEND SOURCE-RULES
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function loadCropGroupRules(): Promise<Record<string, BundledRule[]>> {
   const result: Record<string, BundledRule[]> = {};
   
   try {
-    // Import the crop group index
-    const importPath = pathToFileURL(path.join(ROOT_DIR, 'src/decision-graph/crop-group-rules/index.ts')).href;
+    // Import the crop group index from backend source-rules
+    const importPath = pathToFileURL(path.join(SOURCE_RULES_DIR, 'crop-group-rules/index.ts')).href;
     const cropGroupIndex = await import(importPath);
     
     // Process each crop group
@@ -273,8 +276,8 @@ async function loadSafetyRules(): Promise<Record<string, BundledRule[]>> {
   const result: Record<string, BundledRule[]> = {};
   
   try {
-    // Import the safety rules index
-    const importPath = pathToFileURL(path.join(ROOT_DIR, 'src/decision-graph/safety-rules/index.ts')).href;
+    // Import the safety rules index from backend source-rules
+    const importPath = pathToFileURL(path.join(SOURCE_RULES_DIR, 'safety-rules/index.ts')).href;
     const safetyIndex = await import(importPath);
     
     const safetyCategories = [
@@ -313,7 +316,7 @@ async function loadAdvancedRules(): Promise<BundledRule[]> {
   const result: BundledRule[] = [];
   
   try {
-    const importPath = pathToFileURL(path.join(ROOT_DIR, 'src/decision-graph/advanced-rules/index.ts')).href;
+    const importPath = pathToFileURL(path.join(SOURCE_RULES_DIR, 'advanced-rules/index.ts')).href;
     const advancedIndex = await import(importPath);
     
     if (advancedIndex.ALL_ADVANCED_RULES) {
@@ -335,7 +338,7 @@ async function loadIntelligenceRules(): Promise<BundledRule[]> {
   const result: BundledRule[] = [];
   
   try {
-    const importPath = pathToFileURL(path.join(ROOT_DIR, 'src/decision-graph/intelligence/index.ts')).href;
+    const importPath = pathToFileURL(path.join(SOURCE_RULES_DIR, 'intelligence/index.ts')).href;
     const intelligenceIndex = await import(importPath);
     
     if (intelligenceIndex.ALL_INTELLIGENCE_RULES) {
@@ -359,6 +362,7 @@ async function loadIntelligenceRules(): Promise<BundledRule[]> {
 
 async function generateBundle(): Promise<RuleBundle> {
   console.log('\n📦 Bundling Agricultural Decision Rules...\n');
+  console.log(`📂 Source: ${SOURCE_RULES_DIR}\n`);
   
   console.log('Loading Crop Group Rules:');
   const cropGroupRules = await loadCropGroupRules();
