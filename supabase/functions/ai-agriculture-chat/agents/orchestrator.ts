@@ -7,7 +7,7 @@
  * - Rule engine only for pest/disease/treatment decisions
  */
 
-import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
 
 // Import all agents
 import { processNLUAgent } from './nlu-agent.ts';
