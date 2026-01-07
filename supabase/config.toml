@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.validation-monitor]
 verify_jwt = false
+
+[functions.seed-decision-rules]
+verify_jwt = false
