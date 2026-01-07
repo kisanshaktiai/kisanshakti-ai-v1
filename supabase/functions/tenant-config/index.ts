@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { resolveTenantFromRequest } from '../_shared/tenantMiddleware.ts';
 import { withTenantBlocker } from '../_shared/tenantBlocker.ts';
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
