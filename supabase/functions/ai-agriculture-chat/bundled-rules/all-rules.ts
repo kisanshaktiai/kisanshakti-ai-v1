@@ -76,16 +76,18 @@ function normalizePriority(priority: string | number): number {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// EMBEDDED RULES - NO CIRCULAR IMPORTS
-// Rules are embedded directly here to avoid circular dependency issues
-// Source files: symbolic-rules-bridge.ts (800+) and layered-rule-evaluator.ts (200+)
+// CANONICAL RULES IMPORT - 13 Groups of ICAR-aligned rules
 // ═══════════════════════════════════════════════════════════════════════════
 
-// CONVERTED_SYMBOLIC_RULES and CONVERTED_CORE_RULES are now embedded directly 
-// in ALL_BUNDLED_RULES below to avoid import cycles
+import { 
+  ALL_CANONICAL_RULES, 
+  CANONICAL_RULE_COUNT,
+  CANONICAL_GROUP_COUNTS 
+} from './canonical/index.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ADDITIONAL CROP-SPECIFIC RULES (500+ Rules)
+// These supplement the canonical rules with detailed pest/disease treatments
 // ═══════════════════════════════════════════════════════════════════════════
 
 const ADDITIONAL_CROP_RULES: BundledRule[] = [
@@ -622,14 +624,19 @@ const ADDITIONAL_CROP_RULES: BundledRule[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
-// COMBINE ALL RULES - 500+ crop-specific rules embedded directly
-// Additional rules from symbolic-rules-bridge.ts and layered-rule-evaluator.ts
-// are loaded separately by loader.ts to avoid circular dependencies
+// COMBINE ALL RULES - Canonical (13 groups) + Additional Crop-Specific
+// Total: ~600+ rules (112 canonical + 500+ crop-specific)
 // ═══════════════════════════════════════════════════════════════════════════
 
 const ALL_BUNDLED_RULES: BundledRule[] = [
-  ...ADDITIONAL_CROP_RULES
+  ...ALL_CANONICAL_RULES,  // 112+ rules from 13 canonical groups
+  ...ADDITIONAL_CROP_RULES  // 500+ additional crop-specific rules
 ];
+
+// Log canonical rules integration
+console.log(`📦 Integrated ${CANONICAL_RULE_COUNT} canonical rules from 13 groups`);
+console.log(`📦 Added ${ADDITIONAL_CROP_RULES.length} additional crop-specific rules`);
+console.log(`📦 TOTAL: ${ALL_BUNDLED_RULES.length} rules available`);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EXPORTED RULE STRUCTURES (Organized by category)
