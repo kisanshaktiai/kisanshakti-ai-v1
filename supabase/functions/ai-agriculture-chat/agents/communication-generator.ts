@@ -209,8 +209,6 @@ export class CommunicationGenerator {
         complexity_score: this.calculateComplexity(fullText),
         adapted_for_literacy: farmerProfile.literacy_level !== 'HIGH',
         adapted_for_emotion: farmerProfile.emotional_state !== 'NEUTRAL',
-        template_type: classification.template_type,
-        sections_included: sectionsIncluded,
         sections_count: sectionsIncluded.length
       }
     };
@@ -315,9 +313,13 @@ export class CommunicationGenerator {
       heading: SECTION_HEADINGS['IMMEDIATE_ACTION'],
       action_summary: actionSummary,
       urgency_indicator: {
-        text: getUrgencyTranslation(urgency) || URGENCY_INDICATORS['TODAY'],
+        text: {
+          mr: getUrgencyTranslation(urgency, 'mr') || URGENCY_INDICATORS['TODAY'].mr,
+          hi: getUrgencyTranslation(urgency, 'hi') || URGENCY_INDICATORS['TODAY'].hi,
+          en: getUrgencyTranslation(urgency, 'en') || URGENCY_INDICATORS['TODAY'].en
+        },
         color: this.getUrgencyColor(urgency),
-        urgency_level: urgency as any
+        urgency_level: urgency as 'IMMEDIATE' | 'TODAY' | 'WITHIN_48H' | 'THIS_WEEK' | 'NON_URGENT'
       },
       weather_note: weatherNote ? {
         mr: this.translateWeatherNote(weatherNote, 'mr'),
@@ -345,7 +347,7 @@ export class CommunicationGenerator {
     
     if (decision.status === 'WEATHER_DELAYED') {
       const weatherNote = extractWeatherConsiderations(decision) || '';
-      const delayReason = decision.blocking_rule?.reason || 'हवामानामुळे';
+      const delayReason = decision.blocked_actions?.[0]?.reason || 'हवामानामुळे';
       return {
         mr: `⏱️ फवारणी पुढे ढकला: ${delayReason}. हवामान सुधारल्यावर फवारणी करा. सध्या पिकाचे निरीक्षण सुरू ठेवा.`,
         hi: `⏱️ छिड़काव टालें: ${delayReason}। मौसम साफ होने पर छिड़काव करें। अभी फसल की निगरानी जारी रखें।`,
@@ -420,8 +422,8 @@ export class CommunicationGenerator {
     const product = extractProductDetails(decision);
     const economic = extractEconomicInfo(decision);
     const safety = extractSafetyInfo(decision);
-    const mixingSteps = extractMixingInstructions(decision);
-    const applicationSteps = extractApplicationSteps(decision);
+    const mixingData = extractMixingInstructions(decision.rules_applied || [], product);
+    const applicationData = extractApplicationSteps(decision.primary_decision, product);
     
     // Handle no product scenario
     if (!product || !product.name) {
@@ -432,10 +434,10 @@ export class CommunicationGenerator {
     const materials = this.buildPopulatedMaterialsList(product, economic);
     
     // BUILD MIXING INSTRUCTIONS with real data
-    const mixing = this.buildPopulatedMixingInstructions(product, mixingSteps, safety);
+    const mixing = this.buildPopulatedMixingInstructions(product, mixingData.steps, safety);
     
     // BUILD APPLICATION METHOD with real data
-    const application = this.buildPopulatedApplicationMethod(product, applicationSteps);
+    const application = this.buildPopulatedApplicationMethod(product, applicationData.steps);
     
     // BUILD TIMING with real data
     const primary = decision.primary_decision;
@@ -494,6 +496,11 @@ export class CommunicationGenerator {
           mr: '15-30 मिनिटे',
           hi: '15-30 मिनट',
           en: '15-30 minutes'
+        },
+        weather_conditions: {
+          mr: 'कोणत्याही हवामानात निरीक्षण करता येते',
+          hi: 'किसी भी मौसम में निगरानी की जा सकती है',
+          en: 'Monitoring can be done in any weather'
         }
       },
       safety_equipment: {
@@ -531,7 +538,7 @@ export class CommunicationGenerator {
         en: product.name
       },
       quantity: product.dosage,
-      cost_inr: economic?.cost_inr || 0,
+      cost_inr: economic?.costInr || 0,
       local_name: {
         mr: productMr,
         hi: productHi,
@@ -552,7 +559,7 @@ export class CommunicationGenerator {
           hi: 'साफ पानी',
           en: 'Clean water'
         },
-        quantity: product.water_volume || '200 लिटर/एकर',
+        quantity: product.waterVolume || '200 लिटर/एकर',
         cost_inr: 0
       });
       
@@ -570,8 +577,8 @@ export class CommunicationGenerator {
     
     return {
       items,
-      total_cost_inr: economic?.cost_inr || 0,
-      cost_per_acre_inr: economic?.cost_inr || 0
+      total_cost_inr: economic?.costInr || 0,
+      cost_per_acre_inr: economic?.costPerAcreInr || 0
     };
   }
   
@@ -705,9 +712,9 @@ export class CommunicationGenerator {
     safety: ReturnType<typeof extractSafetyInfo>
   ): ApplicationInstructions['safety_equipment'] {
     // Translate PPE items
-    const ppeMr = safety.ppe_required.map(ppe => getSafetyGearTranslation(ppe, 'mr'));
-    const ppeHi = safety.ppe_required.map(ppe => getSafetyGearTranslation(ppe, 'hi'));
-    const ppeEn = safety.ppe_required.map(ppe => getSafetyGearTranslation(ppe, 'en'));
+    const ppeMr = safety.ppeRequired.map((ppe: string) => getSafetyGearTranslation(ppe, 'mr'));
+    const ppeHi = safety.ppeRequired.map((ppe: string) => getSafetyGearTranslation(ppe, 'hi'));
+    const ppeEn = safety.ppeRequired.map((ppe: string) => getSafetyGearTranslation(ppe, 'en'));
     
     return {
       required_ppe: {
@@ -736,9 +743,9 @@ export class CommunicationGenerator {
         ]
       },
       first_aid: {
-        mr: 'डोळ्यात गेल्यास स्वच्छ पाण्याने धुवा. त्वचेवर आल्यास साबणाने धुवा. समस्या असल्यास: ' + safety.emergency_contact,
-        hi: 'आंखों में जाने पर साफ पानी से धोएं। त्वचा पर लगने पर साबुन से धोएं। समस्या होने पर: ' + safety.emergency_contact,
-        en: 'If in eyes, rinse with clean water. If on skin, wash with soap. For problems: ' + safety.emergency_contact
+        mr: 'डोळ्यात गेल्यास स्वच्छ पाण्याने धुवा. त्वचेवर आल्यास साबणाने धुवा. समस्या असल्यास: ' + safety.emergencyContact,
+        hi: 'आंखों में जाने पर साफ पानी से धोएं। त्वचा पर लगने पर साबुन से धोएं। समस्या होने पर: ' + safety.emergencyContact,
+        en: 'If in eyes, rinse with clean water. If on skin, wash with soap. For problems: ' + safety.emergencyContact
       }
     };
   }

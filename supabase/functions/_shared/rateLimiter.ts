@@ -28,12 +28,16 @@ export async function checkRateLimit(
 
   try {
     // Clean up old entries first (async, don't wait)
-    supabase
-      .from('rate_limit_tracking')
-      .delete()
-      .lt('window_end', now.toISOString())
-      .then(() => {})
-      .catch(err => console.error('Rate limiter cleanup error:', err));
+    (async () => {
+      try {
+        await supabase
+          .from('rate_limit_tracking')
+          .delete()
+          .lt('window_end', now.toISOString());
+      } catch (err: unknown) {
+        console.error('Rate limiter cleanup error:', err);
+      }
+    })();
 
     // Check current rate limit
     const { data: existing, error: fetchError } = await supabase

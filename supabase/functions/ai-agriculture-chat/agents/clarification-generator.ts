@@ -18,8 +18,7 @@
 
 import type { ObservationExtraction } from './observation-extractor.ts';
 import type { UnderstandingCheckResult } from './understanding-completeness-checker.ts';
-
-import { 
+import { UnderstandingConfidence } from './understanding-completeness-checker.ts';
   ClarificationScope,
   resolveClarificationPlan,
   needsClarification,
@@ -243,11 +242,13 @@ export function generateClarificationResponse(input: ClarificationInput): Clarif
     language,
     observations: observationExtraction,
     understandingResult: {
-      understanding_confidence: 'LOW',
+      understanding_confidence: UnderstandingConfidence.LOW,
       completeness_score: 40,
       unknown_critical_fields: ['affected_part', 'severity'],
       contradiction_detected: [],
       clarification_required: true,
+      missing_for_diagnosis: ['affected_part', 'severity'],
+      clarification_priority: 'symptom',
       clarification_reason: 'Legacy clarification request',
       diagnosis_rules_fired: false
     },
@@ -435,6 +436,3 @@ export default {
   ClarificationScope,
   CLARIFICATION_GENERATOR_VERSION
 };
-
-// PHASE-9.1: Named exports for type usage
-export type { OptionMatchResult };
