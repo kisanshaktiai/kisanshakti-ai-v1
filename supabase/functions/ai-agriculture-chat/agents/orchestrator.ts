@@ -913,8 +913,8 @@ export class AIAgentOrchestrator {
           
           console.log(`   📊 Canonical state built, running layered rule evaluation...`);
           
-          // PHASE-13: Use getAllRulesWithBundled() for complete rule coverage
-          const allRulesForOption = getAllRulesWithBundled();
+          // PHASE-13: Use getAllRulesWithBundled() for complete rule coverage (ASYNC)
+          const allRulesForOption = await getAllRulesWithBundled();
           console.log(`   📦 Total rules for option selection: ${allRulesForOption.length}`);
           
           // Pass user_query for keyword matching
@@ -2026,8 +2026,8 @@ export class AIAgentOrchestrator {
         // PHASE 2.6: LAYERED RULE EVALUATION (Symbolic Decision Brain)
         console.log('\n📊 PHASE 2.6: Layered Rule Evaluation (OBSERVATION → DIAGNOSIS → SAFETY → PRESCRIPTION)...');
         
-        // PHASE-13: Use getAllRulesWithBundled() to include all 2000+ bundled ICAR rules
-        const allRulesWithBundled = getAllRulesWithBundled();
+        // PHASE-13: Use getAllRulesWithBundled() to include all 2000+ bundled ICAR rules (ASYNC)
+        const allRulesWithBundled = await getAllRulesWithBundled();
         console.log(`   📦 Total rules loaded: ${allRulesWithBundled.length} (core + bundled)`);
         
         // CRITICAL: Pass user_query to canonical state for keyword-based matching
@@ -2059,7 +2059,7 @@ export class AIAgentOrchestrator {
         if (layeredRuleResult.rules_matched === 0 && canonicalState.visual_symptom !== 'NONE') {
           console.log('   🔄 No enum rules matched, trying keyword-based bundled rules...');
           
-          const keywordMatches = evaluateBundledKeywordRules(farmerMessage, canonicalState);
+          const keywordMatches = await evaluateBundledKeywordRules(farmerMessage, canonicalState);
           
           if (keywordMatches.length > 0) {
             console.log(`   ✅ Keyword fallback found ${keywordMatches.length} matches:`);
