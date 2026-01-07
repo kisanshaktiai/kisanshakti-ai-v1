@@ -276,6 +276,164 @@ export const PEST_RULES: BundledRule[] = [
     response_en: '🪰 Fruit fly! Install methyl eugenol traps. Spray bait bait (10ml poison + 100g jaggery/L).',
     alternatives: ['Methyl eugenol traps @ 4/acre', 'Spinosad bait @ 0.3ml/L + jaggery 100g/L', 'Malathion bait'],
     action_type: 'RECOMMEND'
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // OBSERVATION-TO-DIAGNOSIS BRIDGING RULES
+  // These rules map farmer observations (affected part, symptom) to diagnoses
+  // Critical for preventing infinity loops when farmer selects clarification options
+  // ═══════════════════════════════════════════════════════════════════════
+  
+  // SUGARCANE: STEM + DEAD → EARLY SHOOT BORER
+  {
+    rule_id: 'BRIDGE_SUGARCANE_STEM_DEAD_001',
+    category: 'diagnosis',
+    crop_code: 'sugarcane',
+    stage_applicable: ['GERMINATION', 'SEEDLING', 'TILLERING'],
+    conditionCode: '(input) => input.crop_type === "SUGARCANE" && ["GERMINATION", "SEEDLING", "TILLERING"].includes(input.crop_stage) && (input.affected_part === "STEM" || input.visual_symptom?.includes("STEM")) && (input.symptom === "DEAD" || input.symptom === "DYING" || input.visual_symptom?.includes("DEAD") || input.visual_symptom?.includes("WILTING"))',
+    cause: 'EARLY_SHOOT_BORER_SUSPECTED',
+    priority: 92,
+    scientific_source: 'ICAR-SBI Early Shoot Borer Management',
+    scientific_basis: 'Early shoot borer (Chilo infuscatellus) causes dead hearts in young sugarcane. Most common cause of stem death in germination/tillering stages.',
+    trigger_keywords: ['stem dead', 'खोड मेले', 'सेट मेले', 'dead cane'],
+    response_mr: '🪱 शूट बोरर शक्यता! मधली सुरळी तपासा - जर ओढल्यावर निघाली तर खात्री. मेलेले सेट काढून नष्ट करा. ट्रायकोग्रामा @ 50,000/एकर सोडा.',
+    response_hi: '🪱 शूट बोरर संभावना! बीच की पत्ती जांचें - खींचने पर निकले तो पक्का। मृत सेट निकालकर नष्ट करें। ट्राइकोग्रामा @ 50,000/एकड़ छोड़ें।',
+    response_en: '🪱 Early shoot borer suspected! Check central shoot - if it pulls out easily, confirmed. Remove and destroy dead sets. Release Trichogramma @ 50,000/acre.',
+    alternatives: ['Remove dead hearts', 'Trichogramma chilonis @ 50,000/acre', 'Chlorantraniliprole 0.4GR @ 10kg/acre'],
+    action_type: 'RECOMMEND'
+  },
+  
+  // SUGARCANE: STEM + HOLES/TUNNELING → INTERNODE BORER
+  {
+    rule_id: 'BRIDGE_SUGARCANE_STEM_HOLES_001',
+    category: 'diagnosis',
+    crop_code: 'sugarcane',
+    stage_applicable: ['TILLERING', 'GRAND_GROWTH', 'MATURITY'],
+    conditionCode: '(input) => input.crop_type === "SUGARCANE" && (input.affected_part === "STEM" || input.visual_symptom?.includes("STEM")) && (input.symptom === "HOLES" || input.symptom === "TUNNELING" || input.visual_symptom?.includes("HOLE") || input.visual_symptom?.includes("BORING"))',
+    cause: 'INTERNODE_BORER_SUSPECTED',
+    priority: 88,
+    scientific_source: 'ICAR-SBI Internode Borer Management',
+    scientific_basis: 'Internode borer (Chilo sacchariphagus indicus) creates tunnels with reddish frass in internodes.',
+    trigger_keywords: ['stem holes', 'खोडात छिद्रे', 'tunneling'],
+    response_mr: '🪱 इंटरनोड बोरर शक्यता! खोडात लाल भुसा दिसतो. फिप्रोनिल 5SC @ 2ml/L फवारा.',
+    response_hi: '🪱 इंटरनोड बोरर संभावना! तने में लाल भूसा दिखता है। फिप्रोनिल 5SC @ 2ml/L स्प्रे करें।',
+    response_en: '🪱 Internode borer suspected! Red frass visible in stem. Spray Fipronil 5SC @ 2ml/L.',
+    alternatives: ['Fipronil 5SC @ 2ml/L', 'Trichogramma chilonis @ 50,000/acre'],
+    action_type: 'RECOMMEND'
+  },
+  
+  // RICE: STEM + DEAD → STEM BORER
+  {
+    rule_id: 'BRIDGE_RICE_STEM_DEAD_001',
+    category: 'diagnosis',
+    crop_code: 'rice',
+    stage_applicable: ['TILLERING', 'PANICLE_INITIATION', 'HEADING'],
+    conditionCode: '(input) => input.crop_type === "RICE" && (input.affected_part === "STEM" || input.visual_symptom?.includes("STEM")) && (input.symptom === "DEAD" || input.symptom === "DYING" || input.visual_symptom?.includes("DEAD") || input.visual_symptom?.includes("WILTING"))',
+    cause: 'RICE_STEM_BORER_SUSPECTED',
+    priority: 90,
+    scientific_source: 'ICAR-CRRI Stem Borer Management',
+    scientific_basis: 'Yellow stem borer causes dead hearts in vegetative and white ears in reproductive stage.',
+    trigger_keywords: ['stem dead', 'dead heart', 'white ear', 'खोड मेले'],
+    response_mr: '🪱 भात खोडकिड शक्यता! मधली पाने ओढून पहा. ट्रायकोग्रामा @ 50,000/एकर सोडा.',
+    response_hi: '🪱 धान तना छेदक संभावना! बीच की पत्ती खींचकर देखें। ट्राइकोग्रामा @ 50,000/एकड़ छोड़ें।',
+    response_en: '🪱 Rice stem borer suspected! Pull central leaves to check. Release Trichogramma @ 50,000/acre.',
+    alternatives: ['Trichogramma japonicum @ 50,000/acre', 'Cartap 4G @ 20kg/ha'],
+    action_type: 'RECOMMEND'
+  },
+  
+  // COTTON: STEM + DEAD/WILTING → ROOT ROT OR STEM WEEVIL
+  {
+    rule_id: 'BRIDGE_COTTON_STEM_WILTING_001',
+    category: 'diagnosis',
+    crop_code: 'cotton',
+    stage_applicable: ['VEGETATIVE', 'SQUARING', 'FLOWERING'],
+    conditionCode: '(input) => input.crop_type === "COTTON" && (input.affected_part === "STEM" || input.visual_symptom?.includes("STEM")) && (input.symptom === "WILTING" || input.symptom === "DYING" || input.visual_symptom?.includes("WILT"))',
+    cause: 'COTTON_STEM_WEEVIL_OR_ROOT_ROT',
+    priority: 85,
+    scientific_source: 'ICAR-CICR Cotton Pest Management',
+    scientific_basis: 'Stem weevil (Pempherulus affinis) and root rot cause wilting. Check stem base for entry holes.',
+    trigger_keywords: ['cotton wilt', 'stem weevil', 'खोड अळी', 'कापूस वाळणे'],
+    response_mr: '🌿 कापूस खोड समस्या! खोडाच्या तळाशी छिद्र तपासा (खोड अळी). नसल्यास मुळकुज शक्यता. क्लोरपायरीफॉस drench @ 2ml/L द्या.',
+    response_hi: '🌿 कपास तना समस्या! तने के आधार पर छेद जांचें (तना वीविल)। नहीं तो जड़ सड़न संभावना। क्लोरपाइरीफॉस drench @ 2ml/L दें।',
+    response_en: '🌿 Cotton stem problem! Check stem base for entry holes (stem weevil). If not, root rot suspected. Apply Chlorpyrifos drench @ 2ml/L.',
+    alternatives: ['Chlorpyrifos 20EC drench @ 2ml/L', 'Carbendazim drench @ 2g/L'],
+    action_type: 'RECOMMEND'
+  },
+  
+  // MAIZE: STEM + DEAD → STEM BORER
+  {
+    rule_id: 'BRIDGE_MAIZE_STEM_DEAD_001',
+    category: 'diagnosis',
+    crop_code: 'maize',
+    stage_applicable: ['VEGETATIVE', 'TASSELING', 'SILKING'],
+    conditionCode: '(input) => input.crop_type === "MAIZE" && (input.affected_part === "STEM" || input.visual_symptom?.includes("STEM")) && (input.symptom === "DEAD" || input.symptom === "DYING" || input.visual_symptom?.includes("DEAD"))',
+    cause: 'MAIZE_STEM_BORER_SUSPECTED',
+    priority: 88,
+    scientific_source: 'ICAR-IIMR Maize Pest Management',
+    scientific_basis: 'Maize stem borer (Chilo partellus) causes dead hearts and stem breakage.',
+    trigger_keywords: ['maize dead heart', 'मका खोडकिड', 'stem borer'],
+    response_mr: '🌽 मका खोडकिड शक्यता! मधली पाने ओढून पहा. ट्रायकोग्रामा @ 50,000/एकर सोडा.',
+    response_hi: '🌽 मक्का तना छेदक संभावना! बीच की पत्ती खींचकर देखें। ट्राइकोग्रामा @ 50,000/एकड़ छोड़ें।',
+    response_en: '🌽 Maize stem borer suspected! Pull central leaves to check. Release Trichogramma @ 50,000/acre.',
+    alternatives: ['Trichogramma chilonis @ 50,000/acre', 'Carbofuran 3G @ 8-10 kg/ha'],
+    action_type: 'RECOMMEND'
+  },
+  
+  // GENERIC: LEAF + YELLOWING + SMALL INSECTS → SUCKING PEST
+  {
+    rule_id: 'BRIDGE_LEAF_YELLOW_INSECTS_001',
+    category: 'diagnosis',
+    crop_code: 'all',
+    stage_applicable: ['ALL'],
+    conditionCode: '(input) => (input.affected_part === "LEAF" || input.visual_symptom?.includes("LEAF")) && (input.symptom === "YELLOWING" || input.visual_symptom?.includes("YELLOW")) && (input.has_insects === true || input.visual_symptom?.includes("INSECT"))',
+    cause: 'SUCKING_PEST_SUSPECTED',
+    priority: 82,
+    scientific_source: 'ICAR General Pest Management',
+    scientific_basis: 'Leaf yellowing with small insects typically indicates sucking pests (aphids, whitefly, jassids).',
+    trigger_keywords: ['yellow leaves insects', 'पिवळी पाने किडे', 'पीले पत्ते कीड़े'],
+    response_mr: '🐛 शोषक किडे शक्यता! पानाच्या खालच्या बाजूस तपासा. निंबोळी अर्क @ 5ml/L किंवा इमिडाक्लोप्रिड @ 0.3ml/L फवारा.',
+    response_hi: '🐛 रस चूसक कीट संभावना! पत्ते के नीचे की ओर जांचें। नीम अर्क @ 5ml/L या इमिडाक्लोप्रिड @ 0.3ml/L स्प्रे करें।',
+    response_en: '🐛 Sucking pest suspected! Check underside of leaves. Spray Neem extract @ 5ml/L or Imidacloprid @ 0.3ml/L.',
+    alternatives: ['Neem extract @ 5ml/L', 'Imidacloprid 17.8SL @ 0.3ml/L', 'Yellow sticky traps'],
+    action_type: 'RECOMMEND'
+  },
+  
+  // GENERIC: LEAF + HOLES → DEFOLIATOR
+  {
+    rule_id: 'BRIDGE_LEAF_HOLES_001',
+    category: 'diagnosis',
+    crop_code: 'all',
+    stage_applicable: ['ALL'],
+    conditionCode: '(input) => (input.affected_part === "LEAF" || input.visual_symptom?.includes("LEAF")) && (input.symptom === "HOLES" || input.visual_symptom?.includes("HOLE") || input.visual_symptom?.includes("EATEN"))',
+    cause: 'DEFOLIATOR_SUSPECTED',
+    priority: 80,
+    scientific_source: 'ICAR General Pest Management',
+    scientific_basis: 'Holes in leaves typically indicate caterpillars, beetles, or grasshoppers.',
+    trigger_keywords: ['leaf holes', 'पानात छिद्रे', 'पत्तों में छेद'],
+    response_mr: '🐛 पाने खाणारे किडे! सकाळी/संध्याकाळी किडे शोधा. स्पिनोसॅड @ 0.3ml/L किंवा क्लोरपायरीफॉस @ 2ml/L फवारा.',
+    response_hi: '🐛 पत्ती खाने वाले कीट! सुबह/शाम कीटों को खोजें। स्पिनोसैड @ 0.3ml/L या क्लोरपाइरीफॉस @ 2ml/L स्प्रे करें।',
+    response_en: '🐛 Defoliator suspected! Search for caterpillars in morning/evening. Spray Spinosad @ 0.3ml/L or Chlorpyrifos @ 2ml/L.',
+    alternatives: ['Spinosad 45SC @ 0.3ml/L', 'Chlorpyrifos 20EC @ 2ml/L', 'Hand picking'],
+    action_type: 'RECOMMEND'
+  },
+  
+  // GENERIC: FRUIT/FLOWER + DAMAGE → FRUIT BORER
+  {
+    rule_id: 'BRIDGE_FRUIT_DAMAGE_001',
+    category: 'diagnosis',
+    crop_code: 'all',
+    stage_applicable: ['FLOWERING', 'FRUITING', 'BOLL_FORMATION'],
+    conditionCode: '(input) => (input.affected_part === "FRUIT" || input.affected_part === "FLOWER" || input.affected_part === "BOLL" || input.visual_symptom?.includes("FRUIT") || input.visual_symptom?.includes("FLOWER")) && (input.symptom === "DAMAGE" || input.symptom === "HOLES" || input.symptom === "DROPPING" || input.visual_symptom?.includes("DAMAGE") || input.visual_symptom?.includes("DROP"))',
+    cause: 'FRUIT_BORER_SUSPECTED',
+    priority: 85,
+    scientific_source: 'ICAR General Pest Management',
+    scientific_basis: 'Fruit/flower damage typically indicates Helicoverpa, fruit borer, or bollworm.',
+    trigger_keywords: ['fruit damage', 'flower dropping', 'फळ खराब', 'फुले गळणे'],
+    response_mr: '🐛 फळ/फुल अळी शक्यता! HaNPV @ 250LE/एकर किंवा एमामेक्टिन @ 0.4g/L संध्याकाळी फवारा.',
+    response_hi: '🐛 फल/फूल छेदक संभावना! HaNPV @ 250LE/एकड़ या एमामेक्टिन @ 0.4g/L शाम को स्प्रे करें।',
+    response_en: '🐛 Fruit borer suspected! Spray HaNPV @ 250LE/acre or Emamectin @ 0.4g/L in evening.',
+    alternatives: ['HaNPV @ 250LE/acre', 'Emamectin benzoate 5SG @ 0.4g/L', 'Spinosad 45SC @ 0.3ml/L'],
+    action_type: 'RECOMMEND'
   }
 ];
 
