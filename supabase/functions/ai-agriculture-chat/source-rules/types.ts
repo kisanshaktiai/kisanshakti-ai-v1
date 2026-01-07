@@ -1806,7 +1806,68 @@ export type RuleCategory =
   | 'variety'          // Variety/cultivar recommendation rules
   | 'pgr_hormone'      // Plant Growth Regulator rules (GA3, NAA, Ethephon, etc.)
   | 'precision_fertigation' // Israel/Netherlands precision fertigation rules
-  | 'biological';      // Microbiome and biological control rules
+  | 'biological'       // Microbiome and biological control rules
+  | 'observation'      // Symptom & observation rules
+  | 'soil'             // Soil health & physical constraints
+  | 'irrigation'       // Irrigation & water management
+  | 'fertilizer'       // Fertilizer & input recommendation
+  | 'rotation'         // Cropping system & rotation
+  | 'advisory';        // Risk, warning & advisory gates
+
+/**
+ * Canonical Rule Group - 13 groups for rule classification
+ * Every rule MUST belong to exactly ONE canonical group
+ */
+export enum CanonicalRuleGroup {
+  /** Group 1: Crop identification, variety selection, classification */
+  CROP_IDENTITY_CLASSIFICATION = 'CROP_IDENTITY_CLASSIFICATION',
+  
+  /** Group 2: Growth stage determination, phenology, DAS calculations */
+  CROP_GROWTH_STAGE = 'CROP_GROWTH_STAGE',
+  
+  /** Group 3: Visual symptoms, field observations, farmer reports */
+  SYMPTOM_OBSERVATION = 'SYMPTOM_OBSERVATION',
+  
+  /** Group 4: NPK deficiency, micronutrient deficiency, toxicity */
+  NUTRIENT_DEFICIENCY_TOXICITY = 'NUTRIENT_DEFICIENCY_TOXICITY',
+  
+  /** Group 5: Insect pests, mites, nematodes */
+  PEST_ENTOMOLOGY = 'PEST_ENTOMOLOGY',
+  
+  /** Group 6: Fungal, bacterial, viral diseases */
+  DISEASE_PATHOLOGY = 'DISEASE_PATHOLOGY',
+  
+  /** Group 7: Weed identification, herbicide management */
+  WEED = 'WEED',
+  
+  /** Group 8: Soil pH, texture, drainage, salinity, waterlogging */
+  SOIL_HEALTH_PHYSICAL = 'SOIL_HEALTH_PHYSICAL',
+  
+  /** Group 9: Heat stress, cold stress, rainfall, drought */
+  WEATHER_CLIMATE_STRESS = 'WEATHER_CLIMATE_STRESS',
+  
+  /** Group 10: Irrigation scheduling, water management */
+  IRRIGATION_WATER = 'IRRIGATION_WATER',
+  
+  /** Group 11: Fertilizer dosage, application timing, input recommendations */
+  FERTILIZER_INPUT = 'FERTILIZER_INPUT',
+  
+  /** Group 12: Crop rotation, intercropping, companion planting */
+  CROPPING_SYSTEM_ROTATION = 'CROPPING_SYSTEM_ROTATION',
+  
+  /** Group 13: Safety gates, warnings, PHI, emergency advisories */
+  RISK_WARNING_ADVISORY = 'RISK_WARNING_ADVISORY',
+}
+
+/**
+ * Verification status for rules
+ */
+export type RuleVerificationStatus = 'CORE' | 'CONDITIONAL' | 'EXPERIMENTAL';
+
+/**
+ * Risk level for rules
+ */
+export type RuleRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 
 /**
  * CauseRule - Individual rule definition
@@ -1832,6 +1893,24 @@ export interface CauseRule {
   scientific_source: string;          // 'ICAR-IARI', 'FAO', etc.
   scientific_basis: string;           // Explanation for audit
   icar_package?: string;              // Specific ICAR package reference
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CANONICAL GROUP CLASSIFICATION (REQUIRED FOR AUDIT)
+  // ─────────────────────────────────────────────────────────────────────────
+  /** 
+   * Canonical group - EVERY rule must belong to exactly ONE group
+   * This is used for ontology validation and audit compliance
+   */
+  canonical_group?: CanonicalRuleGroup;
+  
+  /** Verification status: CORE (ICAR/FAO aligned), CONDITIONAL, EXPERIMENTAL */
+  verification_status?: RuleVerificationStatus;
+  
+  /** Confidence score 0.0 - 1.0 for rule accuracy */
+  confidence_score?: number;
+  
+  /** Risk level: HIGH risk rules must never produce direct treatment advice */
+  risk_level?: RuleRiskLevel;
 
   // ─────────────────────────────────────────────────────────────────────────
   // RULE METADATA (STEP 1)
