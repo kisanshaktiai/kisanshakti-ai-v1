@@ -18,11 +18,10 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const PRESCRIPTION_GATE_VERSION = '1.1.0';
+export const PRESCRIPTION_GATE_VERSION = '1.2.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // P1-1 FIX: Import canonical types from authority-types.ts
-// AuthorityConfirmation enum is DEPRECATED - use unified types
 // ═══════════════════════════════════════════════════════════════════════════
 
 import {
@@ -35,18 +34,35 @@ import {
 // Re-export for backward compatibility
 export { AuthorityStatus, ResponseMode, GateStatus, GateAction };
 
-// NOTE: AuthorityConfirmation enum has been REMOVED (was deprecated)
-// Use AuthorityStatus from authority-types.ts instead
-// Legacy code should migrate to use AuthorityStatus
+// ═══════════════════════════════════════════════════════════════════════════
+// LEGACY BRIDGE: AuthorityConfirmation maps to AuthorityStatus
+// This enum is kept for backward compatibility with legacy gate logic
+// New code should use AuthorityStatus from authority-types.ts
+// ═══════════════════════════════════════════════════════════════════════════
+
+export enum AuthorityConfirmation {
+  CONFIRMED_PEST = 'CONFIRMED_PEST',
+  CONFIRMED_DISEASE = 'CONFIRMED_DISEASE',
+  CONFIRMED_NUTRIENT = 'CONFIRMED_NUTRIENT',
+  UNCONFIRMED = 'UNCONFIRMED',
+  PENDING_CLARIFICATION = 'PENDING_CLARIFICATION'
+}
 
 /**
- * @deprecated Use ResponseMode from authority-types.ts instead
+ * Convert AuthorityConfirmation to canonical AuthorityStatus
  */
-export enum LegacyResponseMode {
-  TREATMENT_ALLOWED = 'TREATMENT_ALLOWED',     // Can provide treatments
-  OBSERVATION_ONLY = 'OBSERVATION_ONLY',       // Can only observe/monitor
-  INFORMATION_ONLY = 'INFORMATION_ONLY',       // Can only provide info
-  CLARIFICATION_ONLY = 'CLARIFICATION_ONLY'    // Must ask clarification
+export function toAuthorityStatus(confirmation: AuthorityConfirmation): AuthorityStatus {
+  switch (confirmation) {
+    case AuthorityConfirmation.CONFIRMED_PEST:
+    case AuthorityConfirmation.CONFIRMED_DISEASE:
+    case AuthorityConfirmation.CONFIRMED_NUTRIENT:
+      return AuthorityStatus.CONFIRMED;
+    case AuthorityConfirmation.PENDING_CLARIFICATION:
+      return AuthorityStatus.PENDING_CLARIFICATION;
+    case AuthorityConfirmation.UNCONFIRMED:
+    default:
+      return AuthorityStatus.UNCONFIRMED;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -195,7 +211,7 @@ export function enforcePrescriptionGate(input: PrescriptionGateInput): Prescript
   if (!symbolic_decision || !symbolic_decision.decision_brain_source) {
     return {
       allowed: false,
-      response_mode: ResponseMode.INFORMATION_ONLY,
+      response_mode: ResponseMode.INFORMATION,
       authority_confirmation: AuthorityConfirmation.UNCONFIRMED,
       allowed_actions: ['PROVIDE_INFO', 'ANSWER_QUERY'],
       blocked_actions: [...TREATMENT_ACTIONS],
@@ -215,7 +231,7 @@ export function enforcePrescriptionGate(input: PrescriptionGateInput): Prescript
   if (symbolic_decision.clarification_needed) {
     return {
       allowed: false,
-      response_mode: ResponseMode.CLARIFICATION_ONLY,
+      response_mode: ResponseMode.CLARIFICATION,
       authority_confirmation: AuthorityConfirmation.PENDING_CLARIFICATION,
       allowed_actions: ['ASK_CLARIFICATION'],
       blocked_actions: [...TREATMENT_ACTIONS],
@@ -245,7 +261,7 @@ export function enforcePrescriptionGate(input: PrescriptionGateInput): Prescript
   if (isYoungCrop && authorityConfirmation === AuthorityConfirmation.UNCONFIRMED) {
     return {
       allowed: false,
-      response_mode: ResponseMode.OBSERVATION_ONLY,
+      response_mode: ResponseMode.OBSERVATION,
       authority_confirmation: authorityConfirmation,
       allowed_actions: [...OBSERVATION_ACTIONS, 'PROVIDE_INFO'],
       blocked_actions: [...TREATMENT_ACTIONS],
@@ -268,7 +284,7 @@ export function enforcePrescriptionGate(input: PrescriptionGateInput): Prescript
   if (hasTreatmentActions && allowedProducts.length === 0 && allowedDosages.length === 0) {
     return {
       allowed: false,
-      response_mode: ResponseMode.OBSERVATION_ONLY,
+      response_mode: ResponseMode.OBSERVATION,
       authority_confirmation: authorityConfirmation,
       allowed_actions: [...OBSERVATION_ACTIONS, 'PROVIDE_INFO'],
       blocked_actions: [...TREATMENT_ACTIONS],
@@ -287,7 +303,7 @@ export function enforcePrescriptionGate(input: PrescriptionGateInput): Prescript
   
   return {
     allowed: true,
-    response_mode: ResponseMode.TREATMENT_ALLOWED,
+    response_mode: ResponseMode.TREATMENT,
     authority_confirmation: authorityConfirmation,
     allowed_actions: allowedActions,
     blocked_actions: [],
@@ -531,5 +547,6 @@ export default {
   generateYoungCropMonitoringResponse,
   PRESCRIPTION_GATE_VERSION,
   AuthorityConfirmation,
+  toAuthorityStatus,
   ResponseMode
 };
