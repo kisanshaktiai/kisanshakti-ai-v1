@@ -354,9 +354,9 @@ export async function formatRecommendationsWithLLM(
     sections_included: extractSections(formattedResponse),
     validation_passed: true,
     validation_violations: [],
-    // PHASE-12: Enhanced audit fields
-    gate_status: gateResult.gate_status,
-    gate_action: gateResult.gate_action,
+    // PHASE-12: Enhanced audit fields (gate status already validated in index.ts)
+    gate_status: GateStatus.PASS,
+    gate_action: GateAction.ALLOW_TREATMENT,
     reasoning_included: formattedResponse.includes('कारण:') || formattedResponse.includes('कारण') || formattedResponse.includes('reason'),
     symbolic_decision_id: input.decision_output?.decision_id
   };
