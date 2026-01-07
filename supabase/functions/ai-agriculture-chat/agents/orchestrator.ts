@@ -101,7 +101,9 @@ import {
 import {
   evaluateRulesLayered,
   CORE_RULES,
-  ALL_RULES, // PHASE-10: Use ALL_RULES which includes wheat IPM rules
+  ALL_RULES,
+  getAllRulesWithBundled, // PHASE-13: Use this to include all 2000+ bundled rules
+  evaluateBundledKeywordRules, // PHASE-13: Keyword fallback for infinity loop prevention
   RuleEvaluationResult
 } from './layered-rule-evaluator.ts';
 
@@ -911,8 +913,13 @@ export class AIAgentOrchestrator {
           
           console.log(`   📊 Canonical state built, running layered rule evaluation...`);
           
-          // PHASE-10 FIX: Run the rule engine with ALL_RULES (includes wheat IPM)
-          const ruleResult = evaluateRulesLayered(ALL_RULES, canonicalState);
+          // PHASE-13: Use getAllRulesWithBundled() for complete rule coverage
+          const allRulesForOption = getAllRulesWithBundled();
+          console.log(`   📦 Total rules for option selection: ${allRulesForOption.length}`);
+          
+          // Pass user_query for keyword matching
+          const stateWithQuery = { ...canonicalState, user_query: farmerMessage };
+          const ruleResult = evaluateRulesLayered(allRulesForOption, stateWithQuery as any);
           
           console.log(`   ✅ Rules matched: ${ruleResult.rules_matched}, Applied: ${ruleResult.rules_applied.length}`);
           console.log(`   📋 Diagnoses: ${ruleResult.diagnoses.length}, Prescriptions: ${ruleResult.prescriptions.length}`);
@@ -2019,8 +2026,17 @@ export class AIAgentOrchestrator {
         // PHASE 2.6: LAYERED RULE EVALUATION (Symbolic Decision Brain)
         console.log('\n📊 PHASE 2.6: Layered Rule Evaluation (OBSERVATION → DIAGNOSIS → SAFETY → PRESCRIPTION)...');
         
-        // PHASE-10: Use ALL_RULES which includes wheat IPM rules
-        layeredRuleResult = evaluateRulesLayered(ALL_RULES, canonicalState);
+        // PHASE-13: Use getAllRulesWithBundled() to include all 2000+ bundled ICAR rules
+        const allRulesWithBundled = getAllRulesWithBundled();
+        console.log(`   📦 Total rules loaded: ${allRulesWithBundled.length} (core + bundled)`);
+        
+        // CRITICAL: Pass user_query to canonical state for keyword-based matching
+        const canonicalStateWithQuery = {
+          ...canonicalState,
+          user_query: farmerMessage
+        };
+        
+        layeredRuleResult = evaluateRulesLayered(allRulesWithBundled, canonicalStateWithQuery as any);
         agentsUsed.push('LAYERED_RULE_EVALUATOR');
         
         console.log(`   ✅ Layered Rule Result:`);
@@ -2036,25 +2052,54 @@ export class AIAgentOrchestrator {
           console.warn(`   ⚠️ Safety Blocks: ${layeredRuleResult.safety_blocks.map(b => b.message).join(', ')}`);
         }
         
-        // PHASE-10: Log warning if no rules matched but we're making a decision
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PHASE-13: INFINITY LOOP PREVENTION - Keyword fallback when no rules match
+        // If enum-based rules fail, try keyword-based matching on bundled rules
+        // ═══════════════════════════════════════════════════════════════════════════
         if (layeredRuleResult.rules_matched === 0 && canonicalState.visual_symptom !== 'NONE') {
-          console.warn(`
+          console.log('   🔄 No enum rules matched, trying keyword-based bundled rules...');
+          
+          const keywordMatches = evaluateBundledKeywordRules(farmerMessage, canonicalState);
+          
+          if (keywordMatches.length > 0) {
+            console.log(`   ✅ Keyword fallback found ${keywordMatches.length} matches:`);
+            keywordMatches.forEach(m => console.log(`      - ${m.ruleId}: ${m.cause} (${(m.confidence * 100).toFixed(0)}%)`));
+            
+            // Inject keyword matches into rule result
+            layeredRuleResult.rules_matched = keywordMatches.length;
+            layeredRuleResult.rules_applied = keywordMatches.map(m => m.ruleId);
+            layeredRuleResult.diagnoses = keywordMatches.map(m => ({
+              id: m.ruleId,
+              category: 3 as any, // DiagnosisCategory.PEST/DISEASE
+              cause: m.cause,
+              confidence: m.confidence,
+              evidence: [],
+              rule_ids: [m.ruleId],
+              severity: canonicalState.severity,
+              requires_immediate_action: false
+            }));
+            layeredRuleResult.final_diagnosis = layeredRuleResult.diagnoses[0] || null;
+            
+            // Store bundled responses for LLM formatter
+            (layeredRuleResult as any).bundled_responses = keywordMatches.map(m => m.response);
+            
+            agentsUsed.push('KEYWORD_FALLBACK_EVALUATOR');
+          } else {
+            console.warn(`
 ⚠️ ════════════════════════════════════════════════════════════════════════════
-   [PHASE-10] ZERO RULE MATCH WARNING
+   [PHASE-13] ZERO RULE MATCH - KEYWORD FALLBACK ALSO FAILED
    ════════════════════════════════════════════════════════════════════════════
    Trace ID: ${traceId}
    Crop: ${canonicalState.crop_type}
    Stage: ${canonicalState.crop_stage}
    Symptom: ${canonicalState.visual_symptom}
-   Severity: ${canonicalState.severity}
-   NDVI: ${canonicalState.ndvi_level} (${canonicalState.ndvi_trend})
+   User Query: "${farmerMessage.substring(0, 100)}"
    
-   🚨 ISSUE: Rules did not fire for this symptom/crop combination.
-   This may indicate a gap in the rule engine.
-   
-   ACTION REQUIRED: Add rules for ${canonicalState.crop_type} + ${canonicalState.visual_symptom}
+   🚨 ISSUE: Neither enum nor keyword rules matched.
+   ACTION: Add rules for this combination or escalate to diagnostic.
    ════════════════════════════════════════════════════════════════════════════
-          `);
+            `);
+          }
         }
         
       } catch (canonicalError) {
