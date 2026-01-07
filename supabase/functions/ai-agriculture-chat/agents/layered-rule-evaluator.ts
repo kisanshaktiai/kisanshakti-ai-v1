@@ -88,12 +88,12 @@ export interface Rule {
 import { 
   ALL_WHEAT_IPM_RULES, 
   validateWheatBiocontrol
-} from '../rules/wheat-ipm-rules.ts';
+} from '../source-rules/crop-group-rules/wheat-ipm-rules.ts';
 
 // PHASE-12: Import Universal Observation Rules (crop-agnostic)
 import { 
   ALL_UNIVERSAL_RULES 
-} from '../rules/universal-observation-rules.ts';
+} from '../source-rules/intelligence/universal-observation-rules.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-13: Import Bundled Rules (2,000+ ICAR rules from src/decision-graph)
