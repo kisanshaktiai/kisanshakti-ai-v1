@@ -3,15 +3,9 @@
  * BUNDLED AGRICULTURAL RULES - SERVER-SIDE ONLY
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * All 2000+ ICAR-aligned rules imported from source-rules/
- * This file is the central aggregator for the edge function.
+ * IMPORTANT: This file provides rule data for the edge function.
+ * Rules are loaded from embedded data (bundled at build time).
  */
-
-import { CauseRule } from '../source-rules/types.ts';
-import { getAllCropGroupRules, getTotalRuleCount as getCropGroupCount, CEREALS_RULES, PULSES_RULES, VEGETABLES_RULES, FIBER_RULES, OILSEEDS_RULES, SUGARCANE_RULES, FRUITS_RULES, SPICES_RULES, FODDER_RULES, PLANTATION_RULES } from '../source-rules/crop-group-rules/index.ts';
-import { getAllSafetyRules, getSafetyRuleCount } from '../source-rules/safety-rules/index.ts';
-import { ALL_ADVANCED_RULES, getAdvancedRulesCount } from '../source-rules/advanced-rules/index.ts';
-import { ALL_INTELLIGENCE_RULES, getIntelligenceRulesCount } from '../source-rules/intelligence/index.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -42,39 +36,27 @@ export interface BundleMetadata {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// BUNDLED RULES DATA
+// BUNDLED RULES DATA - Placeholder until bundle-rules is run
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const CROP_GROUP_RULES: Record<string, CauseRule[]> = {
-  cereals: CEREALS_RULES,
-  pulses: PULSES_RULES,
-  vegetables: VEGETABLES_RULES,
-  fiber: FIBER_RULES,
-  oilseeds: OILSEEDS_RULES,
-  sugarcane: SUGARCANE_RULES,
-  fruits: FRUITS_RULES,
-  spices: SPICES_RULES,
-  fodder: FODDER_RULES,
-  plantation: PLANTATION_RULES,
-};
-
-export const SAFETY_RULES: CauseRule[] = getAllSafetyRules();
-export const ADVANCED_RULES: CauseRule[] = ALL_ADVANCED_RULES;
-export const INTELLIGENCE_RULES: CauseRule[] = ALL_INTELLIGENCE_RULES;
+export const CROP_GROUP_RULES: Record<string, BundledRule[]> = {};
+export const SAFETY_RULES: BundledRule[] = [];
+export const ADVANCED_RULES: BundledRule[] = [];
+export const INTELLIGENCE_RULES: BundledRule[] = [];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function getAllCropGroupRulesFlat(): CauseRule[] {
-  return getAllCropGroupRules();
+export function getAllCropGroupRules(): BundledRule[] {
+  return Object.values(CROP_GROUP_RULES).flat();
 }
 
-export function getAllSafetyRulesFlat(): CauseRule[] {
+export function getAllSafetyRules(): BundledRule[] {
   return SAFETY_RULES;
 }
 
-export function getAllRules(): CauseRule[] {
+export function getAllRules(): BundledRule[] {
   return [
     ...getAllCropGroupRules(),
     ...SAFETY_RULES,
@@ -88,18 +70,12 @@ export function getRuleCount(): number {
 }
 
 export const BUNDLE_METADATA: BundleMetadata = {
-  totalRules: getRuleCount(),
+  totalRules: 0,
   generatedAt: new Date().toISOString(),
-  version: "1.0.0",
-  rulesByCategory: {
-    crop_group: getCropGroupCount(),
-    safety: getSafetyRuleCount(),
-    advanced: getAdvancedRulesCount(),
-    intelligence: getIntelligenceRulesCount(),
-  },
-  rulesByCropGroup: Object.fromEntries(
-    Object.entries(CROP_GROUP_RULES).map(([key, rules]) => [key, rules.length])
-  ),
+  version: "0.0.0-placeholder",
+  rulesByCategory: {},
+  rulesByCropGroup: {},
 };
 
-console.log(`[BundledRules] Loaded ${getRuleCount()} total rules from source-rules/`);
+// Log bundle status
+console.warn('[BundledRules] ⚠️ Using placeholder bundle - run "npm run bundle-rules" to generate actual rules');
