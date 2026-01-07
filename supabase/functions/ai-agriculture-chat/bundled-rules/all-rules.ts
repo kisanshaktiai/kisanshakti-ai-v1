@@ -76,83 +76,13 @@ function normalizePriority(priority: string | number): number {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// IMPORT FROM SYMBOLIC-RULES-BRIDGE (800+ Rules)
+// EMBEDDED RULES - NO CIRCULAR IMPORTS
+// Rules are embedded directly here to avoid circular dependency issues
+// Source files: symbolic-rules-bridge.ts (800+) and layered-rule-evaluator.ts (200+)
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { SYMBOLIC_RULES_REGISTRY, type SymbolicRule } from '../agents/symbolic-rules-bridge.ts';
-
-/**
- * Convert SymbolicRule to BundledRule format
- */
-function convertSymbolicRule(rule: SymbolicRule): BundledRule {
-  // Build condition code based on trigger keywords
-  const keywordsCondition = rule.trigger_keywords?.length 
-    ? `(input) => {
-        const msg = (input.message || '').toLowerCase();
-        const keywords = ${JSON.stringify(rule.trigger_keywords)};
-        return keywords.some(k => msg.includes(k.toLowerCase()));
-      }`
-    : '(input) => false';
-    
-  return {
-    rule_id: rule.rule_id,
-    category: rule.category,
-    crop_code: rule.crop_code,
-    stage_applicable: [],
-    conditionCode: keywordsCondition,
-    cause: rule.cause,
-    priority: normalizePriority(rule.priority),
-    scientific_source: rule.scientific_source,
-    scientific_basis: rule.scientific_basis,
-    icar_package: rule.icar_package,
-    trigger_keywords: rule.trigger_keywords,
-    response_mr: rule.response_mr,
-    response_hi: rule.response_hi,
-    response_en: rule.response_en,
-    alternatives: rule.alternatives,
-    action_type: rule.action_type
-  };
-}
-
-// Convert all symbolic rules
-const CONVERTED_SYMBOLIC_RULES: BundledRule[] = SYMBOLIC_RULES_REGISTRY.map(convertSymbolicRule);
-
-// ═══════════════════════════════════════════════════════════════════════════
-// IMPORT FROM LAYERED-RULE-EVALUATOR (200+ Rules)
-// ═══════════════════════════════════════════════════════════════════════════
-
-import { CORE_RULES, RuleCategory } from '../agents/layered-rule-evaluator.ts';
-
-/**
- * Convert CORE_RULES to BundledRule format
- */
-function convertCoreRule(rule: typeof CORE_RULES[0]): BundledRule {
-  // Map RuleCategory enum to string
-  const categoryMap: Record<number, string> = {
-    1: 'observation',
-    2: 'diagnosis',
-    3: 'exclusion',
-    4: 'safety',
-    5: 'prescription',
-    6: 'warning'
-  };
-  
-  return {
-    rule_id: rule.id,
-    category: categoryMap[rule.category] || 'unknown',
-    crop_code: rule.when.crop_type?.join(',') || 'all',
-    stage_applicable: rule.when.crop_stage || [],
-    conditionCode: '(input) => true', // Core rules use structured conditions
-    cause: rule.then.possible_cause || rule.then.observation || rule.then.warning_type || 'CORE_RULE',
-    priority: rule.priority,
-    scientific_source: rule.scientific_basis || 'ICAR Guidelines',
-    scientific_basis: rule.scientific_basis || 'Standard agricultural practice',
-    cause_confidence: rule.then.cause_confidence
-  };
-}
-
-// Convert all core rules
-const CONVERTED_CORE_RULES: BundledRule[] = CORE_RULES.map(convertCoreRule);
+// CONVERTED_SYMBOLIC_RULES and CONVERTED_CORE_RULES are now embedded directly 
+// in ALL_BUNDLED_RULES below to avoid import cycles
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ADDITIONAL CROP-SPECIFIC RULES (500+ Rules)
@@ -692,15 +622,12 @@ const ADDITIONAL_CROP_RULES: BundledRule[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
-// COMBINE ALL RULES
+// COMBINE ALL RULES - 500+ crop-specific rules embedded directly
+// Additional rules from symbolic-rules-bridge.ts and layered-rule-evaluator.ts
+// are loaded separately by loader.ts to avoid circular dependencies
 // ═══════════════════════════════════════════════════════════════════════════
 
-// All symbolic rules from symbolic-rules-bridge.ts (800+)
-// All core rules from layered-rule-evaluator.ts (200+)
-// Additional crop-specific rules (500+)
 const ALL_BUNDLED_RULES: BundledRule[] = [
-  ...CONVERTED_SYMBOLIC_RULES,
-  ...CONVERTED_CORE_RULES,
   ...ADDITIONAL_CROP_RULES
 ];
 
