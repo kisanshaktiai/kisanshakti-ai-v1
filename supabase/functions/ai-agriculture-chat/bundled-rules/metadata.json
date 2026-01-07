@@ -1,8 +1,43 @@
 {
-  "totalRules": 0,
-  "generatedAt": "2026-01-06T19:13:54.147Z",
+  "totalRules": 1224,
+  "generatedAt": "2026-01-07T08:28:38.171Z",
   "version": "1.0.0",
-  "rulesByCategory": {},
-  "rulesByCropGroup": {},
-  "checksum": "0"
+  "rulesByCategory": {
+    "disease": 247,
+    "water": 139,
+    "temperature": 22,
+    "pest": 217,
+    "nutrient": 249,
+    "weed": 5,
+    "healthy": 20,
+    "critical": 4,
+    "harvest": 48,
+    "biological": 86,
+    "regulatory": 17,
+    "emergency": 16,
+    "safety": 2,
+    "economic": 1,
+    "ipm": 74,
+    "resistance": 4,
+    "weather_safety": 18,
+    "seasonal": 13,
+    "regional": 4
+  },
+  "rulesByCropGroup": {
+    "cereals": 169,
+    "pulses": 51,
+    "vegetables": 77,
+    "fiber": 35,
+    "oilseeds": 59,
+    "fruits": 57,
+    "spices": 116,
+    "fodder": 28,
+    "plantation": 77,
+    "sugarcane": 27,
+    "micronutrients": 22,
+    "post_harvest": 50,
+    "organic_farming": 60,
+    "soil_management": 130
+  },
+  "checksum": "720a6976"
 }
