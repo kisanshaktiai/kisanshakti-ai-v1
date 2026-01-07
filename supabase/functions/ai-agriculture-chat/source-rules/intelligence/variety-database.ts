@@ -17,7 +17,7 @@ import {
   QualityTrait,
   AgroClimaticZone,
   CropStage
-} from '../types';
+} from '../types.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // WHEAT VARIETIES (15 varieties covering all zones)
