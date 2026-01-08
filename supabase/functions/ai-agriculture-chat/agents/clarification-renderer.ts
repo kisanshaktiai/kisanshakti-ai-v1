@@ -279,34 +279,114 @@ interface CropSpecificTemplate {
   [ClarificationScope.REFINE_OBSERVATION]?: Record<'mr' | 'hi' | 'en', { question: string; options: string[] }>;
 }
 
-const CROP_SPECIFIC_TEMPLATES: Record<string, CropSpecificTemplate> = {
+// ═══════════════════════════════════════════════════════════════════════════
+// CROP-STAGE-SPECIFIC TEMPLATES
+// Templates vary by crop AND growth stage for accurate clarification
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface StageSpecificTemplates {
+  [stage: string]: Partial<Record<ClarificationScope, Record<'mr' | 'hi' | 'en', { question: string; options: string[] }>>>;
+}
+
+interface CropStageSpecificTemplate {
+  default: CropSpecificTemplate;
+  stages?: StageSpecificTemplates;
+}
+
+const CROP_STAGE_SPECIFIC_TEMPLATES: Record<string, CropStageSpecificTemplate> = {
   'SUGARCANE': {
-    [ClarificationScope.IDENTIFY_LOCATION]: {
-      mr: {
-        question: '🎋 उसाच्या कोणत्या भागावर समस्या दिसते?',
-        options: ['पान', 'खोड / सुरळी', 'मूळ / बुडखा', 'संपूर्ण झाड']
+    default: {
+      [ClarificationScope.IDENTIFY_LOCATION]: {
+        mr: {
+          question: '🎋 उसाच्या कोणत्या भागावर समस्या दिसते?',
+          options: ['पान', 'खोड / सुरळी', 'मूळ / बुडखा', 'संपूर्ण झाड']
+        },
+        hi: {
+          question: '🎋 गन्ने के किस हिस्से पर समस्या है?',
+          options: ['पत्ते', 'तना / गड्डी', 'जड़ / गांठ', 'पूरा पौधा']
+        },
+        en: {
+          question: '🎋 Which part of the sugarcane is affected?',
+          options: ['Leaves', 'Stem / Whorl', 'Root / Sett', 'Whole plant']
+        }
       },
-      hi: {
-        question: '🎋 गन्ने के किस हिस्से पर समस्या है?',
-        options: ['पत्ते', 'तना / गड्डी', 'जड़ / गांठ', 'पूरा पौधा']
-      },
-      en: {
-        question: '🎋 Which part of the sugarcane is affected?',
-        options: ['Leaves', 'Stem / Whorl', 'Root / Sett', 'Whole plant']
+      [ClarificationScope.REFINE_OBSERVATION]: {
+        mr: {
+          question: '🔍 उसामध्ये नेमके काय दिसते?',
+          options: ['सुरळी वाळली (Dead Heart)', 'खोडात छिद्र', 'पाने पिवळी', 'पाने लाल झाली', 'खोड तुटते']
+        },
+        hi: {
+          question: '🔍 गन्ने में क्या दिख रहा है?',
+          options: ['गोभ सूख गई (Dead Heart)', 'तने में छेद', 'पत्ते पीले', 'पत्ते लाल', 'तना टूट रहा']
+        },
+        en: {
+          question: '🔍 What exactly do you see in sugarcane?',
+          options: ['Dead Heart (dried whorl)', 'Holes in stem', 'Yellow leaves', 'Red leaves', 'Stem breaking']
+        }
       }
     },
-    [ClarificationScope.REFINE_OBSERVATION]: {
-      mr: {
-        question: '🔍 उसामध्ये नेमके काय दिसते?',
-        options: ['सुरळी वाळली (Dead Heart)', 'खोडात छिद्र', 'पाने पिवळी', 'पाने लाल झाली', 'खोड तुटते']
+    stages: {
+      'GERMINATION': {
+        [ClarificationScope.REFINE_OBSERVATION]: {
+          mr: {
+            question: '🌱 उगवण अवस्थेतील उसात नेमके काय दिसते?',
+            options: ['बेणे कुजलेले दिसते', 'पांढरी माती/उधई', 'उगवण कमी/असमान', 'पाने पिवळी होत आहेत', 'काही झाडे पूर्ण मेली']
+          },
+          hi: {
+            question: '🌱 अंकुरण अवस्था में गन्ने में क्या दिख रहा है?',
+            options: ['बीज सड़ा हुआ दिखता है', 'सफेद मिट्टी/दीमक', 'अंकुरण कम/असमान', 'पत्ते पीले हो रहे हैं', 'कुछ पौधे पूरे मर गए']
+          },
+          en: {
+            question: '🌱 What do you see in sugarcane at germination stage?',
+            options: ['Sett appears rotted', 'White soil/termites', 'Poor/uneven germination', 'Leaves yellowing', 'Some plants completely dead']
+          }
+        },
+        [ClarificationScope.IDENTIFY_LOCATION]: {
+          mr: {
+            question: '🎋 उगवण अवस्थेत समस्या कुठे दिसते?',
+            options: ['बेणे/बुडखा', 'नवीन फुटवा', 'मूळ', 'संपूर्ण झाड']
+          },
+          hi: {
+            question: '🎋 अंकुरण अवस्था में समस्या कहाँ है?',
+            options: ['बीज/गांठ', 'नया अंकुर', 'जड़', 'पूरा पौधा']
+          },
+          en: {
+            question: '🎋 Where is the problem in germination stage?',
+            options: ['Sett/Node', 'New shoot', 'Roots', 'Whole plant']
+          }
+        }
       },
-      hi: {
-        question: '🔍 गन्ने में क्या दिख रहा है?',
-        options: ['गोभ सूख गई (Dead Heart)', 'तने में छेद', 'पत्ते पीले', 'पत्ते लाल', 'तना टूट रहा']
+      'TILLERING': {
+        [ClarificationScope.REFINE_OBSERVATION]: {
+          mr: {
+            question: '🪴 फुटवा अवस्थेतील उसात काय दिसते?',
+            options: ['मधली सुरळी वाळली (Dead Heart)', 'खोडात छिद्र दिसते', 'पाने पिवळी/लाल होत आहेत', 'फुटवे कमी आहेत', 'झाडे वाळत आहेत']
+          },
+          hi: {
+            question: '🪴 कल्ले अवस्था में गन्ने में क्या दिख रहा है?',
+            options: ['बीच की पत्ती सूख गई (Dead Heart)', 'तने में छेद दिखता है', 'पत्ते पीले/लाल हो रहे', 'कल्ले कम हैं', 'पौधे सूख रहे']
+          },
+          en: {
+            question: '🪴 What do you see in sugarcane at tillering stage?',
+            options: ['Dead Heart (dried central whorl)', 'Holes visible in stem', 'Leaves yellowing/reddening', 'Less tillers', 'Plants drying']
+          }
+        }
       },
-      en: {
-        question: '🔍 What exactly do you see in sugarcane?',
-        options: ['Dead Heart (dried whorl)', 'Holes in stem', 'Yellow leaves', 'Red leaves', 'Stem breaking']
+      'GRAND_GROWTH': {
+        [ClarificationScope.REFINE_OBSERVATION]: {
+          mr: {
+            question: '🎋 वाढीच्या अवस्थेतील उसात काय दिसते?',
+            options: ['खोडात छिद्र/किडे', 'पाने पिवळी/लाल', 'खोड तुटते/वाकते', 'पांढरे किडे दिसतात', 'पाने गुंडाळलेली']
+          },
+          hi: {
+            question: '🎋 बढ़वार अवस्था में गन्ने में क्या दिख रहा है?',
+            options: ['तने में छेद/कीड़े', 'पत्ते पीले/लाल', 'तना टूट/झुक रहा', 'सफेद कीड़े दिखते', 'पत्ते मुड़े हुए']
+          },
+          en: {
+            question: '🎋 What do you see in sugarcane at grand growth stage?',
+            options: ['Holes/insects in stem', 'Yellow/red leaves', 'Stem breaking/bending', 'White insects visible', 'Leaves curled']
+          }
+        }
       }
     }
   },
