@@ -1,0 +1,349 @@
+{
+  "file_info": {
+    "category": "safety",
+    "canonical_group": "11_safety",
+    "crop": "all",
+    "version": "3.0.0",
+    "scientific_source": "ICAR-IMD"
+  },
+  "rules": [
+    {
+      "rule_id": "SAFETY_RAIN_BLOCK_001",
+      "crop_code": "all",
+      "crop_group": "universal",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["ALL"],
+      "conditions_json": {
+        "weather": { "rain_forecast_4h": ">0" }
+      },
+      "condition_code": "(input) => input.weather?.rain_forecast_4h > 0",
+      "cause": "RAIN_EXPECTED",
+      "priority": 95,
+      "confidence_score": 0.98,
+      "scientific_source": "IMD-ICAR",
+      "icar_package_ref": "ICAR/Safety/2023/Weather",
+      "response_en": "🌧️ Rain expected within 4 hours! Avoid spraying - pesticide will wash off and waste money.",
+      "response_hi": "🌧️ 4 घंटे में बारिश की संभावना! स्प्रे न करें - दवाई धुल जाएगी, पैसे बर्बाद होंगे।",
+      "response_mr": "🌧️ 4 तासांत पावसाची शक्यता! फवारणी टाळा - औषध धुवून जाईल, पैसे वाया जातील.",
+      "action_type": "BLOCK",
+      "rule_version": "3.0.0",
+      "is_active": true
+    },
+    {
+      "rule_id": "SAFETY_RAIN_BLOCK_002",
+      "crop_code": "all",
+      "crop_group": "universal",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["ALL"],
+      "conditions_json": {
+        "weather": { "rain_mm_last_24h": ">10" }
+      },
+      "condition_code": "(input) => input.weather?.rain_mm > 10",
+      "cause": "RECENT_HEAVY_RAIN",
+      "priority": 93,
+      "confidence_score": 0.95,
+      "scientific_source": "IMD-ICAR",
+      "response_en": "🌧️ Heavy rain in last 24h (>10mm)! Wait 24-48 hours for leaves to dry before spraying.",
+      "response_hi": "🌧️ पिछले 24 घंटे में भारी बारिश (>10mm)! स्प्रे से पहले 24-48 घंटे पत्तियां सूखने दें।",
+      "response_mr": "🌧️ गेल्या 24 तासांत जोरदार पाऊस (>10mm)! फवारणीपूर्वी 24-48 तास पाने सुकू द्या.",
+      "action_type": "DELAY",
+      "rule_version": "3.0.0",
+      "is_active": true
+    },
+    {
+      "rule_id": "SAFETY_WIND_BLOCK_001",
+      "crop_code": "all",
+      "crop_group": "universal",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["ALL"],
+      "conditions_json": {
+        "weather": { "wind_speed_kmph": ">15" }
+      },
+      "condition_code": "(input) => input.weather?.wind_speed > 15",
+      "cause": "HIGH_WIND",
+      "priority": 94,
+      "confidence_score": 0.97,
+      "scientific_source": "ICAR-Generic",
+      "response_en": "💨 High wind (>15 km/h)! Avoid spraying - drift will waste pesticide and may harm neighbors' crops.",
+      "response_hi": "💨 तेज हवा (>15 km/h)! स्प्रे न करें - दवाई उड़कर बर्बाद होगी और पड़ोसी की फसल को नुकसान हो सकता है।",
+      "response_mr": "💨 जोरदार वारा (>15 km/h)! फवारणी टाळा - औषध उडून जाईल आणि शेजाऱ्यांच्या पिकाला हानी होऊ शकते.",
+      "action_type": "BLOCK",
+      "rule_version": "3.0.0",
+      "is_active": true
+    },
+    {
+      "rule_id": "SAFETY_WIND_CAUTION_001",
+      "crop_code": "all",
+      "crop_group": "universal",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["ALL"],
+      "conditions_json": {
+        "weather": { "wind_speed_kmph": "10-15" }
+      },
+      "condition_code": "(input) => input.weather?.wind_speed >= 10 && input.weather?.wind_speed <= 15",
+      "cause": "MODERATE_WIND",
+      "priority": 85,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-Generic",
+      "response_en": "💨 Moderate wind (10-15 km/h). Use coarse droplet nozzle and spray close to crop canopy.",
+      "response_hi": "💨 मध्यम हवा (10-15 km/h)। मोटी बूंद वाला नोजल इस्तेमाल करें और फसल के करीब स्प्रे करें।",
+      "response_mr": "💨 मध्यम वारा (10-15 km/h). जाड थेंब नोझल वापरा आणि पिकाच्या जवळून फवारणी करा.",
+      "action_type": "CAUTION",
+      "rule_version": "3.0.0",
+      "is_active": true
+    },
+    {
+      "rule_id": "SAFETY_TEMP_HIGH_001",
+      "crop_code": "all",
+      "crop_group": "universal",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["ALL"],
+      "conditions_json": {
+        "weather": { "temperature_c": ">38" }
+      },
+      "condition_code": "(input) => input.weather?.temperature > 38",
+      "cause": "EXTREME_HEAT",
+      "priority": 92,
+      "confidence_score": 0.96,
+      "scientific_source": "ICAR-Generic",
+      "response_en": "🌡️ Extreme heat (>38°C)! Avoid spraying - phytotoxicity risk. Spray early morning (6-9 AM) or evening (5-7 PM).",
+      "response_hi": "🌡️ अत्यधिक गर्मी (>38°C)! स्प्रे न करें - पत्ती जलने का खतरा। सुबह (6-9 AM) या शाम (5-7 PM) में स्प्रे करें।",
+      "response_mr": "🌡️ अत्यंत उष्णता (>38°C)! फवारणी टाळा - पाने जळण्याचा धोका. सकाळी (6-9 AM) किंवा संध्याकाळी (5-7 PM) फवारणी करा.",
+      "action_type": "BLOCK",
+      "rule_version": "3.0.0",
+      "is_active": true
+    },
+    {
+      "rule_id": "SAFETY_TEMP_HIGH_002",
+      "crop_code": "all",
+      "crop_group": "universal",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["ALL"],
+      "conditions_json": {
+        "weather": { "temperature_c": "35-38" }
+      },
+      "condition_code": "(input) => input.weather?.temperature >= 35 && input.weather?.temperature <= 38",
+      "cause": "HIGH_TEMPERATURE",
+      "priority": 88,
+      "confidence_score": 0.92,
+      "scientific_source": "ICAR-Generic",
+      "response_en": "🌡️ High temperature (35-38°C). Avoid midday spraying. Best time: early morning or late evening.",
+      "response_hi": "🌡️ उच्च तापमान (35-38°C)। दोपहर में स्प्रे न करें। सर्वोत्तम समय: सुबह जल्दी या देर शाम।",
+      "response_mr": "🌡️ उच्च तापमान (35-38°C). दुपारी फवारणी टाळा. सर्वोत्तम वेळ: सकाळी लवकर किंवा संध्याकाळी उशिरा.",
+      "action_type": "CAUTION",
+      "rule_version": "3.0.0",
+      "is_active": true
+    },
+    {
+      "rule_id": "SAFETY_TEMP_LOW_001",
+      "crop_code": "all",
+      "crop_group": "universal",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["ALL"],
+      "conditions_json": {
+        "weather": { "temperature_c": "<10" }
+      },
+      "condition_code": "(input) => input.weather?.temperature < 10",
+      "cause": "LOW_TEMPERATURE",
+      "priority": 88,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-Generic",
+      "response_en": "❄️ Low temperature (<10°C)! Pesticide absorption is poor. Wait for warmer conditions (>15°C).",
+      "response_hi": "❄️ कम तापमान (<10°C)! दवाई का अवशोषण कम होगा। गर्म मौसम (>15°C) का इंतजार करें।",
+      "response_mr": "❄️ कमी तापमान (<10°C)! औषध शोषण कमी होईल. उबदार हवामानाची (>15°C) वाट पहा.",
+      "action_type": "DELAY",
+      "rule_version": "3.0.0",
+      "is_active": true
+    },
+    {
+      "rule_id": "SAFETY_DEW_001",
+      "crop_code": "all",
+      "crop_group": "universal",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["ALL"],
+      "conditions_json": {
+        "weather": { "humidity": ">95", "time_of_day": "early_morning" }
+      },
+      "condition_code": "(input) => input.weather?.humidity > 95",
+      "cause": "HEAVY_DEW",
+      "priority": 82,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-Generic",
+      "response_en": "💧 Heavy dew on leaves! Wait 1-2 hours for dew to evaporate before spraying for better adhesion.",
+      "response_hi": "💧 पत्तियों पर भारी ओस! बेहतर चिपकाव के लिए स्प्रे से पहले 1-2 घंटे ओस सूखने दें।",
+      "response_mr": "💧 पानांवर जास्त दव! चांगल्या चिकटपणासाठी फवारणीपूर्वी 1-2 तास दव सुकू द्या.",
+      "action_type": "DELAY",
+      "rule_version": "3.0.0",
+      "is_active": true
+    },
+    {
+      "rule_id": "SAFETY_HUMIDITY_HIGH_001",
+      "crop_code": "all",
+      "crop_group": "universal",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["ALL"],
+      "conditions_json": {
+        "weather": { "humidity": ">90" }
+      },
+      "condition_code": "(input) => input.weather?.humidity > 90",
+      "cause": "HIGH_HUMIDITY_DISEASE_RISK",
+      "priority": 80,
+      "confidence_score": 0.85,
+      "scientific_source": "ICAR-Generic",
+      "response_en": "💨 Very high humidity (>90%)! Fungal disease risk is high. Consider preventive fungicide if not sprayed recently.",
+      "response_hi": "💨 बहुत अधिक नमी (>90%)! फफूंद रोग का खतरा अधिक। हाल में स्प्रे नहीं किया तो निवारक फफूंदनाशक सोचें।",
+      "response_mr": "💨 खूप जास्त आर्द्रता (>90%)! बुरशीजन्य रोगाचा धोका जास्त. अलीकडे फवारणी केली नसल्यास प्रतिबंधात्मक बुरशीनाशकाचा विचार करा.",
+      "action_type": "INFORM",
+      "rule_version": "3.0.0",
+      "is_active": true
+    },
+    {
+      "rule_id": "SAFETY_DROUGHT_001",
+      "crop_code": "all",
+      "crop_group": "universal",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["ALL"],
+      "conditions_json": {
+        "weather": { "days_since_rain": ">15" },
+        "soil": { "moisture": "LOW" }
+      },
+      "condition_code": "(input) => input.weather?.days_since_rain > 15 && input.soil_moisture === 'LOW'",
+      "cause": "DROUGHT_STRESS",
+      "priority": 90,
+      "confidence_score": 0.93,
+      "scientific_source": "ICAR-CRIDA",
+      "response_en": "☀️ Drought stress detected! Prioritize irrigation over spraying. Stressed plants absorb pesticides poorly.",
+      "response_hi": "☀️ सूखा तनाव! स्प्रे से पहले सिंचाई प्राथमिकता दें। तनावग्रस्त पौधे दवाई कम अवशोषित करते हैं।",
+      "response_mr": "☀️ दुष्काळ ताण! फवारणीपूर्वी सिंचनाला प्राधान्य द्या. ताणग्रस्त वनस्पती औषध कमी शोषतात.",
+      "action_type": "CAUTION",
+      "rule_version": "3.0.0",
+      "is_active": true
+    },
+    {
+      "rule_id": "SAFETY_STORM_001",
+      "crop_code": "all",
+      "crop_group": "universal",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["ALL"],
+      "conditions_json": {
+        "weather": { "storm_warning": true }
+      },
+      "condition_code": "(input) => input.weather?.storm_warning === true",
+      "cause": "STORM_WARNING",
+      "priority": 98,
+      "confidence_score": 0.99,
+      "scientific_source": "IMD",
+      "response_en": "⛈️ Storm warning! Do not go to field. Secure equipment and livestock. Stay safe!",
+      "response_hi": "⛈️ तूफान की चेतावनी! खेत में न जाएं। उपकरण और पशु सुरक्षित करें। सुरक्षित रहें!",
+      "response_mr": "⛈️ वादळाची चेतावणी! शेतात जाऊ नका. साधने आणि जनावरे सुरक्षित करा. सुरक्षित रहा!",
+      "action_type": "BLOCK",
+      "rule_version": "3.0.0",
+      "is_active": true
+    },
+    {
+      "rule_id": "SAFETY_HAIL_001",
+      "crop_code": "all",
+      "crop_group": "universal",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["ALL"],
+      "conditions_json": {
+        "weather": { "hail_warning": true }
+      },
+      "condition_code": "(input) => input.weather?.hail_warning === true",
+      "cause": "HAIL_WARNING",
+      "priority": 97,
+      "confidence_score": 0.98,
+      "scientific_source": "IMD",
+      "response_en": "🧊 Hail warning! Harvest mature crops immediately if possible. Cover nurseries with nets.",
+      "response_hi": "🧊 ओलावृष्टि की चेतावणी! संभव हो तो पकी फसल तुरंत काटें। नर्सरी को जाल से ढकें।",
+      "response_mr": "🧊 गारपिटीची चेतावणी! शक्य असल्यास पक्व पीक लगेच काढा. रोपवाटिका जाळीने झाका.",
+      "action_type": "WARN",
+      "rule_version": "3.0.0",
+      "is_active": true
+    },
+    {
+      "rule_id": "SAFETY_FROST_001",
+      "crop_code": "all",
+      "crop_group": "universal",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["ALL"],
+      "conditions_json": {
+        "weather": { "frost_warning": true, "temperature_c": "<5" }
+      },
+      "condition_code": "(input) => input.weather?.temperature < 5 || input.weather?.frost_warning === true",
+      "cause": "FROST_WARNING",
+      "priority": 96,
+      "confidence_score": 0.97,
+      "scientific_source": "IMD-ICAR",
+      "response_en": "🥶 Frost warning! Light irrigation in evening can protect crops. Cover sensitive vegetables.",
+      "response_hi": "🥶 पाला चेतावणी! शाम को हल्की सिंचाई से फसल बच सकती है। संवेदनशील सब्जियां ढकें।",
+      "response_mr": "🥶 दवाची चेतावणी! संध्याकाळी हलके पाणी पिकाचे संरक्षण करू शकते. संवेदनशील भाज्या झाका.",
+      "action_type": "WARN",
+      "rule_version": "3.0.0",
+      "is_active": true
+    },
+    {
+      "rule_id": "SAFETY_OPTIMAL_SPRAY_001",
+      "crop_code": "all",
+      "crop_group": "universal",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["ALL"],
+      "conditions_json": {
+        "weather": { 
+          "temperature_c": "20-32",
+          "wind_speed_kmph": "<10",
+          "humidity": "40-80",
+          "rain_forecast_4h": "0"
+        }
+      },
+      "condition_code": "(input) => input.weather?.temperature >= 20 && input.weather?.temperature <= 32 && input.weather?.wind_speed < 10 && input.weather?.humidity >= 40 && input.weather?.humidity <= 80 && !input.weather?.rain_forecast_4h",
+      "cause": "OPTIMAL_SPRAY_CONDITIONS",
+      "priority": 50,
+      "confidence_score": 0.95,
+      "scientific_source": "ICAR-Generic",
+      "response_en": "✅ Optimal spraying conditions! Temperature 20-32°C, low wind, moderate humidity, no rain expected.",
+      "response_hi": "✅ स्प्रे के लिए आदर्श मौसम! तापमान 20-32°C, कम हवा, मध्यम नमी, बारिश नहीं।",
+      "response_mr": "✅ फवारणीसाठी आदर्श हवामान! तापमान 20-32°C, कमी वारा, मध्यम आर्द्रता, पाऊस नाही.",
+      "action_type": "INFORM",
+      "rule_version": "3.0.0",
+      "is_active": true
+    },
+    {
+      "rule_id": "SAFETY_EARLY_MORNING_001",
+      "crop_code": "all",
+      "crop_group": "universal",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "stage_applicable": ["ALL"],
+      "conditions_json": {
+        "time_of_day": "6AM-9AM",
+        "weather": { "dew_present": false }
+      },
+      "condition_code": "(input) => input.time_of_day === 'early_morning' && !input.weather?.dew_present",
+      "cause": "BEST_SPRAY_TIME_MORNING",
+      "priority": 45,
+      "confidence_score": 0.92,
+      "scientific_source": "ICAR-Generic",
+      "response_en": "🌅 Early morning (6-9 AM) is best spray time. Calm wind, moderate temperature, good absorption.",
+      "response_hi": "🌅 सुबह जल्दी (6-9 AM) स्प्रे का सबसे अच्छा समय। शांत हवा, मध्यम तापमान, अच्छा अवशोषण।",
+      "response_mr": "🌅 सकाळी लवकर (6-9 AM) फवारणीसाठी सर्वोत्तम वेळ. शांत वारा, मध्यम तापमान, चांगले शोषण.",
+      "action_type": "INFORM",
+      "rule_version": "3.0.0",
+      "is_active": true
+    }
+  ]
+}

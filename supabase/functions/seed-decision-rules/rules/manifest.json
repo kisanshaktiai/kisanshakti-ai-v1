@@ -1,0 +1,185 @@
+{
+  "version": "3.0.0",
+  "description": "Agricultural Decision Rules - Database First Architecture",
+  "generated_on": "2026-01-08",
+  "total_target_rules": 500,
+  "scientific_sources": ["ICAR", "FAO", "CIB&RC", "FSSAI", "CABI", "State Agricultural Universities"],
+  "rule_files": [
+    {
+      "path": "universal/safety-weather.json",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "crop": "all",
+      "expected_rules": 15
+    },
+    {
+      "path": "universal/safety-phi.json",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "crop": "all",
+      "expected_rules": 20
+    },
+    {
+      "path": "universal/safety-pollinator.json",
+      "category": "safety",
+      "canonical_group": "11_safety",
+      "crop": "all",
+      "expected_rules": 15
+    },
+    {
+      "path": "universal/nutrients-macro.json",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "crop": "all",
+      "expected_rules": 20
+    },
+    {
+      "path": "universal/nutrients-micro.json",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "crop": "all",
+      "expected_rules": 15
+    },
+    {
+      "path": "universal/growth-stages.json",
+      "category": "stage_advisory",
+      "canonical_group": "02_growth_stage",
+      "crop": "all",
+      "expected_rules": 15
+    },
+    {
+      "path": "cotton/pests.json",
+      "category": "diagnosis",
+      "canonical_group": "03_pest",
+      "crop": "cotton",
+      "expected_rules": 35
+    },
+    {
+      "path": "cotton/diseases.json",
+      "category": "diagnosis",
+      "canonical_group": "04_disease",
+      "crop": "cotton",
+      "expected_rules": 25
+    },
+    {
+      "path": "cotton/nutrients.json",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "crop": "cotton",
+      "expected_rules": 15
+    },
+    {
+      "path": "cotton/ipm-treatment.json",
+      "category": "treatment",
+      "canonical_group": "13_ipm_treatment",
+      "crop": "cotton",
+      "expected_rules": 30
+    },
+    {
+      "path": "rice/pests.json",
+      "category": "diagnosis",
+      "canonical_group": "03_pest",
+      "crop": "rice",
+      "expected_rules": 35
+    },
+    {
+      "path": "rice/diseases.json",
+      "category": "diagnosis",
+      "canonical_group": "04_disease",
+      "crop": "rice",
+      "expected_rules": 30
+    },
+    {
+      "path": "rice/nutrients.json",
+      "category": "nutrition",
+      "canonical_group": "05_nutrition",
+      "crop": "rice",
+      "expected_rules": 15
+    },
+    {
+      "path": "rice/ipm-treatment.json",
+      "category": "treatment",
+      "canonical_group": "13_ipm_treatment",
+      "crop": "rice",
+      "expected_rules": 25
+    },
+    {
+      "path": "wheat/pests.json",
+      "category": "diagnosis",
+      "canonical_group": "03_pest",
+      "crop": "wheat",
+      "expected_rules": 25
+    },
+    {
+      "path": "wheat/diseases.json",
+      "category": "diagnosis",
+      "canonical_group": "04_disease",
+      "crop": "wheat",
+      "expected_rules": 25
+    },
+    {
+      "path": "wheat/ipm-treatment.json",
+      "category": "treatment",
+      "canonical_group": "13_ipm_treatment",
+      "crop": "wheat",
+      "expected_rules": 20
+    },
+    {
+      "path": "sugarcane/pests.json",
+      "category": "diagnosis",
+      "canonical_group": "03_pest",
+      "crop": "sugarcane",
+      "expected_rules": 30
+    },
+    {
+      "path": "sugarcane/diseases.json",
+      "category": "diagnosis",
+      "canonical_group": "04_disease",
+      "crop": "sugarcane",
+      "expected_rules": 25
+    },
+    {
+      "path": "sugarcane/ipm-treatment.json",
+      "category": "treatment",
+      "canonical_group": "13_ipm_treatment",
+      "crop": "sugarcane",
+      "expected_rules": 20
+    },
+    {
+      "path": "vegetables/tomato.json",
+      "category": "diagnosis",
+      "canonical_group": "03_pest",
+      "crop": "tomato",
+      "expected_rules": 20
+    },
+    {
+      "path": "vegetables/onion.json",
+      "category": "diagnosis",
+      "canonical_group": "03_pest",
+      "crop": "onion",
+      "expected_rules": 15
+    },
+    {
+      "path": "vegetables/brinjal.json",
+      "category": "diagnosis",
+      "canonical_group": "03_pest",
+      "crop": "brinjal",
+      "expected_rules": 15
+    }
+  ],
+  "canonical_groups": [
+    "01_crop_identity",
+    "02_growth_stage",
+    "03_pest",
+    "04_disease",
+    "05_nutrition",
+    "06_monitoring",
+    "07_clarification",
+    "08_stress",
+    "09_weather",
+    "10_irrigation",
+    "11_safety",
+    "12_economics",
+    "13_ipm_treatment"
+  ]
+}
