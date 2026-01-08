@@ -277,15 +277,37 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
     category: mapBundledCategory(bundled.category),
     priority: bundled.priority || 50,
     when: {
-      custom: (state: CanonicalState & { user_query?: string }) => {
+      custom: (state: CanonicalState & { user_query?: string; visual_symptoms?: string[] }) => {
         try {
+          // Pass ALL CanonicalState properties to rule conditions
           const input = {
             crop_code: state.crop_type?.toLowerCase() || '',
             crop_stage: state.crop_stage?.toLowerCase() || '',
-            user_query: state.user_query || ''
+            user_query: state.user_query || '',
+            // Visual symptoms - critical for observation-based rules
+            visual_symptoms: state.visual_symptoms || [],
+            visual_symptom: state.visual_symptom || '',
+            // Soil data
+            soil_nitrogen: state.soil_nitrogen || '',
+            soil_phosphorus: state.soil_phosphorus || '',
+            soil_potassium: state.soil_potassium || '',
+            // NDVI data
+            ndvi_level: state.ndvi_level || '',
+            ndvi_trend: state.ndvi_trend || '',
+            // Environmental stress
+            water_stress: state.water_stress || '',
+            // Severity
+            severity: state.severity || '',
+            // Weather context
+            weather: state.weather || {},
+            // Data confidence
+            data_confidence: state.data_confidence || ''
           };
           return bundled.conditions(input);
-        } catch { return false; }
+        } catch (e) { 
+          console.warn(`⚠️ Rule ${bundled.rule_id} condition error:`, e);
+          return false; 
+        }
       }
     },
     then: {
