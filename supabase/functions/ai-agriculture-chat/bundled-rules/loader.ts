@@ -21,6 +21,15 @@ export interface DecisionInput {
   observations?: string[];
   weather?: { temp?: number; humidity?: number; rain_mm?: number };
   soil?: { ph?: number; organic_carbon?: number };
+  // CanonicalState properties for observation-based rules
+  visual_symptoms?: string[];
+  soil_nitrogen?: string;
+  soil_phosphorus?: string;
+  soil_potassium?: string;
+  ndvi_level?: string;
+  ndvi_trend?: string;
+  water_stress?: string;
+  severity?: string;
   [key: string]: unknown;
 }
 
