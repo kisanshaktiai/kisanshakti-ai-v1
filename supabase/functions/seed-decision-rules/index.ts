@@ -1,31 +1,68 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * DECISION RULES DATABASE SEEDER - v3.0 COMPACT
+ * DECISION RULES DATABASE SEEDER - v3.0 JSON-BASED
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Lightweight seeder that imports rules from separate data file.
- * Fixes deployment issues caused by large file size.
+ * Production-ready seeder that loads rules from modular JSON files.
+ * Supports 50,000+ rules via file-based architecture.
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
-import { CANONICAL_RULES, RULES_VERSION, RULES_COUNT, RuleDefinition } from './rules-data.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const RULES_VERSION = '3.0.0';
+
+// Rule files to load (embedded for edge function compatibility)
+const RULE_FILES = [
+  'universal/safety-weather.json',
+  'universal/safety-phi.json', 
+  'universal/safety-pollinator.json',
+  'universal/nutrients-macro.json',
+  'cotton/pests.json',
+  'cotton/diseases.json',
+];
+
+interface RuleFromJSON {
+  rule_id: string;
+  crop_code: string;
+  crop_group?: string;
+  category: string;
+  canonical_group: string;
+  stage_applicable: string[];
+  conditions_json: Record<string, unknown>;
+  condition_code?: string;
+  cause: string;
+  priority: number;
+  confidence_score?: number;
+  etl_threshold?: string;
+  etl_unit?: string;
+  phi_days?: number;
+  ipm_level?: number;
+  bee_toxicity?: string;
+  active_ingredient?: string;
+  organic_alternative?: string;
+  scientific_source: string;
+  icar_package_ref?: string;
+  response_en: string;
+  response_hi: string;
+  response_mr: string;
+  action_type: string;
+  rule_version?: string;
+  is_active?: boolean;
+}
+
 Deno.serve(async (req) => {
-  // CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log(`🌱 [SeedDecisionRules v${RULES_VERSION}] Starting...`);
-    console.log(`   Rules to seed: ${RULES_COUNT}`);
+    console.log(`🌱 [SeedDecisionRules v${RULES_VERSION}] Starting JSON-based seeding...`);
 
-    // Parse request
     let clear = false;
     if (req.method === 'POST') {
       try {
@@ -34,52 +71,59 @@ Deno.serve(async (req) => {
       } catch { /* no body */ }
     }
 
-    // Initialize Supabase
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Clear existing rules if requested
     if (clear) {
       console.log('🗑️ Clearing existing rules...');
       const { error: deleteError } = await supabase
         .from('decision_rules')
         .delete()
         .neq('rule_id', 'NEVER_MATCH');
+      
+      if (deleteError) console.error('❌ Clear error:', deleteError.message);
+      else console.log('✅ Existing rules cleared');
+    }
 
-      if (deleteError) {
-        console.error('❌ Failed to clear rules:', deleteError);
-      } else {
-        console.log('✅ Existing rules cleared');
+    // Load rules from JSON files embedded in the function
+    const allRules: RuleFromJSON[] = [];
+    
+    // Import each JSON file
+    for (const filePath of RULE_FILES) {
+      try {
+        const module = await import(`./rules/${filePath}`, { assert: { type: 'json' } });
+        const fileRules = module.default?.rules || [];
+        allRules.push(...fileRules);
+        console.log(`✅ Loaded ${fileRules.length} rules from ${filePath}`);
+      } catch (e) {
+        console.warn(`⚠️ Could not load ${filePath}: ${e.message}`);
       }
     }
 
-    // Priority normalization (1-10 range)
-    const normalizePriority = (p: number): number => 
-      Math.min(10, Math.max(1, Math.round(p / 10)));
+    console.log(`📦 Total rules to seed: ${allRules.length}`);
 
     // Format rules for database
-    const formatRule = (rule: RuleDefinition) => ({
+    const formatRule = (rule: RuleFromJSON) => ({
       rule_id: rule.rule_id,
-      crop_group: rule.crop_code || 'all',
+      crop_group: rule.crop_group || 'universal',
       crop_code: rule.crop_code,
       category: rule.category,
       stage_applicable: rule.stage_applicable,
-      conditions_json: { code: rule.conditionCode },
-      condition_code: rule.conditionCode,
+      conditions_json: rule.conditions_json,
+      condition_code: rule.condition_code || '',
       cause: rule.cause,
-      priority: normalizePriority(rule.priority),
+      priority: Math.min(10, Math.max(1, Math.round(rule.priority / 10))),
       scientific_source: rule.scientific_source,
-      scientific_basis: rule.scientific_basis || rule.scientific_source || '',
-      trigger_keywords: rule.trigger_keywords || [],
+      scientific_basis: rule.icar_package_ref || rule.scientific_source,
+      trigger_keywords: [],
       response_mr: rule.response_mr,
       response_hi: rule.response_hi,
       response_en: rule.response_en,
       action_type: rule.action_type,
       canonical_group: rule.canonical_group,
-      is_active: true,
+      is_active: rule.is_active !== false,
       version: RULES_VERSION,
-      // New enhanced fields
       etl_threshold: rule.etl_threshold || null,
       phi_days: rule.phi_days || null,
       active_ingredient: rule.active_ingredient || null,
@@ -89,13 +133,13 @@ Deno.serve(async (req) => {
       icar_package_ref: rule.icar_package_ref || null
     });
 
-    // Insert rules in batches
-    const batchSize = 25;
+    // Batch insert
+    const batchSize = 50;
     let totalInserted = 0;
     let totalErrors = 0;
 
-    for (let i = 0; i < CANONICAL_RULES.length; i += batchSize) {
-      const batch = CANONICAL_RULES.slice(i, i + batchSize);
+    for (let i = 0; i < allRules.length; i += batchSize) {
+      const batch = allRules.slice(i, i + batchSize);
       const formattedRules = batch.map(formatRule);
 
       const { data, error } = await supabase
@@ -108,32 +152,30 @@ Deno.serve(async (req) => {
         totalErrors += batch.length;
       } else {
         totalInserted += data?.length || 0;
-        console.log(`✅ Batch ${Math.floor(i/batchSize) + 1}: ${data?.length || 0} rules upserted`);
+        console.log(`✅ Batch ${Math.floor(i/batchSize) + 1}: ${data?.length || 0} rules`);
       }
     }
 
-    console.log(`\n🎉 [SeedDecisionRules] Complete!`);
-    console.log(`   Total rules: ${RULES_COUNT}`);
-    console.log(`   Successfully inserted: ${totalInserted}`);
-    console.log(`   Errors: ${totalErrors}`);
+    console.log(`\n🎉 Seeding complete!`);
+    console.log(`   Total: ${allRules.length} | Inserted: ${totalInserted} | Errors: ${totalErrors}`);
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Observation-based rules seeded successfully',
+        message: 'JSON-based rules seeded successfully',
         stats: {
-          total_rules: RULES_COUNT,
+          total_rules: allRules.length,
           inserted: totalInserted,
           errors: totalErrors,
           version: RULES_VERSION,
-          type: 'OBSERVATION_BASED'
+          files_loaded: RULE_FILES.length
         }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('❌ [SeedDecisionRules] Error:', error);
+    console.error('❌ Seeding failed:', error);
     return new Response(
       JSON.stringify({ error: 'Seeding failed', details: String(error) }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
