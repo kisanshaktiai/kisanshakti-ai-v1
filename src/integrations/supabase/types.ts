@@ -6228,90 +6228,222 @@ export type Database = {
       decision_rules: {
         Row: {
           action_type: string | null
+          active_ingredient: string | null
           alternatives: Json | null
+          application_method: string | null
+          approval_date: string | null
+          approved_by: string | null
+          aquatic_toxicity: string | null
+          bee_toxicity: string | null
           canonical_group: string | null
           category: string
           cause: string
+          chemical_class: string | null
           condition_code: string | null
           conditions_json: Json
           confidence_score: number | null
           created_at: string | null
           crop_code: string | null
           crop_group: string
+          deprecated_at: string | null
+          deprecation_reason: string | null
+          dosage_per_acre: string | null
+          etl_threshold: string | null
+          etl_unit: string | null
+          expert_approved: boolean | null
+          field_validated: boolean | null
           icar_package: string | null
+          icar_package_ref: string | null
           id: string
+          ipm_level: number | null
           is_active: boolean | null
+          max_temperature: number | null
+          max_wind_speed: number | null
+          min_temperature: number | null
+          mode_of_action: string | null
+          organic_alternative: string | null
+          phi_days: number | null
           priority: number
+          rain_delay_hours: number | null
+          reentry_interval_hours: number | null
+          research_paper_ref: string | null
+          resistance_group: string | null
           response_en: string | null
           response_hi: string | null
           response_mr: string | null
           risk_level: string | null
           rule_id: string
+          rule_version: string | null
           scientific_basis: string | null
           scientific_source: string | null
           stage_applicable: string[]
+          supersedes_rule_id: string | null
+          target_pest_stage: string | null
           trigger_keywords: string[] | null
+          university_source: string | null
           updated_at: string | null
+          validation_trials: number | null
           verification_status: string | null
           version: string | null
+          water_volume_per_acre: string | null
+          weather_dependency: Json | null
         }
         Insert: {
           action_type?: string | null
+          active_ingredient?: string | null
           alternatives?: Json | null
+          application_method?: string | null
+          approval_date?: string | null
+          approved_by?: string | null
+          aquatic_toxicity?: string | null
+          bee_toxicity?: string | null
           canonical_group?: string | null
           category: string
           cause: string
+          chemical_class?: string | null
           condition_code?: string | null
           conditions_json: Json
           confidence_score?: number | null
           created_at?: string | null
           crop_code?: string | null
           crop_group: string
+          deprecated_at?: string | null
+          deprecation_reason?: string | null
+          dosage_per_acre?: string | null
+          etl_threshold?: string | null
+          etl_unit?: string | null
+          expert_approved?: boolean | null
+          field_validated?: boolean | null
           icar_package?: string | null
+          icar_package_ref?: string | null
           id?: string
+          ipm_level?: number | null
           is_active?: boolean | null
+          max_temperature?: number | null
+          max_wind_speed?: number | null
+          min_temperature?: number | null
+          mode_of_action?: string | null
+          organic_alternative?: string | null
+          phi_days?: number | null
           priority: number
+          rain_delay_hours?: number | null
+          reentry_interval_hours?: number | null
+          research_paper_ref?: string | null
+          resistance_group?: string | null
           response_en?: string | null
           response_hi?: string | null
           response_mr?: string | null
           risk_level?: string | null
           rule_id: string
+          rule_version?: string | null
           scientific_basis?: string | null
           scientific_source?: string | null
           stage_applicable: string[]
+          supersedes_rule_id?: string | null
+          target_pest_stage?: string | null
           trigger_keywords?: string[] | null
+          university_source?: string | null
           updated_at?: string | null
+          validation_trials?: number | null
           verification_status?: string | null
           version?: string | null
+          water_volume_per_acre?: string | null
+          weather_dependency?: Json | null
         }
         Update: {
           action_type?: string | null
+          active_ingredient?: string | null
           alternatives?: Json | null
+          application_method?: string | null
+          approval_date?: string | null
+          approved_by?: string | null
+          aquatic_toxicity?: string | null
+          bee_toxicity?: string | null
           canonical_group?: string | null
           category?: string
           cause?: string
+          chemical_class?: string | null
           condition_code?: string | null
           conditions_json?: Json
           confidence_score?: number | null
           created_at?: string | null
           crop_code?: string | null
           crop_group?: string
+          deprecated_at?: string | null
+          deprecation_reason?: string | null
+          dosage_per_acre?: string | null
+          etl_threshold?: string | null
+          etl_unit?: string | null
+          expert_approved?: boolean | null
+          field_validated?: boolean | null
           icar_package?: string | null
+          icar_package_ref?: string | null
           id?: string
+          ipm_level?: number | null
           is_active?: boolean | null
+          max_temperature?: number | null
+          max_wind_speed?: number | null
+          min_temperature?: number | null
+          mode_of_action?: string | null
+          organic_alternative?: string | null
+          phi_days?: number | null
           priority?: number
+          rain_delay_hours?: number | null
+          reentry_interval_hours?: number | null
+          research_paper_ref?: string | null
+          resistance_group?: string | null
           response_en?: string | null
           response_hi?: string | null
           response_mr?: string | null
           risk_level?: string | null
           rule_id?: string
+          rule_version?: string | null
           scientific_basis?: string | null
           scientific_source?: string | null
           stage_applicable?: string[]
+          supersedes_rule_id?: string | null
+          target_pest_stage?: string | null
           trigger_keywords?: string[] | null
+          university_source?: string | null
           updated_at?: string | null
+          validation_trials?: number | null
           verification_status?: string | null
           version?: string | null
+          water_volume_per_acre?: string | null
+          weather_dependency?: Json | null
+        }
+        Relationships: []
+      }
+      decision_rules_history: {
+        Row: {
+          change_reason: string | null
+          change_type: string | null
+          changed_at: string | null
+          changed_by: string | null
+          id: string
+          new_values: Json | null
+          old_values: Json | null
+          rule_id: string
+        }
+        Insert: {
+          change_reason?: string | null
+          change_type?: string | null
+          changed_at?: string | null
+          changed_by?: string | null
+          id?: string
+          new_values?: Json | null
+          old_values?: Json | null
+          rule_id: string
+        }
+        Update: {
+          change_reason?: string | null
+          change_type?: string | null
+          changed_at?: string | null
+          changed_by?: string | null
+          id?: string
+          new_values?: Json | null
+          old_values?: Json | null
+          rule_id?: string
         }
         Relationships: []
       }
@@ -6813,6 +6945,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      etl_standards: {
+        Row: {
+          created_at: string | null
+          crop_code: string
+          etl_unit: string
+          etl_value: number
+          growth_stage: string[] | null
+          icar_source: string | null
+          id: string
+          pest_code: string
+          pest_name_en: string
+          pest_name_hi: string | null
+          pest_name_mr: string | null
+          sampling_method: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          crop_code: string
+          etl_unit: string
+          etl_value: number
+          growth_stage?: string[] | null
+          icar_source?: string | null
+          id?: string
+          pest_code: string
+          pest_name_en: string
+          pest_name_hi?: string | null
+          pest_name_mr?: string | null
+          sampling_method?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          crop_code?: string
+          etl_unit?: string
+          etl_value?: number
+          growth_stage?: string[] | null
+          icar_source?: string | null
+          id?: string
+          pest_code?: string
+          pest_name_en?: string
+          pest_name_hi?: string | null
+          pest_name_mr?: string | null
+          sampling_method?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       executive_dashboard_metrics: {
         Row: {
