@@ -603,6 +603,16 @@ serve(async (req) => {
       console.log(`   ⚠️ ALL actions filtered - generating explanation response`);
       responseContent = generateAllActionsFilteredResponse(actions_filtered_out, detectedLanguage as 'mr' | 'hi' | 'en');
     } else if (orchestratorResponse.type === 'DECISION_PROVIDED' && orchestratorResponse.decision_output) {
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE-14: Check for Stage Fallback Response first
+      // If orchestrator returned a stage-aware fallback, use it directly
+      // ═══════════════════════════════════════════════════════════════════════════
+      const decisionOutput = orchestratorResponse.decision_output as any;
+      if (decisionOutput.status === 'STAGE_FALLBACK' && decisionOutput.stage_fallback_message) {
+        console.log(`   🌱 [STAGE_FALLBACK] Using stage-aware fallback response`);
+        responseContent = decisionOutput.stage_fallback_message;
+        // Skip LLM formatting - stage fallback is already formatted
+      } else {
       // PHASE 5: Use LLM to format rule engine recommendations
       console.log(`   🤖 Using LLM formatter for natural language generation`);
       
@@ -841,6 +851,7 @@ serve(async (req) => {
           responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
         }
       }
+      } // End of STAGE_FALLBACK else block
     } else {
       // Non-decision responses (clarification, photo request, etc.)
       responseContent = getResponseContent(orchestratorResponse, detectedLanguage);

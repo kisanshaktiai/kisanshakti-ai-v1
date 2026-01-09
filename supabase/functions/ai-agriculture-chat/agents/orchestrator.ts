@@ -140,6 +140,12 @@ import {
   type PollinatorEnforcementResult 
 } from './pollinator-protection-rules.ts';
 
+// PHASE-14: Crop Stage Advisor for stage-aware fallback responses
+import {
+  getStageSpecificAdvice,
+  type StageAdvice
+} from './crop-stage-advisor.ts';
+
 // P0: Photoperiod Calculator - Day length for bulbing/flowering crops
 import { 
   calculateDayLength, 
@@ -504,6 +510,137 @@ export class AIAgentOrchestrator {
         { value: '2', label: language === 'mr' ? 'खत/पाणी व्यवस्थापन' : language === 'hi' ? 'खाद/पानी प्रबंधन' : 'Fertilizer/water management' },
         { value: '3', label: language === 'mr' ? 'सामान्य सल्ला' : language === 'hi' ? 'सामान्य सलाह' : 'General advice' }
       ]
+    };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-14: Stage-Aware Fallback Response Generator
+  // Uses crop-stage-advisor data to provide contextual monitoring advice
+  // when no specific diagnostic rules match
+  // ═══════════════════════════════════════════════════════════════════════════
+  private generateStageAwareFallback(
+    cropCode: string,
+    stage: string,
+    symptomContext: string,
+    daysSinceSowing: number,
+    language: 'mr' | 'hi' | 'en' = 'mr'
+  ): { message: string; actions: string[]; photoRequested: boolean } {
+    console.log(`🌱 [STAGE_FALLBACK] Generating for ${cropCode}/${stage} (${daysSinceSowing} DAS)`);
+    
+    // Get crop-stage specific advice
+    const stageAdvice = getStageSpecificAdvice(cropCode, stage);
+    
+    if (!stageAdvice) {
+      console.log(`⚠️ [STAGE_FALLBACK] No advice found for ${cropCode}/${stage}, using generic`);
+      return this.generateGenericFallback(cropCode, daysSinceSowing, language);
+    }
+    
+    // Build trilingual response based on stage-specific data
+    const cropNames: Record<string, Record<string, string>> = {
+      'SUGARCANE': { mr: 'उसाची', hi: 'गन्ने की', en: 'sugarcane' },
+      'WHEAT': { mr: 'गव्हाची', hi: 'गेहूं की', en: 'wheat' },
+      'RICE': { mr: 'भाताची', hi: 'धान की', en: 'rice' },
+      'COTTON': { mr: 'कापसाची', hi: 'कपास की', en: 'cotton' }
+    };
+    
+    const stageNames: Record<string, Record<string, string>> = {
+      'GERMINATION': { mr: 'उगवण', hi: 'अंकुरण', en: 'germination' },
+      'TILLERING': { mr: 'फुटवा', hi: 'कल्ले निकलना', en: 'tillering' },
+      'GRAND_GROWTH': { mr: 'जोमदार वाढ', hi: 'तेज बढ़वार', en: 'grand growth' },
+      'MATURITY': { mr: 'परिपक्वता', hi: 'परिपक्वता', en: 'maturity' },
+      'SEEDLING': { mr: 'रोप अवस्था', hi: 'बीजावस्था', en: 'seedling' },
+      'VEGETATIVE': { mr: 'वाढीचा काळ', hi: 'वनस्पति काल', en: 'vegetative' },
+      'FLOWERING': { mr: 'फुलोरा', hi: 'फूलने का समय', en: 'flowering' },
+      'SQUARING': { mr: 'कळी अवस्था', hi: 'कली अवस्था', en: 'squaring' }
+    };
+    
+    const cropName = cropNames[cropCode.toUpperCase()]?.[language] || cropCode;
+    const stageName = stageNames[stage.toUpperCase()]?.[language] || stage;
+    
+    // Build pest/disease watch lists for this stage
+    const pestList = stageAdvice.pest_watch.slice(0, 3);
+    const diseaseList = stageAdvice.disease_watch.slice(0, 2);
+    
+    // Generate response message based on language
+    let message: string;
+    
+    if (language === 'mr') {
+      message = `🌱 **${cropName} (${stageName} अवस्था - ${daysSinceSowing} दिवस)**\n\n`;
+      message += `📍 तुमच्या समस्येचे निदान करण्यासाठी अधिक माहिती आवश्यक आहे.\n\n`;
+      
+      if (pestList.length > 0 || diseaseList.length > 0) {
+        message += `⚠️ **या अवस्थेत सामान्य समस्या:**\n`;
+        if (pestList.length > 0) message += `🐛 कीड: ${pestList.join(', ')}\n`;
+        if (diseaseList.length > 0) message += `🦠 रोग: ${diseaseList.join(', ')}\n\n`;
+      }
+      
+      message += `👉 **तपासण्याच्या गोष्टी:**\n`;
+      stageAdvice.critical_actions.slice(0, 3).forEach((action, i) => {
+        message += `${i + 1}. ${action}\n`;
+      });
+      
+      message += `\n📸 **प्रभावित भागाचा फोटो पाठवा - त्यामुळे अचूक निदान होईल.**`;
+    } else if (language === 'hi') {
+      message = `🌱 **${cropName} (${stageName} अवस्था - ${daysSinceSowing} दिन)**\n\n`;
+      message += `📍 आपकी समस्या का निदान करने के लिए अधिक जानकारी आवश्यक है.\n\n`;
+      
+      if (pestList.length > 0 || diseaseList.length > 0) {
+        message += `⚠️ **इस अवस्था में सामान्य समस्याएं:**\n`;
+        if (pestList.length > 0) message += `🐛 कीट: ${pestList.join(', ')}\n`;
+        if (diseaseList.length > 0) message += `🦠 रोग: ${diseaseList.join(', ')}\n\n`;
+      }
+      
+      message += `👉 **जाँच करने वाली बातें:**\n`;
+      stageAdvice.critical_actions.slice(0, 3).forEach((action, i) => {
+        message += `${i + 1}. ${action}\n`;
+      });
+      
+      message += `\n📸 **प्रभावित भाग की फोटो भेजें - इससे सही निदान होगा.**`;
+    } else {
+      message = `🌱 **${cropName} (${stageName} stage - ${daysSinceSowing} DAS)**\n\n`;
+      message += `📍 Need more information to diagnose your problem.\n\n`;
+      
+      if (pestList.length > 0 || diseaseList.length > 0) {
+        message += `⚠️ **Common issues at this stage:**\n`;
+        if (pestList.length > 0) message += `🐛 Pests: ${pestList.join(', ')}\n`;
+        if (diseaseList.length > 0) message += `🦠 Diseases: ${diseaseList.join(', ')}\n\n`;
+      }
+      
+      message += `👉 **Things to check:**\n`;
+      stageAdvice.critical_actions.slice(0, 3).forEach((action, i) => {
+        message += `${i + 1}. ${action}\n`;
+      });
+      
+      message += `\n📸 **Please send a photo of the affected area for accurate diagnosis.**`;
+    }
+    
+    console.log(`✅ [STAGE_FALLBACK] Generated stage-aware response for ${cropCode}/${stage}`);
+    
+    return {
+      message,
+      actions: stageAdvice.critical_actions,
+      photoRequested: true
+    };
+  }
+  
+  /**
+   * Generic fallback when no crop-stage advisor data is available
+   */
+  private generateGenericFallback(
+    cropCode: string,
+    daysSinceSowing: number,
+    language: 'mr' | 'hi' | 'en'
+  ): { message: string; actions: string[]; photoRequested: boolean } {
+    const messages: Record<string, string> = {
+      mr: `🌾 तुमचे ${cropCode} पीक ${daysSinceSowing} दिवसांचे आहे.\n\n📍 समस्येचे अचूक निदान करण्यासाठी:\n\n1️⃣ प्रभावित भागाचा फोटो पाठवा\n2️⃣ लक्षणे स्पष्ट सांगा\n\n👉 फोटो पाठवल्यास योग्य उपाय सुचवता येईल.`,
+      hi: `🌾 आपकी ${cropCode} फसल ${daysSinceSowing} दिन पुरानी है.\n\n📍 समस्या का सही निदान करने के लिए:\n\n1️⃣ प्रभावित भाग की फोटो भेजें\n2️⃣ लक्षण स्पष्ट बताएं\n\n👉 फोटो भेजने पर सही उपाय बताया जा सकेगा.`,
+      en: `🌾 Your ${cropCode} crop is ${daysSinceSowing} days old.\n\n📍 For accurate diagnosis:\n\n1️⃣ Send photo of affected area\n2️⃣ Describe symptoms clearly\n\n👉 With a photo, I can suggest the right solution.`
+    };
+    
+    return {
+      message: messages[language] || messages['en'],
+      actions: ['Monitor crop regularly', 'Send photo for diagnosis'],
+      photoRequested: true
     };
   }
   
@@ -985,7 +1122,12 @@ export class AIAgentOrchestrator {
             };
           }
           
-          // If no rules matched, return acknowledgement and let LLM formatter handle it
+          // ═══════════════════════════════════════════════════════════════════
+          // PHASE-14: NO RULES MATCHED - Use Stage-Aware Fallback
+          // Instead of generic "समजले", provide crop-stage-specific advice
+          // ═══════════════════════════════════════════════════════════════════
+          console.log(`⚠️ [OPTION_SELECTED] No rules matched for ${cropName}/${growthStage} - using stage-aware fallback`);
+          
           // FIX: Build dataAudit for OPTION_SELECTED path to preserve land context
           const dataAuditNoRules = this.buildDataAudit(landContextForOptionSelection, null);
           
@@ -996,28 +1138,41 @@ export class AIAgentOrchestrator {
             days_since_sowing: landContextForOptionSelection?.days_since_sowing
           };
           
+          // PHASE-14: Generate stage-aware fallback response
+          const stageFallback = this.generateStageAwareFallback(
+            cropName || 'UNKNOWN',
+            growthStage || 'UNKNOWN',
+            matchResult.matched_option || farmerMessage,
+            landContextForOptionSelection?.days_since_sowing || 0,
+            options.language || 'mr'
+          );
+          
           return {
             type: 'DECISION_PROVIDED',
             session_id: sessionId,
             decision_output: {
-              decision_id: `option_selected_${Date.now()}`,
+              decision_id: `option_selected_stage_fallback_${Date.now()}`,
               session_id: sessionId,
-              status: 'OPTION_SELECTED',
+              status: 'STAGE_FALLBACK',
               decision_brain_source: true,
               // FIX A (CRITICAL): Include authority_decision to prevent default to NONE
               authority_decision: authorityDecision,
+              // PHASE-14: Include stage-aware fallback message
+              stage_fallback_message: stageFallback.message,
+              stage_fallback_actions: stageFallback.actions,
+              photo_requested: stageFallback.photoRequested,
               actions_returned: [],
               metadata: {
-                confidence: matchResult.confidence || 0.9,
+                confidence: 0.6, // Lower confidence since no rules matched
                 trace_id: traceId,
                 processing_time_ms: Date.now() - startTime,
-                agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER'],
+                agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'STAGE_FALLBACK'],
                 clarification_resolved: true,
                 selected_option: matchResult.matched_option,
                 mapped_observation: mappedObservationKey,
                 rules_evaluated: ruleResult.rules_evaluated,
-                rules_matched: ruleResult.rules_matched,
-                no_rules_matched_reason: 'No matching rules for the given canonical state',
+                rules_matched: 0,
+                no_rules_matched_reason: `Stage-aware fallback for ${cropName}/${growthStage}`,
                 // FIX: Include locked crop context in metadata
                 lockedCropContext: finalLockedCropContextNoRules
               }
@@ -1025,11 +1180,11 @@ export class AIAgentOrchestrator {
             // FIX: Include dataAudit to preserve land context
             dataAudit: dataAuditNoRules,
             metadata: {
-              confidence: matchResult.confidence || 0.9,
+              confidence: 0.6,
               safety_status: 'SAFE',
               rules_applied: 0,
               processing_time_ms: Date.now() - startTime,
-              agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER'],
+              agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'STAGE_FALLBACK'],
               trace_id: traceId,
               pendingClarificationOptions: undefined,
               pendingClarificationScope: undefined,
